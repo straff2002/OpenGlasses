@@ -624,9 +624,14 @@ struct FieldAssistSettingsView: View {
         case .refused(let reason):
             deliveryError = reason
         case .allowed(let recipients):
+            let delivery = sessionService.reportDelivery(
+                for: channel,
+                canSendAttachments: channel == .messages
+                    ? ReportComposerAvailability.messagesCanAttach : true)
             sessionService.stageDelivery(DeliveryRequest.make(
                 record: record, channel: channel, recipients: recipients,
-                attachments: sessionService.reportAttachments()))
+                attachments: delivery.attachments,
+                clipPlan: delivery.clipPlan, clipItems: delivery.clipItems))
         }
     }
 

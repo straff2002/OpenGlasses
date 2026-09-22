@@ -71,8 +71,10 @@ final class EvidenceExportTests: XCTestCase {
         return (service, tempRoot.appendingPathComponent(session.id, isDirectory: true), media)
     }
 
-    private func render(_ directory: URL, name: String = "work_order.pdf") throws -> URL {
-        let document = try XCTUnwrap(SessionExporter.buildExport(sessionDir: directory))
+    private func render(_ directory: URL, name: String = "work_order.pdf",
+                        provenance: AIProvenance? = nil) throws -> URL {
+        let document = try XCTUnwrap(SessionExporter.buildExport(sessionDir: directory,
+                                                                 provenance: provenance))
         let url = tempRoot.appendingPathComponent("\(UUID().uuidString)-\(name)")
         try SessionExporter.writePDF(document, to: url,
                                      photosDirectory: directory.appendingPathComponent("photos"))
@@ -236,8 +238,16 @@ final class EvidenceExportTests: XCTestCase {
             selection.includeAll()
             selection.setRole(.fault, for: media[1].id)
         }
-        let first = try render(job.directory, name: "first.pdf")
-        let second = try render(job.directory, name: "second.pdf")
+        // Both renders get the **same** provenance. Its footer carries a whole-second timestamp of
+        // when the PDF was made, so two renders that straddle a second boundary differ by design —
+        // and on a loaded machine they do. Pinning it is what makes this test about the thing it
+        // claims to be about: the same selection producing the same evidence, in the same order,
+        // with the same text. Nothing else here is relaxed.
+        let provenance = AIProvenance(modelIdentifier: "test-model", providerClass: .cloud,
+                                      promptVersionDigest: "deadbeef",
+                                      generatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        let first = try render(job.directory, name: "first.pdf", provenance: provenance)
+        let second = try render(job.directory, name: "second.pdf", provenance: provenance)
 
         XCTAssertEqual(embeddedImageCount(in: first), embeddedImageCount(in: second))
         XCTAssertEqual(try text(of: first), try text(of: second))

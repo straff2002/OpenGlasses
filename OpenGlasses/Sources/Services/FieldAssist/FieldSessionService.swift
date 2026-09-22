@@ -761,28 +761,79 @@ final class FieldSessionService: ObservableObject {
     /// without rendering a PDF, and so a caller that has already exported does not export twice.
     var reportAttachmentsProvider: (() -> [DeliveryRequest.Attachment])?
 
-    /// The work order PDF and the JSON record for the active session, exported now.
+    /// Everything a report needs to be staged on one channel: its files, its clip partition, and
+    /// the clips themselves (Plan FO P2b).
+    struct ReportDelivery {
+        var attachments: [DeliveryRequest.Attachment] = []
+        var clipPlan: ClipDeliveryPlan = .undecided
+        /// Every clip the technician included, attached or not — the share-sheet fallback needs
+        /// the ones that did not fit, and the report names all of them.
+        var clipItems: [JobMediaItem] = []
+    }
+
+    /// The report's files for a chosen channel, with the clips partitioned before anything opens.
     ///
-    /// Empty when the export refuses — a device without the team entitlement still gets the spoken
-    /// summary and a message body, and is told the files are not attached rather than being handed
-    /// an empty PDF.
-    func reportAttachments() -> [DeliveryRequest.Attachment] {
-        if let reportAttachmentsProvider { return reportAttachmentsProvider() }
-        guard let record = workRecord(), let leases = try? exportSession(formats: [.json, .pdf]) else {
-            return []
+    /// The order matters and is the design. The clips are partitioned **first**, against a fixed
+    /// allowance for the work order and the JSON, and only then is the PDF rendered — because the
+    /// PDF prints which clips travelled and which did not, so a partition that depended on the
+    /// PDF's own size would depend on a file it is printed into. The allowance is stated rather
+    /// than measured for the same reason the image budget is: the same job on the same channel has
+    /// to produce the same report twice, or a re-send is not a re-send.
+    func reportDelivery(for channel: DeliveryChannel,
+                        canSendAttachments: Bool = true,
+                        sessionId: String? = nil) -> ReportDelivery {
+        let record: WorkRecord?
+        if let sessionId, let session = history.first(where: { $0.id == sessionId }) {
+            record = WorkRecord(session: session,
+                                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name
+                                    ?? session.vaultId)
+        } else {
+            record = workRecord()
         }
-        // The attachments point at staged files. Their leases stay held by the coordinator until
-        // the composer is done with them and the app backgrounds, or the TTL sweeps them — the
-        // filename the recipient sees is the report stem, never the on-disk UUID.
-        return leases.compactMap { lease in
-            switch lease.fileURL.pathExtension.lowercased() {
-            case "pdf": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
-                                                          filename: record.reportFileStem + ".pdf")
-            case "json": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .json,
-                                                           filename: record.reportFileStem + ".json")
-            default: return nil
+        guard let record else { return ReportDelivery() }
+
+        let clips = record.includedClips
+        let budget = AttachmentBudget.standard(for: channel, canSendAttachments: canSendAttachments)
+        let partition = budget.partition(clips: clips, reservedBytes: Self.reportFileReserveBytes)
+        let plan = ClipDeliveryPlan(channel: channel, partition: partition)
+
+        var delivery = ReportDelivery(clipPlan: plan, clipItems: clips)
+        if let reportAttachmentsProvider {
+            delivery.attachments = reportAttachmentsProvider()
+        } else if let leases = try? exportSession(id: sessionId, formats: [.json, .pdf],
+                                                  clipPlan: plan) {
+            delivery.attachments = leases.compactMap { lease in
+                switch lease.fileURL.pathExtension.lowercased() {
+                case "pdf": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
+                                                              filename: record.reportFileStem + ".pdf")
+                case "json": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .json,
+                                                               filename: record.reportFileStem + ".json")
+                default: return nil
+                }
             }
         }
+        let directory = photosDirectory(sessionId: sessionId ?? record.sessionId)
+        delivery.attachments += partition.attached.compactMap { id in
+            guard let clip = clips.first(where: { $0.id == id }) else { return nil }
+            let url = directory.appendingPathComponent(id)
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return DeliveryRequest.Attachment(url: url, kind: .video,
+                                              filename: Self.clipFilename(record: record,
+                                                                          clip: clip,
+                                                                          index: partition.attached.firstIndex(of: id) ?? 0))
+        }
+        return delivery
+    }
+
+    /// The room the work order PDF and the JSON record are given before any clip is considered.
+    /// Generous on purpose: a twenty-photo work order is the large case, and a clip pushed out by
+    /// an over-tight reserve is merely shared separately, while one squeezed in past a real limit
+    /// is a report that silently fails to arrive.
+    static let reportFileReserveBytes = 3_000_000
+
+    /// What a clip is called when it arrives: the job, not the device's uuid.
+    static func clipFilename(record: WorkRecord, clip: JobMediaItem, index: Int) -> String {
+        record.reportFileStem + "-clip-\(index + 1).mp4"
     }
 
     /// Put a report in front of the operator. Publishing it is what opens the composer; nothing
@@ -1395,6 +1446,50 @@ final class FieldSessionService: ObservableObject {
         return url
     }
 
+    /// File a clip against the open job (Plan FO P2b).
+    ///
+    /// The bytes are already blurred: a clip is recorded off `OutboundFrameRelay`, which is where
+    /// the bystander filter runs once for every camera-rate consumer, so there is nothing left to
+    /// filter here. What this records beside the file is what the review needs and the file cannot
+    /// say for itself — how long it runs, what it weighs (which is what decides whether a channel
+    /// can carry it), which poster frame stands in for it, and whether it was cut short.
+    @discardableResult
+    func attachClip(_ data: Data, posterJPEG: Data?, caption: String?,
+                    durationSeconds: TimeInterval, filterWasOn: Bool,
+                    cutShort: Bool) -> String? {
+        guard isOpenForEvidence,
+              let url = logger?.attachClip(data, posterJPEG: posterJPEG, caption: caption,
+                                           durationSeconds: durationSeconds,
+                                           cutShort: cutShort) else { return nil }
+        let name = url.lastPathComponent
+        let taskId = activeSession?.tasks.last { $0.status == .inProgress }?.id
+        mutateSession { session in
+            session.media.append(JobMediaItem(
+                id: name, kind: .clip, capturedAt: Date(), origin: .clipRecord,
+                taskId: taskId,
+                caption: caption?.isEmpty == false ? caption : nil,
+                filterWasOn: filterWasOn,
+                durationSeconds: durationSeconds,
+                byteCount: data.count,
+                posterId: posterJPEG == nil ? nil : name + ".jpg",
+                cutShort: cutShort))
+            if let selection = session.evidenceSelection {
+                session.evidenceSelection = selection.reconciled(with: session.media)
+            }
+            return ()
+        }
+        // **Not** a `photoUpload`. That op kind is what `OfflineQueue.prunePhotoEvidence` evicts
+        // files for once they are delivered, and a clip is part of a compliance record that the
+        // store already refuses to delete. It is queued under its own kind, which nothing prunes.
+        if let sessionId = activeSession?.id {
+            offlineQueue?.enqueue(QueuedOp.make(
+                kind: .clipUpload, sessionId: sessionId,
+                json: ["path": url.path, "caption": caption ?? "",
+                       "duration_seconds": durationSeconds, "bytes": data.count]))
+        }
+        return name
+    }
+
     // MARK: Evidence review (Plan FO P2a)
 
     /// The job's evidence, oldest first — what the review grid draws and the export renders.
@@ -1511,14 +1606,16 @@ final class FieldSessionService: ObservableObject {
     /// staging lease per artifact; holding a lease is what keeps its file.
     @discardableResult
     func exportSession(id: String? = nil,
-                       formats: Set<SessionExporter.Format> = [.json, .pdf]) throws -> [StagedExportLease] {
+                       formats: Set<SessionExporter.Format> = [.json, .pdf],
+                       clipPlan: ClipDeliveryPlan = .undecided) throws -> [StagedExportLease] {
         guard let sessionId = id ?? activeSession?.id ?? history.first?.id else {
             throw FieldSessionError.noActiveSession
         }
         let dir = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
         let liveSnapshot = activeSession?.id == sessionId ? activeSessionSnapshot() : nil
         let leases = try SessionExporter.export(sessionDir: dir, formats: formats,
-                                                sessionOverride: liveSnapshot)
+                                                sessionOverride: liveSnapshot,
+                                                clipPlan: clipPlan)
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
         // The op records which formats were produced, never their paths: a staged artifact's path

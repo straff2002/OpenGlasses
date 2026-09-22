@@ -113,6 +113,15 @@ struct EvidenceReviewModel: Equatable {
 
     var isEmpty: Bool { items.isEmpty }
     var count: Int { items.count }
+    var photoCount: Int { items.filter { $0.kind == .photo }.count }
+    var clipCount: Int { items.filter { $0.kind == .clip }.count }
+    /// Whether the job carries anything that is not a photograph — which is what decides the
+    /// section's heading and the words the summary counts in (Plan FO P2b).
+    var hasClips: Bool { clipCount > 0 }
+
+    /// "Photos and clips", or "Photos" when that is all there is. A heading that promises video to
+    /// a job that took none is as wrong as one that omits it from a job that did.
+    var sectionTitle: String { hasClips ? "Photos and clips" : "Photos" }
 
     // MARK: - Words
 
@@ -132,28 +141,33 @@ struct EvidenceReviewModel: Equatable {
         }
     }
 
-    /// What that means for the pictures in front of the technician — and, while the job is open,
+    /// What that means for the evidence in front of the technician — and, while the job is open,
     /// where to change it. A finished job is offered no such link: there is nothing left to change
-    /// about pictures that were filtered on their way to disk.
+    /// about files that were filtered on their way to disk.
+    ///
+    /// The noun follows what the job actually holds. A job with a clip on it counts *items*, not
+    /// pictures — the blur applies to both, and calling a video a picture in the one sentence that
+    /// tells a technician what a customer will see would be the copy quietly being wrong.
     var faceBlurDetail: String {
+        let noun = hasClips ? "items" : "pictures"
         switch faceBlur {
         case .live(true):
-            return "Faces of anyone else in these pictures are blurred before they are saved, so "
+            return "Faces of anyone else in these \(noun) are blurred before they are saved, so "
                 + "the blur cannot be undone here. Change it under Settings → Glasses & Privacy → "
                 + "Hardware & Privacy."
         case .live(false):
-            return "Faces in these pictures are not blurred. Turn it on under Settings → Glasses & "
-                + "Privacy → Hardware & Privacy — it applies to pictures taken from then on."
+            return "Faces in these \(noun) are not blurred. Turn it on under Settings → Glasses & "
+                + "Privacy → Hardware & Privacy — it applies to anything captured from then on."
         case .asRecorded(let blurred, let total):
             if total == 0 || blurred == 0 {
-                return "Faces in these pictures were not blurred when they were taken, and that "
+                return "Faces in these \(noun) were not blurred when they were captured, and that "
                     + "cannot be changed now — what was stored is what a recipient sees."
             }
             if blurred == total {
-                return "Faces of anyone else were blurred before these pictures were saved, and "
+                return "Faces of anyone else were blurred before these \(noun) were saved, and "
                     + "that cannot be undone — the blurred copy is the only one kept."
             }
-            return "\(blurred) of these \(total) pictures had faces blurred before they were "
+            return "\(blurred) of these \(total) \(noun) had faces blurred before they were "
                 + "saved and the rest did not. Neither can be changed now."
         }
     }
@@ -161,15 +175,22 @@ struct EvidenceReviewModel: Equatable {
     /// The label on an item captured while the blur was on.
     static let blurredItemLabel = "Captured with face blur"
 
+    /// The line under a clip in the review, saying how it will actually travel (Plan FO P2b). A
+    /// work order cannot contain a video, and a technician choosing to send one is entitled to
+    /// know that before they tap rather than after.
+    static let clipTravelLabel =
+        "Sent as a file of its own — the report names it rather than containing it."
+
     /// "3 of 7 photos will go with the report" — or "went with", once the job is closed and the
     /// report has already been made from them. The same tense rule as the face-blur line: a
     /// finished job describes what happened, not what is about to.
     func summary(for selection: EvidenceSelection) -> String {
         let chosen = selection.entries.filter(\.included).count
         let verb = isFinished ? "went with" : "will go with"
-        guard count > 0 else { return "No photos were taken on this job." }
-        guard chosen > 0 else { return "No photos \(verb) the report." }
-        return "\(chosen) of \(count) photo\(count == 1 ? "" : "s") \(verb) the report."
+        let noun = hasClips ? "item" : "photo"
+        guard count > 0 else { return "Nothing was recorded on this job." }
+        guard chosen > 0 else { return "No \(noun)s \(verb) the report." }
+        return "\(chosen) of \(count) \(noun)\(count == 1 ? "" : "s") \(verb) the report."
     }
 
     /// Whether this is a record of a closed job rather than one still being worked on. Read off
@@ -194,6 +215,13 @@ struct EvidenceReviewModel: Equatable {
             .map { photosDirectory.appendingPathComponent($0) }
     }
 
-    /// The file for one item, for a thumbnail.
+    /// The file for one item — the picture itself, or a clip's video.
     func url(for itemId: String) -> URL { photosDirectory.appendingPathComponent(itemId) }
+
+    /// The file whose pixels a thumbnail draws: the photograph, or a clip's poster frame — the
+    /// blurred still written when the clip was recorded. Nil for a clip with no poster, which
+    /// draws a placeholder rather than decoding a video inside a scrolling list.
+    func previewURL(for item: JobMediaItem) -> URL? {
+        item.previewFileName.map { photosDirectory.appendingPathComponent($0) }
+    }
 }

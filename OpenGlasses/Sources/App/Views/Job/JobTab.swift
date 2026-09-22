@@ -72,6 +72,9 @@ private struct JobTabContent: View {
                                   onAnswerUnit: { action in Task { await model.answer(action) } },
                                   onPauseResume: pauseOrResume,
                                   onAddPhoto: addPhoto,
+                                  clips: appState.jobClips,
+                                  onRecordClip: recordClip,
+                                  onStopClip: stopClip,
                                   onSharePhotos: shareSelectedPhotos,
                                   onOpenPrivacySettings: { appState.requestedTab = .settings },
                                   onOpenConversation: openConversation,
@@ -183,6 +186,21 @@ private struct JobTabContent: View {
     private func addPhoto(_ origin: JobMediaItem.Origin, _ data: Data) {
         let outcome = appState.jobPhotoEvidence.attach(imageData: data, origin: origin)
         if let trouble = outcome.problem { problem = trouble }
+    }
+
+    /// Start a clip from the button. The refusal is shown rather than swallowed: a record button
+    /// that does nothing when the glasses are asleep is the defect this phase is here to avoid.
+    private func recordClip() {
+        if case .failure(let refusal) = appState.startJobClip() {
+            problem = refusal.spoken
+        }
+    }
+
+    private func stopClip() {
+        Task {
+            let finished = await appState.stopJobClip()
+            if finished == nil { problem = "The clip stopped, but nothing could be saved." }
+        }
     }
 
     private func shareSelectedPhotos() {

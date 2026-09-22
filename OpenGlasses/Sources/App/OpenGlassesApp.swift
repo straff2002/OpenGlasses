@@ -854,6 +854,19 @@ class AppState: ObservableObject, AppStateProtocol {
             sessions: { FieldSessionService.shared },
             filter: { [weak self] in self?.privacyFilter },
             filterEnabled: { Config.privacyFilterEnabled }))
+        // Clips need no filter of their own: they are recorded off the relay, where the blur has
+        // already run once for every camera-rate consumer. What they need is an honest answer to
+        // "is the camera producing pictures right now", so a refusal is spoken rather than a black
+        // clip recorded (Plan FO P2b).
+        jobClips.connect(.init(
+            sessions: { FieldSessionService.shared },
+            readiness: { [weak self] in self?.cameraService.readinessNow },
+            filterEnabled: { Config.privacyFilterEnabled }))
+        jobClips.onFinished = { [weak self] finished in
+            guard let self, let finished else { return }
+            self.addDebugEvent("Job clip saved (\(Int(finished.duration.rounded()))s).")
+            Task { await self.speechService.speak(finished.spoken) }
+        }
     }
 
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
@@ -944,6 +957,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// (Plan FO P2a). It is its own service because it is its own privacy chokepoint: those pixels
     /// never pass `CameraService`, so nothing else would have filtered them.
     let jobPhotoEvidence = JobPhotoEvidenceService()
+
+    /// Clips recorded as job evidence (Plan FO P2b). Owned here because the frames come off
+    /// `outboundFrames` — the one publisher an outbound consumer may read — and handing that out
+    /// is `AppState`'s job rather than a tool's or a view's.
+    let jobClips = JobClipRecorder()
 
     /// A tab one surface has asked the root tab bar to show, cleared by `MainView` once it has.
     ///
@@ -3344,6 +3362,34 @@ class AppState: ObservableObject, AppStateProtocol {
         case .cancelled, .saved, .handedOff:
             addDebugEvent("Job report not confirmed sent — it stays in the queue.")
         }
+    }
+
+    // MARK: - Job clips (Plan FO P2b)
+
+    /// Start a clip on the open job.
+    ///
+    /// **`outboundFrames.publisher`, never `cameraService.framePublisher`.** The relay is where the
+    /// bystander blur runs, once, for every camera-rate consumer; a clip that read the raw
+    /// publisher would write unblurred faces into a file that then goes out with a customer's work
+    /// order. `OutboundFrameConsumer.jobClipRecording` is the roster entry, and
+    /// `OutboundFrameConsumerTests` asserts this from the source.
+    @discardableResult
+    func startJobClip(caption: String? = nil,
+                      seconds: TimeInterval? = nil) -> Result<TimeInterval, JobClipRecorder.StartRefusal> {
+        jobClips.start(from: outboundFrames.publisher, caption: caption, seconds: seconds)
+    }
+
+    @discardableResult
+    func stopJobClip() async -> JobClipRecorder.Finished? {
+        await jobClips.stop()
+    }
+
+    /// Hand one clip, as it was stored, to the system share sheet — the route for a clip a channel
+    /// would not carry. Same rule as the photographs: the sheet opens on a tap and the technician
+    /// picks the destination.
+    func presentClipShare(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        deliveryShareItem = ShareItem(items: [url])
     }
 
     /// Hand the selected evidence, full size, to the system share sheet (Plan FO P2a).

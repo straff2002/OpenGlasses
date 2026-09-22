@@ -21,6 +21,9 @@ enum LaunchState: String {
     /// The open job as above, with photographs on it — what the close-job evidence review needs
     /// in order to have anything to review.
     case seedFieldPhotos = "-OGUITestSeedFieldPhotos"
+    /// The open job as above, with one length-capped clip on it — what the Photos-and-clips
+    /// section and the review's clip row need in order to have anything to measure (Plan FO P2b).
+    case seedFieldClips = "-OGUITestSeedFieldClips"
 }
 
 // MARK: - Deferrals

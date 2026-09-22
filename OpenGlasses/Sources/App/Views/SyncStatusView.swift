@@ -123,6 +123,7 @@ struct SyncStatusView: View {
         switch kind {
         case .logEntry:      return "Log entry"
         case .photoUpload:   return "Photo upload"
+        case .clipUpload:    return "Clip upload"
         case .llmGrounding:  return "Deferred question"
         case .auditExport:   return "Audit export"
         case .captureRecord: return "Capture record"

@@ -31,6 +31,13 @@ enum OutboundFrameConsumer: String, CaseIterable {
     case videoRecording
     /// Video recording started by the `video_recording` native tool — i.e. by voice.
     case videoRecordingTool
+    /// A length-capped job clip recorded as evidence (Plan FO P2b), started by `record_clip` or by
+    /// the Job tab's record button. Listed under `.recording` rather than a scope of its own: a
+    /// clip is frames written to a file on this device, which is what that scope already means,
+    /// and the egress that makes it interesting — the file going out with a work order — is the
+    /// same shape a recording shared from the Recordings folder has. What differs is the length
+    /// cap and where the file is filed, neither of which is a privacy classification.
+    case jobClipRecording
     /// RTMP broadcast.
     case rtmpBroadcast
     /// WebRTC/MJPEG browser streaming (`WebRTCStreamingService`).
@@ -203,6 +210,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .appRelayAttachment, .liveSessionPush, .liveSessionPollFallback,
              .directModelTurn, .pinnedFrame, .agentAttachment: return "AppState"
         case .videoRecording: return "VideoRecordingService"
+        case .jobClipRecording: return "JobClipRecorder"
         case .videoRecordingTool: return "VideoRecordingTool"
         case .rtmpBroadcast: return "BroadcastService"
         case .webRTCBrowserStream: return "WebRTCStreamingService"
@@ -250,7 +258,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
     var scope: PrivacyFilterScope? {
         switch self {
         case .outboundRelayInput, .appRelayAttachment: return nil
-        case .videoRecording, .videoRecordingTool: return .recording
+        case .videoRecording, .videoRecordingTool, .jobClipRecording: return .recording
         case .rtmpBroadcast, .webRTCBrowserStream: return .broadcast
         case .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
              .expertPeerTransport, .expertTransportProtocol: return .expertStream
@@ -281,9 +289,10 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .outboundRelayInput, .appRelayAttachment, .faceRecognition, .readingCompanion,
              .fingerspelling, .dwellCapture: return .rawCameraPublisher
         case .liveSessionPush, .livePreview: return .rawCameraCallback
-        case .videoRecording, .videoRecordingTool, .rtmpBroadcast, .webRTCBrowserStream,
-             .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
-             .expertPeerTransport, .expertTransportProtocol: return .outboundRelay
+        case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
+             .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
+             .expertMeetingLinkTransport, .expertPeerTransport,
+             .expertTransportProtocol: return .outboundRelay
         case .liveSessionPollFallback, .directModelTurn, .pinnedFrame, .agentAttachment,
              .sceneNarration, .fitnessPoseFrame: return .latestFrameStill
         case .dwellCaptureSave: return .rawCameraPublisher
@@ -300,9 +309,10 @@ enum OutboundFrameConsumer: String, CaseIterable {
     var mechanism: Mechanism {
         switch self {
         case .outboundRelayInput, .appRelayAttachment: return .relayInput
-        case .videoRecording, .videoRecordingTool, .rtmpBroadcast, .webRTCBrowserStream,
-             .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
-             .expertPeerTransport, .expertTransportProtocol: return .relay
+        case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
+             .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
+             .expertMeetingLinkTransport, .expertPeerTransport,
+             .expertTransportProtocol: return .relay
         case .liveSessionPush, .liveSessionPollFallback, .directModelTurn, .pinnedFrame,
              .agentAttachment: return .chokepoint
         case .faceRecognition, .sceneNarration, .livePreview, .readingCompanion,

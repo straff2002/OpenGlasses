@@ -45,7 +45,8 @@ enum SessionExporter {
                        formats: Set<Format> = [.json, .pdf],
                        coordinator: StagedExportCoordinator? = nil,
                        provenance: AIProvenance? = nil,
-                       sessionOverride: FieldSession? = nil) throws -> [StagedExportLease] {
+                       sessionOverride: FieldSession? = nil,
+                       clipPlan: ClipDeliveryPlan = .undecided) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device at any tier.
         guard FieldAssistEntitlement.shared.isGranted(atLeast: .team) else {
@@ -55,7 +56,8 @@ enum SessionExporter {
             throw ExportError.sessionNotFound(sessionDir)
         }
         guard let document = buildExport(sessionDir: sessionDir, provenance: provenance,
-                                         sessionOverride: sessionOverride) else {
+                                         sessionOverride: sessionOverride,
+                                         clipPlan: clipPlan) else {
             throw ExportError.metadataUnreadable
         }
         var leases: [StagedExportLease] = []
@@ -72,7 +74,8 @@ enum SessionExporter {
                 leases.append(try coordinator.makeLease(
                     fileExtension: "pdf", displayName: "work_order.pdf",
                     fallbackName: "work_order.pdf") {
-                        try writePDF(document, to: $0, photosDirectory: photos)
+                        try writePDF(document, to: $0, photosDirectory: photos,
+                                     clipPlan: clipPlan)
                     })
             }
         } catch {
@@ -89,7 +92,8 @@ enum SessionExporter {
 
     /// Reconstruct the consolidated export from the session metadata + append-only event log.
     static func buildExport(sessionDir: URL, provenance: AIProvenance? = nil,
-                            sessionOverride: FieldSession? = nil) -> SessionExport? {
+                            sessionOverride: FieldSession? = nil,
+                            clipPlan: ClipDeliveryPlan = .undecided) -> SessionExport? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let session: FieldSession
@@ -222,6 +226,7 @@ enum SessionExporter {
             location: session.startLocation.map { .init(latitude: $0.latitude, longitude: $0.longitude) },
             transcript: transcript,
             photos: photos,
+            clips: clipRefs(session: session, plan: clipPlan),
             proceduresRun: proceduresRun,
             captures: captures,
             citations: citations,
@@ -238,6 +243,30 @@ enum SessionExporter {
             provenance: provenance ?? AIProvenance.forActiveModel(
                 promptSources: [FieldAssistProvenance.promptIdentity])
         )
+    }
+
+    /// The job's clips for the machine-readable record (Plan FO P2b).
+    ///
+    /// Built from the session's own catalogue rather than from the log, for the same reason the
+    /// work record is: the catalogue is what the review edited and what the selection refers to,
+    /// so a reconstruction from events could disagree with the decision the technician made.
+    static func clipRefs(session: FieldSession, plan: ClipDeliveryPlan) -> [SessionExport.ClipRef] {
+        let selection = session.evidenceSelection
+        let reviewed = selection?.reviewed == true
+        return session.media.filter { $0.kind == .clip }.map { clip in
+            let entry = reviewed ? selection?.entry(for: clip.id) : nil
+            let included = reviewed ? (entry?.included ?? false) : nil
+            // "Attached" is only a fact once a channel has been chosen. An export taken for the
+            // archive says nothing rather than guessing, which is what `nil` is for.
+            let attached: Bool? = plan.isEmpty ? nil : plan.isAttached(clip.id)
+            return SessionExport.ClipRef(
+                timestamp: clip.capturedAt, path: clip.id,
+                caption: entry?.caption ?? clip.caption,
+                durationSeconds: clip.durationSeconds, bytes: clip.byteCount,
+                included: included, role: entry?.role?.rawValue,
+                attached: attached, notAttachedReason: plan.reason(for: clip.id),
+                cutShort: clip.cutShort)
+        }
     }
 
     private static func readEvents(_ url: URL, decoder: JSONDecoder) -> [SessionLogger.Event] {
@@ -267,7 +296,8 @@ enum SessionExporter {
     ///   technician selected should be drawn into the document. Absent — or with no selection
     ///   made — the photo section is the text bullet list the work order has always printed.
     static func writePDF(_ document: SessionExport, to url: URL,
-                         photosDirectory: URL? = nil) throws {
+                         photosDirectory: URL? = nil,
+                         clipPlan: ClipDeliveryPlan = .undecided) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
@@ -329,13 +359,15 @@ enum SessionExporter {
             let plan = document.workRecord?.evidencePlan ?? EvidenceRenderPlan(groups: [])
             if reviewed {
                 if let photosDirectory, !plan.isEmpty {
-                    drawEvidence(plan, from: photosDirectory, layout: layout)
+                    drawEvidence(plan, from: photosDirectory, layout: layout, clipPlan: clipPlan)
                 } else if !plan.isEmpty {
                     // Rendered without the files to hand — the audit JSON's own copy of the
                     // record, say. Name what was chosen rather than printing nothing at all.
-                    layout.section("Photos")
+                    layout.section(plan.clipCount == 0 ? "Photos" : "Photos and clips")
                     for entry in plan.groups.flatMap(\.entries) {
-                        layout.body("• \(entry.captionLine)")
+                        layout.body(entry.item.kind == .clip
+                                    ? "• " + Self.clipLine(entry, plan: clipPlan)
+                                    : "• \(entry.captionLine)")
                     }
                 } else if !document.photos.isEmpty {
                     layout.section("Photos")
@@ -376,12 +408,16 @@ enum SessionExporter {
     /// image — which is as close to an accessible PDF as this layout gets, and is what lets a
     /// reader who cannot see the photograph still find out what it was of and when it was taken.
     private static func drawEvidence(_ plan: EvidenceRenderPlan, from directory: URL,
-                                     layout: PDFLayout) {
-        // One budget for the whole document, decided from the number of pictures actually going
-        // out — so a thirty-photo job gets smaller copies rather than an unsendable file.
-        let budget = EvidenceImageBudget.standard.plan(photoCount: plan.entryCount)
-        layout.section("Photos")
-        layout.body("\(plan.entryCount) picture\(plan.entryCount == 1 ? "" : "s") selected by the technician.")
+                                     layout: PDFLayout,
+                                     clipPlan: ClipDeliveryPlan = .undecided) {
+        // One budget for the whole document, decided from the number of *pictures* actually going
+        // out — so a thirty-photo job gets smaller copies rather than an unsendable file. Clips
+        // are not drawn and do not enter it.
+        let photoCount = plan.photoCount
+        let clipCount = plan.clipCount
+        let budget = EvidenceImageBudget.standard.plan(photoCount: photoCount)
+        layout.section(clipCount == 0 ? "Photos" : "Photos and clips")
+        layout.body(Self.evidenceLead(photos: photoCount, clips: clipCount))
         for group in plan.groups {
             layout.subheading(group.title)
             var lastRole: EvidenceSelection.Role??
@@ -392,6 +428,14 @@ enum SessionExporter {
                 if lastRole == nil || lastRole! != entry.role {
                     if let role = entry.role { layout.roleHeading(role.heading) }
                     lastRole = .some(entry.role)
+                }
+                // A clip cannot be drawn into a PDF, so the record **names** it: what it shows,
+                // when it was taken, how long it runs, and how it travelled. That last part is why
+                // this line exists at all — a customer holding a work order that mentions a clip
+                // can ask for the clip; one holding a report that silently omitted it cannot.
+                if entry.item.kind == .clip {
+                    layout.caption(Self.clipLine(entry, plan: clipPlan))
+                    continue
                 }
                 guard let image = EvidenceImageRenderer.load(entry.item.id, from: directory) else {
                     // The file is gone. Say so rather than leaving a caption floating under
@@ -404,6 +448,26 @@ enum SessionExporter {
                 layout.caption(entry.captionLine)
             }
         }
+    }
+
+    /// "3 pictures and one clip selected by the technician." — the sentence under the heading.
+    static func evidenceLead(photos: Int, clips: Int) -> String {
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos) picture\(photos == 1 ? "" : "s")") }
+        if clips > 0 { parts.append("\(clips) clip\(clips == 1 ? "" : "s")") }
+        guard !parts.isEmpty else { return "Nothing was selected by the technician." }
+        return parts.joined(separator: " and ") + " selected by the technician."
+    }
+
+    /// The line a clip gets instead of a picture: caption, time, length, and how it travelled.
+    static func clipLine(_ entry: EvidenceRenderPlan.Entry, plan: ClipDeliveryPlan) -> String {
+        var parts: [String] = ["Clip"]
+        if let caption = entry.caption, !caption.isEmpty { parts.append(caption) }
+        parts.append(entry.item.timeLabel)
+        if let length = entry.item.durationLabel { parts.append(length) }
+        if entry.item.cutShort { parts.append("cut short") }
+        parts.append(plan.travelNote(for: entry.item.id))
+        return parts.joined(separator: " · ")
     }
 
     /// One line per distinct source: what was cited, and whether anybody looked at the page it

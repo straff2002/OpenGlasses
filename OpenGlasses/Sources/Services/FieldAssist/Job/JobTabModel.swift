@@ -518,6 +518,80 @@ struct JobTabModel {
         return (review, selection)
     }
 
+    // MARK: - Clips on the way out (Plan FO P2b)
+
+    /// What will happen to a finished job's clips on the channel the report would go by.
+    ///
+    /// Shown on the past job's page *before* Send, because "this one is too large" is a fact the
+    /// technician needs while they still have the phone in their hand and the share sheet a tap
+    /// away — not a line they read afterwards in a body they have already sent.
+    struct ClipDelivery: Equatable {
+        /// The channel's name in a sentence ("email", "a message", "the share sheet"), because
+        /// the *label* is a button's caption — "Share…", ellipsis and all — and reads as nonsense
+        /// mid-sentence.
+        let channelName: String
+        let channelLabel: String
+        let plan: ClipDeliveryPlan
+        /// Every included clip, attached or not, in the order the report names them.
+        let clips: [JobMediaItem]
+
+        var attachedCount: Int { plan.attached.count }
+        var overBudgetCount: Int { plan.overBudget.count }
+
+        /// The sentence above the list.
+        var summary: String {
+            switch (attachedCount, overBudgetCount) {
+            case (0, 0): return "No clips go with this report."
+            case (let sent, 0):
+                return sent == 1
+                    ? "One clip goes with the report by \(channelName)."
+                    : "\(sent) clips go with the report by \(channelName)."
+            case (0, let over):
+                return over == 1
+                    ? "The clip is too large for \(channelLabel) — share it separately."
+                    : "\(over) clips are too large for \(channelLabel) — share them separately."
+            case (let sent, let over):
+                return "\(sent) clip\(sent == 1 ? "" : "s") go\(sent == 1 ? "es" : "") with the "
+                    + "report; \(over) \(over == 1 ? "is" : "are") too large for "
+                    + "\(channelLabel) and must be shared separately."
+            }
+        }
+
+        /// What one clip's row says about how it travels.
+        func line(for clip: JobMediaItem) -> String {
+            var parts: [String] = [clip.caption?.isEmpty == false ? clip.caption! : "No caption"]
+            if let length = clip.durationLabel { parts.append(length) }
+            if let size = clip.sizeLabel { parts.append(size) }
+            return parts.joined(separator: " · ")
+        }
+    }
+
+    /// The clip partition for a finished job, against the channel the report would actually go by.
+    /// Nil when the job has no included clips, or no channel is allowed at all.
+    func clipDelivery(sessionId: String) -> ClipDelivery? {
+        guard let session = host.history.first(where: { $0.id == sessionId }) else { return nil }
+        let record = WorkRecord(session: session, vaultName: defaults.vaultName(session.vaultId))
+        let clips = record.includedClips
+        guard !clips.isEmpty else { return nil }
+        guard let channel = DeliveryPolicy(settings: Config.deliverySettings).defaultChannel else {
+            return nil
+        }
+        let budget = AttachmentBudget.standard(
+            for: channel,
+            canSendAttachments: channel == .messages ? ReportComposerAvailability.messagesCanAttach
+                                                     : true)
+        let partition = budget.partition(clips: clips,
+                                         reservedBytes: FieldSessionService.reportFileReserveBytes)
+        return ClipDelivery(channelName: channel.spokenName, channelLabel: channel.label,
+                            plan: ClipDeliveryPlan(channel: channel, partition: partition),
+                            clips: clips)
+    }
+
+    /// Where a finished job's clip file lives, for the share sheet.
+    func clipURL(sessionId: String, itemId: String) -> URL {
+        host.photosDirectory(sessionId: sessionId).appendingPathComponent(itemId)
+    }
+
     /// What "Read back" speaks and shows. The record's own lines, in the record's own order.
     var readBackLines: [String]? { host.workRecord()?.summaryLines }
     var readBackSpeech: String? { host.workRecord()?.summary }

@@ -150,6 +150,17 @@ struct WorkRecord: Codable, Equatable {
                                        taskTitles: tasks.map { (id: $0.id, title: $0.title) })
     }
 
+    /// The clips the technician chose, in the order the report names them (Plan FO P2b).
+    ///
+    /// Empty when the review was skipped or never reached, for the same reason `evidencePlan` is:
+    /// a clip that was never chosen has not been chosen, and "not chosen" is the only safe reading
+    /// when what is at stake is a video of a customer's plant room leaving the device.
+    var includedClips: [JobMediaItem] {
+        guard let evidenceSelection, evidenceSelection.reviewed else { return [] }
+        let byId = Dictionary(media.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return evidenceSelection.includedItemIds(kind: .clip).compactMap { byId[$0] }
+    }
+
     func tasks(status: FieldSession.Task.Status) -> [FieldSession.Task] {
         tasks.filter { $0.status == status }
     }

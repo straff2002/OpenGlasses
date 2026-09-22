@@ -4,6 +4,10 @@ import Foundation
 enum OpKind: String, Codable {
     case logEntry       // a structured step/observation — durable locally, sync-only
     case photoUpload    // a captured photo on disk → upload when online
+    /// A job clip on disk (Plan FO P2b). Deliberately **not** `photoUpload`: that kind's delivered
+    /// tombstones are what `prunePhotoEvidence` evicts files for, and a clip belongs to a session
+    /// log the store already refuses to delete. A clip is queued, never pruned.
+    case clipUpload
     case llmGrounding   // a question asked offline → answer when back online
     case auditExport    // generate / upload the session audit export
     case captureRecord  // a finished capture-flow record (Plan U) — typed so a networked sink can route it

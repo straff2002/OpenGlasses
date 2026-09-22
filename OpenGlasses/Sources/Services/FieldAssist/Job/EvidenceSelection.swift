@@ -98,13 +98,14 @@ struct EvidenceSelection: Codable, Equatable {
     /// The default is the one place the *reason* a picture was taken is allowed to decide anything.
     /// A `photo_log` capture exists because the technician said "log this", so leaving it out would
     /// be the app second-guessing an instruction; a `capture_photo` or a library picture was taken
-    /// for some other purpose and may be of a colleague's lunch.
+    /// for some other purpose and may be of a colleague's lunch. A **clip** is never ticked by
+    /// default whatever asked for it — see `JobMediaItem.isIncludedByDefault`.
     static func proposed(for items: [JobMediaItem]) -> EvidenceSelection {
         EvidenceSelection(
             reviewed: false,
             entries: items.enumerated().map { index, item in
                 Entry(itemId: item.id, kind: item.kind,
-                      included: item.origin.isIncludedByDefault,
+                      included: item.isIncludedByDefault,
                       caption: item.caption, order: index)
             })
     }
@@ -125,7 +126,7 @@ struct EvidenceSelection: Codable, Equatable {
                 next.entries.append(existing)
             } else {
                 next.entries.append(Entry(itemId: item.id, kind: item.kind,
-                                          included: item.origin.isIncludedByDefault,
+                                          included: item.isIncludedByDefault,
                                           caption: item.caption, order: index))
             }
         }
@@ -139,6 +140,12 @@ struct EvidenceSelection: Codable, Equatable {
     }
 
     var includedCount: Int { entries.filter(\.included).count }
+
+    /// Everything included of one kind, in render order — what the exporter draws and what the
+    /// delivery budget has to find room for.
+    func includedItemIds(kind: JobMediaItem.Kind) -> [String] {
+        renderOrdered(entries.filter { $0.included && $0.kind == kind }).map(\.itemId)
+    }
 
     /// Ids of everything going out, in **render** order: Fault, then Fix, then unmarked, each by
     /// capture order. This is what the work order prints and what the share sheet hands out, so

@@ -21,6 +21,27 @@ final class EndpointSyncSink: SyncSink {
     /// Ops this sink is responsible for; everything else is the fallback's.
     static let handledKinds: Set<OpKind> = [.workRecord, .partsRequest]
 
+    /// Whether this sink can take a file at all (Plan FO P2b).
+    ///
+    /// It cannot. It POSTs one JSON envelope per op to an endpoint whose upload shape nobody has
+    /// ever agreed — the same reason it has always delegated photo uploads. Spelled as a property
+    /// rather than left implicit so "clips travel if the sink supports files" is a decision with a
+    /// name, and so the day an endpoint does take files there is one place to say so.
+    static let carriesFiles = false
+
+    /// What happens to a queued clip, given whether the sink can carry files.
+    ///
+    /// Pure, so the branch that matters — the one where nothing can be uploaded — is provable
+    /// without a network. It is a **permanent** outcome, not a transient one: retrying a POST the
+    /// endpoint has no shape for will never start working, and six silent retries followed by a
+    /// failure with no reason is exactly the silent loss this is here to prevent. The op is left in
+    /// the queue, failed, with the sentence the sync screen shows.
+    static func clipOutcome(carriesFiles: Bool = EndpointSyncSink.carriesFiles) -> SyncOutcome {
+        guard !carriesFiles else { return .done }
+        return .permanent(reason: "the office endpoint takes the job record, not video — "
+                          + "the clip stays on the device, and can be shared from the job")
+    }
+
     /// `endpoint` and `token` are read per delivery rather than captured, so changing the setting
     /// takes effect on the next flush instead of the next launch.
     init(fallback: SyncSink,
@@ -34,6 +55,10 @@ final class EndpointSyncSink: SyncSink {
     }
 
     func deliver(_ op: QueuedOp) async -> SyncOutcome {
+        // A clip is a file, and this sink posts JSON. Answered here rather than delegated, so a
+        // configured endpoint says plainly that the video stayed behind instead of the fallback
+        // marking it delivered to nowhere.
+        if op.kind == .clipUpload, endpoint() != nil { return Self.clipOutcome() }
         guard Self.handledKinds.contains(op.kind), let configured = endpoint() else {
             return await fallback.deliver(op)
         }

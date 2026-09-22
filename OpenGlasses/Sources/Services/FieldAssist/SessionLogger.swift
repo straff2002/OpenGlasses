@@ -48,6 +48,10 @@ final class SessionLogger {
             case assistantMessage = "assistant_message"
             case toolCall = "tool_call"
             case photoAttached = "photo_attached"
+            /// A length-capped clip was recorded against the job (Plan FO P2b). Separate from
+            /// `photoAttached` because a reader reconstructing the evidence needs to know which
+            /// files it can draw and which it can only name.
+            case clipAttached = "clip_attached"
             /// The technician chose which evidence goes out with the report (Plan FO P2a). What
             /// was left out is as much a fact about the visit as what was sent, so the count and
             /// whether the step was taken at all are written down.
@@ -190,7 +194,7 @@ final class SessionLogger {
         }
     }
 
-    // MARK: - Photo Attachment
+    // MARK: - Media Attachment
 
     /// Save photo bytes into the session's photos dir and append a log event.
     /// Returns the on-disk URL of the saved photo.
@@ -202,6 +206,40 @@ final class SessionLogger {
         var payload: [String: AnyCodable] = ["path": AnyCodable(url.lastPathComponent)]
         if let caption { payload["caption"] = AnyCodable(caption) }
         append(Event(timestamp: Date(), kind: .photoAttached, text: caption, payload: payload))
+        return url
+    }
+
+    /// Save a clip, and the poster frame drawn for it, into the same directory the photographs go
+    /// into, and append a log event (Plan FO P2b).
+    ///
+    /// The directory is still called `photos/`: it is the visit's media, the name is baked into
+    /// every session already on disk and into `photosDirectory(sessionId:)`, and renaming it would
+    /// mean a migration that buys nothing. The poster is written beside the clip under the clip's
+    /// own name plus `.jpg`, so a reader with the clip's name can always find its picture.
+    ///
+    /// Returns the clip's URL, whose last component is the catalogue id — the same identity a
+    /// photograph has.
+    @discardableResult
+    func attachClip(_ data: Data, posterJPEG: Data? = nil, caption: String? = nil,
+                    durationSeconds: TimeInterval, cutShort: Bool = false) -> URL {
+        let stem = "\(ISO8601DateFormatter().string(from: Date()))_\(UUID().uuidString.prefix(8))"
+        let url = photosDir.appendingPathComponent(stem + ".mp4")
+        try? data.write(to: url, options: .atomic)
+        var posterName: String?
+        if let posterJPEG {
+            let name = stem + ".mp4.jpg"
+            try? posterJPEG.write(to: photosDir.appendingPathComponent(name), options: .atomic)
+            posterName = name
+        }
+        var payload: [String: AnyCodable] = [
+            "path": AnyCodable(url.lastPathComponent),
+            "duration_seconds": AnyCodable(durationSeconds),
+            "bytes": AnyCodable(data.count),
+            "cut_short": AnyCodable(cutShort)
+        ]
+        if let caption { payload["caption"] = AnyCodable(caption) }
+        if let posterName { payload["poster"] = AnyCodable(posterName) }
+        append(Event(timestamp: Date(), kind: .clipAttached, text: caption, payload: payload))
         return url
     }
 }

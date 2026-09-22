@@ -90,6 +90,13 @@ struct PastJobView: View {
                                      evidence.review.shareURLs(for: evidence.selection)) })
             }
 
+            // How the clips travel on the channel this report would go by (Plan FO P2b). Before
+            // Send, not after: "that one is too large" is only useful while the share sheet is
+            // still a tap away.
+            if let clips = model.clipDelivery(sessionId: sessionId) {
+                clipDeliverySection(clips)
+            }
+
             Section {
                 if let threadId = job.threadId {
                     choice("Open the conversation") { onOpenTranscript(threadId) }
@@ -109,6 +116,50 @@ struct PastJobView: View {
             }
         }
         .ogFormStyle()
+    }
+
+    /// One row per clip: what it is, how long it runs, what it weighs, and whether it rides along
+    /// or has to be shared. A clip that cannot be attached is never silently dropped — it gets a
+    /// button of its own.
+    @ViewBuilder
+    private func clipDeliverySection(_ delivery: JobTabModel.ClipDelivery) -> some View {
+        Section {
+            Text(delivery.summary)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(delivery.clips) { clip in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(delivery.line(for: clip))
+                        .font(.callout)
+                        .foregroundStyle(Color.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let reason = delivery.plan.reason(for: clip.id) {
+                        Text("Not attached — \(reason).")
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.warnLabel)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Goes with the report.")
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+
+                if delivery.plan.reason(for: clip.id) != nil {
+                    choice("Share this clip") {
+                        appState.presentClipShare(model.clipURL(sessionId: sessionId,
+                                                                itemId: clip.id))
+                    }
+                    .accessibilityHint("Opens the share sheet with this clip. Nothing is sent until you choose where.")
+                }
+            }
+        } header: {
+            Text("Clips with this report")
+        } footer: {
+            Text("A work order cannot contain a video, so a clip travels as a file of its own. The report names every clip either way, so the record is complete even when a clip goes separately.")
+        }
     }
 
     /// One tappable line in a section — leading-aligned and tinted, the way a `Form` button reads.
@@ -131,31 +182,20 @@ struct PastJobView: View {
         case .refused(let reason):
             problem = reason
         case .allowed(let recipients):
+            // One call builds the files *and* the clip partition, so the PDF's lines, the body's
+            // note and the attachments cannot disagree about which clips travelled.
+            let delivery = FieldSessionService.shared.reportDelivery(
+                for: channel,
+                canSendAttachments: channel == .messages
+                    ? ReportComposerAvailability.messagesCanAttach : true,
+                sessionId: job.sessionId)
             let request = DeliveryRequest.make(record: job.record, channel: channel,
                                                recipients: recipients,
-                                               attachments: attachments(for: job))
+                                               attachments: delivery.attachments,
+                                               clipPlan: delivery.clipPlan,
+                                               clipItems: delivery.clipItems)
             appState.presentDelivery(request)
         }
     }
 
-    /// The finished session's own exported files. An export that refuses leaves the summary to
-    /// travel on its own, which is what the composer already says it is doing.
-    private func attachments(for job: JobTabModel.PastJob) -> [DeliveryRequest.Attachment] {
-        guard let leases = try? FieldSessionService.shared.exportSession(id: job.sessionId,
-                                                                        formats: [.json, .pdf]) else {
-            return []
-        }
-        return leases.compactMap { lease in
-            switch lease.fileURL.pathExtension.lowercased() {
-            case "pdf":
-                return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
-                                                  filename: job.record.reportFileStem + ".pdf")
-            case "json":
-                return DeliveryRequest.Attachment(url: lease.fileURL, kind: .json,
-                                                  filename: job.record.reportFileStem + ".json")
-            default:
-                return nil
-            }
-        }
-    }
 }

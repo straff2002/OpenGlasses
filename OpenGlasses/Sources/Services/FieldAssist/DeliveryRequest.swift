@@ -10,14 +10,19 @@ struct DeliveryRequest: Identifiable, Equatable {
 
     /// A file that rides along: the work order the customer reads, or the JSON a job system parses.
     struct Attachment: Equatable {
-        enum Kind: String, Equatable {
+        enum Kind: String, Equatable, CaseIterable {
             case pdf
             case json
+            /// A job clip (Plan FO P2b). A PDF cannot carry video, so a selected clip rides as a
+            /// file of its own — where the channel can take it. Which clips those are is decided
+            /// by `AttachmentBudget` before the composer opens, never by the composer failing.
+            case video
 
             var mimeType: String {
                 switch self {
                 case .pdf: return "application/pdf"
                 case .json: return "application/json"
+                case .video: return "video/mp4"
                 }
             }
 
@@ -26,6 +31,7 @@ struct DeliveryRequest: Identifiable, Equatable {
                 switch self {
                 case .pdf: return "com.adobe.pdf"
                 case .json: return "public.json"
+                case .video: return "public.mpeg-4"
                 }
             }
         }
@@ -58,6 +64,22 @@ struct DeliveryRequest: Identifiable, Equatable {
     /// The stock checks this report answers for. They become `sent` when it is sent, and stay
     /// `requested` when it is not.
     let partsRequestIds: [String]
+    /// What happened to the job's clips on this channel (Plan FO P2b). The PDF, the JSON, the
+    /// composer body and the "Share clip" offers are all this one partition rendered differently,
+    /// so none of them can claim a clip travelled when it did not.
+    let clipPlan: ClipDeliveryPlan
+    /// The clips themselves, so the share-sheet fallback can name and find the ones that did not
+    /// fit. Empty for a job with no clips, which is every job before this phase.
+    let clipItems: [JobMediaItem]
+
+    /// How many clips the technician has to share another way.
+    var clipsSharedSeparately: Int { clipPlan.overBudget.count }
+
+    /// The clips that did not fit, in the order the report names them.
+    var clipsToShareSeparately: [JobMediaItem] {
+        let over = clipPlan.overBudgetIds
+        return over.compactMap { id in clipItems.first { $0.id == id } }
+    }
 
     init(id: String = UUID().uuidString,
          channel: DeliveryChannel,
@@ -67,7 +89,9 @@ struct DeliveryRequest: Identifiable, Equatable {
          shortBody: String,
          attachments: [Attachment] = [],
          record: WorkRecord,
-         partsRequestIds: [String] = []) {
+         partsRequestIds: [String] = [],
+         clipPlan: ClipDeliveryPlan = .undecided,
+         clipItems: [JobMediaItem] = []) {
         self.id = id
         self.channel = channel
         self.recipients = recipients
@@ -77,6 +101,8 @@ struct DeliveryRequest: Identifiable, Equatable {
         self.attachments = attachments
         self.record = record
         self.partsRequestIds = partsRequestIds
+        self.clipPlan = clipPlan
+        self.clipItems = clipItems
     }
 
     var sessionId: String { record.sessionId }
@@ -85,7 +111,9 @@ struct DeliveryRequest: Identifiable, Equatable {
     /// Build the request for a decided channel. The three shapes come off one record, so the PDF a
     /// person reads, the JSON a system parses and the sentence in a message bubble cannot disagree.
     static func make(record: WorkRecord, channel: DeliveryChannel, recipients: [String],
-                     attachments: [Attachment], partsRequestIds: [String]? = nil) -> DeliveryRequest {
+                     attachments: [Attachment], partsRequestIds: [String]? = nil,
+                     clipPlan: ClipDeliveryPlan = .undecided,
+                     clipItems: [JobMediaItem] = []) -> DeliveryRequest {
         DeliveryRequest(
             channel: channel,
             recipients: recipients,
@@ -96,7 +124,9 @@ struct DeliveryRequest: Identifiable, Equatable {
             attachments: channel.carriesAttachments ? attachments : [],
             record: record,
             partsRequestIds: partsRequestIds
-                ?? record.partsRequests.filter { $0.status == .requested }.map(\.id))
+                ?? record.partsRequests.filter { $0.status == .requested }.map(\.id),
+            clipPlan: clipPlan,
+            clipItems: clipItems)
     }
 
     /// What the technician is told is about to happen, before anybody taps anything.
@@ -112,6 +142,17 @@ struct DeliveryRequest: Identifiable, Equatable {
         case 1: line += " The \(attachments[0].kind.rawValue.uppercased()) is attached."
         default:
             line += " The work order PDF and the JSON record are attached."
+        }
+        // A clip that did not fit is named out loud before anybody taps anything: the one thing
+        // that must never happen is a technician believing a clip went with a report it did not.
+        let clips = attachments.filter { $0.kind == .video }.count
+        if clips > 0 {
+            line += clips == 1 ? " One clip goes with it." : " \(clips) clips go with it."
+        }
+        if clipsSharedSeparately > 0 {
+            line += clipsSharedSeparately == 1
+                ? " One clip is too large for this and has to be shared separately."
+                : " \(clipsSharedSeparately) clips are too large for this and have to be shared separately."
         }
         if channel == .endpoint {
             line += " It goes to the office endpoint as soon as there is a connection."
@@ -233,9 +274,13 @@ struct ReportComposerModel: Equatable {
         return "The full work record couldn't be attached to this message; it is being sent separately."
     }
 
-    /// Body as the composer is actually filled in, note included.
+    /// The paragraph naming every clip that could not ride along (Plan FO P2b). Nil when there is
+    /// none — and the *reason* rather than a bare apology, because a recipient who knows a clip
+    /// exists can ask for it.
+    var clipNote: String? { request.clipPlan.bodyNote(items: request.clipItems) }
+
+    /// Body as the composer is actually filled in, notes included.
     var filledBody: String {
-        guard let attachmentNote else { return body }
-        return body + "\n\n" + attachmentNote
+        ([body, attachmentNote, clipNote].compactMap { $0 }).joined(separator: "\n\n")
     }
 }

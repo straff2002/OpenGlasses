@@ -24,6 +24,8 @@ struct JobEvidenceReviewView: View {
 
     @Environment(\.appAccent) private var accent
     @State private var editingCaption: String?
+    /// The clip being played on the phone, if any (Plan FO P2b). Nothing is sent by playing one.
+    @State private var playing: JobMediaItem?
 
     var body: some View {
         NavigationStack {
@@ -35,11 +37,16 @@ struct JobEvidenceReviewView: View {
                 actionsSection
             }
             .ogFormStyle()
-            .navigationTitle("Photos for the report")
+            .navigationTitle(review.hasClips ? "Evidence for the report" : "Photos for the report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Keep working") { onCancel() }
+                }
+            }
+            .sheet(item: $playing) { item in
+                ClipPlayerSheet(url: review.url(for: item.id), caption: item.caption) {
+                    playing = nil
                 }
             }
         }
@@ -76,8 +83,9 @@ struct JobEvidenceReviewView: View {
         let included = entry?.included ?? false
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
-                EvidenceThumbnail(url: review.url(for: row.item.id), side: 64)
-                    .opacity(included ? 1 : 0.55)
+                EvidenceMediaTile(item: row.item, previewURL: review.previewURL(for: row.item),
+                                  side: 64, dimmed: !included,
+                                  onPlay: { playing = row.item })
                 // When and how it was taken leads this line — **not** the caption, which lives in
                 // the editable row below and nowhere else. Printing it in both places made a
                 // three-photo job read like a six-photo one and left the technician with two
@@ -87,6 +95,20 @@ struct JobEvidenceReviewView: View {
                         .font(.subheadline)
                         .foregroundStyle(Color.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                    // A clip states its length and, if the recording ended early, says so. A
+                    // customer being sent eight seconds of a fault that was cut off is entitled to
+                    // know it was cut off, and so is the technician choosing to send it.
+                    if let length = row.item.durationLabel {
+                        Text(row.item.cutShort ? "Clip · \(length) · cut short" : "Clip · \(length)")
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
+                    }
+                    if row.item.travelsAsItsOwnFile {
+                        Text(EvidenceReviewModel.clipTravelLabel)
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if row.item.filterWasOn {
                         Text(EvidenceReviewModel.blurredItemLabel)
                             .font(.caption)
@@ -176,9 +198,15 @@ struct JobEvidenceReviewView: View {
             choice("Read them out one at a time", action: onReadOutLoud)
                 .accessibilityHint("Reads each picture's caption and waits for yes or no. You can also just say \u{201C}include all\u{201D} or \u{201C}skip photos\u{201D}.")
 
-            choice("Share full-size photos", action: onShare)
-                .disabled(selection.includedCount == 0)
-                .accessibilityHint("Opens the share sheet with the selected pictures at full size.")
+            Group {
+                if review.hasClips {
+                    choice("Share full-size photos and clips", action: onShare)
+                } else {
+                    choice("Share full-size photos", action: onShare)
+                }
+            }
+            .disabled(selection.includedCount == 0)
+            .accessibilityHint("Opens the share sheet with everything selected, at full size — clips included.")
 
             Button("Close job and send these", role: .destructive, action: onClose)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
@@ -188,7 +216,9 @@ struct JobEvidenceReviewView: View {
         } header: {
             Text("Finish the job")
         } footer: {
-            Text("Time stops, the record is finished, and the job's conversation is closed with it. You can still send the report afterwards, and it will carry exactly these pictures.")
+            Text(review.hasClips
+                 ? "Time stops, the record is finished, and the job's conversation is closed with it. You can still send the report afterwards, and it will carry exactly these pictures. A clip is sent as a file of its own where the channel can take it, and offered through the share sheet where it can't."
+                 : "Time stops, the record is finished, and the job's conversation is closed with it. You can still send the report afterwards, and it will carry exactly these pictures.")
         }
     }
 

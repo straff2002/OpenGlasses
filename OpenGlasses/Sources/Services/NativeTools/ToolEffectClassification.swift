@@ -142,6 +142,14 @@ extension PartsRequestTool { var executionSemantics: ToolExecutionSemantics { .l
 // Send. So the tool itself is local — nothing has left the device when it returns — and it is not
 // idempotent, because a redelivered call is a second composer over the first.
 extension DeliverReportTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+// record_clip writes a video file under the session and a row in its catalogue (Plan FO P2b).
+// Local: nothing leaves the device — a clip only travels if the technician chooses it at close and
+// then taps Send. Not idempotent: a redelivered "start" is a second clip on the job, and a
+// redelivered "stop" would end one the technician had just begun. Cooperative cancellation,
+// because a running clip can be stopped cleanly at any moment and what was captured is kept.
+extension RecordClipTool {
+    var executionSemantics: ToolExecutionSemantics { .local(.cooperative) }
+}
 
 // MARK: External mutations
 
