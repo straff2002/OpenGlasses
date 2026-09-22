@@ -1,6 +1,6 @@
 # Building a Field Assist vault from your own manuals
 
-*OpenGlasses Field Assist · applies to September 2026 builds with the manual tier · team licence required · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
+*OpenGlasses Field Assist · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
 
 A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 
@@ -37,7 +37,7 @@ The two kinds of content behave differently, and getting the split right is most
 ## Before you start
 
 1. Install the TestFlight build on the iPhone and pair the glasses.
-2. Open **Settings › Field Assist**, paste the licence code you were sent, and tap **Activate Licence**. The status card should show **Tier: Team**. Custom vaults and manual indexing need a team licence; a solo purchase covers only the bundled vaults.
+2. Open **Settings › Field Assist**. If your organisation issued a licence code, paste it and tap **Activate Licence** — the status card should show **Tier: Team**. A Field Assist subscription on the phone's own Apple ID does just as well for building vaults: vaults of your own and manual indexing come with a subscription or an organisation licence. The one-time unlock some early users hold covers the bundled vaults only; audited PDF export and organisation-issued configuration stay with a team licence.
 3. Turn on **Enable Field Assist** on the same screen.
 4. Have a way to get a folder onto the phone. iCloud Drive in the Files app is the simplest; AirDrop of the whole folder also works.
 
@@ -330,7 +330,9 @@ A composer you dismiss sends nothing, and nothing pretends otherwise: the record
 
 ## Updating a vault
 
-Edit the folder on the computer, bump `version`, and import again with the same `id`. Manuals whose content has not changed are skipped; a changed manual is re-indexed and its old index removed; a manual you dropped from the manifest is removed. Technicians' in-app edits to the core files are kept and layered over your new originals. To pull a vault off the phone with those edits included, swipe the vault row and choose **Export**; the exported folder imports straight back in.
+Edit the folder on the computer, bump `version`, and import again with the same `id`. Manuals whose content has not changed are skipped; a changed manual is re-indexed and its old index removed; a manual you dropped from the manifest is removed. Technicians' in-app edits to the core files are kept and layered over your new originals. To pull a vault off the phone with those edits included, swipe the vault row and choose **Export**.
+
+**An export does not contain the manuals.** It carries the manifest, the core markdown with the technicians' edits, and the procedures — never the manual text, never the manufacturer's PDFs. The manuals stay on the phone they were indexed on. The exported manifest still *lists* every manual the vault needs and marks them as not included, so importing that folder on another phone stops and names the files to supply: put the manuals back into the folder's `documents/` directory, from your own copy on the computer, and the import goes through. What an export is for is the vault's own content and the technicians' edits; what carries the manuals is the folder you built, which is why you keep it.
 
 ## Removing one manual on the phone
 
@@ -350,9 +352,9 @@ A job in progress is not interrupted. The session keeps its job reference, the m
 
 **If the removal reports a failure**, the manual stays unavailable and the row offers **Retry removal** — a removal that stopped part-way is finished by trying again, or at the next launch. If it says the vault's manual index needs repairing, import the vault's folder again; that rebuilds the index and the removal can then proceed.
 
-**Restoring one.** There is no undo, and nothing keeps a list of what was removed. Importing a vault folder that contains the manual puts it back — an explicit import is always authoritative. What an export cannot do is bring it back: an export of the reduced vault no longer lists the manual, so re-importing that export does not restore it. Keep the original folder on a computer.
+**Restoring one.** There is no undo, and nothing keeps a list of what was removed. Importing a vault folder that contains the manual puts it back — an explicit import is always authoritative. What an export cannot do is bring it back: an export of the reduced vault no longer lists the manual at all, and it does not carry any manual's file either. Keep the original folder on a computer.
 
-Removing a manual is only offered for vaults you imported yourself. A signed pack's manuals belong to its publisher; remove the whole pack instead. Removing installed content does **not** need a current team licence — importing manuals does, but taking a superseded one off a phone should not stop working when a licence lapses.
+Removing a manual is only offered for vaults you imported yourself. A signed pack's manuals belong to its publisher; remove the whole pack instead. Removing installed content does **not** need a current subscription or licence — importing manuals does, but taking a superseded one off a phone should not stop working when a subscription lapses. The same line holds for the vaults already on the phone: a lapsed subscription keeps them readable and removable, and only stops new manuals going in.
 
 ## If the import refuses
 
@@ -361,6 +363,7 @@ Removing a manual is only offered for vaults you imported yourself. A signed pac
 | `manifest.json is missing or unreadable` | The file must sit at the top of the folder with that exact name. |
 | `listed file missing: models.md` | A name in `files` does not match a file. Case and extension matter. |
 | `listed document missing: documents/…` | Same for a manual; check `documents_dir` and the file name. |
+| `manual not included in this export: … — add documents/… to the folder before importing` | The folder came off a phone, and exports never carry manuals. Copy the named files into it from your own copy and import again. |
 | `… has no text layer on N of N pages; it will be read by on-device recognition at import` | A warning, not a refusal. Either let the phone read it (Route A), or add a text layer on your computer first (Route B or C). |
 | `prompt_rules should address 'fabricate'` | Add a rule containing the word fabricate; likewise for cite. |
 | `document has no title` | Every entry in `documents` needs a non-empty `title`. |
