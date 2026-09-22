@@ -540,13 +540,23 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(store.documentCount(namespace: DocumentStore.vaultNamespace(manifest.id)), 0)
     }
 
-    func testExportIncludesDocuments() async throws {
+    /// Plan FS: an export leaves the manuals on the phone and says so, so this folder no longer
+    /// validates on its own — the manual is still *required*, which is the whole point, and the
+    /// validator names it instead of installing a vault that claims a manual it has not got.
+    func testExportListsTheManualAsRequiredAndLeavesTheFileBehind() async throws {
         let manifest = try VaultImporter.install(from: writeVault())
         VaultRegistry.shared.reloadUserManifests()
         let exported = try VaultExporter.export(id: manifest.id)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.appendingPathComponent("documents/manual.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.appendingPathComponent("documents/manual.txt").path))
+
+        let decoded = try JSONDecoder().decode(
+            VaultManifest.self, from: Data(contentsOf: exported.appendingPathComponent("manifest.json")))
+        XCTAssertEqual(decoded.documents.map(\.file), ["manual.txt"])
+        XCTAssertFalse(decoded.documentsIncluded)
+
         let reimported = VaultValidator.validate(directory: exported)
-        XCTAssertTrue(reimported.isValid, "\(reimported.issues)")
+        XCTAssertFalse(reimported.isValid)
+        XCTAssertTrue(reimported.issues.contains { $0.contains("not included in this export") }, "\(reimported.issues)")
     }
 
     // MARK: - Session prompt context

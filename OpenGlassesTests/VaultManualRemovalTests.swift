@@ -220,7 +220,11 @@ final class VaultManualRemovalTests: XCTestCase {
         XCTAssertEqual(store.documentCount(namespace: namespace), 1)
     }
 
-    func testExportOfTheReducedVaultExcludesTheManualAndReimportDoesNotRestoreIt() async throws {
+    /// FN's rule, under Plan FS's export: a removed manual is gone from the manifest, so no export
+    /// and no re-import can bring it back. The surviving manual is still *listed* — it is part of
+    /// what the vault is — but its file stays on the phone like every other manual, so importing
+    /// this folder asks for that one and only that one.
+    func testExportOfTheReducedVaultDropsTheRemovedManualAndAsksOnlyForTheSurvivor() async throws {
         let store = makeStore()
         let manifest = try await installTwoManuals(store: store)
         _ = try await VaultManualRemoval.remove(file: "install.txt", fromVault: manifest.id,
@@ -229,11 +233,23 @@ final class VaultManualRemovalTests: XCTestCase {
         let exported = try VaultExporter.export(id: Self.vaultId)
         let fm = FileManager.default
         XCTAssertFalse(fm.fileExists(atPath: exported.appendingPathComponent("documents/install.txt").path))
-        XCTAssertTrue(fm.fileExists(atPath: exported.appendingPathComponent("documents/service.txt").path))
+        XCTAssertFalse(fm.fileExists(atPath: exported.appendingPathComponent("documents/service.txt").path),
+                       "manuals never leave the phone through the app")
         let validated = VaultValidator.validate(directory: exported)
-        XCTAssertTrue(validated.isValid, "\(validated.issues)")
-        XCTAssertEqual(validated.manifest?.documents.map(\.file), ["service.txt"])
+        XCTAssertEqual(validated.manifest?.documents.map(\.file), ["service.txt"],
+                       "the removed manual is not even claimed")
+        XCTAssertEqual(validated.manifest?.documentsIncluded, false)
+        XCTAssertFalse(validated.isValid)
+        XCTAssertEqual(validated.issues.filter { $0.contains("not included in this export") }.count, 1,
+                       "\(validated.issues)")
 
+        XCTAssertThrowsError(try VaultImporter.install(from: exported))
+
+        // Supplying the surviving manual is enough, and the removed one stays gone.
+        try fm.createDirectory(at: exported.appendingPathComponent("documents", isDirectory: true),
+                               withIntermediateDirectories: true)
+        try Self.serviceText.write(to: exported.appendingPathComponent("documents/service.txt"),
+                                   atomically: true, encoding: .utf8)
         let reimported = try VaultImporter.install(from: exported)
         VaultRegistry.shared.reloadUserManifests()
         XCTAssertEqual(reimported.documents.map(\.file), ["service.txt"])

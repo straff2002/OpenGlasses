@@ -78,6 +78,17 @@ enum VaultValidator {
             if !seenDocumentFiles.insert(document.file).inserted {
                 issues.append("document listed twice: \(document.file)")
             }
+            // A folder whose manifest says the manuals were left behind is answered once per
+            // manual, naming the text and the manufacturer's original together, rather than one
+            // file at a time across repeated attempts.
+            if !manifest.documentsIncluded {
+                let expected = [manifest.documentRelativePath(document),
+                                manifest.documentSourceRelativePath(document)].compactMap { $0 }
+                let absent = expected.filter { !fm.fileExists(atPath: directory.appendingPathComponent($0).path) }
+                if !absent.isEmpty {
+                    issues.append(notIncludedIssue(title: document.title, paths: absent)); continue
+                }
+            }
             let url = directory.appendingPathComponent(manifest.documentRelativePath(document))
             guard fm.fileExists(atPath: url.path) else {
                 issues.append("listed document missing: \(manifest.documentRelativePath(document))"); continue
@@ -115,6 +126,16 @@ enum VaultValidator {
         }
 
         return Result(manifest: manifest, issues: issues, warnings: warnings)
+    }
+
+    /// What a folder that came off a phone is missing. A vault exported from the app carries the
+    /// manifest and marks it `documents_included: false` (Plan FS), because manuals never leave the
+    /// phone through the app — so the manuals it lists are *required and absent*, which is a
+    /// different thing to say than "this folder is broken", and the message names the files to
+    /// supply. It is still an issue and never a warning: a vault must not install claiming manuals
+    /// it has not got and then answer as though it had them.
+    static func notIncludedIssue(title: String, paths: [String]) -> String {
+        "manual not included in this export: \(title) — add \(paths.joined(separator: " and ")) to the folder before importing"
     }
 
     /// The manufacturer's original beside an extracted-text document (Plan EK P3): it has to be a

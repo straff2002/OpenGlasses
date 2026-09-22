@@ -82,7 +82,7 @@ final class VaultPackCatalogService: ObservableObject {
             productId: entry.id, licensePack: licensePack,
             purchasedProducts: VerifiedStorePurchaseRecorder.shared.packProductIds,
             licensedPacks: FieldAssistEntitlement.shared.grantedPacks(),
-            tier: decision.tier)
+            capabilities: FieldAssistEntitlement.shared.capabilities())
         return VaultPackRowState.resolve(entry: entry, installedVersion: installed?.version,
                                          unlocked: unlocked, fieldAssistGranted: decision.isGranted,
                                          currentBuild: currentBuild)

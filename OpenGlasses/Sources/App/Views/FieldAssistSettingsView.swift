@@ -153,7 +153,7 @@ struct FieldAssistSettingsView: View {
                 } header: {
                     Text("Reference Files")
                 } footer: {
-                    Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported.")
+                    Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported. An export leaves the manuals on this phone and lists them as files to supply.")
                 }
 
                 // ──────────────── Wake word
@@ -892,8 +892,8 @@ struct FieldAssistSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(OGTheme.errorLabel)
                 }
-                if grant.tier == .solo {
-                    Text(FieldAssistPaywallCopy.teamOnly)
+                if case .bundledOnly = CustomVaultGateState.current() {
+                    Text(FieldAssistPaywallCopy.bundledVaultsOnly)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

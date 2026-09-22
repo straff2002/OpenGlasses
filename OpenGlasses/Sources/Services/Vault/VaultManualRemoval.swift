@@ -398,6 +398,7 @@ enum VaultManualRemoval {
                       files: manifest.files, proceduresDir: manifest.proceduresDir,
                       documentsDir: manifest.documentsDir,
                       documents: manifest.documents.filter { $0.file != file },
+                      documentsIncluded: manifest.documentsIncluded,
                       gating: manifest.gating, promptRules: manifest.promptRules,
                       sourceAttributionFormat: manifest.sourceAttributionFormat,
                       sourceAttributionRequired: manifest.sourceAttributionRequired)

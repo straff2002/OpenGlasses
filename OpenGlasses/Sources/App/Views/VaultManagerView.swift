@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Manage customer-imported vaults (Plan H, Enterprise tier). Import a folder containing
+/// Manage the reader's own vaults (Plan H). Import a folder containing
 /// manifest.json + markdown + procedures/ + documents/, validated before install; list and remove
 /// installed packs. Reference documents (OEM manuals) are chunked into the on-device document
 /// store after install and shown per vault with their section counts.
@@ -50,8 +50,9 @@ struct VaultManagerView: View {
         let retry: ManualRemovalRequest?
     }
 
-    /// Custom vaults are a team capability; the import button says so instead of failing later.
-    private var teamCheck: FieldAssistTierCheck { FieldAssistEntitlement.shared.check(atLeast: .team) }
+    /// Vaults of your own are a capability, not a tier; the import button says what is missing
+    /// instead of failing later, and asks exactly what the importer asks.
+    private var ownVaultsGate: CustomVaultGateState { CustomVaultGateState.current() }
 
     var body: some View {
         Form {
@@ -61,13 +62,9 @@ struct VaultManagerView: View {
                 } label: {
                     Label("Import Vault Folder…", systemImage: "square.and.arrow.down")
                 }
-                .disabled(syncProgress != nil || removalInFlight != nil || !teamCheck.isGranted)
-                if case .insufficientTier = teamCheck {
-                    Text(FieldAssistPaywallCopy.teamOnly)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if case .denied = teamCheck {
-                    Text("Custom vaults need a Field Assist team licence.")
+                .disabled(syncProgress != nil || removalInFlight != nil || !ownVaultsGate.allowsImport)
+                if let explanation = ownVaultsGate.explanation {
+                    Text(explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -89,7 +86,7 @@ struct VaultManagerView: View {
                 } header: {
                     Text("Installed Vaults")
                 } footer: {
-                    Text("Swipe a vault to export it as a folder (manifest.json + markdown + procedures/ + documents). Exports include your in-app edits and re-import directly via “Import Vault Folder…”. Removing one manual leaves the rest of its vault working.")
+                    Text("Swipe a vault to export it as a folder — manifest.json, the markdown with your in-app edits, and procedures/. Manuals stay on this phone: the export still lists the ones the vault needs, and whoever imports it adds those files themselves. Removing one manual leaves the rest of its vault working.")
                 }
             }
 

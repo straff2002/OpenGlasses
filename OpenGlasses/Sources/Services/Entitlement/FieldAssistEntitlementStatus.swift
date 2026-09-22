@@ -70,9 +70,16 @@ enum FieldAssistPaywallCopy {
     static let licenseHeader = "Organisation Licence"
     static let licenseFooter = "Enter the code your organisation issued. Codes are signed and validated on-device — no network required."
     static let purchaseHeader = "Solo — In-App Purchase"
-    static let purchaseFooter = "Subscription on this Apple ID. Solo covers the bundled vaults, guided procedures, domain calculators, session log, and expert escalation."
+    static let purchaseFooter = "Subscription on this Apple ID. It covers the bundled vaults, vaults of your own with your manuals indexed on this phone, guided procedures, domain calculators, session log, and expert escalation."
     static let purchased = "Unlocked with a legacy purchase"
-    static let teamOnly = "Your own vaults and manuals, and audited PDF export, are team capabilities. Your purchase covers the bundled vaults; a team licence from your organisation unlocks the rest."
+    /// For someone holding the retired one-time unlock, or a solo-tier code: honest about what it
+    /// bought, and about what the subscription adds. It never says "upgrade", because nothing they
+    /// were sold has been taken away.
+    static let bundledVaultsOnly = "Your purchase covers the bundled vaults. A subscription adds vaults of your own, with your manuals indexed on this phone; a team licence adds audited PDF export and organisation-issued configuration."
+    /// A lapsed subscription is not a locked app: the vaults already installed stay readable, and a
+    /// manual can still be taken off the phone. Only new manuals stop.
+    static let ownVaultsLapsed = "Your Field Assist access has lapsed. The vaults already on this phone stay readable and you can still remove a manual; importing new manuals needs an active subscription."
+    static let ownVaultsLocked = "Vaults of your own need Field Assist — a subscription, or the licence code your organisation issued."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
     /// The way out of a stored code that stopped verifying or expired: without it the locked screen
@@ -96,7 +103,8 @@ enum FieldAssistPaywallCopy {
     /// Every static string, for the copy guard test.
     static var all: [String] {
         [locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
-         teamOnly, renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
+         bundledVaultsOnly, ownVaultsLapsed, ownVaultsLocked,
+         renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),
          expiring(.expiring(daysRemaining: 1, threshold: 7)),
          expiring(.expiring(daysRemaining: 12, threshold: 30))]
