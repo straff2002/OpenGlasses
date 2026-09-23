@@ -889,6 +889,50 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Give both live backends the same guided-job seam (Plan FO P3a).
+    ///
+    /// Everything device-facing is a closure, so the bridge itself is exercised headlessly and
+    /// what is proved here is only the wiring. The two sets differ in exactly one place — which
+    /// session's identity and injection path they read — which is the point: a job's state cannot
+    /// depend on which provider happened to answer.
+    private func configureLiveJobBridges() {
+        let sessions = { FieldSessionService.shared }
+        geminiLiveSession.jobBridge.connect(.init(
+            activeSession: { sessions().activeSession },
+            generation: { [weak self] in self?.geminiLiveSession.sessionIdentity ?? 0 },
+            canInject: { [weak self] in self?.geminiLiveSession.canInject ?? false },
+            isBusy: { [weak self] in self?.geminiLiveSession.isBusyForInjection ?? true },
+            injectText: { [weak self] text in
+                self?.geminiLiveSession.injectText(text, completeTurn: false)
+            },
+            consumeUtterance: { [weak self] text in
+                await self?.guidedJobFlow.handleUtterance(text) ?? false
+            },
+            speakPendingQuestion: { [weak self] in
+                await self?.guidedJobFlow.speakPendingQuestionIfDue()
+            },
+            recordTurn: { text, sourceID in
+                sessions().recordConversationTurn(text, sourceID: sourceID)
+            }))
+        openAIRealtimeSession.jobBridge.connect(.init(
+            activeSession: { sessions().activeSession },
+            generation: { [weak self] in self?.openAIRealtimeSession.sessionIdentity ?? 0 },
+            canInject: { [weak self] in self?.openAIRealtimeSession.canInject ?? false },
+            isBusy: { [weak self] in self?.openAIRealtimeSession.isBusyForInjection ?? true },
+            injectText: { [weak self] text in
+                self?.openAIRealtimeSession.injectText(text, completeTurn: false)
+            },
+            consumeUtterance: { [weak self] text in
+                await self?.guidedJobFlow.handleUtterance(text) ?? false
+            },
+            speakPendingQuestion: { [weak self] in
+                await self?.guidedJobFlow.speakPendingQuestionIfDue()
+            },
+            recordTurn: { text, sourceID in
+                sessions().recordConversationTurn(text, sourceID: sourceID)
+            }))
+    }
+
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
     /// entry points share one state machine and one generation.
     private func configureConversationReset() {
@@ -986,6 +1030,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// through it, because a binding that only covered the end of a voice turn was a binding a
     /// CarPlay tap could break.
     let guidedJobFlow: GuidedJobFlow
+    /// The lens cue last raised for an outstanding job question (Plan FO P3a). Held so the same
+    /// question is not flashed again every time anything else about the session moves.
+    private var lastJobQuestionCue: JobQuestionHUDCue.Cue?
 
     /// Where a picture the *phone* took — or one picked out of its library — becomes job evidence
     /// (Plan FO P2a). It is its own service because it is its own privacy chokepoint: those pixels
@@ -1574,6 +1621,11 @@ class AppState: ObservableObject, AppStateProtocol {
         llmService.localLLMService = localLLMService
         llmService.conversationStore = conversationStore
         geminiLiveSession.nativeToolRouter = nativeToolRouter
+        // Plan FO P3a — the OpenAI Realtime backend reaches the native tools for the first time.
+        // Its declared surface is the Field Assist job tools only; see
+        // `ToolDeclarations.openAIRealtimeTools`.
+        openAIRealtimeSession.nativeToolRouter = nativeToolRouter
+        configureLiveJobBridges()
 
         // Medical export share sheet — triggered by agent tool. The lease is released when the
         // provider finishes, whichever way it finishes; backgrounding and the launch scavenge are
@@ -2395,6 +2447,28 @@ class AppState: ObservableObject, AppStateProtocol {
                 TaskHUDCue.show(cue, on: self.glassesDisplay)
             }
         cancellables.append(taskCueToken)
+
+        // Plan FO P3a — one trigger for every surface that has to follow the job.
+        //
+        // Every mutation the plan names — a tool call that changes the session, an equipment
+        // change, an intake change — writes `FieldSessionService.activeSession`, so this one
+        // publisher is the trigger set rather than three hooks that can each be forgotten. What it
+        // drives: the bounded job block on both live backends, the lens cue for whichever question
+        // is outstanding, and the watch's read-only job state.
+        let jobStateToken = FieldSessionService.shared.$activeSession
+            .removeDuplicates { JobSurfaceRefresh.key(for: $0) == JobSurfaceRefresh.key(for: $1) }
+            .sink { [weak self] session in
+                guard let self else { return }
+                self.geminiLiveSession.jobBridge.refresh()
+                self.openAIRealtimeSession.jobBridge.refresh()
+                if let cue = JobQuestionHUDCue.cue(for: session), cue != self.lastJobQuestionCue {
+                    JobQuestionHUDCue.show(cue, on: self.glassesDisplay)
+                }
+                self.lastJobQuestionCue = JobQuestionHUDCue.cue(for: session)
+                WatchConnectivityManager.shared.sendStatusUpdate()
+                CarPlaySceneDelegate.current?.refreshJobsTab()
+            }
+        cancellables.append(jobStateToken)
 
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.

@@ -223,6 +223,53 @@ enum ToolDeclarations {
         return tools
     }
 
+    /// OpenAI **Realtime** session tool format.
+    ///
+    /// Flat — `{type, name, description, parameters}` — where the Chat Completions format nests
+    /// the same fields under `function`. Written as its own mapper rather than reusing
+    /// `openAITools` because passing the nested shape to `session.update` is accepted and then
+    /// silently ignored, which is the worst of the three outcomes: no error, no tools.
+    ///
+    /// `names`, when given, restricts the surface. Plan FO P3a declares only the Field Assist job
+    /// tools to this backend: it has never executed a tool of any kind, so handing it the whole
+    /// registry would be a far larger change than the guided flow needs and one no test here could
+    /// stand behind. With Field Assist off the list is empty and `session.update` carries no
+    /// `tools` key at all, so the wearer's existing session is byte-for-byte what it was.
+    @MainActor
+    static func openAIRealtimeTools(registry: NativeToolRegistry?,
+                                    names: Set<String>? = nil) -> [[String: Any]] {
+        openAIRealtimeTools(declarations: nativeToolDeclarations(registry: registry), names: names)
+    }
+
+    /// The same mapping over declarations that are already in hand — what a cross-provider diff
+    /// test drives, since a `NativeToolRegistry` cannot be built headlessly.
+    static func openAIRealtimeTools(declarations: [[String: Any]],
+                                    names: Set<String>? = nil) -> [[String: Any]] {
+        declarations
+            .filter { declaration in
+                guard let names else { return true }
+                return (declaration["name"] as? String).map(names.contains) ?? false
+            }
+            .map { declaration in
+                [
+                    "type": "function",
+                    "name": declaration["name"] as? String ?? "",
+                    "description": declaration["description"] as? String ?? "",
+                    "parameters": declaration["parameters"] as Any,
+                ] as [String: Any]
+            }
+    }
+
+    /// The generic `{name, description, parameters}` declarations for a named subset — what a
+    /// cross-provider diff test compares, so the comparison is of the contract rather than of two
+    /// providers' envelopes.
+    @MainActor
+    static func declarations(registry: NativeToolRegistry?, names: Set<String>) -> [[String: Any]] {
+        nativeToolDeclarations(registry: registry).filter { declaration in
+            (declaration["name"] as? String).map(names.contains) ?? false
+        }
+    }
+
     /// Gemini REST API tool format
     @MainActor
     static func geminiRESTTools(registry: NativeToolRegistry?, includeOpenClaw: Bool, mcpClient: MCPClient? = nil) -> [[String: Any]] {

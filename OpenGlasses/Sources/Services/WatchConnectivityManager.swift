@@ -67,7 +67,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             ]
         }
 
-        let context: [String: Any] = [
+        var context: [String: Any] = [
             "status": statusString(),
             "isConnected": appState.isConnected,
             "isProcessing": appState.isProcessing,
@@ -82,6 +82,14 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "recentThreads": recentThreads,
             "quickActions": quickActions
         ]
+
+        // Plan FO P3a — read-only job state on the wrist: which job, running or paused, which
+        // machine, and what the app is waiting on. The key is absent when no job is open, so a
+        // watch that has not been updated, and a watch whose technician has finished, both show
+        // nothing rather than something stale.
+        if let job = JobWatchPayload.payload(for: FieldSessionService.shared.activeSession) {
+            context[JobWatchPayload.key] = job.dictionary
+        }
 
         // Use application context for persistent state
         try? session.updateApplicationContext(context)

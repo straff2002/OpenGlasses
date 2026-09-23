@@ -21,6 +21,10 @@ class WatchConnectivityService: NSObject, ObservableObject {
     @Published var accentColorName: String = "green"
     @Published var recentThreads: [ThreadInfo] = []
     @Published var quickActions: [QuickActionInfo] = []
+    /// The open job, when there is one (Plan FO P3a). Read-only: the watch shows it and offers
+    /// nothing to press, because starting, closing and answering are all decisions that belong
+    /// where the question can actually be put.
+    @Published var job: JobInfo?
 
     // Debounce: false→true immediately, true→false after 2 s
     private var reachabilityDebounceTask: Task<Void, Never>?
@@ -42,6 +46,14 @@ class WatchConnectivityService: NSObject, ObservableObject {
         let label: String
         let icon: String
         let type: String
+    }
+
+    /// The four strings the phone sends about the job in hand.
+    struct JobInfo: Equatable {
+        let jobNumber: String
+        let state: String
+        let unit: String
+        let nextAction: String
     }
 
     override init() {
@@ -209,6 +221,17 @@ extension WatchConnectivityService: WCSessionDelegate {
                         type: dict["type"] ?? "prompt"
                     )
                 }
+            }
+            // The open job, or nothing. An absent key clears it: a finished job must not linger
+            // on the wrist looking open.
+            if let jobData = applicationContext["job"] as? [String: String],
+               let number = jobData["jobNumber"] {
+                self.job = JobInfo(jobNumber: number,
+                                   state: jobData["state"] ?? "",
+                                   unit: jobData["unit"] ?? "",
+                                   nextAction: jobData["nextAction"] ?? "")
+            } else {
+                self.job = nil
             }
             // Persist to app group for complications
             self.persistSharedState()

@@ -28,6 +28,11 @@ class GeminiLiveSessionManager: ObservableObject {
     // Native tool router (injected from AppState)
     var nativeToolRouter: NativeToolRouter?
 
+    /// The guided job flow, applied to this backend (Plan FO P3a). The same object the OpenAI
+    /// Realtime manager owns: one seam, two backends, so what the model is told about a job cannot
+    /// depend on which provider answered.
+    let jobBridge = LiveJobBridge()
+
     // Internal components
     private let geminiService = GeminiLiveService()
     private let audioManager = RealtimeAudioEngine(config: .geminiLive)
@@ -224,7 +229,16 @@ class GeminiLiveSessionManager: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 self.conversationRecorder.completeTurn()
+                // Plan FO P3a: this transport gives the wearer's words as deltas with no
+                // "input done" event, so the accumulated transcript at the turn boundary is the
+                // completed utterance — and this is the first time a job run in Gemini Live has
+                // written a `.userMessage` into the session's audit log at all (the gap P0 found
+                // and P1 deliberately left open).
+                let wearer = self.userTranscript
                 self.userTranscript = ""
+                await self.jobBridge.handleTranscript(
+                    wearer, sourceID: "gemini-\(self.sessionIdentity)-\(UUID().uuidString)")
+                await self.jobBridge.turnCompleted()
             }
         }
 
@@ -504,6 +518,8 @@ class GeminiLiveSessionManager: ObservableObject {
         recoveryDriver?.noteStop()
         recoveryDriver = nil
         conversationRecorder.reset()
+        // Plan FO P3a — nothing the session was told about the job survives the session.
+        jobBridge.sessionEnded()
         sessionStartedAt = nil
         frameTimer?.cancel()
         frameTimer = nil
@@ -699,6 +715,14 @@ class GeminiLiveSessionManager: ObservableObject {
         // Grounds Gemini in domain knowledge (refrigeration, IT, health) with source attribution.
         if let vaultContext = FieldSessionService.shared.promptContext() {
             prompt += "\n\n\(vaultContext)"
+        }
+
+        // Plan FO P3a — the bounded job block. The vault context above is assembled once, at
+        // connect, and never again: a job started, numbered or re-scoped mid-session was invisible
+        // to the model for the rest of that session. This block is small enough to re-inject, and
+        // `LiveJobBridge` is what re-injects it.
+        if let jobBlock = jobBridge.setupBlock() {
+            prompt += "\n\n\(jobBlock)"
         }
 
         // Inject rolling visual scene memory (Plan AV) when enabled — temporal

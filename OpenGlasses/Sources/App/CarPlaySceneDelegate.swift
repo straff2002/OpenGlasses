@@ -11,6 +11,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     var interfaceController: CPInterfaceController?
     private var voiceControlTemplate: CPVoiceControlTemplate?
 
+    /// The connected scene, so the app can refresh the Jobs list when the job moves (Plan FO P3a).
+    /// Weak: the scene owns the delegate, and a disconnected car must not keep the app holding one.
+    private(set) static weak var current: CarPlaySceneDelegate?
+
     /// Track whether voice input is active so we know when to hold the audio session.
     private(set) var isVoiceActive = false
 
@@ -21,6 +25,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        Self.current = self
         PrivacyLog.device(.carPlay, .connected)
 
         Task { @MainActor in
@@ -29,6 +34,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
         let tabBar = buildTabBar()
         interfaceController.setRootTemplate(tabBar, animated: true, completion: nil)
+        // The Jobs list is built empty with the bar and filled from the main actor, like every
+        // other data-bearing tab here.
+        refreshJobsTab()
     }
 
     // MARK: - Tab Bar
@@ -38,10 +46,16 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let modesTab = buildModesTab()
         let conversationsTab = buildConversationsTab()
         let playbooksTab = buildPlaybooksTab()
+        let jobsTab = buildJobsTab()
 
-        let tabBar = CPTabBarTemplate(templates: [voiceTab, modesTab, conversationsTab, playbooksTab])
+        let tabBar = CPTabBarTemplate(templates: [voiceTab, modesTab, conversationsTab,
+                                                  playbooksTab, jobsTab])
         return tabBar
     }
+
+    /// Where the Jobs list sits in the bar. Last, so the four tabs that shipped keep their order
+    /// and `refreshConversationsTab`/`refreshPlaybooksTab`'s index arithmetic is untouched.
+    private static let jobsTabIndex = 4
 
     // MARK: - Voice Tab (Primary)
 
@@ -130,6 +144,83 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let template = CPListTemplate(title: "Playbooks", sections: [section])
         template.tabImage = UIImage(systemName: "list.clipboard.fill")
         return template
+    }
+
+    // MARK: - Jobs Tab (Plan FO P3a)
+
+    /// The Jobs list, built on the main actor from `CarPlayJobsList`'s rows.
+    ///
+    /// **Read-only, and one glance per row.** The active job first — number and whether it is
+    /// running — then finished jobs by number, date and outcome. The work record is never drawn
+    /// here. Selecting the active job resumes its conversation through the P1 chokepoint;
+    /// selecting a finished one reads its name aloud and does nothing else. The Debrief action
+    /// §6 describes is P3b's, and the seam for it is `CarPlayJobsList.Selection`.
+    private func buildJobsTab() -> CPListTemplate {
+        let template = CPListTemplate(title: "Jobs", sections: [CPListSection(items: [])])
+        template.tabImage = UIImage(systemName: "wrench.and.screwdriver.fill")
+        return template
+    }
+
+    /// Rebuild the Jobs tab from current job state.
+    func refreshJobsTab() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let appState = AppStateProvider.shared else { return }
+            let sessions = FieldSessionService.shared
+            let rows = CarPlayJobsList.rows(active: sessions.activeSession,
+                                            history: sessions.history,
+                                            boundThreadId: appState.guidedJobFlow.boundThreadId)
+            var items: [CPListItem] = rows.map { row in
+                let item = CPListItem(
+                    text: row.title,
+                    detailText: row.detail,
+                    image: UIImage(systemName: row.isActiveJob ? "wrench.and.screwdriver.fill" : "checkmark.seal")
+                )
+                let selection = row.selection
+                let spoken = row.spoken
+                item.handler = { [weak self] _, completion in
+                    self?.selectJob(selection, spoken: spoken)
+                    completion()
+                }
+                return item
+            }
+            if items.isEmpty {
+                items = [CPListItem(text: CarPlayJobsList.emptyMessage(
+                    fieldAssistActive: Config.fieldAssistActive), detailText: nil)]
+            }
+
+            let template = CPListTemplate(title: "Jobs", sections: [CPListSection(items: items)])
+            template.tabImage = UIImage(systemName: "wrench.and.screwdriver.fill")
+
+            guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate else { return }
+            var templates = tabBar.templates
+            if templates.count > Self.jobsTabIndex {
+                templates[Self.jobsTabIndex] = template
+                tabBar.updateTemplates(templates)
+            }
+        }
+    }
+
+    /// Act on a row. Both cases speak; only the active job does anything else.
+    private func selectJob(_ selection: CarPlayJobsList.Selection, spoken: String) {
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("selectJob"))
+        Task { @MainActor in
+            guard let appState = AppStateProvider.shared else { return }
+            switch selection {
+            case .resumeActiveJob(let threadId):
+                guard let threadId else {
+                    await appState.speechService.speak(spoken)
+                    return
+                }
+                // Through the chokepoint, never by assigning `activeThreadId` — resuming the job's
+                // own thread is never a question, so this never asks one on a car screen.
+                appState.guidedJobFlow.requestResume(threadId: threadId, confirmed: false)
+                self.startVoice()
+            case .speakPastJob:
+                // Read-only by design. The debrief that would make this do more is P3b.
+                await appState.speechService.speak(spoken)
+            }
+        }
     }
 
     // MARK: - Voice Control
@@ -370,6 +461,7 @@ extension CarPlaySceneDelegate {
         didDisconnect interfaceController: CPInterfaceController
     ) {
         PrivacyLog.device(.carPlay, .disconnected)
+        if Self.current === self { Self.current = nil }
         Task { @MainActor in
             AppStateProvider.shared?.carPlayConnected = false
         }
