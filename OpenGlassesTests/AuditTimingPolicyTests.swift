@@ -49,6 +49,43 @@ final class AuditTimingPolicyTests: XCTestCase {
             NSError(domain: "com.apple.dt.XCTest", code: -56)))
     }
 
+    // MARK: AuditConfirmationPolicy
+
+    func testADynamicTypeOnlyResultIsMeasuredExactlyOnceMore() {
+        let policy = AuditConfirmationPolicy.standard
+        XCTAssertEqual(policy.maxConfirmations, 1)
+        XCTAssertTrue(policy.shouldMeasureAgain(findingKinds: [.dynamicType], confirmationsSoFar: 0))
+        XCTAssertFalse(policy.shouldMeasureAgain(findingKinds: [.dynamicType], confirmationsSoFar: 1),
+                       "The second pass is the verdict: a Dynamic Type finding that comes back "
+                       + "fails, it does not get a third look")
+    }
+
+    func testACleanPassNeedsNoConfirmation() {
+        XCTAssertFalse(AuditConfirmationPolicy.standard
+            .shouldMeasureAgain(findingKinds: [], confirmationsSoFar: 0))
+    }
+
+    func testAnyOtherKindOfFindingFailsFirstTime() {
+        let policy = AuditConfirmationPolicy.standard
+        XCTAssertFalse(policy.shouldMeasureAgain(findingKinds: [.other], confirmationsSoFar: 0),
+                       "Contrast, clipping and the rest do not perturb the app; a second look "
+                       + "would be a plain retry")
+        XCTAssertFalse(policy.shouldMeasureAgain(findingKinds: [.dynamicType, .other],
+                                                 confirmationsSoFar: 0),
+                       "A genuine finding alongside a Dynamic Type burst is a failure either way")
+    }
+
+    func testAPolicyWithoutConfirmationsBelievesTheFirstPass() {
+        let policy = AuditConfirmationPolicy(maxConfirmations: 0, settleDelay: 0)
+        XCTAssertFalse(policy.shouldMeasureAgain(findingKinds: [.dynamicType], confirmationsSoFar: 0))
+    }
+
+    func testTheStandardSettleDelayIsShort() {
+        // Long enough for the app to restore its default size after the sweep, short enough not
+        // to make a passing suite noticeably slower: it is paid only when a first pass flaked.
+        XCTAssertEqual(AuditConfirmationPolicy.standard.settleDelay, 1)
+    }
+
     // MARK: FrameSettleTracker
 
     private let a = CGRect(x: 0, y: 100, width: 390, height: 60)

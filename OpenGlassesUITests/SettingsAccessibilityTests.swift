@@ -10,6 +10,17 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
     /// The first-run shape: Everyday categories as rows, everything else pitched as a Discover
     /// card. Folded is never locked, and the accessibility category is structurally incapable of
     /// being folded away — which is worth a gate of its own, below.
+    ///
+    /// There is deliberately no settle wait before the audit here. This case failed on the
+    /// nightly of 2026-09-22 (run 35739123389) with 14 Dynamic Type "partially unsupported"
+    /// findings — one per title, subtitle and value of the seven category rows on screen, nothing
+    /// else — and its screen recording shows the hub unchanged for the full five seconds between
+    /// the tab appearing and the audit starting. Nothing on this screen was moving; there is
+    /// nothing for `awaitStableFrame` to sample. The movement that produced the findings is the
+    /// audit's own Dynamic Type sweep, which reflows the whole page a dozen times in a few
+    /// seconds and occasionally reads a step before the reflow lands. `audit(_:screen:)` now
+    /// measures such a result a second time before believing it — see
+    /// `AuditConfirmationPolicy` for the evidence and the rule.
     func testSettingsHubFoldedPassesAccessibilityAudit() {
         let app = launch([.configured])
         openTab("Settings", in: app)
@@ -247,6 +258,17 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         // moving, then for an anchor below both the list and Discover to stop moving. That
         // anchor's position depends on the row being added above it and the card being removed
         // above it, so it settles only when the whole page has.
+        //
+        // Those waits do their job, and the case still failed once more after #484 — PR run
+        // 35828512230 attempt 1 (2026-09-23), the same 17 Dynamic Type findings on the row copy
+        // and Discover pitches. Its timeline shows three identical frame samples on the row and
+        // three on the switch, and its screen recording shows the scrolled hub unchanged for the
+        // seven seconds before the audit began. The movement in the recording is all *after*
+        // that: the audit's own Dynamic Type sweep reflowing and re-scrolling the page at every
+        // size step, which is what the findings measure when a step is read before the reflow
+        // lands. That is not something this case can wait out, because the audit causes it. The
+        // remedy lives in `audit(_:screen:)`: a Dynamic-Type-only result is measured a second time
+        // on the still screen, and the second pass decides (`AuditConfirmationPolicy`).
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10),
                       "Unfolding left the settings hub, so the audit would measure the pushed "
                       + "category screen rather than the list the card moved into")
