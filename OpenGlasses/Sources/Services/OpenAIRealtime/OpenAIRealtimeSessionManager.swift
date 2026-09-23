@@ -62,6 +62,15 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     /// Whether the camera is actively streaming frames.
     var isCameraStreaming: Bool = false
 
+    /// Native tool router (injected from AppState). Plan FO P3a — this backend had no tool path
+    /// at all before; it now has one, scoped to the Field Assist job tools.
+    var nativeToolRouter: NativeToolRouter?
+    private var toolRouter: OpenAIRealtimeToolRouter?
+
+    /// The guided job flow, applied to this backend (Plan FO P3a). One object, the same one the
+    /// Gemini manager owns, so the two cannot drift.
+    let jobBridge = LiveJobBridge()
+
     /// iPhone vs glasses audio mode.
     var useIPhoneAudioMode: Bool = true
 
@@ -106,11 +115,30 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         // Build system instruction
         let systemInstruction = buildSystemInstruction()
 
+        // Plan FO P3a — the Field Assist job tools, and nothing else. See
+        // `ToolDeclarations.openAIRealtimeTools` for why the surface is narrow, and why an empty
+        // list means `session.update` is byte-for-byte what it was.
+        let toolDefs = ToolDeclarations.openAIRealtimeTools(registry: nativeToolRouter?.registry,
+                                                            names: LiveJobContract.jobToolNames)
+        if toolDefs.isEmpty {
+            toolRouter = nil
+        } else {
+            let router = OpenAIRealtimeToolRouter { [weak self] message in
+                self?.realtimeService.sendToolMessage(message)
+            }
+            router.nativeToolRouter = nativeToolRouter
+            toolRouter = router
+            realtimeService.onToolCall = { [weak self] call in
+                self?.toolRouter?.handle(call)
+            }
+        }
+
         // Configure service
         realtimeService.configure(
             apiKey: config.apiKey,
             model: config.model,
-            systemInstruction: systemInstruction
+            systemInstruction: systemInstruction,
+            toolDeclarations: toolDefs
         )
 
         // Wire audio capture → service. Echo suppression follows the reached duplex tier
@@ -176,6 +204,9 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             self.audioManager.resetPlaybackProgress()
             Task { @MainActor in
                 self.userTranscript = ""
+                // Plan FO P3a — a turn boundary is where the app puts its own question and where
+                // a job block held back for a busy session finally goes out.
+                await self.jobBridge.turnCompleted()
             }
         }
 
@@ -185,6 +216,11 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             Task { @MainActor in
                 self.userTranscript = text  // OpenAI sends complete transcripts, not deltas
                 self.aiTranscript = ""
+                self.toolRouter?.noteUserTurn()
+                // Plan FO P3a: the wearer's completed turn reaches the job's audit log, and the
+                // guided flow gets first refusal on it. This transport gives a complete transcript
+                // in one event, which is the right moment for both.
+                await self.jobBridge.handleTranscript(text, sourceID: "openai-\(self.sessionIdentity)-\(UUID().uuidString)")
             }
         }
 
@@ -353,6 +389,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         realtimeService.disconnect()
         stateObservation?.cancel()
         stateObservation = nil
+        toolRouter?.cancelAll()
+        toolRouter = nil
+        realtimeService.onToolCall = nil
+        jobBridge.sessionEnded()
         isActive = false
         isCameraStreaming = false
         connectionState = .disconnected
@@ -404,6 +444,21 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
         if let location = locationContext?() {
             prompt += "\n\nUSER LOCATION: \(location)"
+        }
+
+        // Plan FO P3a — Field Assist reaches this backend for the first time. P0's inventory found
+        // no `promptContext()` call anywhere on this path, so a technician on the OpenAI Realtime
+        // backend had a vault installed, a session running and a model that had never been told
+        // either. Same call, same position in the order, as the Gemini manager's twin.
+        if let vaultContext = FieldSessionService.shared.promptContext() {
+            prompt += "\n\n\(vaultContext)"
+        }
+
+        // …and the bounded job block, which is the part that is re-sent mid-session whenever the
+        // job moves. `setupBlock()` records what the setup carried, so the first refresh compares
+        // against what the model was actually given.
+        if let jobBlock = jobBridge.setupBlock() {
+            prompt += "\n\n\(jobBlock)"
         }
 
         // Plan FC P3 — see the twin of this record in `GeminiLiveSessionManager`: this instruction

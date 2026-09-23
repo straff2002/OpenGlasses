@@ -14,7 +14,11 @@ audits in three states at the default and largest text sizes, screenshots in bot
 hand-off to the technician's maps app, a job that arrives by email as an `.ogjob` file, and
 customer sign-off on the phone — P2c and a P3 split into P3a / P3b / P3c below.
 **P2c implemented 2026-09-23** — customer sign-off, verified headless and on a simulator; see
-*P2c as built* below. P3 and P4 unbuilt.
+*P2c as built* below.
+**P3a implemented 2026-09-23, headless** — one guided-job seam applied by both live backends,
+Field Assist wired into OpenAI Realtime for the first time, a lens cue for the two questions, a
+read-only CarPlay Jobs list and read-only job state on the watch; see *P3a as built* below. No
+device, car, glasses or watch run. P3b, P3c and P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -471,9 +475,9 @@ PDF is unchanged: the customer signs the summary, not the whole work order.
   recorded honestly; sign-off never triggers delivery; the signed summary is unchanged by a later
   addendum; required-by-org blocks close until signed or a reason is recorded; an accessibility
   audit of the sheet at AX5. Device acceptance: sign with a finger.
-- **P3a — live modes and surfaces.** Gemini Live / OpenAI Realtime parity via their context
-  snapshots; HUD cue for the two questions; CarPlay/watch read-only job state (the Jobs list of
-  §6, without Debrief).
+- **P3a — live modes and surfaces.** ✅ **Implemented 2026-09-23, headless.** Gemini Live /
+  OpenAI Realtime parity via a shared, refreshable job block; HUD cue for the two questions;
+  CarPlay/watch read-only job state (the Jobs list of §6, without Debrief). See *P3a as built*.
 - **P3b — debrief.** `JobThreadPolicy.debrief` source, the debrief snapshot/instructions, the
   summary schema + validation, `WorkRecord.Debrief` (decode-if-present), the read-back/save state
   machine (pure, like `JobIntakeState`), the PDF/JSON section, Send addendum, the spoken send with
@@ -952,6 +956,183 @@ finished job; `JobSignOffScreenshotTests` photographs the step, the sheet empty 
 acceptance block in both appearances and at AX5, and the headless suite writes one rendered work
 order page beside them. **No device run** — signing with a finger on real glass, and what a real
 signature looks like in the PDF at that size, are owed to P4.
+
+## P3a as built (2026-09-23)
+
+One pure contract and one coordinator under `OpenGlasses/Sources/Services/FieldAssist/Job/`
+(`LiveJobContract`, `LiveJobBridge` with `LiveJobSnapshot`/`LiveJobSnapshotPolicy`), three pure
+surface models beside them (`JobQuestionHUDCue`, `CarPlayJobsList`, `JobWatchPayload`) and the one
+trigger they all hang off (`JobSurfaceRefresh`) — plus the transport work that gives OpenAI
+Realtime a tool path it has never had.
+
+### The seam, and why it is a block rather than a state machine
+
+```swift
+enum LiveJobContract {
+    static let heading = "FIELD JOB STATE:"
+    static let characterLimit = 1_600
+    static let jobToolNames: Set<String> = ["field_session", "equipment_lookup"]
+    static func block(session: FieldSession?) -> String?
+    static func jobToolDeclarations(in declarations: [[String: Any]]) -> [ToolShape]
+}
+
+@MainActor final class LiveJobBridge {
+    struct Seams { /* activeSession, generation, canInject, isBusy, injectText,
+                      consumeUtterance, speakPendingQuestion, recordTurn */ }
+    func setupBlock() -> String?
+    @discardableResult func refresh() -> LiveJobSnapshot?
+    @discardableResult func flushHeldBlock() -> LiveJobSnapshot?
+    @discardableResult func handleTranscript(_ text: String, sourceID: String) async -> Bool
+    func turnCompleted() async
+    func sessionEnded()
+}
+```
+
+Both session managers own a `LiveJobBridge` as a stored property and reach it in exactly four
+places: the setup instruction, the wearer's completed transcript, the turn boundary, and the
+teardown. Everything device-facing is a closure, so the whole thing is exercised headlessly —
+neither manager can be constructed in a test, because each builds a `RealtimeAudioEngine` at init.
+That is also why the parity claim is checked by scraping both managers' own source for the four
+calls rather than by a reading of the code.
+
+### Decisions the draft left open
+
+- **The per-provider audio decision is the same on both: the app speaks.** Neither backend can be
+  made to say an exact sentence. `injectText(_:completeTurn: true)` asks the model to *compose* a
+  reply, which is precisely the model goodwill this plan exists to remove; `completeTurn: false`
+  produces no speech at all. So both providers put the two questions through the same
+  `TextToSpeechService` seam Direct mode uses, with the wording `JobIntakePrompt` and
+  `JobUnitChangeQuestion` already own, and both put them only at a turn boundary —
+  `turnCompleted()`, which by definition is a moment the model has stopped talking. A question that
+  cannot be put is not dropped: `JobIntakeState` is still holding it, and the ask budget still
+  bounds how often it is put at all. **Whether the app's TTS is actually audible over a live
+  session's audio route is a device question, and is owed to P4.**
+- **The classification cannot precede the provider, only the app.** In a live session the wearer's
+  audio is on the wire before any transcript exists, so "classified before the turn" means before
+  the *app* treats it as one. The state machine consumes it, and the next refreshed block tells the
+  model the number is recorded and not to ask again. Stated here rather than implied, because the
+  Direct-mode guarantee — the answer never reaches the model — is one live mode cannot make.
+- **A block, refreshed, rather than the continuity render re-sent.** Gemini Live already injected
+  `FieldSessionService.promptContext()` — which contains the job lines — but only once, at connect.
+  A job started, numbered or re-scoped mid-session was therefore invisible for the rest of that
+  session. The plan's "parity via their context snapshots" understates the work: the snapshot had
+  to become something small enough to re-send. Hence a 1,600-character bounded block against the
+  8,000-character continuity render, injected with `completeTurn: false` on every change.
+- **The bound clips the job number last.** The heading, the lede and the "job is open" line are
+  protected, and among the rest the number and the pending question are ranked first. A model that
+  has lost the number line asks for the number again, over the top of an app that is already
+  asking, which is the one failure the block exists to prevent.
+- **Generation safety is the session's own identity, not a new counter.** Both managers already
+  bump `sessionIdentity` on every start, and EX resets a conversation by cycling the session — so a
+  block assembled before a reset fails `LiveJobSnapshotPolicy`'s check afterwards rather than
+  landing in a conversation that was deliberately emptied. A block that is ready while the session
+  is busy is *held*, not sent, and goes out at the next turn boundary.
+- **OpenAI Realtime declares the job tools, not the registry.** This backend had never executed a
+  tool of any kind. Handing it all 36+ native tools would be a far larger change than the guided
+  flow needs and one no headless test could stand behind, and it would make "keep the
+  non-Field-Assist behaviour byte-for-byte" impossible to keep. So the declared surface is
+  `LiveJobContract.jobToolNames`, which is empty whenever Field Assist is off — and an empty list
+  means `session.update` carries no `tools` key at all. A golden fixture pins that payload.
+  `ToolDeclarations.openAIRealtimeTools` is the seam for widening it.
+- **A separate router for the Realtime transport.** `ToolCallRouter`'s two-phase
+  `willContinue`/`scheduling` ack is Gemini's wire contract and has no Realtime equivalent, where a
+  result is one `conversation.item.create` followed by a `response.create`. Folding both into one
+  router would have put a Gemini-shaped branch in every Realtime path. What is shared is what
+  decides behaviour: `NativeToolRouter.executeRoot`, `ToolCallBreaker` and
+  `PromptInjectionPolicy` — so the runaway-loop bound and the untrusted-output framing are the same
+  on both backends by construction.
+- **A function call is dispatched once, from whichever of two events completes it.**
+  `response.function_call_arguments.done` does not reliably carry the tool's name, so the name is
+  learned from `response.output_item.added` and `response.output_item.done` is handled as well;
+  `call_id` deduplicates. Running a tool twice because the server was thorough is not a failure
+  mode worth having, and both maps are cleared on disconnect so a call id cannot cross a reconnect.
+- **One publisher is the trigger set.** All three triggers the plan names — a tool mutation, an
+  equipment change, an intake change — write the session back through
+  `FieldSessionService.mutateSession`, which republishes `activeSession`. So there is one
+  subscription, and what it de-duplicates on (`JobSurfaceRefresh.key`) is *the three surfaces
+  rendered and compared*, not a hand-picked list of fields. A key built from named fields is a
+  fourth place to remember that the job number matters, and the field it forgets is the one that
+  stops reaching the model.
+- **The lens cue is a notification, not a screen.** Same transient path `TaskHUDCue` uses: it never
+  blocks speech, it clears itself, and it is a no-op without a display because
+  `GlassesDisplayService.present` already decides that once. The unit question outranks the intake
+  (it is the one holding a re-scope), and `.needsReference` — a question the app has not asked yet
+  — draws nothing, so the lens never gets ahead of the voice.
+- **The watch gains state and no controls.** Four bounded strings: the number, running or paused,
+  the unit, and what the app is waiting on. Nothing on the wrist starts, closes or answers
+  anything, because every one of those is a decision that belongs where the question can actually
+  be put. The key is absent when no job is open, so a finished job cannot linger there looking open.
+- **CarPlay's Jobs tab is last in the bar.** The four tabs that shipped keep their order and the
+  index arithmetic in `refreshConversationsTab`/`refreshPlaybooksTab` is untouched. Selecting the
+  active job goes through `GuidedJobFlow.requestResume` — never an `activeThreadId` assignment,
+  which is the id-without-history defect P1 fixed on this very surface — and selecting a finished
+  job reads its name and does nothing else.
+
+### What the draft got wrong
+
+- **P3a's bullet lists three tools; there are two.** `set_job_reference` is an *action* on
+  `field_session`, declared inside that tool's `action` enum, not a tool of its own. The surface is
+  `field_session` + `equipment_lookup`, and the diff test additionally asserts that
+  `field_session`'s schema still carries the `set_job_reference` action on both providers — which is
+  the thing that actually matters, and which a tool-name check would have missed.
+- **§6 says the Jobs list carries "job number and date only" and, three sentences earlier, "by job
+  number · date · outcome".** Both cannot be true. The list carries number, date and outcome; the
+  sentence the design actually needs is the one that follows it — *the work record is never
+  rendered on the car screen* — and that is what is implemented.
+- **"Gemini Live never calls `recordConversationTurn`" was right, and the fix is not where P0
+  implied.** There is no "input transcription finished" event on that transport: the wearer's words
+  arrive as deltas. The completed utterance is the accumulated transcript at the turn boundary, so
+  the audit hook lives in `onTurnComplete` beside the recorder, not on the transcription callback.
+  OpenAI Realtime does emit a completed transcript, and records it there.
+
+### A defect found in a neighbouring surface, and left alone
+
+`CarPlaySceneDelegate.refreshConversationsTab()` and `refreshPlaybooksTab()` have **no callers
+anywhere in the app**. The Conversations tab is built with one "New Conversation" row at connect
+and is never filled in, and the Playbooks tab is built empty and stays empty. That predates this
+plan and is not P3a's to fix — the Jobs tab is refreshed on connect and on every job change
+precisely so it does not join them — but it is a real CarPlay defect and is recorded here rather
+than left for the next reader to rediscover.
+
+### An in-PR cleanup: the captions-overlay accessibility audit
+
+`SessionSurfaceAccessibilityTests.testCaptionsOverlayPassesAccessibilityAudit` had been failing
+intermittently on CI with five `sufficientElementDescription` findings. They were never captions
+elements: every one resolved to a `StaticText` reading "Voice-Powered AI Assistant", which exists
+only on the launch screen. On a loaded runner the two-second splash was still in the accessibility
+tree when the audit ran. `RootView` hides everything *under* the splash for exactly this reason;
+the splash itself was the half missing. It is now `.accessibilityHidden(true)` — it is decorative,
+and VoiceOver should never land on it — and the audit's launch helper no longer waits for a
+decorative string to *exist* (a hidden element never will); it waits for the app underneath,
+whose tab bar cannot be reached while the splash holds the screen. `LaunchScreenAccessibilityTests`
+is the gate on both halves.
+
+### Verification
+
+Headless: `LiveJobContractTests` (18), `LiveJobBridgeTests` (13), `LiveJobBridgeWiringTests` (3),
+`OpenAIRealtimeJobToolsTests` (6), `JobSurfacesTests` (20) and `LaunchScreenAccessibilityTests` (2)
+new; the P1/P2/P2a/P2b/P2c suites, `FieldSessionServiceTests`, `FieldContinuityTests`, the Gemini
+Live suites, `BlindAssistanceContractTests`, the EX reset suites, the HUD/display suites,
+`OutboundFrameConsumerTests`, `TelemetryOptOutGuardTests` and the privacy guards unchanged and
+green; full suite green; Release app build and the watch target both green.
+
+**Nothing here has been run on hardware.** No glasses, so the lens cue has never been drawn; no
+car, so the Jobs list has never been rendered by CarPlay; no watch, so the payload has never been
+delivered over `WCSession`; and no provider credentials, so neither live backend has been asked to
+call a job tool for real. In particular the per-provider audio decision — whether the app's own
+speech is audible while a live session holds the audio route, and whether it can be heard without
+talking over the model — is **owed to P4** and is the one decision here that a headless test cannot
+stand behind.
+
+### Seams left for P3b
+
+- `CarPlayJobsList.Selection` is where the **Debrief** action goes: a third case, and the row's
+  handler already routes by it. The list template and its refresh need no further change.
+- `JobThreadPolicy` gains `.debrief(jobId)` as §6 describes; `LiveJobBridge.handleTranscript`'s
+  return value is already the "the app consumed this turn" signal a debrief's save/scrap state
+  machine will need.
+- The lens cue model takes a fourth `Kind` without reshaping, and the watch payload's
+  `nextAction` is the one line a staged send would be announced on.
 
 ## Open questions
 

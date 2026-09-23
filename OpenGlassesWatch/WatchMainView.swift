@@ -70,6 +70,13 @@ struct WatchMainView: View {
                     // Status bar
                     statusBar
 
+                    // The job in hand (Plan FO P3a). Read-only, and directly under the status,
+                    // because on a service visit it is the thing being glanced at.
+                    if let job = connectivity.job {
+                        jobSection(job)
+                        Divider()
+                    }
+
                     // Listen toggle
                     listenRow
 
@@ -325,6 +332,37 @@ struct WatchMainView: View {
                 .disabled(!connectivity.isReachable || connectivity.isProcessing)
             }
         }
+    }
+
+    // MARK: - Job (Plan FO P3a)
+
+    /// What the wrist says about the open job. No buttons: every decision a job needs — the number,
+    /// the unit question, closing it — is put where it can actually be answered.
+    private func jobSection(_ job: WatchConnectivityService.JobInfo) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(job.jobNumber)
+                    .font(.caption)
+                    .bold()
+                Spacer()
+                Text(job.state)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if !job.unit.isEmpty {
+                Text(job.unit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if !job.nextAction.isEmpty {
+                Text(job.nextAction)
+                    .font(.caption2)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Conversations

@@ -260,15 +260,24 @@ class AccessibilityAuditCase: XCTestCase {
     }
 
     /// The launch screen covers the app for two seconds and would otherwise be what the first
-    /// audit of a run measured.
+    /// audit of a run measured — which is exactly what happened on a slow runner: five
+    /// "element has no description" findings on the captions-overlay audit, every one of them the
+    /// splash's own `StaticText`, still in the tree when the audit ran.
+    ///
+    /// Two halves fix it. The screen is now `accessibilityHidden`, so it cannot be audited at all;
+    /// and the wait no longer depends on a decorative string being *present*, because a hidden
+    /// element is not in the tree to wait for. What is waited on instead is the app underneath:
+    /// `RootView` hides `MainView` while the splash is up, so the tab bar existing *is* the splash
+    /// having gone. The old text wait is kept ahead of it as a belt, for any build where the splash
+    /// is still in the tree.
     private func waitForLaunchScreenToClear(_ app: XCUIApplication) {
         let splash = app.staticTexts["Voice-Powered AI Assistant"]
-        // It may already be gone by the time the query runs — only wait if it is up.
-        if splash.waitForExistence(timeout: 5) {
+        if splash.exists {
             let gone = expectation(for: NSPredicate(format: "exists == false"),
                                    evaluatedWith: splash)
             wait(for: [gone], timeout: 20)
         }
+        _ = app.tabBars.buttons.firstMatch.waitForExistence(timeout: 45)
     }
 
     // MARK: Audit

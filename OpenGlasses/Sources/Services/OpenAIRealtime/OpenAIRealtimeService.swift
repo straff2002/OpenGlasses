@@ -45,6 +45,9 @@ class OpenAIRealtimeService: ObservableObject {
     var onInputTranscription: ((String) -> Void)?
     var onOutputTranscription: ((String) -> Void)?
     var onReconnected: (() -> Void)?
+    /// Plan FO P3a — one completed function call. Nil until the manager wires a router, which it
+    /// does only when there are tools to declare.
+    var onToolCall: ((OpenAIRealtimeFunctionCall) -> Void)?
 
     // Reconnection
     private var intentionalDisconnect = false
@@ -89,6 +92,14 @@ class OpenAIRealtimeService: ObservableObject {
     /// barge-in can truncate exactly that item (CJ item 6).
     private var currentAudioItemId: String?
     private var currentAudioContentIndex = 0
+    /// Plan FO P3a — the tools declared in `session.update`, or empty for a session with none.
+    private var toolDeclarations: [[String: Any]] = []
+    /// `call_id` → function name, learned from `response.output_item.added`, because the
+    /// arguments-done event does not always carry the name.
+    private var pendingFunctionNames: [String: String] = [:]
+    /// Calls already handed to the router, so the two events that can complete one do not run it
+    /// twice.
+    private var dispatchedCallIds: Set<String> = []
     /// Confirmed-played milliseconds of the current response's audio — wired by the session
     /// manager to `RealtimeAudioEngine.confirmedPlayedMilliseconds`. Never wall-clock.
     var playedAudioMilliseconds: (() -> Int)?
@@ -100,10 +111,12 @@ class OpenAIRealtimeService: ObservableObject {
     }
 
     /// Configure session parameters before connecting.
-    func configure(apiKey: String, model: String, systemInstruction: String) {
+    func configure(apiKey: String, model: String, systemInstruction: String,
+                   toolDeclarations: [[String: Any]] = []) {
         self.apiKey = apiKey
         self.model = model
         self.systemInstruction = systemInstruction
+        self.toolDeclarations = toolDeclarations
     }
 
     // MARK: - Connect / Disconnect
@@ -220,6 +233,10 @@ class OpenAIRealtimeService: ObservableObject {
         delegate.onClose = nil
         delegate.onError = nil
         onReconnected = nil
+        // Plan FO P3a — a call id belongs to one session. Keeping them would leak across a
+        // reconnect and make a later call look like a redelivery of an older one.
+        pendingFunctionNames.removeAll()
+        dispatchedCallIds.removeAll()
         connectionState = .disconnected
         isModelSpeaking = false
         // A `speech_started` with no matching `speech_stopped` would otherwise leave the next
@@ -312,6 +329,29 @@ class OpenAIRealtimeService: ObservableObject {
         }
     }
 
+    // MARK: - Tool results (Plan FO P3a)
+
+    /// Send one already-built envelope — a `function_call_output` item, and the `response.create`
+    /// that follows it. Built by `OpenAIRealtimeToolRouter`, which owns the shape; this owns the
+    /// socket.
+    func sendToolMessage(_ json: [String: Any]) {
+        guard connectionState == .ready, let task = webSocketTask else {
+            PrivacyLog.realtimeSendSkipped(.openai, kind: .text, reason: .notReady,
+                                           state: connectionState.privacyToken)
+            return
+        }
+        sendQueue.async { Self.sendJSONDirect(json, via: task) }
+    }
+
+    /// Hand one completed call to the router, once. Two events can complete the same call, and
+    /// running a tool twice because the server was thorough is not a failure mode worth having.
+    private func dispatchFunctionCall(callId: String, name: String?, arguments: String) {
+        guard let name, !name.isEmpty else { return }
+        guard dispatchedCallIds.insert(callId).inserted else { return }
+        pendingFunctionNames.removeValue(forKey: callId)
+        onToolCall?(OpenAIRealtimeFunctionCall(callId: callId, name: name, argumentsJSON: arguments))
+    }
+
     // MARK: - Interruption
 
     /// Cancel the current model response (client-side interrupt).
@@ -399,34 +439,45 @@ class OpenAIRealtimeService: ObservableObject {
     }
 
     private func sendSessionUpdate() {
-        let sessionConfig: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "modalities": ["text", "audio"],
-                "instructions": systemInstruction,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": [
-                    "model": "gpt-4o-mini-transcribe"
-                ],
-                "turn_detection": [
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
-                    // Both stated rather than left to the API's defaults. `create_response`
-                    // is what makes end-of-speech produce an answer at all; `interrupt_response`
-                    // keeps barge-in server-side, where it can cancel a response the client
-                    // never learns about. Defaults for these have moved between API versions,
-                    // and a session that silently stops answering is indistinguishable from a
-                    // dead microphone.
-                    "create_response": true,
-                    "interrupt_response": true
-                ]
-            ]
-        ]
-        sendJSON(sessionConfig)
+        sendJSON(Self.sessionUpdate(instructions: systemInstruction, tools: toolDeclarations))
         PrivacyLog.realtimeSession(.openai, .sessionUpdateSent)
+    }
+
+    /// The `session.update` payload, built as a value so a test can pin it.
+    ///
+    /// **`tools` is absent when there are none**, rather than present and empty. That is what makes
+    /// a session with Field Assist off byte-for-byte the session that shipped before Plan FO P3a —
+    /// a golden fixture asserts exactly that, because "we only added a key when it is needed" is a
+    /// claim worth failing a build over.
+    static func sessionUpdate(instructions: String, tools: [[String: Any]]) -> [String: Any] {
+        var session: [String: Any] = [
+            "modalities": ["text", "audio"],
+            "instructions": instructions,
+            "input_audio_format": "pcm16",
+            "output_audio_format": "pcm16",
+            "input_audio_transcription": [
+                "model": "gpt-4o-mini-transcribe"
+            ],
+            "turn_detection": [
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500,
+                // Both stated rather than left to the API's defaults. `create_response`
+                // is what makes end-of-speech produce an answer at all; `interrupt_response`
+                // keeps barge-in server-side, where it can cancel a response the client
+                // never learns about. Defaults for these have moved between API versions,
+                // and a session that silently stops answering is indistinguishable from a
+                // dead microphone.
+                "create_response": true,
+                "interrupt_response": true
+            ],
+        ]
+        if !tools.isEmpty {
+            session["tools"] = tools
+            session["tool_choice"] = "auto"
+        }
+        return ["type": "session.update", "session": session]
     }
 
     private func sendJSON(_ json: [String: Any]) {
@@ -581,6 +632,29 @@ class OpenAIRealtimeService: ObservableObject {
                 // The transcript is the wearer's own speech: length only.
                 PrivacyLog.realtimeUtterance(.openai, direction: .input, characters: transcript.count)
                 onInputTranscription?(transcript)
+            }
+
+        case "response.output_item.added":
+            // The name arrives here; the arguments stream afterwards. Kept so the arguments-done
+            // event, which does not always carry a name, can still be dispatched.
+            if let item = json["item"] as? [String: Any], item["type"] as? String == "function_call",
+               let callId = item["call_id"] as? String, let name = item["name"] as? String {
+                pendingFunctionNames[callId] = name
+            }
+
+        case "response.function_call_arguments.done":
+            if let callId = json["call_id"] as? String {
+                let name = json["name"] as? String ?? pendingFunctionNames[callId]
+                dispatchFunctionCall(callId: callId, name: name,
+                                     arguments: json["arguments"] as? String ?? "{}")
+            }
+
+        case "response.output_item.done":
+            // The belt to the arguments-done braces: some deployments complete a call only here.
+            if let item = json["item"] as? [String: Any], item["type"] as? String == "function_call",
+               let callId = item["call_id"] as? String {
+                dispatchFunctionCall(callId: callId, name: item["name"] as? String,
+                                     arguments: item["arguments"] as? String ?? "{}")
             }
 
         case "error":
