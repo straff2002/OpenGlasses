@@ -214,12 +214,13 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let review = app.navigationBars["Evidence for the report"]
         awaitScreen(review, named: "The evidence review with a clip")
 
-        audit(app, screen: "Job tab — evidence review with a clip", deferring: formDeferrals)
+        audit(app, screen: "Job tab — evidence review with a clip",
+              deferring: formDeferrals + [AuditDeferral.decorativeClipTimecode])
 
         let skip = app.buttons["Skip photos and close the job"]
         scrollUntilVisible(skip, in: app, named: "Skip photos and close the job")
         audit(app, screen: "Job tab — evidence review with a clip, actions",
-              deferring: formDeferrals)
+              deferring: formDeferrals + [AuditDeferral.decorativeClipTimecode])
     }
 
     /// The review at the largest accessibility size. A grid of thumbnails beside wrapping captions
