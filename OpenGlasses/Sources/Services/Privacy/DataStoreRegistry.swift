@@ -537,15 +537,18 @@ enum SensitiveStore: String, CaseIterable {
                           location: "preferences key `fieldAssistDeliverySettings`; its token is in the Keychain")
 
         case .jobDeliveryQueue:
-            // Reports asked for by voice and waiting for a thumb (Plan FO P3b). It holds the
-            // recipients each one would go to — somebody's contact details — so it is protected
-            // and kept out of backup rather than left to the container's default: a queue restored
-            // onto another phone would offer to send a report that already went.
-            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+            // Reports asked for by voice and waiting for a thumb (Plan FO P3b). It carries the
+            // addresses each one would go to — which are **the same addresses
+            // `fieldDeliverySettings` holds**, the organisation's own job-report destinations,
+            // never a recipient taken from speech (`SpokenSendPolicy` refuses one outright). So the
+            // linkage is the wearer's, as the settings' is, and there is nothing filed by person to
+            // erase. It is protected and kept out of backup all the same: a queue restored onto
+            // another phone would offer to send a report that already went.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .complete, backupExcluded: true,
                           retention: .cap(DeliveryQueue.entryCap),
                           deleteAll: .api("DeliveryQueueStore.removeAll()"),
-                          deleteSubject: .unavailable("entries are filed by job, not by recipient"),
+                          deleteSubject: .notSubjectLinked,
                           owner: "DeliveryQueueStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/DeliveryQueue.swift"],
                           location: "Application Support/FieldAssist/delivery-queue.json")
