@@ -16,10 +16,9 @@ struct JobTab: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        // The flow is what publishes the change-of-unit question, so the content view observes it
-        // directly rather than through `AppState`, which does not republish its children.
-        // The flow and the send queue are what publish changes the tab draws; `AppState` does not
-        // republish its children, so the content view observes both directly.
+        // The flow publishes the change-of-unit question and the debrief; the send service
+        // publishes the queue. `AppState` does not republish its children, so the content view
+        // observes both directly.
         JobTabContent(flow: appState.guidedJobFlow, sends: appState.jobSends)
     }
 }
