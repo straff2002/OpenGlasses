@@ -24,6 +24,19 @@ struct JobSendQueueSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
 
+            // Directly under the count, not after the rows. Send all is the one control that is
+            // about the whole card, and three queued reports are already taller than the screen —
+            // a button underneath them is a button a technician has to go looking for, which is
+            // neither "one movement" nor what a card headed "3 reports ready to send" promises.
+            if entries.count > 1 {
+                Button { onSendAll() } label: {
+                    Text("Send all")
+                        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                               alignment: .leading)
+                }
+                .accessibilityHint("Opens each one in turn. Anything you cancel stays here.")
+            }
+
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry.summaryLine)
@@ -49,15 +62,6 @@ struct JobSendQueueSection: View {
                         .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
                                alignment: .leading)
                 }
-            }
-
-            if entries.count > 1 {
-                Button { onSendAll() } label: {
-                    Text("Send all")
-                        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
-                               alignment: .leading)
-                }
-                .accessibilityHint("Opens each one in turn. Anything you cancel stays here.")
             }
         } header: {
             Text("Ready to send")
