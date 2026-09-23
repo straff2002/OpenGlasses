@@ -75,6 +75,12 @@ struct LaunchScreen: View {
             }
             glowPulse = true
         }
+        // A decorative two-second splash: VoiceOver should never land on it, and neither should an
+        // accessibility audit. `RootView` already hides everything *under* it for the same reason;
+        // this is the half that was missing, and on a slow runner it was still in the tree when the
+        // audit ran — five "element has no description" findings that were never about the screen
+        // being audited.
+        .accessibilityHidden(true)
     }
 }
 
