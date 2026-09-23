@@ -504,6 +504,29 @@ back, and none of them added or widened an `AuditDeferral`:
 
 The audit was green on `main` on 2026-09-15, in the first run after #484 merged.
 
+### Gate maintenance (2026-09-23): the hub's Dynamic Type burst
+
+Two more Settings-hub failures after #484, a different case each time: the folded hub on the
+2026-09-22 nightly (14 findings) and the unfold case on PR #540's first audit run (17). Both
+result bundles were pulled and read. Every finding was Dynamic Type "partially unsupported", one
+per title, subtitle, value and Discover pitch visible on the hub, nothing else new, and neither
+reproduced on re-run. The hub was **still** before both audits — the recording shows it unchanged
+for 5–7 s, and the unfold case's `awaitStableFrame` logged three identical samples on both
+elements it watches — and the audit itself took the same 7–10 s as on a pass. The only movement
+on either recording is the audit's own Dynamic Type sweep: a dozen size steps in a few seconds,
+each a full reflow and re-scroll of the page. A step read before the reflow lands measures the
+rows at the previous size, and the tool reports the whole container as "partially" supporting
+Dynamic Type. The copy is fine: the same commit passed the hub audit launched at AX5 in the same
+run.
+
+So no wait was added before the audit (there is nothing to wait for) and no deferral was
+widened. `audit(_:screen:)` now gives a result whose *only* new findings are Dynamic Type one
+second pass on the same still screen, and the second pass is the verdict — a fixed-size font
+reproduces, a lagged reading does not. Both passes are printed with the `[a11y-audit]` prefix, so
+the CI log shows how often the sweep is caught mid-reflow. The rule is `AuditConfirmationPolicy`
+in `OpenGlassesUITests/AuditTimingPolicy.swift`, unit-tested beside the others; the case-level
+reasons are on the two tests in `SettingsAccessibilityTests`.
+
 ### MockDeviceKit, and why it is not here
 
 `MockDeviceKit` is the SDK's mock-device kit and this target is the first place in the repo that
