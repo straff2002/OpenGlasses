@@ -57,7 +57,17 @@ struct JobDebrief: Codable, Equatable, Identifiable {
     struct Turn: Codable, Equatable, Identifiable {
         let id: String
         let text: String
+        /// Whole seconds, always — the same rule `AIProvenance` follows and for the same reason:
+        /// this travels inside documents whose encoders use different date strategies, and a
+        /// timestamp that survives one round trip but not another makes two copies of the same
+        /// debrief unequal.
         let at: Date
+
+        init(id: String, text: String, at: Date) {
+            self.id = id
+            self.text = text
+            self.at = Date(timeIntervalSince1970: at.timeIntervalSince1970.rounded(.down))
+        }
 
         enum CodingKeys: String, CodingKey {
             case id
@@ -97,7 +107,9 @@ struct JobDebrief: Codable, Equatable, Identifiable {
          turns: [Turn], unsummarised: Bool = false, provenance: AIProvenance? = nil,
          threadId: String? = nil) {
         self.id = id
-        self.recordedAt = recordedAt
+        // Truncated for the reason `Turn.at` is: an entry that survives one encoder's round trip
+        // and not another's is an entry two readers can disagree about.
+        self.recordedAt = Date(timeIntervalSince1970: recordedAt.timeIntervalSince1970.rounded(.down))
         self.entries = entries
         self.turns = turns
         self.unsummarised = unsummarised

@@ -112,7 +112,8 @@ final class JobDebriefFlowTests: XCTestCase {
 
     func testTheTurnsLandInTheJobsThreadAndNothingReachesTheRecordUntilSave() async throws {
         let job = try finishedJob(reference: "1004")
-        XCTAssertTrue(await flow.startDebrief(jobId: job.id))
+        let started = await flow.startDebrief(jobId: job.id)
+        XCTAssertTrue(started)
 
         await say("the drier looked wet")
         await say("base should send somebody back")
@@ -375,9 +376,18 @@ final class JobDebriefFlowTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// The provenance is **pinned**, as P2b's determinism tests pin it: the block carries the
+    /// moment it was generated, so two renders a second apart differ by a timestamp and by nothing
+    /// else. Pinning it is what makes "unchanged" mean unchanged by the debrief.
+    private static let pinnedProvenance = AIProvenance(
+        modelIdentifier: "pinned-model", providerClass: .cloud,
+        promptVersionDigest: "sha256:pinned",
+        generatedAt: Date(timeIntervalSince1970: 1_700_000_000))
+
     private func pdfText(sessionId: String, reportAlreadySent: Bool) throws -> String {
         let directory = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
-        let document = try XCTUnwrap(SessionExporter.buildExport(sessionDir: directory))
+        let document = try XCTUnwrap(SessionExporter.buildExport(
+            sessionDir: directory, provenance: Self.pinnedProvenance))
         let placement = DebriefDocumentPolicy.placement(
             debriefs: document.workRecord?.debriefs ?? [],
             reportAlreadySent: reportAlreadySent)
@@ -390,7 +400,8 @@ final class JobDebriefFlowTests: XCTestCase {
 
     private func addendumText(record: WorkRecord, debriefs: [JobDebrief]) throws -> String {
         let url = sessionsRoot.appendingPathComponent("\(UUID().uuidString)-addendum.pdf")
-        try SessionExporter.writeAddendumPDF(record: record, debriefs: debriefs, to: url)
+        try SessionExporter.writeAddendumPDF(record: record, debriefs: debriefs, to: url,
+                                             provenance: Self.pinnedProvenance)
         return try XCTUnwrap(PDFDocument(url: url)?.string)
     }
 }

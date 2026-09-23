@@ -140,8 +140,7 @@ extension GuidedJobFlow {
         // A switch is offered first: "next job" while a read-back is outstanding means the
         // technician has moved on, and the unsaved summary is left unsaved rather than applied to
         // the job they have just switched to.
-        if DebriefJobResolver.relativeReference(in: text) != nil
-            || DebriefJobResolver.spokenNumber(in: text) != nil {
+        if DebriefJobResolver.looksLikeASwitch(text) {
             let resolution = await switchDebrief(to: text)
             if case .notAReference = resolution { /* fall through */ } else { return true }
             guard let refreshed = debrief else { return true }

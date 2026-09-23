@@ -170,6 +170,24 @@ enum DebriefJobResolver {
         }
     }
 
+    /// Whether an utterance is *asking* to change job, as opposed to merely containing something
+    /// number-shaped.
+    ///
+    /// This exists because a debrief is full of model numbers: "what's the superheat target on an
+    /// SLP99" has a token that reads exactly like a job reference, and treating it as one would
+    /// silently move the conversation onto another customer's job. So an automatic switch needs a
+    /// relative phrase, or a number said next to the words that mean a job.
+    ///
+    /// `resolve` itself stays generous — it is what a deliberate "switch to this" goes through —
+    /// and this is the gate the conversation applies before calling it.
+    static func looksLikeASwitch(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        if relativeReference(in: lowered) != nil { return true }
+        guard spokenNumber(in: lowered) != nil else { return false }
+        return lowered.contains("job") || lowered.contains("debrief")
+            || lowered.contains("switch") || lowered.contains("move to")
+    }
+
     // MARK: - Numbers
 
     /// The job number in a sentence, or nil. Deliberately narrow: it takes what follows the word
