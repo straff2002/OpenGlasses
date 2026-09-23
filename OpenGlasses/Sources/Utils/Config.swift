@@ -2207,6 +2207,34 @@ struct Config {
         set { UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults") }
     }
 
+    // MARK: - Spoken sends from the car (Plan FO P3b)
+
+    /// The channel a spoken "send it" uses, when the organisation has set one.
+    ///
+    /// **A stand-in on exactly the terms the sign-off keys above are**: Plan CT owns organisation
+    /// policy and CT P1 replaces this with the profile that sets it. Empty — no route configured,
+    /// so a spoken send falls back to `DeliveryPolicy.defaultChannel`, which is what a phone that
+    /// has never been given a profile does today.
+    ///
+    /// It exists because §6's split turns on it: the route the organisation set is the one thing
+    /// that can go without a screen besides the endpoint, and a policy with nowhere to read that
+    /// from would be a policy with one branch nobody could ever take.
+    static var organizationJobReportChannel: DeliveryChannel? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: "organizationJobReportChannel"),
+                  !raw.isEmpty else { return nil }
+            return DeliveryChannel(rawValue: raw)
+        }
+        set { UserDefaults.standard.set(newValue?.rawValue ?? "", forKey: "organizationJobReportChannel") }
+    }
+
+    /// Addresses the organisation's profile supplies, as the last step of the recipient order.
+    /// A stand-in for the same reason and on the same terms; empty by default.
+    static var organizationReportRecipients: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "organizationReportRecipients") ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients") }
+    }
+
     // MARK: - Customer sign-off (Plan FO P2c)
 
     /// Whether the organisation asks for the customer's signature on every job.

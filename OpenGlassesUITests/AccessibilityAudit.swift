@@ -27,6 +27,10 @@ enum LaunchState: String {
     /// The finished job carries a customer's signature, so the past job's Customer acceptance
     /// block has something in it to audit (Plan FO P2c).
     case seedFieldSignOff = "-OGUITestSeedFieldSignOff"
+    /// The finished job carries a saved debrief and three reports are staged in the delivery
+    /// queue, so the past job's Debrief section and the Job tab's send card both have something
+    /// on screen (Plan FO P3b). Staged, never sent.
+    case seedFieldSends = "-OGUITestSeedFieldSends"
     /// Plan FS PR2 — the vault-link review sheet, signed and unverified, and a vault already
     /// received from a link so its row shows the badge.
     case vaultLinkSigned = "-OGUITestVaultLinkSigned"

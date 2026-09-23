@@ -13,6 +13,10 @@ struct NoActiveJobView: View {
     @Binding var typedReference: String
     let onStart: () -> Void
     let onOpenPastJob: (String) -> Void
+    /// Reports asked for by voice and waiting for a thumb (Plan FO P3b). First on the screen,
+    /// because a report nobody sent is the one thing a technician must not find out about a week
+    /// later. Nil when nothing is waiting.
+    var sendCard: JobSendQueueSection?
 
     @FocusState private var referenceFocused: Bool
 
@@ -20,6 +24,7 @@ struct NoActiveJobView: View {
 
     var body: some View {
         List {
+            sendCard
             vaultSection
             startSection
             pastJobsSection

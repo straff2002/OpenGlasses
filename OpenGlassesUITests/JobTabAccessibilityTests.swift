@@ -330,6 +330,61 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
     }
 
+    // MARK: - The debrief and the reports waiting to send (Plan FO P3b)
+
+    /// A finished job carrying a debrief, and the Job tab with three reports waiting for a thumb.
+    ///
+    /// Both are screens where the *words* carry the whole fact: an item marked "reported, not
+    /// verified" is a claim about what a record does and does not establish, and a queued send is
+    /// a report nobody has sent. Neither may depend on a colour or a glyph to say so.
+    func testTheDebriefSectionAndTheReportsReadyToSendCard() {
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSends])
+        openJobTab(in: app)
+
+        // The card is first on the tab, because a report nobody sent is the thing a technician
+        // must not find out about a week later.
+        let card = app.staticTexts["3 reports ready to send"]
+        awaitScreen(card, named: "The reports-ready card")
+        XCTAssertTrue(app.buttons["Send all"].exists,
+                      "more than one waiting report must be openable in one movement")
+        XCTAssertTrue(app.buttons["Don't send this one"].exists,
+                      "a queued report must be cancellable without sending it")
+
+        audit(app, screen: "Job tab — reports ready to send",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        let row = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
+        scrollUntilVisible(row, in: app, named: "The past job row")
+        row.tap()
+
+        let block = app.staticTexts["Debrief"]
+        awaitScreen(block, named: "The debrief section")
+        scrollUntilVisible(app.buttons["What was said"], in: app, named: "What was said")
+        XCTAssertTrue(app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "reported, not verified")).firstMatch.exists,
+                      "an item that reads as completed work must say so in words")
+        XCTAssertTrue(app.buttons["Debrief this job"].exists)
+
+        audit(app, screen: "Job tab — a past job's debrief",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
+    /// The same two screens at the largest accessibility size. A queued send's row is three
+    /// wrapping lines and two buttons, which is the shape most likely to clip.
+    func testTheReportsReadyCardAtTheLargestAccessibilitySize() {
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSends],
+                         contentSizeCategory: Self.ax5)
+        openJobTab(in: app)
+
+        let card = app.staticTexts["3 reports ready to send"]
+        awaitScreen(card, named: "The reports-ready card at AX5")
+        awaitStableFrame(of: card, named: "The reports-ready card at AX5")
+
+        audit(app, screen: "Job tab — reports ready to send at AX5",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
     /// The signature pad, however the tree happens to expose a `PKCanvasView` wrapped in SwiftUI.
     private func signaturePad(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(

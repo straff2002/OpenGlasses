@@ -858,6 +858,69 @@ class AppState: ObservableObject, AppStateProtocol {
     /// puts back the active thread's *id* and nothing else, so before this the first sentence after
     /// a relaunch carried on a conversation the model had never been shown. Resuming is two steps,
     /// here as everywhere else.
+    /// The spoken send, and the queue it accumulates in (Plan FO P3b).
+    ///
+    /// Everything device-facing is a closure here for the same reason the guided flow's are: the
+    /// partition between "goes now" and "waits for a thumb" is the whole design, and it is only
+    /// worth anything if a test can prove that Mail never sends.
+    private func configureJobSends() {
+        jobSends.connect(.init(
+            speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
+            settings: { Config.deliverySettings },
+            organisationRecipients: { Config.organizationReportRecipients },
+            previousChannel: { sessionId in
+                FieldSessionService.shared.lastDeliveryChannel(sessionId: sessionId)
+            },
+            buildRequest: { sessionId, channel, recipients, kind in
+                let sessions = FieldSessionService.shared
+                guard let session = sessions.history.first(where: { $0.id == sessionId })
+                        ?? sessions.activeSession else { return nil }
+                let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+                let record = WorkRecord(session: session, vaultName: name)
+                switch kind {
+                case .addendum:
+                    guard let attachment = sessions.addendumAttachment(sessionId: sessionId) else {
+                        return nil
+                    }
+                    return DeliveryRequest.make(record: record, channel: channel,
+                                                recipients: recipients,
+                                                attachments: [attachment])
+                case .report:
+                    let delivery = sessions.reportDelivery(
+                        for: channel,
+                        canSendAttachments: channel == .messages
+                            ? ReportComposerAvailability.messagesCanAttach : true,
+                        sessionId: sessionId)
+                    return DeliveryRequest.make(record: record, channel: channel,
+                                                recipients: recipients,
+                                                attachments: delivery.attachments,
+                                                clipPlan: delivery.clipPlan,
+                                                clipItems: delivery.clipItems)
+                }
+            },
+            deliverImmediately: { [weak self] request in
+                guard let self else { return .handedOff }
+                // The existing store-and-forward route, unchanged: the record goes into the
+                // durable queue and the endpoint sink delivers it. "Sent" is what the queue says.
+                self.offlineQueue.enqueue(QueuedOp.make(workRecord: request.record))
+                await self.syncEngine.flush()
+                let stillQueued = QueuedRecordRows.outstandingCount(
+                    in: self.offlineQueue.all(limit: 200), sessionId: request.sessionId) > 0
+                return stillQueued ? .handedOff : .sent
+            },
+            presentComposer: { [weak self] request in self?.presentDelivery(request) },
+            notify: { count in JobSendNotifications.post(stagedCount: count) },
+            log: { kind, sessionId, payload in
+                FieldSessionService.shared.logDebrief(kind, sessionId: sessionId, payload: payload)
+            }))
+        // A tap on that notification lands on the Job tab. The router answers only `didReceive`,
+        // so every other notification in the app behaves exactly as it did.
+        jobSendNotificationRouter = JobSendNotificationRouter { [weak self] tab in
+            self?.requestedTab = tab
+        }
+        UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
+    }
+
     private func configureGuidedJobFlow() {
         guidedJobFlow.connect(.init(
             speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
@@ -865,8 +928,17 @@ class AppState: ObservableObject, AppStateProtocol {
             clearHistory: { [weak self] in self?.llmService.clearHistory() },
             threadMode: { [weak self] in self?.currentMode.rawValue ?? AppMode.direct.rawValue },
             personaId: { [weak self] in self?.activePersona?.id },
-            persistenceEnabled: { Config.conversationPersistenceEnabled }))
+            persistenceEnabled: { Config.conversationPersistenceEnabled },
+            // The debrief's summary is the one thing in the guided flow a model produces, and it
+            // goes through the same structured-completion path Study Mode and the memory loop use.
+            summarise: { [weak self] system, text, schema in
+                guard let self else { return nil }
+                return await self.llmService.completeStructured(systemPrompt: system,
+                                                                userText: text, jsonSchema: schema)
+            },
+            provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
         guidedJobFlow.restoreOnLaunch()
+        configureJobSends()
         // The blur the phone-sourced evidence goes through. Wired here rather than constructed
         // with the service, because `privacyFilter` is built alongside it and a filter that is
         // merely absent would fail every attachment closed.
@@ -1030,6 +1102,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// through it, because a binding that only covered the end of a voice turn was a binding a
     /// CarPlay tap could break.
     let guidedJobFlow: GuidedJobFlow
+    /// Reports and addenda asked for by voice, and the ones waiting for a thumb (Plan FO P3b).
+    let jobSends: JobSendService
     /// The lens cue last raised for an outstanding job question (Plan FO P3a). Held so the same
     /// question is not flashed again every time anything else about the session moves.
     private var lastJobQuestionCue: JobQuestionHUDCue.Cue?
@@ -1241,6 +1315,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // a job starts is an app decision, not the model's (Plan FO P1). Its device-facing seams
         // are connected later, in `configureGuidedJobFlow()`.
         guidedJobFlow = GuidedJobFlow(sessions: FieldSessionService.shared, store: conversationStore)
+        jobSends = JobSendService()
         nativeToolRegistry = NativeToolRegistry(
             locationService: locationService,
             conversationStore: conversationStore,
@@ -3389,6 +3464,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Non-nil while the Mail or Messages composer should be presented.
     @Published var deliveryComposerRequest: DeliveryComposerRequest?
+    /// Held so the notification centre's delegate is not deallocated the moment it is set.
+    var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.
     @Published var deliveryShareItem: ShareItem?
 
@@ -3461,6 +3538,9 @@ class AppState: ObservableObject, AppStateProtocol {
         deliveryComposerRequest = nil
         deliveryShareItem = nil
         FieldSessionService.shared.completeDelivery(request, outcome: outcome)
+        // A staged send from the car ends here too, and its entry follows the same rule the record
+        // does: only a confirmed send moves it, and a cancelled one stays queued (Plan FO P3b).
+        if jobSends.owns(request) { jobSends.completePresented(outcome: outcome) }
         switch outcome {
         case .sent:
             addDebugEvent("Job report sent by \(request.channel.label).")

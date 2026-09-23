@@ -61,6 +61,12 @@ enum UITestSupport {
         /// and the sign-off goes through the shipping `recordSignOff`, so what is seeded is what a
         /// real hand-over writes.
         case seedFieldSignOff = "-OGUITestSeedFieldSignOff"
+        /// A modifier for Plan FO P3b: the finished job carries a saved debrief, and three
+        /// reports are staged in the delivery queue — so the past job's Debrief section and the
+        /// Job tab's "reports ready to send" card are both on screen for an audit. The debrief
+        /// goes through the shipping `recordDebrief` and the queue through the shipping store, so
+        /// what is seeded is what a real drive writes. Nothing is sent: a staged send is staged.
+        case seedFieldSends = "-OGUITestSeedFieldSends"
         /// A **narrowing** modifier on the Field Assist flags (Plan FS): the entitlement becomes
         /// the retired one-time unlock instead of the internal grant, so screens render the state
         /// a grandfathered owner sees — the bundled vaults, and the import button explaining that
@@ -110,6 +116,7 @@ enum UITestSupport {
     static var wantsFieldAssist: Bool {
         isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
             || isSet(.seedFieldPhotos) || isSet(.seedFieldClips) || isSet(.seedFieldSignOff)
+            || isSet(.seedFieldSends)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -282,7 +289,7 @@ enum UITestSupport {
         }
 
         if isSet(.seedFieldHistory) || isSet(.seedFieldJob) || isSet(.seedFieldPhotos)
-            || isSet(.seedFieldClips) || isSet(.seedFieldSignOff) {
+            || isSet(.seedFieldClips) || isSet(.seedFieldSignOff) || isSet(.seedFieldSends) {
             // Deferred by one runloop turn on purpose. Starting a session builds the vault's model
             // and parts indexes on the main thread, and doing that inside launch pushes a cold
             // first launch of a large Debug build towards the watchdog — which shows up as an app
@@ -457,7 +464,11 @@ enum UITestSupport {
                                     summaryLines: record.customerSummaryLines),
                     pngData: signaturePNG())
             }
+            if isSet(.seedFieldSends), let record = sessions.workRecord() {
+                seedDebrief(sessions, sessionId: record.sessionId)
+            }
             _ = try? sessions.endSession(outcome: .resolved)
+            if isSet(.seedFieldSends) { seedStagedSends(appState, sessions: sessions) }
         }
 
         guard isSet(.seedFieldJob) else { return }
@@ -499,6 +510,62 @@ enum UITestSupport {
         attachClip(sessions, caption: "Compressor short-cycling", seconds: 12, bytes: 640_000)
         attachClip(sessions, caption: "Fan wobble at full speed", seconds: 28,
                    bytes: 21 * 1024 * 1024)
+    }
+
+    /// One saved debrief on the finished job (Plan FO P3b).
+    ///
+    /// Written through the shipping `recordDebrief`, with the citations a real summary carries and
+    /// one item marked "reported, not verified" — which is the label the past job's page has to
+    /// render, and the one an audit is actually looking at.
+    @MainActor
+    private static func seedDebrief(_ sessions: FieldSessionService, sessionId: String) {
+        let turns = [
+            JobDebrief.Turn(id: "seed-t1", text: "the drier looked wet when I pulled the panel",
+                            at: Date()),
+            JobDebrief.Turn(id: "seed-t2", text: "base should send somebody back for the drier",
+                            at: Date())
+        ]
+        let summary = DebriefSummary(categories: [
+            .findings: [DebriefSummary.Item(text: "Drier looked wet behind the panel",
+                                            sourceTurnIds: ["seed-t1"]),
+                        DebriefSummary.Item(text: "Checked the sight glass",
+                                            sourceTurnIds: ["seed-t1"],
+                                            flag: .reportedNotVerified)],
+            .forBase: [DebriefSummary.Item(text: "Send somebody back for the drier",
+                                           sourceTurnIds: ["seed-t2"])]
+        ])
+        sessions.recordDebrief(
+            JobDebrief.make(summary: summary, turns: turns,
+                            provenance: AIProvenance(modelIdentifier: "seeded-model",
+                                                     providerClass: .cloud,
+                                                     promptVersionDigest: "sha256:seed"),
+                            threadId: nil),
+            sessionId: sessionId)
+    }
+
+    /// Three reports waiting for a thumb, so the Job tab's Send card has something to draw.
+    ///
+    /// Staged, never sent — which is the whole point of the card, and is what makes this safe to
+    /// seed: nothing here can put anything on a wire.
+    @MainActor
+    private static func seedStagedSends(_ appState: AppState, sessions: FieldSessionService) {
+        var delivery = DeliverySettings.load()
+        if delivery.emailRecipients.isEmpty { delivery.emailRecipients = ["office@example.com"] }
+        delivery.save()
+        let finished = sessions.history.filter { $0.endedAt != nil }
+        for (index, session) in finished.prefix(1).enumerated() {
+            _ = index
+            let number = session.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber
+            for (offset, kind) in [QueuedSend.DocumentKind.report, .addendum, .report].enumerated() {
+                appState.jobSends.queue.append(QueuedSend(
+                    sessionId: session.id, jobNumber: number, documentKind: kind,
+                    channel: offset == 1 ? .messages : .email,
+                    recipients: offset == 1 ? ["+64211234567"] : ["office@example.com"],
+                    recipientSource: .deliverySettings,
+                    createdAt: Date(timeIntervalSinceNow: -Double(300 - offset * 60)),
+                    state: .staged))
+            }
+        }
     }
 
     /// One seeded evidence photo, drawn rather than captured.

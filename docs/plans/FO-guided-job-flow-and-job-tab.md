@@ -15,6 +15,10 @@ hand-off to the technician's maps app, a job that arrives by email as an `.ogjob
 customer sign-off on the phone — P2c and a P3 split into P3a / P3b / P3c below.
 **P2c implemented 2026-09-23** — customer sign-off, verified headless and on a simulator; see
 *P2c as built* below.
+**P3b implemented 2026-09-23** — the job debrief on the phone and in the car, the summary schema
+and its validation, `WorkRecord.Debrief`, the addendum as a second document, and the spoken send
+with its delivery queue; verified headless and on a simulator. No car and no model. See *P3b as
+built* below.
 **P3a implemented 2026-09-23, headless** — one guided-job seam applied by both live backends,
 Field Assist wired into OpenAI Realtime for the first time, a lens cue for the two questions, a
 read-only CarPlay Jobs list and read-only job state on the watch; see *P3a as built* below. No
@@ -478,7 +482,7 @@ PDF is unchanged: the customer signs the summary, not the whole work order.
 - **P3a — live modes and surfaces.** ✅ **Implemented 2026-09-23, headless.** Gemini Live /
   OpenAI Realtime parity via a shared, refreshable job block; HUD cue for the two questions;
   CarPlay/watch read-only job state (the Jobs list of §6, without Debrief). See *P3a as built*.
-- **P3b — debrief.** `JobThreadPolicy.debrief` source, the debrief snapshot/instructions, the
+- **P3b — debrief.** ✅ **Implemented 2026-09-23.** See *P3b as built*. `JobThreadPolicy.debrief` source, the debrief snapshot/instructions, the
   summary schema + validation, `WorkRecord.Debrief` (decode-if-present), the read-back/save state
   machine (pure, like `JobIntakeState`), the PDF/JSON section, Send addendum, the spoken send with
   the immediate/staged split per channel and the staged-send card + notification on the phone, and
@@ -1133,6 +1137,200 @@ stand behind.
   machine will need.
 - The lens cue model takes a fourth `Kind` without reshaping, and the watch payload's
   `nextAction` is the one line a staged send would be announced on.
+
+## P3b as built (2026-09-23)
+
+The debrief, the delivery queue and the spoken send. Nine new types under
+`OpenGlasses/Sources/Services/FieldAssist/Job/` — five of them pure — plus one extension file on
+`GuidedJobFlow`, two SwiftUI files, and the surfaces on the phone and the car screen.
+
+```swift
+enum DebriefJobResolver {                       // which job was meant
+    struct Candidate { sessionId, jobReference, startedAt, outcomeLabel, isActive; var spoken }
+    enum Resolution { resolved(sessionId:), ambiguous(question:sessionIds:),
+                      notFound(question:), notAReference }
+    static func resolve(_ spoken: String, candidates: [Candidate], current: String?) -> Resolution
+    static func looksLikeASwitch(_ text: String) -> Bool
+}
+
+struct DebriefSummary {                          // the schema, validated
+    enum Category { findings, follow_ups, for_base, parts_or_materials, customer_notes }
+    enum Flag { reportedNotVerified }
+    struct Item { text; sourceTurnIds: [String]; flag: Flag? }
+    static let maximumItemsPerCategory = 6, maximumItems = 20, maximumItemCharacters = 240
+    static var jsonSchema: [String: Any]
+}
+enum DebriefSummaryDecoder {
+    enum Failure: Error { notAnObject, empty, itemWithoutCitation, unknownTurnId, tooManyItems }
+    static func decode(_ json: [String: Any], turnIds: [String]) -> Result<DebriefSummary, Failure>
+    static func readsAsCompletedWork(_ text: String) -> Bool
+}
+
+enum DebriefReviewState {                        // pure, like JobIntakeState
+    listening, summarising, readBack(_), awaitingDecision(_), editing(category:index:summary:),
+    failed(reason:), saved, discarded
+    func advance(_ event: DebriefReviewEvent) -> DebriefReviewOutcome   // state, prompt,
+}                                                // consumesUtterance, recordsTurn, action
+
+struct JobDebrief: Codable {                     // == WorkRecord.Debrief
+    id, recordedAt, entries: [Entry], turns: [Turn], unsummarised, provenance: AIProvenance?,
+    threadId
+}
+enum DebriefDocumentPolicy {
+    static func placement(debriefs:reportAlreadySent:) -> Placement  // inWorkOrder | asAddendum
+}
+enum DebriefContract { block(job:record:), summarySystemPrompt, summaryUserText(job:turns:) }
+
+struct QueuedSend: Codable { sessionId, jobNumber, documentKind, channel, recipients,
+                             recipientSource, createdAt, updatedAt, attempts, state }
+struct DeliveryQueue: Codable { entries; waiting; staged; append/update/cancel; cardHeadline;
+                                spokenReadBack }
+@MainActor final class DeliveryQueueStore: ObservableObject   // Application Support/FieldAssist
+enum SpokenSendPolicy { handling(for:), recipients(channel:previousDelivery:settings:
+                        organisation:spokenAddress:), confirmation(...), outcome(...),
+                        isSendConfirmation(_:), isQueueQuery(_:) }
+@MainActor final class JobSendService: ObservableObject { propose(...), confirm(), present(_:),
+                        sendAll(), completePresented(outcome:), cancel(id:) }
+
+extension GuidedJobFlow {                        // the coordinator half
+    func startDebrief(jobId:) async -> Bool
+    func switchDebrief(to:) async -> DebriefJobResolver.Resolution
+    func endDebrief(); func debriefBlock() -> String?
+    func handleDebriefUtterance(_:) async -> Bool; func prepareThreadForDebriefTurn()
+    func finishDebrief()/saveDebrief()/discardDebrief()/retryDebriefSummary()/keepDebriefRaw()
+}
+```
+
+### The channel partition, as shipped
+
+| Channel | Spoken send | Why |
+|---|---|---|
+| `endpoint` | **immediate** | nobody taps anything; the existing store-and-forward queue carries it offline |
+| `email` | staged | the Mail composer only opens on the phone |
+| `messages` | staged | the Messages composer only opens on the phone |
+| `whatsapp` / `telegram` | staged | opened by URL scheme, which needs that app in the foreground |
+| `shareSheet` | staged | somebody has to pick a destination |
+
+`SpokenSendPolicy.handling(for:)` is a total function over `DeliveryChannel`, so a channel added
+later cannot default to "sends itself".
+
+### Decisions the draft left open
+
+- **The summary's cap is six per list and twenty in all, and an item is 240 characters.** A debrief
+  is a short account of one visit; a model returning thirty "findings" has started transcribing,
+  and a read-back nobody listens to the end of is a read-back nobody confirmed. Over-long lists are
+  **clipped** to the per-category cap rather than refused — the technician still gets a summary —
+  while a total over twenty is refused, because that is a summary of a different shape.
+- **An uncited item is refused; a promotion is flagged.** The two failures are not the same kind of
+  thing. An item nobody said has no place on a record at all, so the whole summary is thrown away
+  and the technician is offered a retry. An item that *reads* as completed work ("replaced the
+  drier") is something they did say: it is kept word for word with "reported, not verified" beside
+  it, in `findings` and `parts_or_materials` only. A follow-up or a customer note saying somebody
+  had already cleaned something is not a claim about this visit's work and is never marked.
+- **A debrief turn is not consumed.** `handleDebriefUtterance` returns false for an ordinary line:
+  it is written into the job's log with the id the summary will cite *and* reaches the model,
+  because the model is the one holding the conversation. Only the settling utterances — "that's
+  it", "save it", "scrap it", "change …" — are consumed.
+- **An automatic job switch needs more than a number.** The first draft treated any
+  reference-shaped token as a job switch, and a debrief is full of model numbers: "what's the
+  superheat target on an SLP99" moved the conversation onto another customer's job. So
+  `looksLikeASwitch` is the gate the conversation applies — a relative phrase, or a number said
+  next to "job", "debrief", "switch" — while `resolve` itself stays generous for the deliberate
+  "switch to this" path. This was caught by a test, not by review.
+- **Turn ids are the debrief's own, not the conversation store's.** `"<debriefId>-t3"`, assigned as
+  each line is said and written into the session log beside its text. A citation therefore resolves
+  to a line a person can find, and the ids exist before any thread does — which matters, because a
+  debrief on a job that never had a conversation creates one.
+- **A debrief on a finished job binds that job's thread, and creates one if it has none.**
+  `JobThreadPolicy` gains `.debrief(jobId)` and a `DebriefBinding` beside the active job's, because
+  the two are routinely different: a debrief on job 1004 while job 1005 is open belongs to 1004.
+  With no binding the policy resolves to `proceedUnbound` rather than falling back to the open job
+  — a debrief turn filed against the wrong job is the one failure §6 exists to prevent.
+- **The work order never gains a line after it has gone.** `DebriefDocumentPolicy` decides where a
+  debrief prints: in the work order while the report has not been sent, and in an addendum of its
+  own once it has. That is what makes "the original PDF is unchanged" a property rather than a
+  hope, and `SessionExporter.export` reads `reportWasSent(sessionId:)` to apply it.
+- **Only a spoken "send it" sends, and only the endpoint can be sent to.** The proposal is held on
+  `JobSendService` and cleared by any refusal, so a "send it" cannot complete a send that was
+  refused. Staged sends never touch the delivery route at all: the test asserts the seam recorded
+  **zero** deliveries.
+- **Send all is an offer.** It opens each composer in turn and a cancelled one stays queued — the
+  walk steps over it rather than reopening it, so a technician cannot be trapped in a loop by
+  dismissing one.
+- **The notification is asked for only when it is first needed, and a refusal costs nothing.** The
+  card at the top of the Job tab carries the same fact. The router implements only `didReceive`,
+  so every other notification in the app behaves exactly as it did — a delegate answering
+  `willPresent` would have changed the foreground behaviour of every timer, alarm and geofence.
+- **The queue is its own store, protected and not backed up.** It holds recipients, which are
+  somebody's contact details, and a queue restored onto another phone would offer to send a report
+  that already went. Registered as `SensitiveStore.jobDeliveryQueue`.
+- **CT stand-ins:** `Config.organizationJobReportChannel` (the route an organisation sets, which is
+  what makes the immediate branch reachable at all) and `Config.organizationReportRecipients`, on
+  exactly the terms P2c's `organizationRequiresCustomerSignOff` is a stand-in. Both empty by
+  default, so a phone with no profile behaves as it does today.
+
+### What the draft got wrong
+
+- **"Recipients come from the job's previous delivery" cannot be implemented as written.** Plan EM
+  decided, deliberately, that `completeDelivery` writes down *how many* recipients a report went to
+  and never *who* — "a work order that leaks a customer's inbox is a different problem". So the
+  previous delivery contributes its **channel** (recoverable from the `reportSent` event) and not
+  its addresses; those come from the device's delivery settings, then the organisation profile.
+  `SpokenSendPolicy.recipients` keeps the three-step order as the plan states it — it is the rule,
+  and it is tested — but the app can only feed the first step on a device that has stored
+  addresses elsewhere. Changing EM's decision to store recipients was not this phase's to make.
+- **"The original PDF bytes are unchanged" is checked as text, not bytes.** A `UIGraphicsPDFRenderer`
+  document carries its own creation date, so two renders of identical content are never byte-equal.
+  P2b's determinism tests compare the extracted text with a pinned provenance block, and so does
+  this one. Stated here because "byte-identical" appears in the phase's own bullet and is not what
+  is proven.
+- **§6 says "the lens cue model takes a fourth `Kind`".** It does not need one. The read-back is
+  spoken and the decision is spoken; a lens cue during a debrief would be something to read while
+  driving, which is the one thing §6's driving-safety paragraph forbids. No HUD change shipped.
+- **The watch payload is unchanged.** §6's seam note suggests announcing a staged send on
+  `nextAction`; that line is about the *job* the wearer is on, and a queue entry for a job that
+  finished hours ago is not that. The card and the notification carry it instead.
+
+### What is on screen
+
+- **The past job's page** gains a Debrief section (each debrief dated, its items under their
+  headings, marks in words, and "What was said" opening the turns), a **Debrief this job** action,
+  and **Send addendum…** — which appears only when the report has already gone, because before
+  that the debrief is in the work order itself.
+- **The Job tab** gains a Send card at the top of both states: "3 reports ready to send", a row per
+  report saying what it is, where it would go and why it is waiting, a Send per report, **Send
+  all** when there is more than one, and a cancel.
+- **CarPlay's Jobs list** gains the Debrief action on past jobs and, when the queue is not empty, a
+  first row that reads it back. Still number, date and outcome only; the work record is never drawn
+  on the car screen.
+- **The debrief sheet on the phone** mirrors the spoken flow: what has been said, "That's it —
+  write it up", the summary, Save / Scrap, and — when the model call fails — Try again / Keep what
+  I said / Scrap it.
+
+### Verification
+
+Headless: `DebriefCoreTests` (30), `DeliveryQueueTests` (30) and `JobDebriefFlowTests` (19) new;
+the P1/P2/P2a/P2b/P2c/P3a suites, `FieldSessionServiceTests`, `FieldContinuityTests`,
+`WorkRecordTests`, `DeliveryTests`, `SessionExporterTests`, `DataStoreRegistryTests`,
+`TelemetryOptOutGuardTests` and `MedicalComplianceTests` unchanged and green; full suite green;
+Release app build green. Two accessibility audits and nine screenshots cover the Send card, the
+past job's debrief and the debrief sheet, in both appearances and at AX5.
+
+**Nothing here has been run in a car or on hardware.** No CarPlay, so the Debrief row has never
+been tapped on a car screen and the queue read-back has never been heard there; no provider
+credentials, so no model has ever produced a real summary — every summary in these tests is a
+fixture through the `summarise` seam. Whether a technician can hold a five-minute debrief by voice
+at motorway speed, and whether the summary a real model returns survives the decoder often enough
+to be useful, are **owed to P4**.
+
+### Seams left for P3c
+
+- `DebriefJobResolver.Candidate` is the shape the job-ahead list needs, and `debriefCandidates()`
+  already sorts the day's work newest-first.
+- `JobSendService.propose`'s `spokenChannel` is where a `.ogjob`-supplied route would arrive, and
+  `QueuedSend.DocumentKind` takes a third case without reshaping the queue.
+- `DebriefContract.block` is the second bounded block on the same pattern as P3a's; a third (the
+  brief before site) composes beside them rather than inside either.
 
 ## Open questions
 

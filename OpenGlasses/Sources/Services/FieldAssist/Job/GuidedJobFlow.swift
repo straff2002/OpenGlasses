@@ -39,11 +39,23 @@ final class GuidedJobFlow: ObservableObject {
         var threadMode: () -> String = { AppMode.direct.rawValue }
         var personaId: () -> String? = { nil }
         var persistenceEnabled: () -> Bool = { Config.conversationPersistenceEnabled }
+        /// Ask the model for one structured result — `LLMService.completeStructured` in the app.
+        /// A debrief's summary is the only thing in this flow a model produces, and it produces it
+        /// through a seam so the whole review is exercisable with no network (Plan FO P3b).
+        var summarise: (String, String, [String: Any]) async -> [String: Any]? = { _, _, _ in nil }
+        /// Which model answered, and a digest of the instructions it was given. Written onto the
+        /// debrief so a reader can tell one summary's provenance from another's.
+        var provenance: () -> AIProvenance? = {
+            AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources)
+        }
     }
 
-    private let sessions: FieldSessionService
-    private let store: ConversationStore
-    private var seams: Seams
+    /// Internal rather than private so the debrief half of the flow can live in its own file
+    /// (`GuidedJobFlow+Debrief.swift`) without this one growing a second personality. Nothing
+    /// outside the flow touches them.
+    let sessions: FieldSessionService
+    let store: ConversationStore
+    private(set) var seams: Seams
 
     /// The question waiting on the technician, if one is. Published so the Job tab (P2) can show
     /// it with buttons for the moments voice fails.
@@ -59,6 +71,13 @@ final class GuidedJobFlow: ObservableObject {
     /// The evidence the open review is about. Held beside the state because the state is a pure
     /// value and the catalogue is the job's.
     private var evidenceItems: [JobMediaItem] = []
+
+    /// The debrief in hand, when one is (Plan FO P3b). Published because the past job's page and
+    /// the Job tab both show it, and because a debrief on a *finished* job is state no session
+    /// publishes on its own.
+    /// The setter is internal rather than private so the debrief half of the flow, which lives in
+    /// `GuidedJobFlow+Debrief.swift`, can move it. Nothing outside the flow writes it.
+    @Published var debrief: ActiveDebrief?
 
     init(sessions: FieldSessionService, store: ConversationStore, seams: Seams = Seams()) {
         self.sessions = sessions
@@ -158,6 +177,10 @@ final class GuidedJobFlow: ObservableObject {
     /// not an answer — "what's this error code?", a bystander, the wake word firing on a cough —
     /// returns false and reaches the model untouched, with the question still outstanding.
     func handleUtterance(_ text: String) async -> Bool {
+        // The debrief first, and before the active-session guard: a debrief is usually about a
+        // job that finished hours ago, so "save" has to mean something with no job open at all
+        // (Plan FO P3b).
+        if debrief != nil, await handleDebriefUtterance(text) { return true }
         guard sessions.activeSession != nil else { return false }
 
         // The evidence review first, and only while it is actually open: "yes" is an answer to a
@@ -415,7 +438,8 @@ final class GuidedJobFlow: ObservableObject {
             boundThreadExists: bound.map { id in store.threads.contains { $0.id == id } } ?? false,
             boundThreadDetached: session?.conversationThreadDetached == true,
             activeThreadId: store.activeThreadId,
-            persistenceEnabled: seams.persistenceEnabled())
+            persistenceEnabled: seams.persistenceEnabled(),
+            debrief: debriefBinding())
     }
 
     private func apply(_ resolution: JobThreadPolicy.Resolution,
@@ -445,6 +469,13 @@ final class GuidedJobFlow: ObservableObject {
             if store.activeThreadId != nil { store.endThread() }
         }
     }
+
+    /// The thread inputs as the policy sees them, for the debrief half of the flow.
+    func debriefInputs() -> JobThreadPolicy.Inputs { inputs() }
+
+    /// The two-step resume, for the debrief half of the flow — id **and** history, never the id
+    /// alone.
+    func resumeThread(_ threadId: String) { resume(threadId) }
 
     /// The two-step resume, always. Never the id on its own.
     private func resume(_ threadId: String, force: Bool = false) {

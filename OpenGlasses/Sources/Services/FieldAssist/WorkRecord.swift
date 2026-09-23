@@ -46,6 +46,10 @@ struct WorkRecord: Codable, Equatable {
     /// carries is frozen at the moment of signing and is **not** re-derived from this record —
     /// that is the whole point of keeping it.
     let signOff: CustomerSignOff?
+    /// What was said about this job after the visit (Plan FO P3b). Appended, never merged into the
+    /// record's own lines: a debrief is the technician's account, and the tasks, the readings and
+    /// the time on the job above it are the visit's own facts.
+    let debriefs: [Debrief]
     let escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
@@ -71,6 +75,7 @@ struct WorkRecord: Codable, Equatable {
         case media
         case evidenceSelection = "evidence_selection"
         case signOff = "sign_off"
+        case debriefs
         case escalations
         case startedAt = "started_at"
         case endedAt = "ended_at"
@@ -103,6 +108,7 @@ struct WorkRecord: Codable, Equatable {
         self.media = session.media
         self.evidenceSelection = session.evidenceSelection
         self.signOff = session.signOff
+        self.debriefs = session.debriefs
         self.escalations = session.escalations.map {
             Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil)
         }
@@ -141,6 +147,7 @@ struct WorkRecord: Codable, Equatable {
         media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
         signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
+        debriefs = try c.decodeIfPresent([Debrief].self, forKey: .debriefs) ?? []
         escalations = try c.decodeIfPresent([Escalation].self, forKey: .escalations) ?? []
         startedAt = try c.decode(Date.self, forKey: .startedAt)
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)

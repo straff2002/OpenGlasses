@@ -121,6 +121,19 @@ final class SessionLogger {
             /// answer. Recorded because "we asked and got nowhere" is a different fact from never
             /// having asked.
             case customerSignOffCancelled = "customer_sign_off_cancelled"
+            /// A debrief was started on a job (Plan FO P3b) — on the phone or from the car.
+            case debriefStarted = "debrief_started"
+            /// One turn of a debrief, with the id its summary cites. Written as it is said, so a
+            /// debrief abandoned mid-drive still shows what was said and that nothing was saved.
+            case debriefTurn = "debrief_turn"
+            /// The technician saved a debrief onto the job. The only write in the whole flow.
+            case debriefSaved = "debrief_saved"
+            /// …or scrapped it, or walked away. The turns stay in the conversation, marked
+            /// unsaved, and nothing reaches the record.
+            case debriefDiscarded = "debrief_discarded"
+            /// A report or an addendum was put in the delivery queue by voice (Plan FO P3b), with
+            /// whether it went immediately or is waiting for a tap.
+            case sendQueued = "send_queued"
             /// The job report left by a channel the technician chose (Plan EM P2).
             case reportSent = "report_sent"
             /// …or the composer was dismissed, and the record is still in the queue.

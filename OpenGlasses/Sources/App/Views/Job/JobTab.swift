@@ -16,9 +16,10 @@ struct JobTab: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        // The flow is what publishes the change-of-unit question, so the content view observes it
-        // directly rather than through `AppState`, which does not republish its children.
-        JobTabContent(flow: appState.guidedJobFlow)
+        // The flow publishes the change-of-unit question and the debrief; the send service
+        // publishes the queue. `AppState` does not republish its children, so the content view
+        // observes both directly.
+        JobTabContent(flow: appState.guidedJobFlow, sends: appState.jobSends)
     }
 }
 
@@ -32,6 +33,7 @@ enum JobRoute: Hashable {
 private struct JobTabContent: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var flow: GuidedJobFlow
+    @ObservedObject var sends: JobSendService
     @StateObject private var sessions = FieldSessionService.shared
 
     @State private var path: [JobRoute] = []
@@ -61,6 +63,20 @@ private struct JobTabContent: View {
 
     private var model: JobTabModel { JobTabModel(host: sessions, flow: flow) }
 
+    /// The staged sends, when there are any (Plan FO P3b).
+    ///
+    /// Read fresh each pass rather than held: a send asked for in the car lands in the queue while
+    /// this screen may already be up, and the card has to appear without a navigation.
+    private var sendCard: JobSendQueueSection? {
+        guard let headline = sends.cardHeadline else { return nil }
+        return JobSendQueueSection(
+            entries: sends.staged,
+            headline: headline,
+            onSend: { sends.present($0) },
+            onSendAll: { _ = sends.sendAll() },
+            onCancel: { sends.cancel(id: $0.id) })
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             Group {
@@ -69,7 +85,8 @@ private struct JobTabContent: View {
                     NoActiveJobView(empty: empty, model: model, search: $search,
                                     typedReference: $typedReference,
                                     onStart: startJob,
-                                    onOpenPastJob: { path.append(.pastJob(sessionId: $0)) })
+                                    onOpenPastJob: { path.append(.pastJob(sessionId: $0)) },
+                                    sendCard: sendCard)
                 case .running(let job), .paused(let job):
                     ActiveJobView(job: job, model: model,
                                   typedReference: $typedReference,
@@ -87,7 +104,8 @@ private struct JobTabContent: View {
                                   onOpenPrivacySettings: { appState.requestedTab = .settings },
                                   onOpenConversation: openConversation,
                                   onReadBack: readBackTheJob,
-                                  onClose: startClosing)
+                                  onClose: startClosing,
+                                  sendCard: sendCard)
                 }
             }
             .navigationTitle("Job")
