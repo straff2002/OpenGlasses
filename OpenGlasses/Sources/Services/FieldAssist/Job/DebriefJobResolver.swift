@@ -72,7 +72,7 @@ enum DebriefJobResolver {
     static func resolve(_ spoken: String, candidates: [Candidate], current: String? = nil) -> Resolution {
         let text = spoken.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !candidates.isEmpty else {
-            return candidates.isEmpty ? .notFound(nothingToDebrief) : .notAReference
+            return candidates.isEmpty ? .notFound(question: nothingToDebrief) : .notAReference
         }
 
         // A number wins over a relative word: "debrief job 1006" said while on 1005 means 1006,
@@ -82,7 +82,7 @@ enum DebriefJobResolver {
             switch matches.count {
             case 1: return .resolved(sessionId: matches[0].sessionId)
             case 0:
-                return .notFound("I don't have a job \(number) on this device. "
+                return .notFound(question: "I don't have a job \(number) on this device. "
                                  + "Say the number again, or pick it from the Jobs list.")
             default:
                 return .ambiguous(question: ambiguityQuestion(number: number, matches: matches),
@@ -150,7 +150,7 @@ enum DebriefJobResolver {
             return .resolved(sessionId: candidates[0].sessionId)
         case .current:
             guard let index else {
-                return .notFound("There's no job in hand. Say the job number, or pick it from the "
+                return .notFound(question: "There's no job in hand. Say the job number, or pick it from the "
                                  + "Jobs list.")
             }
             return .resolved(sessionId: candidates[index].sessionId)
@@ -158,12 +158,12 @@ enum DebriefJobResolver {
             // Newest first, so "next" walks backwards in time — the next job to talk over.
             guard let index else { return .resolved(sessionId: candidates[0].sessionId) }
             guard index + 1 < candidates.count else {
-                return .notFound("That's the oldest job on the device. Say a job number instead.")
+                return .notFound(question: "That's the oldest job on the device. Say a job number instead.")
             }
             return .resolved(sessionId: candidates[index + 1].sessionId)
         case .previous:
             guard let index, index > 0 else {
-                return .notFound("There's nothing more recent than that one. Say a job number "
+                return .notFound(question: "There's nothing more recent than that one. Say a job number "
                                  + "instead.")
             }
             return .resolved(sessionId: candidates[index - 1].sessionId)

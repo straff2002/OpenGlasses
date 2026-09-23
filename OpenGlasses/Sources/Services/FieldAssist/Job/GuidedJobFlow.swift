@@ -75,7 +75,9 @@ final class GuidedJobFlow: ObservableObject {
     /// The debrief in hand, when one is (Plan FO P3b). Published because the past job's page and
     /// the Job tab both show it, and because a debrief on a *finished* job is state no session
     /// publishes on its own.
-    @Published private(set) var debrief: ActiveDebrief?
+    /// The setter is internal rather than private so the debrief half of the flow, which lives in
+    /// `GuidedJobFlow+Debrief.swift`, can move it. Nothing outside the flow writes it.
+    @Published var debrief: ActiveDebrief?
 
     init(sessions: FieldSessionService, store: ConversationStore, seams: Seams = Seams()) {
         self.sessions = sessions

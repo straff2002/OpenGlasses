@@ -1733,6 +1733,53 @@ final class FieldSessionService: ObservableObject {
                                       "reason": AnyCodable(JobThreadPolicy.BindReason.debriefStarted.rawValue)]))
     }
 
+    /// The channel this job's report went by last time, when it went at all.
+    ///
+    /// Read off the session's own append-only log, which is the only place a send is recorded.
+    /// **The addresses are not there and that is deliberate** (Plan EM): `completeDelivery` writes
+    /// down how many recipients there were and never who they were, so an addendum can follow the
+    /// original's *channel* and takes its recipients from the settings or the organisation profile.
+    func lastDeliveryChannel(sessionId: String) -> DeliveryChannel? {
+        let events: [SessionLogger.Event]
+        if activeSession?.id == sessionId, let logger {
+            events = logger.readEvents()
+        } else {
+            events = SessionLogger.readEvents(
+                at: sessionsRoot.appendingPathComponent(sessionId, isDirectory: true))
+        }
+        guard let sent = events.last(where: { $0.kind == .reportSent }),
+              let raw = sent.payload?["channel"]?.value as? String else { return nil }
+        return DeliveryChannel(rawValue: raw)
+    }
+
+    /// The addendum document for a job, or nil when it has nothing to add.
+    ///
+    /// Rendered from the debriefs `DebriefDocumentPolicy` places outside the work order, so a job
+    /// whose report has not gone produces **no** addendum — its debriefs are in the work order
+    /// where a reader will find them.
+    func addendumAttachment(sessionId: String) -> DeliveryRequest.Attachment? {
+        guard let session = activeSession?.id == sessionId ? activeSession
+                : history.first(where: { $0.id == sessionId }) else { return nil }
+        let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+        let record = WorkRecord(session: session, vaultName: name,
+                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                                    .recordLine(vaultName: name))
+        let placement = DebriefDocumentPolicy.placement(
+            debriefs: record.debriefs,
+            reportAlreadySent: reportWasSent(sessionId: sessionId))
+        let debriefs = placement.addendumDebriefs
+        guard !debriefs.isEmpty else { return nil }
+        let provenance = debriefs.compactMap(\.provenance).last
+        guard let lease = try? StagedExportCoordinator.fieldSession.makeLease(
+            fileExtension: "pdf", displayName: "debrief_addendum.pdf",
+            fallbackName: "debrief_addendum.pdf", write: { url in
+                try SessionExporter.writeAddendumPDF(record: record, debriefs: debriefs, to: url,
+                                                     provenance: provenance)
+            }) else { return nil }
+        return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
+                                          filename: record.reportFileStem + "-addendum.pdf")
+    }
+
     /// Write one debrief event against a session, open or finished.
     ///
     /// The turns are logged as they are said — before any save — so an abandoned debrief leaves a
@@ -1834,7 +1881,8 @@ final class FieldSessionService: ObservableObject {
         let liveSnapshot = activeSession?.id == sessionId ? activeSessionSnapshot() : nil
         let leases = try SessionExporter.export(sessionDir: dir, formats: formats,
                                                 sessionOverride: liveSnapshot,
-                                                clipPlan: clipPlan)
+                                                clipPlan: clipPlan,
+                                                reportAlreadySent: reportWasSent(sessionId: sessionId))
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
         // The op records which formats were produced, never their paths: a staged artifact's path

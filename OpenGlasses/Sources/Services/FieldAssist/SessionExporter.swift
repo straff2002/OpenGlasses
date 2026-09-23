@@ -46,7 +46,8 @@ enum SessionExporter {
                        coordinator: StagedExportCoordinator? = nil,
                        provenance: AIProvenance? = nil,
                        sessionOverride: FieldSession? = nil,
-                       clipPlan: ClipDeliveryPlan = .undecided) throws -> [StagedExportLease] {
+                       clipPlan: ClipDeliveryPlan = .undecided,
+                       reportAlreadySent: Bool = false) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device whatever
         // the entitlement. Manuals are not in it either way: an export carries citations, not text.
@@ -75,8 +76,14 @@ enum SessionExporter {
                 leases.append(try coordinator.makeLease(
                     fileExtension: "pdf", displayName: "work_order.pdf",
                     fallbackName: "work_order.pdf") {
+                        // A job whose report has gone prints no debrief here: that PDF is
+                        // finished, and anything said since travels as an addendum.
+                        let placement = DebriefDocumentPolicy.placement(
+                            debriefs: document.workRecord?.debriefs ?? [],
+                            reportAlreadySent: reportAlreadySent)
                         try writePDF(document, to: $0, photosDirectory: photos,
-                                     clipPlan: clipPlan)
+                                     clipPlan: clipPlan,
+                                     debriefs: placement.workOrderDebriefs)
                     })
             }
         } catch {
@@ -300,9 +307,14 @@ enum SessionExporter {
     /// - Parameter photosDirectory: the session's `photos/` directory, when the evidence the
     ///   technician selected should be drawn into the document. Absent — or with no selection
     ///   made — the photo section is the text bullet list the work order has always printed.
+    /// - Parameter debriefs: the debriefs this work order prints, decided by
+    ///   `DebriefDocumentPolicy` — **empty for a job whose report has already gone**, so a PDF a
+    ///   customer already holds re-renders byte for byte however much was said afterwards. Those
+    ///   debriefs travel in an addendum of their own (``writeAddendumPDF(record:debriefs:to:)``).
     static func writePDF(_ document: SessionExport, to url: URL,
                          photosDirectory: URL? = nil,
-                         clipPlan: ClipDeliveryPlan = .undecided) throws {
+                         clipPlan: ClipDeliveryPlan = .undecided,
+                         debriefs: [JobDebrief] = []) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
@@ -393,6 +405,12 @@ enum SessionExporter {
             if let signOff = document.workRecord?.signOff {
                 drawSignOff(signOff, from: photosDirectory, layout: layout)
             }
+
+            // What was said about the job afterwards (Plan FO P3b). After the acceptance because
+            // that is the order it happened in, and **only when the caller passed some**: a job
+            // whose report has already gone prints none here, because its customer's PDF is
+            // finished and an addendum is a second document.
+            if !debriefs.isEmpty { drawDebriefs(debriefs, layout: layout) }
 
             if !document.citations.isEmpty {
                 layout.section("Sources Cited")
@@ -487,6 +505,56 @@ enum SessionExporter {
         }
         layout.body(signOff.attributionLine())
         layout.caption(CustomerSignOff.disclaimer)
+    }
+
+    /// The debriefs, each its own dated block under one heading.
+    ///
+    /// The items are printed exactly as they were saved, marks included, and the block's caption
+    /// says what a debrief is — because a reader who meets one for the first time in a work order
+    /// has to be told it is the technician's account and not a second record of the work.
+    private static func drawDebriefs(_ debriefs: [JobDebrief], layout: PDFLayout) {
+        layout.section(JobDebrief.blockTitle)
+        for debrief in debriefs.sorted(by: { $0.recordedAt < $1.recordedAt }) {
+            layout.subheading(debrief.attributionLine())
+            if debrief.unsummarised { layout.body(JobDebrief.unsummarisedNote) }
+            for line in debrief.summaryLines where line != JobDebrief.unsummarisedNote {
+                layout.body(line)
+            }
+            if let provenance = debrief.provenance {
+                layout.caption("Summarised by \(provenance.modelIdentifier) "
+                               + "(instructions \(provenance.promptVersionDigest)).")
+            }
+        }
+        layout.caption(JobDebrief.disclaimer)
+    }
+
+    /// The addendum: a short document of its own, for a job whose work order has already gone
+    /// (Plan FO §6, P3b).
+    ///
+    /// Deliberately thin. It names the job, says plainly that the original record is unchanged,
+    /// and prints the debriefs — nothing else, because everything else is already in the document
+    /// the recipient holds.
+    static func writeAddendumPDF(record: WorkRecord, debriefs: [JobDebrief], to url: URL,
+                                 provenance: AIProvenance? = nil) throws {
+        let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = provenance?.pdfDocumentInfo ?? [
+            kCGPDFContextCreator as String: "OpenGlasses — contains AI-generated content",
+            kCGPDFContextSubject as String: "Field job debrief addendum. Model not recorded.",
+        ]
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+        let layout = PDFLayout(pageRect: pageRect, margin: 50)
+        try renderer.writePDF(to: url) { context in
+            layout.begin(context)
+            layout.heading(DebriefDocumentPolicy.addendumTitle)
+            layout.body(record.reportSubject)
+            layout.spacer(6)
+            layout.body(DebriefDocumentPolicy.addendumLede)
+            drawDebriefs(debriefs, layout: layout)
+            layout.section("Provenance")
+            layout.body(provenance?.footerLine
+                        ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
+        }
     }
 
     /// "3 pictures and one clip selected by the technician." — the sentence under the heading.

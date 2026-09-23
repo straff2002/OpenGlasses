@@ -20,8 +20,14 @@ enum CarPlayJobsList {
         /// Resume the open job's conversation. `threadId` is nil while the job owns none yet —
         /// nothing has been said on it — and the row then only speaks.
         case resumeActiveJob(threadId: String?)
-        /// Read this finished job's name aloud. Nothing else is shown.
+        /// Read this finished job's name aloud. Nothing else is shown — what a past row does when
+        /// a debrief cannot be started (Field Assist off).
         case speakPastJob(sessionId: String)
+        /// Start a debrief on this finished job (Plan FO P3b). The app names the job aloud and
+        /// listens; nothing is written until the technician saves.
+        case debriefPastJob(sessionId: String)
+        /// Read the delivery queue back — "what's waiting?" without having to say it.
+        case readSendQueue
     }
 
     struct Row: Identifiable, Equatable {
@@ -53,10 +59,27 @@ enum CarPlayJobsList {
     ///     plan is, so a paused job is still the job and a cancelled one is not.
     ///   - history: every session the device holds; finished ones are taken from it, newest first.
     ///   - boundThreadId: the conversation the open job owns, when it owns one.
+    /// - Parameters:
+    ///   - debriefAvailable: whether a past row's action is **Debrief** (Plan FO P3b) or the
+    ///     read-only name it was before. False when Field Assist is off, where a debrief would
+    ///     have nothing to write onto.
+    ///   - stagedSends: how many reports are waiting for a thumb. More than none puts one row at
+    ///     the top that reads the queue back, so "what's waiting?" is answerable at a glance as
+    ///     well as out loud.
     static func rows(active: FieldSession?,
                      history: [FieldSession],
-                     boundThreadId: String?) -> [Row] {
+                     boundThreadId: String?,
+                     debriefAvailable: Bool = false,
+                     stagedSends: Int = 0) -> [Row] {
         var rows: [Row] = []
+        if stagedSends > 0 {
+            rows.append(Row(id: "send-queue",
+                            title: stagedSends == 1 ? "1 report ready to send"
+                                                    : "\(stagedSends) reports ready to send",
+                            detail: "Needs the phone",
+                            isActiveJob: false,
+                            selection: .readSendQueue))
+        }
         if let active, active.endedAt == nil, active.outcome != .cancelled {
             rows.append(Row(id: active.id,
                             title: title(for: active),
@@ -74,7 +97,9 @@ enum CarPlayJobsList {
                             detail: "\(session.startedAt.formatted(date: .abbreviated, time: .omitted)) · "
                                 + session.outcome.displayName,
                             isActiveJob: false,
-                            selection: .speakPastJob(sessionId: session.id)))
+                            selection: debriefAvailable
+                                ? .debriefPastJob(sessionId: session.id)
+                                : .speakPastJob(sessionId: session.id)))
         }
         return rows
     }

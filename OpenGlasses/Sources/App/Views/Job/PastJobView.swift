@@ -19,6 +19,8 @@ struct PastJobView: View {
     /// answer, rather than on every pass of the body: the answer comes off the session's own log
     /// on disk, and a `List` re-evaluates its body far more often than a report is sent.
     @State private var canStillSign = false
+    /// The debrief sheet, while one is being taken on the phone (Plan FO P3b).
+    @State private var showingDebrief = false
 
     private var job: JobTabModel.PastJob? { model.pastJob(id: sessionId) }
 
@@ -46,6 +48,21 @@ struct PastJobView: View {
             Text(problem ?? "")
         }
         .onAppear { canStillSign = model.signOffIsStillOpen(sessionId: sessionId) }
+        .sheet(isPresented: $showingDebrief) {
+            if let active = appState.guidedJobFlow.debrief {
+                JobDebriefSheet(
+                    debrief: active,
+                    onFinish: { Task { await appState.guidedJobFlow.finishDebrief() } },
+                    onSave: { Task { await appState.guidedJobFlow.saveDebrief() } },
+                    onDiscard: { Task { await appState.guidedJobFlow.discardDebrief() } },
+                    onRetry: { Task { await appState.guidedJobFlow.retryDebriefSummary() } },
+                    onKeepRaw: { Task { await appState.guidedJobFlow.keepDebriefRaw() } },
+                    onClose: {
+                        appState.guidedJobFlow.endDebrief()
+                        showingDebrief = false
+                    })
+            }
+        }
         .sheet(item: $signOffStep) { step in
             JobSignOffStepView(
                 summaryLines: step.lines,
@@ -141,6 +158,12 @@ struct PastJobView: View {
             // pictures were chosen, the customer signed, and only then does anything get sent.
             signOffSection
 
+            // What was said about the job afterwards (Plan FO P3b). After the acceptance, because
+            // that is the order it happened in, and read-only: a debrief is added by talking, and
+            // saving one is the only thing that writes.
+            let debriefs = model.debriefs(sessionId: sessionId)
+            if !debriefs.isEmpty { JobDebriefSection(debriefs: debriefs) }
+
             Section {
                 if let threadId = job.threadId {
                     choice("Open the conversation") { onOpenTranscript(threadId) }
@@ -153,8 +176,18 @@ struct PastJobView: View {
 
                 choice("Read back the job") { readBack = job.summaryLines }
 
+                choice("Debrief this job") { beginDebrief() }
+                    .accessibilityHint("Talk the job over. Nothing is added until you save it.")
+
                 choice("Send report…") { sendReport(job) }
                     .accessibilityHint("Fills in the report and opens it. Nothing leaves the phone until you tap Send.")
+
+                // Only when there is something a second document would carry: before the report
+                // has gone, a debrief prints in the work order itself.
+                if model.hasAddendum(sessionId: sessionId) {
+                    choice("Send addendum…") { sendAddendum(job) }
+                        .accessibilityHint("Sends the debrief as a second document. The work order already sent is unchanged.")
+                }
             } header: {
                 Text("This job")
             }
@@ -242,6 +275,41 @@ struct PastJobView: View {
         Button(action: action) {
             Text(title)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+        }
+    }
+
+    /// Start a debrief on this job, through the flow — the same chokepoint the car goes through,
+    /// so the phone and CarPlay cannot end up doing different things.
+    private func beginDebrief() {
+        Task {
+            let started = await appState.guidedJobFlow.startDebrief(jobId: sessionId)
+            if started { showingDebrief = true }
+            else { problem = "That job's record could not be read back off the device." }
+        }
+    }
+
+    /// The addendum: the same channel the original went by, the same composer, a second document.
+    /// Never automatic — this is a tap, and the composer is another.
+    private func sendAddendum(_ job: JobTabModel.PastJob) {
+        let sessions = FieldSessionService.shared
+        let policy = DeliveryPolicy(settings: Config.deliverySettings)
+        let channel = sessions.lastDeliveryChannel(sessionId: job.sessionId)
+            ?? policy.defaultChannel
+        guard let channel else {
+            problem = "No channel is allowed for job reports. Set one up under Settings → Field Assist → Job Reports."
+            return
+        }
+        switch policy.decide(channel: channel) {
+        case .refused(let reason):
+            problem = reason
+        case .allowed(let recipients):
+            guard let attachment = sessions.addendumAttachment(sessionId: job.sessionId) else {
+                problem = "There's nothing to add to that report yet."
+                return
+            }
+            appState.presentDelivery(DeliveryRequest.make(
+                record: job.record, channel: channel, recipients: recipients,
+                attachments: [attachment]))
         }
     }
 

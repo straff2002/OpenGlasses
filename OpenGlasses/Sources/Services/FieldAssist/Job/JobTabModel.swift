@@ -31,6 +31,12 @@ protocol JobTabHosting: WorkRecordHosting {
                        sessionId: String?) -> CustomerSignOff?
     func logSignOffCancelled(sessionId: String?)
     func signatureURL(sessionId: String, imageId: String) -> URL
+
+    // Debriefs (Plan FO P3b). On the protocol for the same reason the sign-off seams are: "the
+    // work order a customer already holds is unchanged by an addendum" is an assertion a spy can
+    // make about what the page asked for.
+    func debriefs(sessionId: String) -> [JobDebrief]
+    func reportWasSent(sessionId: String) -> Bool
 }
 
 extension FieldSessionService: JobTabHosting {}
@@ -697,6 +703,33 @@ struct JobTabModel {
     /// What "Read back" speaks and shows. The record's own lines, in the record's own order.
     var readBackLines: [String]? { host.workRecord()?.summaryLines }
     var readBackSpeech: String? { host.workRecord()?.summary }
+
+    // MARK: - Debriefs (Plan FO P3b)
+
+    /// A job's saved debriefs, newest first. Empty for a job nobody talked over, which is every
+    /// job before this existed.
+    func debriefs(sessionId: String) -> [JobDebrief] { host.debriefs(sessionId: sessionId) }
+
+    /// Whether this job has anything an addendum would carry.
+    ///
+    /// Only a job whose report has **already gone**: before that, a debrief prints in the work
+    /// order itself and a second document would be a second copy of the same words.
+    func hasAddendum(sessionId: String) -> Bool {
+        !DebriefDocumentPolicy.placement(debriefs: host.debriefs(sessionId: sessionId),
+                                         reportAlreadySent: host.reportWasSent(sessionId: sessionId))
+            .addendumDebriefs.isEmpty
+    }
+
+    /// The job as the debrief flow names it, for a debrief started from the phone.
+    func debriefCandidate(sessionId: String) -> DebriefJobResolver.Candidate? {
+        guard let session = host.history.first(where: { $0.id == sessionId }) else { return nil }
+        return DebriefJobResolver.Candidate(
+            sessionId: session.id,
+            jobReference: session.jobReference.flatMap { $0.isEmpty ? nil : $0 },
+            startedAt: session.startedAt,
+            outcomeLabel: session.outcome.displayName,
+            isActive: session.endedAt == nil && session.outcome != .cancelled)
+    }
 
     // MARK: - The job's conversation
 

@@ -169,7 +169,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             let sessions = FieldSessionService.shared
             let rows = CarPlayJobsList.rows(active: sessions.activeSession,
                                             history: sessions.history,
-                                            boundThreadId: appState.guidedJobFlow.boundThreadId)
+                                            boundThreadId: appState.guidedJobFlow.boundThreadId,
+                                            debriefAvailable: Config.fieldAssistActive,
+                                            stagedSends: appState.jobSends.stagedCount)
             var items: [CPListItem] = rows.map { row in
                 let item = CPListItem(
                     text: row.title,
@@ -217,8 +219,17 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 appState.guidedJobFlow.requestResume(threadId: threadId, confirmed: false)
                 self.startVoice()
             case .speakPastJob:
-                // Read-only by design. The debrief that would make this do more is P3b.
+                // Read-only: what a past row does with Field Assist off, where a debrief would
+                // have nothing to write onto.
                 await appState.speechService.speak(spoken)
+            case .debriefPastJob(let sessionId):
+                // Through the flow, which names the job out loud and binds the turns to *that*
+                // job's conversation. Nothing is written until the technician says "save".
+                let started = await appState.guidedJobFlow.startDebrief(jobId: sessionId)
+                if started { self.startVoice() }
+                else { await appState.speechService.speak(spoken) }
+            case .readSendQueue:
+                await appState.speechService.speak(appState.jobSends.spokenQueue())
             }
         }
     }

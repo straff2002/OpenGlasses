@@ -32,6 +32,9 @@ struct ActiveJobView: View {
     let onOpenConversation: () -> Void
     let onReadBack: () -> Void
     let onClose: () -> Void
+    /// Reports asked for by voice and waiting for a thumb (Plan FO P3b). Above the job itself for
+    /// the same reason the empty state puts it first.
+    var sendCard: JobSendQueueSection?
 
     @Environment(\.appAccent) private var accent
     @FocusState private var referenceFocused: Bool
@@ -39,6 +42,7 @@ struct ActiveJobView: View {
 
     var body: some View {
         List {
+            sendCard
             if let unitQuestion { questionCard(unitQuestion) }
             if let leaveThread { threadQuestionCard(leaveThread) }
             jobNumberSection

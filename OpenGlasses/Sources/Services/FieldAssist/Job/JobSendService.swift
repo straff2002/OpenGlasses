@@ -53,6 +53,10 @@ final class JobSendService: ObservableObject {
     @Published private(set) var proposal: Proposal?
     /// Republished whenever the queue moves, so SwiftUI sees a change through this object.
     @Published private(set) var revision = 0
+    /// The entry whose composer is on screen, so the outcome lands on the right one.
+    private(set) var presenting: QueuedSend?
+    /// Whether Send all is walking the queue.
+    private(set) var sendingAll = false
 
     init(queue: DeliveryQueueStore? = nil, seams: Seams = Seams()) {
         self.queue = queue ?? DeliveryQueueStore()
@@ -198,9 +202,11 @@ final class JobSendService: ObservableObject {
                                                entry.documentKind) else {
             queue.update(id: entry.id, to: .failed,
                          failureReason: "the job's record could not be read back")
+            presenting = nil
             revision += 1
             return
         }
+        presenting = entry
         seams.presentComposer(request)
     }
 
@@ -209,6 +215,7 @@ final class JobSendService: ObservableObject {
     /// deal with them, not a decision that they all go.
     func sendAll() -> [QueuedSend] {
         let ready = staged
+        sendingAll = ready.count > 1
         if let first = ready.first { present(first) }
         return ready
     }
@@ -221,12 +228,35 @@ final class JobSendService: ObservableObject {
     }
 
     /// A composer closed. Only a confirmed send moves the entry; everything else leaves it where
-    /// it was, which is what makes "nothing is silently lost" true here as well.
+    /// it was — **a cancelled one stays queued**, which is what makes Send all an offer to deal
+    /// with them rather than a decision that they all go.
     func complete(id: String, outcome: DeliveryOutcome) {
-        queue.update(id: id, to: outcome.isSent ? .sent : .staged,
-                     failureReason: outcome.isSent ? nil : nil)
+        queue.update(id: id, to: outcome.isSent ? .sent : .staged)
         revision += 1
         if stagedCount > 0 { seams.notify(stagedCount) }
+    }
+
+    /// The composer this service opened has closed. Advances Send all to the next one.
+    func completePresented(outcome: DeliveryOutcome) {
+        guard let entry = presenting else { return }
+        presenting = nil
+        complete(id: entry.id, outcome: outcome)
+        guard sendingAll else { return }
+        // A cancelled entry stays queued and stays in the walk's wake: `next(after:)` reads the
+        // staged list as it stands, so the one just dismissed is stepped over rather than
+        // re-opened in a loop nobody can escape.
+        let remaining = staged.filter { $0.id != entry.id }
+        guard let following = remaining.first else {
+            sendingAll = false
+            return
+        }
+        present(following)
+    }
+
+    /// Whether this service opened the composer now on screen.
+    func owns(_ request: DeliveryRequest) -> Bool {
+        guard let entry = presenting else { return false }
+        return entry.sessionId == request.sessionId
     }
 
     /// The technician cancelled one from the card. Every other entry is untouched.

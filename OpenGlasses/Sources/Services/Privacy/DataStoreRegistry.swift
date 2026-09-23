@@ -75,6 +75,7 @@ enum SensitiveStore: String, CaseIterable {
     case vaultLedger
     case vaultLinkStaging
     case fieldDeliverySettings
+    case jobDeliveryQueue
     case safetyAssessments
 
     // Clinical
@@ -534,6 +535,20 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "DeliverySettings",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/DeliverySettings.swift"],
                           location: "preferences key `fieldAssistDeliverySettings`; its token is in the Keychain")
+
+        case .jobDeliveryQueue:
+            // Reports asked for by voice and waiting for a thumb (Plan FO P3b). It holds the
+            // recipients each one would go to — somebody's contact details — so it is protected
+            // and kept out of backup rather than left to the container's default: a queue restored
+            // onto another phone would offer to send a report that already went.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .complete, backupExcluded: true,
+                          retention: .cap(DeliveryQueue.entryCap),
+                          deleteAll: .api("DeliveryQueueStore.removeAll()"),
+                          deleteSubject: .unavailable("entries are filed by job, not by recipient"),
+                          owner: "DeliveryQueueStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/DeliveryQueue.swift"],
+                          location: "Application Support/FieldAssist/delivery-queue.json")
 
         case .safetyAssessments:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,

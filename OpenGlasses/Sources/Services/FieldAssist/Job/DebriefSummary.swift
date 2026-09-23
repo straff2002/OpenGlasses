@@ -187,7 +187,7 @@ extension DebriefSummary {
 /// never partially applies.
 enum DebriefSummaryDecoder {
 
-    enum Failure: Equatable {
+    enum Failure: Error, Equatable {
         case notAnObject
         /// Every category was missing or empty.
         case empty
