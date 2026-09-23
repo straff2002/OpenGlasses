@@ -63,6 +63,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// was never offered for sign-off, on one where the technician skipped the step, and on every
     /// session recorded before this existed.
     var signOff: CustomerSignOff?
+    /// Debriefs appended to this job (Plan FO P3b) — each one dated, each one its own entry, and
+    /// every one of them written only by a technician's explicit save. A debrief never reopens the
+    /// visit: nothing here touches `billableSeconds`, `tasks`, `equipment` or `signOff`.
+    var debriefs: [JobDebrief] = []
     /// A new scope on equipment change prevents carrying work onto another machine (FM).
     var continuityScope: String = "initial"
     var taskEquipmentScopes: [String: String] = [:]
@@ -160,7 +164,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case startLocation, endLocation, escalations, billableSeconds, billingBasis
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
-        case media, evidenceSelection, signOff
+        case media, evidenceSelection, signOff, debriefs
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
@@ -202,6 +206,7 @@ extension FieldSession {
         media = try c.decodeIfPresent([JobMediaItem].self, forKey: .media) ?? []
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
         signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
+        debriefs = try c.decodeIfPresent([JobDebrief].self, forKey: .debriefs) ?? []
         continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]

@@ -1663,6 +1663,93 @@ final class FieldSessionService: ObservableObject {
         }
     }
 
+    // MARK: Debriefs (Plan FO P3b)
+
+    /// Every debrief on a session, open or finished, newest first.
+    func debriefs(sessionId: String) -> [JobDebrief] {
+        let session = activeSession?.id == sessionId ? activeSession
+            : history.first { $0.id == sessionId }
+        return (session?.debriefs ?? []).sorted { $0.recordedAt > $1.recordedAt }
+    }
+
+    /// Append a debrief to a job — the **only** write the whole debrief flow makes.
+    ///
+    /// It is deliberately narrow. Nothing here touches `billableSeconds`, the tasks, the
+    /// equipment, the evidence selection or the customer's sign-off: a debrief is an account added
+    /// after the visit, not a re-opening of it, and a method that could reach any of those would
+    /// be a method somebody eventually would. A finished session is updated through a logger
+    /// opened on its own directory, the same route `recordSignOff` takes and for the same reason.
+    @discardableResult
+    func recordDebrief(_ debrief: JobDebrief, sessionId: String? = nil) -> JobDebrief? {
+        let targetId = sessionId ?? activeSession?.id
+        guard let targetId else { return nil }
+        let isActive = activeSession?.id == targetId
+        guard isActive || history.contains(where: { $0.id == targetId }) else { return nil }
+
+        if isActive {
+            mutateSession { $0.debriefs.append(debrief); return () }
+        } else if let stored = history.first(where: { $0.id == targetId }) {
+            let logger = SessionLogger(session: stored,
+                                       root: sessionsRoot.appendingPathComponent(targetId,
+                                                                                 isDirectory: true))
+            let updated = logger.updateSession { $0.debriefs.append(debrief) }
+            history = history.replacingFirst(matching: targetId, with: updated)
+        }
+
+        // Counts and provenance, never the items: the entries are the technician's words and they
+        // are already on the session record. An audit needs to know a debrief was saved, by which
+        // model, from how many turns.
+        logDebrief(.debriefSaved, sessionId: targetId, text: debrief.id, payload: [
+            "entries": AnyCodable(debrief.entries.count),
+            "turns": AnyCodable(debrief.turns.count),
+            "unsummarised": AnyCodable(debrief.unsummarised),
+            "model": AnyCodable(debrief.provenance?.modelIdentifier ?? ""),
+            "prompt_digest": AnyCodable(debrief.provenance?.promptVersionDigest ?? "")
+        ])
+        return debrief
+    }
+
+    /// Give a job the conversation its debrief is landing in (Plan FO P3b).
+    ///
+    /// Only when it has none. A job that already owns a thread keeps it — the debrief's turns join
+    /// that conversation, which is the point — and a finished job that never had one gains this
+    /// binding so review later finds the debrief in place rather than in an orphan thread.
+    func bindDebriefThread(_ threadId: String, sessionId: String) {
+        if activeSession?.id == sessionId {
+            guard activeSession?.conversationThreadId == nil else { return }
+            bindConversationThread(threadId, reason: .debriefStarted)
+            return
+        }
+        guard let stored = history.first(where: { $0.id == sessionId }),
+              stored.conversationThreadId == nil else { return }
+        let logger = SessionLogger(session: stored,
+                                   root: sessionsRoot.appendingPathComponent(sessionId,
+                                                                             isDirectory: true))
+        let updated = logger.updateSession { $0.conversationThreadId = threadId }
+        history = history.replacingFirst(matching: sessionId, with: updated)
+        logger.append(.init(timestamp: Date(), kind: .jobThreadBound,
+                            text: JobThreadPolicy.BindReason.debriefStarted.rawValue,
+                            payload: ["thread": AnyCodable(threadId),
+                                      "reason": AnyCodable(JobThreadPolicy.BindReason.debriefStarted.rawValue)]))
+    }
+
+    /// Write one debrief event against a session, open or finished.
+    ///
+    /// The turns are logged as they are said — before any save — so an abandoned debrief leaves a
+    /// record of what was said and of the fact that nothing was written onto the job.
+    func logDebrief(_ kind: SessionLogger.Event.Kind, sessionId: String, text: String? = nil,
+                    payload: [String: AnyCodable] = [:]) {
+        let event = SessionLogger.Event(timestamp: Date(), kind: kind, text: text,
+                                        payload: payload.isEmpty ? nil : payload)
+        if activeSession?.id == sessionId {
+            logger?.append(event)
+        } else if let stored = history.first(where: { $0.id == sessionId }) {
+            SessionLogger(session: stored,
+                          root: sessionsRoot.appendingPathComponent(sessionId, isDirectory: true))
+                .append(event)
+        }
+    }
+
     // MARK: - Procedures
 
     /// "id — title" summaries of procedures available in the active session's vault.

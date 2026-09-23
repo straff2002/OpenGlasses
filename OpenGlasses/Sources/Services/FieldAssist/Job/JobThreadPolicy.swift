@@ -40,14 +40,56 @@ enum JobThreadPolicy {
         var activeThreadId: String?
         /// Whether conversations are being saved at all.
         var persistenceEnabled: Bool = true
+        /// The debrief in hand, when one is (Plan FO P3b).
+        var debrief: DebriefBinding?
     }
 
     /// Where a turn came from. Carried through so the audit can say which surface bound a thread,
     /// and so a future rule can treat a typed turn differently without reshaping the policy.
-    enum TurnSource: String, Equatable {
+    ///
+    /// `.debrief` is the one that is not about the open job (Plan FO P3b): a debrief is a
+    /// conversation about **a chosen job**, which is usually a finished one, and its turns belong
+    /// in *that* job's thread rather than in whatever the technician has open. A turn tagged with
+    /// it therefore resolves against the debrief binding below and nothing else.
+    enum TurnSource: Equatable {
         case wakeWord
         case tapToTalk
         case typed
+        case debrief(jobId: String)
+
+        /// What the audit log records.
+        var label: String {
+            switch self {
+            case .wakeWord: return "wakeWord"
+            case .tapToTalk: return "tapToTalk"
+            case .typed: return "typed"
+            case .debrief: return "debrief"
+            }
+        }
+
+        var debriefJobId: String? {
+            if case .debrief(let jobId) = self { return jobId }
+            return nil
+        }
+    }
+
+    /// The job a debrief is bound to, and the conversation that debrief's turns land in.
+    ///
+    /// Held beside the active job rather than folded into it: the two are routinely different
+    /// things — a debrief on job 1004 while job 1005 is open is the ordinary case on a drive — and
+    /// a binding that confused them would put one customer's account on another's record.
+    struct DebriefBinding: Equatable {
+        let jobId: String
+        /// The thread that job owns, when it owns one.
+        var threadId: String?
+        /// Whether that thread is still in the store.
+        var threadExists: Bool = false
+
+        init(jobId: String, threadId: String? = nil, threadExists: Bool = false) {
+            self.jobId = jobId
+            self.threadId = threadId
+            self.threadExists = threadExists
+        }
     }
 
     /// What the app is about to do.
@@ -71,6 +113,9 @@ enum JobThreadPolicy {
         case jobStarted
         case noThreadYet
         case boundThreadDeleted
+        /// A debrief was started on a job that never had a conversation — a job closed before the
+        /// guided flow existed, or one nobody spoke on (Plan FO P3b).
+        case debriefStarted
     }
 
     enum Resolution: Equatable {
@@ -106,6 +151,19 @@ enum JobThreadPolicy {
             if let active = inputs.activeThreadId { return .bindActiveThread(id: active) }
             return .deferBinding
 
+        case .turn(let source) where source.debriefJobId != nil:
+            // A debrief's turn goes to the debriefed job's own thread, whatever is open. It never
+            // falls back to the active job: a debrief turn filed against the wrong job is the one
+            // failure §6 exists to prevent, so with no binding it goes nowhere near a thread.
+            guard inputs.persistenceEnabled else { return .proceedUnbound }
+            guard let debrief = inputs.debrief, debrief.jobId == source.debriefJobId else {
+                return .proceedUnbound
+            }
+            guard let thread = debrief.threadId, debrief.threadExists else {
+                return .bindNewThread(reason: .debriefStarted)
+            }
+            return .useBoundThread(id: thread)
+
         case .turn:
             guard inputs.jobActive, inputs.persistenceEnabled else { return .proceedUnbound }
             guard !inputs.boundThreadDetached else { return .proceedUnbound }
@@ -120,6 +178,12 @@ enum JobThreadPolicy {
 
         case .returnToWakeWord, .disconnect:
             guard inputs.persistenceEnabled, inputs.activeThreadId != nil else { return .keepThread }
+            // A debrief owns the open thread across wake-word cycles exactly as a job does — the
+            // conversation is the point of it, and ending it between sentences would scatter one
+            // account across several threads.
+            if let debrief = inputs.debrief, debrief.threadId == inputs.activeThreadId {
+                return .keepThread
+            }
             guard inputs.jobActive, !inputs.boundThreadDetached else { return .endThread }
             // A job is running. The open thread is the job's — either already bound, or about to
             // be by the next turn — unless the technician deliberately stepped into another one.
