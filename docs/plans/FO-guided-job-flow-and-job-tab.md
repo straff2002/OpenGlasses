@@ -1323,6 +1323,28 @@ fixture through the `summarise` seam. Whether a technician can hold a five-minut
 at motorway speed, and whether the summary a real model returns survives the decoder often enough
 to be useful, are **owed to P4**.
 
+### What P3b's accessibility run actually measured (corrected 2026-09-24)
+
+The paragraph above says two accessibility audits and nine screenshots covered the Send card, the
+past job's debrief and the debrief sheet. **They did not.** The audit job on the merging PR failed
+twenty-six of its sixty-five cases — every Job-tab case in all three suites, including cases
+written before this phase existed — and the three screenshot cases that "passed" assert nothing at
+all: they wait on the card with the result discarded and then photograph whatever is on screen. So
+the two new audits never reached a card to measure, and no picture of these screens was ever
+looked at.
+
+The cause was one line of seeding, not the tab. `seedStagedSends` *appends* three reports to the
+delivery queue, which is durable state in Application Support: the defaults wipe at the top of
+`applyLaunchState` does not reach it, and nothing else removed it. Three launches into a run the
+card was nine reports tall, seven into it twenty-one — taller than the screen — and everything
+below it on the Job tab is in a lazily built `List`, so the vault row, "Start job" and every past
+job stopped existing in the accessibility tree. The failing run's own tree recorded it: a test that
+passes no seeding flags at all showed a card headed "21 reports ready to send".
+
+A UI-test launch now clears the queue where it already clears the sessions, and the store names its
+own file so the two cannot drift apart (`DeliveryQueueStore.eraseStoredQueue`). The claim above
+holds only from the run that fixed it onwards.
+
 ### Seams left for P3c
 
 - `DebriefJobResolver.Candidate` is the shape the job-ahead list needs, and `debriefCandidates()`
