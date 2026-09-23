@@ -82,6 +82,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | fieldSessionLogs | `SessionLogger` | operationalAudit | wearer | platformDefault | no | none | none — a session log is the engineer's compliance record | n/a — no subject linkage |
 | geofenceReminders | `GeofenceTool` | locationData | wearer | platformDefault | no | none | none — reminders are removed individually as they fire | n/a — no subject linkage |
 | installedSkills | `InstalledSkillStore` | skillDefinition | none | platformDefault | no | none | none — skills are uninstalled individually | n/a — no subject linkage |
+| jobDeliveryQueue | `DeliveryQueueStore` | operationalAudit | wearer | complete | yes | cap 200 | `DeliveryQueueStore.removeAll()` | n/a — no subject linkage |
 | keychainClinicalCredentials | `KeychainFHIRSecretStore` | credential | thirdPartySubject | keychainWhenUnlockedThisDeviceOnly | yes | none | none — credentials are removed per FHIR server | `FHIRCredentialStore.deleteContext(serverID:)` |
 | keychainConversationKey | `ConversationEncryptionService` | credential | wearer | keychainWhenUnlockedThisDeviceOnlyWithUserPresence | yes | none | `ConversationEncryptionService.deleteKey()` | n/a — no subject linkage |
 | keychainDeviceIdentity | `OpenClawDeviceIdentity` | credential | none | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — the identity is the device's, not a subject's | n/a — no subject linkage |
