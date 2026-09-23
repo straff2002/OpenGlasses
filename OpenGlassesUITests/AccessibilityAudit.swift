@@ -299,14 +299,19 @@ class AccessibilityAuditCase: XCTestCase {
         XCTContext.runActivity(named: "Accessibility audit — \(screen)") { activity in
             var failures: [String] = []
             var deferred: [String] = []
+            var failureKinds: Set<AuditFindingKind> = []
             let policy = AuditRetryPolicy.standard
             var attempt = 1
+            let confirmation = AuditConfirmationPolicy.standard
+            var confirmations = 0
+            var firstPassFindings = 0
 
             while true {
                 // Each attempt reports into empty accumulators, so a service that emitted part of
                 // a result before timing out cannot leave duplicates or stale findings behind.
                 failures.removeAll(keepingCapacity: true)
                 deferred.removeAll(keepingCapacity: true)
+                failureKinds.removeAll()
                 do {
                     try app.performAccessibilityAudit(for: types) { issue in
                         if let deferral = deferrals.first(where: {
@@ -316,7 +321,28 @@ class AccessibilityAuditCase: XCTestCase {
                             return true
                         }
                         failures.append(Self.describe(issue))
+                        failureKinds.insert(issue.auditType == .dynamicType ? .dynamicType : .other)
                         return true
+                    }
+                    // The Dynamic Type check sweeps the app through a dozen text sizes while it
+                    // measures, and a step read before the page has finished reflowing reports
+                    // every text element of the lagging container as "partially unsupported".
+                    // That reading does not reproduce; a fixed-size font does. So a result whose
+                    // only new findings are Dynamic Type is measured once more on the same still
+                    // screen, and the second pass is the verdict (`AuditConfirmationPolicy`, which
+                    // carries the evidence). Both passes are printed; nothing is deferred.
+                    if confirmation.shouldMeasureAgain(findingKinds: failureKinds,
+                                                       confirmationsSoFar: confirmations) {
+                        firstPassFindings = failures.count
+                        let text = failures.joined(separator: "\n\n")
+                        activity.add(XCTAttachment(string: "First pass — not yet believed:\n\n\(text)"))
+                        print("[a11y-audit] \(screen): \(failures.count) Dynamic Type finding(s) on "
+                              + "the first pass and nothing else; measuring again on the still "
+                              + "screen in \(Int(confirmation.settleDelay))s before believing "
+                              + "them\n\(text)")
+                        confirmations += 1
+                        Self.pause(for: confirmation.settleDelay)
+                        continue
                     }
                     break
                 } catch {
@@ -346,6 +372,19 @@ class AccessibilityAuditCase: XCTestCase {
             if attempt > 1 {
                 print("[a11y-audit] \(screen): audit completed on attempt \(attempt) of "
                       + "\(policy.maxAttempts) after retrying")
+            }
+
+            if confirmations > 0 {
+                // Said either way, so a CI log shows how often the sweep is being caught
+                // mid-reflow — a rising count is a runner getting slower, and worth knowing.
+                if failures.isEmpty {
+                    print("[a11y-audit] \(screen): the \(firstPassFindings) first-pass Dynamic Type "
+                          + "finding(s) did not reproduce on the second pass — a reading taken "
+                          + "mid-reflow during the audit's own size sweep, not a defect")
+                } else {
+                    print("[a11y-audit] \(screen): the Dynamic Type findings reproduced on the "
+                          + "second pass (\(failures.count) of \(firstPassFindings)) — failing")
+                }
             }
 
             if !deferred.isEmpty {

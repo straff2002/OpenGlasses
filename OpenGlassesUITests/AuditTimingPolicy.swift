@@ -52,6 +52,62 @@ struct AuditRetryPolicy: Equatable {
     }
 }
 
+/// The audit types a pass reported new (undeferred) findings for, reduced to the one distinction
+/// `AuditConfirmationPolicy` cares about. Kept free of `XCUIAccessibilityAuditType` so this file
+/// stays unit-testable; the audit helper does the mapping.
+enum AuditFindingKind: Hashable {
+    /// "Dynamic Type font sizes are (partially) unsupported".
+    case dynamicType
+    /// Contrast, clipping, hit region, trait, description, element detection.
+    case other
+}
+
+/// Whether a first pass of the audit is believed as it stands, or measured once more.
+///
+/// The Dynamic Type check is the one audit that *moves the app while it measures it*. It steps
+/// the content size category through about a dozen sizes in a few seconds and reads every text
+/// element's frame at each step. On a scroll page of rows that is a full reflow per step: rows
+/// grow, the scroll offset is re-clamped, the hero card leaves the screen. A step read before the
+/// reflow has finished sees copy still at the previous size, and the audit reports that as
+/// "partially unsupported" — on every text element of the container that lagged, all at once.
+///
+/// That is the shape of every settings-hub failure the gate has had since #484 (nightly
+/// 35739123389 on 2026-09-22, PR run 35828512230 attempt 1 on 2026-09-23, and 6f08dfe2/8de36b08
+/// before it): 14–17 Dynamic Type findings on the hub's own row titles, subtitles, values and
+/// Discover pitches, nothing else new, and nothing reproducible. The screen was measurably still
+/// before the audit began (the test's screen recording shows the hub unchanged for 5–7 s, and
+/// `awaitStableFrame` logged three identical samples on the unfolded row and the switch). The
+/// audit itself took the same 7–10 s as on a pass. And the same copy on the same commit passed
+/// on re-run, and passed the hub audit *launched* at AX5 — no sweep — in the same run.
+///
+/// So there is nothing before the audit to wait for; the transition is the audit's own. What
+/// distinguishes a lagged reading from a fixed-size font is that the font reproduces: a second
+/// pass on the same still screen fails again. A result whose only new findings are Dynamic Type
+/// therefore gets exactly one more pass, and the second pass is the verdict. Nothing is deferred
+/// and nothing is filtered — both passes are printed, and a finding of any other type, or a
+/// Dynamic Type finding that comes back, fails the case as before.
+struct AuditConfirmationPolicy: Equatable {
+
+    /// How many extra passes a Dynamic-Type-only result may get. One: it turns a flake rate of p
+    /// into p², and a second lagged reading in a row is worth seeing rather than absorbing.
+    let maxConfirmations: Int
+
+    /// Pause before the second pass, so the app has restored its default size and finished the
+    /// reflow back from the sweep.
+    let settleDelay: TimeInterval
+
+    static let standard = AuditConfirmationPolicy(maxConfirmations: 1, settleDelay: 1)
+
+    /// Whether to measure again, given the kinds of the new findings the last pass reported and
+    /// how many extra passes have already run. Only a non-empty, Dynamic-Type-only result
+    /// qualifies: a clean pass needs no confirmation, and any other kind of finding is already a
+    /// failure that a second look could not change.
+    func shouldMeasureAgain(findingKinds: Set<AuditFindingKind>, confirmationsSoFar: Int) -> Bool {
+        guard confirmationsSoFar < maxConfirmations else { return false }
+        return findingKinds == [.dynamicType]
+    }
+}
+
 /// Decides when a sampled element frame has stopped moving.
 ///
 /// Feed it one frame per sample, or `nil` when the element does not exist at that moment. It
