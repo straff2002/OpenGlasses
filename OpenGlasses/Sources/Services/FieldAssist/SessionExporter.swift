@@ -385,6 +385,15 @@ enum SessionExporter {
                 }
             }
 
+            // What the customer put their name to (Plan FO P2c). It follows the evidence because
+            // that is the order the job happened in — the pictures were chosen, then the summary
+            // was handed over — and it prints the summary **the record stored at signing**, not a
+            // fresh derivation, so a work order re-rendered after an addendum still shows the words
+            // the customer actually saw.
+            if let signOff = document.workRecord?.signOff {
+                drawSignOff(signOff, from: photosDirectory, layout: layout)
+            }
+
             if !document.citations.isEmpty {
                 layout.section("Sources Cited")
                 for line in citationLines(document) { layout.body("• \(line)") }
@@ -453,6 +462,31 @@ enum SessionExporter {
                 layout.caption(entry.captionLine)
             }
         }
+    }
+
+    /// The customer acceptance block: what they agreed to, who signed, when, and how.
+    ///
+    /// The summary is drawn from the sign-off's own stored lines. The signature is drawn once, at
+    /// a height that keeps it legible without letting it dominate the page, and a sign-off with no
+    /// drawing — typed, or declined — simply has no picture rather than a gap.
+    private static func drawSignOff(_ signOff: CustomerSignOff, from directory: URL?,
+                                    layout: PDFLayout) {
+        layout.section(CustomerSignOff.blockTitle)
+        for line in signOff.summaryLines { layout.body(line) }
+        layout.spacer(4)
+        layout.body(signOff.method.label + ".")
+        if let reason = signOff.declinedReason, !reason.isEmpty {
+            layout.body("Reason given: \(reason)")
+        }
+        if let comment = signOff.comment, !comment.isEmpty {
+            layout.body("Customer's note: \(comment)")
+        }
+        if let imageId = signOff.signatureImageId, let directory,
+           let image = EvidenceImageRenderer.load(imageId, from: directory) {
+            layout.image(image, maxHeight: 120)
+        }
+        layout.body(signOff.attributionLine())
+        layout.caption(CustomerSignOff.disclaimer)
     }
 
     /// "3 pictures and one clip selected by the technician." — the sentence under the heading.

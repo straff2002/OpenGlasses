@@ -112,6 +112,15 @@ final class SessionLogger {
             /// The job took ownership of a saved conversation, or had to take a new one because
             /// the one it owned was deleted.
             case jobThreadBound = "job_thread_bound"
+            /// The customer signed the job off on the technician's phone, typed their name, or
+            /// declined to sign (Plan FO P2c). All three are answers, and the record carries which
+            /// one it was and the digest of the summary that was on the screen — never the
+            /// signature itself, which is a file, not a log line.
+            case customerSignOff = "customer_sign_off"
+            /// A hand-over sheet was put in front of a customer and closed again without an
+            /// answer. Recorded because "we asked and got nowhere" is a different fact from never
+            /// having asked.
+            case customerSignOffCancelled = "customer_sign_off_cancelled"
             /// The job report left by a channel the technician chose (Plan EM P2).
             case reportSent = "report_sent"
             /// …or the composer was dismissed, and the record is still in the queue.
@@ -161,6 +170,21 @@ final class SessionLogger {
     /// Read back all events from the append-only log, in write order.
     /// Malformed lines are skipped — the log remains usable after a partial/truncated write.
     /// Used for crash recovery (e.g. reconstructing an in-progress procedure).
+    /// Read a session's events without opening a logger on it.
+    ///
+    /// Opening one writes `session.json` back out, which is the wrong thing to do merely to ask a
+    /// finished session a question about itself.
+    static func readEvents(at root: URL) -> [Event] {
+        guard let raw = try? String(contentsOf: root.appendingPathComponent("log.jsonl"),
+                                    encoding: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return raw.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
+            guard let data = line.data(using: .utf8) else { return nil }
+            return try? decoder.decode(Event.self, from: data)
+        }
+    }
+
     func readEvents() -> [Event] {
         queue.sync {
             guard let raw = try? String(contentsOf: logURL, encoding: .utf8) else { return [] }
@@ -248,6 +272,33 @@ final class SessionLogger {
         if let posterName { payload["poster"] = AnyCodable(posterName) }
         append(Event(timestamp: Date(), kind: .clipAttached, text: caption, payload: payload))
         return url
+    }
+
+    /// File a customer's signature beside the job's evidence, and say in the log that it happened
+    /// (Plan FO P2c).
+    ///
+    /// Written through the logger rather than by the service for the reason every other file on a
+    /// session is: the logger is the one owner of this directory, which is what
+    /// `DataStoreRegistry` registers and what the privacy tests check.
+    ///
+    /// The log event is appended by the caller, which holds the whole sign-off; what belongs here
+    /// is the bytes. Only the *fact* and the summary's digest ever reach the log — the drawing is a
+    /// picture of a person's name and stays a file.
+    ///
+    /// Returns the two file names — the flattened picture and its stroke data — under which the
+    /// record refers to them.
+    @discardableResult
+    func attachSignature(pngData: Data, strokeData: Data?) -> (image: String, strokes: String?) {
+        let stem = "signature_\(ISO8601DateFormatter().string(from: Date()))_\(UUID().uuidString.prefix(8))"
+        let imageName = stem + ".png"
+        try? pngData.write(to: photosDir.appendingPathComponent(imageName), options: .atomic)
+        var strokeName: String?
+        if let strokeData {
+            let name = stem + ".drawing"
+            try? strokeData.write(to: photosDir.appendingPathComponent(name), options: .atomic)
+            strokeName = name
+        }
+        return (imageName, strokeName)
     }
 }
 

@@ -13,6 +13,12 @@ struct PastJobView: View {
     @EnvironmentObject private var appState: AppState
     @State private var problem: String?
     @State private var readBack: [String]?
+    /// The customer sign-off, when it is being taken after the close (Plan FO P2c).
+    @State private var signOffStep: SignOffStep?
+    /// Whether this job can still be signed. Read once when the page appears and again after an
+    /// answer, rather than on every pass of the body: the answer comes off the session's own log
+    /// on disk, and a `List` re-evaluates its body far more often than a report is sent.
+    @State private var canStillSign = false
 
     private var job: JobTabModel.PastJob? { model.pastJob(id: sessionId) }
 
@@ -39,6 +45,39 @@ struct PastJobView: View {
         } message: {
             Text(problem ?? "")
         }
+        .onAppear { canStillSign = model.signOffIsStillOpen(sessionId: sessionId) }
+        .sheet(item: $signOffStep) { step in
+            JobSignOffStepView(
+                summaryLines: step.lines,
+                jobNumber: step.jobNumber,
+                dateLine: step.dateLine,
+                organisationName: Config.organizationDisplayName,
+                required: model.signOffRequired,
+                onSignOff: { signOff, png, strokes in
+                    record(signOff, pngData: png, strokeData: strokes)
+                },
+                onDeclined: { reason in
+                    record(CustomerSignOff(customerName: "", method: .declined,
+                                           declinedReason: reason, summaryLines: step.lines))
+                },
+                onSkip: { signOffStep = nil },
+                onCancelledHandOver: { model.signOffCancelled(sessionId: sessionId) },
+                onCancel: { signOffStep = nil })
+        }
+    }
+
+    /// Open the step with the summary as this finished job's record renders it now.
+    private func beginSignOff() {
+        guard let lines = model.customerSummaryLines(sessionId: sessionId),
+              let heading = model.signOffHeading(sessionId: sessionId) else { return }
+        signOffStep = SignOffStep(lines: lines, jobNumber: heading.jobNumber,
+                                  dateLine: heading.dateLine, evidence: nil)
+    }
+
+    private func record(_ signOff: CustomerSignOff, pngData: Data? = nil, strokeData: Data? = nil) {
+        model.recordSignOff(sessionId: sessionId, signOff, pngData: pngData, strokeData: strokeData)
+        signOffStep = nil
+        canStillSign = model.signOffIsStillOpen(sessionId: sessionId)
     }
 
     @ViewBuilder
@@ -97,6 +136,11 @@ struct PastJobView: View {
                 clipDeliverySection(clips)
             }
 
+            // What the customer agreed to, or the offer to ask them (Plan FO P2c). It sits after
+            // the evidence and before the actions because that is the order the job ended in: the
+            // pictures were chosen, the customer signed, and only then does anything get sent.
+            signOffSection
+
             Section {
                 if let threadId = job.threadId {
                     choice("Open the conversation") { onOpenTranscript(threadId) }
@@ -116,6 +160,37 @@ struct PastJobView: View {
             }
         }
         .ogFormStyle()
+    }
+
+    /// The acceptance, when there is one; the offer to take it, while the report has not gone; and
+    /// a plain statement of the fact when it is too late for either.
+    @ViewBuilder
+    private var signOffSection: some View {
+        if let signOff = model.signOff(sessionId: sessionId) {
+            CustomerAcceptanceSection(
+                signOff: signOff,
+                signatureURL: signOff.signatureImageId.map {
+                    model.signatureURL(sessionId: sessionId, imageId: $0)
+                })
+        } else if canStillSign {
+            Section {
+                choice("Customer sign-off") { beginSignOff() }
+                    .accessibilityHint("Shows the customer what was done and takes their signature. Nothing is sent by signing.")
+            } header: {
+                Text(CustomerSignOff.blockTitle)
+            } footer: {
+                Text("This job wasn't signed. You can still ask until the report has been sent.")
+            }
+        } else {
+            Section {
+                Text("The customer did not sign this job, and the report has already been sent.")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text(CustomerSignOff.blockTitle)
+            }
+        }
     }
 
     /// One row per clip: what it is, how long it runs, what it weighs, and whether it rides along

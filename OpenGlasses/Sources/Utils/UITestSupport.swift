@@ -55,6 +55,12 @@ enum UITestSupport {
         /// frame is drawn in-process — no camera and no relay is involved, which is the point: the
         /// audit is about the labels and the touch targets, not about video.
         case seedFieldClips = "-OGUITestSeedFieldClips"
+        /// A modifier for Plan FO P2c: the finished job carries a customer's signature, so the
+        /// past job's Customer acceptance block — the summary that was agreed to, the name, the
+        /// time and the drawing — is on screen for the audit. The signature is drawn in-process
+        /// and the sign-off goes through the shipping `recordSignOff`, so what is seeded is what a
+        /// real hand-over writes.
+        case seedFieldSignOff = "-OGUITestSeedFieldSignOff"
         /// A **narrowing** modifier on the Field Assist flags (Plan FS): the entitlement becomes
         /// the retired one-time unlock instead of the internal grant, so screens render the state
         /// a grandfathered owner sees — the bundled vaults, and the import button explaining that
@@ -103,7 +109,7 @@ enum UITestSupport {
     /// the feature is on, because a job cannot exist otherwise.
     static var wantsFieldAssist: Bool {
         isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
-            || isSet(.seedFieldPhotos) || isSet(.seedFieldClips)
+            || isSet(.seedFieldPhotos) || isSet(.seedFieldClips) || isSet(.seedFieldSignOff)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -191,6 +197,10 @@ enum UITestSupport {
     /// `seedRuntime` asserts it a second time, once `AppState` exists.
     private static func applyFieldAssistSwitch() {
         Config.setFieldAssistEnabled(true)
+        // The name the customer-facing sign-off sheet is headed with (Plan FO P2c). A real device
+        // has none until an organisation profile sets one, and the sheet then omits the line — but
+        // a screenshot of the line is the point of seeding it.
+        Config.organizationDisplayName = "Northbridge Mechanical"
         UserDefaults.standard.synchronize()
     }
 
@@ -272,7 +282,7 @@ enum UITestSupport {
         }
 
         if isSet(.seedFieldHistory) || isSet(.seedFieldJob) || isSet(.seedFieldPhotos)
-            || isSet(.seedFieldClips) {
+            || isSet(.seedFieldClips) || isSet(.seedFieldSignOff) {
             // Deferred by one runloop turn on purpose. Starting a session builds the vault's model
             // and parts indexes on the main thread, and doing that inside launch pushes a cold
             // first launch of a large Debug build towards the watchdog — which shows up as an app
@@ -439,6 +449,14 @@ enum UITestSupport {
                 }
                 sessions.setEvidenceSelection(chosen.confirmed())
             }
+            if isSet(.seedFieldSignOff), let record = sessions.workRecord() {
+                sessions.recordSignOff(
+                    CustomerSignOff(customerName: "Dana Okafor",
+                                    comment: "Happy with the work; please send the invoice to accounts.",
+                                    method: .drawn,
+                                    summaryLines: record.customerSummaryLines),
+                    pngData: signaturePNG())
+            }
             _ = try? sessions.endSession(outcome: .resolved)
         }
 
@@ -498,6 +516,29 @@ enum UITestSupport {
         }
         guard let data = image.jpegData(compressionQuality: 0.8) else { return }
         _ = sessions.attachPhoto(data, caption: caption, origin: origin, filterWasOn: blurred)
+    }
+
+    /// A seeded signature: two strokes drawn in-process, so the acceptance block has a real
+    /// picture in it without a fixture PNG riding along in the shipping app.
+    private static func signaturePNG() -> Data? {
+        let size = CGSize(width: 600, height: 200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            UIColor.black.setStroke()
+            let path = UIBezierPath()
+            path.lineWidth = 6
+            path.lineCapStyle = .round
+            path.move(to: CGPoint(x: 40, y: 150))
+            path.addCurve(to: CGPoint(x: 260, y: 90),
+                          controlPoint1: CGPoint(x: 90, y: 30), controlPoint2: CGPoint(x: 180, y: 190))
+            path.addCurve(to: CGPoint(x: 540, y: 120),
+                          controlPoint1: CGPoint(x: 340, y: 20), controlPoint2: CGPoint(x: 460, y: 180))
+            path.stroke()
+        }
     }
 
     /// One seeded clip: a drawn poster frame and a placeholder for the video itself.

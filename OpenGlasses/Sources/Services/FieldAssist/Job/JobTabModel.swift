@@ -19,6 +19,18 @@ protocol JobTabHosting: WorkRecordHosting {
     func setEvidenceSelection(_ selection: EvidenceSelection)
     func photosDirectory(sessionId: String) -> URL
     func media(sessionId: String) -> [JobMediaItem]
+
+    // Customer sign-off (Plan FO P2c). On the protocol for the same reason the evidence seams are:
+    // "the close writes the signature before it takes the record" and "sign-off sends nothing" are
+    // assertions a spy can make rather than readings of the code.
+    var customerSignOffRequired: Bool { get }
+    func signOff(sessionId: String) -> CustomerSignOff?
+    func signOffIsStillOpen(sessionId: String) -> Bool
+    @discardableResult
+    func recordSignOff(_ signOff: CustomerSignOff, pngData: Data?, strokeData: Data?,
+                       sessionId: String?) -> CustomerSignOff?
+    func logSignOffCancelled(sessionId: String?)
+    func signatureURL(sessionId: String, imageId: String) -> URL
 }
 
 extension FieldSessionService: JobTabHosting {}
@@ -474,6 +486,13 @@ struct JobTabModel {
     func closeJob(outcome: FieldSession.Outcome = .resolved,
                   evidence: EvidenceSelection? = nil) throws -> (session: FieldSession, record: WorkRecord?) {
         if let evidence { host.setEvidenceSelection(evidence) }
+        // The organisation's rule, checked here rather than in the sheet: every route that closes
+        // a job comes through this one method, so a screen that forgot to ask cannot close past it
+        // (Plan FO P2c).
+        if case .blocked(let reason) = SignOffPolicy.decide(signOff: host.activeSession?.signOff,
+                                                            required: host.customerSignOffRequired) {
+            throw FieldSessionError.customerSignOffRequired(reason)
+        }
         let record = host.workRecord()
         let session = try flow.closeJob(outcome: outcome)
         return (session, record)
@@ -516,6 +535,86 @@ struct JobTabModel {
         let selection = (session.evidenceSelection ?? EvidenceSelection.proposed(for: media))
             .reconciled(with: media)
         return (review, selection)
+    }
+
+    // MARK: - Customer sign-off (Plan FO P2c)
+
+    /// Whether the organisation asks for a signature before a job can close.
+    var signOffRequired: Bool { host.customerSignOffRequired }
+
+    /// What a sign-off sheet is headed with: the job as the customer knows it, and when the visit
+    /// was. Built here rather than in the view so the open job and a finished one head the same
+    /// way, and so the wording is testable.
+    struct SignOffHeading: Equatable {
+        let jobNumber: String
+        let dateLine: String
+    }
+
+    /// The open job's heading, or nil when no job is open.
+    var signOffHeading: SignOffHeading? {
+        guard let session = openSession else { return nil }
+        return Self.heading(for: session)
+    }
+
+    /// A finished job's, for a signature taken after the close.
+    func signOffHeading(sessionId: String) -> SignOffHeading? {
+        guard let session = host.history.first(where: { $0.id == sessionId }) else { return nil }
+        return Self.heading(for: session)
+    }
+
+    private static func heading(for session: FieldSession) -> SignOffHeading {
+        let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
+        return SignOffHeading(
+            jobNumber: reference.map { "Job \($0)" } ?? noJobNumber,
+            dateLine: session.startedAt.formatted(date: .abbreviated, time: .shortened))
+    }
+
+    /// The customer's half of the open job's record, as the hand-over sheet would show it now.
+    ///
+    /// Nil when no job is open. **Not** `readBackLines`: that is the whole work record, notes and
+    /// escalations included, and none of it is something to ask a customer to put their name to.
+    var customerSummaryLines: [String]? {
+        guard openSession != nil, let record = host.workRecord() else { return nil }
+        return record.customerSummaryLines
+    }
+
+    /// What the open job has recorded so far, if anything.
+    var openJobSignOff: CustomerSignOff? {
+        guard let session = openSession else { return nil }
+        return session.signOff
+    }
+
+    /// Write the customer's answer onto the open job, before it is closed.
+    @discardableResult
+    func recordSignOff(_ signOff: CustomerSignOff, pngData: Data? = nil,
+                       strokeData: Data? = nil) -> CustomerSignOff? {
+        guard let session = openSession else { return nil }
+        return host.recordSignOff(signOff, pngData: pngData, strokeData: strokeData,
+                                  sessionId: session.id)
+    }
+
+    /// …or onto a finished one, from its page.
+    @discardableResult
+    func recordSignOff(sessionId: String, _ signOff: CustomerSignOff, pngData: Data? = nil,
+                       strokeData: Data? = nil) -> CustomerSignOff? {
+        host.recordSignOff(signOff, pngData: pngData, strokeData: strokeData, sessionId: sessionId)
+    }
+
+    func signOff(sessionId: String) -> CustomerSignOff? { host.signOff(sessionId: sessionId) }
+
+    /// Whether a finished job can still be signed — until its report has gone.
+    func signOffIsStillOpen(sessionId: String) -> Bool { host.signOffIsStillOpen(sessionId: sessionId) }
+
+    func signOffCancelled(sessionId: String?) { host.logSignOffCancelled(sessionId: sessionId) }
+
+    func signatureURL(sessionId: String, imageId: String) -> URL {
+        host.signatureURL(sessionId: sessionId, imageId: imageId)
+    }
+
+    /// A finished job's customer summary as it stands, for a sign-off recorded after the close.
+    func customerSummaryLines(sessionId: String) -> [String]? {
+        guard let job = pastJob(id: sessionId) else { return nil }
+        return job.record.customerSummaryLines
     }
 
     // MARK: - Clips on the way out (Plan FO P2b)

@@ -2207,6 +2207,32 @@ struct Config {
         set { UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults") }
     }
 
+    // MARK: - Customer sign-off (Plan FO P2c)
+
+    /// Whether the organisation asks for the customer's signature on every job.
+    ///
+    /// The same shape `organizationAllowsUnsignedVaults` above uses, and for the same reason: the
+    /// policy hook and the behaviour that reads it ship together, so the rule is real rather than
+    /// promised. **This is a stand-in.** Plan CT owns organisation policy, and CT P1 replaces this
+    /// key with the profile that sets it; until then it is a documented default that nothing but a
+    /// developer writes. False — no organisation profile, so the step is offered and never
+    /// demanded, which is the behaviour of a phone that has never been given one.
+    static var organizationRequiresCustomerSignOff: Bool {
+        get { UserDefaults.standard.bool(forKey: "organizationRequiresCustomerSignOff") }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationRequiresCustomerSignOff") }
+    }
+
+    /// The name the customer-facing sign-off sheet is headed with — the trading name the customer
+    /// knows, not the technician's login.
+    ///
+    /// A stand-in on the same terms: CT's profile carries an organisation's identity, and until it
+    /// does this is an unset default. Empty means the sheet simply omits the line rather than
+    /// inventing a name for a business it knows nothing about.
+    static var organizationDisplayName: String {
+        get { UserDefaults.standard.string(forKey: "organizationDisplayName") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationDisplayName") }
+    }
+
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
     /// index verification.
     static var skillPackDevModeEnabled: Bool {
