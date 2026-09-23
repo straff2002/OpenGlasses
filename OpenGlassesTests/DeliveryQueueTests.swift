@@ -240,6 +240,27 @@ final class DeliveryQueueTests: XCTestCase {
         XCTAssertEqual(reopened.queue.entry(id: doomed.id)?.state, .cancelled)
     }
 
+    /// A reset starts from no queue at all — which is the state a phone is in before anything is
+    /// ever staged, and the state the UI-test seed says it writes.
+    ///
+    /// What this actually pins is that the eraser and the store agree on *which file*. A reset
+    /// naming a path the store does not read would erase nothing and report nothing, and the queue
+    /// would quietly carry every earlier launch's reports into the next one.
+    func testErasingTheStoredQueueLeavesAColdLaunchWithNothingWaiting() {
+        let store = DeliveryQueueStore(directory: directory)
+        store.append(entry("1005"))
+        store.append(entry("1006"))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: DeliveryQueueStore.fileURL(in: directory).path),
+                      "the store and the eraser must name the same file")
+
+        DeliveryQueueStore.eraseStoredQueue(in: directory)
+
+        let reopened = DeliveryQueueStore(directory: directory)
+        XCTAssertEqual(reopened.queue.stagedCount, 0)
+        XCTAssertNil(reopened.queue.cardHeadline, "an erased queue draws no card at all")
+    }
+
     /// Backup exclusion is checked on the file itself; the data-protection class is checked on the
     /// registry's claim, because a simulator has no data protection to read back — the attribute
     /// comes back nil there whatever the writer asked for.
