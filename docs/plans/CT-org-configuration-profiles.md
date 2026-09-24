@@ -136,13 +136,35 @@ the provider and key pages. Onboarding's other branches do not change.
   shows *"Setting up for ⟨licensee⟩ — connect to the internet once to finish"*, with Retry, and does
   not fall through to the general app. The ceilings live in the profile. A phone that opens as the
   full app while its organisation's settings are pending is exactly what point 4 describes.
-- **The AI provider is still owed.** Neither the licence nor the profile may carry a credential (the
-  `SettingKey` secrets rule). SSO, the clean answer in P4, is deferred per point 1. So a
-  licence-enrolled phone with no usable model does not show a broken session. Field Assist says
-  *"Your administrator needs to finish setting up this phone"*, and the administrator passcode below
-  opens the provider page. A keyless tier (Plan DB / DH) is used if the device has one. This is one
-  administrator step per phone, at the depot. Removing it needs the organisation gateway (Plan CR) or
-  SSO, and both are deferred.
+- **The licence sets the provider, and the next step adds the key** (decided 2026-09-24, evening).
+  Which provider and model to use is not a secret. The key for it is. So they travel separately:
+  - The profile carries `aiModel = {provider, model, baseURL?, name?}`. `provider` is an
+    `LLMProvider` raw value. `baseURL` is only for `custom` and `openrouter`, and must be HTTPS; the
+    review sheet shows its host, because it is where the phone's prompts go. It is a profile field,
+    not a `SettingKey`, because it becomes a `ModelConfig` and `savedModelConfigs` is on the secrets
+    list. An unknown provider or model is a named drop, and the app falls back to the no-model state
+    below.
+  - Right after the review is confirmed, first run shows **one more page**: *"Enter the ⟨provider⟩
+    API key from ⟨org⟩"*. It has one secure field, runs the same check onboarding's key page runs,
+    and has *"My administrator will add this"* as the way past it. The phone then builds the
+    `ModelConfig` locally (provider, model and base URL from the profile, key from the field), saves
+    it through the existing Keychain-backed `savedModelConfigs` path, and makes it the active model.
+    **The key never enters the licence, the profile, or any request to the profile's address.**
+  - Providers that sign in instead of taking a key (`chatgpt`, `geminiVertex`) show their existing
+    sign-in on that page. `local` and `appleOnDevice` skip it.
+  - Skipped, or refused by the check: Field Assist says *"Your administrator needs to finish setting
+    up this phone"*, and the administrator passcode opens that same key page. Later changes to the
+    key, the provider or the model are behind the passcode too. A technician never sees a model
+    picker.
+  - **A renewal that changes the model** under the same provider updates the model on the existing
+    config and keeps the key. **One that changes the provider** leaves the old config in place and
+    puts the phone in the "administrator needs to finish" state for the new one, so a technician is
+    never dropped into a provider with no key.
+  - **Removal deletes the config enrolment created, including its key.** It is the organisation's
+    key, whoever typed it in. It joins PR 4's list of the firm's stores. The person's own model
+    configs are untouched.
+  - SSO or the organisation gateway (Plan CR) would remove the key page altogether. Both are
+    deferred per point 1, and the page is the stand-in until then.
 - **A key entered after onboarding** in Field Assist settings runs the same flow and shows the same
   review sheet. That is the "licence code entered" event in the re-clamp table.
 
@@ -199,6 +221,10 @@ comes first. The phone then returns to the Field Assist view.
 passcode. On a phone a technician carries, the technician knows that passcode, so the gate would stop
 nobody it is meant to stop. So:
 
+- **One passcode per organisation** (decided 2026-09-24, evening). Every profile minted for an
+  organisation, for every crew and every link, carries a verifier for the same passcode, each with
+  its own salt. An administrator therefore needs one passcode for the whole fleet. Changing it means
+  re-minting that organisation's profiles, and each phone picks up the change on its next renewal.
 - The profile carries a **verifier**, not the passcode: `adminPasscode = {salt, iterations,
   PBKDF2-HMAC-SHA256}`, using CommonCrypto's `CCKeyDerivationPBKDF`, since CryptoKit has no PBKDF2.
   `make-org-profile.swift` prompts for the passcode with echo off and never takes it in argv. It
@@ -232,7 +258,7 @@ first. The licence-key path writes the address that 2b's renewal reads, and both
 
 | PR | What | Why this order |
 |---|---|---|
-| **3a** | the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
+| **3a** | the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, the profile's `aiModel` and the first-run key page that follows the review, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
 | **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the backoff, the administrator session, and the script's passcode prompt | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
 | **3c** | the live-camera scanner, reading a licence key or an enrol link into the same field | a convenience once 3a exists, since pasting works |
 | **4** | leaving the firm: the owner axis, sealing, deliver-then-erase | unchanged |
@@ -1115,10 +1141,11 @@ which is why they are a PR of their own.
    list hidden), while ceilings stay enumerated per key. The hidden part opens with the
    **organisation's** administrator passcode, carried as a PBKDF2 verifier. It is not the device
    passcode, which the technician knows. It lifts no ceiling.
-9. **Still open, for the partner:** who enters the AI provider credential on each phone until SSO or
-   the organisation gateway exists? The plan assumes the administrator does, once, at the depot,
-   behind the passcode. And should the passcode be one per profile (the plan's assumption,
-   rotatable by re-minting) or set per phone at enrolment?
+9. ~~**Who supplies the AI provider credential, and is the passcode per organisation?**~~
+   **Decided 2026-09-24 (evening):** the profile names the provider and model (`aiModel`), and the
+   first-run page after the review asks for that provider's key, which is stored only on the phone.
+   An administrator finishes the step behind the passcode if it is skipped. There is **one
+   administrator passcode per organisation**, across all of its profiles.
 ---
 
 ## Traps
