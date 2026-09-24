@@ -33,6 +33,15 @@ enum DebriefContract {
     writes the summary and the app asks for the save; never claim anything has been saved.
     """
 
+    /// What a live session is told once a debrief it was given settles or is put away.
+    ///
+    /// Injected text cannot be taken back out of a live conversation, so dropping the block means
+    /// saying, under the same heading, that it no longer applies.
+    static let endedBlock = heading + "\n" + """
+    No debrief is running. The earlier debrief block no longer applies: what is said from here is \
+    not an account of that job, and nothing about it has been saved unless the app said so.
+    """
+
     /// The one line a debrief's subject needs, for the read-back a switch produces.
     static func jobLine(_ job: DebriefJobResolver.Candidate) -> String {
         "DEBRIEF SUBJECT: " + quote(job.spoken) + " — everything said now is about this job."

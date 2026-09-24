@@ -17,6 +17,7 @@ final class LiveJobBridgeTests: XCTestCase {
     private var consumeResult = false
     private var pendingQuestionsPut = 0
     private var recorded: [(String, String)] = []
+    private var debrief: String?
 
     private func makeBridge() -> LiveJobBridge {
         let bridge = LiveJobBridge()
@@ -31,7 +32,8 @@ final class LiveJobBridgeTests: XCTestCase {
                 return self?.consumeResult ?? false
             },
             speakPendingQuestion: { [weak self] in self?.pendingQuestionsPut += 1 },
-            recordTurn: { [weak self] text, sourceID in self?.recorded.append((text, sourceID)) }))
+            recordTurn: { [weak self] text, sourceID in self?.recorded.append((text, sourceID)) },
+            debriefBlock: { [weak self] in self?.debrief }))
         return bridge
     }
 
@@ -168,6 +170,119 @@ final class LiveJobBridgeTests: XCTestCase {
         XCTAssertEqual(injected.count, 1)
     }
 
+    // MARK: - The debrief block (P3b)
+
+    private func debriefBlock(_ job: String) -> String {
+        DebriefContract.heading + "\n" + DebriefContract.lede + "\nDEBRIEF SUBJECT: \"\(job)\""
+    }
+
+    func testTheSetupCarriesADebriefWithNoJobOpen() {
+        debrief = debriefBlock("Job 1004")
+        let bridge = makeBridge()
+        XCTAssertNil(bridge.setupBlock(), "a debrief is on a finished job")
+        XCTAssertEqual(bridge.setupDebriefBlock(), debrief)
+        XCTAssertEqual(bridge.lastSentDebriefBlock, debrief)
+        // The setup carried it, so the first refresh has nothing new to say.
+        XCTAssertNil(bridge.refreshDebrief())
+        XCTAssertTrue(injected.isEmpty)
+    }
+
+    func testADebriefIsInjectedWhenItStartsAndWhenItSwitchesJobs() {
+        let bridge = makeBridge()
+        XCTAssertNil(bridge.setupDebriefBlock())
+        XCTAssertNil(bridge.refreshDebrief(), "no debrief ever means nothing is injected")
+
+        debrief = debriefBlock("Job 1004")
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected, [debriefBlock("Job 1004")])
+        XCTAssertNil(bridge.refreshDebrief(), "nothing the model can see has moved")
+
+        debrief = debriefBlock("Job 1005")
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.last, debriefBlock("Job 1005"))
+        XCTAssertEqual(injected.count, 2)
+    }
+
+    func testASettledDebriefIsDroppedOnce() {
+        debrief = debriefBlock("Job 1004")
+        let bridge = makeBridge()
+        _ = bridge.setupDebriefBlock()
+        debrief = nil
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected, [DebriefContract.endedBlock])
+        XCTAssertTrue(DebriefContract.endedBlock.hasPrefix(DebriefContract.heading))
+        XCTAssertNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.count, 1)
+    }
+
+    /// The two blocks are separate lanes: a job change never re-sends the debrief, and a debrief
+    /// starting never re-sends the job.
+    func testTheDebriefAndTheJobDoNotResendEachOther() {
+        session = openJob()
+        let bridge = makeBridge()
+        _ = bridge.setupBlock()
+        _ = bridge.setupDebriefBlock()
+
+        debrief = debriefBlock("Job 1004")
+        _ = bridge.refreshDebrief()
+        XCTAssertNil(bridge.refresh())
+        XCTAssertEqual(injected.count, 1)
+
+        session?.jobIntake = .recorded(reference: "1005")
+        session?.jobReference = "1005"
+        _ = bridge.refresh()
+        XCTAssertNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.count, 2)
+    }
+
+    /// `LiveJobSnapshotPolicy` holds for the debrief exactly as for the job: a block built before
+    /// a reset never lands after it.
+    func testADebriefBlockBuiltBeforeAResetDoesNotApplyAfterIt() {
+        let bridge = makeBridge()
+        _ = bridge.setupDebriefBlock()
+        busy = true
+        debrief = debriefBlock("Job 1004")
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertNotNil(bridge.heldDebriefBlock)
+        XCTAssertTrue(injected.isEmpty)
+
+        generation = 2
+        busy = false
+        XCTAssertNil(bridge.flushHeldBlock())
+        XCTAssertTrue(injected.isEmpty, "a debrief for session 1 must never reach session 2")
+        XCTAssertNil(bridge.heldDebriefBlock)
+    }
+
+    func testADebriefHeldWhileBusyGoesOutAtTheTurnBoundaryBesideTheJob() async {
+        session = openJob()
+        let bridge = makeBridge()
+        _ = bridge.setupBlock()
+        _ = bridge.setupDebriefBlock()
+        busy = true
+        session?.jobIntake = .recorded(reference: "1005")
+        debrief = debriefBlock("Job 1004")
+        _ = bridge.refresh()
+        _ = bridge.refreshDebrief()
+        XCTAssertTrue(injected.isEmpty)
+
+        busy = false
+        await bridge.turnCompleted()
+        XCTAssertEqual(injected.count, 2, "both held blocks go out")
+        XCTAssertEqual(injected.last, debriefBlock("Job 1004"))
+        XCTAssertNil(bridge.heldBlock)
+        XCTAssertNil(bridge.heldDebriefBlock)
+    }
+
+    func testANewSessionIsToldTheDebriefAgain() {
+        debrief = debriefBlock("Job 1004")
+        let bridge = makeBridge()
+        _ = bridge.setupDebriefBlock()
+        bridge.sessionEnded()
+        generation = 2
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected, [debriefBlock("Job 1004")])
+    }
+
     // MARK: - The turn
 
     func testAnUtteranceIsRecordedAndOfferedToTheFlow() async {
@@ -247,7 +362,31 @@ final class LiveJobBridgeWiringTests: XCTestCase {
             XCTAssertTrue(text.contains("jobBridge.turnCompleted()"), file)
             // …and nothing it was told survives the session.
             XCTAssertTrue(text.contains("jobBridge.sessionEnded()"), file)
+            // P3b: the setup carries a running debrief too.
+            XCTAssertTrue(text.contains("jobBridge.setupDebriefBlock()"), file)
         }
+    }
+
+    /// P3b: `debriefBlock()` had no callers, so no mode ever told the model which job a debrief
+    /// was about or what it may not do. Direct mode reads it through the prompt builder; both live
+    /// bridges read it through their seam and are refreshed from one trigger.
+    func testTheDebriefBlockReachesDirectModeAndBothLiveBackends() throws {
+        let app = try source("App/OpenGlassesApp.swift")
+        XCTAssertTrue(app.contains("LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }"))
+        XCTAssertEqual(app.components(separatedBy:
+            "debriefBlock: { [weak self] in self?.guidedJobFlow.debriefBlock() }").count - 1, 2,
+            "both bridges' seams")
+        XCTAssertTrue(app.contains("guidedJobFlow.$debrief"))
+        XCTAssertTrue(app.contains("geminiLiveSession.jobBridge.refreshDebrief()"))
+        XCTAssertTrue(app.contains("openAIRealtimeSession.jobBridge.refreshDebrief()"))
+
+        let llm = try source("Services/LLMService.swift")
+        let start = try XCTUnwrap(llm.range(of: "private static func buildSystemPrompt("))
+        let body = llm[start.lowerBound...]
+        let end = try XCTUnwrap(body.range(of: "PromptInjectionPolicy.systemPromptPolicy"))
+        let builder = body[..<end.lowerBound]
+        XCTAssertTrue(builder.contains("if let debrief = debriefContext()"),
+                      "the Direct-mode prompt builder appends the debrief block")
     }
 
     func testTheAppRefreshesBothBackendsFromOneTrigger() throws {
