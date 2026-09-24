@@ -293,6 +293,28 @@ nobody it is meant to stop. So:
     the passcode is the fallback when the card isn't to hand, for example an administrator talking
     a technician through a fix over the phone. The weak verifier is only on the phone if the
     organisation asked for it.
+- **An administrator phone: the card, remembered** (2026-09-24, evening). A supervisor's own phone
+  needs the full view all the time, and is the obvious thing to unlock technicians' phones with.
+  There is no separate admin profile or admin key. An administrator phone is an ordinary enrolled
+  phone that has been shown the card once:
+  1. **Enrol it like any other phone**, with the same activation key, so it gets the same licence,
+     pack and ceilings.
+  2. **Scan the card once with *Make this an administrator phone* ticked.** This first scan needs the
+     printed or emailed PNG the script produced. The phone stores the card's secret in the Keychain
+     as `…ThisDeviceOnly`, so it never reaches a backup or another device, and it stays in the full
+     view. A banner at the top of Settings says *Administrator phone* so it is never mistaken for a
+     technician's. *Stop being an administrator phone* deletes the stored secret.
+  3. **It then becomes the card.** Its Settings gains *Show admin card*, behind the device owner's
+     Face ID or passcode (`OwnerGateAuth`, **failing closed** here, unlike the Simple Mode gate). The
+     phone renders the QR full screen for a technician's phone to scan. The Face ID step means a
+     lost or unattended administrator phone does not hand the card to whoever picks it up. The
+     screen dims the QR again after 30 seconds and when the app goes to the background.
+  - **Rotation reaches it automatically.** A renewal that carries a new card digest no longer
+    matches the stored secret. The phone drops back to the technician view and asks for the new
+    card, the same thing that happens to every other phone.
+  - **Still bounded.** An administrator phone sees everything the edition hides and nothing a
+    ceiling forbids. It is also the organisation's phone for the lease, revocation and PR 4 erasure.
+    Revoking its enrolment id is how an administrator who leaves loses it.
 - **A profile with the edition but neither a card nor a passcode** falls back to `OwnerGateAuth`, the device-owner
   gate. The review sheet says *"Anyone who can unlock this phone can open administrator settings"*,
   so the organisation knows before it confirms.
@@ -314,7 +336,7 @@ first. The licence-key path writes the address that 2b's renewal reads, and both
 | PR | What | Why this order |
 |---|---|---|
 | **3a** | the short activation key (format, check character, sealed file on the static host, `--activation-key`), the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, the profile's `aiModel` and the first-run key page that follows the review, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
-| **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the `adminCard` digest and an in-app scanner scoped to it, the backoff, the administrator session, and the script's passcode prompt and card renderer | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
+| **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the `adminCard` digest and an in-app scanner scoped to it, the administrator phone (remembered card, *Show admin card* behind a fail-closed owner gate), the backoff, the administrator session, and the script's passcode prompt and card renderer | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
 | **3c** | 3b's scanner reused to read a licence key, an activation key, or an enrol link into the same field | a convenience once 3a exists, since the short key can be typed |
 | **4** | leaving the firm: the owner axis, sealing, deliver-then-erase | unchanged |
 
