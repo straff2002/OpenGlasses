@@ -14,6 +14,9 @@ struct FieldAssistSettingsView: View {
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
     @AppStorage("fieldAssistBillingBasis") private var billingBasis: String = "minutes"
     @AppStorage("fieldAssistMinutesPerBillingUnit") private var minutesPerBillingUnit: Int = 15
+    /// `Config.preferredMapsApp`'s key and default, stored as its raw value.
+    @AppStorage("preferredMapsApp") private var preferredMapsApp: String = MapsApp.apple.rawValue
+    @AppStorage("briefOnCarPlayConnect") private var briefOnCarPlayConnect: Bool = false
 
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
@@ -291,6 +294,20 @@ struct FieldAssistSettingsView: View {
                     Text("Expert Escalation Webhook")
                 } footer: {
                     Text("Optional. When a technician escalates, the expert pool is paged with the live join URL via this Slack-compatible webhook (in addition to an on-device notification).")
+                }
+
+                // ──────────────── Directions and the brief (Plan FO P3c)
+                Section {
+                    Picker("Maps app", selection: $preferredMapsApp) {
+                        ForEach(MapsApp.allCases, id: \.rawValue) { app in
+                            Text(app.label).tag(app.rawValue)
+                        }
+                    }
+                    Toggle("Brief the next job when CarPlay connects", isOn: $briefOnCarPlayConnect)
+                } header: {
+                    Text("On the Way to a Job")
+                } footer: {
+                    Text("\u{201C}Take me there\u{201D} opens this app with directions to the job's address. If it isn't installed, Apple Maps is used and you're told so. The brief is always one tap or one sentence away; switching it on here also reads it when the car connects.")
                 }
 
                 // ──────────────── Job reports (Plan EM P2)

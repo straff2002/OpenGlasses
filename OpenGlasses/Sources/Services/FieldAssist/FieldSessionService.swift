@@ -359,6 +359,35 @@ final class FieldSessionService: ObservableObject {
 
     // MARK: - Guided job flow (Plan FO P1)
 
+    /// Carry what was known before the visit onto the job just started from it (Plan FO P3c):
+    /// the site, the fault report as it was given, the brief the technician heard, and the job
+    /// file's provenance. **Not** the equipment — a job ahead names machines the office believes
+    /// are there, and the machine in front of the technician is recognised on site, as always.
+    func applyJobAhead(_ job: UpcomingJob) {
+        guard activeSession != nil else { return }
+        mutateSession { session in
+            session.site = job.site.isEmpty ? nil : job.site
+            session.faultReport = job.faultReport
+            session.brief = job.brief
+            session.jobFile = job.provenance
+        }
+        var payload: [String: AnyCodable] = [
+            "origin": AnyCodable(job.origin.rawValue),
+            "has_site": AnyCodable(!job.site.isEmpty),
+            "has_fault_report": AnyCodable(job.faultReport != nil),
+            "has_brief": AnyCodable(job.brief != nil),
+        ]
+        if let provenance = job.provenance {
+            payload["job_file"] = AnyCodable(provenance.fileName)
+            payload["signature"] = AnyCodable(provenance.signature.rawValue)
+            payload["signer"] = AnyCodable(provenance.signer ?? "")
+            payload["received_at"] = AnyCodable(ISO8601DateFormatter().string(from: provenance.receivedAt))
+            payload["digest"] = AnyCodable(provenance.digest)
+        }
+        logger?.append(.init(timestamp: Date(), kind: .jobAheadStarted,
+                             text: job.provenance?.recordLine ?? job.title, payload: payload))
+    }
+
     /// Bind the job to a saved conversation, or let go of one.
     ///
     /// Everything the technician says on a job belongs in one thread. This is where the job

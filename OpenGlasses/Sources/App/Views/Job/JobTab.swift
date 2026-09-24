@@ -19,7 +19,8 @@ struct JobTab: View {
         // The flow publishes the change-of-unit question and the debrief; the send service
         // publishes the queue. `AppState` does not republish its children, so the content view
         // observes both directly.
-        JobTabContent(flow: appState.guidedJobFlow, sends: appState.jobSends)
+        JobTabContent(flow: appState.guidedJobFlow, sends: appState.jobSends,
+                      upcoming: appState.upcomingJobs)
     }
 }
 
@@ -28,13 +29,19 @@ struct JobTab: View {
 enum JobRoute: Hashable {
     case pastJob(sessionId: String)
     case transcript(threadId: String)
+    /// A job ahead (Plan FO P3c): its details, its brief, directions and Start.
+    case upcomingJob(id: String)
 }
 
 private struct JobTabContent: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var flow: GuidedJobFlow
     @ObservedObject var sends: JobSendService
+    /// Jobs ahead (Plan FO P3c). Observed here because a job file accepted from Mail, or a job
+    /// said out loud, has to appear on this screen without a navigation.
+    @ObservedObject var upcoming: UpcomingJobStore
     @StateObject private var sessions = FieldSessionService.shared
+    @State private var addingUpcoming = false
 
     @State private var path: [JobRoute] = []
     /// The number being typed, either to start a job with or to record on the open one.
@@ -63,6 +70,12 @@ private struct JobTabContent: View {
 
     private var model: JobTabModel { JobTabModel(host: sessions, flow: flow) }
 
+    /// The vault a job ahead would start on — the same default the Start job button uses.
+    private var noJobVault: (name: String, unlocked: Bool) {
+        let id = Config.fieldAssistDefaultVaultId
+        return (VaultRegistry.shared.manifest(id: id)?.name ?? id, VaultRegistry.shared.isUnlocked(id))
+    }
+
     /// The staged sends, when there are any (Plan FO P3b).
     ///
     /// Read fresh each pass rather than held: a send asked for in the car lands in the queue while
@@ -86,7 +99,11 @@ private struct JobTabContent: View {
                                     typedReference: $typedReference,
                                     onStart: startJob,
                                     onOpenPastJob: { path.append(.pastJob(sessionId: $0)) },
-                                    sendCard: sendCard)
+                                    sendCard: sendCard,
+                                    upcoming: UpcomingJobsSection(
+                                        rows: UpcomingJobsModel.rows(upcoming.jobs),
+                                        onOpen: { path.append(.upcomingJob(id: $0)) },
+                                        onAdd: { addingUpcoming = true }))
                 case .running(let job), .paused(let job):
                     ActiveJobView(job: job, model: model,
                                   typedReference: $typedReference,
@@ -116,12 +133,21 @@ private struct JobTabContent: View {
                                 onOpenTranscript: { path.append(.transcript(threadId: $0)) })
                 case .transcript(let id):
                     JobTranscriptView(threadId: id)
+                case .upcomingJob(let id):
+                    UpcomingJobView(store: upcoming, flow: flow, jobId: id,
+                                    jobOpen: model.state.active != nil,
+                                    vaultName: noJobVault.name,
+                                    vaultUnlocked: noJobVault.unlocked,
+                                    onStarted: { _ in path = [] })
                 }
             }
         }
         // The elapsed line is minute-grained, so it is re-read on the minute rather than on every
         // published change. A VoiceOver user focused on the row hears a value that settles.
         .onReceive(JobClock.tick) { clock = $0 }
+        .sheet(isPresented: $addingUpcoming) {
+            AddUpcomingJobView { job in _ = flow.addUpcomingJob(job) }
+        }
         .sheet(isPresented: Binding(get: { readBack != nil }, set: { if !$0 { readBack = nil } })) {
             ReadBackSheet(lines: readBack ?? []) { readBack = nil }
         }

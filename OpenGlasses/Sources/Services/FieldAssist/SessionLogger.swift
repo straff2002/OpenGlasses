@@ -134,6 +134,10 @@ final class SessionLogger {
             /// A report or an addendum was put in the delivery queue by voice (Plan FO P3b), with
             /// whether it went immediately or is waiting for a tap.
             case sendQueued = "send_queued"
+            /// The job was started from a job ahead (Plan FO P3c) — typed, spoken or opened from
+            /// a job file — carrying its site, fault report and brief. When it came from a file,
+            /// the payload says which file, whether it was signed and by whom, and when it arrived.
+            case jobAheadStarted = "job_ahead_started"
             /// The job report left by a channel the technician chose (Plan EM P2).
             case reportSent = "report_sent"
             /// …or the composer was dismissed, and the record is still in the queue.

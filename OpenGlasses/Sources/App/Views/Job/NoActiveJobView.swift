@@ -17,6 +17,8 @@ struct NoActiveJobView: View {
     /// because a report nobody sent is the one thing a technician must not find out about a week
     /// later. Nil when nothing is waiting.
     var sendCard: JobSendQueueSection?
+    /// Jobs ahead (Plan FO P3c), between starting one now and the ones already done.
+    var upcoming: UpcomingJobsSection?
 
     @FocusState private var referenceFocused: Bool
 
@@ -27,6 +29,7 @@ struct NoActiveJobView: View {
             sendCard
             vaultSection
             startSection
+            upcoming
             pastJobsSection
         }
         .ogFormStyle()

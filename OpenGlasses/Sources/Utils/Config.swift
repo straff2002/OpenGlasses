@@ -2235,6 +2235,46 @@ struct Config {
         set { UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients") }
     }
 
+    // MARK: - Directions (Plan FO P3c)
+
+    /// The maps app directions are handed to, chosen once in Settings. Apple Maps by default —
+    /// the one that is always installed — and when the chosen app is missing the hand-off falls
+    /// back to Apple Maps and says so (`MapsHandoff`).
+    static var preferredMapsApp: MapsApp {
+        get {
+            UserDefaults.standard.string(forKey: "preferredMapsApp").flatMap(MapsApp.init(rawValue:)) ?? .apple
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "preferredMapsApp") }
+    }
+
+    /// Brief the selected upcoming job when CarPlay connects. Off by default: a car that starts
+    /// talking the moment it is switched on is a nag unless the technician asked for it.
+    static var briefOnCarPlayConnect: Bool {
+        get { UserDefaults.standard.bool(forKey: "briefOnCarPlayConnect") }
+        set { UserDefaults.standard.set(newValue, forKey: "briefOnCarPlayConnect") }
+    }
+
+    // MARK: - Job files (Plan FO P3c)
+
+    /// The organisation's public key for signing `.ogjob` files — Curve25519 raw, base64.
+    ///
+    /// **A stand-in on the terms the sign-off and report-route keys above are.** The key that signs
+    /// a job file is the organisation's, carried in its CT profile — never the vendor's content
+    /// key that packs are verified against — and CT P1 replaces this with the profile that sets
+    /// it. Empty by default: a phone with no profile has no key, so every job file it opens is
+    /// shown as not signed, which is the truth.
+    static var organizationJobSigningKey: String {
+        get { UserDefaults.standard.string(forKey: "organizationJobSigningKey") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationJobSigningKey") }
+    }
+
+    /// Whether the organisation refuses job files that are not signed with its key. A stand-in on
+    /// the same terms; false by default. Medical mode refuses unsigned files regardless.
+    static var organizationRequiresSignedJobFiles: Bool {
+        get { UserDefaults.standard.bool(forKey: "organizationRequiresSignedJobFiles") }
+        set { UserDefaults.standard.set(newValue, forKey: "organizationRequiresSignedJobFiles") }
+    }
+
     // MARK: - Customer sign-off (Plan FO P2c)
 
     /// Whether the organisation asks for the customer's signature on every job.

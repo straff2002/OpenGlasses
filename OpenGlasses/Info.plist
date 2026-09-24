@@ -12,6 +12,52 @@
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- A job the office sends as an .ogjob attachment (Plan FO P3c). Receive only: the app
+	     opens one, shows it for review and adds it to upcoming jobs on a tap; it never writes
+	     one out. Owner rank, so Mail and Files offer "Open with OpenGlasses". Opened as a copy
+	     (LSSupportsOpeningDocumentsInPlace NO) so the app reads it once and deletes the copy. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>OpenGlasses Job</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.openglasses.app.job</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.openglasses.app.job</string>
+			<key>UTTypeDescription</key>
+			<string>OpenGlasses Job</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ogjob</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.openglasses.job+json</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>OpenGlasses</string>
 	<key>CFBundleExecutable</key>
@@ -42,6 +88,7 @@
 	<array>
 		<string>fb-viewapp</string>
 		<string>comgooglemaps</string>
+		<string>waze</string>
 		<string>podcasts</string>
 		<string>music</string>
 		<string>calshow</string>
@@ -74,15 +121,12 @@
 		<string>alipays</string>
 		<string>baidumap</string>
 		<string>iosamap</string>
-		<string>qqmap</string>
 		<string>mqq</string>
-		<string>mqqapi</string>
 		<string>weibo</string>
 		<string>sinaweibo</string>
 		<string>dingtalk</string>
 		<string>snssdk1128</string>
 		<string>taobao</string>
-		<string>tmall</string>
 		<string>ctrip</string>
 		<string>eleme</string>
 		<string>meituan</string>

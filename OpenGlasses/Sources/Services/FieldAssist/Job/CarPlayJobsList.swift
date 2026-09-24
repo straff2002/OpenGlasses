@@ -28,7 +28,41 @@ enum CarPlayJobsList {
         case debriefPastJob(sessionId: String)
         /// Read the delivery queue back — "what's waiting?" without having to say it.
         case readSendQueue
+        /// Open a job ahead's two actions, Brief and Directions (Plan FO P3c).
+        case openUpcomingJob(id: String)
     }
+
+    /// What a job ahead offers on the car screen. Two rows, no more: the brief is spoken, and
+    /// directions go to the technician's own maps app, which takes the car screen.
+    enum UpcomingAction: Equatable {
+        case brief(jobId: String)
+        case directions(jobId: String)
+
+        var title: String {
+            switch self {
+            case .brief: return "Brief me"
+            case .directions: return "Directions"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .brief: return "text.bubble"
+            case .directions: return "car.fill"
+            }
+        }
+    }
+
+    /// The actions a job ahead offers. Directions only when there is an address to go to — a row
+    /// that does nothing when tapped at a set of lights is worse than no row.
+    static func upcomingActions(for job: UpcomingJob) -> [UpcomingAction] {
+        var actions: [UpcomingAction] = [.brief(jobId: job.id)]
+        if job.destination != nil { actions.append(.directions(jobId: job.id)) }
+        return actions
+    }
+
+    /// How many jobs ahead the car screen carries.
+    static let upcomingLimit = 5
 
     struct Row: Identifiable, Equatable {
         let id: String
@@ -70,7 +104,8 @@ enum CarPlayJobsList {
                      history: [FieldSession],
                      boundThreadId: String?,
                      debriefAvailable: Bool = false,
-                     stagedSends: Int = 0) -> [Row] {
+                     stagedSends: Int = 0,
+                     upcoming: [UpcomingJob] = []) -> [Row] {
         var rows: [Row] = []
         if stagedSends > 0 {
             rows.append(Row(id: "send-queue",
@@ -86,6 +121,16 @@ enum CarPlayJobsList {
                             detail: active.pausedAt == nil ? "In progress" : "Paused",
                             isActiveJob: true,
                             selection: .resumeActiveJob(threadId: boundThreadId)))
+        }
+        // Jobs ahead, after the open job and before the finished ones: the day's work in the order
+        // it happens. Number (or site) and when — never the fault report, never the contact.
+        for job in upcoming.prefix(upcomingLimit) {
+            let when = job.scheduledFor.map { $0.formatted(date: .abbreviated, time: .shortened) }
+            rows.append(Row(id: "upcoming-" + job.id,
+                            title: job.title,
+                            detail: ["Upcoming", when].compactMap { $0 }.joined(separator: " · "),
+                            isActiveJob: false,
+                            selection: .openUpcomingJob(id: job.id)))
         }
         let past = history
             .filter { $0.endedAt != nil }
