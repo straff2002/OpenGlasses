@@ -62,6 +62,188 @@ only issuance path until EI exists, and it moves into the first PR.
 
 ---
 
+## Revision 2026-09-24 (evening) — the pilot partner's direction
+
+The pilot partner answered the questions this plan had parked. They are selling to HVAC and other
+technical service companies first, and a company that installs and services CNC machines and other
+complex equipment is working towards a local presentation and demo. The answers, in their words
+where the words matter:
+
+1. **MDM and SSO wait until a customer is ready to deploy internally.** That confirms the MDM
+   decision below (*Decisions*, 1): the reader stays deferred and the seam PR 1–2 built stays. It
+   also defers **SSO**, which is this plan's identity axis (*Identity is per-person*): sign-in
+   re-clamping, and the credential half in P4, wait for the same customer. Nothing is built for
+   either now.
+2. **"Having the app recognise the organisation and apply its configuration when the licence key is
+   entered at first launch is exactly what we need."** The ingress a technician meets is therefore
+   **the licence key**, not a poster QR or an emailed enrolment link. The key is the thing an
+   organisation already hands out, and the first-run branch is built around it. See *Enrolment by
+   licence key* below.
+3. **"Keep only Field Assist visible and put the other modes and advanced settings behind a
+   password-protected settings menu."** This is the first real request for the single-purpose
+   edition, which *Deferred, and why* was waiting on. It settles the open question on a named preset
+   versus a subtraction list: **a named preset.** It also asks for something this plan did not
+   design, an administrator's way back in. See *The Field Assist edition* below.
+4. The reason, which decides the details: *"Technicians should have as few buttons and options as
+   possible, so they can focus on the job without accidentally changing the configuration, getting
+   confused, and concluding that the app doesn't work."* The threat is confusion, not an adversary.
+   The edition is a **presentation** that keeps a technician on the job. The **ceilings** stay the
+   security boundary, unchanged.
+
+### Enrolment by licence key
+
+**The licence carries a pointer to the profile.** `LicensePayload` gains one optional signed claim,
+`profile`: the HTTPS address of the organisation's hosted profile.
+`Scripts/generate-field-license.swift` takes it as `--profile https://…`. Entering the key does this:
+
+1. `LicenseService.decode` verifies the key as it does today (signature, feature). Nothing is fetched
+   or activated yet.
+2. If the key has no `profile` claim, it activates exactly as it does today. Every code issued so
+   far is this case.
+3. If it has one, the app says *"This licence is for ⟨licensee⟩ — setting up this phone"* and fetches
+   the address with no host offer. Only the first step differs from the `openglasses://enrol` link.
+   The link asks before fetching because anyone can write a link's address. A licence's address is
+   signed by the vendor key, so the licensee's name is the thing to show. From there the flow is the
+   one PR 2a built: `OrgEnrolmentService`'s HTTPS-only, 64 KB `BoundedHTTPClient` fetch, then
+   verification, then the review sheet, then one confirmation, then `OrgProfileManager` applies it.
+4. **The profile and the key must name the same organisation.** When the profile carries its own
+   licence code, that code must verify and its `licensee` must equal the entered key's. Otherwise the
+   review refuses, naming both organisations. The code with the later `issued` date is the one
+   activated, so a renewal re-minted at the same address wins over an older key typed from an email.
+5. The enrolment records the address, so PR 2b's renewal, lease and revocation work unchanged. It
+   also records a new `ProfileSource.licence`. On removal, that source clears the licence it enrolled
+   with. That is the rule PR 4 settles on anyway, and it is the right one here: the key was the
+   organisation's, even though the technician typed it.
+
+**Why a pointer and not the profile inside the key.** The same reasons P2 gives for the QR. The
+profile outgrows a code someone can paste. The organisation must be able to change its settings
+without re-issuing keys to the fleet. And the lease and revocation are keyed on the address.
+
+**Older builds are unaffected.** `LicensePayload`'s `Decodable` is synthesised, so an unknown key is
+ignored. A build from before this change activates such a code as a plain licence. The signature
+covers the payload bytes, so the extra field costs nothing. The generator's copy of the payload
+struct must gain the field in the same PR, because `.sortedKeys` makes the encoding a byte-for-byte
+contract.
+
+**The first-run branch.** The welcome page gains **"I have a licence key from my company"**, ahead of
+the provider and key pages. Onboarding's other branches do not change.
+
+- It takes a pasted key. A key is about 400 characters of base64, so nobody types it. The scanner
+  (PR 3c) adds scanning, and a QR of a licence key fits comfortably.
+- It goes through `WearablesBootstrap` and sets `hasCompletedOnboarding` explicitly, with the test
+  P3 already requires (CD P1's hazard).
+- **Offline at first launch.** The licence activates, since it is verified offline. The phone then
+  shows *"Setting up for ⟨licensee⟩ — connect to the internet once to finish"*, with Retry, and does
+  not fall through to the general app. The ceilings live in the profile. A phone that opens as the
+  full app while its organisation's settings are pending is exactly what point 4 describes.
+- **The AI provider is still owed.** Neither the licence nor the profile may carry a credential (the
+  `SettingKey` secrets rule). SSO, the clean answer in P4, is deferred per point 1. So a
+  licence-enrolled phone with no usable model does not show a broken session. Field Assist says
+  *"Your administrator needs to finish setting up this phone"*, and the administrator passcode below
+  opens the provider page. A keyless tier (Plan DB / DH) is used if the device has one. This is one
+  administrator step per phone, at the depot. Removing it needs the organisation gateway (Plan CR) or
+  SSO, and both are deferred.
+- **A key entered after onboarding** in Field Assist settings runs the same flow and shows the same
+  review sheet. That is the "licence code entered" event in the re-clamp table.
+
+**Honest exposure.** A team key is already a bearer code shared across a fleet (Plan EE). With a
+`profile` claim, a leaked key also fetches the organisation's profile, including its report
+recipients, which are personal data. That is the same exposure the profile address already has. The
+remedies are the ones PR 2b and PR 4 built: a signed revocation at the address, and a new key.
+
+### The Field Assist edition, and the administrator passcode
+
+**Hidden is not forbidden.** Two mechanisms, kept apart:
+
+| | Hidden by the edition | Forbidden by a ceiling |
+|---|---|---|
+| What it is | the technician's view of the app | what this phone may do, whoever holds it |
+| How it is stated | one named preset: everything not on the kept list | per key, with a direction (PR 1) |
+| Who can get past it | the organisation's administrator, with its passcode | nobody. A new profile is the only change |
+| A feature added to the app later | hidden from technicians by default | available until someone ceilings it |
+
+The last row settles the open question. The draft preferred an enumerated subtraction because it can
+be tested key by key. That argument still holds for **ceilings**, and they stay enumerated. For
+**visibility**, the inverted form is the one this request describes ("keep only Field Assist
+visible"). It is also the one that stays correct as the app grows.
+
+**The profile field.** `ConfigProfile` gains `edition`, and PR 3b defines one value, `"fieldAssist"`.
+An unknown value is a named drop in the lossy-decode report, and the app keeps its normal
+presentation. The edition implies `fieldAssistEnabled` and the Field Assist mode for the technician.
+It does not write them as starting values.
+
+**What the technician sees.**
+
+- **Tabs:** Field Assist (the Voice tab as the session surface), Job, and Settings. Modes and Chat
+  are hidden. The Voice tab's mode and persona switchers are hidden too, so there is no other mode to
+  land in by accident.
+- **Settings:** a short list.
+  - "Managed by ⟨org⟩". The removal path moves one level down into its detail view, and is still
+    owner-gated per P3.
+  - Glasses, for pairing and connecting.
+  - Accessibility. This is `pinnedAssistive`, and neither the edition nor the passcode may hide it.
+  - Language.
+  - Diagnostics & Support.
+  - About.
+  - **Administrator settings**, locked.
+- **What is hidden:** everything else, including Voice & Triggers, the Simple Mode switch, Discover,
+  and "Show everything". The *Ceilings for a single-purpose edition* table becomes the list of what
+  an administrator finds behind the passcode. The ceilings a profile sets still bound that list.
+
+**What the administrator gets.** Entering the passcode opens today's full Settings hub and the hidden
+tabs, including the other modes the partner names. Every ceiling still clamps. The administrator session
+ends when the app goes to the background, or after ten minutes of inactivity in Settings, whichever
+comes first. The phone then returns to the Field Assist view.
+
+**The passcode is the organisation's, not the phone's.** `OwnerGateMachine` asks for the device
+passcode. On a phone a technician carries, the technician knows that passcode, so the gate would stop
+nobody it is meant to stop. So:
+
+- The profile carries a **verifier**, not the passcode: `adminPasscode = {salt, iterations,
+  PBKDF2-HMAC-SHA256}`, using CommonCrypto's `CCKeyDerivationPBKDF`, since CryptoKit has no PBKDF2.
+  `make-org-profile.swift` prompts for the passcode with echo off and never takes it in argv. It
+  refuses anything shorter than eight characters or purely numeric.
+- **It is a guard, not a lock, and the plan says so.** A short passcode can be brute-forced from its
+  verifier by anyone holding the profile. Against the stated threat, a technician changing settings
+  by accident, that does not matter. Against a determined one it would, which is why the passcode
+  lifts **no ceiling**. What it opens is only what the edition hides.
+- Failed attempts back off, persisted across launches: five free, then 30 s doubling to an hour.
+  VoiceOver announces the wait.
+- **A forgotten passcode is a re-mint.** A new profile at the same address carries a new verifier.
+  The next renewal applies it, from PR 2b's `renewIfDue` or the *Check for Renewal* button. There is
+  no local reset, because a local reset is a way round the passcode.
+- **A profile with the edition but no passcode** falls back to `OwnerGateAuth`, the device-owner
+  gate. The review sheet says *"Anyone who can unlock this phone can open administrator settings"*,
+  so the organisation knows before it confirms.
+- The passcode verifier is not a secret in the `SettingKey` sense, because it is not a credential to
+  any service. But it rides a profile that should not be printed on a wall. It is one more reason the
+  licence carries a pointer.
+
+**Simple Mode is not the edition.** Simple Mode stays the owner's own hand-off switch, gated on the
+device passcode. On a phone with the edition, its switch is behind the administrator passcode with
+everything else. The technician's view is already simpler than Simple Mode, and two nested
+simplifications with two different gates would be the confusion point 4 warns about.
+
+### Delivery, re-cut (2026-09-24, evening)
+
+PR 2b (the lease, in review as [#551](https://github.com/straff2002/OpenGlasses/pull/551)) lands
+first. The licence-key path writes the address that 2b's renewal reads, and both touch
+`OrgProfileManager`. Then, ahead of the rest:
+
+| PR | What | Why this order |
+|---|---|---|
+| **3a** | the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
+| **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the backoff, the administrator session, and the script's passcode prompt | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
+| **3c** | the live-camera scanner, reading a licence key or an enrol link into the same field | a convenience once 3a exists, since pasting works |
+| **4** | leaving the firm: the owner axis, sealing, deliver-then-erase | unchanged |
+
+3a and 3b are what a demo needs. Before any demo, the owner has to run `make-org-profile.swift` and
+`generate-field-license.swift` on a Mac. That produces a profile with the edition and a passcode,
+hosted at an HTTPS address, and a key whose `profile` claim names that address. Neither script has
+yet been run against the production keys.
+
+---
+
 ## The ask, and the gap
 
 An organisation — a museum, a field-service contractor, a hospital ward, a training provider — wants
@@ -895,8 +1077,8 @@ which is why they are a PR of their own.
 
 | Deferred | Why not now |
 |---|---|
-| **The Managed App Configuration reader** | no pilot organisation needs it yet (decided 2026-09-24). When one does, it is a third `ProfileIngress` conformance over the source case, precedence layer, removal branch, re-clamp event and wire shape PR 1 and PR 2 already built and tested — about thirty lines plus its observation |
-| **The single-purpose edition** — the subtraction table, collapsing the Modes tab, the Discover shelf, "Show everything" hiding categories | no partner has asked for one yet; it is the largest piece of this plan, and the open question on a named preset versus a subtraction list should be settled by the first real request, not in advance |
+| **The Managed App Configuration reader**, and **SSO** | no pilot organisation needs either yet (decided 2026-09-24; the partner confirmed the same evening that both wait until a customer is ready to deploy internally). SSO is the identity axis: sign-in re-clamping and P4's credential half wait with it. When one does, it is a third `ProfileIngress` conformance over the source case, precedence layer, removal branch, re-clamp event and wire shape PR 1 and PR 2 already built and tested — about thirty lines plus its observation |
+| ~~**The single-purpose edition**~~ | **Un-deferred 2026-09-24 (evening):** the pilot partner asked for it. It is now PR 3b, a named preset plus an administrator passcode. See *Revision 2026-09-24 (evening)* |
 | **Re-clamp on sign-in / sign-out** | the app has no user identity (see *Identity is per-person*); the envelope is built to re-clamp on any event, and gains those two when identity arrives |
 | **Watch propagation** | needs Plan CS P2's application-context channel; PR 2 checks the watch cannot route around the clamp in the meantime |
 | **Hosting the organisation's documents** | still the open question it was; the pointer field exists in the schema from PR 1 so no profile needs re-minting when it lands |
@@ -923,6 +1105,20 @@ which is why they are a PR of their own.
    firm over its report route, then are erased; undelivered ones stay locked and retried, and are
    erased after 30 days by default.
 
+6. ~~**MDM and SSO?**~~ **Decided 2026-09-24 (evening), by the pilot partner:** both wait until a
+   customer is ready to deploy internally.
+7. ~~**How does a technician's phone find its organisation?**~~ **Decided 2026-09-24 (evening):** by
+   the licence key entered at first launch. The key carries a signed `profile` address, and PR 3a
+   builds the path.
+8. ~~**Single-purpose edition: now or later, preset or list?**~~ **Decided 2026-09-24 (evening):**
+   now, as PR 3b. Visibility is a named preset (`edition: "fieldAssist"`, everything off the kept
+   list hidden), while ceilings stay enumerated per key. The hidden part opens with the
+   **organisation's** administrator passcode, carried as a PBKDF2 verifier. It is not the device
+   passcode, which the technician knows. It lifts no ceiling.
+9. **Still open, for the partner:** who enters the AI provider credential on each phone until SSO or
+   the organisation gateway exists? The plan assumes the administrator does, once, at the depot,
+   behind the passcode. And should the passcode be one per profile (the plan's assumption,
+   rotatable by re-minting) or set per phone at enrolment?
 ---
 
 ## Traps
@@ -974,12 +1170,16 @@ which is why they are a PR of their own.
   and signature-checked on the way in. **Unchanged for skill packs:** a skill pack adds *behaviour*,
   which is a different trust decision from adding a reference vault, and Plan BX's line stands until
   somebody argues it down on its own merits.
-- **Should "Field Assist only" be a named preset rather than a subtraction list?** The table above is
+- ~~**Should "Field Assist only" be a named preset rather than a subtraction list?**~~ The table above is
   long, and every capability added to the app afterwards defaults to *present* unless somebody
   remembers to ceiling it — the wrong default for a single-purpose edition and the right one for a
   museum. A disposition that inverts it (nothing but the named feature and the kept list) is more
   robust and much blunter. Leaning: ship the enumerated ceiling first, because it is testable per key,
   and revisit the inverted form when a second partner asks for a second edition.
+  **Resolved 2026-09-24 (evening), by the first real request:** both, for different jobs.
+  *Visibility* is the inverted, named preset, so a feature added later stays hidden from a technician
+  unless someone adds it to the kept list. *Capability* stays the enumerated, per-key ceiling. See
+  *Hidden is not forbidden*.
 - **Where do an organisation's manuals actually come from?** A hosted folder the profile points at is
   the obvious shape, but the documents tier is the one part of this that is the customer's own
   material, and hosting it introduces a store the vendor does not otherwise operate. A folder handed
