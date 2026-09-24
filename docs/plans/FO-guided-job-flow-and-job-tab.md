@@ -1330,6 +1330,56 @@ fixture through the `summarise` seam. Whether a technician can hold a five-minut
 at motorway speed, and whether the summary a real model returns survives the decoder often enough
 to be useful, are **owed to P4**.
 
+### A defect fixed after the fact: the debrief block reached no model (2026-09-24)
+
+As shipped, `GuidedJobFlow.debriefBlock()` had **no callers** (P3c found it; see its "defect found"
+note). `DebriefContract.block` was built and tested (`DebriefCoreTests`, one assertion in
+`JobDebriefFlowTests`) and was never handed to a model. So in Direct mode and on both live
+backends, the model was never told which job a debrief was about, or that it must not propose
+work, treat anything said as a completed task, or claim a save. The only guard left was the
+decoder on the summary, and the summary is not the conversation.
+
+Now it goes where the job's own blocks go:
+
+- **Direct mode.** `LLMService.buildSystemPrompt` appends `LLMService.debriefContext()` right after
+  the `<field_assist_context>` block. The app sets that seam to `guidedJobFlow.debriefBlock()` in
+  `configureGuidedJobFlow`. It is a separate `if`, not inside the vault context, because a debrief
+  usually runs on a finished job, with no session open and no `activeVault`. The full prompt, the
+  cloud-agent prompt and the lean on-device prompt all go through `buildSystemPrompt`, so all
+  three get it. `leanCloudPrompt` (the small-context cloud tier) carries no Field Assist context
+  at all, and still does not.
+- **Live backends.** `LiveJobBridge` gains a second lane beside the job block. It has its own
+  last-sent record and its own held slot, so a debrief change never re-sends the job block, and
+  the reverse. The pieces are a `debriefBlock` seam, `setupDebriefBlock()` (called by both
+  managers right after `setupBlock()`, so a session that starts mid-debrief is told), and
+  `refreshDebrief()`. A debrief that settles, or is put away, is said once as
+  `DebriefContract.endedBlock`, the way a closed job is said once as "No job is open": text
+  already injected into a live conversation cannot be taken back out. Both lanes go through
+  `LiveJobSnapshotPolicy`, so a debrief block built before a reset is discarded, not applied, and
+  a block held while the session was busy goes out at the next `turnCompleted()`.
+- **The trigger.** The app subscribes to `guidedJobFlow.$debrief`, keyed on the *rendered* block
+  (`debriefBlock(for:)`). A start, a switch or a settle moves the block. An account line lands on
+  the debrief and moves nothing, so it sends nothing. `@Published` emits before the property is
+  set, so the refresh goes out on the next main-queue turn (`receive(on: DispatchQueue.main)`),
+  where the bridge's seam reads the new value.
+
+Tests: in `JobDebriefFlowTests`, the block is in the Direct-mode prompt while a debrief on a
+finished job runs, and is gone once the debrief is saved, scrapped or put away. The bridge
+follows the real flow through start, switch and save. `LiveJobBridgeTests` covers the debrief
+lane: setup with no job open, start and switch, ended said once, the lanes kept apart, the
+generation guard, and held-until-the-turn-boundary. `LiveJobBridgeWiringTests` scrapes both
+managers for `setupDebriefBlock()`, and the app for both bridges' seam, both `refreshDebrief()`
+calls and the `LLMService.debriefContext` assignment. It also scrapes `buildSystemPrompt` for
+the append.
+
+**A neighbouring defect found while doing this, and left alone.** P3a's job-state trigger
+(`FieldSessionService.shared.$activeSession … .sink`) calls `jobBridge.refresh()`, which reads
+`FieldSessionService.shared.activeSession` through its seam. `@Published` emits before the
+property is set, so that read gets the *previous* session: each live re-injection is one change
+behind. The same goes for the watch status and the CarPlay Jobs refresh in that sink; only the
+lens cue uses the value the sink is handed. The debrief trigger above avoids this. The job
+trigger is a separate change.
+
 ### Seams left for P3c
 
 - `DebriefJobResolver.Candidate` is the shape the job-ahead list needs, and `debriefCandidates()`
@@ -1466,6 +1516,7 @@ extension GuidedJobFlow { addUpcomingJob, assembleBrief, briefAloud, moreOfBrief
 `GuidedJobFlow.debriefBlock()` (P3b) has **no callers**. The bounded `JOB DEBRIEF:` block — which
 job, and the rules against proposing work or claiming a save — is built and tested and never
 handed to the model on any backend. Not P3c's to fix; recorded here, and raised as its own task.
+**Since fixed**: see "A defect fixed after the fact" under P3b.
 
 ### What is on screen
 

@@ -460,6 +460,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         if let jobBlock = jobBridge.setupBlock() {
             prompt += "\n\n\(jobBlock)"
         }
+        // Plan FO P3b — the debrief block, the Gemini manager's twin.
+        if let debriefBlock = jobBridge.setupDebriefBlock() {
+            prompt += "\n\n\(debriefBlock)"
+        }
 
         // Plan FC P3 — see the twin of this record in `GeminiLiveSessionManager`: this instruction
         // carries no wearer-memory block, and it is assembled once at connect rather than per turn.
