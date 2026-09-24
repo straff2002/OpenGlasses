@@ -1487,8 +1487,10 @@ handed to the model on any backend. Not P3c's to fix; recorded here, and raised 
 
 Headless: `JobBriefTests` (23), `JobAheadTests` (25), `JobFileTests` (29) and `JobAheadFlowTests`
 (10) new, over fixture vault text, fixture sessions, an ephemeral Curve25519 pair and the bundled
-refrigeration vault. They were written in an environment without a Swift toolchain, so **the
-first run of any of them is CI's** — this section is updated if that run changes anything.
+refrigeration vault. They were written in an environment without a Swift toolchain, so the first
+compile and the first run were CI's: the Unit Tests job on
+[#544](https://github.com/straff2002/OpenGlasses/pull/544) built the app and the test bundle and
+ran the full suite green on the first push (2026-09-24), with nothing changed after it.
 `DataStoreRegistryTests`' generated matrix was updated by hand for the new row.
 
 **Owed:** the plan's "a fixture `.ogjob` opens on the simulator in the audit" — no UI audit of the
