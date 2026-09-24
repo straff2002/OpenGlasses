@@ -195,6 +195,20 @@ struct ManagedByOrganisationSection: View {
                     subtitle: subtitle(profile: profile, record: record),
                     showsChevron: false
                 ) { EmptyView() }
+                if let notice = leaseNotice(profile: profile, record: record) {
+                    OGDivider()
+                    OGNotice(text: notice.text, systemImage: notice.icon)
+                        .padding(12)
+                }
+                if record.profileURL != nil, record.revoked != true, !(manager.lease?.isLiveAndQuiet ?? false) {
+                    OGDivider()
+                    Button {
+                        Task { await manager.renewIfDue(force: true) }
+                    } label: {
+                        OGRow("Check for Renewal", icon: "arrow.clockwise", showsChevron: false) { EmptyView() }
+                    }
+                    .buttonStyle(.plain)
+                }
                 OGDivider()
                 if record.source.isLocallyRemovable {
                     Button(role: .destructive) {
@@ -229,6 +243,33 @@ struct ManagedByOrganisationSection: View {
                 OGNotice(text: problem, systemImage: "exclamationmark.triangle")
                     .padding(12)
             }
+        }
+    }
+
+    /// What the lease means for the person holding the phone, or nil while it is simply in force.
+    private func leaseNotice(profile: ConfigProfile, record: OrgEnrolmentRecord) -> (text: String, icon: String)? {
+        let name = profile.organizationName
+        let host = record.profileURL.map { OrgEnrolmentService.displayHost($0) }
+        switch manager.lease {
+        case .renewSoon(let renewBy)?:
+            return ("Connect to the internet to renew by \(renewBy.formatted(date: .abbreviated, time: .omitted)). This phone renews on its own whenever it can reach \(host ?? "your organisation").",
+                    "clock")
+        case .lapsed(let since)?:
+            if !manager.contentLocked {
+                return ("Management expired on \(since.formatted(date: .abbreviated, time: .omitted)). \(name)'s content locks when this job closes.",
+                        "exclamationmark.triangle")
+            }
+            let reach = host.map { " until this phone reaches \($0) again" } ?? " until your organisation re-issues its link"
+            return ("Management expired on \(since.formatted(date: .abbreviated, time: .omitted)). \(name)'s settings still apply and its content is locked\(reach).",
+                    "exclamationmark.triangle")
+        case .clockWoundBack?:
+            return ("This phone's clock is behind a time it has already seen, so \(name)'s content is locked. Set the date and time automatically, then check for renewal.",
+                    "exclamationmark.triangle")
+        case .revoked?:
+            return ("\(name) has revoked this phone. Its settings no longer apply and its content is locked.",
+                    "xmark.octagon")
+        case .live?, nil:
+            return nil
         }
     }
 
@@ -271,5 +312,13 @@ struct ManagedSettingNote: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+    }
+}
+
+private extension ProfileLease.Status {
+    /// In force with no warning due — nothing for the person to do.
+    var isLiveAndQuiet: Bool {
+        if case .live = self { return true }
+        return false
     }
 }

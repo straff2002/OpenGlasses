@@ -22,6 +22,7 @@ enum PolicyEnvelope {
     // Guarded by `lock`; every access below takes it.
     nonisolated(unsafe) private static var result = ProfileApplier.Result()
     nonisolated(unsafe) private static var organization: String?
+    nonisolated(unsafe) private static var withheldLicence: String?
 
     /// The organisation whose profile is in force, or nil on an unmanaged phone.
     static var organizationName: String? {
@@ -54,6 +55,25 @@ enum PolicyEnvelope {
         organization = nil
         lock.unlock()
         NotificationCenter.default.post(name: .orgPolicyDidChange, object: nil)
+    }
+
+    /// The licence code the enrolled profile brought, while its lease is not in force (Plan CT
+    /// PR 2b). The entitlement provider skips exactly this code, so the organisation's pack and the
+    /// vaults its licence unlocks lock through the gates that already exist — and nothing the
+    /// person bought themselves is touched. Nil whenever the lease is live.
+    static var withheldLicenceCode: String? {
+        lock.lock(); defer { lock.unlock() }
+        return withheldLicence
+    }
+
+    /// Withhold the profile's licence (lease not in force), or stop withholding it (nil).
+    static func withholdLicence(_ code: String?) {
+        let trimmed = code?.trimmingCharacters(in: .whitespacesAndNewlines)
+        lock.lock()
+        let changed = withheldLicence != trimmed
+        withheldLicence = trimmed
+        lock.unlock()
+        if changed { NotificationCenter.default.post(name: .orgPolicyDidChange, object: nil) }
     }
 
     /// Whether a control for `key` must render locked, with the organisation named as the reason.

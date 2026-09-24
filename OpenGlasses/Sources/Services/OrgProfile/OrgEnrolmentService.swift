@@ -147,7 +147,7 @@ final class OrgEnrolmentService: ObservableObject {
             stage = .failed(ProfileVerification.Failure.malformed.errorDescription ?? "")
             return
         }
-        switch manager.review(document: document, source: source) {
+        switch manager.review(document: document, source: source, sourceURL: target) {
         case .success(let review): stage = .reviewing(review)
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
