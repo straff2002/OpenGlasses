@@ -41,6 +41,20 @@ import Foundation
 /// layer is that they are not what is being said. That check is deliberately weak, which is why
 /// it only gates general speech: the explicit stop and the wake phrase are unaffected and still
 /// cut through, so the wearer is never stuck inside a long answer.
+///
+/// # The phone's own loudspeaker
+///
+/// Build 420 showed the overlap test is not enough on the phone route. With the reply playing out
+/// of the iPhone's loudspeaker an inch from the iPhone's microphone, six answers in a row were cut
+/// off two to six seconds in — four of them the same photo reply, cut at the same point on the
+/// same two-word partial. Two words is too small a sample for a two-thirds overlap to mean
+/// anything: one misheard or contracted word ("i've" heard as "i have") and half the transcript is
+/// "not what is being said". And on an open speaker the room is in the microphone too — at a
+/// customer demo that is several people talking.
+///
+/// So on the loudspeaker a general interrupt is refused outright, and elsewhere it needs a real
+/// sample: at least two words (or a run of unspaced script) that are not in the reply, matched
+/// loosely enough that contractions and one-letter mishearings count as the reply.
 enum BargeInPolicy {
 
     /// What the microphone is hearing from the app itself while this transcript arrives.
@@ -50,7 +64,10 @@ enum BargeInPolicy {
         /// TTS is playing. `text` is the utterance being spoken, when the caller can supply it;
         /// `nil` means the caller knows playback is live but cannot say what it is saying, and
         /// then there is nothing to distinguish the wearer from the echo.
-        case speaking(text: String?)
+        ///
+        /// `openSpeaker` is whether it is playing out of the phone's own loudspeaker, where the
+        /// microphone hears it at full volume along with everyone in the room.
+        case speaking(text: String?, openSpeaker: Bool = false)
     }
 
     enum Decision: Equatable {
@@ -105,11 +122,36 @@ enum BargeInPolicy {
 
         guard generalBargeInEnabled else { return .ignore }
         guard clearsNoiseFloor(trimmed) else { return .ignore }
-        if case .speaking(let spoken) = assistantSpeech {
+        if case .speaking(let spoken, let openSpeaker) = assistantSpeech {
+            // The loudspeaker is in the microphone's ear, and so is the room: no transcript heard
+            // over it is evidence of the wearer. Stop and the wake phrase above still cut through.
+            guard !openSpeaker else { return .ignore }
             // No idea what is playing ⇒ no evidence this is the wearer ⇒ don't cut the answer.
-            guard let spoken, !echoesSpokenText(trimmed, spoken: spoken) else { return .ignore }
+            guard let spoken, readsAsWearer(trimmed, spoken: spoken) else { return .ignore }
         }
         return .interrupt(text: trimmed)
+    }
+
+    /// Words heard over playback that are not in the reply, before they count as the wearer
+    /// rather than a misheard word or two of the reply. See the type comment: a two-word partial
+    /// with one stray word is how every reply was cut off on build 420.
+    static let minimumNovelTokens = 2
+
+    /// Whether `transcript`, heard while `spoken` plays, is somebody other than the assistant: it
+    /// does not read as the reply, **and** there is enough of it that is not the reply to be a
+    /// sample rather than a mishearing. The unspaced-script fallback mirrors the noise floor, so
+    /// the rule does not quietly stop working for a language without spaces between words.
+    static func readsAsWearer(_ transcript: String, spoken: String) -> Bool {
+        let heard = PhraseMatcher.tokenize(transcript)
+        let said = spokenVocabulary(spoken)
+        guard !heard.isEmpty else { return false }
+        guard !said.isEmpty else { return true }
+        let novel = heard.filter { !isEcho($0, of: said) }
+        let overlap = Double(heard.count - novel.count) / Double(heard.count)
+        guard overlap < echoOverlapThreshold else { return false }
+        if novel.count >= minimumNovelTokens { return true }
+        // One unspaced run that is entirely new — a sentence in a script without word spacing.
+        return heard.count == 1 && novel.count == 1 && novel[0].count >= minimumCharacters
     }
 
     /// Share of a transcript's words that must also appear in what is being spoken before it reads
@@ -125,10 +167,62 @@ enum BargeInPolicy {
     /// Whether `transcript` reads as `spoken` coming back through the microphone.
     static func echoesSpokenText(_ transcript: String, spoken: String) -> Bool {
         let heard = PhraseMatcher.tokenize(transcript)
-        let said = Set(PhraseMatcher.tokenize(spoken))
+        let said = spokenVocabulary(spoken)
         guard !heard.isEmpty, !said.isEmpty else { return false }
-        let overlap = heard.filter { said.contains($0) }.count
+        let overlap = heard.filter { isEcho($0, of: said) }.count
         return Double(overlap) / Double(heard.count) >= echoOverlapThreshold
+    }
+
+    /// Shortest word that may match the reply with one letter wrong. Below it a single edit turns
+    /// most words into other common words ("bus" → "but"), and the wearer's own short words would
+    /// start reading as echo.
+    static let shortestFuzzyEchoWord = 4
+
+    /// Every form of the reply's words the recogniser might write down: the words themselves, and
+    /// for a contraction its stem and its expansion — "it's" is heard as "it's", "its" or "it is",
+    /// "don't" as "do not".
+    static func spokenVocabulary(_ spoken: String) -> Set<String> {
+        var vocabulary = Set<String>()
+        for token in PhraseMatcher.tokenize(spoken) {
+            vocabulary.insert(token)
+            vocabulary.formUnion(contractionForms(token))
+        }
+        return vocabulary
+    }
+
+    /// Whether one heard word is the reply's: exactly, as a contraction form, or — for a word long
+    /// enough to survive it — with one letter misheard.
+    static func isEcho(_ word: String, of vocabulary: Set<String>) -> Bool {
+        if vocabulary.contains(word) { return true }
+        if contractionForms(word).contains(where: { vocabulary.contains($0) }) { return true }
+        guard word.count >= shortestFuzzyEchoWord else { return false }
+        return vocabulary.contains { candidate in
+            candidate.count >= shortestFuzzyEchoWord
+                && abs(candidate.count - word.count) <= 1
+                && WakePhraseMatcher.levenshteinDistance(candidate, word) <= 1
+        }
+    }
+
+    /// The other spellings of a contracted word: its apostrophe-free form and its parts.
+    static func contractionForms(_ token: String) -> [String] {
+        guard let apostrophe = token.firstIndex(of: "'") else { return [] }
+        let stem = String(token[..<apostrophe])
+        let suffix = String(token[token.index(after: apostrophe)...])
+        var forms = [token.replacingOccurrences(of: "'", with: ""), stem]
+        switch suffix {
+        case "t" where stem.hasSuffix("n"):
+            // "don't" → "do not", "can't" → "can not", "won't" → "will not".
+            let base = String(stem.dropLast())
+            forms += [base == "wo" ? "will" : base == "ca" ? "can" : base, "not"]
+        case "s": forms += ["is", "has"]
+        case "re": forms.append("are")
+        case "ve": forms.append("have")
+        case "ll": forms.append("will")
+        case "d": forms += ["would", "had"]
+        case "m": forms.append("am")
+        default: break
+        }
+        return forms.filter { !$0.isEmpty }
     }
 
     /// Whether `trimmed` is more than a stray fragment. Either signal is enough; neither is a claim

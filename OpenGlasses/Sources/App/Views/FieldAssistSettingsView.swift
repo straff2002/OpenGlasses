@@ -61,6 +61,12 @@ struct FieldAssistSettingsView: View {
     /// Both settings are live at once — every enabled persona's phrase wakes the app, and so does
     /// the one in Voice settings. Saying so is the only way the row is not a half-truth.
     private var wakeWordFooter: String {
+        // On a job the wake word is the whole interface, so a switched-off listener is said here
+        // rather than discovered at the customer's door.
+        if !appState.listeningEnabled {
+            return "Listening is switched off, so this phrase won't start a turn. Turn on Listen "
+                + "for Wake Phrase in Settings › Voice."
+        }
         let global = Config.wakePhrase
         if let persona = governingPersona, persona.wakePhrase != global {
             return "Say this to start a hands-free turn. It belongs to the \(persona.name) persona; "

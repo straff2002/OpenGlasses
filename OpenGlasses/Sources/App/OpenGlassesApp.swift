@@ -668,7 +668,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 PrivacyLog.app(.micMuted)
             } else if glassesConnectionIsLive() {
                 Task {
-                    try? await wakeWordService.startListening()
+                    await startWakeWordIfListeningEnabled(PrivacyToken("unmute"))
                     PrivacyLog.app(.micUnmuted)
                 }
             }
@@ -2325,7 +2325,7 @@ class AppState: ObservableObject, AppStateProtocol {
             case .startSubstrate(let target):
                 switch target {
                 case .direct:
-                    try? await wakeWordService.startListening()
+                    await startWakeWordIfListeningEnabled(PrivacyToken("modeSwitch"))
                 case .geminiLive, .openaiRealtime:
                     // Nothing to start here for audio: a live session keeps running when the
                     // app is backgrounded on the `audio` background mode alone. The session
@@ -2817,9 +2817,13 @@ class AppState: ObservableObject, AppStateProtocol {
         // What the mic is hearing from us, so a transcript arriving during playback can be told
         // from the assistant's own voice coming back through it. There is no echo cancellation on
         // this path — without this the reply cut itself off one to two seconds in, every time.
+        // The route is read now, not cached: the phone's loudspeaker is the case where the reply
+        // is loudest in the microphone (build 420 cut every answer off on it).
         wakeWordService.assistantSpeechContext = { [weak self] in
             guard let self, self.speechService.isSpeaking else { return .silent }
-            return .speaking(text: self.speechService.lastSpokenText)
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
+            return .speaking(text: self.speechService.lastSpokenText,
+                             openSpeaker: MicRoutePolicy.isOpenSpeaker(outputs))
         }
 
         // Voice-activity barge-in: user starts speaking during TTS → stop and process new query
@@ -3379,12 +3383,8 @@ class AppState: ObservableObject, AppStateProtocol {
             }
 
             if !wakeWordService.isListening {
-                do {
-                    try await wakeWordService.startListening()
-                } catch {
-                    PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
-                    // Not fatal — user can still use Test Microphone button
-                }
+                // Not fatal if it fails — user can still use Test Microphone button.
+                await startWakeWordIfListeningEnabled(PrivacyToken("launch"))
             }
         }
     }
@@ -5751,7 +5751,7 @@ class AppState: ObservableObject, AppStateProtocol {
             wakeWordService.stopListening()
             isListening = false
         } else {
-            Task { try? await wakeWordService.startListening() }
+            Task { await startWakeWordIfListeningEnabled(PrivacyToken("pushToTalkOff")) }
         }
     }
 
@@ -5761,7 +5761,32 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             wakeWordService.stopListening()
             try? await Task.sleep(nanoseconds: 300_000_000)
-            try? await wakeWordService.startListening()
+            await startWakeWordIfListeningEnabled(PrivacyToken("settingsChanged"))
+        }
+    }
+
+    /// Start the always-on listener from a path the app owns — launch, a settings change, a mode
+    /// switch, push-to-talk or mute being turned off — but only while the master listening switch
+    /// is on.
+    ///
+    /// Build 420: these paths started the listener whatever the switch said, while the end of
+    /// every turn (`returnToWakeWord`) honoured it. With the switch off that is a wake word that
+    /// works exactly once per launch — or once per trip into Settings — and then never re-arms,
+    /// logged as `listeningDisabled detail=masterOff`. The switch now wins everywhere, and
+    /// Settings › Voice shows it so an "off" left by the Lock Screen button, Control Center or
+    /// Siri can be seen and undone.
+    ///
+    /// Not used by `setListeningEnabled(true)` (that *is* the switch) or by the TTS stop
+    /// listener, which only listens for "stop" over a reply the wearer asked for.
+    func startWakeWordIfListeningEnabled(_ source: PrivacyToken) async {
+        guard listeningEnabled else {
+            PrivacyLog.wakeWord(.listenerSkippedDisabled, reason: source)
+            return
+        }
+        do {
+            try await wakeWordService.startListening()
+        } catch {
+            PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
         }
     }
 
