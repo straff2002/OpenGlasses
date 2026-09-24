@@ -182,6 +182,31 @@ struct AuditDeferral {
             + "for real, and undeferred, on the Voice tab."
     )
 
+    /// A clip's timecode badge, which VoiceOver already hears in the row's own label.
+    ///
+    /// `EvidenceMediaTile` draws "0:12" over a clip's poster frame and hides it from the
+    /// accessibility tree, because the row it sits in is one element whose label already opens
+    /// "Clip, 12 seconds, …" — `JobMediaItem.spoken` puts `durationLabel` second, before the
+    /// caption. Representing the badge as well would add a focus stop that repeats, in a worse
+    /// spelling, what the row just said.
+    ///
+    /// So the audit is right about the pixels and wrong about the need: it reads the **render**
+    /// tree, sees text with no element under it, and cannot see that the fact is carried a level
+    /// up. It is the same property `appBehindTheOverlay` records — the tool that reports a finding
+    /// and the tool that would catch the real defect are looking at different trees.
+    ///
+    /// Measured 2026-09-24 on an iOS 27 simulator, on the first run in which this screen's audits
+    /// were ever reached: one `elementDetection` finding, no element attached, only on the review
+    /// that carries a clip and never on the photographs-only one beside it. Scoped to
+    /// `.elementDetection` on the clip review, so every other audit type stays live there and a
+    /// photograph with unlabelled text anywhere else in the app still fails.
+    static let decorativeClipTimecode = AuditDeferral(
+        types: .elementDetection,
+        reason: "A clip's \"0:12\" badge is drawn over its poster frame and hidden from "
+            + "VoiceOver, because the row's own label already says \"Clip, 12 seconds\". The "
+            + "audit measures the render tree and cannot see the fact one level up."
+    )
+
     /// A one-line text field is a one-line text field. At accessibility sizes iOS scrolls the
     /// text inside it rather than growing the row, and the same is true of a `Picker`'s selected
     /// value in a `Form` — so the audit reports both as text that may clip, on every such row in

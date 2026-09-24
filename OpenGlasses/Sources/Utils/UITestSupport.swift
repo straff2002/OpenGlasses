@@ -180,6 +180,7 @@ enum UITestSupport {
         // strand one. That is correct behaviour reading stale state, and it made "no Job tab
         // without the entitlement" depend on which test ran first.
         clearFieldSessions()
+        clearStagedSends()
 
         if wantsFieldAssist {
             // The entitlement comes from the seam that already exists for development and demos —
@@ -422,6 +423,17 @@ enum UITestSupport {
             at: documents.appendingPathComponent("FieldSessions", isDirectory: true))
     }
 
+    /// The staged-send queue, cleared for the same reason the sessions above are (Plan FO P3b).
+    ///
+    /// It lives in Application Support, so the defaults wipe does not reach it — and it is the one
+    /// seeded store that is *appended to* rather than written: `seedStagedSends` adds three
+    /// entries on every launch that asks for them, and nothing ever takes them away. Without this
+    /// the queue carries every earlier launch's reports as well as this one's, which is not a
+    /// state any technician's phone can be in and is not the state the seed says it writes.
+    private static func clearStagedSends() {
+        DeliveryQueueStore.eraseStoredQueue()
+    }
+
     /// One finished job, and — with `.seedFieldJob` — one open one on top of it.
     ///
     /// Written through the service's own API, so what lands on disk is exactly what a real visit
@@ -552,19 +564,16 @@ enum UITestSupport {
         var delivery = DeliverySettings.load()
         if delivery.emailRecipients.isEmpty { delivery.emailRecipients = ["office@example.com"] }
         delivery.save()
-        let finished = sessions.history.filter { $0.endedAt != nil }
-        for (index, session) in finished.prefix(1).enumerated() {
-            _ = index
-            let number = session.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber
-            for (offset, kind) in [QueuedSend.DocumentKind.report, .addendum, .report].enumerated() {
-                appState.jobSends.queue.append(QueuedSend(
-                    sessionId: session.id, jobNumber: number, documentKind: kind,
-                    channel: offset == 1 ? .messages : .email,
-                    recipients: offset == 1 ? ["+64211234567"] : ["office@example.com"],
-                    recipientSource: .deliverySettings,
-                    createdAt: Date(timeIntervalSinceNow: -Double(300 - offset * 60)),
-                    state: .staged))
-            }
+        guard let session = sessions.history.first(where: { $0.endedAt != nil }) else { return }
+        let number = session.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber
+        for (offset, kind) in [QueuedSend.DocumentKind.report, .addendum, .report].enumerated() {
+            appState.jobSends.queue.append(QueuedSend(
+                sessionId: session.id, jobNumber: number, documentKind: kind,
+                channel: offset == 1 ? .messages : .email,
+                recipients: offset == 1 ? ["+64211234567"] : ["office@example.com"],
+                recipientSource: .deliverySettings,
+                createdAt: Date(timeIntervalSinceNow: -Double(300 - offset * 60)),
+                state: .staged))
         }
     }
 
