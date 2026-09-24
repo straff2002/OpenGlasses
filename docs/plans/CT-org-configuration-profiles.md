@@ -1,7 +1,8 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 📝 Re-sequenced 2026-09-24 — a thin first slice aimed at the seven `organization*`
-stand-ins Plans FO and FS already shipped (see *Delivery order* below); nothing built. Revised
+**Status:** 🚧 PR 1 (headless core) written 2026-09-24, awaiting its first CI run — see *PR 1 as
+built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
 **Depends on:** Plan F/licensing primitives (Ed25519 verification), Plan BX (signed-manifest +
@@ -175,7 +176,7 @@ convenience into an actual deployment story.
 ### `ConfigProfile`
 
 Versioned, `Codable`, signed. Fields: profile id, org display name, schema version, issued date,
-**two expiry dates** (below), an optional skill-pack reference list, a **vault-pack reference** (the
+**two expiry dates** (below — corrected 2026-09-24: the second is the licence code's own signed `expires`, not a profile field), an optional skill-pack reference list, a **vault-pack reference** (the
 pack id enrolment installs, plus an optional documents source for the organisation's own manuals),
 the **licence code** the entitlement half rides on, and the settings themselves as
 `[SettingKey: ManagedValue]` where:
@@ -398,7 +399,7 @@ The offline cost is one round trip: enrolment needs connectivity, after which th
 cached and works offline indefinitely — which is what Field Assist actually needs, since enrolment
 happens at the depot and the work happens in the field.
 
-**Two clocks, not one.** `policyExpiry` and `entitlementExpiry` are separate fields, because a lapsed
+**Two clocks, not one.** `policyExpiry` and the entitlement's expiry are separate — the latter is the signed `expires` of the licence code the profile carries, never a second field (corrected 2026-09-24, see *PR 1 as built*) — because a lapsed
 subscription must not unmanage a device (the capability bounds are a safety property, not a paid
 feature) and a rotated policy must not revoke a licence the org has paid for. Merging them into one
 date is the mistake that turns a billing event into a compliance incident.
@@ -657,6 +658,36 @@ assume a profile only ever arrives by scan or link. Four things carry that:
   reserved key, never raw settings. One trust path and one verification; an administrator who
   changes policy re-mints rather than editing an unsigned plist. Writing it down before an MDM
   customer exists stops the first one from getting an ad-hoc format.
+
+**PR 1 as built (2026-09-24, headless; CI is the compiler — no Swift toolchain in the authoring
+session).** Files under `OpenGlasses/Sources/Services/OrgProfile/`:
+
+- `ConfigProfile.swift` — `ConfigProfile`, the lossy `RawSetting`, `ProfileValue` (flag, string,
+  string list), `ProfileRevocation`, `ProfileSource` (with `managedConfigProfileKey = "orgProfile"`,
+  the reserved managed-config key), `ProfileDelivery` and the `ProfileIngress` protocol.
+- `SettingKey.swift` — the sixteen cases above; each declares its `kind` (profile-owned, a
+  one-way ceiling, or a starting value) and its content checks (a job-signing key must be a
+  Curve25519 public key, a report channel a known `DeliveryChannel`, a mode a `FieldSession.Mode`,
+  a default vault one the registry resolves).
+- `ProfileVerification.swift` — `productionKeys` holds `og-profile-2026-09`, the owner's key
+  generated 2026-09-24. Documents are `base64(payload).base64(signature)` with the signature over
+  `openglasses.org-profile.v1\n` or `openglasses.org-revocation.v1\n` then the payload. Verification
+  never reads the clock; `enrolmentRefusal(for:now:)` does, naming which clock ran out.
+- `ProfileApplier.swift` — the pure layered resolution, `Drop`s and `Notice`s by name, and
+  `effectiveValue(_:stored:)`, the clamp PR 2's getters will call.
+- `Scripts/make-org-profile.swift` — `make`, `revoke` and `keygen`; it refuses an unknown key or a
+  wrong-direction ceiling at minting time rather than letting a phone drop it. Not yet run: it
+  needs a Mac.
+- `Config.migratableStringSecretKeys` / `migratableDataSecretKeys` lose `private` so the
+  disjointness test can read them.
+
+**A correction to this plan, found while building it: the entitlement clock is not a profile
+field.** The draft gave the profile an `entitlementExpiry` beside `policyExpiry`. But the
+entitlement already has a signed clock — the `expires` of the licence code the profile carries —
+and a second copy in the profile could disagree with it, which is exactly the forgeable-preference
+shape Plan DP removed. So the profile carries `policyExpiry` (the organisation's term), `leaseDays`
+(the leaver clock) and the licence code, and the licence's own `expires` is the entitlement clock.
+Still two clocks at enrolment, both checked, each refusal naming its own.
 
 ### PR 2 — enforcement, managed state, and the link
 

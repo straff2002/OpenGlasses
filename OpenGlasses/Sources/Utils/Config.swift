@@ -21,8 +21,9 @@ struct Config {
     private static let secretsMigratedKey = "secretsMigratedToKeychain_v1"
 
     /// Plain-string secrets that historically lived in UserDefaults and now live in the Keychain.
-    /// The UserDefaults key name is reused verbatim as the Keychain account.
-    private static let migratableStringSecretKeys = [
+    /// The UserDefaults key name is reused verbatim as the Keychain account. Not private: Plan CT's
+    /// tests assert no organisation-profile `SettingKey` is ever one of these, or of the list below.
+    static let migratableStringSecretKeys = [
         "anthropicAPIKey",
         "openAIAPIKey",
         "elevenLabsAPIKey",
@@ -36,7 +37,7 @@ struct Config {
 
     /// JSON `Data` blobs that embed secrets (provider API keys, gateway tokens, MCP
     /// auth headers) and so must also move out of plaintext UserDefaults.
-    private static let migratableDataSecretKeys = [
+    static let migratableDataSecretKeys = [
         modelsKey,        // "savedModelConfigs" — ModelConfig.apiKey
         "savedGateways",  // GatewayConfig.token
         "mcpServers",     // MCPServerConfig.headers (Authorization)
