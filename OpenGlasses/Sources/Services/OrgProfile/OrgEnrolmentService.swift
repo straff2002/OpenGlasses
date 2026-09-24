@@ -61,11 +61,20 @@ final class OrgEnrolmentService: ObservableObject {
     private var pendingURL: URL?
     private var heldURL: URL?
     private var activeFetch: Task<Data, Error>?
+    /// The licence key that started this enrolment, when one did (Plan CT 3a).
+    private var enteredLicence: String?
+    private let licenceKey: String
+
+    /// The organisation a licence key named, while its profile is being fetched — the sheet says
+    /// "Setting up this phone for …" rather than naming a host.
+    @Published private(set) var settingUpFor: String?
 
     init(manager: OrgProfileManager,
          fetch: @escaping (URL) async throws -> Data = OrgEnrolmentService.boundedFetch,
-         isPastOnboarding: @escaping () -> Bool = { Config.isPastOnboarding }) {
+         isPastOnboarding: @escaping () -> Bool = { Config.isPastOnboarding },
+         licenceKey: String = LicenseService.productionPublicKeyBase64) {
         self.manager = manager
+        self.licenceKey = licenceKey
         self.fetch = fetch
         self.isPastOnboarding = isPastOnboarding
     }
@@ -145,6 +154,44 @@ final class OrgEnrolmentService: ObservableObject {
         }
     }
 
+    /// What entering a licence key should do (Plan CT 3a).
+    enum LicenceRoute: Equatable {
+        /// No `profile` claim, or not a readable licence: activate it the way a licence always has
+        /// (and let `LicenseService` explain a bad one).
+        case plain
+        /// The licence names its organisation's profile, which is now being fetched for review.
+        case enrolling(licensee: String)
+        /// The licence names a profile address the link policy refuses.
+        case refused(String)
+    }
+
+    /// A licence key entered by hand. When its signed `profile` claim names an address, the phone
+    /// enrols from it: there is no host offer, because the vendor signed that address — the
+    /// licensee's name is what is shown — and the rest is the link's path (the bounded fetch,
+    /// verification, the review, one confirmation). Never held for onboarding: the person typed it.
+    func openLicence(_ code: String) -> LicenceRoute {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let payload = try? LicenseService.decode(code: trimmed, publicKeyBase64: licenceKey),
+              let address = payload.profile else {
+            return .plain
+        }
+        reset()
+        source = .licence
+        var components = URLComponents()
+        components.scheme = "openglasses"
+        components.host = "enrol"
+        components.queryItems = [URLQueryItem(name: "url", value: address)]
+        guard let link = components.url, case .success(let target) = Self.parse(link) else {
+            let message = LinkRefusal.insecureSource.message
+            stage = .failed(message)
+            return .refused(message)
+        }
+        enteredLicence = trimmed
+        settingUpFor = payload.licensee
+        Task { await fetchAndReview(target, host: Self.displayHost(target)) }
+        return .enrolling(licensee: payload.licensee)
+    }
+
     /// Onboarding has just finished: offer the link that arrived during it.
     func releaseHeldLink() {
         guard let held = heldURL, isPastOnboarding() else { return }
@@ -165,6 +212,10 @@ final class OrgEnrolmentService: ObservableObject {
     func approveFetch() async {
         guard case .offer(let host) = stage, let target = pendingURL else { return }
         pendingURL = nil
+        await fetchAndReview(target, host: host)
+    }
+
+    private func fetchAndReview(_ target: URL, host: String) async {
         stage = .fetching(host: host)
         let request = Task { [fetch] in try await fetch(target) }
         activeFetch = request
@@ -174,7 +225,11 @@ final class OrgEnrolmentService: ObservableObject {
         } catch {
             guard case .fetching = stage else { return }
             activeFetch = nil
-            stage = .failed("Couldn't fetch the profile from \(host). Check the connection and open the link again.")
+            if let licensee = settingUpFor {
+                stage = .failed("Setting this phone up for \(licensee) needs the internet once. Connect, then enter the licence key again.")
+            } else {
+                stage = .failed("Couldn't fetch the profile from \(host). Check the connection and open the link again.")
+            }
             return
         }
         activeFetch = nil
@@ -183,7 +238,8 @@ final class OrgEnrolmentService: ObservableObject {
             stage = .failed(ProfileVerification.Failure.malformed.errorDescription ?? "")
             return
         }
-        switch manager.review(document: document, source: source, sourceURL: target) {
+        switch manager.review(document: document, source: source, sourceURL: target,
+                              enteredLicence: enteredLicence) {
         case .success(let review): stage = .reviewing(review)
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
@@ -216,6 +272,8 @@ final class OrgEnrolmentService: ObservableObject {
         activeFetch?.cancel()
         activeFetch = nil
         pendingURL = nil
+        enteredLicence = nil
+        settingUpFor = nil
     }
 
     // MARK: - Production seam

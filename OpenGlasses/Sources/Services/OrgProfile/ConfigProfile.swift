@@ -176,6 +176,9 @@ enum ProfileSource: String, Codable, CaseIterable, Sendable {
     case link
     /// A QR code scanned with the phone camera.
     case scan
+    /// A licence key whose signed `profile` claim named the profile (Plan CT 3a). Removal clears the
+    /// licence it enrolled with: the key was the organisation's, whoever typed it.
+    case licence
     /// Managed App Configuration written by an MDM. **No reader ships yet** (Plan CT, decided
     /// 2026-09-24); the case exists so removal and precedence are built and tested for it now.
     case managedConfig
