@@ -36,6 +36,18 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     var revoked: Bool?
     /// The mid-job grace: a lapse during a job locks when that job closes.
     var leaseLock: ProfileLease.Lock?
+
+    // Plan CT PR 3b — the vault pack enrolment installs.
+
+    /// The pack the profile names, while it is not yet installed. Enrolment does not wait on the
+    /// download — the ceiling and the licence are the safety half — so it is retried until it lands.
+    var pendingPackId: String?
+    /// Why the last attempt failed, for the managed row.
+    var packInstallError: String?
+    /// Starting values held back until the pack is installed: the default vault (which would point
+    /// at a vault the registry cannot resolve) and switching Field Assist on (which would open a
+    /// home screen with nothing behind it).
+    var heldStartingValues: [String: ProfileValue]?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -75,6 +87,9 @@ struct OrgProfileReview: Identifiable, Equatable {
     }
 
     var carriesLicence: Bool { profile.licenceCode != nil }
+
+    /// The vault pack enrolment will install, if the profile names one.
+    var packId: String? { profile.vaultPack?.packId }
 
     static func == (lhs: OrgProfileReview, rhs: OrgProfileReview) -> Bool { lhs.id == rhs.id }
 }
@@ -125,6 +140,7 @@ final class OrgProfileManager: ObservableObject {
         var fetch: (URL) async throws -> Data = OrgEnrolmentService.boundedFetch
         var activeJobId: @MainActor () -> String? = { FieldSessionService.shared.activeSession?.id }
         var withholdLicence: (String?) -> Void = { PolicyEnvelope.withholdLicence($0) }
+        var installPack: @MainActor (String) async -> OrgPackInstaller.Outcome = { await OrgPackInstaller.install(packId: $0) }
     }
 
     /// The app's one manager. `PolicyEnvelope` is process-wide, so there is only ever one
@@ -217,7 +233,8 @@ final class OrgProfileManager: ObservableObject {
         if let current = profile, current.profileId != verified.profileId {
             return .failure(.managedByAnother(current.organizationName))
         }
-        let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
+        let result = ProfileApplier.apply(profile: verified,
+                                          resolvableVaultIds: resolvableIncludingPack(verified))
         return .success(OrgProfileReview(document: document, source: source, profile: verified,
                                          result: result, replacesCurrent: profile != nil,
                                          sourceURL: sourceURL))
@@ -241,9 +258,22 @@ final class OrgProfileManager: ObservableObject {
             }
         }
 
+        // Step 3 before step 4: with a pack still to install, the default vault and the Field Assist
+        // switch wait for it, and everything else is written now.
+        // (The installer returns at once for a pack that is already on the phone.)
+        var pendingPack: String?
+        var held: [String: ProfileValue] = [:]
+        var writable = review.result
+        if let packId = review.profile.vaultPack?.packId {
+            pendingPack = packId
+            for key in [SettingKey.fieldAssistDefaultVaultId, .fieldAssistEnabled] {
+                if let value = writable.startingValues.removeValue(forKey: key) { held[key.rawValue] = value }
+            }
+        }
+
         var priors = record?.priorStartingValues ?? [:]
         var wrote = Set(record?.wroteStartingKeys ?? [])
-        writeStartingValues(review.result, onlyNewKeys: false, priors: &priors, wrote: &wrote)
+        writeStartingValues(writable, onlyNewKeys: false, priors: &priors, wrote: &wrote)
 
         let now = seams.now()
         var newRecord = OrgEnrolmentRecord(
@@ -258,6 +288,8 @@ final class OrgProfileManager: ObservableObject {
         newRecord.lastRenewedAt = now
         newRecord.lastRenewalAttempt = now
         newRecord.clockHighWater = max(record?.clockHighWater ?? now, now)
+        newRecord.pendingPackId = pendingPack
+        newRecord.heldStartingValues = held.isEmpty ? nil : held
         seams.saveRecord(newRecord)
         record = newRecord
         profile = review.profile
@@ -265,6 +297,59 @@ final class OrgProfileManager: ObservableObject {
         seams.installEnvelope(review.result, review.profile.organizationName)
         evaluateLease()
         return .success(())
+    }
+
+    /// The vaults a review may count as resolvable: those installed now, plus — when the profile
+    /// names a pack — the default vault it names, which the pack is expected to provide. Whether it
+    /// really does is checked when the pack lands, before the default is written.
+    private func resolvableIncludingPack(_ profile: ConfigProfile) -> Set<String> {
+        var ids = seams.resolvableVaultIds()
+        if profile.vaultPack != nil,
+           case .string(let vaultId)? = profile.settings[SettingKey.fieldAssistDefaultVaultId.rawValue]?.value {
+            ids.insert(vaultId)
+        }
+        return ids
+    }
+
+    // MARK: - The vault pack (Plan CT PR 3b)
+
+    /// Install the pack the profile names, then write the starting values that were waiting for it.
+    ///
+    /// Called right after enrolment and again at launch and on every foreground until it succeeds. A
+    /// failure is recorded, named on the managed row, and retried; the ceiling and the licence were in
+    /// force from the moment the profile was applied, so nothing about the device's bounds waits on
+    /// this download. The default vault is written only if a vault with that id now resolves — a
+    /// pack that turns out to provide a different vault leaves the default where it was, rather than
+    /// pointing it at nothing.
+    func completePendingPack() async {
+        guard let current = record, let packId = current.pendingPackId, current.revoked != true else { return }
+        let outcome = await seams.installPack(packId)
+        guard var latest = record, latest.enrolmentId == current.enrolmentId,
+              latest.pendingPackId == packId else { return }
+        switch outcome {
+        case .failed(let reason):
+            latest.packInstallError = reason
+        case .installed:
+            let resolvable = seams.resolvableVaultIds()
+            var ready = ProfileApplier.Result()
+            for (name, value) in latest.heldStartingValues ?? [:] {
+                guard let key = SettingKey(rawValue: name) else { continue }
+                if key == .fieldAssistDefaultVaultId {
+                    guard case .string(let vaultId) = value, resolvable.contains(vaultId) else { continue }
+                }
+                ready.startingValues[key] = value
+            }
+            var priors = latest.priorStartingValues
+            var wrote = Set(latest.wroteStartingKeys)
+            writeStartingValues(ready, onlyNewKeys: false, priors: &priors, wrote: &wrote)
+            latest.priorStartingValues = priors
+            latest.wroteStartingKeys = wrote.sorted()
+            latest.pendingPackId = nil
+            latest.packInstallError = nil
+            latest.heldStartingValues = nil
+        }
+        seams.saveRecord(latest)
+        record = latest
     }
 
     /// Write the profile's starting values. Priors are recorded once, the first time a key is
@@ -328,6 +413,7 @@ final class OrgProfileManager: ObservableObject {
     /// profile, or this enrolment's id in the profile's revoked list, revokes; the same profile,
     /// verified, renews.
     func renewIfDue(force: Bool = false) async {
+        await completePendingPack()
         guard var current = record, let url = current.profileURL, let profile,
               current.revoked != true else {
             evaluateLease()

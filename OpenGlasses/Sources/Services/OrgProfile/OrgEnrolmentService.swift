@@ -192,7 +192,11 @@ final class OrgEnrolmentService: ObservableObject {
     func confirm() {
         guard case .reviewing(let review) = stage else { return }
         switch manager.apply(review) {
-        case .success: stage = .applied(review.organizationName)
+        case .success:
+            stage = .applied(review.organizationName)
+            // Step 3 of the enrolment sequence: the pack, if the profile names one. It does not hold
+            // up the sheet — the profile's bounds are already in force.
+            Task { [manager] in await manager.completePendingPack() }
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
     }

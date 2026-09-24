@@ -1148,6 +1148,26 @@ the pending-and-retried behaviour, and the documents-source pointer.
   page is not.
 - Field Assist settings gain *Scan an Organisation Code* on an unmanaged phone.
 
+**PR 3b as built (2026-09-24) — the pack at enrolment.**
+
+- `OrgPackInstaller` is step 3: it loads the signed catalog, finds the entry the profile's
+  `vaultPack.packId` names and runs it through `VaultPackCatalogService.install` — download,
+  checksum, pack signature, structural checks, `VaultImporter` — returning at once if that pack is
+  already on the phone. A pack the catalog does not list is a failure with a reason; the profile
+  carries an id, never bytes, so there is nowhere else to install it from.
+- **The order is the plan's.** A profile naming a pack applies its ceiling, its licence and every
+  starting value *except* the default vault and the Field Assist switch, which are held on the
+  enrolment record until the pack lands; then they are written. The default vault is written only if
+  a vault with that id now resolves, so a pack that turns out to provide a different vault leaves
+  the default where it was instead of pointing it at nothing. The review counts the profile's
+  default vault as resolvable when a pack is named, so it is not reported as dropped.
+- **Pending, retried and named.** The install starts as soon as the review is confirmed and does not
+  hold the sheet; a failure is recorded, shown on the managed row ("Couldn't install … It tries
+  again each time the app opens"), and retried from the same launch-and-foreground path as renewal.
+- **Still owed:** step 5, syncing the organisation's own manuals from `vaultPack.documentsSource`
+  into the pack's documents tier — the open question on where those manuals are hosted still stands
+  — and a renewed profile that names a *different* pack (a renewal today installs nothing new).
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
