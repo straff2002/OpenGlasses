@@ -403,6 +403,10 @@ subscription must not unmanage a device (the capability bounds are a safety prop
 feature) and a rotated policy must not revoke a licence the org has paid for. Merging them into one
 date is the mistake that turns a billing event into a compliance incident.
 
+**And a third, short one: the lease** (2026-09-24). `policyExpiry` is the organisation's term;
+`leaseDays` is how long a phone stays the firm's without hearing from the profile's URL, renewed on
+every fetch. It is what makes a leaver's access end — see *PR 4 — leaving the firm*.
+
 ### Pack install is part of enrolment
 
 Naming a pack and installing one are different acts, and the draft only had the first. The profile
@@ -609,12 +613,26 @@ Four notes on that cut:
   pack installs* trap describes, caught at apply time instead.
 - **`Scripts/make-org-profile.swift`** mints a signed profile — the domain-separated prefix, a new
   Ed25519 keypair distinct from the consumer licence key, the private key off-repo exactly as
-  `generate-field-license.swift` keeps its own. Until Plan EI exists this is issuance.
+  `generate-field-license.swift` keeps its own. Until Plan EI exists this is issuance. The same
+  script mints the **signed revocation document** PR 4 describes (`--revoke`, whole link or named
+  enrolment ids).
+- **One vendor profile key, with a key id** (decided 2026-09-24). Profiles are not signed per
+  customer: a phone that has never seen customer X has no way to trust X's key unless something it
+  already trusts vouches for it, and that is this key. The per-customer key lives one level down —
+  the vendor-signed profile *carries* the organisation's `organizationJobSigningKey`, and the
+  organisation signs its own job files with that. The profile names the key it was signed with
+  (`keyId`) and the app embeds a small set of public keys, so a key can be rotated or retired
+  without breaking every profile already issued. A leaked profile key cannot grant entitlement — the
+  licence code inside is signed separately — but it could substitute a job-signing key or redirect
+  report recipients, so it is held to the licence key's standard.
+- **`leaseDays`**, bounded 7–365, and the optional `eraseAfterLapseDays` and undelivered-record
+  cap — schema only here; PR 2 and PR 4 act on them.
 
 Tests: the secret/`SettingKey` disjointness assertion; every direction refusal; both expiry clocks
 checked independently with the refusal naming which one ran out; a profile signed with the licence
 key (and a licence code signed with the profile key) refused; an unknown key and an out-of-range
-value each reported by name; the precedence order (managed config > profile > user, ceilings as a
+value each reported by name; a `keyId` the app does not embed refused by name; a `leaseDays`
+outside 7–365 reported and clamped; the precedence order (managed config > profile > user, ceilings as a
 final clamp) as a table, with a synthetic managed layer standing in for the reader that does not
 exist yet.
 
@@ -675,6 +693,11 @@ The rest of PR 2:
 - **The envelope re-clamps on entitlement change and on a policy-source change** — a new profile,
   a removal, and (when the reader lands) a managed-config update all arrive as the same event.
   Sign-in and sign-out re-clamping waits for identity, which does not exist yet (below).
+- **The lease, from PR 4's design:** the renewal fetch on launch and on foreground (at most daily),
+  the "Connect to renew by ⟨date⟩" warning from 14 days out, lapse-locking through the envelope
+  (deferred until an active job closes), the clock high-water mark, and recognising a signed
+  revocation document. What a received revocation *erases* is PR 4; until PR 4 lands, a revoked
+  profile locks exactly as a lapsed one does and lifts its ceilings.
 - **A check, not a build, for the watch:** confirm that no watch path reaches a ceilinged key except
   through the phone's `Config` getter. If none does, watch propagation stays with Plan CS; if one
   does, it is a bug in this PR.
@@ -687,6 +710,104 @@ enrolment steps in their load-bearing order — verify, activate the licence, in
 `VaultPackCatalogService`, write settings and raise the ceiling, then sync documents — with steps 3
 and 5 allowed to be pending, retried and named. This is where `fieldAssistDefaultVaultId` stops
 being validated against the installed set and starts being written after the install succeeds.
+
+### PR 4 — leaving the firm: lease, revocation, and erasure
+
+Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
+it. **Nothing about that phone is frozen or bricked** — it stops being the firm's phone and remains
+an ordinary copy of the app. Three things are handled separately, because they want different
+answers:
+
+| | Lease lapses (no renewal heard) | Revoked, or removed by the device owner |
+|---|---|---|
+| **The organisation's rules** (the ceilings) | stay as they were, with a visible "management expired" state | lifted with the profile |
+| **The organisation's content** (below) | **locked** — unreadable in the app, intact on disk, and back the moment a renewal is heard | **delivered, then erased** |
+| **The person's own data and the app itself** | untouched | untouched |
+
+**The lease.** A profile carries `leaseDays`, set by the organisation when the profile is minted and
+bounded by the app to **7–365 days** so a typo is neither a one-day lease nor no expiry at all. The
+lease runs from the last successful, verified fetch of the profile's URL, and any fetch renews it —
+a single small download, so a day in town, a satellite window or a hotel's Wi-Fi renews the whole
+lease silently. Different crews get different leases by getting different profiles: a profile
+belongs to a link, not to the organisation, so an office team on 30 days and a remote crew on 180
+are two links from the same script. What the organisation is choosing is the longest a leaver who
+stays offline keeps access, per crew.
+
+- **A warning before it lapses.** From 14 days out, the managed row and the Field Assist screen say
+  "Connect to renew by ⟨date⟩", so an engineer heading out of contact can plan for it.
+- **Never mid-job.** A lease that lapses during an active Field Assist session or an open job locks
+  when that job closes. Losing the manual halfway through a repair is worse than a few hours' grace.
+- **Lapse locks; it never erases by default.** An engineer 45 days out on a 30-day lease loses the
+  firm's content until they have signal; the next fetch renews and everything returns as it was.
+  Erasure after a lapse heard *offline* is an organisation opt-in (`eraseAfterLapseDays`, absent by
+  default), because a genuine remote worker should not lose their manuals for having been somewhere
+  without signal.
+- **The lock is the envelope's, not the licence's.** The licence code inside the profile has its
+  own signed, typically annual, expiry, and a lapsed lease must lock the firm's content even while
+  that licence is still valid. So content gating — `VaultRegistry.isUnlocked` for the firm's pack and
+  vaults, and the stores below — asks the envelope whether the lease is live, in addition to the
+  entitlement it already asks.
+- **The clock is not trusted to go backwards.** The envelope keeps a high-water mark of the latest
+  time it has seen; a device clock more than a day behind it counts as lapsed. Without that, winding
+  the clock back is a lease that never ends.
+
+**Revocation is explicit and per enrolment.** A fetch that fails — no network, a timeout, a server
+error, a 404 from a host migration somebody got wrong — **only fails to renew**. It never erases,
+because an unsigned HTTP status is not a decision anyone made, and treating it as one would let a
+misconfigured web server wipe a fleet. Revocation is a **signed revocation document** at the
+profile's URL, minted with the profile key by the same script (`make-org-profile --revoke`). Two
+granularities, one format:
+
+- **The whole link** — every phone enrolled from it hears the revocation on its next fetch.
+- **One enrolment** — each enrolment generates a random id, shown on the managed row and recorded
+  by the script when it mints a per-person link. The hosted document carries a signed list of
+  revoked enrolment ids; the named phone erases and the rest of the crew renews as normal. This is
+  the leaver case on a shared crew link, and it needs nothing but a static file — the same hosting
+  the profile already uses.
+
+**Removal by the device owner is treated exactly as revocation.** An engineer who removes the profile
+on the way out gets the same deliver-then-erase as one whose firm revoked it. Otherwise removal would
+be the way to keep the firm's manuals, and the licence code the profile carried is cleared from
+`LicenseService.storageKey` either way.
+
+**What counts as the firm's.** `DataStoreRegistry` already inventories every store, and it gains an
+owner axis — the wearer or the enrolled organisation — so erasure is a query, not a list somebody
+maintains by hand. The organisation's, while a profile is applied:
+
+- the pack enrolment installed, and its documents tier (`vaultDocuments`), and any enterprise vaults
+  imported while managed
+- `upcomingJobs` and the `.ogjob` files behind them
+- `jobDeliveryQueue` and `fieldDeliverySettings`
+- `fieldSessionLogs`, and the job photos, clips and work records attached to the firm's jobs
+- the profile-owned values: the organisation's name, job-signing key, report route and recipients
+
+**Session logs and unsent reports go to the firm first.** Decided 2026-09-24: on revocation or
+removal, `fieldSessionLogs` and every report still waiting in `jobDeliveryQueue` are delivered over
+the report route the profile set (`organizationJobReportChannel` / `organizationReportRecipients`),
+and erased once delivered. That also settles the registry's current note that a session log cannot
+be deleted because it is "the engineer's compliance record": on a managed device it is the firm's
+record, and it goes to the firm. Where delivery cannot complete — no route set, or no signal after a
+received revocation — those two stores stay locked and are retried, and are erased regardless after
+30 days (the organisation may set a different figure in the profile), with the erasure itself
+recorded. The engineer cannot read them in the meantime.
+
+**Sealing, so "erased" is true.** Today a locked pack is a row the app will not open over files that
+are still on disk under ordinary platform protection, and a determined leaver with a backup has
+them. `ScopedKeyring` already exists for exactly this: a class of data sealed under its own key, so
+destroying the key makes every copy ciphertext — including a backup or a snapshot the app cannot
+reach. It seals two classes today (conversation content and faces). PR 4 adds an organisation class
+keyed per enrolment, seals the stores above under it as they are written, and revocation becomes
+one key destruction reported as `.cryptographic` rather than `.logicalOnly`. An offline
+`eraseAfterLapseDays` erasure is the same key destruction and needs no network.
+
+**Honest limits, said on the managed row rather than implied away:** a photo already saved to the
+camera roll, a screenshot, and a report already forwarded somewhere are outside the app and outside
+any erasure. A ceiling on `recordingSaveToPhotos` narrows the first; nothing narrows the others.
+
+**Placement.** The lease, the renewal fetch, the warning, lapse-locking, the clock high-water mark
+and the signed revocation document are small and land in PR 1 (schema, script) and PR 2 (fetch,
+state, locking). The owner axis, sealing and deliver-then-erase touch every store in the list above,
+which is why they are a PR of their own.
 
 ### Deferred, and why
 
@@ -705,12 +826,20 @@ being validated against the installed set and starts being written after the ins
    the structures an MDM would integrate with — the `ProfileSource` case, the `ProfileIngress` seam,
    the layered applier, source-aware removal and the documented wire shape. The link and the scanner
    are the ingress paths that ship; the reader is deferred.
-2. **The profile signing keypair — owed before PR 1 merges.** A new Ed25519 keypair, private half
-   off-repo on the same terms as the licence key. The owner generates it; nothing in PR 1 can be
-   signed for production until they do.
-3. **Expired profile: freeze or revert — owed before PR 1 merges.** This plan leans *freeze plus a
-   visible "management expired" state* (open questions, below); PR 1's applier needs the answer
-   because the expiry refusal is where it lives.
+2. ~~**Profile key per customer?**~~ **Decided 2026-09-24:** one vendor profile key with a `keyId`
+   for rotation; the per-customer key is the organisation's job-signing key the profile carries.
+   **Still owed before PR 1 merges:** the owner generates the keypair, private half off-repo on the
+   licence key's terms. Nothing can be signed for production until then.
+3. ~~**Expired profile: freeze or revert?**~~ **Decided 2026-09-24,** and it turned out to be three
+   questions: the organisation's *rules* stay as they were on a lapse; its *content* locks on a
+   lapse and is delivered-then-erased on a revocation or an owner removal; the person's own data and
+   the app are untouched. Nothing freezes the phone. See *PR 4*.
+4. ~~**Can the organisation set the lease?**~~ **Decided 2026-09-24:** yes, per profile, bounded
+   7–365 days; different crews get different links. A lapse never erases unless the organisation
+   opted in, and never locks mid-job.
+5. ~~**Session logs and unsent reports on revocation?**~~ **Decided 2026-09-24:** they go to the
+   firm over its report route, then are erased; undelivered ones stay locked and retried, and are
+   erased after 30 days by default.
 
 ---
 
@@ -740,6 +869,13 @@ being validated against the installed set and starts being written after the ins
 | Clamping on write instead of on read | the ceiling overwrites the person's own value, removal has nothing to restore, and any setter that runs after enrolment quietly widens the device again |
 | Trusting the cached profile because it was verified once | a tampered cache becomes policy; the envelope re-verifies on load, and a getter never reads an unverified profile |
 | Accepting raw settings from managed app config beside the signed profile | two trust paths with two sets of rules, one of them unsigned; the managed dictionary carries the same signed profile |
+| Treating a failed fetch or a 404 as a revocation | a network outage or a botched host migration erases a fleet's manuals; only a signed revocation document erases |
+| Revoking only by link | a leaver on a shared crew link cannot be cut off without cutting off the crew; revocation names enrolment ids |
+| Letting owner removal skip the erasure | removing the profile becomes the way to keep the firm's manuals and job history |
+| Locking on the licence's clock instead of the lease | a leaver keeps the firm's content until the annual licence runs out |
+| Erasing on an offline lapse by default | a remote engineer loses the manuals for having been out of signal |
+| Trusting the device clock for the lease | winding the clock back is a lease that never ends |
+| Calling a lock "erased" | the files are still on disk and in a backup; only a destroyed scoped key makes a copy unreadable |
 | Building the link and scanner paths as if they were the only ingress | the MDM reader, when a customer needs it, arrives as a second verify-and-apply path and a retrofit of removal and precedence instead of one adapter; the source case, the layered applier and the ingress seam exist from PR 1 for that reason |
 | A `SettingKey` with no declared direction | an organisation can pin the privacy filter off or turn a refusal back into an allowance; the direction is part of the case, not a comment |
 | Leaving the FO/FS stand-ins as free-standing `UserDefaults` keys after CT lands | two writers for one policy — the profile and whatever last touched the key — and the stand-in comments go on promising a replacement that already happened |
@@ -766,11 +902,9 @@ being validated against the installed set and starts being written after the ins
   the obvious shape, but the documents tier is the one part of this that is the customer's own
   material, and hosting it introduces a store the vendor does not otherwise operate. A folder handed
   over at the depot is less elegant and leaves the vendor holding nothing. No lean yet.
-- **Does an expired profile revert or freeze?** Reverting silently changes a working device's
-  behaviour; freezing leaves an unmanaged device configured by a lapsed policy. Leaning freeze plus a
-  visible "management expired" state, because a device changing behaviour on its own in the field is
-  the worse surprise. **Now owed before PR 1 merges** (2026-09-24) — the applier's expiry refusal
-  is where the answer lives.
+- ~~Does an expired profile revert or freeze?~~ **Decided 2026-09-24:** the rules freeze, the
+  organisation's content locks, and a revocation delivers then erases that content — see *PR 4 —
+  leaving the firm*.
 - ~~Does the pilot organisation use MDM?~~ **Decided 2026-09-24:** start without the reader and
   build the seam it plugs into — see *Delivery order → Decisions*.
 - ~~Does org membership carry entitlement?~~ **Resolved:** entitlement rides the profile, device-scoped
