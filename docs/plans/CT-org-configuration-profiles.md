@@ -1,6 +1,10 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 📝 Revised 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition (packs, tiers, EI issuance); still not scheduled
+**Status:** 🚧 PR 1 (headless core) implemented 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)) —
+compiled and passed on its first CI run, all 32 new tests green — see *PR 1 as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
+2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
+(packs, tiers, EI issuance)
 **Depends on:** Plan F/licensing primitives (Ed25519 verification), Plan BX (signed-manifest +
 lossy-decode precedent), Plan BM P10 (`OwnerGateMachine`), Plan CD P1 (the onboarding-flag hazard),
 Plan EE (tiers on every piece of evidence, licence payload v2), Plan EG (vault packs, the `packs`
@@ -9,8 +13,51 @@ are the reason for the revision
 **Related:** Plan CS (watch propagation), Plan CR P4 (enrolment endpoint, for the secrets half),
 Plan EI (who mints the code and the profile), Plans ED and EF (the documents tier an organisation
 loads its own manuals into)
-**Shape:** pure schema + applier first (P1), three ingress adapters (P2), onboarding + pack install +
-managed-state UI + watch propagation (P3), enrolment endpoint deferred (P4)
+**Shape:** the design is stated as P1–P4 below — pure schema + applier (P1), three ingress adapters
+(P2), onboarding + pack install + managed-state UI + watch propagation (P3), enrolment endpoint (P4).
+It is **delivered** as three PRs cut across those phases — headless core scoped to the keys that
+already exist, then enforcement + managed state + the deep link, then the scanner + first-run
+enrolment — with the MDM reader, the single-purpose edition, identity re-clamping and watch
+propagation deferred. The MDM reader is deferred *as a reader only*: the seam it plugs into ships
+in PR 1 and PR 2. See *Delivery order*.
+
+---
+
+## Revision 2026-09-24 — the shipped code is already waiting on this plan
+
+Three weeks after the partner-edition revision, the argument for CT has changed from "an
+organisation will want this" to "shipped behaviour cannot be reached without it".
+
+**Plans FO and FS each landed policy hooks in `CT`'s name.** Each is a `Config` accessor whose doc
+comment says CT P1 replaces it, paired with the behaviour that reads it, so the rule is real rather
+than promised
+([`Config.swift`](../../OpenGlasses/Sources/Utils/Config.swift), the `organization*` block):
+
+| Stand-in | Shipped by | What reads it |
+|---|---|---|
+| `organizationAllowsUnsignedVaults` (default `true`) | FS PR2 | vault-link import refuses an unsigned archive when `false` (`VaultLinkInstallPolicy`) |
+| `organizationRequiresCustomerSignOff` (default `false`) | FO P2c | the customer sign-off step is demanded rather than offered |
+| `organizationDisplayName` (default empty) | FO P2c | the heading on the customer-facing sign-off sheet |
+| `organizationJobReportChannel` (default none) | FO P3b | the route a spoken "send it" uses from the car |
+| `organizationReportRecipients` (default empty) | FO P3b | the last step of the report recipient order |
+| `organizationJobSigningKey` (default empty) | FO P3c | the organisation's Curve25519 key `.ogjob` files are checked against |
+| `organizationRequiresSignedJobFiles` (default `false`) | FO P3c | an unsigned job file is refused rather than shown as not signed |
+
+**Nothing in production writes any of them.** The only writer is `UITestSupport` (which sets
+`organizationDisplayName` for screenshots). So on a real phone every organisation branch of FO and FS
+is one nobody can take: a pilot organisation cannot require a customer signature, cannot sign its
+job files, cannot route reports, and cannot refuse unsigned vault links, whatever it wants. That is
+the gap worth closing first, and it is much narrower than the plan as drafted.
+
+**The "long pole" is shorter than the roadmap says.** Round 14 calls the enumerable `Config` surface
+the long pole, and `Config` has kept growing — 4,206 lines and 72 `@UserDefaultsBacked` properties
+(measured 2026-09-24; 3,747 / 56 at the 2026-09-08 review). But `SettingKey` is an allow-list by
+design, so the applier needs a typed, clampable accessor for **the keys it allows** and nothing
+else. The full audit stays what the open questions already call it: a per-setting judgement that
+does not block P1.
+
+**Plan EI is still unbuilt**, so nothing can mint a profile. The authoring script P4 deferred is the
+only issuance path until EI exists, and it moves into the first PR.
 
 ---
 
@@ -45,11 +92,12 @@ The primitives for the fix are almost all already here:
 | A precedent for policy removing capabilities | HIPAA mode — an external policy hard-disables features and the app says so |
 
 **So the QR is not the hard part.** The hard part is that
-[`Config.swift`](../../OpenGlasses/Sources/Utils/Config.swift) is 3,747 lines of 56
-`@UserDefaultsBacked` properties (measured 2026-09-08; was 3,277 lines / 45 at the 2026-09-03
-revision) plus a long tail of hand-written accessors, with **no export, no import, no versioning and
+[`Config.swift`](../../OpenGlasses/Sources/Utils/Config.swift) is 4,206 lines of 72
+`@UserDefaultsBacked` properties (measured 2026-09-24; 3,747 / 56 on 2026-09-08, 3,277 / 45 at the
+2026-09-03 revision) plus a long tail of hand-written accessors, with **no export, no import, no versioning and
 no enumerable schema**. A profile cannot be applied to a settings surface that cannot enumerate
-itself. That is the work; everything else is adapters.
+itself. That is the work — but only for the keys a profile may set, which is an allow-list (below);
+everything else is adapters.
 
 The one genuinely new UI piece is a live-camera QR scanner — every existing decode path reads a
 *captured* frame (glasses camera or a still), and there is no scanner view.
@@ -128,7 +176,7 @@ convenience into an actual deployment story.
 ### `ConfigProfile`
 
 Versioned, `Codable`, signed. Fields: profile id, org display name, schema version, issued date,
-**two expiry dates** (below), an optional skill-pack reference list, a **vault-pack reference** (the
+**two expiry dates** (below — corrected 2026-09-24: the second is the licence code's own signed `expires`, not a profile field), an optional skill-pack reference list, a **vault-pack reference** (the
 pack id enrolment installs, plus an optional documents source for the organisation's own manuals),
 the **licence code** the entitlement half rides on, and the settings themselves as
 `[SettingKey: ManagedValue]` where:
@@ -181,7 +229,9 @@ Deliberately small first cut: the capability toggles and feature gates (`privacy
 `agentModeEnabled`, the `remoteInvoke*` trio, the visual-state family), plus non-secret endpoints
 (gateway host/port, Hermes bridge host/port), the Field Assist selection keys (`fieldAssistEnabled`,
 `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode`) and skill- and vault-pack references.
-Everything else is a later addition, and adding one is one enum case.
+Everything else is a later addition, and adding one is one enum case. **The first PR cuts this
+further, to the seven FO/FS stand-ins plus a handful of capability keys** — the exact list, and the
+direction each may move, is in *Delivery order* below.
 
 **Two families are settable in the pin-*on* direction only, and one of those is a correction to this
 plan's own first cut.** The assistive surface may be turned on by a profile and never off — the
@@ -349,10 +399,14 @@ The offline cost is one round trip: enrolment needs connectivity, after which th
 cached and works offline indefinitely — which is what Field Assist actually needs, since enrolment
 happens at the depot and the work happens in the field.
 
-**Two clocks, not one.** `policyExpiry` and `entitlementExpiry` are separate fields, because a lapsed
+**Two clocks, not one.** `policyExpiry` and the entitlement's expiry are separate — the latter is the signed `expires` of the licence code the profile carries, never a second field (corrected 2026-09-24, see *PR 1 as built*) — because a lapsed
 subscription must not unmanage a device (the capability bounds are a safety property, not a paid
 feature) and a rotated policy must not revoke a licence the org has paid for. Merging them into one
 date is the mistake that turns a billing event into a compliance incident.
+
+**And a third, short one: the lease** (2026-09-24). `policyExpiry` is the organisation's term;
+`leaseDays` is how long a phone stays the firm's without hearing from the profile's URL, renewed on
+every fetch. It is what makes a leaver's access end — see *PR 4 — leaving the firm*.
 
 ### Pack install is part of enrolment
 
@@ -435,7 +489,9 @@ to hear which clock ran out, from the device.
   `DeepLinkTrust`-gated, for the reason that file already documents, with the same compensating
   control: it fetches and verifies, then presents.
 - **Managed app config reader** — `UserDefaults.standard.dictionary(forKey: "com.apple.configuration.managed")`,
-  observed rather than read once, because an MDM can update it mid-session.
+  observed rather than read once, because an MDM can update it mid-session. **Deferred 2026-09-24** — the
+  reader waits for an organisation that needs it; the seam it plugs into ships in PR 1–2 (see
+  *Delivery order*).
 
 **The QR carries a pointer, not a payload.** A version-40 QR tops out near 2,953 bytes at the weakest
 error correction, and a code meant to be scanned reliably off a printed card at arm's length wants to
@@ -517,7 +573,305 @@ between exactly the right two devices. A QR there would be strictly worse than w
   because the bounding is the part that was impossible before.
 - Device verification: printed-code scan distances and lighting, and the honest failure when a code is
   damaged or partially obscured.
-- An authoring tool for profiles (a script mirroring the license generator, plus a QR renderer).
+- ~~An authoring tool for profiles~~ — **moved into PR 1** (2026-09-24): with Plan EI unbuilt, a
+  script mirroring `Scripts/generate-field-license.swift` is the only way a profile can exist. The
+  QR renderer stays here; PR 3 is the first thing that scans one.
+
+---
+
+## Delivery order (2026-09-24)
+
+P1–P4 above are the design. They are delivered as three PRs cut across those phases, each
+headless-testable where it can be. Each PR is useful on its own, and each is shaped so that the
+next one adds to it rather than rewriting it.
+
+### PR 1 — headless core, scoped to the keys that already exist
+
+`ConfigProfile`, `SettingKey`, `ProfileVerification` and a pure `ProfileApplier`, exactly as P1
+describes them, over a deliberately short first cut. **Each `SettingKey` case declares the one
+direction it may move**, so a profile that tries to move a key the other way is a named drop in the
+lossy-decode report rather than a write. That generalises the pin-on-only rule this plan already
+applies to the assistive surface and the privacy filter, instead of special-casing two families.
+
+| Kind | Keys | What a profile may do |
+|---|---|---|
+| **Profile-owned** — organisation identity, never a user preference | `organizationDisplayName`, `organizationJobSigningKey`, `organizationJobReportChannel`, `organizationReportRecipients` | set; there is no user surface to override them, and removal clears them |
+| **Ceiling, tighten only** | `organizationAllowsUnsignedVaults` → `false`; `organizationRequiresSignedJobFiles` → `true`; `organizationRequiresCustomerSignOff` → `true`; `privacyFilterEnabled` → `true`; `remoteInvokeObserveEnabled` / `remoteInvokeOutputEnabled` / `remoteInvokeCaptureEnabled` → `false`; `mcpServerEnabled` → `false`; `agentModeEnabled` → `false` | pin in the stated direction; the other direction is refused and reported |
+| **Default** | `fieldAssistEnabled`, `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode` | set a starting value the person may change afterwards |
+
+Four notes on that cut:
+
+- **`organizationJobSigningKey` is a public key**, so carrying it in a profile is not a secret
+  leaking into a photograph; the secret-disjointness test still runs over every case.
+  `organizationReportRecipients` is the organisation's own addresses — not a secret, but personal
+  data, which is one more reason the QR carries a pointer and not the profile.
+- **`fieldAssistEnabled` is a default here, not a ceiling.** Pinning a feature *on* is the
+  single-purpose edition's move, and that edition is deferred (below). A museum or a pilot wants
+  Field Assist on at first run; whether a technician may then switch it off is a later decision.
+- **`fieldAssistDefaultVaultId` is validated, not trusted.** Until PR 3 installs packs, the applier
+  takes the set of vault ids the registry resolves as an input, and a profile naming one it cannot
+  resolve is a named drop — the same failure the *Setting `fieldAssistDefaultVaultId` before the
+  pack installs* trap describes, caught at apply time instead.
+- **`Scripts/make-org-profile.swift`** mints a signed profile — the domain-separated prefix, a new
+  Ed25519 keypair distinct from the consumer licence key, the private key off-repo exactly as
+  `generate-field-license.swift` keeps its own. Until Plan EI exists this is issuance. The same
+  script mints the **signed revocation document** PR 4 describes (`--revoke`, whole link or named
+  enrolment ids).
+- **One vendor profile key, with a key id** (decided 2026-09-24). Profiles are not signed per
+  customer: a phone that has never seen customer X has no way to trust X's key unless something it
+  already trusts vouches for it, and that is this key. The per-customer key lives one level down —
+  the vendor-signed profile *carries* the organisation's `organizationJobSigningKey`, and the
+  organisation signs its own job files with that. The profile names the key it was signed with
+  (`keyId`) and the app embeds a small set of public keys, so a key can be rotated or retired
+  without breaking every profile already issued. A leaked profile key cannot grant entitlement — the
+  licence code inside is signed separately — but it could substitute a job-signing key or redirect
+  report recipients, so it is held to the licence key's standard.
+- **`leaseDays`**, bounded 7–365, and the optional `eraseAfterLapseDays` and undelivered-record
+  cap — schema only here; PR 2 and PR 4 act on them.
+
+Tests: the secret/`SettingKey` disjointness assertion; every direction refusal; both expiry clocks
+checked independently with the refusal naming which one ran out; a profile signed with the licence
+key (and a licence code signed with the profile key) refused; an unknown key and an out-of-range
+value each reported by name; a `keyId` the app does not embed refused by name; a `leaseDays`
+outside 7–365 reported and clamped; the precedence order (managed config > profile > user, ceilings as a
+final clamp) as a table, with a synthetic managed layer standing in for the reader that does not
+exist yet.
+
+**The seam an MDM adapter plugs into — built now, with no MDM reader behind it.** Decided
+2026-09-24: CT starts without Managed App Configuration, but no structure PR 1 or PR 2 builds may
+assume a profile only ever arrives by scan or link. Four things carry that:
+
+- **`ProfileSource`** — `.link`, `.scan`, `.managedConfig` — recorded with every applied profile and
+  carried in `ApplyResult`. The source decides removal (below) and the wording of the managed row,
+  so the case exists from the start even though nothing produces `.managedConfig` yet.
+- **`ProfileIngress`** — a small protocol an adapter conforms to: it yields a signed profile (the
+  string itself, or the HTTPS pointer to it) and a source, and nothing else. The link parser and the
+  scanner are its first two conformances; the MDM reader later is a third, observing
+  `com.apple.configuration.managed`, and adds no verification or apply logic of its own.
+- **The applier takes layers, not a profile.** `apply` accepts an optional managed layer beside the
+  profile layer and the user's snapshot, and the precedence table — managed > profile > user,
+  ceilings as a final clamp, a second profile arriving under management reported rather than
+  merged — is tested now with a synthetic managed layer. When the reader lands, precedence is
+  already proven.
+- **The managed-config wire shape is documented now**, in this plan and beside the script that
+  mints profiles: the dictionary carries **the same signed profile** (inline or as a URL) under a
+  reserved key, never raw settings. One trust path and one verification; an administrator who
+  changes policy re-mints rather than editing an unsigned plist. Writing it down before an MDM
+  customer exists stops the first one from getting an ad-hoc format.
+
+**PR 1 as built (2026-09-24, headless; written without a Swift toolchain, so CI was the compiler —
+it compiled and all 32 tests in `OrgProfileVerificationTests` and `OrgProfileApplierTests` passed
+on the first run).** Files under `OpenGlasses/Sources/Services/OrgProfile/`:
+
+- `ConfigProfile.swift` — `ConfigProfile`, the lossy `RawSetting`, `ProfileValue` (flag, string,
+  string list), `ProfileRevocation`, `ProfileSource` (with `managedConfigProfileKey = "orgProfile"`,
+  the reserved managed-config key), `ProfileDelivery` and the `ProfileIngress` protocol.
+- `SettingKey.swift` — the sixteen cases above; each declares its `kind` (profile-owned, a
+  one-way ceiling, or a starting value) and its content checks (a job-signing key must be a
+  Curve25519 public key, a report channel a known `DeliveryChannel`, a mode a `FieldSession.Mode`,
+  a default vault one the registry resolves).
+- `ProfileVerification.swift` — `productionKeys` holds `og-profile-2026-09`, the owner's key
+  generated 2026-09-24. Documents are `base64(payload).base64(signature)` with the signature over
+  `openglasses.org-profile.v1\n` or `openglasses.org-revocation.v1\n` then the payload. Verification
+  never reads the clock; `enrolmentRefusal(for:now:)` does, naming which clock ran out.
+- `ProfileApplier.swift` — the pure layered resolution, `Drop`s and `Notice`s by name, and
+  `effectiveValue(_:stored:)`, the clamp PR 2's getters will call.
+- `Scripts/make-org-profile.swift` — `make`, `revoke` and `keygen`; it refuses an unknown key or a
+  wrong-direction ceiling at minting time rather than letting a phone drop it. Not yet run: it
+  needs a Mac.
+- `Config.migratableStringSecretKeys` / `migratableDataSecretKeys` lose `private` so the
+  disjointness test can read them.
+
+**A correction to this plan, found while building it: the entitlement clock is not a profile
+field.** The draft gave the profile an `entitlementExpiry` beside `policyExpiry`. But the
+entitlement already has a signed clock — the `expires` of the licence code the profile carries —
+and a second copy in the profile could disagree with it, which is exactly the forgeable-preference
+shape Plan DP removed. So the profile carries `policyExpiry` (the organisation's term), `leaseDays`
+(the leaver clock) and the licence code, and the licence's own `expires` is the entitlement clock.
+Still two clocks at enrolment, both checked, each refusal naming its own.
+
+### PR 2 — enforcement, managed state, and the link
+
+**Clamp on read, never on write.** The envelope is enforced in the `Config` getter of each allowed
+key, so every existing read site — `VaultLinkInstallPolicy`, the sign-off step, the delivery policy,
+the job-file check — gets the clamped value with no change of its own. The keys declared with
+`@UserDefaultsBacked` today (`privacyFilterEnabled`, the `remoteInvoke*` trio, `mcpServerEnabled`)
+become managed accessors; the rest are already hand-written. The envelope is an in-memory value
+loaded at launch from the cached profile, **re-verified on load** rather than trusted from storage,
+so a getter never pays for a signature check and a tampered cache is a refusal, not a policy.
+
+A ceiling never overwrites the person's stored value; it only clamps what the getter returns. That
+makes *removal restores prior values* free for ceilings — there is nothing to restore — and leaves
+only `.default` writes needing a recorded prior value. It is also why a setter under a ceiling is
+harmless rather than a hole: it writes a preference the getter will not return until the ceiling
+lifts.
+
+The rest of PR 2:
+
+- **`openglasses://enrol?url=…&sig=…`**, the first `ProfileIngress` — P2's parser, reusing
+  `SkillPackSideload`'s source policy verbatim, fetch → verify → present → one human confirmation.
+  It is the smallest adapter (no camera) and it exercises the whole verify-and-apply path end to end.
+  **It applies only after onboarding has completed**; a link opened on a phone that has not finished
+  onboarding is held and presented once it has, and a test asserts an apply leaves both onboarding
+  flags unchanged. The first-run branch — where CD P1's hazard lives — is PR 3's.
+- **The "Managed by ⟨org⟩" row** — issue date, both expiries, and the source — and locked controls
+  rendered with the organisation's name as the reason. **"Show everything"**'s footer ("Nothing here
+  is locked…") changes on a managed device in this PR, because it stops being true the moment the
+  first ceiling lands, not only in the single-purpose edition.
+- **Removal behind `OwnerGateMachine`**, decided by source: a `.link` or `.scan` profile is removable
+  by the device owner. A `.managedConfig` profile is not locally removable — the MDM would reapply
+  it — so the row names who manages the device instead of offering a button that cannot work. That
+  branch is written and tested now against the synthetic managed layer.
+- **The envelope re-clamps on entitlement change and on a policy-source change** — a new profile,
+  a removal, and (when the reader lands) a managed-config update all arrive as the same event.
+  Sign-in and sign-out re-clamping waits for identity, which does not exist yet (below).
+- **The lease, from PR 4's design:** the renewal fetch on launch and on foreground (at most daily),
+  the "Connect to renew by ⟨date⟩" warning from 14 days out, lapse-locking through the envelope
+  (deferred until an active job closes), the clock high-water mark, and recognising a signed
+  revocation document. What a received revocation *erases* is PR 4; until PR 4 lands, a revoked
+  profile locks exactly as a lapsed one does and lifts its ceilings.
+- **A check, not a build, for the watch:** confirm that no watch path reaches a ceilinged key except
+  through the phone's `Config` getter. If none does, watch propagation stays with Plan CS; if one
+  does, it is a bug in this PR.
+
+### PR 3 — the scanner, the first-run branch, and enrolment
+
+P2's scanner view as the second `ProfileIngress`, and P3's first-run branch and enrolment sequence,
+as written: through `WearablesBootstrap`, `hasCompletedOnboarding` set explicitly, and the five
+enrolment steps in their load-bearing order — verify, activate the licence, install the pack through
+`VaultPackCatalogService`, write settings and raise the ceiling, then sync documents — with steps 3
+and 5 allowed to be pending, retried and named. This is where `fieldAssistDefaultVaultId` stops
+being validated against the installed set and starts being written after the install succeeds.
+
+### PR 4 — leaving the firm: lease, revocation, and erasure
+
+Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
+it. **Nothing about that phone is frozen or bricked** — it stops being the firm's phone and remains
+an ordinary copy of the app. Three things are handled separately, because they want different
+answers:
+
+| | Lease lapses (no renewal heard) | Revoked, or removed by the device owner |
+|---|---|---|
+| **The organisation's rules** (the ceilings) | stay as they were, with a visible "management expired" state | lifted with the profile |
+| **The organisation's content** (below) | **locked** — unreadable in the app, intact on disk, and back the moment a renewal is heard | **delivered, then erased** |
+| **The person's own data and the app itself** | untouched | untouched |
+
+**The lease.** A profile carries `leaseDays`, set by the organisation when the profile is minted and
+bounded by the app to **7–365 days** so a typo is neither a one-day lease nor no expiry at all. The
+lease runs from the last successful, verified fetch of the profile's URL, and any fetch renews it —
+a single small download, so a day in town, a satellite window or a hotel's Wi-Fi renews the whole
+lease silently. Different crews get different leases by getting different profiles: a profile
+belongs to a link, not to the organisation, so an office team on 30 days and a remote crew on 180
+are two links from the same script. What the organisation is choosing is the longest a leaver who
+stays offline keeps access, per crew.
+
+- **A warning before it lapses.** From 14 days out, the managed row and the Field Assist screen say
+  "Connect to renew by ⟨date⟩", so an engineer heading out of contact can plan for it.
+- **Never mid-job.** A lease that lapses during an active Field Assist session or an open job locks
+  when that job closes. Losing the manual halfway through a repair is worse than a few hours' grace.
+- **Lapse locks; it never erases by default.** An engineer 45 days out on a 30-day lease loses the
+  firm's content until they have signal; the next fetch renews and everything returns as it was.
+  Erasure after a lapse heard *offline* is an organisation opt-in (`eraseAfterLapseDays`, absent by
+  default), because a genuine remote worker should not lose their manuals for having been somewhere
+  without signal.
+- **The lock is the envelope's, not the licence's.** The licence code inside the profile has its
+  own signed, typically annual, expiry, and a lapsed lease must lock the firm's content even while
+  that licence is still valid. So content gating — `VaultRegistry.isUnlocked` for the firm's pack and
+  vaults, and the stores below — asks the envelope whether the lease is live, in addition to the
+  entitlement it already asks.
+- **The clock is not trusted to go backwards.** The envelope keeps a high-water mark of the latest
+  time it has seen; a device clock more than a day behind it counts as lapsed. Without that, winding
+  the clock back is a lease that never ends.
+
+**Revocation is explicit and per enrolment.** A fetch that fails — no network, a timeout, a server
+error, a 404 from a host migration somebody got wrong — **only fails to renew**. It never erases,
+because an unsigned HTTP status is not a decision anyone made, and treating it as one would let a
+misconfigured web server wipe a fleet. Revocation is a **signed revocation document** at the
+profile's URL, minted with the profile key by the same script (`make-org-profile --revoke`). Two
+granularities, one format:
+
+- **The whole link** — every phone enrolled from it hears the revocation on its next fetch.
+- **One enrolment** — each enrolment generates a random id, shown on the managed row and recorded
+  by the script when it mints a per-person link. The hosted document carries a signed list of
+  revoked enrolment ids; the named phone erases and the rest of the crew renews as normal. This is
+  the leaver case on a shared crew link, and it needs nothing but a static file — the same hosting
+  the profile already uses.
+
+**Removal by the device owner is treated exactly as revocation.** An engineer who removes the profile
+on the way out gets the same deliver-then-erase as one whose firm revoked it. Otherwise removal would
+be the way to keep the firm's manuals, and the licence code the profile carried is cleared from
+`LicenseService.storageKey` either way.
+
+**What counts as the firm's.** `DataStoreRegistry` already inventories every store, and it gains an
+owner axis — the wearer or the enrolled organisation — so erasure is a query, not a list somebody
+maintains by hand. The organisation's, while a profile is applied:
+
+- the pack enrolment installed, and its documents tier (`vaultDocuments`), and any enterprise vaults
+  imported while managed
+- `upcomingJobs` and the `.ogjob` files behind them
+- `jobDeliveryQueue` and `fieldDeliverySettings`
+- `fieldSessionLogs`, and the job photos, clips and work records attached to the firm's jobs
+- the profile-owned values: the organisation's name, job-signing key, report route and recipients
+
+**Session logs and unsent reports go to the firm first.** Decided 2026-09-24: on revocation or
+removal, `fieldSessionLogs` and every report still waiting in `jobDeliveryQueue` are delivered over
+the report route the profile set (`organizationJobReportChannel` / `organizationReportRecipients`),
+and erased once delivered. That also settles the registry's current note that a session log cannot
+be deleted because it is "the engineer's compliance record": on a managed device it is the firm's
+record, and it goes to the firm. Where delivery cannot complete — no route set, or no signal after a
+received revocation — those two stores stay locked and are retried, and are erased regardless after
+30 days (the organisation may set a different figure in the profile), with the erasure itself
+recorded. The engineer cannot read them in the meantime.
+
+**Sealing, so "erased" is true.** Today a locked pack is a row the app will not open over files that
+are still on disk under ordinary platform protection, and a determined leaver with a backup has
+them. `ScopedKeyring` already exists for exactly this: a class of data sealed under its own key, so
+destroying the key makes every copy ciphertext — including a backup or a snapshot the app cannot
+reach. It seals two classes today (conversation content and faces). PR 4 adds an organisation class
+keyed per enrolment, seals the stores above under it as they are written, and revocation becomes
+one key destruction reported as `.cryptographic` rather than `.logicalOnly`. An offline
+`eraseAfterLapseDays` erasure is the same key destruction and needs no network.
+
+**Honest limits, said on the managed row rather than implied away:** a photo already saved to the
+camera roll, a screenshot, and a report already forwarded somewhere are outside the app and outside
+any erasure. A ceiling on `recordingSaveToPhotos` narrows the first; nothing narrows the others.
+
+**Placement.** The lease, the renewal fetch, the warning, lapse-locking, the clock high-water mark
+and the signed revocation document are small and land in PR 1 (schema, script) and PR 2 (fetch,
+state, locking). The owner axis, sealing and deliver-then-erase touch every store in the list above,
+which is why they are a PR of their own.
+
+### Deferred, and why
+
+| Deferred | Why not now |
+|---|---|
+| **The Managed App Configuration reader** | no pilot organisation needs it yet (decided 2026-09-24). When one does, it is a third `ProfileIngress` conformance over the source case, precedence layer, removal branch, re-clamp event and wire shape PR 1 and PR 2 already built and tested — about thirty lines plus its observation |
+| **The single-purpose edition** — the subtraction table, collapsing the Modes tab, the Discover shelf, "Show everything" hiding categories | no partner has asked for one yet; it is the largest piece of this plan, and the open question on a named preset versus a subtraction list should be settled by the first real request, not in advance |
+| **Re-clamp on sign-in / sign-out** | the app has no user identity (see *Identity is per-person*); the envelope is built to re-clamp on any event, and gains those two when identity arrives |
+| **Watch propagation** | needs Plan CS P2's application-context channel; PR 2 checks the watch cannot route around the clamp in the meantime |
+| **Hosting the organisation's documents** | still the open question it was; the pointer field exists in the schema from PR 1 so no profile needs re-minting when it lands |
+| **P4** — the credential half, device verification of printed codes, the QR renderer | unchanged |
+
+### Decisions
+
+1. ~~**Does the pilot organisation use MDM?**~~ **Decided 2026-09-24:** start without it, and build
+   the structures an MDM would integrate with — the `ProfileSource` case, the `ProfileIngress` seam,
+   the layered applier, source-aware removal and the documented wire shape. The link and the scanner
+   are the ingress paths that ship; the reader is deferred.
+2. ~~**Profile key per customer?**~~ **Decided 2026-09-24:** one vendor profile key with a `keyId`
+   for rotation; the per-customer key is the organisation's job-signing key the profile carries.
+   **Still owed before PR 1 merges:** the owner generates the keypair, private half off-repo on the
+   licence key's terms. Nothing can be signed for production until then.
+3. ~~**Expired profile: freeze or revert?**~~ **Decided 2026-09-24,** and it turned out to be three
+   questions: the organisation's *rules* stay as they were on a lapse; its *content* locks on a
+   lapse and is delivered-then-erased on a revocation or an owner removal; the person's own data and
+   the app are untouched. Nothing freezes the phone. See *PR 4*.
+4. ~~**Can the organisation set the lease?**~~ **Decided 2026-09-24:** yes, per profile, bounded
+   7–365 days; different crews get different links. A lapse never erases unless the organisation
+   opted in, and never locks mid-job.
+5. ~~**Session logs and unsent reports on revocation?**~~ **Decided 2026-09-24:** they go to the
+   firm over its report route, then are erased; undelivered ones stay locked and retried, and are
+   erased after 30 days by default.
 
 ---
 
@@ -544,6 +898,19 @@ between exactly the right two devices. A QR there would be strictly worse than w
 | Blocking enrolment on the pack download | a depot with poor signal leaves the device unbounded, which is the half that must never wait |
 | Ceilings that stop at Settings and leave the tabs alone | the Modes tab still presents a grid of one and Discover still pitches what the ceiling removed — the app reads as broken rather than purposeful |
 | Withholding the assistive surface, or the fingerspelling family inside it | an organisation takes a sign-language reader off the device of the person holding it; this plan's own first cut made that mistake |
+| Clamping on write instead of on read | the ceiling overwrites the person's own value, removal has nothing to restore, and any setter that runs after enrolment quietly widens the device again |
+| Trusting the cached profile because it was verified once | a tampered cache becomes policy; the envelope re-verifies on load, and a getter never reads an unverified profile |
+| Accepting raw settings from managed app config beside the signed profile | two trust paths with two sets of rules, one of them unsigned; the managed dictionary carries the same signed profile |
+| Treating a failed fetch or a 404 as a revocation | a network outage or a botched host migration erases a fleet's manuals; only a signed revocation document erases |
+| Revoking only by link | a leaver on a shared crew link cannot be cut off without cutting off the crew; revocation names enrolment ids |
+| Letting owner removal skip the erasure | removing the profile becomes the way to keep the firm's manuals and job history |
+| Locking on the licence's clock instead of the lease | a leaver keeps the firm's content until the annual licence runs out |
+| Erasing on an offline lapse by default | a remote engineer loses the manuals for having been out of signal |
+| Trusting the device clock for the lease | winding the clock back is a lease that never ends |
+| Calling a lock "erased" | the files are still on disk and in a backup; only a destroyed scoped key makes a copy unreadable |
+| Building the link and scanner paths as if they were the only ingress | the MDM reader, when a customer needs it, arrives as a second verify-and-apply path and a retrofit of removal and precedence instead of one adapter; the source case, the layered applier and the ingress seam exist from PR 1 for that reason |
+| A `SettingKey` with no declared direction | an organisation can pin the privacy filter off or turn a refusal back into an allowance; the direction is part of the case, not a comment |
+| Leaving the FO/FS stand-ins as free-standing `UserDefaults` keys after CT lands | two writers for one policy — the profile and whatever last touched the key — and the stand-in comments go on promising a replacement that already happened |
 
 ---
 
@@ -567,10 +934,11 @@ between exactly the right two devices. A QR there would be strictly worse than w
   the obvious shape, but the documents tier is the one part of this that is the customer's own
   material, and hosting it introduces a store the vendor does not otherwise operate. A folder handed
   over at the depot is less elegant and leaves the vendor holding nothing. No lean yet.
-- **Does an expired profile revert or freeze?** Reverting silently changes a working device's
-  behaviour; freezing leaves an unmanaged device configured by a lapsed policy. Leaning freeze plus a
-  visible "management expired" state, because a device changing behaviour on its own in the field is
-  the worse surprise.
+- ~~Does an expired profile revert or freeze?~~ **Decided 2026-09-24:** the rules freeze, the
+  organisation's content locks, and a revocation delivers then erases that content — see *PR 4 —
+  leaving the firm*.
+- ~~Does the pilot organisation use MDM?~~ **Decided 2026-09-24:** start without the reader and
+  build the seam it plugs into — see *Delivery order → Decisions*.
 - ~~Does org membership carry entitlement?~~ **Resolved:** entitlement rides the profile, device-scoped
   and org-purchased — see *Entitlement rides the profile* above.
 - ~~Which tiers may an org grant?~~ **Resolved 2026-08-09.** Two grantable, one not:
