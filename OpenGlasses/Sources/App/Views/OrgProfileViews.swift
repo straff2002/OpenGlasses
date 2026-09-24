@@ -147,6 +147,16 @@ private struct OrgProfileReviewList: View {
                 }
             }
 
+            if let packId = review.packId {
+                Section {
+                    Text(verbatim: packId)
+                } header: {
+                    Text("Installs")
+                } footer: {
+                    Text("A vault pack, downloaded from the signed catalog and checked before it is installed. Field Assist turns on once it is in.")
+                }
+            }
+
             if !review.organizationLines.isEmpty || review.carriesLicence {
                 Section {
                     ForEach(review.organizationLines, id: \.self) { Text(verbatim: $0) }
@@ -199,6 +209,18 @@ struct ManagedByOrganisationSection: View {
                     OGDivider()
                     OGNotice(text: notice.text, systemImage: notice.icon)
                         .padding(12)
+                }
+                if let packId = record.pendingPackId {
+                    OGDivider()
+                    if let error = record.packInstallError {
+                        OGNotice(text: "Couldn't install \(packId): \(error). It tries again each time the app opens.",
+                                 systemImage: "exclamationmark.triangle")
+                            .padding(12)
+                    } else {
+                        OGNotice(text: "Installing \(packId). Field Assist turns on once it is in.",
+                                 systemImage: "arrow.down.circle")
+                            .padding(12)
+                    }
                 }
                 if record.profileURL != nil, record.revoked != true, !(manager.lease?.isLiveAndQuiet ?? false) {
                     OGDivider()

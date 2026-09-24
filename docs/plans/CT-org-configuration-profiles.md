@@ -5,8 +5,10 @@ PR 2a — enforcement, the stored enrolment, the `openglasses://enrol` link, the
 and locked controls — merged 2026-09-24 ([#549](https://github.com/straff2002/OpenGlasses/pull/549)).
 PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — merged 2026-09-24
 ([#551](https://github.com/straff2002/OpenGlasses/pull/551)), green on its first CI run with 16 new tests.
-PR 3a — the QR scanner and the first-run branch — written 2026-09-24, awaiting CI; PR 3b (pack install
-at enrolment) next. See *PR 2a/2b/3a as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+The scanner (3c, early) merged 2026-09-24 ([#553](https://github.com/straff2002/OpenGlasses/pull/553)).
+The pack at enrolment (3d) was written 2026-09-24 and is awaiting CI
+([#555](https://github.com/straff2002/OpenGlasses/pull/555)). Next, per the evening re-cut: 3a (the
+activation key) and 3b (the Field Assist edition). See *Numbering, reconciled*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
@@ -1122,11 +1124,26 @@ enrolment steps in their load-bearing order — verify, activate the licence, in
 and 5 allowed to be pending, retried and named. This is where `fieldAssistDefaultVaultId` stops
 being validated against the installed set and starts being written after the install succeeds.
 
-**PR 3 ships in two parts (2026-09-24).** **3a** is the scanner and the first-run branch; **3b** is
-enrolment installing the named vault pack (step 3) before the default vault is written (step 4), with
-the pending-and-retried behaviour, and the documents-source pointer.
+**Numbering, reconciled (2026-09-24).** Two things were built under the labels "3a" and "3b"
+before the evening re-cut above was read. They are relabelled here so the re-cut's 3a, 3b and 3c keep
+their meaning:
 
-**PR 3a as built (2026-09-24).**
+- **Scanner (3c, early)** — [#553](https://github.com/straff2002/OpenGlasses/pull/553), merged. A
+  general in-app scanner and scanning of the enrol link or a bare profile address. The re-cut's 3b
+  scopes a scanner to the admin card and 3c reuses it for keys, so both reuse this one
+  (`OrgCodeScannerView`) instead of building their own. 3c's remainder is reading a licence key or an
+  activation key into the same field. The welcome page's *My organisation gave me a code* joins the
+  re-cut 3a's *I have a licence key from my company* when that lands, as the scan beside the typed
+  key.
+- **Pack at enrolment (3d)** — [#555](https://github.com/straff2002/OpenGlasses/pull/555). Enrolment
+  step 3 from P3 (install the named pack before the default vault is written), which the re-cut table
+  left out. It applies to every enrolment path, the licence key included.
+
+Next, per the re-cut, is **3a** (the activation key and the first-run licence branch), then **3b**
+(the Field Assist edition and the administrator passcode and card). Both come before PR 4, because
+they are what the demo needs.
+
+**Scanner (3c, early) as built (2026-09-24, [#553](https://github.com/straff2002/OpenGlasses/pull/553)).**
 
 - `OrgCodeScannerView` — `AVCaptureSession` + `AVCaptureMetadataOutput` for QR, torch toggle,
   camera-permission and no-camera states. It reads one code, stops the camera, and hands the text
@@ -1147,6 +1164,26 @@ the pending-and-retried behaviour, and the documents-source pointer.
   from outside during onboarding is still held (it was not asked for); a **scan** from the welcome
   page is not.
 - Field Assist settings gain *Scan an Organisation Code* on an unmanaged phone.
+
+**Pack at enrolment (3d) as built (2026-09-24).**
+
+- `OrgPackInstaller` is step 3: it loads the signed catalog, finds the entry the profile's
+  `vaultPack.packId` names and runs it through `VaultPackCatalogService.install` — download,
+  checksum, pack signature, structural checks, `VaultImporter` — returning at once if that pack is
+  already on the phone. A pack the catalog does not list is a failure with a reason; the profile
+  carries an id, never bytes, so there is nowhere else to install it from.
+- **The order is the plan's.** A profile naming a pack applies its ceiling, its licence and every
+  starting value *except* the default vault and the Field Assist switch, which are held on the
+  enrolment record until the pack lands; then they are written. The default vault is written only if
+  a vault with that id now resolves, so a pack that turns out to provide a different vault leaves
+  the default where it was instead of pointing it at nothing. The review counts the profile's
+  default vault as resolvable when a pack is named, so it is not reported as dropped.
+- **Pending, retried and named.** The install starts as soon as the review is confirmed and does not
+  hold the sheet; a failure is recorded, shown on the managed row ("Couldn't install … It tries
+  again each time the app opens"), and retried from the same launch-and-foreground path as renewal.
+- **Still owed:** a renewed profile that names a *different* pack (a renewal today installs nothing
+  new). Step 5, the organisation's own manuals, is now Plan FT's (FT4): they come from the base
+  server, not a profile pointer.
 
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
@@ -1354,10 +1391,12 @@ which is why they are a PR of their own.
   *Visibility* is the inverted, named preset, so a feature added later stays hidden from a technician
   unless someone adds it to the kept list. *Capability* stays the enumerated, per-key ceiling. See
   *Hidden is not forbidden*.
-- **Where do an organisation's manuals actually come from?** A hosted folder the profile points at is
-  the obvious shape, but the documents tier is the one part of this that is the customer's own
-  material, and hosting it introduces a store the vendor does not otherwise operate. A folder handed
-  over at the depot is less elegant and leaves the vendor holding nothing. No lean yet.
+- ~~Where do an organisation's manuals actually come from?~~ **Decided 2026-09-24: from the
+  organisation's base server** (Plan [FT](FT-organisation-administration.md), *The organisation's
+  manuals*). The overlay carries a signed manual set, and the phone fetches each file from
+  `baseServer` with a signed request and a hash check into the pack's documents tier. The vendor holds
+  nothing, and licensed OEM manuals never sit at a public address. `vaultPack.documentsSource` is
+  withdrawn. Without a server, manuals are loaded by hand through Custom Vaults, as today.
 - ~~Does an expired profile revert or freeze?~~ **Decided 2026-09-24:** the rules freeze, the
   organisation's content locks, and a revocation delivers then erases that content — see *PR 4 —
   leaving the firm*.
