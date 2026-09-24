@@ -956,6 +956,8 @@ class AppState: ObservableObject, AppStateProtocol {
                                                                 userText: text, jsonSchema: schema)
             },
             provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
+        // Plan FO P3b — Direct mode's system prompt carries the debrief block while one runs.
+        LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
         guidedJobFlow.connectUpcoming(upcomingJobs)
@@ -1013,7 +1015,8 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             recordTurn: { text, sourceID in
                 sessions().recordConversationTurn(text, sourceID: sourceID)
-            }))
+            },
+            debriefBlock: { [weak self] in self?.guidedJobFlow.debriefBlock() }))
         openAIRealtimeSession.jobBridge.connect(.init(
             activeSession: { sessions().activeSession },
             generation: { [weak self] in self?.openAIRealtimeSession.sessionIdentity ?? 0 },
@@ -1030,7 +1033,8 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             recordTurn: { text, sourceID in
                 sessions().recordConversationTurn(text, sourceID: sourceID)
-            }))
+            },
+            debriefBlock: { [weak self] in self?.guidedJobFlow.debriefBlock() }))
     }
 
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
@@ -2563,8 +2567,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // publisher is the trigger set rather than three hooks that can each be forgotten. What it
         // drives: the bounded job block on both live backends, the lens cue for whichever question
         // is outstanding, and the watch's read-only job state.
-        let jobStateToken = FieldSessionService.shared.$activeSession
-            .removeDuplicates { JobSurfaceRefresh.key(for: $0) == JobSurfaceRefresh.key(for: $1) }
+        //
+        // `$activeSession` publishes before the property is set, and the bridges, the watch and
+        // CarPlay all read `FieldSessionService.shared.activeSession` rather than the value handed
+        // to this sink — so `trigger` delivers it on the next main-queue turn, where they read the
+        // new session instead of the one before it. The lens cue uses `session` either way.
+        let jobStateToken = JobSurfaceRefresh.trigger(FieldSessionService.shared.$activeSession)
             .sink { [weak self] session in
                 guard let self else { return }
                 self.geminiLiveSession.jobBridge.refresh()
@@ -2577,6 +2585,22 @@ class AppState: ObservableObject, AppStateProtocol {
                 CarPlaySceneDelegate.current?.refreshJobsTab()
             }
         cancellables.append(jobStateToken)
+
+        // Plan FO P3b — the debrief block follows the same path on both live backends: re-injected
+        // when a debrief starts or moves to another job, and closed out once when it settles. Keyed
+        // on the rendered block, so a turn landing in the debrief sends nothing. `$debrief`
+        // publishes before the property is set, so the refresh is delivered on the next main-queue
+        // turn, where the bridge's seam reads the new value rather than the old one.
+        let debriefToken = guidedJobFlow.$debrief
+            .map { [weak self] debrief in self?.guidedJobFlow.debriefBlock(for: debrief) }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.geminiLiveSession.jobBridge.refreshDebrief()
+                self.openAIRealtimeSession.jobBridge.refreshDebrief()
+            }
+        cancellables.append(debriefToken)
 
         // The car's Jobs list carries jobs ahead too (Plan FO P3c): a job file accepted on the
         // phone, or one said out loud, has to be on the car screen before the drive starts.

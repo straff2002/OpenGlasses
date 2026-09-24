@@ -304,6 +304,11 @@ class LLMService: ObservableObject {
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
 
+    /// The guided job flow's "JOB DEBRIEF:" block while a debrief is running, else nil (Plan FO
+    /// P3b). A closure because the prompt builder is static and the flow is owned by the app rather
+    /// than being a singleton; the app sets it to `GuidedJobFlow.debriefBlock()` at launch.
+    static var debriefContext: () -> String? = { nil }
+
     /// Build the full system prompt, optionally including location, tools, memory, and vision context.
     /// When `promptSections` is provided (from the ConversationClassifier), irrelevant sections are
     /// stripped to reduce token count. When nil, all sections are included (backward compatible).
@@ -567,6 +572,12 @@ class LLMService: ObservableObject {
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
         if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
             prompt += "\n\n<field_assist_context>\n\(vaultContext)\n</field_assist_context>"
+        }
+        // Inject the debrief block while one is running (Plan FO P3b): which job it is about and
+        // what the model may not do during one. Outside the vault context on purpose — a debrief
+        // usually runs on a finished job, with no session active and no vault loaded.
+        if let debrief = debriefContext() {
+            prompt += "\n\n\(debrief)"
         }
         // Inject the active project's knowledge-base grounding when it has documents (Plan AN).
         if let projectContext = ProjectContextService.shared.promptContext() {

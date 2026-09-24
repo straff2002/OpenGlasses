@@ -724,6 +724,11 @@ class GeminiLiveSessionManager: ObservableObject {
         if let jobBlock = jobBridge.setupBlock() {
             prompt += "\n\n\(jobBlock)"
         }
+        // Plan FO P3b — a debrief in progress, usually on a finished job, so not behind the job
+        // block: which job it is about and what the model may not do during one.
+        if let debriefBlock = jobBridge.setupDebriefBlock() {
+            prompt += "\n\n\(debriefBlock)"
+        }
 
         // Inject rolling visual scene memory (Plan AV) when enabled — temporal
         // awareness of what the user was just looking at. No-op when disabled.

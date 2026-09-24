@@ -1135,6 +1135,54 @@ speech is audible while a live session holds the audio route, and whether it can
 talking over the model — is **owed to P4** and is the one decision here that a headless test cannot
 stand behind.
 
+### A defect fixed after the fact: the job-state trigger was one change behind (2026-09-24)
+
+As shipped, the job-state trigger subscribed to `FieldSessionService.shared.$activeSession` and
+refreshed its surfaces synchronously. `@Published` emits in `willSet`, so inside that sink the
+service still held the *previous* session. Only the lens cue used the value the sink is handed. The
+other three read the service:
+
+- **Both live bridges.** `LiveJobBridge.refresh()` reads the job through its `activeSession` seam,
+  which is `FieldSessionService.shared.activeSession`. Each re-injection of the `FIELD JOB STATE:`
+  block described the job as it was one change ago. On the change that records the number, the
+  bridge read the session that still owed it, found nothing new against what the model had, and
+  sent nothing. The model then went on being told the number was owed until the *next* change.
+- **The watch.** `WatchConnectivityManager.sendStatusUpdate()` builds
+  `JobWatchPayload.payload(for: FieldSessionService.shared.activeSession)` synchronously, so the
+  wrist was one change behind in the same way.
+- **CarPlay.** `refreshJobsTab()` reads the service too, but inside a `Task { @MainActor }`, which
+  runs on a later turn. It was already reading the new value, by accident of how it was written.
+
+The fix is the one the P3b debrief trigger already uses. The pipeline now lives in
+`JobSurfaceRefresh.trigger(_:)`: de-duplicated on `JobSurfaceRefresh.key` as before, then
+`.receive(on: DispatchQueue.main)`. The app subscribes through it, so every surface in the sink
+runs on the next main-queue turn, after the property is set. De-duplication still runs first, on
+the value each emission carries, so what counts as a change is unchanged. The lens cue still uses
+`session` and still compares against `lastJobQuestionCue`. Both now run a turn later, and in the
+same order, because the main queue is serial. If two changes land in one turn, the first delivery
+already reads the final value and the second finds nothing new to send.
+
+Tests: `JobStateTriggerTests` subscribes a `LiveJobBridge` to a real `FieldSessionService`'s
+`$activeSession` through `JobSurfaceRefresh.trigger`, the way the app does. It asserts that
+recording job 1005 injects a block carrying `"1005"`, that recording 1006 next injects 1006 and
+not 1005, and that closing the job says "No job is open." once. It also asserts that on every
+delivery the service's value matches the value the sink was handed, which is the property the
+watch and CarPlay depend on. With a synchronous trigger, the first assertion gets no injection
+and the second gets a stale read on every change. `LiveJobBridgeWiringTests` scrapes the app for
+the trigger and `JobSurfaceRefresh.trigger` for the `.receive(on: DispatchQueue.main)` after the
+de-duplication. It also checks that the watch and CarPlay still read the shared value.
+
+Written without a Swift toolchain, so CI was the first compile and the first run, on
+[#546](https://github.com/straff2002/OpenGlasses/pull/546). It went green on the third run
+(2026-09-24). Both failures were in the new wiring test, and the app code was not changed after
+the first push. The first run executed 7,227 tests with one failure: the CarPlay check looked for
+`FieldSessionService.shared.activeSession`, but `refreshJobsTab()` reads through a local
+`let sessions = FieldSessionService.shared`, so the check now asserts the two lines it actually
+has. The second run did not compile, because the corrected check redeclared a local `body` in the
+same test. The behavioural tests in `JobStateTriggerTests` passed on the first run. **Nothing here
+has been run on hardware**: whether a live model actually stops asking for a number the app has
+already recorded is owed to P4, with the rest of P3a's device checks.
+
 ### Seams left for P3b
 
 - `CarPlayJobsList.Selection` is where the **Debrief** action goes: a third case, and the row's
@@ -1330,6 +1378,57 @@ fixture through the `summarise` seam. Whether a technician can hold a five-minut
 at motorway speed, and whether the summary a real model returns survives the decoder often enough
 to be useful, are **owed to P4**.
 
+### A defect fixed after the fact: the debrief block reached no model (2026-09-24)
+
+As shipped, `GuidedJobFlow.debriefBlock()` had **no callers** (P3c found it; see its "defect found"
+note). `DebriefContract.block` was built and tested (`DebriefCoreTests`, one assertion in
+`JobDebriefFlowTests`) and was never handed to a model. So in Direct mode and on both live
+backends, the model was never told which job a debrief was about, or that it must not propose
+work, treat anything said as a completed task, or claim a save. The only guard left was the
+decoder on the summary, and the summary is not the conversation.
+
+Now it goes where the job's own blocks go:
+
+- **Direct mode.** `LLMService.buildSystemPrompt` appends `LLMService.debriefContext()` right after
+  the `<field_assist_context>` block. The app sets that seam to `guidedJobFlow.debriefBlock()` in
+  `configureGuidedJobFlow`. It is a separate `if`, not inside the vault context, because a debrief
+  usually runs on a finished job, with no session open and no `activeVault`. The full prompt, the
+  cloud-agent prompt and the lean on-device prompt all go through `buildSystemPrompt`, so all
+  three get it. `leanCloudPrompt` (the small-context cloud tier) carries no Field Assist context
+  at all, and still does not.
+- **Live backends.** `LiveJobBridge` gains a second lane beside the job block. It has its own
+  last-sent record and its own held slot, so a debrief change never re-sends the job block, and
+  the reverse. The pieces are a `debriefBlock` seam, `setupDebriefBlock()` (called by both
+  managers right after `setupBlock()`, so a session that starts mid-debrief is told), and
+  `refreshDebrief()`. A debrief that settles, or is put away, is said once as
+  `DebriefContract.endedBlock`, the way a closed job is said once as "No job is open": text
+  already injected into a live conversation cannot be taken back out. Both lanes go through
+  `LiveJobSnapshotPolicy`, so a debrief block built before a reset is discarded, not applied, and
+  a block held while the session was busy goes out at the next `turnCompleted()`.
+- **The trigger.** The app subscribes to `guidedJobFlow.$debrief`, keyed on the *rendered* block
+  (`debriefBlock(for:)`). A start, a switch or a settle moves the block. An account line lands on
+  the debrief and moves nothing, so it sends nothing. `@Published` emits before the property is
+  set, so the refresh goes out on the next main-queue turn (`receive(on: DispatchQueue.main)`),
+  where the bridge's seam reads the new value.
+
+Tests: in `JobDebriefFlowTests`, the block is in the Direct-mode prompt while a debrief on a
+finished job runs, and is gone once the debrief is saved, scrapped or put away. The bridge
+follows the real flow through start, switch and save. `LiveJobBridgeTests` covers the debrief
+lane: setup with no job open, start and switch, ended said once, the lanes kept apart, the
+generation guard, and held-until-the-turn-boundary. `LiveJobBridgeWiringTests` scrapes both
+managers for `setupDebriefBlock()`, and the app for both bridges' seam, both `refreshDebrief()`
+calls and the `LLMService.debriefContext` assignment. It also scrapes `buildSystemPrompt` for
+the append.
+
+**A neighbouring defect found while doing this, and since fixed.** P3a's job-state trigger
+(`FieldSessionService.shared.$activeSession … .sink`) calls `jobBridge.refresh()`, which reads
+`FieldSessionService.shared.activeSession` through its seam. `@Published` emits before the
+property is set, so that read got the *previous* session: each live re-injection was one change
+behind, and so was the watch status. (The CarPlay Jobs refresh reads inside a `Task`, so it was
+already reading the new value.) Only the lens cue used the value the sink is handed. It was left
+out of this change and fixed separately, the same way as the debrief trigger above: see "A defect
+fixed after the fact: the job-state trigger was one change behind" under P3a.
+
 ### Seams left for P3c
 
 - `DebriefJobResolver.Candidate` is the shape the job-ahead list needs, and `debriefCandidates()`
@@ -1466,6 +1565,7 @@ extension GuidedJobFlow { addUpcomingJob, assembleBrief, briefAloud, moreOfBrief
 `GuidedJobFlow.debriefBlock()` (P3b) has **no callers**. The bounded `JOB DEBRIEF:` block — which
 job, and the rules against proposing work or claiming a save — is built and tested and never
 handed to the model on any backend. Not P3c's to fix; recorded here, and raised as its own task.
+**Since fixed**: see "A defect fixed after the fact" under P3b.
 
 ### What is on screen
 
