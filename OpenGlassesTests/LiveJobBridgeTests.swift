@@ -421,9 +421,9 @@ final class LiveJobBridgeWiringTests: XCTestCase {
         XCTAssertTrue(watch.contains("JobWatchPayload.payload(for: FieldSessionService.shared.activeSession)"))
         let carPlay = try source("App/CarPlaySceneDelegate.swift")
         let refresh = try XCTUnwrap(carPlay.range(of: "func refreshJobsTab()"))
-        let body = carPlay[refresh.lowerBound...].prefix(800)
-        XCTAssertTrue(body.contains("let sessions = FieldSessionService.shared"), String(body))
-        XCTAssertTrue(body.contains("active: sessions.activeSession"), String(body))
+        let jobsTab = carPlay[refresh.lowerBound...].prefix(800)
+        XCTAssertTrue(jobsTab.contains("let sessions = FieldSessionService.shared"), String(jobsTab))
+        XCTAssertTrue(jobsTab.contains("active: sessions.activeSession"), String(jobsTab))
     }
 
     /// OpenAI Realtime reaches the native tools for the first time (Plan FO P3a), and the CarPlay
