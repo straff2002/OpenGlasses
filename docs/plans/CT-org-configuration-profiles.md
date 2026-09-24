@@ -3,8 +3,10 @@
 **Status:** 🚧 PR 1 (headless core) merged 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)).
 PR 2a — enforcement, the stored enrolment, the `openglasses://enrol` link, the managed row, removal
 and locked controls — merged 2026-09-24 ([#549](https://github.com/straff2002/OpenGlasses/pull/549)).
-PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — written 2026-09-24,
-awaiting CI. See *PR 2a as built* and *PR 2b as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — merged 2026-09-24
+([#551](https://github.com/straff2002/OpenGlasses/pull/551)), green on its first CI run with 16 new tests.
+PR 3a — the QR scanner and the first-run branch — written 2026-09-24, awaiting CI; PR 3b (pack install
+at enrolment) next. See *PR 2a/2b/3a as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
@@ -1119,6 +1121,32 @@ enrolment steps in their load-bearing order — verify, activate the licence, in
 `VaultPackCatalogService`, write settings and raise the ceiling, then sync documents — with steps 3
 and 5 allowed to be pending, retried and named. This is where `fieldAssistDefaultVaultId` stops
 being validated against the installed set and starts being written after the install succeeds.
+
+**PR 3 ships in two parts (2026-09-24).** **3a** is the scanner and the first-run branch; **3b** is
+enrolment installing the named vault pack (step 3) before the default vault is written (step 4), with
+the pending-and-retried behaviour, and the documents-source pointer.
+
+**PR 3a as built (2026-09-24).**
+
+- `OrgCodeScannerView` — `AVCaptureSession` + `AVCaptureMetadataOutput` for QR, torch toggle,
+  camera-permission and no-camera states. It reads one code, stops the camera, and hands the text
+  back; it never fetches, verifies or applies anything.
+- `OrgEnrolmentService.openScanned` accepts either the `openglasses://enrol?url=…` link or the
+  profile's bare `https://` address — so an organisation can print whichever it likes, and the
+  iPhone Camera app still works for the link form — through the same HTTPS-only policy, and records
+  the enrolment as `.scan`.
+- **The first-run branch is simpler than the plan feared.** The welcome page gains *My
+  organisation gave me a code*; the review sheet appears over onboarding, and once applied the
+  welcome page says *Managed by ⟨org⟩ — next, choose the AI provider your organisation uses* and
+  onboarding carries on normally. It does not skip the provider and key pages, because a profile
+  never carries a key (P4's credential half is what would let it). And it needs no special
+  onboarding-flag handling: Plan CD P1's hazard is a write that makes `hasAnyAPIKey` true before
+  onboarding finishes, and applying a profile writes no key and no onboarding flag — a test pins
+  that no `SettingKey` is an onboarding flag, beside the existing secret-disjointness test.
+  `hasCompletedOnboarding` is still set only by onboarding's own completion. A **link** arriving
+  from outside during onboarding is still held (it was not asked for); a **scan** from the welcome
+  page is not.
+- Field Assist settings gain *Scan an Organisation Code* on an unmanaged phone.
 
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 

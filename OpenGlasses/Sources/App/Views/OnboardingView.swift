@@ -78,6 +78,11 @@ struct OnboardingView: View {
     @State private var cameraGranted = false
     @State private var metaRegistered = false
     @State private var registrationStatus = ""
+
+    // Plan CT PR 3: an organisation's code, scanned from the welcome page.
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+    @State private var showingOrgScanner = false
+    @State private var scannedOrgCode: String?
     @State private var isRegistering = false
 
     // Metrics that sit beside type and have to scale with it.
@@ -310,12 +315,33 @@ struct OnboardingView: View {
                         showsChevron: false
                     )
                 }
+
+                // A phone set up from an organisation's code still needs its AI provider: a
+                // profile never carries a key (Plan CT), so onboarding carries on from here.
+                if let organization = orgProfile.profile?.organizationName {
+                    OGNotice(text: "Managed by \(organization). Next, choose the AI provider your organisation uses.",
+                             systemImage: "building.2")
+                }
             }
 
             pageFooter {
                 primaryButton("Get Started") { go(to: 1) }
+                if !orgProfile.isManaged {
+                    Button("My organisation gave me a code") { showingOrgScanner = true }
+                        .buttonStyle(.ogQuiet)
+                }
                 skipButton()
             }
+        }
+        .sheet(isPresented: $showingOrgScanner, onDismiss: {
+            // Handed over only once the scanner has gone, so the review sheet is not asked to
+            // present while this one is still dismissing.
+            if let code = scannedOrgCode {
+                scannedOrgCode = nil
+                appState.orgEnrolment.openScanned(code)
+            }
+        }) {
+            OrgCodeScannerView { code in scannedOrgCode = code }
         }
     }
 

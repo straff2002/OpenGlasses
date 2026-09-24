@@ -18,6 +18,9 @@ struct FieldAssistSettingsView: View {
     @AppStorage("preferredMapsApp") private var preferredMapsApp: String = MapsApp.apple.rawValue
     @AppStorage("briefOnCarPlayConnect") private var briefOnCarPlayConnect: Bool = false
 
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+    @State private var showingOrgScanner = false
+    @State private var scannedOrgCode: String?
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
     @State private var licenseMessageIsError = false
@@ -101,6 +104,15 @@ struct FieldAssistSettingsView: View {
                 entitlementStatus
             } else {
                 entitlementPaywall
+            }
+
+            // ──────────────── Organisation code (Plan CT PR 3)
+            if !orgProfile.isManaged {
+                Section {
+                    Button("Scan an Organisation Code") { showingOrgScanner = true }
+                } footer: {
+                    Text("If your organisation set up Field Assist for you, scan the code it gave you. You'll see what it sets before anything changes.")
+                }
             }
 
             // ──────────────── Vault selection
@@ -393,6 +405,14 @@ struct FieldAssistSettingsView: View {
             }
         }
         .navigationTitle("Field Assist")
+        .sheet(isPresented: $showingOrgScanner, onDismiss: {
+            if let code = scannedOrgCode {
+                scannedOrgCode = nil
+                appState.orgEnrolment.openScanned(code)
+            }
+        }) {
+            OrgCodeScannerView { code in scannedOrgCode = code }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
         .onAppear {
