@@ -2,7 +2,9 @@
 
 **Status:** 🚧 PR 1 (headless core) merged 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)).
 PR 2a — enforcement, the stored enrolment, the `openglasses://enrol` link, the managed row, removal
-and locked controls — written 2026-09-24, awaiting CI; PR 2b (the lease) next. See *PR 2a as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+and locked controls — merged 2026-09-24 ([#549](https://github.com/straff2002/OpenGlasses/pull/549)).
+PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — written 2026-09-24,
+awaiting CI. See *PR 2a as built* and *PR 2b as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
@@ -783,6 +785,40 @@ lapse-locking, the clock high-water mark and the signed revocation document.
   generic `.preferences` store. It carries the organisation's report recipients and a licence code,
   so it wants its own registry case; that lands with PR 4's owner axis, which reworks the registry
   for the organisation's data anyway.
+
+**PR 2a merged 2026-09-24 ([#549](https://github.com/straff2002/OpenGlasses/pull/549)),** green on its
+first CI run, all 26 new tests passing.
+
+**PR 2b as built (2026-09-24) — the lease.**
+
+- `ProfileLease` (`OrgProfile/ProfileLease.swift`) is the pure decision: `status(leaseDays:
+  lastRenewed:policyExpiry:clockHighWater:revoked:now:)` answers *live*, *renew soon* (inside 14
+  days), *lapsed* (the lease or the organisation's own `policyExpiry`, whichever ends first), *clock
+  wound back* (more than a day behind the latest time the app has seen) or *revoked*. `Lock` is the
+  mid-job grace: grace is granted once, at the moment a lapse is first seen, to the job running
+  then, and to no job started afterwards.
+- **How content locks: the licence is withheld, nothing is deleted.** When the lease is not in force
+  and no job holds the lock off, `PolicyEnvelope.withheldLicenceCode` is the licence the profile
+  brought, and `LiveFieldAssistEntitlementProvider` skips exactly that code. The organisation's pack
+  and the vaults its licence unlocks then lock through the gates that already exist; the person's
+  own purchases are untouched; a renewal puts it back. Only a licence the profile itself activated
+  is ever withheld.
+- **Renewal.** The enrolment record now keeps the profile's URL (optional fields throughout, so a
+  2a record still reads — though one made by 2a has no URL and renews only by opening the link
+  again). `OrgProfileManager.renewIfDue` re-fetches it at launch and on every foreground, at most
+  once a day unless the person taps *Check for Renewal*. A verified copy of the same profile renews:
+  the lease restarts, the new ceilings apply, a new licence is activated, and only starting values
+  never written before are written, so the person's own changes stand. The job observer re-evaluates
+  the lease as jobs start and end.
+- **Only a signed answer changes anything.** A failed fetch, a timeout, a server error or a 404
+  only fails to renew. A signed revocation document for this profile, or this enrolment's id in the
+  profile's `revokedEnrolmentIds`, revokes: the rules lift (the envelope clears) and the content
+  stays locked. Erasing it, after delivering session logs and unsent reports to the firm, is PR 4.
+- The managed row says where the lease stands — the renew-by date inside the warning window, the
+  lapse and whether a job is holding the lock off, a wound-back clock, a revocation — with a *Check
+  for Renewal* button whenever there is something to renew.
+- **Still owed from the plan's lease design:** the warning on the Field Assist screen itself (the
+  managed row carries it for now), and `eraseAfterLapseDays`, which is an erasure and so PR 4's.
 
 ### PR 3 — the scanner, the first-run branch, and enrolment
 

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// Plan CT PR 2 — what is stored about the enrolled profile.
 ///
@@ -18,6 +19,23 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// Whether the licence code in `LicenseService`'s slot was put there by this profile — so
     /// removal clears it only then, and never a code somebody typed by hand.
     var activatedLicence: Bool
+
+    // Plan CT PR 2b — the lease. All optional, so a record written before the lease existed reads.
+
+    /// Where the profile is hosted; renewal re-fetches it. Nil when it arrived without one — such a
+    /// phone renews only by opening the organisation's link again.
+    var profileURL: URL?
+    /// When a verified copy was last fetched. The lease runs from here; nil means `enrolledAt`.
+    var lastRenewedAt: Date?
+    /// When renewal was last tried, so it is tried at most once a day.
+    var lastRenewalAttempt: Date?
+    /// The latest time the app has seen, so a clock wound back past it is noticed.
+    var clockHighWater: Date?
+    /// Set when the organisation revoked this phone. Its settings no longer apply and its content
+    /// stays locked; erasing that content is Plan CT PR 4.
+    var revoked: Bool?
+    /// The mid-job grace: a lapse during a job locks when that job closes.
+    var leaseLock: ProfileLease.Lock?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -30,6 +48,8 @@ struct OrgProfileReview: Identifiable, Equatable {
     let result: ProfileApplier.Result
     /// Whether this replaces the same organisation's profile already in force (a renewal).
     let replacesCurrent: Bool
+    /// Where the document was fetched from; the lease renews against it.
+    var sourceURL: URL? = nil
 
     var organizationName: String { profile.organizationName }
 
@@ -102,6 +122,9 @@ final class OrgProfileManager: ObservableObject {
         var installEnvelope: (ProfileApplier.Result, String) -> Void = { PolicyEnvelope.install($0, organizationName: $1) }
         var clearEnvelope: () -> Void = { PolicyEnvelope.clear() }
         var newEnrolmentId: () -> String = { String(UUID().uuidString.prefix(8)).lowercased() }
+        var fetch: (URL) async throws -> Data = OrgEnrolmentService.boundedFetch
+        var activeJobId: @MainActor () -> String? = { FieldSessionService.shared.activeSession?.id }
+        var withholdLicence: (String?) -> Void = { PolicyEnvelope.withholdLicence($0) }
     }
 
     /// The app's one manager. `PolicyEnvelope` is process-wide, so there is only ever one
@@ -113,8 +136,14 @@ final class OrgProfileManager: ObservableObject {
     /// Set when the stored profile failed re-verification at launch. The phone runs unmanaged and
     /// the managed row says why, rather than trusting a document that no longer verifies.
     @Published private(set) var loadProblem: String?
+    /// Where the lease stands, as of the last evaluation. Nil on an unmanaged phone.
+    @Published private(set) var lease: ProfileLease.Status?
+    /// Whether the organisation's content is locked right now (the lease is not in force and no
+    /// job is holding the lock off).
+    @Published private(set) var contentLocked = false
 
     private var seams: Seams
+    private var jobObservation: AnyCancellable?
 
     init(seams: Seams = Seams()) {
         self.seams = seams
@@ -141,19 +170,35 @@ final class OrgProfileManager: ObservableObject {
             }
             profile = verified
             loadProblem = nil
-            let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
-            seams.installEnvelope(result, verified.organizationName)
+            if stored.revoked == true {
+                seams.clearEnvelope()
+            } else {
+                let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
+                seams.installEnvelope(result, verified.organizationName)
+            }
         } catch {
             profile = nil
             loadProblem = "The stored organisation profile no longer verifies, so none of its settings are in force. Ask your organisation for a new code."
             seams.clearEnvelope()
         }
+        evaluateLease()
+    }
+
+    /// Re-evaluate the lease whenever a job starts or ends, so a lapse deferred for a job locks the
+    /// moment that job closes.
+    func observeJobs() {
+        jobObservation = FieldSessionService.shared.$activeSession
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.evaluateLease() }
+            }
     }
 
     // MARK: - Enrolment
 
     /// Verify a fetched document and build what the person is shown. Nothing is written.
-    func review(document: String, source: ProfileSource) -> Result<OrgProfileReview, Refusal> {
+    func review(document: String, source: ProfileSource,
+                sourceURL: URL? = nil) -> Result<OrgProfileReview, Refusal> {
         let verified: ConfigProfile
         do {
             switch try ProfileVerification.verify(document, keys: seams.verificationKeys) {
@@ -174,7 +219,8 @@ final class OrgProfileManager: ObservableObject {
         }
         let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
         return .success(OrgProfileReview(document: document, source: source, profile: verified,
-                                         result: result, replacesCurrent: profile != nil))
+                                         result: result, replacesCurrent: profile != nil,
+                                         sourceURL: sourceURL))
     }
 
     /// Apply a reviewed profile: licence first, then settings, then the ceiling.
@@ -195,32 +241,168 @@ final class OrgProfileManager: ObservableObject {
             }
         }
 
-        // Priors are recorded once, at first enrolment — a renewal must not record the
-        // organisation's own earlier value as the person's.
         var priors = record?.priorStartingValues ?? [:]
         var wrote = Set(record?.wroteStartingKeys ?? [])
-        for (key, value) in review.result.startingValues {
-            if !wrote.contains(key.rawValue) {
-                if let prior = seams.readSetting(key) { priors[key.rawValue] = prior }
-                wrote.insert(key.rawValue)
-            }
-            seams.writeSetting(key, value)
-        }
+        writeStartingValues(review.result, onlyNewKeys: false, priors: &priors, wrote: &wrote)
 
-        let newRecord = OrgEnrolmentRecord(
+        let now = seams.now()
+        var newRecord = OrgEnrolmentRecord(
             document: review.document,
             source: review.source,
             enrolmentId: record?.enrolmentId ?? seams.newEnrolmentId(),
-            enrolledAt: record?.enrolledAt ?? seams.now(),
+            enrolledAt: record?.enrolledAt ?? now,
             priorStartingValues: priors,
             wroteStartingKeys: wrote.sorted(),
             activatedLicence: activatedLicence)
+        newRecord.profileURL = review.sourceURL ?? record?.profileURL
+        newRecord.lastRenewedAt = now
+        newRecord.lastRenewalAttempt = now
+        newRecord.clockHighWater = max(record?.clockHighWater ?? now, now)
         seams.saveRecord(newRecord)
         record = newRecord
         profile = review.profile
         loadProblem = nil
         seams.installEnvelope(review.result, review.profile.organizationName)
+        evaluateLease()
         return .success(())
+    }
+
+    /// Write the profile's starting values. Priors are recorded once, the first time a key is
+    /// written — a renewal must not record the organisation's own earlier value as the person's —
+    /// and a renewal writes only keys it has never written, so it does not undo what the person
+    /// changed since.
+    private func writeStartingValues(_ result: ProfileApplier.Result, onlyNewKeys: Bool,
+                                     priors: inout [String: ProfileValue], wrote: inout Set<String>) {
+        for (key, value) in result.startingValues {
+            let isNew = !wrote.contains(key.rawValue)
+            if onlyNewKeys && !isNew { continue }
+            if isNew {
+                if let prior = seams.readSetting(key) { priors[key.rawValue] = prior }
+                wrote.insert(key.rawValue)
+            }
+            seams.writeSetting(key, value)
+        }
+    }
+
+    // MARK: - The lease (Plan CT PR 2b)
+
+    /// Where the lease stands now, and lock or unlock the organisation's content to match.
+    @discardableResult
+    func evaluateLease() -> ProfileLease.Status? {
+        guard var current = record, let profile else {
+            lease = nil
+            contentLocked = false
+            seams.withholdLicence(nil)
+            return nil
+        }
+        let now = seams.now()
+        let leaseDays = min(max(profile.leaseDays, ConfigProfile.leaseDaysRange.lowerBound),
+                            ConfigProfile.leaseDaysRange.upperBound)
+        let status = ProfileLease.status(leaseDays: leaseDays,
+                                         lastRenewed: current.lastRenewedAt ?? current.enrolledAt,
+                                         policyExpiry: profile.policyExpiry,
+                                         clockHighWater: current.clockHighWater,
+                                         revoked: current.revoked ?? false,
+                                         now: now)
+        if status != .clockWoundBack {
+            current.clockHighWater = max(current.clockHighWater ?? now, now)
+        }
+        var lock = current.leaseLock ?? ProfileLease.Lock()
+        let locked = lock.isLocked(status: status, activeJob: seams.activeJobId())
+        current.leaseLock = lock
+        if current != record {
+            seams.saveRecord(current)
+            record = current
+        }
+        lease = status
+        contentLocked = locked
+        seams.withholdLicence(locked && current.activatedLicence ? profile.licenceCode : nil)
+        return status
+    }
+
+    /// Re-fetch the profile's URL and renew the lease, at most once a day unless `force`d.
+    ///
+    /// **Only a signed answer changes anything.** A fetch that fails — no signal, a timeout, a
+    /// server error, a 404 from a host migration somebody got wrong — only fails to renew: an
+    /// unsigned HTTP status is not a decision anybody made. A signed revocation document for this
+    /// profile, or this enrolment's id in the profile's revoked list, revokes; the same profile,
+    /// verified, renews.
+    func renewIfDue(force: Bool = false) async {
+        guard var current = record, let url = current.profileURL, let profile,
+              current.revoked != true else {
+            evaluateLease()
+            return
+        }
+        let now = seams.now()
+        if !force, let last = current.lastRenewalAttempt, last <= now,
+           now.timeIntervalSince(last) < ProfileLease.renewalInterval {
+            evaluateLease()
+            return
+        }
+        current.lastRenewalAttempt = now
+        seams.saveRecord(current)
+        record = current
+
+        let data = try? await seams.fetch(url)
+        // The phone may have been un-managed or re-enrolled while the fetch was out.
+        guard record?.enrolmentId == current.enrolmentId, self.profile?.profileId == profile.profileId,
+              let data, let text = String(data: data, encoding: .utf8),
+              let document = try? ProfileVerification.verify(text, keys: seams.verificationKeys) else {
+            evaluateLease()
+            return
+        }
+        switch document {
+        case .revocation(let revocation) where revocation.profileId == profile.profileId:
+            markRevoked()
+        case .profile(let renewed) where renewed.profileId == profile.profileId:
+            if (renewed.revokedEnrolmentIds ?? []).contains(current.enrolmentId) {
+                markRevoked()
+            } else {
+                renew(with: renewed, document: text)
+            }
+        default:
+            break
+        }
+        evaluateLease()
+    }
+
+    private func markRevoked() {
+        guard var current = record else { return }
+        current.revoked = true
+        seams.saveRecord(current)
+        record = current
+        // Its rules lift with the revocation; its content stays locked (the lease is not in force).
+        seams.clearEnvelope()
+    }
+
+    /// Apply a renewed copy of the same profile without asking: it is the organisation's own policy
+    /// for a phone it already manages, so it may tighten, loosen or re-issue the licence — but it
+    /// writes only starting values it has never written, so the person's own changes stand.
+    private func renew(with renewed: ConfigProfile, document: String) {
+        guard var current = record else { return }
+        if let code = renewed.licenceCode, code != profile?.licenceCode {
+            if (try? seams.activateLicence(code)) != nil { current.activatedLicence = true }
+        }
+        let result = ProfileApplier.apply(profile: renewed, resolvableVaultIds: seams.resolvableVaultIds())
+        var priors = current.priorStartingValues
+        var wrote = Set(current.wroteStartingKeys)
+        writeStartingValues(result, onlyNewKeys: true, priors: &priors, wrote: &wrote)
+
+        let renewedRecord = OrgEnrolmentRecord(
+            document: document, source: current.source, enrolmentId: current.enrolmentId,
+            enrolledAt: current.enrolledAt, priorStartingValues: priors,
+            wroteStartingKeys: wrote.sorted(), activatedLicence: current.activatedLicence)
+        var updated = renewedRecord
+        updated.profileURL = current.profileURL
+        updated.lastRenewedAt = seams.now()
+        updated.lastRenewalAttempt = current.lastRenewalAttempt
+        updated.clockHighWater = current.clockHighWater
+        updated.revoked = false
+        updated.leaseLock = nil
+        seams.saveRecord(updated)
+        record = updated
+        profile = renewed
+        seams.installEnvelope(result, renewed.organizationName)
     }
 
     // MARK: - Removal
@@ -244,6 +426,9 @@ final class OrgProfileManager: ObservableObject {
         record = nil
         profile = nil
         loadProblem = nil
+        lease = nil
+        contentLocked = false
+        seams.withholdLicence(nil)
         seams.clearEnvelope()
         return .success(())
     }

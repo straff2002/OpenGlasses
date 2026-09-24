@@ -518,6 +518,9 @@ struct OpenGlassesApp: App {
                 // activation and the sweep still happens on a phone that is never relaunched.
                 appState.retention?.runIfDue()
                 SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
+                // Plan CT PR 2b: renew the organisation profile's lease (at most once a day) and
+                // re-evaluate it — the clock moved while the app was away.
+                Task { await OrgProfileManager.shared.renewIfDue() }
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
@@ -1790,6 +1793,10 @@ class AppState: ObservableObject, AppStateProtocol {
         NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.applyOrgPolicyChange() }
         }
+        // Plan CT PR 2b: a lease that lapses during a job locks when that job closes, so the lease
+        // is re-evaluated as jobs start and end; and it renews once at launch.
+        OrgProfileManager.shared.observeJobs()
+        Task { await OrgProfileManager.shared.renewIfDue() }
 
         // Clinical exports must not outlive the app being onscreen: anything not held by a live
         // share controller goes when the app backgrounds.
