@@ -194,6 +194,9 @@ the provider and key pages. Onboarding's other branches do not change.
   - **Removal deletes the config enrolment created, including its key.** It is the organisation's
     key, whoever typed it in. It joins PR 4's list of the firm's stores. The person's own model
     configs are untouched.
+  - **With a base server** (Plan [FT](FT-organisation-administration.md)), nobody types the key:
+    the server sends it sealed to the phone's registered key once an administrator approves the
+    phone. The key page is then the no-server path.
   - SSO or the organisation gateway (Plan CR) would remove the key page altogether. Both are
     deferred per point 1, and the page is the stand-in until then.
 - **A key entered after onboarding** in Field Assist settings runs the same flow and shows the same
@@ -293,6 +296,9 @@ nobody it is meant to stop. So:
     the passcode is the fallback when the card isn't to hand, for example an administrator talking
     a technician through a fix over the phone. The weak verifier is only on the phone if the
     organisation asked for it.
+- **Managing other phones is Plan [FT](FT-organisation-administration.md)'s**: the organisation's
+  base server, the one that dispatches jobs, sets up and updates the crew's phones through signed
+  overlays bounded by this profile. The administrator phone below remains a local convenience.
 - **An administrator phone: the card, remembered** (2026-09-24, evening). A supervisor's own phone
   needs the full view all the time, and is the obvious thing to unlock technicians' phones with.
   There is no separate admin profile or admin key. An administrator phone is an ordinary enrolled
