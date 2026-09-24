@@ -1230,7 +1230,7 @@ class LLMService: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
                 request.timeoutInterval = 15
-                let body: [String: Any] = [
+                var body: [String: Any] = [
                     "model": modelConfig.model,
                     "max_tokens": 512,
                     "messages": [
@@ -1238,6 +1238,7 @@ class LLMService: ObservableObject {
                         ["role": "user", "content": summarizationPrompt]
                     ]
                 ]
+                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -1341,6 +1342,7 @@ class LLMService: ObservableObject {
                     ]
                 ]
                 Self.applyQwenReasoning(to: &body, provider: provider, model: modelConfig.model, disableThinking: true)
+                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -1442,7 +1444,7 @@ class LLMService: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
                 request.timeoutInterval = 30
-                let body: [String: Any] = [
+                var body: [String: Any] = [
                     "model": modelConfig.model,
                     "max_tokens": maxTokens,
                     "messages": [
@@ -1456,6 +1458,7 @@ class LLMService: ObservableObject {
                         "name": toolName, "description": toolDescription, "parameters": jsonSchema]]],
                     "tool_choice": ["type": "function", "function": ["name": toolName]]
                 ]
+                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
@@ -1545,7 +1548,7 @@ class LLMService: ObservableObject {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.setValue("Bearer \(modelConfig.apiKey)", forHTTPHeaderField: "Authorization")
                 request.timeoutInterval = 45
-                let body: [String: Any] = [
+                var body: [String: Any] = [
                     "model": modelConfig.model,
                     "max_tokens": maxTokens,
                     "messages": [
@@ -1556,6 +1559,7 @@ class LLMService: ObservableObject {
                         "name": toolName, "description": toolDescription, "parameters": jsonSchema]]],
                     "tool_choice": ["type": "function", "function": ["name": toolName]]
                 ]
+                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
@@ -2039,6 +2043,7 @@ class LLMService: ObservableObject {
                     body["stream_options"] = ["include_usage": true]
                 }
                 Self.applyMistralRequestShape(to: &body, provider: provider)
+                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 request.timeoutInterval = 60 // 60s timeout to prevent app freezing
 
@@ -3744,6 +3749,25 @@ extension LLMService {
         if disableThinking {
             body["reasoning_effort"] = "none"
         }
+    }
+
+    /// OpenAI's own endpoints reject `max_tokens` on current models (o-series, GPT-5 and later):
+    /// "Unsupported parameter: 'max_tokens' ... Use 'max_completion_tokens' instead." Older OpenAI
+    /// models accept `max_completion_tokens` too, so every request that reaches OpenAI (or Azure
+    /// OpenAI through a custom base URL) is renamed. Other OpenAI-compatible providers keep
+    /// `max_tokens`, which is the only spelling several of them accept.
+    nonisolated static func applyOpenAITokenLimitShape(to body: inout [String: Any], provider: LLMProvider, baseURL: String) {
+        guard usesMaxCompletionTokens(provider: provider, baseURL: baseURL),
+              let limit = body.removeValue(forKey: "max_tokens") else { return }
+        body["max_completion_tokens"] = limit
+    }
+
+    nonisolated static func usesMaxCompletionTokens(provider: LLMProvider, baseURL: String) -> Bool {
+        if provider == .openai { return true }
+        guard provider == .custom,
+              let host = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased()
+        else { return false }
+        return host == "api.openai.com" || host.hasSuffix(".openai.azure.com")
     }
 
     /// Bend a shared OpenAI-compatible body to what Mistral accepts. Applied to the outgoing body

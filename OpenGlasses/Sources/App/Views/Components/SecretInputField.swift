@@ -7,6 +7,7 @@ struct SecretInputField: View {
     let placeholder: String
     @Binding var text: String
     @State private var revealed = false
+    @FocusState private var secureFocused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -14,7 +15,27 @@ struct SecretInputField: View {
                 if revealed {
                     TextField(placeholder, text: $text)
                 } else {
-                    SecureField(placeholder, text: $text)
+                    // A SecureField handed an existing long key has been seen drawing nothing on iOS 26
+                    // (no dots, no placeholder), so a saved key read as missing. While it isn't
+                    // being edited, a stored key shows as a masked summary instead; tapping it
+                    // focuses the real field underneath.
+                    ZStack(alignment: .leading) {
+                        SecureField(placeholder, text: $text)
+                            .focused($secureFocused)
+                            .opacity(showsSavedSummary ? 0 : 1)
+                            .accessibilityHidden(showsSavedSummary)
+                        if showsSavedSummary {
+                            Text(Self.maskedSummary(of: text))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(.rect)
+                                .onTapGesture { secureFocused = true }
+                                .accessibilityLabel("Key saved")
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityHint("Double-tap to replace it")
+                        }
+                    }
                 }
             }
             .textInputAutocapitalization(.never)
@@ -46,5 +67,15 @@ struct SecretInputField: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(revealed ? "Hide" : "Reveal")
         }
+    }
+
+    private var showsSavedSummary: Bool { !secureFocused && !text.isEmpty }
+
+    /// Bullets plus the last four characters, the way provider consoles list a key — enough to
+    /// tell which key is stored without putting the secret on screen.
+    static func maskedSummary(of key: String) -> String {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > 8 else { return "••••••••" }
+        return "••••••••" + String(trimmed.suffix(4))
     }
 }
