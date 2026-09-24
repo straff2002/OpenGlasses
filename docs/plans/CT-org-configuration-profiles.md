@@ -5,8 +5,9 @@ PR 2a — enforcement, the stored enrolment, the `openglasses://enrol` link, the
 and locked controls — merged 2026-09-24 ([#549](https://github.com/straff2002/OpenGlasses/pull/549)).
 PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — merged 2026-09-24
 ([#551](https://github.com/straff2002/OpenGlasses/pull/551)), green on its first CI run with 16 new tests.
-PR 3a — the QR scanner and the first-run branch — written 2026-09-24, awaiting CI; PR 3b (pack install
-at enrolment) next. See *PR 2a/2b/3a as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+PR 3a — the QR scanner and the first-run branch — merged 2026-09-24
+([#553](https://github.com/straff2002/OpenGlasses/pull/553)). PR 3b — installing the named vault pack
+at enrolment — written 2026-09-24, awaiting CI. See *PR 2a/2b/3a/3b as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
