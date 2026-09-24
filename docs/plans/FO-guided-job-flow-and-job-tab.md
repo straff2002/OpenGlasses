@@ -1170,7 +1170,18 @@ delivery the service's value matches the value the sink was handed, which is the
 watch and CarPlay depend on. With a synchronous trigger, the first assertion gets no injection
 and the second gets a stale read on every change. `LiveJobBridgeWiringTests` scrapes the app for
 the trigger and `JobSurfaceRefresh.trigger` for the `.receive(on: DispatchQueue.main)` after the
-de-duplication. Written without a Swift toolchain, so CI is its first compile and first run.
+de-duplication. It also checks that the watch and CarPlay still read the shared value.
+
+Written without a Swift toolchain, so CI was the first compile and the first run, on
+[#546](https://github.com/straff2002/OpenGlasses/pull/546). It went green on the third run
+(2026-09-24). Both failures were in the new wiring test, and the app code was not changed after
+the first push. The first run executed 7,227 tests with one failure: the CarPlay check looked for
+`FieldSessionService.shared.activeSession`, but `refreshJobsTab()` reads through a local
+`let sessions = FieldSessionService.shared`, so the check now asserts the two lines it actually
+has. The second run did not compile, because the corrected check redeclared a local `body` in the
+same test. The behavioural tests in `JobStateTriggerTests` passed on the first run. **Nothing here
+has been run on hardware**: whether a live model actually stops asking for a number the app has
+already recorded is owed to P4, with the rest of P3a's device checks.
 
 ### Seams left for P3b
 
