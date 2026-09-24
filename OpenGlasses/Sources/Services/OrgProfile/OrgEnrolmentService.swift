@@ -64,6 +64,7 @@ final class OrgEnrolmentService: ObservableObject {
     /// The licence key that started this enrolment, when one did (Plan CT 3a).
     private var enteredLicence: String?
     private let licenceKey: String
+    private let activationResolver: ActivationKeyResolver
 
     /// The organisation a licence key named, while its profile is being fetched — the sheet says
     /// "Setting up this phone for …" rather than naming a host.
@@ -72,9 +73,11 @@ final class OrgEnrolmentService: ObservableObject {
     init(manager: OrgProfileManager,
          fetch: @escaping (URL) async throws -> Data = OrgEnrolmentService.boundedFetch,
          isPastOnboarding: @escaping () -> Bool = { Config.isPastOnboarding },
-         licenceKey: String = LicenseService.productionPublicKeyBase64) {
+         licenceKey: String = LicenseService.productionPublicKeyBase64,
+         activationResolver: ActivationKeyResolver = ActivationKeyResolver()) {
         self.manager = manager
         self.licenceKey = licenceKey
+        self.activationResolver = activationResolver
         self.fetch = fetch
         self.isPastOnboarding = isPastOnboarding
     }
@@ -190,6 +193,33 @@ final class OrgEnrolmentService: ObservableObject {
         settingUpFor = payload.licensee
         Task { await fetchAndReview(target, host: Self.displayHost(target)) }
         return .enrolling(licensee: payload.licensee)
+    }
+
+    /// What typed text comes to before the licence path sees it (Plan CT 3a).
+    enum KeyEntry: Equatable {
+        /// A licence code — typed as one, or the one an activation key resolved to. It goes on to
+        /// `openLicence` and activation exactly as if it had been typed.
+        case licence(String)
+        /// An activation key that is mistyped, unknown, or could not be looked up.
+        case refused(String)
+    }
+
+    /// A short activation key is checked locally — a typo never reaches the network — then looked
+    /// up once on the static host and opened. Anything that is not an attempt at a key is passed
+    /// through untouched.
+    func resolveEntry(_ text: String) async -> KeyEntry {
+        switch ActivationKey.read(text) {
+        case .notAKey:
+            return .licence(text)
+        case .invalid(let problem):
+            return .refused(problem.errorDescription ?? "")
+        case .key(let key):
+            do {
+                return .licence(try await activationResolver.resolve(key))
+            } catch {
+                return .refused((error as? LocalizedError)?.errorDescription ?? "")
+            }
+        }
     }
 
     /// Onboarding has just finished: offer the link that arrived during it.

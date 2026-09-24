@@ -111,6 +111,20 @@ struct BoundedHTTPClient {
             idleTimeout: 5
         )
 
+        /// A sealed licence for an activation key (Plan CT 3a): a few hundred bytes of base64 from
+        /// the static host. HTML is not accepted: the host answers a missing key with its HTML error
+        /// page, and the resolver reads that refusal as "no file for this key".
+        static let activationKey = Profile(
+            name: "activationKey",
+            maximumBytes: 8 * 1024,
+            acceptedMIMETypes: ["application/octet-stream", "text/plain"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
+        )
+
         #if DEBUG
         static let internalSkillPack = Profile(
             name: "internalSkillPack",

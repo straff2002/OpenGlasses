@@ -325,7 +325,8 @@ final class BoundedHTTPClientTests: XCTestCase {
     }
 
     func testProfileDeadlinesAreOrderedAndPublicProfilesAreTighter() {
-        for profile in [BoundedHTTPClient.Profile.qrContext, .signedCatalog, .skillPack, .orgProfile] {
+        for profile in [BoundedHTTPClient.Profile.qrContext, .signedCatalog, .skillPack, .orgProfile,
+                        .activationKey] {
             XCTAssertLessThan(profile.idleTimeout, profile.firstByteTimeout, profile.name)
             XCTAssertLessThan(profile.firstByteTimeout, profile.totalTimeout, profile.name)
         }

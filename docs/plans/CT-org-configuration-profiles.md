@@ -1209,6 +1209,45 @@ first-run branch with the offline holding screen and the `aiModel` key page.
   introduced: renewal now updates the record in place and leaves held values unwritten. This slice
   adds that a renewal bringing a newer licence of the profile's own clears `activatedLicenceCode`.
 
+**3a, second slice as built (2026-09-24) — the short activation key.**
+
+- **Format.** `ActivationKey` reads what was typed. It takes any case, and ignores dashes and
+  spaces. It reads `O` as `0` and `I`/`L` as `1`. Anything longer than 24 characters, or with a
+  character outside the alphabet (a `.`, say), is *not a key* and goes to the licence path untouched.
+  So the one field takes either the key or the long code.
+- **The check character.** It is Σ αⁱ·vᵢ over GF(32) with the polynomial x⁵ + x² + 1, and the
+  weights are distinct non-zero elements. So *every* single wrong character and *every* swap of two
+  different neighbours is caught, not 31 times in 32. The tests enumerate both.
+  - A typo, a `U` or the wrong length is refused before anything is fetched: *"Check the key — one
+    character looks wrong"*, or *"An activation key is 16 characters — that one has N."*
+- **Derivations.** "Key" means the sixteen canonical characters (upper case, no dashes, aliases
+  mapped).
+  - **The file name** is hex(SHA-256(`"openglasses.activation-id.v1\n"` + key)).
+  - **The file** is base64 of AES-GCM's combined nonce ‖ ciphertext ‖ tag, under HKDF-SHA256(key,
+    no salt, info `"openglasses.activation-key.v1"`, 32 bytes).
+  - The tests pin both with vectors computed independently, in Node's `crypto`.
+- **Lookup.**
+  - `ActivationKeyResolver` fetches `straff2002.github.io/OpenGlasses/activation/<name>` through
+    `BoundedHTTPClient`'s new `activationKey` profile. The cap is 8 KB, and it takes
+    `application/octet-stream` or `text/plain`.
+  - **Unknown key:** a 404, or the host's HTML error page (refused by type), means *that key isn't
+    recognised*. So does a file this key did not seal.
+  - **No connection:** anything else says an activation key needs the internet once.
+  - The licence that comes back is only a candidate. It goes on through `openLicence` and
+    activation exactly as if typed, so a key whose licence names a profile enrols the phone.
+- **Where it's entered.** `OrgEnrolmentService.resolveEntry` is the one entry point, and Field
+  Assist settings' licence field ("Activation key or licence code") uses it. The first-run branch
+  (the third slice) will too.
+- **Issuance.**
+  - `generate-field-license.swift --activation-key [--activation-dir DIR]` mints the key alongside
+    the code. It prints the key once on stdout, and writes `DIR/<name>` (default `./activation`,
+    refusing to overwrite).
+  - `Scripts/stage-pages-site.sh` publishes `activation/` when it exists, and its gate refuses any
+    path there that is not a 64-character hex name.
+  - Deleting a file stops new activations with that key.
+- **Not in this slice:** a keyboard showing only the alphabet and inserting the dashes. That lands
+  with the first-run page, which is where a technician types the key.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on

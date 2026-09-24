@@ -9,6 +9,8 @@ import CryptoKit
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //       [--profile https://…]   the organisation's hosted profile; entering the code enrols the phone (Plan CT 3a)
+//       [--activation-key [--activation-dir activation]]
+//                               also mint a short activation key and write its sealed file (Plan CT 3a)
 //
 //   ./Scripts/generate-field-license.swift keygen <privateKeyFile>
 //       One-off keypair generation. Writes the PRIVATE key to <privateKeyFile> with mode 0600
@@ -41,6 +43,67 @@ struct LicensePayload: Codable {
     var reference: String?
     var packs: [String]?
     var profile: String?
+}
+
+/// Plan CT 3a — mirrors `ActivationKey` in the app, byte for byte: Crockford base32, fifteen random
+/// characters and a GF(32) check character; the sealed file is named
+/// hex(SHA-256("openglasses.activation-id.v1\n" + key)) and holds base64(AES-GCM combined) under
+/// HKDF-SHA256(key, info "openglasses.activation-key.v1"). "key" is the sixteen canonical characters.
+enum ActivationKeyMint {
+    static let alphabet: [Character] = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+
+    static func gfMultiply(_ lhs: Int, _ rhs: Int) -> Int {
+        var a = lhs
+        var b = rhs
+        var product = 0
+        while b > 0 {
+            if b & 1 == 1 { product ^= a }
+            b >>= 1
+            a <<= 1
+            if a & 0b10_0000 != 0 { a ^= 0b10_0101 }
+        }
+        return product
+    }
+
+    static func checkValue(_ values: [Int]) -> Int {
+        var weight = 1
+        var sum = 0
+        for value in values {
+            weight = gfMultiply(weight, 2)
+            sum ^= gfMultiply(weight, value)
+        }
+        return sum
+    }
+
+    /// A new key's sixteen canonical characters, from the system's secure generator.
+    static func generate() -> String {
+        var generator = SystemRandomNumberGenerator()
+        let values = (0..<15).map { _ in Int.random(in: 0..<32, using: &generator) }
+        return String((values + [checkValue(values)]).map { alphabet[$0] })
+    }
+
+    static func display(_ canonical: String) -> String {
+        let characters = Array(canonical)
+        return stride(from: 0, to: characters.count, by: 4)
+            .map { String(characters[$0..<min($0 + 4, characters.count)]) }
+            .joined(separator: "-")
+    }
+
+    static func fileName(_ canonical: String) -> String {
+        SHA256.hash(data: Data(("openglasses.activation-id.v1\n" + canonical).utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    static func seal(_ code: String, canonical: String) throws -> String {
+        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(canonical.utf8)),
+                                         info: Data("openglasses.activation-key.v1".utf8),
+                                         outputByteCount: 32)
+        guard let combined = try AES.GCM.seal(Data(code.utf8), using: key).combined else {
+            throw CryptoKitError.incorrectParameterSize
+        }
+        return combined.base64EncodedString()
+    }
 }
 
 func fail(_ message: String) -> Never {
@@ -182,12 +245,16 @@ usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--key-file <path|->]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
          [--seats N] [--reference TEXT] [--days N] [--pack KEY ...] [--profile https://…]
+         [--activation-key [--activation-dir DIR]]
        generate-field-license.swift keygen <privateKeyFile>
 
   --key-file names a PATH (or `-` for stdin). A key passed as an argument is refused:
   arguments reach `ps`, shell history, CI logs and crash reports.
   Positional expiry and --days are alternatives; --days counts from now.
   Prints the code on stdout and the decoded payload on stderr for a final look.
+  --activation-key also prints a short key (once — it is not stored anywhere) and writes the
+  code, sealed under it, to DIR/<file name> (default ./activation, run from the repo root) for
+  the Pages workflow to publish. Record the file name, never the key.
   keygen writes the private key to a 0600 file and prints only the public half.
 """
 
@@ -199,6 +266,8 @@ var reference: String?
 var days: Int?
 var packs: [String] = []
 var profileAddress: String?
+var mintActivationKey = false
+var activationDirectory = "activation"
 var keyFile: String?
 var iterator = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = iterator.next() {
@@ -231,6 +300,10 @@ while let arg = iterator.next() {
             fail("--profile must be an https address with no credentials or fragment")
         }
         profileAddress = address
+    case "--activation-key":
+        mintActivationKey = true
+    case "--activation-dir":
+        activationDirectory = value(arg)
     case "--days":
         guard let n = Int(value(arg)), n > 0 else { fail("--days must be a positive integer") }
         days = n
@@ -274,7 +347,28 @@ do {
     let payloadData = try encoder.encode(payload)
     let signature = try privateKey.signature(for: payloadData)
 
-    print("\(payloadData.base64EncodedString()).\(signature.base64EncodedString())")
+    let code = "\(payloadData.base64EncodedString()).\(signature.base64EncodedString())"
+    print(code)
+
+    if mintActivationKey {
+        let canonical = ActivationKeyMint.generate()
+        let name = ActivationKeyMint.fileName(canonical)
+        let directory = URL(fileURLWithPath: activationDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent(name)
+        guard !FileManager.default.fileExists(atPath: file.path) else {
+            fail("\(file.path) already exists — refusing to overwrite another key's file")
+        }
+        let sealed = try ActivationKeyMint.seal(code, canonical: canonical)
+        try Data((sealed + "\n").utf8).write(to: file)
+        print("activation key: \(ActivationKeyMint.display(canonical))")
+        FileHandle.standardError.write(Data("""
+        sealed file: \(file.path)
+          Commit it under activation/ and merge to main; the Pages workflow publishes it.
+          Deleting the file stops new activations with this key. Record the file name, not the key.
+
+        """.utf8))
+    }
 
     // Decoded payload on stderr so the vendor can eyeball what was signed before sending it.
     let pretty = JSONEncoder()

@@ -24,6 +24,7 @@ struct FieldAssistSettingsView: View {
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
     @State private var licenseMessageIsError = false
+    @State private var isLookingUpKey = false
     @State private var shareItem: ShareItem?
     @State private var exportError: String?
     /// Whether the equipment row is showing its heading and provenance (Plan EL P2).
@@ -880,12 +881,16 @@ struct FieldAssistSettingsView: View {
     @ViewBuilder
     private var licenseEntrySection: some View {
         Section {
-            TextField("Paste licence code", text: $licenseCode, axis: .vertical)
+            TextField("Activation key or licence code", text: $licenseCode, axis: .vertical)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.system(.footnote, design: .monospaced))
             Button("Activate Licence") { activateLicense() }
-                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLookingUpKey)
+            if isLookingUpKey {
+                ProgressView("Looking up the key…")
+                    .font(.caption)
+            }
             if let licenseMessage {
                 Text(licenseMessage)
                     .font(.caption)
@@ -971,9 +976,28 @@ struct FieldAssistSettingsView: View {
     }
 
     private func activateLicense() {
+        // A short activation key is looked up first and becomes the licence it stands for (Plan CT
+        // 3a); a licence code goes straight through.
+        let entered = licenseCode
+        isLookingUpKey = true
+        licenseMessage = nil
+        Task { @MainActor in
+            let entry = await appState.orgEnrolment.resolveEntry(entered)
+            isLookingUpKey = false
+            switch entry {
+            case .licence(let code):
+                activateLicense(code: code)
+            case .refused(let message):
+                licenseMessageIsError = true
+                licenseMessage = message
+            }
+        }
+    }
+
+    private func activateLicense(code: String) {
         // A licence that names its organisation's profile enrols the phone instead (Plan CT 3a);
         // the review sheet takes it from here, and the licence activates when it is confirmed.
-        switch appState.orgEnrolment.openLicence(licenseCode) {
+        switch appState.orgEnrolment.openLicence(code) {
         case .enrolling(let licensee):
             licenseMessageIsError = false
             licenseMessage = "This licence is for \(licensee) — setting up this phone."
@@ -987,7 +1011,7 @@ struct FieldAssistSettingsView: View {
             break
         }
         do {
-            let payload = try license.activate(code: licenseCode)
+            let payload = try license.activate(code: code)
             licenseMessageIsError = false
             licenseMessage = "Activated — licensed to \(payload.licensee)."
             licenseCode = ""
