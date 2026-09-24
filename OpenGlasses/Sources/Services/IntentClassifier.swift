@@ -156,7 +156,7 @@ class IntentClassifier {
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 5 // Fast timeout — we need this to be quick
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "max_tokens": 5, // We only need one word
             "temperature": 0,
@@ -165,6 +165,11 @@ class IntentClassifier {
                 ["role": "user", "content": userMessage]
             ]
         ]
+        LLMService.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
+        if LLMService.usesMaxCompletionTokens(provider: provider, baseURL: baseURL) {
+            // OpenAI's reasoning models accept only the default temperature; 0 is a 400.
+            body.removeValue(forKey: "temperature")
+        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
