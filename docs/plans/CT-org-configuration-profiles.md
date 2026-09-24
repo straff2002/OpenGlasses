@@ -269,7 +269,31 @@ nobody it is meant to stop. So:
 - **A forgotten passcode is a re-mint.** A new profile at the same address carries a new verifier.
   The next renewal applies it, from PR 2b's `renewIfDue` or the *Check for Renewal* button. There is
   no local reset, because a local reset is a way round the passcode.
-- **A profile with the edition but no passcode** falls back to `OwnerGateAuth`, the device-owner
+- **The administrator card: a QR scan as the unlock** (2026-09-24, evening). An organisation can be
+  issued a printed or on-screen **admin card** instead of, or as well as, a typed passcode.
+  *Administrator settings* opens the phone's camera, the administrator scans the card, and the
+  administrator session starts. It is stronger than the passcode, not just quicker:
+  - **The card holds 128 random bits** (`og-admin:` followed by base32). Nobody types a secret that
+    long, and a camera doesn't need to. The profile carries `adminCard = SHA-256("openglasses.admin-card.v1\n" + secret)`.
+    Brute-forcing that from the profile is out of reach, which removes the typed passcode's
+    weakness.
+  - **It is still per organisation**, like the passcode. `make-org-profile.swift --admin-card`
+    generates the secret once per organisation, renders the card as a PNG (CoreImage's
+    `CIQRCodeGenerator`, which is the QR renderer P4 deferred), and writes the digest into every
+    profile it mints for that organisation. The secret is printed onto the card and kept nowhere
+    else. A **lost or photographed card** is handled the same way as a forgotten passcode: re-mint
+    with a new card, and every phone drops the old one at its next renewal.
+  - **The card is scanned inside the app, never by the system Camera app.** An
+    `openglasses://admin?…` link would push the secret through Camera, Safari history, and every
+    place links get forwarded, and it would open administrator settings from any app that fires the
+    link. So the scanner PR 3c was going to build moves into **3b**, where it is scoped to this one
+    use, and 3c reuses it for licence keys. The same backoff applies to failed scans.
+  - **It opens exactly what the passcode opens**: the hidden view, never a ceiling.
+  - **A card, a passcode, or both**, per organisation. Card-only is the stronger choice. With both,
+    the passcode is the fallback when the card isn't to hand, for example an administrator talking
+    a technician through a fix over the phone. The weak verifier is only on the phone if the
+    organisation asked for it.
+- **A profile with the edition but neither a card nor a passcode** falls back to `OwnerGateAuth`, the device-owner
   gate. The review sheet says *"Anyone who can unlock this phone can open administrator settings"*,
   so the organisation knows before it confirms.
 - The passcode verifier is not a secret in the `SettingKey` sense, because it is not a credential to
@@ -290,8 +314,8 @@ first. The licence-key path writes the address that 2b's renewal reads, and both
 | PR | What | Why this order |
 |---|---|---|
 | **3a** | the short activation key (format, check character, sealed file on the static host, `--activation-key`), the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, the profile's `aiModel` and the first-run key page that follows the review, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
-| **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the backoff, the administrator session, and the script's passcode prompt | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
-| **3c** | the live-camera scanner, reading a licence key or an enrol link into the same field | a convenience once 3a exists, since pasting works |
+| **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the `adminCard` digest and an in-app scanner scoped to it, the backoff, the administrator session, and the script's passcode prompt and card renderer | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
+| **3c** | 3b's scanner reused to read a licence key, an activation key, or an enrol link into the same field | a convenience once 3a exists, since the short key can be typed |
 | **4** | leaving the firm: the owner axis, sealing, deliver-then-erase | unchanged |
 
 3a and 3b are what a demo needs. Before any demo, the owner has to run `make-org-profile.swift` and
