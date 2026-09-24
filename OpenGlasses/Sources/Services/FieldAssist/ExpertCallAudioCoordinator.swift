@@ -72,6 +72,9 @@ struct AppExpertCallAudioControl: ExpertCallAudioControlling {
     }
 
     func resumeVoicePipeline() {
+        // The master listening switch outlives the call: an expert call ending is not the wearer
+        // turning hands-free listening back on.
+        guard Config.listeningEnabled else { return }
         Task { try? await wakeWord.startListening() }
     }
 }

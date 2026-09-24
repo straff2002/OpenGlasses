@@ -75,6 +75,25 @@ struct VoiceTriggersSettingsScreen: View {
 
             // MARK: Wake Word
             Section {
+                // The master listening switch. It used to be reachable only from the Lock Screen
+                // Live Activity, Control Center, the widget and Siri — so an "off" left by any of
+                // them could not be seen or undone in the app, and read as a wake word that
+                // worked once per launch (build 420).
+                InfoToggle(
+                    title: "Listen for Wake Phrase",
+                    isOn: Binding(
+                        get: { appState.listeningEnabled },
+                        set: { appState.setListeningEnabled($0) }
+                    ),
+                    info: "The master switch for hands-free listening. Off, the app never listens for the wake phrase — not at launch, not after an answer. The Lock Screen button, Control Center, the widget and Siri change this same switch."
+                )
+
+                if !appState.listeningEnabled {
+                    Text("Listening is off, so the wake phrase won't start a conversation. It may have been turned off from the Lock Screen, Control Center or Siri.")
+                        .font(.footnote)
+                        .foregroundStyle(OGTheme.warnLabel)
+                }
+
                 Picker("Wake Phrase", selection: Binding(
                     get: { wakePhrase.isEmpty ? "openglasses" : wakePhrase },
                     set: { newValue in adoptWakePhrase(newValue, replacing: wakePhrase) }
@@ -160,7 +179,7 @@ struct VoiceTriggersSettingsScreen: View {
                             Config.setSpeechBargeInEnabled(newValue)
                         }
                     ),
-                    info: "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. Saying \"stop\", or the wake phrase, interrupts it either way."
+                    info: "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. While it is speaking through the iPhone's own loudspeaker, only \"stop\" or the wake phrase interrupt it — the phone's microphone hears the answer, and the room, too loudly to tell you apart. Saying \"stop\", or the wake phrase, interrupts it either way."
                 )
             } header: {
                 Text("Pause & Interruptions")
