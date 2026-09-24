@@ -15,6 +15,7 @@ final class OrgProfilePackTests: XCTestCase {
     private var envelope: ProfileApplier.Result?
     private var installOutcome: OrgPackInstaller.Outcome = .failed("offline")
     private var installAttempts: [String] = []
+    private var fetchText: String?
 
     override func setUp() {
         super.setUp()
@@ -25,6 +26,7 @@ final class OrgProfilePackTests: XCTestCase {
         envelope = nil
         installOutcome = .failed("offline")
         installAttempts = []
+        fetchText = nil
     }
 
     private func makeManager() -> OrgProfileManager {
@@ -41,7 +43,10 @@ final class OrgProfilePackTests: XCTestCase {
         seams.clearLicence = {}
         seams.installEnvelope = { [unowned self] result, _ in self.envelope = result }
         seams.clearEnvelope = { [unowned self] in self.envelope = nil }
-        seams.fetch = { _ in throw URLError(.notConnectedToInternet) }
+        seams.fetch = { [unowned self] _ in
+            guard let text = self.fetchText else { throw URLError(.notConnectedToInternet) }
+            return Data(text.utf8)
+        }
         seams.activeJobId = { nil }
         seams.withholdLicence = { _ in }
         seams.installPack = { [unowned self] packId in
@@ -131,6 +136,19 @@ final class OrgProfilePackTests: XCTestCase {
         try manager.remove().get()
         XCTAssertEqual(settings[.fieldAssistEnabled], .bool(false))
         XCTAssertNil(settings[.fieldAssistDefaultVaultId])
+    }
+
+    func testARenewalKeepsThePendingPackAndDoesNotWriteWhatWaitsForIt() async throws {
+        let manager = makeManager()
+        let text = try document()
+        let review = try manager.review(document: text, source: .link,
+                                        sourceURL: URL(string: "https://config.northbridge.example/p")).get()
+        try manager.apply(review).get()
+        fetchText = text
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(stored?.pendingPackId, "hvac_rtu_pack", "a renewal must not drop the pack still to install")
+        XCTAssertNil(settings[.fieldAssistEnabled], "nor write what waits for it")
+        XCTAssertNotNil(stored?.heldStartingValues?["fieldAssistEnabled"])
     }
 
     func testAProfileWithoutAPackWritesEverythingAtOnce() throws {

@@ -6,8 +6,8 @@ import Combine
 /// The **document** is kept, not the decoded profile: it is re-verified on every launch, so what
 /// storage holds is evidence rather than a verdict — the rule Plan DP set for licence codes.
 struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
-    /// The signed document exactly as it was verified.
-    let document: String
+    /// The signed document exactly as it was verified. Replaced by each renewal.
+    var document: String
     let source: ProfileSource
     /// A random id for this enrolment, shown on the managed row. Plan CT PR 4 revokes by it.
     let enrolmentId: String
@@ -466,27 +466,32 @@ final class OrgProfileManager: ObservableObject {
     /// writes only starting values it has never written, so the person's own changes stand.
     private func renew(with renewed: ConfigProfile, document: String) {
         guard var current = record else { return }
-        if let code = renewed.licenceCode, code != profile?.licenceCode {
-            if (try? seams.activateLicence(code)) != nil { current.activatedLicence = true }
+        if let code = renewed.licenceCode, code != profile?.licenceCode,
+           (try? seams.activateLicence(code)) != nil {
+            current.activatedLicence = true
         }
         let result = ProfileApplier.apply(profile: renewed, resolvableVaultIds: seams.resolvableVaultIds())
+        // Values still waiting for the pack keep waiting: a renewal must not write them early.
+        var writable = result
+        if current.pendingPackId != nil {
+            for name in (current.heldStartingValues ?? [:]).keys {
+                if let key = SettingKey(rawValue: name) { writable.startingValues.removeValue(forKey: key) }
+            }
+        }
         var priors = current.priorStartingValues
         var wrote = Set(current.wroteStartingKeys)
-        writeStartingValues(result, onlyNewKeys: true, priors: &priors, wrote: &wrote)
+        writeStartingValues(writable, onlyNewKeys: true, priors: &priors, wrote: &wrote)
 
-        let renewedRecord = OrgEnrolmentRecord(
-            document: document, source: current.source, enrolmentId: current.enrolmentId,
-            enrolledAt: current.enrolledAt, priorStartingValues: priors,
-            wroteStartingKeys: wrote.sorted(), activatedLicence: current.activatedLicence)
-        var updated = renewedRecord
-        updated.profileURL = current.profileURL
-        updated.lastRenewedAt = seams.now()
-        updated.lastRenewalAttempt = current.lastRenewalAttempt
-        updated.clockHighWater = current.clockHighWater
-        updated.revoked = false
-        updated.leaseLock = nil
-        seams.saveRecord(updated)
-        record = updated
+        // The record is updated in place, so nothing a later phase added to it — the pack still
+        // pending, among others — is lost on renewal.
+        current.document = document
+        current.priorStartingValues = priors
+        current.wroteStartingKeys = wrote.sorted()
+        current.lastRenewedAt = seams.now()
+        current.revoked = false
+        current.leaseLock = nil
+        seams.saveRecord(current)
+        record = current
         profile = renewed
         seams.installEnvelope(result, renewed.organizationName)
     }
