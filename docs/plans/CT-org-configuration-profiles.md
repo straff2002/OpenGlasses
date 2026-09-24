@@ -1,7 +1,7 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 🚧 PR 1 (headless core) written 2026-09-24, awaiting its first CI run — see *PR 1 as
-built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+**Status:** 🚧 PR 1 (headless core) implemented 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)) —
+compiled and passed on its first CI run, all 32 new tests green — see *PR 1 as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
@@ -659,8 +659,9 @@ assume a profile only ever arrives by scan or link. Four things carry that:
   changes policy re-mints rather than editing an unsigned plist. Writing it down before an MDM
   customer exists stops the first one from getting an ad-hoc format.
 
-**PR 1 as built (2026-09-24, headless; CI is the compiler — no Swift toolchain in the authoring
-session).** Files under `OpenGlasses/Sources/Services/OrgProfile/`:
+**PR 1 as built (2026-09-24, headless; written without a Swift toolchain, so CI was the compiler —
+it compiled and all 32 tests in `OrgProfileVerificationTests` and `OrgProfileApplierTests` passed
+on the first run).** Files under `OpenGlasses/Sources/Services/OrgProfile/`:
 
 - `ConfigProfile.swift` — `ConfigProfile`, the lossy `RawSetting`, `ProfileValue` (flag, string,
   string list), `ProfileRevocation`, `ProfileSource` (with `managedConfigProfileKey = "orgProfile"`,
