@@ -264,6 +264,17 @@ struct OpenGlassesApp: App {
                             .environmentObject(appState)
                     }
 
+                // A job file opened from Mail, Files or Messages (Plan FO P3c). Nothing is added
+                // from the file itself — this raises the review, and its one button is the write.
+                Color.clear
+                    .sheet(isPresented: Binding(
+                        get: { appState.jobFiles.stage != .idle },
+                        set: { if !$0 { appState.jobFiles.dismiss() } })) {
+                        JobFileReviewSheet(service: appState.jobFiles) {
+                            appState.requestedTab = .job
+                        }
+                    }
+
                 // Apple Translation session host (BY P3) — invisible; the framework only hands
                 // out sessions through a view, so the on-device tier's session lives here.
                 TranslationEngineHost(engine: appState.translationEngine)
@@ -313,6 +324,14 @@ struct OpenGlassesApp: App {
                     appState.medicalExportService.leases.scavenge()
                 }
                 .onOpenURL { url in
+                    // A job file (Plan FO P3c). Files only — there is deliberately no
+                    // `openglasses://job` link, because a link in an email that proposes a job is
+                    // the shape of a phishing message.
+                    if JobFileService.isJobFile(url) {
+                        Task { @MainActor in appState.jobFiles.open(url) }
+                        return
+                    }
+
                     // Handle shortcut x-callback-url results
                     if url.scheme == "openglasses",
                        ["shortcut-result", "shortcut-cancel", "shortcut-error"].contains(url.host) {
@@ -939,6 +958,15 @@ class AppState: ObservableObject, AppStateProtocol {
             provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
+        guidedJobFlow.connectUpcoming(upcomingJobs)
+        // The organisation's key and its rule are CT stand-ins read at the moment a file is
+        // opened, so a profile applied mid-session governs the next file.
+        jobFiles.connect(.init(
+            store: { [weak self] in self?.upcomingJobs },
+            policy: { JobFileImportPolicy.current() },
+            organisationKey: { Config.organizationJobSigningKey },
+            organisationName: { Config.organizationDisplayName },
+            fieldAssistActive: { Config.fieldAssistActive }))
         // The blur the phone-sourced evidence goes through. Wired here rather than constructed
         // with the service, because `privacyFilter` is built alongside it and a filter that is
         // merely absent would fail every attachment closed.
@@ -1104,6 +1132,11 @@ class AppState: ObservableObject, AppStateProtocol {
     let guidedJobFlow: GuidedJobFlow
     /// Reports and addenda asked for by voice, and the ones waiting for a thumb (Plan FO P3b).
     let jobSends: JobSendService
+    /// Jobs ahead of the technician — typed, spoken, or opened from a job file (Plan FO P3c).
+    let upcomingJobs = UpcomingJobStore()
+    /// A job file handed to the app, while it is being reviewed (Plan FO P3c). Nothing reaches
+    /// `upcomingJobs` without the technician's tap on its sheet.
+    let jobFiles = JobFileService()
     /// The lens cue last raised for an outstanding job question (Plan FO P3a). Held so the same
     /// question is not flashed again every time anything else about the session moves.
     private var lastJobQuestionCue: JobQuestionHUDCue.Cue?
@@ -2544,6 +2577,14 @@ class AppState: ObservableObject, AppStateProtocol {
                 CarPlaySceneDelegate.current?.refreshJobsTab()
             }
         cancellables.append(jobStateToken)
+
+        // The car's Jobs list carries jobs ahead too (Plan FO P3c): a job file accepted on the
+        // phone, or one said out loud, has to be on the car screen before the drive starts.
+        let upcomingJobsToken = upcomingJobs.$jobs
+            .map { jobs in jobs.map { "\($0.id)|\($0.title)|\($0.destination ?? "")" } }
+            .removeDuplicates()
+            .sink { _ in CarPlaySceneDelegate.current?.refreshJobsTab() }
+        cancellables.append(upcomingJobsToken)
 
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.

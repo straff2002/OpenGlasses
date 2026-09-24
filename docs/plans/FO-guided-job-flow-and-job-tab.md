@@ -22,7 +22,13 @@ built* below.
 **P3a implemented 2026-09-23, headless** — one guided-job seam applied by both live backends,
 Field Assist wired into OpenAI Realtime for the first time, a lens cue for the two questions, a
 read-only CarPlay Jobs list and read-only job state on the watch; see *P3a as built* below. No
-device, car, glasses or watch run. P3b, P3c and P4 unbuilt.
+device, car, glasses or watch run.
+**P3c implemented 2026-09-24, headless** — the job ahead (its own store, not a scheduled
+session), the site/serial/model history index, the five-section cited brief with its spoken
+renderer and its bounded block in the continuity snapshot, the maps preference with Waze and the
+CarPlay hand-off, and the `.ogjob` file: format, strict validator, the organisation's signature
+check, the medical/organisation refusal, the review sheet and duplicate handling. See *P3c as
+built* below. No car, no device, no mail client. P4 unbuilt.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -494,7 +500,8 @@ PDF is unchanged: the customer signs the summary, not the whole work order.
   survives restart; several debriefs on one journey each land on their own job and the queue holds
   them in order, Send all opens each composer in turn and a cancelled one stays queued; the CarPlay
   list model (pure) shows number and date only. Device/car acceptance owed to P4.
-- **P3c — job ahead, brief, directions, and the job file.** `site`/`faultReport`/`scheduled` on the
+- **P3c — job ahead, brief, directions, and the job file.** ✅ **Implemented 2026-09-24,
+  headless.** See *P3c as built*. `site`/`faultReport`/`scheduled` on the
   session (decode-if-present), Upcoming on the Job tab and CarPlay, the site/serial history index,
   `JobBrief` assembly with the five cited sections and its spoken renderer, the FM snapshot
   section, `preferredMapsApp` + Waze + the CarPlay hand-off — and §8's `.ogjob` format and
@@ -1331,6 +1338,175 @@ to be useful, are **owed to P4**.
   `QueuedSend.DocumentKind` takes a third case without reshaping the queue.
 - `DebriefContract.block` is the second bounded block on the same pattern as P3a's; a third (the
   brief before site) composes beside them rather than inside either.
+
+## P3c as built (2026-09-24)
+
+The job ahead, the brief before site, directions, and the job file. Twelve new files: eight under
+`OpenGlasses/Sources/Services/FieldAssist/Job/` (six of them pure), `MapsHandoff.swift` beside
+`DirectionsTool`, two SwiftUI files under `App/Views/Job/`, and `Scripts/make-job-file.swift`.
+
+```swift
+struct UpcomingJob: Codable { id, jobReference?, site: JobSite, faultReport: FaultReport?,
+                              equipment: [KnownEquipment], scheduledFor?, notes?, attachments,
+                              origin (spoken | typed | job_file), provenance: JobFileProvenance?,
+                              brief: JobBrief?, createdAt, updatedAt }
+@MainActor final class UpcomingJobStore      // Application Support/FieldAssist/upcoming-jobs.json
+struct JobHistoryIndex { init(sessions:); visits(site:) / visits(serial:) / visits(model:);
+                         matches(for: UpcomingJob) -> [Match(visit, reason)] }
+struct JobBrief: Codable { sections: [Section(kind, items: [Item(text, citation)])] × 5,
+                           faultUnmatched }
+enum JobBriefAssembler { static func assemble(_ inputs: Inputs) -> JobBrief }
+enum JobBriefSpeech   { spoken(_:title:), more(_:in:), section(named:) }
+enum JobBriefContract { lines(site:faultReport:brief:) }          // the snapshot's third block
+struct MapsHandoff    { static func plan(destination:mode:preferred:isInstalled:) -> MapsHandoff? }
+struct JobFile        { Body (what the signature covers), Signature? }
+enum JobFileValidator { validate(Data) -> Result<JobFile, Refusal> }
+enum JobFileSignatureCheck { check(_:organisationKey:organisationName:) -> signed | unsigned
+                             | unverifiable | invalid }
+struct JobFileImportPolicy { resolve(medicalMode:organisationRequiresSigned:); decide(_:) }
+struct JobFileReview  { proposed, lines, signatureLine, duplicate?, claimedIssuer? }
+@MainActor final class JobFileService { open(URL), handle(data:fileName:), accept(_:) }
+extension GuidedJobFlow { addUpcomingJob, assembleBrief, briefAloud, moreOfBrief,
+                          startUpcomingJob, startedLine(for:) }
+```
+
+### Decisions the draft left open
+
+- **A job ahead is not a session.** The draft put a `scheduled` state on `FieldSession`. The launch
+  restore (`restoreInProgressSessionIfAny`) reopens the first session with no `endedAt`, and a
+  session needs an unlocked vault and a log directory the moment it exists — so the day's third
+  job would have come back at launch as the open one, counting time. A job ahead is its own value
+  in its own store; *starting* it is the ordinary `startJob`, followed by one
+  `FieldSessionService.applyJobAhead` that copies the site, the fault report, the brief and the
+  file's provenance onto the new session (all decode-if-present) and writes `job_ahead_started`
+  into its audit log. "Scheduled jobs count no time" is then true by construction: there is no
+  clock to stop. The test that pins it relaunches and asserts nothing is open.
+- **The office's model is not a recognition.** Starting a job ahead passes no `assetId`, so the
+  equipment the office named never sets the session's equipment; the machine in front of the
+  technician is recognised on site as on every other job. §8's "a job file cannot change
+  equipment" holds on the start path as well as on the file path.
+- **"The intake still confirms the number" is the intake recording it and the app saying it
+  back.** A job ahead carrying a number starts `.recorded` — the number came from the office or
+  from the technician earlier, typed or read back — and the app says "Starting job 1007 at …"
+  so the technician hears which job the time now counts against. One without a number is asked
+  for it exactly like any other job.
+- **The five sections, and where the history went.** Section 1 carries the site and the earlier
+  visits' outcomes and work done; section 4 carries their follow-ups (open or deferred tasks and a
+  saved debrief's follow-ups) and the debriefs' findings and notes for base, plus the FP seam
+  (`Inputs.learnings`). The draft put the follow-ups and debrief items in both; one place each.
+- **Ranking is by evidence strength, and history stays history.** A code-table row under a heading
+  that names this job's make ranks first, then any other code-table row, then manual passages that
+  cleared EJ's gate, strongest first. The draft's example ("two of those were the fix on the last
+  two visits") would need a fuzzy match between a candidate's words and a task title, which is
+  exactly the kind of guess a brief must not make; what the brief does instead is list what was
+  **recorded as done** on this machine's earlier visits, each line ending "History, not a
+  diagnosis", cited to the visit.
+- **Codes need a letter and a digit.** "E200", "U0", "T01" are looked up; "20 psi" is not. A table
+  row whose first cell equals a code is a candidate, cited to its file and heading.
+- **An empty section is said.** Each has its own empty line, spoken and shown. A fault report
+  that matched nothing keeps the report's words and adds "Nothing in the … vault or its manuals
+  matches those words", cited to what was searched.
+- **The spoken brief is capped at about a minute (900 characters)** with two lines a section and
+  "And N more"; "say more about the fault" reads that one section whole. The app speaks it, as P3a
+  decided for the two questions: `brief_next_job` returns a result telling the model the app has
+  already read it and not to repeat it, because a brief relayed through a model is a brief that
+  can be paraphrased.
+- **The model's copy is a third bounded block** (`JobBriefContract`, 1,200 characters, protected
+  site and fault-report lines) in the continuity snapshot, beside P3a's and P3b's. Absent on every
+  session that did not start from a job ahead, so their snapshots render exactly as before.
+- **Directions: one table for three callers.** `MapsHandoff` serves the tool, the Job tab and the
+  car. A missing app falls back to Apple Maps and says so; so does Waze asked for walking or
+  transit, because Waze only drives. The old tool fell back from Google Maps to the Google Maps
+  *website* — which cannot take a car screen — and now falls back to Apple Maps like everything
+  else. Addresses are encoded so `&`, `#`, `+`, `=` and `?` cannot split the query. From CarPlay,
+  `CPTemplateApplicationScene.open` hands the URL to the maps app on the car screen; the phone path
+  is used only when no car is connected.
+- **Upcoming on the Job tab sits between New job and Past jobs**, only in the no-job state; a job
+  ahead cannot start over an open job anyway, and the page says why its Start is disabled.
+- **The job file is strict.** A field this version does not know is refused, not ignored — a review
+  sheet that silently dropped something would not be the whole truth; a new field is a new
+  `format_version`. Plain text only: a tag or an entity is refused, a bare "<" ("suction < 20
+  psi") is not; line breaks only in the fault report and notes; attachments are names, and a
+  `data:` reference is refused as an embedded attachment.
+- **The signature covers a re-encoding**, `Body.canonicalData()` (sorted keys, slashes
+  unescaped) — the vault archive's rule, so an office's mail system can re-indent the file. The
+  key is the organisation's, never the vendor's pack key. A file signed by any other key, or
+  altered after signing, is `invalid` and refused whatever the policy; a signed file on a phone
+  with no organisation key is `unverifiable` and treated exactly as unsigned.
+- **CT stand-ins:** `Config.organizationJobSigningKey` (empty — no profile, no key, so every file
+  honestly shows as not signed) and `Config.organizationRequiresSignedJobFiles` (false), on the
+  terms `organizationRequiresCustomerSignOff` set. Medical mode refuses an unsigned file
+  regardless, through `JobFileImportPolicy`, which is `VaultLinkInstallPolicy`'s shape.
+- **Field Assist off refuses a job file** before reading it: the Job tab — where it would go —
+  does not exist then, and a job added to a hidden list is a job lost.
+- **The store** is protected and excluded from backup, capped at 100 (the oldest *unscheduled*
+  job makes room; a booked one never does), and registered as `SensitiveStore.upcomingJobs` with
+  the wearer's linkage, like the session log it feeds: an organisation's work order issued to this
+  technician. Unlike the session log it is not yet a compliance record, so it can be cleared.
+
+### What the draft got wrong
+
+- **"Add `waze` to `LSApplicationQueriesSchemes`" would have done nothing.** iOS honours only the
+  first fifty entries and the list had fifty-two — so `line` and `zalo` were already dead, and a
+  `waze` appended at the end would have made every Waze user fall back to Apple Maps with a
+  sentence blaming them for not having it installed. Three entries nothing in the app uses
+  (`qqmap`, `mqqapi`, `tmall`) were removed and `waze` sits beside `comgooglemaps`; the list is
+  exactly fifty, and a test pins both the count and that every maps scheme is inside it.
+- **"From email" cannot be claimed.** The system hands the app a copy of the file and never says
+  which app it came from, so the review says "Not signed — check it came from your office", and
+  the record says "opened", not "emailed".
+- **The draft's `RetrievalSource` seam does not exist.** The learnings hook is
+  `JobBriefAssembler.Inputs.learnings`, a list of cited items FP fills when it ships.
+- **A refused job file is not in any audit log.** It arrives outside a job, so there is no session
+  to log into; the refusal is on the sheet and nothing is written. The provenance of an *accepted*
+  one is on the job ahead, then on the visit's record and in its `job_ahead_started` event.
+
+### A defect found in a neighbouring surface, and left alone
+
+`GuidedJobFlow.debriefBlock()` (P3b) has **no callers**. The bounded `JOB DEBRIEF:` block — which
+job, and the rules against proposing work or claiming a save — is built and tested and never
+handed to the model on any backend. Not P3c's to fix; recorded here, and raised as its own task.
+
+### What is on screen
+
+- **The Job tab** gains *Upcoming* between New job and Past jobs: number or site, when, and for a
+  job file whether it was signed; *Add an upcoming job* opens a form where every field is optional.
+- **An upcoming job's page:** what is known (anything nobody gave stays empty), *Brief me*,
+  *Directions* (disabled without an address, and says so), *Start this job* (disabled with the
+  reason when a job is open or the vault is locked), the brief's five sections with each line's
+  source under it, and *Remove*.
+- **The job file review sheet:** who it is from — signed, not signed, or signed with a key this
+  phone cannot check — with the file's own `issued_by` shown only as a claim; the job's fields;
+  and one button, or, for a number already on the phone, *Update job 1007* / *Keep both*.
+- **Settings → Field Assist → On the Way to a Job:** the maps app, and *Brief the next job when
+  CarPlay connects* (off by default).
+- **CarPlay's Jobs list** carries jobs ahead after the open job: number or site and when — never
+  the fault report or the contact. Tapping one pushes two rows, *Brief me* and *Directions*.
+
+### Verification
+
+Headless: `JobBriefTests` (23), `JobAheadTests` (25), `JobFileTests` (29) and `JobAheadFlowTests`
+(10) new, over fixture vault text, fixture sessions, an ephemeral Curve25519 pair and the bundled
+refrigeration vault. They were written in an environment without a Swift toolchain, so the first
+compile and the first run were CI's: the Unit Tests job on
+[#544](https://github.com/straff2002/OpenGlasses/pull/544) built the app and the test bundle and
+ran the full suite green on the first push (2026-09-24), with nothing changed after it.
+`DataStoreRegistryTests`' generated matrix was updated by hand for the new row.
+
+**Owed:** the plan's "a fixture `.ogjob` opens on the simulator in the audit" — no UI audit of the
+Upcoming section, the page or the review sheet was added in this phase. **Nothing has been run in a
+car, on a phone or from Mail**: whether "Open with OpenGlasses" appears on an `.ogjob`
+attachment, whether the car-screen hand-off takes the display, and whether a spoken brief can be
+followed at motorway speed are **owed to P4**.
+
+### Seams left for P4 and later
+
+- `JobSendService.propose`'s `spokenChannel` is still where a job file's own report route would
+  arrive; this format carries none, deliberately, until an office asks.
+- The ops bridge (BL) can push a job ahead through `UpcomingJobStore.add` with
+  `origin: .jobFile`-style provenance; the review sheet is the place an office push would also
+  need a technician's tap.
+- "Call ahead" (the open question below) is one `phone_call` away from the contact line.
 
 ## Open questions
 

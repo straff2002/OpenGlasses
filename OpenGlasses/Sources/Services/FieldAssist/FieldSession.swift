@@ -67,6 +67,17 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// every one of them written only by a technician's explicit save. A debrief never reopens the
     /// visit: nothing here touches `billableSeconds`, `tasks`, `equipment` or `signOff`.
     var debriefs: [JobDebrief] = []
+    /// Where the job is, when it was known before the visit (Plan FO P3c) — carried over from the
+    /// job ahead it was started from. Nil on a job born on site, and on every older session.
+    var site: JobSite?
+    /// What the office or the customer said was wrong, verbatim, with who said it.
+    var faultReport: FaultReport?
+    /// The brief the technician was given on the way, kept so the visit's model context starts
+    /// from it (a bounded section of the continuity snapshot). Advisory: nothing in it is a task.
+    var brief: JobBrief?
+    /// The job file this visit was proposed by, when it was (Plan FO §8): which file, whether it
+    /// was signed and by whom, and when it arrived.
+    var jobFile: JobFileProvenance?
     /// A new scope on equipment change prevents carrying work onto another machine (FM).
     var continuityScope: String = "initial"
     var taskEquipmentScopes: [String: String] = [:]
@@ -165,6 +176,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
         case media, evidenceSelection, signOff, debriefs
+        case site, faultReport, brief, jobFile
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
@@ -207,6 +219,10 @@ extension FieldSession {
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
         signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
         debriefs = try c.decodeIfPresent([JobDebrief].self, forKey: .debriefs) ?? []
+        site = try c.decodeIfPresent(JobSite.self, forKey: .site)
+        faultReport = try c.decodeIfPresent(FaultReport.self, forKey: .faultReport)
+        brief = try c.decodeIfPresent(JobBrief.self, forKey: .brief)
+        jobFile = try c.decodeIfPresent(JobFileProvenance.self, forKey: .jobFile)
         continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]

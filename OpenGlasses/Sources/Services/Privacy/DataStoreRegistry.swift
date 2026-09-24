@@ -76,6 +76,7 @@ enum SensitiveStore: String, CaseIterable {
     case vaultLinkStaging
     case fieldDeliverySettings
     case jobDeliveryQueue
+    case upcomingJobs
     case safetyAssessments
 
     // Clinical
@@ -552,6 +553,23 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "DeliveryQueueStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/DeliveryQueue.swift"],
                           location: "Application Support/FieldAssist/delivery-queue.json")
+
+        case .upcomingJobs:
+            // Jobs ahead of the technician (Plan FO P3c): typed, spoken, or opened from an `.ogjob`
+            // file the office sent. It carries the customer's name, the site address and a contact
+            // — the same facts the visit's own record carries once the job starts, filed the same
+            // way: the organisation's work order, issued to this technician. So the linkage is
+            // the wearer's, as `fieldSessionLogs`' is. Unlike the session log it is not yet a
+            // compliance record, so it can be cleared, and it is protected and kept out of backup
+            // because a restored list would offer jobs this phone was never given.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .complete, backupExcluded: true,
+                          retention: .cap(UpcomingJobStore.entryCap),
+                          deleteAll: .api("UpcomingJobStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "UpcomingJobStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/UpcomingJobStore.swift"],
+                          location: "Application Support/FieldAssist/upcoming-jobs.json")
 
         case .safetyAssessments:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,

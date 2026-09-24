@@ -15,6 +15,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// Weak: the scene owns the delegate, and a disconnected car must not keep the app holding one.
     private(set) static weak var current: CarPlaySceneDelegate?
 
+    /// The car's scene, for handing directions to a maps app on the car screen (Plan FO P3c).
+    /// Weak for the same reason `current` is.
+    private weak var carScene: CPTemplateApplicationScene?
+
     /// Track whether voice input is active so we know when to hold the audio session.
     private(set) var isVoiceActive = false
 
@@ -25,6 +29,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        self.carScene = templateApplicationScene
         Self.current = self
         PrivacyLog.device(.carPlay, .connected)
 
@@ -37,6 +42,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         // The Jobs list is built empty with the bar and filled from the main actor, like every
         // other data-bearing tab here.
         refreshJobsTab()
+        // The brief on connect (Plan FO P3c) — off unless the technician switched it on, because
+        // a car that starts talking the moment it is turned on is a nag otherwise.
+        Task { @MainActor in
+            guard Config.fieldAssistActive, Config.briefOnCarPlayConnect,
+                  let appState = AppStateProvider.shared,
+                  let next = appState.upcomingJobs.next else { return }
+            await appState.guidedJobFlow.briefAloud(jobId: next.id)
+        }
     }
 
     // MARK: - Tab Bar
@@ -171,12 +184,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                                             history: sessions.history,
                                             boundThreadId: appState.guidedJobFlow.boundThreadId,
                                             debriefAvailable: Config.fieldAssistActive,
-                                            stagedSends: appState.jobSends.stagedCount)
+                                            stagedSends: appState.jobSends.stagedCount,
+                                            upcoming: Config.fieldAssistActive ? appState.upcomingJobs.jobs : [])
             var items: [CPListItem] = rows.map { row in
                 let item = CPListItem(
                     text: row.title,
                     detailText: row.detail,
-                    image: UIImage(systemName: row.isActiveJob ? "wrench.and.screwdriver.fill" : "checkmark.seal")
+                    image: UIImage(systemName: Self.symbol(for: row))
                 )
                 let selection = row.selection
                 let spoken = row.spoken
@@ -230,8 +244,65 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 else { await appState.speechService.speak(spoken) }
             case .readSendQueue:
                 await appState.speechService.speak(appState.jobSends.spokenQueue())
+            case .openUpcomingJob(let id):
+                self.pushUpcomingJob(id: id, spoken: spoken)
             }
         }
+    }
+
+    private static func symbol(for row: CarPlayJobsList.Row) -> String {
+        if row.isActiveJob { return "wrench.and.screwdriver.fill" }
+        if case .openUpcomingJob = row.selection { return "calendar" }
+        return "checkmark.seal"
+    }
+
+    /// A job ahead's page on the car screen: two rows, Brief and Directions (Plan FO P3c). Depth
+    /// three with the tab bar and the list — CarPlay's limit, and the reason there is no fourth.
+    @MainActor
+    private func pushUpcomingJob(id: String, spoken: String) {
+        guard let appState = AppStateProvider.shared,
+              let job = appState.upcomingJobs.job(id: id) else { return }
+        let items: [CPListItem] = CarPlayJobsList.upcomingActions(for: job).map { action in
+            let item = CPListItem(text: action.title, detailText: nil,
+                                  image: UIImage(systemName: action.symbol))
+            item.handler = { [weak self] _, completion in
+                self?.performUpcoming(action)
+                completion()
+            }
+            return item
+        }
+        let template = CPListTemplate(title: job.title, sections: [CPListSection(items: items)])
+        interfaceController?.pushTemplate(template, animated: true, completion: nil)
+        Task { await appState.speechService.speak(spoken) }
+    }
+
+    private func performUpcoming(_ action: CarPlayJobsList.UpcomingAction) {
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("upcomingJob"))
+        Task { @MainActor in
+            guard let appState = AppStateProvider.shared else { return }
+            switch action {
+            case .brief(let jobId):
+                await appState.guidedJobFlow.briefAloud(jobId: jobId)
+            case .directions(let jobId):
+                guard let destination = appState.upcomingJobs.job(id: jobId)?.destination,
+                      let handoff = MapsLauncher.plan(destination: destination) else { return }
+                MapsLauncher.open(handoff)
+                // Only a fallback is worth saying: the maps app appearing is the confirmation.
+                if handoff.unavailable != nil { await appState.speechService.speak(handoff.spoken) }
+            }
+        }
+    }
+
+    // MARK: - Directions (Plan FO P3c)
+
+    /// Hand a maps URL to the car screen through the CarPlay scene's own open path, so the maps
+    /// app takes the display and the brief can keep speaking. False when no car scene is
+    /// connected, and the caller opens it on the phone instead.
+    @discardableResult
+    func openOnCarScreen(_ url: URL) -> Bool {
+        guard let carScene else { return false }
+        carScene.open(url, options: nil, completionHandler: nil)
+        return true
     }
 
     // MARK: - Voice Control
@@ -478,5 +549,6 @@ extension CarPlaySceneDelegate {
         }
         stopVoice()
         self.interfaceController = nil
+        self.carScene = nil
     }
 }
