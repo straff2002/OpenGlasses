@@ -1692,6 +1692,10 @@ struct OnboardingView: View {
         // Start all services that depend on Wearables.shared + permissions
         appState.startPermissionRequiringServices()
 
+        // An organisation enrolment link that arrived during onboarding was held rather than
+        // applied mid-flow (Plan CT PR 2); offer it now that the flags are settled.
+        appState.orgEnrolment.releaseHeldLink()
+
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.4)) {
             isVisible = false
         }

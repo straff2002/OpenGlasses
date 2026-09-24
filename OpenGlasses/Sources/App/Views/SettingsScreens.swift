@@ -811,7 +811,9 @@ struct GlassesPrivacySettingsScreen: View {
 
     private func saveSettings() {
         Config.setPrivacyFilterEnabled(privacyFilterEnabled)
-        appState.privacyFilter.isEnabled = privacyFilterEnabled
+        // Read back rather than trusting the switch: an organisation profile may pin the filter on
+        // (Plan CT), and then the setter above was refused.
+        appState.privacyFilter.isEnabled = Config.privacyFilterEnabled
         Config.setMicRoute(micRoute)
 
         appState.restartWakeWordIfDirect()

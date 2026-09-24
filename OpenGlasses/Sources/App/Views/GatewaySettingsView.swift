@@ -146,10 +146,16 @@ struct GatewaySettingsView: View {
             }
             Toggle("Status & capabilities (observe)", isOn: $remoteObserve)
                 .onChange(of: remoteObserve) { _, v in Config.remoteInvokeObserveEnabled = v }
+                .disabled(PolicyEnvelope.isLocked(.remoteInvokeObserveEnabled))
+            ManagedSettingNote(key: .remoteInvokeObserveEnabled)
             Toggle("Speak & display (output)", isOn: $remoteOutput)
                 .onChange(of: remoteOutput) { _, v in Config.remoteInvokeOutputEnabled = v }
+                .disabled(PolicyEnvelope.isLocked(.remoteInvokeOutputEnabled))
+            ManagedSettingNote(key: .remoteInvokeOutputEnabled)
             Toggle("Camera, recording & transcript (capture)", isOn: $remoteCapture)
                 .onChange(of: remoteCapture) { _, v in Config.remoteInvokeCaptureEnabled = v }
+                .disabled(PolicyEnvelope.isLocked(.remoteInvokeCaptureEnabled))
+            ManagedSettingNote(key: .remoteInvokeCaptureEnabled)
             NavigationLink {
                 RemoteInvokeAuditView(service: appState.remoteInvoke)
             } label: {

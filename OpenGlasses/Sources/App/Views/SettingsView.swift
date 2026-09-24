@@ -63,6 +63,9 @@ struct SettingsView: View {
                 ]
             )
 
+            // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
+            ManagedByOrganisationSection(manager: OrgProfileManager.shared)
+
             OGSection {
                 ForEach(Array(visibleCategories.enumerated()), id: \.element.id) { index, category in
                     if index > 0 { OGDivider() }
@@ -217,7 +220,14 @@ struct SettingsView: View {
                     )
                 }
 
-                Text("Tap one to add it to Settings for good. Nothing here is locked — this only decides what the list shows.")
+                // On a managed phone "nothing here is locked" stops being true (Plan CT PR 2).
+                Group {
+                    if PolicyEnvelope.isManaged {
+                        Text("Tap one to add it to Settings for good. This list only decides what is shown — settings your organisation locks stay locked wherever they appear.")
+                    } else {
+                        Text("Tap one to add it to Settings for good. Nothing here is locked — this only decides what the list shows.")
+                    }
+                }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -965,6 +975,8 @@ struct HardwarePrivacyView: View {
                     isOn: $privacyFilterEnabled,
                     info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
+                .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
+                ManagedSettingNote(key: .privacyFilterEnabled)
                 InfoToggle(
                     title: "Share Health Data with AI",
                     isOn: Binding(

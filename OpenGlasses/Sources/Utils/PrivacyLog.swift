@@ -888,7 +888,7 @@ enum PrivacyLog {
     /// and a universal link carries the host the wearer came from.
     enum DeepLinkRoute: String {
         case shortcutCallback, skillPack, persona, connect, capture, listen, quickAction
-        case wearablesCallback, other
+        case wearablesCallback, enrol, other
     }
 
     enum DeepLinkVerdict: String {
