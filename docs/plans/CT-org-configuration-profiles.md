@@ -109,14 +109,14 @@ where the words matter:
 4. **The profile and the key must name the same organisation.** When the profile carries its own
    licence code, that code must verify and its `licensee` must equal the entered key's. Otherwise the
    review refuses, naming both organisations. The code with the later `issued` date is the one
-   activated, so a renewal re-minted at the same address wins over an older key typed from an email.
+   activated, so a renewal re-minted at the same address wins over an older code entered from an email.
 5. The enrolment records the address, so PR 2b's renewal, lease and revocation work unchanged. It
    also records a new `ProfileSource.licence`. On removal, that source clears the licence it enrolled
    with. That is the rule PR 4 settles on anyway, and it is the right one here: the key was the
    organisation's, even though the technician typed it.
 
 **Why a pointer and not the profile inside the key.** The same reasons P2 gives for the QR. The
-profile outgrows a code someone can paste. The organisation must be able to change its settings
+profile outgrows any code a person can type or scan. The organisation must be able to change its settings
 without re-issuing keys to the fleet. And the lease and revocation are keyed on the address.
 
 **Older builds are unaffected.** `LicensePayload`'s `Decodable` is synthesised, so an unknown key is
@@ -125,11 +125,42 @@ covers the payload bytes, so the extra field costs nothing. The generator's copy
 struct must gain the field in the same PR, because `.sortedKeys` makes the encoding a byte-for-byte
 contract.
 
+**What the technician types: a short activation key, not the licence code** (decided 2026-09-24,
+evening). A signed licence code is about 400 characters of base64. Nobody types that on a job site,
+and "paste it" is not an answer for a technician holding a phone. So the thing handed out is a
+short key that *resolves* to the licence:
+
+- **Format.** `K7Q3-X9PD-M2VA-8RTN`: sixteen Crockford base32 characters in groups of four. That is 75
+  random bits plus a 5-bit check character. Crockford's alphabet has no I, L, O or U, and reads
+  `O` as `0` and `I`/`L` as `1`. Case and dashes are ignored. A typo fails the check locally, as
+  *"Check the key — one character looks wrong"*, before anything is fetched.
+- **Resolution without a server.** The product has no vendor server (Plan EI's starting point), and
+  this does not add one. The generator publishes one file per key on the static host the catalogs
+  already use (`straff2002.github.io/OpenGlasses/activation/`):
+  - **Path:** hex(SHA-256(`"openglasses.activation-id.v1\n"` + key)).
+  - **Content:** the full licence code, sealed with AES-GCM under HKDF-SHA256(key, info
+    `"openglasses.activation-key.v1"`).
+  - The phone derives both from what was typed, fetches the file (a few hundred bytes, through
+    `BoundedHTTPClient`), opens it, and carries on as if the licence code had been entered.
+- **Why that is safe on a public host.** The files are ciphertext, and their names are hashes of 75
+  random bits. Nothing on the host maps back to a key, and guessing a key is 2^75 work. The host is
+  not trusted either way. What it serves still has to verify against the embedded licence key, so a
+  compromised host can withhold a licence but cannot forge one.
+- **The key is a bearer secret, exactly as the licence code already is.** Deleting its file stops new
+  activations. Phones that already activated keep their stored licence, and revoking those is PR
+  2b's signed revocation. A lost key is a new key, which means a new file, not a new licence.
+- **Issuance.** `generate-field-license.swift --activation-key` prints the short key once and writes
+  the sealed file for the Pages workflow to publish. `activation/` joins the allowlist in
+  `Scripts/stage-pages-site.sh`, and holds nothing but sealed files. Plan EI mints the same pair later. The ledger
+  records the file name, never the key.
+- **The long code still works** anywhere a code is accepted, including the tap-a-link and scan paths
+  (PR 3c). The short key is simply the one a person types.
+
 **The first-run branch.** The welcome page gains **"I have a licence key from my company"**, ahead of
 the provider and key pages. Onboarding's other branches do not change.
 
-- It takes a pasted key. A key is about 400 characters of base64, so nobody types it. The scanner
-  (PR 3c) adds scanning, and a QR of a licence key fits comfortably.
+- It takes the short activation key, typed, with a keyboard that shows only its alphabet and
+  inserts the dashes. It also accepts a full licence code, and PR 3c adds scanning a QR of either.
 - It goes through `WearablesBootstrap` and sets `hasCompletedOnboarding` explicitly, with the test
   P3 already requires (CD P1's hazard).
 - **Offline at first launch.** The licence activates, since it is verified offline. The phone then
@@ -258,7 +289,7 @@ first. The licence-key path writes the address that 2b's renewal reads, and both
 
 | PR | What | Why this order |
 |---|---|---|
-| **3a** | the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, the profile's `aiModel` and the first-run key page that follows the review, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
+| **3a** | the short activation key (format, check character, sealed file on the static host, `--activation-key`), the `profile` licence claim, the generator flag, `ProfileSource.licence`, the same-organisation check, the first-run "I have a licence key" branch through `WearablesBootstrap`, the offline holding screen, the profile's `aiModel` and the first-run key page that follows the review, and the "administrator needs to finish setup" state | the entry point, and where CD P1's hazard lives, so it gets its own CI round |
 | **3b** | `edition: "fieldAssist"`, the technician's tabs and Settings list, the `adminPasscode` verifier, the backoff, the administrator session, and the script's passcode prompt | the view point 3 asks for. Testable before 3a through the enrol link PR 2a shipped |
 | **3c** | the live-camera scanner, reading a licence key or an enrol link into the same field | a convenience once 3a exists, since pasting works |
 | **4** | leaving the firm: the owner axis, sealing, deliver-then-erase | unchanged |
