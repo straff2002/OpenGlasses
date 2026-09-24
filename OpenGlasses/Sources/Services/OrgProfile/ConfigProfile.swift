@@ -51,8 +51,39 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     var skillPacks: [String]?
     /// Enrolments on this link that have been revoked — the leaver case on a shared crew link.
     var revokedEnrolmentIds: [String]?
+    /// The AI provider and model the organisation uses (Plan CT 3a). Which provider is not a
+    /// secret; the key for it is, so the key never travels here — it is entered on the phone.
+    var aiModel: AIModel?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
+
+    /// `{provider, model, baseURL?, name?}`, decoded without failing: a malformed entry reads as
+    /// empty fields, which `OrgAIModel.resolve` reports as a named drop rather than refusing the
+    /// profile. Not a `SettingKey` — it becomes a `ModelConfig`, and saved model configs are secrets.
+    struct AIModel: Codable, Equatable, Sendable {
+        /// An `LLMProvider` raw value.
+        var provider: String?
+        var model: String?
+        /// Only for `custom` and `openrouter`, and only HTTPS.
+        var baseURL: String?
+        /// The label the phone's model list shows. Absent means the organisation's name.
+        var name: String?
+
+        init(provider: String?, model: String?, baseURL: String? = nil, name: String? = nil) {
+            self.provider = provider
+            self.model = model
+            self.baseURL = baseURL
+            self.name = name
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            provider = try? container?.decodeIfPresent(String.self, forKey: .provider)
+            model = try? container?.decodeIfPresent(String.self, forKey: .model)
+            baseURL = try? container?.decodeIfPresent(String.self, forKey: .baseURL)
+            name = try? container?.decodeIfPresent(String.self, forKey: .name)
+        }
+    }
 
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
@@ -64,7 +95,8 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          policyExpiry: Date? = nil, leaseDays: Int, eraseAfterLapseDays: Int? = nil,
          undeliveredEraseDays: Int? = nil, licenceCode: String? = nil,
          vaultPack: VaultPackReference? = nil, skillPacks: [String]? = nil,
-         revokedEnrolmentIds: [String]? = nil, settings: [String: RawSetting] = [:],
+         revokedEnrolmentIds: [String]? = nil, aiModel: AIModel? = nil,
+         settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
          schemaVersion: Int = ConfigProfile.supportedSchemaVersion) {
         self.format = format
@@ -81,6 +113,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.vaultPack = vaultPack
         self.skillPacks = skillPacks
         self.revokedEnrolmentIds = revokedEnrolmentIds
+        self.aiModel = aiModel
         self.settings = settings
     }
 }

@@ -107,6 +107,15 @@ struct FieldAssistSettingsView: View {
                 entitlementPaywall
             }
 
+            // ──────────────── The organisation's AI model still needs its key (Plan CT 3a)
+            if orgProfile.needsModelSetup, let organization = orgProfile.profile?.organizationName {
+                Section {
+                    Label("Your administrator needs to finish setting up this phone.", systemImage: "key")
+                } footer: {
+                    Text("\(organization)'s AI model still needs its key. It is added from Settings › Organisation › Finish Setup.")
+                }
+            }
+
             // ──────────────── Organisation code (Plan CT PR 3)
             if !orgProfile.isManaged {
                 Section {

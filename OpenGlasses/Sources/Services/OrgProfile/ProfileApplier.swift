@@ -59,6 +59,9 @@ enum ProfileApplier {
         var leaseDays: Int?
         var eraseAfterLapseDays: Int?
         var undeliveredEraseDays: Int?
+        /// The AI model the winning layer names, checked (Plan CT 3a). Nil when none names one, or
+        /// when the one named could not be used — that is a drop keyed `aiModel`.
+        var aiModel: OrgAIModel?
 
         /// The value a read of `key` must return, given what the person has stored.
         ///
@@ -109,6 +112,12 @@ enum ProfileApplier {
         let undelivered = window(layer.undeliveredEraseDays, field: "undeliveredEraseDays", into: &result)
         result.eraseAfterLapseDays = eraseAfterLapse
         result.undeliveredEraseDays = undelivered ?? ConfigProfile.defaultUndeliveredEraseDays
+        if let spec = layer.aiModel {
+            switch OrgAIModel.resolve(spec) {
+            case .success(let model): result.aiModel = model
+            case .failure(let reason): result.drops.append(Drop(key: "aiModel", reason: reason))
+            }
+        }
 
         for name in layer.settings.keys.sorted() {
             guard let raw = layer.settings[name] else { continue }

@@ -51,6 +51,15 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// at a vault the registry cannot resolve) and switching Field Assist on (which would open a
     /// home screen with nothing behind it).
     var heldStartingValues: [String: ProfileValue]?
+
+    // Plan CT 3a — the organisation's AI model.
+
+    /// The `ModelConfig` enrolment created from the profile's `aiModel`. It is the organisation's —
+    /// its key too, whoever typed it — so removal deletes it. The person's own configs are untouched.
+    var modelConfigId: String?
+    /// The profile names a model that still needs its key (or its sign-in): Field Assist says the
+    /// administrator needs to finish setting up this phone.
+    var modelSetupPending: Bool?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -96,6 +105,15 @@ struct OrgProfileReview: Identifiable, Equatable {
 
     /// The vault pack enrolment will install, if the profile names one.
     var packId: String? { profile.vaultPack?.packId }
+
+    /// The AI model the profile names, and where its prompts go when that is not the provider's own
+    /// address. The key is not the profile's: it is entered on the next page.
+    var aiModelLines: [String] {
+        guard let model = result.aiModel else { return [] }
+        var lines = ["AI model: \(model.summary)"]
+        if let host = model.host { lines.append("Prompts go to \(host)") }
+        return lines
+    }
 
     static func == (lhs: OrgProfileReview, rhs: OrgProfileReview) -> Bool { lhs.id == rhs.id }
 }
@@ -151,6 +169,11 @@ final class OrgProfileManager: ObservableObject {
         var activeJobId: @MainActor () -> String? = { FieldSessionService.shared.activeSession?.id }
         var withholdLicence: (String?) -> Void = { PolicyEnvelope.withholdLicence($0) }
         var installPack: @MainActor (String) async -> OrgPackInstaller.Outcome = { await OrgPackInstaller.install(packId: $0) }
+        var loadModels: () -> [ModelConfig] = { Config.savedModels }
+        var saveModels: ([ModelConfig]) -> Void = { Config.setSavedModels($0) }
+        var activeModelId: () -> String = { Config.activeModelId }
+        var setActiveModelId: (String) -> Void = { Config.setActiveModelId($0) }
+        var newModelConfigId: () -> String = { UUID().uuidString }
     }
 
     /// The app's one manager. `PolicyEnvelope` is process-wide, so there is only ever one
@@ -319,6 +342,10 @@ final class OrgProfileManager: ObservableObject {
         newRecord.activatedLicenceCode = review.licenceToActivate
         newRecord.pendingPackId = pendingPack
         newRecord.heldStartingValues = held.isEmpty ? nil : held
+        newRecord.modelConfigId = record?.modelConfigId
+        newRecord.modelSetupPending = record?.modelSetupPending
+        reconcileModel(review.result.aiModel, organizationName: review.profile.organizationName,
+                       record: &newRecord)
         seams.saveRecord(newRecord)
         record = newRecord
         profile = review.profile
@@ -396,6 +423,84 @@ final class OrgProfileManager: ObservableObject {
             }
             seams.writeSetting(key, value)
         }
+    }
+
+    // MARK: - The organisation's AI model (Plan CT 3a)
+
+    /// The model the profile in force names, checked. Nil when it names none it can use.
+    var organizationModel: OrgAIModel? {
+        profile?.aiModel.flatMap { try? OrgAIModel.resolve($0).get() }
+    }
+
+    /// The profile names a model that still waits for its key or sign-in — the "administrator
+    /// needs to finish setting up this phone" state.
+    var needsModelSetup: Bool {
+        guard let record, record.revoked != true else { return false }
+        return record.modelSetupPending == true && organizationModel != nil
+    }
+
+    /// Bring the organisation's model config in line with the profile's `aiModel`.
+    ///
+    /// - The same provider as the config enrolment already made: the model, address and label
+    ///   follow the profile and **the key stays** — a renewal that moves to a newer model needs no
+    ///   one to re-enter anything.
+    /// - A provider with nothing to enter (on-device): the config is made now.
+    /// - Otherwise the phone waits for the key, and the config already in place (if any) stays in
+    ///   use meanwhile, so a technician is never dropped into a provider with no key.
+    /// - A profile that stops naming a model changes nothing: the config stays until removal.
+    private func reconcileModel(_ model: OrgAIModel?, organizationName: String,
+                                record: inout OrgEnrolmentRecord) {
+        guard let model else {
+            record.modelSetupPending = nil
+            return
+        }
+        var models = seams.loadModels()
+        if let id = record.modelConfigId, let index = models.firstIndex(where: { $0.id == id }),
+           models[index].provider == model.provider.rawValue {
+            let updated = model.makeConfig(id: id, apiKey: models[index].apiKey,
+                                           organizationName: organizationName)
+            if models[index] != updated {
+                models[index].name = updated.name
+                models[index].model = updated.model
+                models[index].baseURL = updated.baseURL
+                seams.saveModels(models)
+            }
+            record.modelSetupPending = nil
+            return
+        }
+        if model.access == .onDevice {
+            installModel(model, apiKey: "", organizationName: organizationName, record: &record)
+        } else {
+            record.modelSetupPending = true
+        }
+    }
+
+    /// Save the organisation's model with the key the person entered (or none, after a sign-in),
+    /// make it the active model, and replace the config an earlier profile made. The caller has
+    /// run `OrgAIModel.keyProblem` on the key.
+    @discardableResult
+    func completeModelSetup(apiKey: String) -> Bool {
+        guard var current = record, current.revoked != true, let profile, let model = organizationModel else {
+            return false
+        }
+        if model.access == .key && model.keyProblem(apiKey) != nil { return false }
+        installModel(model, apiKey: apiKey, organizationName: profile.organizationName, record: &current)
+        seams.saveRecord(current)
+        record = current
+        return true
+    }
+
+    private func installModel(_ model: OrgAIModel, apiKey: String, organizationName: String,
+                              record: inout OrgEnrolmentRecord) {
+        var models = seams.loadModels()
+        if let previous = record.modelConfigId { models.removeAll { $0.id == previous } }
+        let config = model.makeConfig(id: seams.newModelConfigId(), apiKey: apiKey,
+                                      organizationName: organizationName)
+        models.append(config)
+        seams.saveModels(models)
+        seams.setActiveModelId(config.id)
+        record.modelConfigId = config.id
+        record.modelSetupPending = nil
     }
 
     // MARK: - The lease (Plan CT PR 2b)
@@ -522,6 +627,7 @@ final class OrgProfileManager: ObservableObject {
         current.lastRenewedAt = seams.now()
         current.revoked = false
         current.leaseLock = nil
+        reconcileModel(result.aiModel, organizationName: renewed.organizationName, record: &current)
         seams.saveRecord(current)
         record = current
         profile = renewed
@@ -545,6 +651,12 @@ final class OrgProfileManager: ObservableObject {
            let code = current.activatedLicenceCode ?? profile?.licenceCode ?? storedProfileLicence(current),
            seams.storedLicenceCode() == code.trimmingCharacters(in: .whitespacesAndNewlines) {
             seams.clearLicence()
+        }
+        if let id = current.modelConfigId {
+            var models = seams.loadModels()
+            models.removeAll { $0.id == id }
+            seams.saveModels(models)
+            if seams.activeModelId() == id, let next = models.first { seams.setActiveModelId(next.id) }
         }
         seams.saveRecord(nil)
         record = nil

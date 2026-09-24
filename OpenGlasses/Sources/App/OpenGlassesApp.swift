@@ -1142,7 +1142,9 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// An organisation profile arriving by link (Plan CT PR 2). The profile itself, once applied,
     /// lives in `OrgProfileManager.shared` and `PolicyEnvelope`.
-    lazy var orgEnrolment = OrgEnrolmentService(manager: OrgProfileManager.shared)
+    lazy var orgEnrolment = OrgEnrolmentService(
+        manager: OrgProfileManager.shared,
+        modelDidChange: { [weak self] in self?.llmService.refreshActiveModel() })
 
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
