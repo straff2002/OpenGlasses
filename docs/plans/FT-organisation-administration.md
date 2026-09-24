@@ -28,6 +28,7 @@ changing its settings are two more messages on that channel.
 | The phone is set up | activation key, then the profile, then the AI key page (CT 3a) | activation key, then the profile, then the phone registers with the server, which sends the AI key and settings |
 | Settings change | re-mint the vendor profile | the server sends an update |
 | A phone is taken off | the vendor-signed revocation (PR 2b) | the server sends `unenrol`; revocation is kept for a phone that never checks in |
+| The organisation's own manuals reach the phone | loaded by hand into a custom vault (Plans H, ED) | fetched from the server into the pack's documents tier |
 
 **It is the organisation's server, not the vendor's.** It is self-hosted, or run by the partner for
 the organisation. The product still runs no server of its own (Plan EI's starting point). And it is
@@ -157,6 +158,35 @@ anyone with a camera can copy.
   version, overlay sequence, lease date and last check-in, and its console should say "last checked
   in", not "online".
 
+## The organisation's manuals
+
+Decided 2026-09-24: **an organisation's own manuals come from its base server.** This settles the
+question CT left open (*Where do an organisation's manuals actually come from?*) and withdraws CT's
+`vaultPack.documentsSource` pointer, which was a URL in the profile.
+
+- **Why the server.** A vault pack ships trade knowledge and never OEM manuals (Plan EG), so the
+  manuals are always the customer's own material, and usually licensed documents it may not
+  republish. They cannot sit at a public address, so a URL in the profile was either a leak or a
+  second authenticated service to build. The server already authenticates each phone, since every
+  request is signed with the phone's key, and it already holds the organisation's documents next to
+  the jobs that refer to them. The vendor holds nothing.
+- **How they arrive.** The overlay carries a **manual set**: file names, sizes and SHA-256s, signed
+  with `adminKey` like the rest of the overlay. The phone fetches each file from `baseServer` with a
+  signed request, checks its hash against the signed set, and ingests it through
+  `VaultImporter.syncDocuments` into the documents tier of the vault the pack installed. That path is
+  already gated at team tier and already routes scans through Plan EF's extractor. The sync is
+  resumable and runs in the background. A binder of scans is large, and nothing waits on it.
+- **Which vault.** The set names its target vault id. It must be a vault the phone has, usually the
+  pack's, or the set is a named drop.
+- **Updates and removal.** A later set with a higher overlay sequence adds, replaces and removes
+  files by hash, so a withdrawn manual leaves the phone at the next check-in. On `unenrol` or
+  revocation the synced manuals are the firm's content, so they lock with the lease and are erased
+  with the rest of it (CT PR 4).
+- **Without a server.** No manuals path. An organisation with no base server loads its manuals by
+  hand through Custom Vaults, as today.
+- **Privacy.** Nothing new beyond `baseServer` itself, which is already disclosed. The files go from
+  the organisation's server to the organisation's phone.
+
 ## Taking a phone off
 
 - **`unenrol` from the server** is handled like an owner removal: CT PR 4's deliver-then-erase, the
@@ -196,6 +226,7 @@ above.
 | **FT1** (headless) | the `baseServer` and `adminKey` profile fields; the overlay schema; the applier's administrator layer with each key's overlay permission; target, sequence and "profile first" checks; sealing to a P-256 key; the registration and check-in messages, as `Codable` shapes with a written wire contract the server can be built against. Tests: an overlay from the wrong key, for another phone, replayed with an older sequence, or arriving before the profile verifies is refused by name; one that tries to loosen a vendor ceiling or touch entitlement is dropped by name; a sealed key opens only with the registered key; precedence as a table with the new layer |
 | **FT2** | the setup QR code (`og-setup:` parsing, the one-time token, the loop check that the profile's `baseServer` is the QR code's address, auto-approval), registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint for typed-key setups, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
 | **FT3** | reports posted to the server, with the report route as the fallback; `unenrol` wired to CT PR 4 |
+| **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments`, and removal by hash |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use
 a stub. **The base server needs its own plan**: who builds and hosts it (the partner, the
