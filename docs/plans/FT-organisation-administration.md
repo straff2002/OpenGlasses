@@ -64,7 +64,56 @@ Each overlay names the phone it is for (its enrolment id) and carries a sequence
 goes up, so an old message replayed cannot undo a newer one. It carries the whole desired overlay,
 not a diff. A phone applies an overlay only after the vendor profile naming `adminKey` has verified.
 
-## Setting a phone up
+## Setting a phone up: scan the server's QR code
+
+**The default is one scan, nothing typed** (decided 2026-09-24). The administrator opens *Add a
+phone* on the server's console, types the technician's name, and the console shows a **setup QR
+code**. The new phone, at first launch, taps *"Scan setup code from my administrator"* and scans it.
+Setup finishes without another question, unless the review screen has something to say.
+
+**What the QR code holds, and what it deliberately doesn't.** It holds `og-setup:` followed by the
+server's HTTPS address and a **one-time token** (128 random bits). It holds no licence, no settings
+and no AI key, so it is small and scans easily off a monitor. The token is:
+
+- **single-use**, spent by the first phone that registers with it
+- **short-lived**, fifteen minutes by default, set by the organisation
+- **tied to one phone slot**, the name the administrator typed
+
+**The chain that makes a QR code on a screen safe to trust.** The QR code's address is not trusted
+on its own, because anyone can print a QR code. The phone trusts it only after the vendor's
+signatures close a loop back to that same address:
+
+1. The phone posts its new key and the token to the address in the QR code.
+2. The server answers with the organisation's **licence code**. It holds the code, so the QR code
+   does not need to.
+3. The phone verifies the licence against the embedded vendor key. It follows the licence's
+   `profile` claim (CT 3a), fetches the profile and verifies it against the vendor profile key.
+4. **The profile's `baseServer` must be the address in the QR code.** If it is not, the phone stops
+   and says so: *"This setup code points at a server your organisation's profile doesn't name."*
+   A fake server can only hand out a licence the vendor signed, and that licence's profile names the
+   real server, so a fake QR code dead-ends at step 4.
+5. Review, confirm and apply, as in CT. The administrator created the token, so **the phone is
+   approved the moment it registers**, and the fingerprint-matching step below is skipped. The
+   server sends the first overlay, including the AI key sealed to the phone's key, and Field Assist
+   is ready.
+
+**A photographed setup QR code** is worth one phone's registration for fifteen minutes. The console
+shows the slot as used the moment it is, with the time and the phone's app version. A slot used by
+a phone nobody expected is visible, and `unenrol` handles it.
+
+**Many phones at once.** *Add phones* takes a list of names and shows each QR code in turn, advancing
+when the previous one is used. That is the depot setup day: phones on a table, one scan each.
+
+**The scanner** is CT 3b's in-app scanner (built for the admin card), offered on the welcome page.
+CT 3c's "scanner reused for keys and links" gains this third code type. The QR code is read only
+inside the app. An `og-setup:` code opened by the system Camera app does nothing, because a setup
+token in a URL would travel through Safari history and forwarded links.
+
+### Without a scan: the activation key, then approval
+
+For a technician who is not in front of the console — a new starter in another town, or a
+replacement phone in a van — the typed activation key from CT 3a still works. Registration then
+waits for the administrator to approve the fingerprint:
 
 1. **The technician types the activation key** (CT 3a). The profile is fetched, reviewed and
    applied. It names `baseServer`.
@@ -145,7 +194,7 @@ above.
 | PR | What |
 |---|---|
 | **FT1** (headless) | the `baseServer` and `adminKey` profile fields; the overlay schema; the applier's administrator layer with each key's overlay permission; target, sequence and "profile first" checks; sealing to a P-256 key; the registration and check-in messages, as `Codable` shapes with a written wire contract the server can be built against. Tests: an overlay from the wrong key, for another phone, replayed with an older sequence, or arriving before the profile verifies is refused by name; one that tries to loosen a vendor ceiling or touch entitlement is dropped by name; a sealed key opens only with the registered key; precedence as a table with the new layer |
-| **FT2** | registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
+| **FT2** | the setup QR code (`og-setup:` parsing, the one-time token, the loop check that the profile's `baseServer` is the QR code's address, auto-approval), registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint for typed-key setups, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
 | **FT3** | reports posted to the server, with the report route as the fallback; `unenrol` wired to CT PR 4 |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use
@@ -160,6 +209,9 @@ organisation's AI key.
 | Letting anything but the vendor profile name `baseServer` | a message or a link points a crew at someone else's server |
 | Applying an overlay before the profile naming `adminKey` verifies | anyone who can answer an HTTPS request becomes the administrator |
 | Registering phones without the fingerprint approval | a leaked activation key quietly adds a stranger's phone to the crew, which then receives the AI key |
+| Trusting the setup QR code's address before the profile names it | a printed QR code points a new phone at an impostor server, which then sends it settings and a model endpoint |
+| A reusable or long-lived setup token | a photo of the console becomes a standing way to add phones |
+| Opening `og-setup:` codes from the system Camera app | the token travels through Safari history and forwarded links |
 | Sealing the AI key to anything but the registered phone key | the key travels readable by the server's storage, a proxy or a log |
 | No sequence number | an old overlay, replayed, undoes a newer one |
 | Letting the overlay reach entitlement or a vendor ceiling | the organisation, or whoever holds its server, widens what the vendor sold |

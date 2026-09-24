@@ -157,7 +157,7 @@ short key that *resolves* to the licence:
   (PR 3c). The short key is simply the one a person types.
 
 **The first-run branch.** The welcome page gains **"I have a licence key from my company"**, ahead of
-the provider and key pages. Onboarding's other branches do not change.
+the provider and key pages. With a base server, **"Scan setup code from my administrator"** sits above it and is the default. The phone scans a one-time QR code from the server's console and nobody types anything. See Plan [FT](FT-organisation-administration.md). Onboarding's other branches do not change.
 
 - It takes the short activation key, typed, with a keyboard that shows only its alphabet and
   inserts the dashes. It also accepts a full licence code, and PR 3c adds scanning a QR of either.
