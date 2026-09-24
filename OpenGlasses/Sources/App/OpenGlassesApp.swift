@@ -2567,8 +2567,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // publisher is the trigger set rather than three hooks that can each be forgotten. What it
         // drives: the bounded job block on both live backends, the lens cue for whichever question
         // is outstanding, and the watch's read-only job state.
-        let jobStateToken = FieldSessionService.shared.$activeSession
-            .removeDuplicates { JobSurfaceRefresh.key(for: $0) == JobSurfaceRefresh.key(for: $1) }
+        //
+        // `$activeSession` publishes before the property is set, and the bridges, the watch and
+        // CarPlay all read `FieldSessionService.shared.activeSession` rather than the value handed
+        // to this sink — so `trigger` delivers it on the next main-queue turn, where they read the
+        // new session instead of the one before it. The lens cue uses `session` either way.
+        let jobStateToken = JobSurfaceRefresh.trigger(FieldSessionService.shared.$activeSession)
             .sink { [weak self] session in
                 guard let self else { return }
                 self.geminiLiveSession.jobBridge.refresh()

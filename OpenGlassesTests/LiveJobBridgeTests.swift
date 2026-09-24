@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import OpenGlasses
 
@@ -393,7 +394,36 @@ final class LiveJobBridgeWiringTests: XCTestCase {
         let app = try source("App/OpenGlassesApp.swift")
         XCTAssertTrue(app.contains("geminiLiveSession.jobBridge.refresh()"))
         XCTAssertTrue(app.contains("openAIRealtimeSession.jobBridge.refresh()"))
-        XCTAssertTrue(app.contains("JobSurfaceRefresh.key(for:"))
+        // The one trigger is `JobSurfaceRefresh.trigger`, which `JobStateTriggerTests` drives
+        // against a real service — not a pipeline of its own assembled in the app.
+        XCTAssertTrue(app.contains("JobSurfaceRefresh.trigger(FieldSessionService.shared.$activeSession)"))
+    }
+
+    /// `$activeSession` publishes in `willSet`. Of the four surfaces the job-state sink refreshes,
+    /// only the lens cue uses the value the sink is handed; the rest read
+    /// `FieldSessionService.shared.activeSession`, so a trigger delivered synchronously leaves them
+    /// a change behind. The trigger delivers after the set: de-duplicated first, then on the next
+    /// main-queue turn.
+    func testTheJobStateTriggerDeliversAfterTheSet() throws {
+        let trigger = try source("Services/FieldAssist/Job/JobSurfaceRefresh.swift")
+        let start = try XCTUnwrap(trigger.range(of: "static func trigger<"))
+        let body = trigger[start.lowerBound...]
+        let dedupe = try XCTUnwrap(body.range(of: ".removeDuplicates { key(for: $0) == key(for: $1) }"))
+        let delivery = try XCTUnwrap(body.range(of: ".receive(on: DispatchQueue.main)"),
+                                     "the trigger must deliver after @Published has set the value")
+        XCTAssertLessThan(dedupe.lowerBound, delivery.lowerBound,
+                          "de-duplicate on the value handed, then hop to the next main-queue turn")
+
+        // The refreshes that read the shared value rather than the one handed to the sink. The
+        // watch reads it synchronously; CarPlay reads it inside a `Task { @MainActor }`, which
+        // happened to run after the set even before the trigger did — and no longer has to.
+        let watch = try source("Services/WatchConnectivityManager.swift")
+        XCTAssertTrue(watch.contains("JobWatchPayload.payload(for: FieldSessionService.shared.activeSession)"))
+        let carPlay = try source("App/CarPlaySceneDelegate.swift")
+        let refresh = try XCTUnwrap(carPlay.range(of: "func refreshJobsTab()"))
+        let jobsTab = carPlay[refresh.lowerBound...].prefix(800)
+        XCTAssertTrue(jobsTab.contains("let sessions = FieldSessionService.shared"), String(jobsTab))
+        XCTAssertTrue(jobsTab.contains("active: sessions.activeSession"), String(jobsTab))
     }
 
     /// OpenAI Realtime reaches the native tools for the first time (Plan FO P3a), and the CarPlay
@@ -407,5 +437,125 @@ final class LiveJobBridgeWiringTests: XCTestCase {
         let body = carPlay[start.lowerBound...].prefix(600)
         XCTAssertTrue(body.contains("guidedJobFlow.requestResume(threadId:"), String(body))
         XCTAssertFalse(body.contains("activeThreadId ="), String(body))
+    }
+}
+
+/// The job-state trigger against a real `FieldSessionService` (Plan FO P3a, fixed 2026-09-24).
+///
+/// `@Published` emits in `willSet`. The app's job-state sink refreshes both live bridges and the
+/// watch, and each reads `FieldSessionService.shared.activeSession` rather than the session the
+/// sink is handed — so a trigger delivered synchronously had them describing the job as it was one
+/// change ago: the number recorded, and the model still told it was owed. This subscribes a bridge to a real service's `$activeSession` through the app's own
+/// `JobSurfaceRefresh.trigger` and asserts what reaches the model is the job as it now stands.
+@MainActor
+final class JobStateTriggerTests: XCTestCase {
+
+    private var sessionsRoot: URL!
+    private var service: FieldSessionService!
+    private var bridge: LiveJobBridge!
+    private var token: AnyCancellable?
+    private var previousEntitlement: FieldAssistEntitlementProvider!
+    private var previousEnabled: Any?
+
+    private var injected: [String] = []
+    /// Per delivery: the key of the session the sink was handed, and of the one the service held
+    /// when the sink ran — which is what the bridge, the watch and CarPlay actually read.
+    private var deliveries: [(handed: String, shared: String)] = []
+    private var delivered: XCTestExpectation?
+
+    override func setUp() {
+        super.setUp()
+        sessionsRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("JobStateTrigger-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: sessionsRoot, withIntermediateDirectories: true)
+        previousEnabled = UserDefaults.standard.object(forKey: "fieldAssistEnabled")
+        UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
+        previousEntitlement = EntitlementTestScope.grant()
+        VaultRegistry.shared.resetCache()
+
+        service = FieldSessionService(sessionsRoot: sessionsRoot)
+        bridge = LiveJobBridge()
+        // The app's seam, against this service instead of the shared one.
+        bridge.connect(.init(
+            activeSession: { [weak self] in self?.service.activeSession },
+            generation: { 1 },
+            canInject: { true },
+            isBusy: { false },
+            injectText: { [weak self] text in self?.injected.append(text) }))
+    }
+
+    override func tearDown() {
+        token = nil
+        bridge = nil
+        service = nil
+        try? FileManager.default.removeItem(at: sessionsRoot)
+        if let previousEnabled { UserDefaults.standard.set(previousEnabled, forKey: "fieldAssistEnabled") }
+        else { UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled") }
+        EntitlementTestScope.restore(previousEntitlement)
+        super.tearDown()
+    }
+
+    /// Subscribe the way the app does, and wait for the subscription's own first delivery so every
+    /// later one is caused by a change the test made.
+    private func subscribe() async {
+        let arrived = expectation(description: "initial delivery")
+        delivered = arrived
+        token = JobSurfaceRefresh.trigger(service.$activeSession)
+            .sink { [weak self] session in
+                guard let self else { return }
+                self.deliveries.append((JobSurfaceRefresh.key(for: session),
+                                        JobSurfaceRefresh.key(for: self.service.activeSession)))
+                self.bridge.refresh()
+                self.delivered?.fulfill()
+                self.delivered = nil
+            }
+        await fulfillment(of: [arrived], timeout: 2)
+    }
+
+    /// Make one change and wait for the delivery it causes. A trigger that delivered inside the
+    /// change (in `willSet`) still fulfils this; it is the assertions after it that tell the two
+    /// apart.
+    private func change(_ body: () throws -> Void) async rethrows {
+        let arrived = expectation(description: "delivery after a change")
+        delivered = arrived
+        try body()
+        await fulfillment(of: [arrived], timeout: 2)
+    }
+
+    func testTheModelIsToldTheJobAsItNowStandsNotAsItWas() async throws {
+        try service.startSession(vaultId: "refrigeration", assetId: nil)
+        _ = bridge.setupBlock()
+        await subscribe()
+        XCTAssertTrue(injected.isEmpty, "the setup already carried this state")
+
+        // The number is recorded. Delivered in `willSet`, the bridge would read the session
+        // before it — still owing the number — find nothing new, and send nothing.
+        await change { service.setJobReference("1005") }
+        XCTAssertEqual(injected.count, 1)
+        XCTAssertTrue(injected.last?.contains("\"1005\"") == true, injected.last ?? "nothing injected")
+
+        // …and the next change is this change, not the one before it.
+        await change { service.setJobReference("1006") }
+        XCTAssertEqual(injected.count, 2)
+        XCTAssertTrue(injected.last?.contains("\"1006\"") == true, injected.last ?? "nothing injected")
+        XCTAssertFalse(injected.last?.contains("\"1005\"") == true)
+
+        // A closed job is said once, when it closes.
+        try await change { _ = try service.endSession() }
+        XCTAssertEqual(injected.last, LiveJobContract.heading + "\nNo job is open.")
+    }
+
+    /// The watch and CarPlay read the same shared value the bridge does. What they need is that,
+    /// every time the sink runs, that value is the one it was handed.
+    func testEverySurfaceReadingTheServiceSeesTheSessionTheSinkWasHanded() async throws {
+        await subscribe()
+        try await change { _ = try service.startSession(vaultId: "refrigeration", assetId: nil) }
+        await change { service.setJobReference("1005") }
+        try await change { _ = try service.endSession() }
+
+        XCTAssertEqual(deliveries.count, 4)
+        for (index, delivery) in deliveries.enumerated() {
+            XCTAssertEqual(delivery.shared, delivery.handed, "delivery \(index) read a stale session")
+        }
     }
 }

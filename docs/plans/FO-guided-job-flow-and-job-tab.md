@@ -1135,6 +1135,43 @@ speech is audible while a live session holds the audio route, and whether it can
 talking over the model — is **owed to P4** and is the one decision here that a headless test cannot
 stand behind.
 
+### A defect fixed after the fact: the job-state trigger was one change behind (2026-09-24)
+
+As shipped, the job-state trigger subscribed to `FieldSessionService.shared.$activeSession` and
+refreshed its surfaces synchronously. `@Published` emits in `willSet`, so inside that sink the
+service still held the *previous* session. Only the lens cue used the value the sink is handed. The
+other three read the service:
+
+- **Both live bridges.** `LiveJobBridge.refresh()` reads the job through its `activeSession` seam,
+  which is `FieldSessionService.shared.activeSession`. Each re-injection of the `FIELD JOB STATE:`
+  block described the job as it was one change ago. On the change that records the number, the
+  bridge read the session that still owed it, found nothing new against what the model had, and
+  sent nothing. The model then went on being told the number was owed until the *next* change.
+- **The watch.** `WatchConnectivityManager.sendStatusUpdate()` builds
+  `JobWatchPayload.payload(for: FieldSessionService.shared.activeSession)` synchronously, so the
+  wrist was one change behind in the same way.
+- **CarPlay.** `refreshJobsTab()` reads the service too, but inside a `Task { @MainActor }`, which
+  runs on a later turn. It was already reading the new value, by accident of how it was written.
+
+The fix is the one the P3b debrief trigger already uses. The pipeline now lives in
+`JobSurfaceRefresh.trigger(_:)`: de-duplicated on `JobSurfaceRefresh.key` as before, then
+`.receive(on: DispatchQueue.main)`. The app subscribes through it, so every surface in the sink
+runs on the next main-queue turn, after the property is set. De-duplication still runs first, on
+the value each emission carries, so what counts as a change is unchanged. The lens cue still uses
+`session` and still compares against `lastJobQuestionCue`. Both now run a turn later, and in the
+same order, because the main queue is serial. If two changes land in one turn, the first delivery
+already reads the final value and the second finds nothing new to send.
+
+Tests: `JobStateTriggerTests` subscribes a `LiveJobBridge` to a real `FieldSessionService`'s
+`$activeSession` through `JobSurfaceRefresh.trigger`, the way the app does. It asserts that
+recording job 1005 injects a block carrying `"1005"`, that recording 1006 next injects 1006 and
+not 1005, and that closing the job says "No job is open." once. It also asserts that on every
+delivery the service's value matches the value the sink was handed, which is the property the
+watch and CarPlay depend on. With a synchronous trigger, the first assertion gets no injection
+and the second gets a stale read on every change. `LiveJobBridgeWiringTests` scrapes the app for
+the trigger and `JobSurfaceRefresh.trigger` for the `.receive(on: DispatchQueue.main)` after the
+de-duplication. Written without a Swift toolchain, so CI is its first compile and first run.
+
 ### Seams left for P3b
 
 - `CarPlayJobsList.Selection` is where the **Debrief** action goes: a third case, and the row's
@@ -1372,13 +1409,14 @@ managers for `setupDebriefBlock()`, and the app for both bridges' seam, both `re
 calls and the `LLMService.debriefContext` assignment. It also scrapes `buildSystemPrompt` for
 the append.
 
-**A neighbouring defect found while doing this, and left alone.** P3a's job-state trigger
+**A neighbouring defect found while doing this, and since fixed.** P3a's job-state trigger
 (`FieldSessionService.shared.$activeSession … .sink`) calls `jobBridge.refresh()`, which reads
 `FieldSessionService.shared.activeSession` through its seam. `@Published` emits before the
-property is set, so that read gets the *previous* session: each live re-injection is one change
-behind. The same goes for the watch status and the CarPlay Jobs refresh in that sink; only the
-lens cue uses the value the sink is handed. The debrief trigger above avoids this. The job
-trigger is a separate change.
+property is set, so that read got the *previous* session: each live re-injection was one change
+behind, and so was the watch status. (The CarPlay Jobs refresh reads inside a `Task`, so it was
+already reading the new value.) Only the lens cue used the value the sink is handed. It was left
+out of this change and fixed separately, the same way as the debrief trigger above: see "A defect
+fixed after the fact: the job-state trigger was one change behind" under P3a.
 
 ### Seams left for P3c
 
