@@ -60,6 +60,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// BR P2: consecutive FAILED recoveries — drives the rebuild-stream-vs-reset-session
     /// tiering in `StreamRecoveryPolicy`. Reset on any successful recovery.
     private var consecutiveRecoveryFailures = 0
+    /// Fresh pictures delivered since the backend was created. `waitForStreaming` compares it
+    /// against its own starting value to see a *new* first frame, because `latestFrame` is kept
+    /// across teardowns (see `pauseStreamAfterCapture`) and would otherwise count an old picture
+    /// as the rebuilt stream's first one.
+    private var freshPictureCount = 0
+    /// Stall recoveries since the last fresh picture. Drives `StallRecoveryBackoff`, and any fresh
+    /// picture sets it back to 0.
+    private var framelessStallRecoveries = 0
+    /// The lower tier `StallRecoveryBackoff` switched to after the requested one kept failing. Held
+    /// for the rest of this streaming session only; the wearer's setting is never rewritten.
+    private var stallTierOverride: String?
 
     /// Plan FD P0 — why pictures are not flowing, as last reported to the coordinator.
     ///
@@ -380,11 +391,12 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // Continuous streaming in the live voice modes runs alongside glasses-mic audio;
         // the policy floors "low" to "medium" there so video can't starve the voice link
         // off the shared Bluetooth radio (see `StreamConfigPolicy`).
+        let requestedResolution = stallTierOverride ?? Config.cameraResolution
         let effectiveResolution = StreamConfigPolicy.effectiveResolution(
-            requested: Config.cameraResolution,
+            requested: requestedResolution,
             concurrentGlassesVoice: continuousStreamingIntent
         )
-        if effectiveResolution != Config.cameraResolution {
+        if effectiveResolution != requestedResolution {
             PrivacyLog.camera(.glasses, .resolutionFloored,
                               resolution: PrivacyToken(effectiveResolution))
             debug("Camera: low-res floored to medium while voice is on the glasses")
@@ -606,6 +618,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 // a picture as old as the encoder's keyframe interval while looking seconds new.
                 if picture.isFresh {
                     self.lastFrameTime = Date()
+                    self.freshPictureCount += 1
+                    self.framelessStallRecoveries = 0
                     // A picture just came out of the pipeline, so whatever the stall detector or
                     // the state listener last reported as a reason for not delivering has ended.
                     // Only a *fresh* one clears it: a held frame is the decoder still waiting.
@@ -663,12 +677,22 @@ final class MetaCameraBackend: GlassesCameraBackend {
     }
 
     /// Wait for the session to reach `.streaming` state, starting it if necessary.
+    ///
+    /// Returns whether a first frame arrived before the deadline. With `requireFreshFrame`, only a
+    /// picture delivered *during this wait* counts. That is what a start or a stall rebuild needs
+    /// to know. Without it, the cached `latestFrame` from an earlier stream satisfies the wait at
+    /// once, and a rebuild was reported recovered, with its stall clock restarted, before the new
+    /// stream had sent anything (device-traced 2026-09-25). The photo path keeps the old reading:
+    /// it only needs the stream up, and its fallback handles a missing frame.
+    @discardableResult
     private func waitForStreaming(
-        timeout: TimeInterval = StreamRecoveryPolicy.warmupTimeout
-    ) async throws {
+        timeout: TimeInterval = StreamRecoveryPolicy.warmupTimeout,
+        requireFreshFrame: Bool = false
+    ) async throws -> Bool {
         guard let session = streamSession else { throw CameraError.captureFailed }
         // Only errors from THIS attempt may abort it.
         lastStreamError = nil
+        let freshPicturesBefore = freshPictureCount
 
         // Wait for streaming state. During a cold start the stream bounces through `.stopped`
         // (device-traced: ~15-18 s of `.stopped`/`.waitingForDevice` churn before `.streaming`),
@@ -730,12 +754,16 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // .streaming before data flows, and capturePhoto won't work until then.
         PrivacyLog.camera(.glasses, .streamingReached)
         while ContinuousClock.now < deadline {
-            if latestFrame != nil { return }
+            let frameArrived = requireFreshFrame
+                ? freshPictureCount > freshPicturesBefore
+                : latestFrame != nil
+            if frameArrived { return true }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
 
         // Even if no frame arrived, let the caller proceed (fallback will handle it)
         PrivacyLog.camera(.glasses, .firstFrameTimedOut)
+        return false
     }
 
     // MARK: - Photo Capture
@@ -976,6 +1004,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         idleTeardownTask?.cancel()   // explicit streaming owns the session now
         idleTeardownTask = nil
         continuousStreamingIntent = true
+        // A fresh start gets the wearer's tier and a clean backoff, whatever the last one ran into.
+        resetStallBackoff()
         // A hand-started stream supersedes any reconnect still climbing from an earlier drop.
         cancelReconnect()
         // Everything from here to the first frame is a cold start — including the rebuild
@@ -1055,7 +1085,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         for attempt in 1...2 {
             do {
                 try await ensureSession()
-                try await waitForStreaming()
+                try await waitForStreaming(requireFreshFrame: true)
                 consecutiveRecoveryFailures = 0
                 return
             } catch {
@@ -1086,6 +1116,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // Plan EW: recorded before the `isStreaming` guard, because during a cold start that guard
         // is exactly what swallowed the stop. The warmup now finds its token stale and releases.
         startGeneration.recordStop()
+        resetStallBackoff()
         guard isStreaming else { return }
         stopStallDetection()
         if let session = streamSession {
@@ -1237,7 +1268,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
     // MARK: - HEVC Decoder Stall Detection & Auto-Recovery
 
-    /// Start monitoring for decoder stalls (no frames for 1.5 seconds).
+    /// Start monitoring for decoder stalls: no frames for 1.5 seconds, or no first frame within
+    /// `StreamLiveness.firstFrameGrace` of a (re)start.
     /// If a stall is detected, the session is torn down and recreated.
     private func startStallDetection() {
         stopStallDetection()
@@ -1280,7 +1312,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.report(waitReason: .framesUnavailable)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
-                    await self.recoverFromStall()
+                    await self.recoverFromLinkStall()
                     self.isRecoveringFromStall = false
                 }
             }
@@ -1296,6 +1328,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// Recover from a decoder stall. BR P2: tiered — rebuild only the Stream on the
     /// retained DeviceSession first (the session is the expensive half: BT connection +
     /// permission state); escalate to a full session reset only after repeated failures.
+    ///
+    /// Shared by the stall detector (through `recoverFromLinkStall()`) and the reconnect ladder,
+    /// which paces itself.
     private func recoverFromStall() async {
         let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
         PrivacyLog.camera(.glasses, .stallRecovery, detail: PrivacyToken.caseName(of: action),
@@ -1311,11 +1346,19 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         do {
             try await ensureSession()
-            try await waitForStreaming()
+            let frameArrived = try await waitForStreaming(requireFreshFrame: true)
             lastFrameTime = Date()
             framePipeline.restartClocks()
-            consecutiveRecoveryFailures = 0
-            PrivacyLog.camera(.glasses, .stallRecovered)
+            if frameArrived {
+                consecutiveRecoveryFailures = 0
+                PrivacyLog.camera(.glasses, .stallRecovered)
+            } else {
+                // Reaching `.streaming` without sending anything is not a recovery. Count it as a
+                // failure so the next attempt escalates up the BR P2 ladder instead of repeating
+                // the cheap rebuild.
+                consecutiveRecoveryFailures += 1
+                PrivacyLog.camera(.glasses, .stallRecoveryNoFrame, count: consecutiveRecoveryFailures)
+            }
         } catch {
             consecutiveRecoveryFailures += 1
             PrivacyLog.camera(.glasses, .stallRecoveryFailed,
@@ -1329,6 +1372,63 @@ final class MetaCameraBackend: GlassesCameraBackend {
             isStreaming = false
             events.send(.streamingChanged(false))
         }
+    }
+
+    /// The stall detector's way into recovery. Adds `StallRecoveryBackoff` in front of the shared
+    /// rebuild.
+    ///
+    /// A rebuilt stream that never sent a frame is not rebuilt again straight away. Each rebuild
+    /// restarts a multi-second warmup, so doing that on every stall kept the camera in a loop it
+    /// had caused itself (device-traced 2026-09-25). Wait, then lower the tier, then stop.
+    private func recoverFromLinkStall() async {
+        guard case let .rebuild(delay, stepDownTier) =
+                StallRecoveryBackoff.decision(framelessRecoveries: framelessStallRecoveries) else {
+            await giveUpStallRecovery()
+            return
+        }
+        if delay > 0 {
+            PrivacyLog.camera(.glasses, .stallRecoveryBackoff, count: framelessStallRecoveries,
+                              seconds: delay)
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            // A stop cancels this task. Don't rebuild a stream nobody wants any more.
+            guard !Task.isCancelled, isStreaming else { return }
+            // Frames may have started arriving from this stream during the wait. If so, keep it.
+            if framePipeline.verdict() == .healthy {
+                framelessStallRecoveries = 0
+                PrivacyLog.camera(.glasses, .stallSelfRecovered)
+                return
+            }
+        }
+        if stepDownTier {
+            let requested = stallTierOverride ?? Config.cameraResolution
+            let lowered = StallRecoveryBackoff.steppedDown(resolution: requested)
+            if lowered != requested {
+                stallTierOverride = lowered
+                PrivacyLog.camera(.glasses, .stallTierSteppedDown,
+                                  resolution: PrivacyToken(lowered), count: framelessStallRecoveries)
+                debug("Camera: no frames after \(framelessStallRecoveries) rebuilds — asking for \(lowered)")
+            }
+        }
+        // This recovery counts as frameless until a fresh picture shows otherwise. The frame
+        // listener clears the count when one arrives.
+        framelessStallRecoveries += 1
+        await recoverFromStall()
+    }
+
+    /// `StallRecoveryBackoff` has run out: rebuilt streams keep reaching `.streaming` and sending
+    /// nothing. Stop the same way the wearer's Stop does, then say why, so the preview does not sit
+    /// on "Connecting…" for a camera that has stopped trying.
+    private func giveUpStallRecovery() async {
+        PrivacyLog.camera(.glasses, .stallRecoveryGaveUp, count: framelessStallRecoveries)
+        await stopStreaming()
+        events.send(.status(.stopped))
+        events.send(.transientNotice(StallRecoveryBackoff.gaveUpNotice))
+    }
+
+    /// A new streaming session starts from the wearer's tier with no frameless history.
+    private func resetStallBackoff() {
+        framelessStallRecoveries = 0
+        stallTierOverride = nil
     }
 
     /// BR P2: drop the Camera capability and its listeners but keep the DeviceSession alive —

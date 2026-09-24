@@ -553,6 +553,13 @@ enum PrivacyLog {
         case captureRequested, captureRejected, captureTimedOut, captureFallbackUsed
         case photoReceived, photoUnexpected, photoCaptured, photoNotSaved
         case stallDetected, stallRecovery, stallRecovered, stallRecoveryFailed
+        /// `StallRecoveryBackoff`: `stallRecoveryNoFrame` is a rebuilt stream that reached
+        /// `.streaming` but never delivered a fresh picture. `stallRecoveryBackoff` is the wait
+        /// before the next attempt, and `stallSelfRecovered` is frames coming back during that wait,
+        /// so no rebuild was needed. `stallTierSteppedDown` is the lower tier asked for after
+        /// repeated failures, and `stallRecoveryGaveUp` is recovery stopping.
+        case stallRecoveryNoFrame, stallRecoveryBackoff, stallSelfRecovered
+        case stallTierSteppedDown, stallRecoveryGaveUp
         /// EO P1. `tierResolved` reports what a `StreamingResolution` tier actually resolves to
         /// on this SDK and device (width/height), instead of the label we asked for — until now
         /// no log has ever recorded what "high" delivers. `frameShape` says which branch of the
