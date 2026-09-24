@@ -28,6 +28,7 @@ func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
     case "action": return .capture
     case "listen": return .listen
     case "quickaction": return .quickAction
+    case "enrol": return .enrol
     default: return .other
     }
 }
@@ -220,6 +221,12 @@ struct OpenGlassesApp: App {
         // field — that value is already what it is migrating from, so an interrupted run leaves the
         // previous behaviour exactly intact.
         LocalModelSelection.store().migrateIfNeeded()
+        // Put the enrolled organisation profile's ceiling in force (Plan CT PR 2) before anything
+        // reads a setting it may lock — the journey signals below among them. The stored document
+        // is re-verified here, never trusted from storage.
+        MainActor.assumeIsolated {
+            OrgProfileManager.shared.loadAtLaunch()
+        }
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they
@@ -253,6 +260,9 @@ struct OpenGlassesApp: App {
 
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
+
+                // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
+                OrgEnrolmentOverlay(service: appState.orgEnrolment)
 
                 // A vault link scanned outside the app (Plan FS PR2). Nothing is fetched or
                 // installed from the link itself — this raises the review flow and no more.
@@ -380,6 +390,16 @@ struct OpenGlassesApp: App {
                         return
                     }
 
+                    // An organisation profile offered by a code or link (Plan CT PR 2). Outside the
+                    // DeepLinkTrust gate for the reason the vault and skill-pack routes are, with the
+                    // same control: the link never acts. It raises a review of the host, and a second
+                    // of the verified profile, and only the second one's button changes anything.
+                    if url.scheme == "openglasses", url.host == "enrol" {
+                        PrivacyLog.deepLink(route: .enrol, source: PrivacyToken("SwiftUI"), verdict: .received)
+                        Task { @MainActor in appState.orgEnrolment.open(url) }
+                        return
+                    }
+
                     // Handle persona quick-launch from widget/watch
                     if url.scheme == "openglasses", url.host == "persona" {
                         let personaId = url.lastPathComponent
@@ -469,6 +489,7 @@ struct OpenGlassesApp: App {
             switch newPhase {
             case .background:
                 appState.skillPackSideload.handleBackground()
+                appState.orgEnrolment.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 if appState.isConnected {
@@ -1116,6 +1137,10 @@ class AppState: ObservableObject, AppStateProtocol {
         return VaultLinkService(isOnCellular: metered)
     }()
 
+    /// An organisation profile arriving by link (Plan CT PR 2). The profile itself, once applied,
+    /// lives in `OrgProfileManager.shared` and `PolicyEnvelope`.
+    lazy var orgEnrolment = OrgEnrolmentService(manager: OrgProfileManager.shared)
+
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
 
@@ -1758,6 +1783,12 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                 )
             }
+        }
+
+        // The organisation policy changed under a running app (Plan CT PR 2): anything that cached a
+        // setting at launch re-reads it, and anything the new policy switched off stops.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.applyOrgPolicyChange() }
         }
 
         // Clinical exports must not outlive the app being onscreen: anything not held by a live
@@ -3975,6 +4006,23 @@ class AppState: ObservableObject, AppStateProtocol {
               let command = AssistiveRouter.narrationCommand(in: text) else { return false }
         SceneNarrationService.shared.handle(command)
         return true
+    }
+
+    /// The organisation policy in force changed (Plan CT PR 2). `Config` already answers with the
+    /// clamped values; this brings the few things that hold a value from earlier into line with it:
+    /// the live privacy filter, and anything running that the policy has now switched off.
+    func applyOrgPolicyChange() {
+        privacyFilter.isEnabled = Config.privacyFilterEnabled
+        if !Config.agentModeEnabled {
+            agentScheduler.stop()
+            // Both are gated on agent mode at start; one already running would otherwise outlive
+            // a policy that has just switched agent mode off.
+            if !hermesBridge.isEnabled { hermesBridge.disconnect() }
+            webHUDMirror.stop()
+        }
+        if !(Config.agentModeEnabled && Config.mcpServerEnabled) {
+            MCPGlassesServer.shared.stop()
+        }
     }
 
     /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.

@@ -1923,9 +1923,27 @@ struct Config {
     // Per-class consent for gateway-initiated device commands. The whole surface additionally
     // gates on `agentModeEnabled`; capture (photo/video/audio/transcription/translation) is the
     // surveillance class and defaults OFF.
-    @UserDefaultsBacked("remoteInvokeObserveEnabled", default: true) static var remoteInvokeObserveEnabled: Bool
-    @UserDefaultsBacked("remoteInvokeOutputEnabled", default: true) static var remoteInvokeOutputEnabled: Bool
-    @UserDefaultsBacked("remoteInvokeCaptureEnabled", default: false) static var remoteInvokeCaptureEnabled: Bool
+    static var remoteInvokeObserveEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeObserveEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeObserveEnabled") as? Bool ?? true) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeObserveEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeObserveEnabled")
+        }
+    }
+    static var remoteInvokeOutputEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeOutputEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeOutputEnabled") as? Bool ?? true) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeOutputEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeOutputEnabled")
+        }
+    }
+    static var remoteInvokeCaptureEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeCaptureEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeCaptureEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeCaptureEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeCaptureEnabled")
+        }
+    }
 
     static var remoteInvokeToggles: RemoteCommandPolicy.Toggles {
         RemoteCommandPolicy.Toggles(
@@ -2200,12 +2218,13 @@ struct Config {
     /// been given a profile.
     static var organizationAllowsUnsignedVaults: Bool {
         get {
-            guard UserDefaults.standard.object(forKey: "organizationAllowsUnsignedVaults") != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: "organizationAllowsUnsignedVaults")
+            let stored = UserDefaults.standard.object(forKey: "organizationAllowsUnsignedVaults") as? Bool ?? true
+            return PolicyEnvelope.bool(.organizationAllowsUnsignedVaults, stored: stored)
         }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults") }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationAllowsUnsignedVaults) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults")
+        }
     }
 
     // MARK: - Spoken sends from the car (Plan FO P3b)
@@ -2222,18 +2241,28 @@ struct Config {
     /// from would be a policy with one branch nobody could ever take.
     static var organizationJobReportChannel: DeliveryChannel? {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: "organizationJobReportChannel"),
-                  !raw.isEmpty else { return nil }
+            let stored = UserDefaults.standard.string(forKey: "organizationJobReportChannel") ?? ""
+            let raw = PolicyEnvelope.string(.organizationJobReportChannel, stored: stored)
+            guard !raw.isEmpty else { return nil }
             return DeliveryChannel(rawValue: raw)
         }
-        set { UserDefaults.standard.set(newValue?.rawValue ?? "", forKey: "organizationJobReportChannel") }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationJobReportChannel) else { return }
+            UserDefaults.standard.set(newValue?.rawValue ?? "", forKey: "organizationJobReportChannel")
+        }
     }
 
     /// Addresses the organisation's profile supplies, as the last step of the recipient order.
     /// A stand-in for the same reason and on the same terms; empty by default.
     static var organizationReportRecipients: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "organizationReportRecipients") ?? [] }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients") }
+        get {
+            PolicyEnvelope.strings(.organizationReportRecipients,
+                                   stored: UserDefaults.standard.stringArray(forKey: "organizationReportRecipients") ?? [])
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationReportRecipients) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients")
+        }
     }
 
     // MARK: - Directions (Plan FO P3c)
@@ -2265,15 +2294,27 @@ struct Config {
     /// it. Empty by default: a phone with no profile has no key, so every job file it opens is
     /// shown as not signed, which is the truth.
     static var organizationJobSigningKey: String {
-        get { UserDefaults.standard.string(forKey: "organizationJobSigningKey") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationJobSigningKey") }
+        get {
+            PolicyEnvelope.string(.organizationJobSigningKey,
+                                  stored: UserDefaults.standard.string(forKey: "organizationJobSigningKey") ?? "")
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationJobSigningKey) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationJobSigningKey")
+        }
     }
 
     /// Whether the organisation refuses job files that are not signed with its key. A stand-in on
     /// the same terms; false by default. Medical mode refuses unsigned files regardless.
     static var organizationRequiresSignedJobFiles: Bool {
-        get { UserDefaults.standard.bool(forKey: "organizationRequiresSignedJobFiles") }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationRequiresSignedJobFiles") }
+        get {
+            PolicyEnvelope.bool(.organizationRequiresSignedJobFiles,
+                                stored: UserDefaults.standard.bool(forKey: "organizationRequiresSignedJobFiles"))
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationRequiresSignedJobFiles) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationRequiresSignedJobFiles")
+        }
     }
 
     // MARK: - Customer sign-off (Plan FO P2c)
@@ -2287,8 +2328,14 @@ struct Config {
     /// developer writes. False — no organisation profile, so the step is offered and never
     /// demanded, which is the behaviour of a phone that has never been given one.
     static var organizationRequiresCustomerSignOff: Bool {
-        get { UserDefaults.standard.bool(forKey: "organizationRequiresCustomerSignOff") }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationRequiresCustomerSignOff") }
+        get {
+            PolicyEnvelope.bool(.organizationRequiresCustomerSignOff,
+                                stored: UserDefaults.standard.bool(forKey: "organizationRequiresCustomerSignOff"))
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationRequiresCustomerSignOff) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationRequiresCustomerSignOff")
+        }
     }
 
     /// The name the customer-facing sign-off sheet is headed with — the trading name the customer
@@ -2298,8 +2345,14 @@ struct Config {
     /// does this is an unset default. Empty means the sheet simply omits the line rather than
     /// inventing a name for a business it knows nothing about.
     static var organizationDisplayName: String {
-        get { UserDefaults.standard.string(forKey: "organizationDisplayName") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationDisplayName") }
+        get {
+            PolicyEnvelope.string(.organizationDisplayName,
+                                  stored: UserDefaults.standard.string(forKey: "organizationDisplayName") ?? "")
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationDisplayName) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationDisplayName")
+        }
     }
 
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
@@ -2967,7 +3020,13 @@ struct Config {
 
     // MARK: - Privacy Filter
 
-    @UserDefaultsBacked("privacyFilterEnabled", default: false) static var privacyFilterEnabled: Bool
+    static var privacyFilterEnabled: Bool {
+        get { PolicyEnvelope.bool(.privacyFilterEnabled, stored: UserDefaults.standard.object(forKey: "privacyFilterEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.privacyFilterEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "privacyFilterEnabled")
+        }
+    }
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
@@ -3612,10 +3671,11 @@ struct Config {
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
     /// The agent has its own identity and learns about the user over time.
     static var agentModeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "agentModeEnabled")
+        PolicyEnvelope.bool(.agentModeEnabled, stored: UserDefaults.standard.bool(forKey: "agentModeEnabled"))
     }
 
     static func setAgentModeEnabled(_ enabled: Bool) {
+        guard !PolicyEnvelope.isLocked(.agentModeEnabled) else { return }
         UserDefaults.standard.set(enabled, forKey: "agentModeEnabled")
     }
 
@@ -3696,7 +3756,13 @@ struct Config {
 
     /// Developer-only: run the local MCP glasses HTTP server (Plan E). Only effective when
     /// `agentModeEnabled` is also on.
-    @UserDefaultsBacked("mcpServerEnabled", default: false) static var mcpServerEnabled: Bool
+    static var mcpServerEnabled: Bool {
+        get { PolicyEnvelope.bool(.mcpServerEnabled, stored: UserDefaults.standard.object(forKey: "mcpServerEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.mcpServerEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "mcpServerEnabled")
+        }
+    }
 
     static func setMCPServerEnabled(_ enabled: Bool) { mcpServerEnabled = enabled }
 

@@ -16,9 +16,13 @@ struct MCPServerSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Enable MCP Glasses Server", isOn: $enabled)
+                // `@AppStorage` reads the stored preference, which an organisation ceiling does not
+                // overwrite (Plan CT) — so while it is locked the switch shows `Config`'s answer.
+                Toggle("Enable MCP Glasses Server",
+                       isOn: PolicyEnvelope.isLocked(.mcpServerEnabled) ? .constant(Config.mcpServerEnabled) : $enabled)
                     .tint(AppAccent.color)
-                    .disabled(!agentModeOn || !legacyTransportAvailable)
+                    .disabled(!agentModeOn || !legacyTransportAvailable || PolicyEnvelope.isLocked(.mcpServerEnabled))
+                ManagedSettingNote(key: .mcpServerEnabled)
                     .onChange(of: enabled) { _, newValue in
                         if newValue && agentModeOn {
                             appState.startMCPServer()

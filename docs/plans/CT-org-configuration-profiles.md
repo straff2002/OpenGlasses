@@ -1,7 +1,8 @@
 # Plan CT — Organisation Configuration Profiles (scan once, configured correctly)
 
-**Status:** 🚧 PR 1 (headless core) implemented 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)) —
-compiled and passed on its first CI run, all 32 new tests green — see *PR 1 as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+**Status:** 🚧 PR 1 (headless core) merged 2026-09-24 ([#548](https://github.com/straff2002/OpenGlasses/pull/548)).
+PR 2a — enforcement, the stored enrolment, the `openglasses://enrol` link, the managed row, removal
+and locked controls — written 2026-09-24, awaiting CI; PR 2b (the lease) next. See *PR 2a as built*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)
@@ -733,6 +734,55 @@ The rest of PR 2:
 - **A check, not a build, for the watch:** confirm that no watch path reaches a ceilinged key except
   through the phone's `Config` getter. If none does, watch propagation stays with Plan CS; if one
   does, it is a bug in this PR.
+
+**PR 2 ships in two parts (decided 2026-09-24).** CI is the only compiler for this work, so each
+round is kept small. **PR 2a** is everything above except the lease bullet: enforcement, the
+stored enrolment, the link, the managed row, removal and the locked controls — the part that makes
+the FO/FS stand-ins reachable at all. **PR 2b** is the lease bullet: renewal, the warning,
+lapse-locking, the clock high-water mark and the signed revocation document.
+
+**PR 2a as built (2026-09-24).**
+
+- `PolicyEnvelope` (`OrgProfile/PolicyEnvelope.swift`) holds the applier result in memory behind a
+  lock and answers the typed reads; `Config`'s sixteen-key surface now reads through it. The five
+  `@UserDefaultsBacked` keys (`privacyFilterEnabled`, the `remoteInvoke*` trio, `mcpServerEnabled`)
+  became hand-written accessors.
+- **A refinement of "a setter under a ceiling is harmless":** the setter of a locked key is
+  *refused*, not merely overridden on read. The reason turned up in the code: several screens hold
+  a copy of the value in `@State` and write it back on the way out (`GlassesPrivacySettingsScreen`
+  does exactly that), so a disabled switch showing the clamped value would have written the
+  organisation's value over the person's own, and removal would then have "restored" the
+  organisation's choice. Refusing the write keeps the person's value untouched for the life of the
+  profile.
+- `OrgProfileManager` stores the **document**, not the decoded profile, and re-verifies it at
+  launch (`OpenGlassesApp.init`, before the settings-journey signals read anything). A document
+  that no longer verifies leaves the phone unmanaged and says so on the managed row. It records the
+  person's own value for each starting value it writes — once, at first enrolment, so a renewal
+  cannot record the organisation's earlier value as the person's — and whether the licence in
+  `LicenseService`'s slot is the one it brought, so removal never clears a code somebody typed.
+  Another organisation's profile is refused until the first is removed; the same `profileId`
+  renews in place.
+- `OrgEnrolmentService` is the link: `openglasses://enrol?url=https://…`, **HTTPS only** (the
+  sideload's LAN-HTTP allowance was dropped — an organisation profile has no developer loop to
+  serve), no `sig` parameter (the signature is inside the document), an offer naming the host
+  before any fetch, a 64 KB `BoundedHTTPClient.Profile.orgProfile`, then the review sheet: who it
+  is from, what it locks, what it sets, what it supplies, and what this build could not use. A
+  link that arrives during onboarding is held and offered from `completeOnboarding()`.
+- The review sheet, the "Managed by ⟨org⟩" section at the top of the Settings hub (enrolment date,
+  policy end, enrolment id), removal behind `OwnerGateAuth.authenticate` — fail-open like the
+  Simple Mode gate, because a phone without a passcode that could never be un-managed is the trap
+  this plan names — and a "Set by ⟨org⟩" note under each locked switch (privacy blur, the three
+  remote-invoke switches, agentic features, the MCP server). The Discover footer changes on a
+  managed phone.
+- On `.orgPolicyDidChange`, `AppState` re-reads the live privacy filter and stops what the policy
+  switched off: the agent scheduler, the Hermes bridge and the web HUD mirror when agent mode goes,
+  the MCP server when either of its two switches does.
+- **Watch check:** nothing under `OpenGlassesWatch` reads any of the sixteen keys; the watch reaches
+  them only through the phone. Propagation stays with Plan CS.
+- **Owed, and recorded here rather than done:** the stored document sits under `DataStoreRegistry`'s
+  generic `.preferences` store. It carries the organisation's report recipients and a licence code,
+  so it wants its own registry case; that lands with PR 4's owner axis, which reworks the registry
+  for the organisation's data anyway.
 
 ### PR 3 — the scanner, the first-run branch, and enrolment
 
