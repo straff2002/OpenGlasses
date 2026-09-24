@@ -110,9 +110,12 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
     /// off-screen, it does not exist yet.
     private func reach(_ element: XCUIElement, in app: XCUIApplication, named name: String,
                        swipes: Int = 20) {
+        let list = app.collectionViews.firstMatch
         for _ in 0..<swipes {
             if element.exists && element.isHittable { return }
-            app.swipeUp()
+            // Keep the gesture inside the List rather than targeting the app's centre,
+            // which can fall on an overlay or the keyboard on a smaller phone.
+            if list.exists { list.swipeUp() } else { app.swipeUp() }
         }
         XCTAssertTrue(element.exists && element.isHittable,
                       "\(name) never came into reach after \(swipes) swipes")
@@ -128,7 +131,13 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
         let field = app.searchFields.firstMatch
         if field.waitForExistence(timeout: 20) {
             field.tap()
-            field.typeText("1004")
+            // Submit the search before scrolling so the keyboard cannot intercept swipes
+            // or cover the past-job row on smaller phones.
+            field.typeText("1004\n")
+            let keyboardDismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+            XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 10), .completed,
+                           "The search keyboard must dismiss before scrolling to the past job")
         }
         let row = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
