@@ -125,6 +125,47 @@ final class OrgEnrolmentServiceTests: XCTestCase {
         guard case .failed = service.stage else { return XCTFail("\(service.stage)") }
     }
 
+    // MARK: - Scanned codes (Plan CT PR 3)
+
+    func testAScannedCodeMayCarryTheLinkOrTheProfileAddress() {
+        let service = makeService { _ in Data() }
+        service.openScanned("openglasses://enrol?url=https%3A%2F%2Fconfig.northbridge.example%2Fprofile.txt")
+        XCTAssertEqual(service.stage, .offer(host: "config.northbridge.example"))
+        XCTAssertEqual(service.source, .scan)
+
+        service.openScanned("  https://config.northbridge.example/profile.txt\n")
+        XCTAssertEqual(service.stage, .offer(host: "config.northbridge.example"))
+    }
+
+    func testAScannedCodeThatIsNotAProfileIsRefused() {
+        let service = makeService { _ in Data() }
+        for text in ["http://config.northbridge.example/profile.txt", "WIFI:S:Workshop;T:WPA;P:hunter2;;",
+                     "openglasses://vault?url=https%3A%2F%2Fa.example%2Fp", "just some words"] {
+            service.openScanned(text)
+            guard case .failed = service.stage else { XCTFail("accepted \(text)"); continue }
+        }
+    }
+
+    func testAScanDuringOnboardingIsOfferedNotHeld() async throws {
+        pastOnboarding = false
+        let document = try signedDocument()
+        let service = makeService { _ in Data(document.utf8) }
+        service.openScanned("https://config.northbridge.example/profile.txt")
+        XCTAssertEqual(service.stage, .offer(host: "config.northbridge.example"))
+        XCTAssertFalse(service.hasHeldLink)
+
+        await service.approveFetch()
+        guard case .reviewing(let review) = service.stage else { return XCTFail("\(service.stage)") }
+        XCTAssertEqual(review.source, .scan, "recorded as scanned, so removal and the managed row say so")
+    }
+
+    func testNoSettingAProfileMayTouchIsAnOnboardingFlag() {
+        // Applying a profile mid-onboarding is safe only because none of its keys is one the
+        // onboarding gate reads (Plan CD P1) — secrets are excluded separately.
+        let settable = Set(SettingKey.allCases.map(\.rawValue))
+        XCTAssertFalse(settable.contains("hasCompletedOnboarding"))
+    }
+
     // MARK: - Onboarding
 
     func testALinkDuringOnboardingIsHeldThenOffered() {

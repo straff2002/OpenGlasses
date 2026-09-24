@@ -52,8 +52,8 @@ final class OrgEnrolmentService: ObservableObject {
 
     @Published private(set) var stage: Stage = .idle
 
-    /// How a profile applied through this service is recorded.
-    let source: ProfileSource = .link
+    /// How the profile being offered arrived — recorded with it once applied.
+    private(set) var source: ProfileSource = .link
 
     private let manager: OrgProfileManager
     private let fetch: (URL) async throws -> Data
@@ -97,6 +97,7 @@ final class OrgEnrolmentService: ObservableObject {
 
     func open(_ url: URL) {
         reset()
+        source = .link
         switch Self.parse(url) {
         case .failure(let refusal):
             stage = .failed(refusal.message)
@@ -110,10 +111,45 @@ final class OrgEnrolmentService: ObservableObject {
         }
     }
 
+    /// A code read by the in-app scanner (Plan CT PR 3). It carries either the enrolment link or
+    /// the profile's own `https` address, and either way it goes through the link's policy. Unlike a
+    /// link arriving from outside, a scan is never held for onboarding: the person asked for it —
+    /// the welcome page is one of the two places the scanner opens from — and applying a profile
+    /// writes no API key and no onboarding flag, which is what made mid-onboarding writes hazardous
+    /// (Plan CD P1).
+    func openScanned(_ text: String) {
+        reset()
+        source = .scan
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed) else {
+            stage = .failed(LinkRefusal.notAnEnrolmentLink.message)
+            return
+        }
+        let link: URL
+        if url.scheme?.lowercased() == "https" {
+            var components = URLComponents()
+            components.scheme = "openglasses"
+            components.host = "enrol"
+            components.queryItems = [URLQueryItem(name: "url", value: trimmed)]
+            guard let wrapped = components.url else {
+                stage = .failed(LinkRefusal.notAnEnrolmentLink.message)
+                return
+            }
+            link = wrapped
+        } else {
+            link = url
+        }
+        switch Self.parse(link) {
+        case .failure(let refusal): stage = .failed(refusal.message)
+        case .success(let target): offer(target)
+        }
+    }
+
     /// Onboarding has just finished: offer the link that arrived during it.
     func releaseHeldLink() {
         guard let held = heldURL, isPastOnboarding() else { return }
         heldURL = nil
+        source = .link
         offer(held)
     }
 
