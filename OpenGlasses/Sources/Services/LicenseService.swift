@@ -61,10 +61,14 @@ final class LicenseService: ObservableObject {
         var reference: String?
         /// Vault packs included with this licence, by each pack's licence key (Plan EG).
         var packs: [String]?
+        /// The HTTPS address of the organisation's hosted configuration profile (Plan CT 3a). A
+        /// licence carrying it enrols the phone when entered; one without it activates as before.
+        /// Signed like every other claim, so the address is the vendor's statement, not the host's.
+        var profile: String?
 
         init(feature: String, licensee: String, issued: Date, expires: Date?,
              tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
-             packs: [String]? = nil) {
+             packs: [String]? = nil, profile: String? = nil) {
             self.feature = feature
             self.licensee = licensee
             self.issued = issued
@@ -74,6 +78,7 @@ final class LicenseService: ObservableObject {
             self.seats = seats
             self.reference = reference
             self.packs = packs
+            self.profile = profile
         }
 
         /// The tier this payload grants; an unrecognised or missing claim is team, never more.

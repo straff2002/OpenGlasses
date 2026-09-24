@@ -971,6 +971,21 @@ struct FieldAssistSettingsView: View {
     }
 
     private func activateLicense() {
+        // A licence that names its organisation's profile enrols the phone instead (Plan CT 3a);
+        // the review sheet takes it from here, and the licence activates when it is confirmed.
+        switch appState.orgEnrolment.openLicence(licenseCode) {
+        case .enrolling(let licensee):
+            licenseMessageIsError = false
+            licenseMessage = "This licence is for \(licensee) — setting up this phone."
+            licenseCode = ""
+            return
+        case .refused(let message):
+            licenseMessageIsError = true
+            licenseMessage = message
+            return
+        case .plain:
+            break
+        }
         do {
             let payload = try license.activate(code: licenseCode)
             licenseMessageIsError = false

@@ -8,6 +8,7 @@ import CryptoKit
 //       [--key-file <path|->]   where to read the signing key from (see below)
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
+//       [--profile https://…]   the organisation's hosted profile; entering the code enrols the phone (Plan CT 3a)
 //
 //   ./Scripts/generate-field-license.swift keygen <privateKeyFile>
 //       One-off keypair generation. Writes the PRIVATE key to <privateKeyFile> with mode 0600
@@ -39,6 +40,7 @@ struct LicensePayload: Codable {
     var seats: Int?
     var reference: String?
     var packs: [String]?
+    var profile: String?
 }
 
 func fail(_ message: String) -> Never {
@@ -179,7 +181,7 @@ let usage = """
 usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--key-file <path|->]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
-         [--seats N] [--reference TEXT] [--days N] [--pack KEY ...]
+         [--seats N] [--reference TEXT] [--days N] [--pack KEY ...] [--profile https://…]
        generate-field-license.swift keygen <privateKeyFile>
 
   --key-file names a PATH (or `-` for stdin). A key passed as an argument is refused:
@@ -196,6 +198,7 @@ var seats: Int?
 var reference: String?
 var days: Int?
 var packs: [String] = []
+var profileAddress: String?
 var keyFile: String?
 var iterator = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = iterator.next() {
@@ -221,6 +224,13 @@ while let arg = iterator.next() {
         keyFile = value(arg)
     case "--pack":
         packs.append(value(arg))
+    case "--profile":
+        let address = value(arg)
+        guard let url = URL(string: address), url.scheme?.lowercased() == "https", url.host != nil,
+              url.user == nil, url.password == nil, url.fragment == nil else {
+            fail("--profile must be an https address with no credentials or fragment")
+        }
+        profileAddress = address
     case "--days":
         guard let n = Int(value(arg)), n > 0 else { fail("--days must be a positive integer") }
         days = n
@@ -255,7 +265,8 @@ do {
     let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
     let payload = LicensePayload(feature: "field_assist", licensee: licensee, issued: Date(), expires: expires,
                                  tier: tier, plan: plan, seats: seats, reference: reference,
-                                 packs: packs.isEmpty ? nil : packs)
+                                 packs: packs.isEmpty ? nil : packs,
+                                 profile: profileAddress)
 
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601

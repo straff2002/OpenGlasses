@@ -68,6 +68,13 @@ struct OrgEnrolmentSheet: View {
         case .fetching(let host):
             VStack(spacing: 12) {
                 ProgressView()
+                if let licensee = service.settingUpFor {
+                    // A licence key named its organisation's profile (Plan CT 3a): the vendor signed
+                    // that address, so the organisation is what is worth showing, not the host.
+                    Text("Setting up this phone for \(licensee)")
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                }
                 Text(verbatim: host)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

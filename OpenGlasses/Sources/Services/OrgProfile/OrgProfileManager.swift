@@ -19,6 +19,9 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// Whether the licence code in `LicenseService`'s slot was put there by this profile — so
     /// removal clears it only then, and never a code somebody typed by hand.
     var activatedLicence: Bool
+    /// The licence code enrolment activated, when it was not the profile's own — a licence key
+    /// entered by hand whose `profile` claim named this profile (Plan CT 3a). Nil means the profile's.
+    var activatedLicenceCode: String?
 
     // Plan CT PR 2b — the lease. All optional, so a record written before the lease existed reads.
 
@@ -62,6 +65,9 @@ struct OrgProfileReview: Identifiable, Equatable {
     let replacesCurrent: Bool
     /// Where the document was fetched from; the lease renews against it.
     var sourceURL: URL? = nil
+    /// The licence enrolment will activate, when it is the entered key rather than the profile's
+    /// own code (Plan CT 3a: the later-issued of the two).
+    var licenceToActivate: String? = nil
 
     var organizationName: String { profile.organizationName }
 
@@ -86,7 +92,7 @@ struct OrgProfileReview: Identifiable, Equatable {
         result.drops.map { "\($0.key) — \($0.reason.explanation)" }
     }
 
-    var carriesLicence: Bool { profile.licenceCode != nil }
+    var carriesLicence: Bool { (licenceToActivate ?? profile.licenceCode) != nil }
 
     /// The vault pack enrolment will install, if the profile names one.
     var packId: String? { profile.vaultPack?.packId }
@@ -108,6 +114,8 @@ final class OrgProfileManager: ObservableObject {
         case revocation
         /// A different organisation's profile is already in force; it has to be removed first.
         case managedByAnother(String)
+        /// The licence key entered and the profile it points at name different organisations.
+        case differentOrganisation(entered: String, profile: String)
         case licence(String)
         case notRemovable
 
@@ -116,6 +124,8 @@ final class OrgProfileManager: ObservableObject {
             case .verification(let failure): return failure.errorDescription
             case .revocation: return "That link carries a revocation, not a profile. There is nothing to apply."
             case .managedByAnother(let name): return "This phone is already managed by \(name). Remove that first, from Settings."
+            case .differentOrganisation(let entered, let profile):
+                return "This licence is for \(entered), but the profile it points to is for \(profile). Ask your organisation for a new key."
             case .licence(let message): return message
             case .notRemovable: return "Your organisation's device management applied this profile, so it can only be removed there."
             }
@@ -214,7 +224,7 @@ final class OrgProfileManager: ObservableObject {
 
     /// Verify a fetched document and build what the person is shown. Nothing is written.
     func review(document: String, source: ProfileSource,
-                sourceURL: URL? = nil) -> Result<OrgProfileReview, Refusal> {
+                sourceURL: URL? = nil, enteredLicence: String? = nil) -> Result<OrgProfileReview, Refusal> {
         let verified: ConfigProfile
         do {
             switch try ProfileVerification.verify(document, keys: seams.verificationKeys) {
@@ -233,11 +243,28 @@ final class OrgProfileManager: ObservableObject {
         if let current = profile, current.profileId != verified.profileId {
             return .failure(.managedByAnother(current.organizationName))
         }
+        // A licence key that pointed here must name the same organisation as the profile's own
+        // licence, and the later-issued of the two is the one activated — so a renewal re-minted at
+        // the same address wins over an older code entered from an email.
+        var licenceToActivate: String?
+        if let entered = enteredLicence,
+           let enteredPayload = try? LicenseService.decode(code: entered, publicKeyBase64: seams.licenceKey) {
+            if let own = verified.licenceCode,
+               let ownPayload = try? LicenseService.decode(code: own, publicKeyBase64: seams.licenceKey) {
+                guard ownPayload.licensee == enteredPayload.licensee else {
+                    return .failure(.differentOrganisation(entered: enteredPayload.licensee,
+                                                           profile: ownPayload.licensee))
+                }
+                if enteredPayload.issued > ownPayload.issued { licenceToActivate = entered }
+            } else {
+                licenceToActivate = entered
+            }
+        }
         let result = ProfileApplier.apply(profile: verified,
                                           resolvableVaultIds: resolvableIncludingPack(verified))
         return .success(OrgProfileReview(document: document, source: source, profile: verified,
                                          result: result, replacesCurrent: profile != nil,
-                                         sourceURL: sourceURL))
+                                         sourceURL: sourceURL, licenceToActivate: licenceToActivate))
     }
 
     /// Apply a reviewed profile: licence first, then settings, then the ceiling.
@@ -249,7 +276,8 @@ final class OrgProfileManager: ObservableObject {
         }
 
         var activatedLicence = record?.activatedLicence ?? false
-        if let code = review.profile.licenceCode {
+        let licence = review.licenceToActivate ?? review.profile.licenceCode
+        if let code = licence {
             do {
                 try seams.activateLicence(code)
                 activatedLicence = true
@@ -288,6 +316,7 @@ final class OrgProfileManager: ObservableObject {
         newRecord.lastRenewedAt = now
         newRecord.lastRenewalAttempt = now
         newRecord.clockHighWater = max(record?.clockHighWater ?? now, now)
+        newRecord.activatedLicenceCode = review.licenceToActivate
         newRecord.pendingPackId = pendingPack
         newRecord.heldStartingValues = held.isEmpty ? nil : held
         seams.saveRecord(newRecord)
@@ -401,7 +430,8 @@ final class OrgProfileManager: ObservableObject {
         }
         lease = status
         contentLocked = locked
-        seams.withholdLicence(locked && current.activatedLicence ? profile.licenceCode : nil)
+        seams.withholdLicence(locked && current.activatedLicence
+                              ? (current.activatedLicenceCode ?? profile.licenceCode) : nil)
         return status
     }
 
@@ -469,6 +499,8 @@ final class OrgProfileManager: ObservableObject {
         if let code = renewed.licenceCode, code != profile?.licenceCode,
            (try? seams.activateLicence(code)) != nil {
             current.activatedLicence = true
+            // The profile's own code is now the one in force, not a key entered by hand.
+            current.activatedLicenceCode = nil
         }
         let result = ProfileApplier.apply(profile: renewed, resolvableVaultIds: seams.resolvableVaultIds())
         // Values still waiting for the pack keep waiting: a renewal must not write them early.
@@ -483,7 +515,7 @@ final class OrgProfileManager: ObservableObject {
         writeStartingValues(writable, onlyNewKeys: true, priors: &priors, wrote: &wrote)
 
         // The record is updated in place, so nothing a later phase added to it — the pack still
-        // pending, among others — is lost on renewal.
+        // pending, the licence entered by hand — is lost on renewal.
         current.document = document
         current.priorStartingValues = priors
         current.wroteStartingKeys = wrote.sorted()
@@ -509,7 +541,8 @@ final class OrgProfileManager: ObservableObject {
             guard let key = SettingKey(rawValue: name) else { continue }
             seams.writeSetting(key, current.priorStartingValues[name])
         }
-        if current.activatedLicence, let code = profile?.licenceCode ?? storedProfileLicence(current),
+        if current.activatedLicence,
+           let code = current.activatedLicenceCode ?? profile?.licenceCode ?? storedProfileLicence(current),
            seams.storedLicenceCode() == code.trimmingCharacters(in: .whitespacesAndNewlines) {
             seams.clearLicence()
         }

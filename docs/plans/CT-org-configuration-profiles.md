@@ -1185,6 +1185,30 @@ they are what the demo needs.
   new). Step 5, the organisation's own manuals, is now Plan FT's (FT4): they come from the base
   server, not a profile pointer.
 
+**3a, first slice as built (2026-09-24) — enrolment by licence key.** The re-cut's 3a is shipping
+in three slices: this one; the short activation key and its sealed file on the static host; and the
+first-run branch with the offline holding screen and the `aiModel` key page.
+
+- `LicensePayload` gains the optional signed `profile` claim, and `generate-field-license.swift`
+  takes `--profile https://…`, refusing anything but an HTTPS address with no credentials or
+  fragment. Older builds decode such a code as a plain licence.
+- `OrgEnrolmentService.openLicence` is the entry point. A key with no `profile` claim returns
+  `.plain` and activates exactly as before. A key with one fetches the profile with **no host
+  offer**, because the vendor signed the address. The sheet shows *Setting up this phone for
+  ⟨licensee⟩*, and the rest is the link's path: bounded fetch, verification, review, one
+  confirmation. An address the link policy refuses is refused. Offline, the sheet says setting up
+  needs the internet once. Licence entry in Field Assist settings goes through it first.
+- **Same organisation, later licence.** When the profile carries its own licence code, its
+  licensee must equal the entered key's, or the review refuses naming both. The later-issued of the
+  two is activated. A profile without a licence activates the entered key. The enrolment records
+  `ProfileSource.licence` and `activatedLicenceCode`, so lease withholding and removal act on the
+  licence actually activated. Removal clears it: the key was the organisation's.
+- **A fix found on the way:** PR 2b's renewal rebuilt the enrolment record from scratch and copied
+  only the lease fields, so a renewal would have dropped the pack still pending. That fix went into
+  3d ([#555](https://github.com/straff2002/OpenGlasses/pull/555)), where the pending pack was
+  introduced: renewal now updates the record in place and leaves held values unwritten. This slice
+  adds that a renewal bringing a newer licence of the profile's own clears `activatedLicenceCode`.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
