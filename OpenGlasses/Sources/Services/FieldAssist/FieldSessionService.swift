@@ -1569,6 +1569,21 @@ final class FieldSessionService: ObservableObject {
                                        "total": AnyCodable(selection.entries.count)]))
     }
 
+    /// Plan CT PR 4 — erase session logs from a phone that has left the firm: its logs from the
+    /// managed period are the firm's record, delivered to it first (`OrgDepartureService`). Never
+    /// the session in progress. Returns how many were removed.
+    @discardableResult
+    func deleteSessions(ids: Set<String>) -> Int {
+        let erasable = ids.subtracting(activeSession.map { [$0.id] } ?? [])
+        var removed = 0
+        for id in erasable {
+            let directory = sessionsRoot.appendingPathComponent(id, isDirectory: true)
+            if (try? FileManager.default.removeItem(at: directory)) != nil { removed += 1 }
+        }
+        history.removeAll { erasable.contains($0.id) }
+        return removed
+    }
+
     /// Where a session's evidence files live. Needed by the share sheet, which hands out the
     /// stored (already filtered) originals rather than anything re-encoded.
     func photosDirectory(sessionId: String) -> URL {

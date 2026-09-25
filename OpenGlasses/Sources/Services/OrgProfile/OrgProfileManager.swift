@@ -192,11 +192,29 @@ final class OrgProfileManager: ObservableObject {
         var newModelConfigId: () -> String = { UUID().uuidString }
         /// Plan CT 3b: an administrator phone's kept card goes with the enrolment it belonged to.
         var forgetAdminCard: @MainActor () -> Void = { AdminGate.shared.stopBeingAdministratorPhone() }
+        /// Plan CT PR 4: the phone has left the firm. Does nothing by default — erasure is too
+        /// consequential to be a default a test inherits; `production` wires it.
+        var beginDeparture: @MainActor (OrgDeparture.Reason, OrgEnrolmentRecord, ConfigProfile?) -> Void = { _, _, _ in }
+
+        /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
+        static var production: Seams {
+            var seams = Seams()
+            seams.beginDeparture = { reason, record, profile in
+                Task { @MainActor in
+                    await OrgDepartureService.shared.begin(
+                        reason, organizationName: profile?.organizationName ?? "your organisation",
+                        enrolmentId: record.enrolmentId, enrolledAt: record.enrolledAt,
+                        packId: profile?.vaultPack?.packId,
+                        undeliveredEraseDays: profile?.undeliveredEraseDays)
+                }
+            }
+            return seams
+        }
     }
 
     /// The app's one manager. `PolicyEnvelope` is process-wide, so there is only ever one
     /// enrolment in force; tests build their own instance over injected seams instead.
-    static let shared = OrgProfileManager()
+    static let shared = OrgProfileManager(seams: .production)
 
     @Published private(set) var record: OrgEnrolmentRecord?
     @Published private(set) var profile: ConfigProfile?
@@ -619,6 +637,8 @@ final class OrgProfileManager: ObservableObject {
         record = current
         // A revoked administrator phone is no longer one — re-enrolling must not quietly restore it.
         seams.forgetAdminCard()
+        // Plan CT PR 4: the firm's content goes, and its records go to it first.
+        seams.beginDeparture(.revoked, current, profile)
         // Its rules lift with the revocation; its content stays locked (the lease is not in force).
         seams.clearEnvelope()
     }
@@ -686,6 +706,9 @@ final class OrgProfileManager: ObservableObject {
             if seams.activeModelId() == id, let next = models.first { seams.setActiveModelId(next.id) }
         }
         seams.forgetAdminCard()
+        // Removal is treated exactly as revocation, or removing would be the way to keep the
+        // firm's manuals.
+        seams.beginDeparture(.removed, current, profile)
         seams.saveRecord(nil)
         record = nil
         profile = nil
