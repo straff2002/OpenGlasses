@@ -94,15 +94,8 @@ New in this range. A firm can manage a fleet of phones instead of every technici
 | Medical Compliance | $9.99 a month, $99.99 a year | One-week free trial on both. Its paywall now shows only Medical plans. |
 | Vault packs | Per-pack App Store product | The mechanism exists, but the catalogue is empty. Nothing to buy yet. |
 
-The paywall shows the live App Store price, not this table, and the figures are not yet final. Report exactly what TestFlight shows, and do not quote a price to a prospect until the team confirms it in writing. The stored licence code can be removed from Field Assist's locked (unlicensed) screen. That is the screen inside Field Assist, not the iOS Lock Screen.
+The paywall shows the live App Store price, not this table, and the figures are not yet final. Report exactly what TestFlight shows. The stored licence code can be removed from Field Assist's locked (unlicensed) screen. That is the screen inside Field Assist, not the iOS Lock Screen.
 
-## 9. For selling it
-
-**You can say:** one job, one conversation. Manuals never leave the phone, and the app cannot redistribute them. Publishers can sign vaults, and unsigned ones are flagged on every job. Organisations enrol phones with a code. Sign-off on the work order. No analytics or crash reporting of our own, glasses telemetry blocked, and a published privacy policy that says so. Usable without sight.
-
-**Do not promise yet:** field-proven (that is what the pilot is for), a legal e-signature, zero-touch enrolment, fault clips to the office, vault packs to buy, long-session continuity on providers other than ChatGPT (Subscription), or a price.
-
-**Worth asking prospects:** which of those messages lands first, whether the lack of a Field Assist trial stops a conversation, and which manufacturer or dealer would be the right first signed-pack partner.
 
 ---
 
@@ -210,11 +203,20 @@ Use the app on a phone and glasses. No code or developer tools. Sections match P
 | 3 | Wake word several times in a row, including interrupting mid-answer. | Never stuck listening or not listening. |
 | 4 | Any long session. | Note any crash or freeze and send an Email Report with the time. |
 
+## 9. Purchases (sandbox)
+
+| # | Do this | Expect |
+|---|---|---|
+| 1 | Field Assist paywall. | Monthly and annual only, no one-time, no trial. Write down the exact prices. |
+| 2 | Medical Compliance paywall. | Medical plans only, one-week trial. |
+| 3 | Buy, delete and reinstall the app, then Restore Purchases. | Field Assist back at startup without a second tap. |
+| 4 | Field Assist locked screen › Remove Stored Code. | The stored licence code is cleared. |
+
 ## Priority if time is short
 
 1. Sections 1 and 2: the newest work, and explicitly waiting on a device run.
 2. Section 6: a VoiceOver pass on real hardware.
-3. Section 4 steps 3 to 5 (vault by QR over cellular).
+3. Section 4 steps 3 to 5 (vault by QR over cellular) and section 9 (prices).
 4. Section 3 if the team issues a licence, then 5, 7 and 8.
 
 ## Intentional, not bugs
@@ -227,4 +229,3 @@ Blank streaming relay. Job tab hidden unless Field Assist is on or a job is open
 2. Did the "is the previous unit finished?" question help, or interrupt at the wrong moments?
 3. Was the debrief good enough to send without editing?
 4. Would a technician rather get vaults by folder, by link or QR, or through their organisation?
-5. Which selling point in section A9 would you lead with, and what would a prospect push back on?
