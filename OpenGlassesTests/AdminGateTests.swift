@@ -16,7 +16,7 @@ final class AdminGateTests: XCTestCase {
 
     /// "correct horse" under this salt at 100 000 iterations.
     private let salt = Data(base64Encoded: "b3BlbmdsYXNzZXMtc2FsdA==")!
-    private let hash = Data(base64Encoded: "t3Byn9NtZwgSXo5BLIW88G5uJL/MRsOduKY91xwyFFI=")!
+    private let passcodeHash = Data(base64Encoded: "t3Byn9NtZwgSXo5BLIW88G5uJL/MRsOduKY91xwyFFI=")!
     private let cardBody = "0123456789ABCDEFGHJKMNPQRS"
     private let cardDigestHex = "d0b169d2dc9b382e5292efc628c4e977f1825895f0524e8dce3d49b2956049a2"
 
@@ -40,7 +40,7 @@ final class AdminGateTests: XCTestCase {
     }
 
     private func credentials(passcode: Bool = true, card: Bool = true) throws -> AdminCredentials {
-        AdminCredentials(passcode: passcode ? .init(salt: salt, iterations: 100_000, hash: hash) : nil,
+        AdminCredentials(passcode: passcode ? .init(salt: salt, iterations: 100_000, hash: passcodeHash) : nil,
                          cardDigest: card ? try AdminSecrets.resolveCard(cardDigestHex).get() : nil)
     }
 
@@ -51,7 +51,7 @@ final class AdminGateTests: XCTestCase {
                        "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b")
         XCTAssertEqual(AdminSecrets.pbkdf2("password", salt: Data("salt".utf8), iterations: 4096)?.hexString,
                        "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a")
-        XCTAssertEqual(AdminSecrets.pbkdf2("correct horse", salt: salt, iterations: 100_000), hash)
+        XCTAssertEqual(AdminSecrets.pbkdf2("correct horse", salt: salt, iterations: 100_000), passcodeHash)
         XCTAssertNil(AdminSecrets.pbkdf2("", salt: salt, iterations: 1))
     }
 
@@ -82,7 +82,7 @@ final class AdminGateTests: XCTestCase {
 
     func testTheFieldAssistEditionWithItsCredentialsResolves() throws {
         let verifier = ConfigProfile.PasscodeVerifier(salt: salt.base64EncodedString(), iterations: 100_000,
-                                                      hash: hash.base64EncodedString())
+                                                      hash: passcodeHash.base64EncodedString())
         let result = apply(edition: "fieldAssist", passcode: verifier, card: cardDigestHex.uppercased())
         XCTAssertEqual(result.adminPolicy, AdminPolicy(edition: .fieldAssist, credentials: try credentials()))
         XCTAssertEqual(result.adminPolicy?.credentials.method, .cardOrPasscode)
@@ -94,7 +94,7 @@ final class AdminGateTests: XCTestCase {
         XCTAssertEqual(apply(edition: "kiosk").drops.map(\.key), ["edition"])
 
         let cheap = ConfigProfile.PasscodeVerifier(salt: salt.base64EncodedString(), iterations: 1_000,
-                                                   hash: hash.base64EncodedString())
+                                                   hash: passcodeHash.base64EncodedString())
         let result = apply(edition: "fieldAssist", passcode: cheap, card: "not-a-digest")
         XCTAssertEqual(Set(result.drops.map(\.key)), ["adminPasscode", "adminCard"])
         XCTAssertEqual(result.adminPolicy?.credentials.method, .deviceOwner,
@@ -106,7 +106,7 @@ final class AdminGateTests: XCTestCase {
 
     func testTheReviewSaysHowAdministratorSettingsOpen() throws {
         let verifier = ConfigProfile.PasscodeVerifier(salt: salt.base64EncodedString(), iterations: 100_000,
-                                                      hash: hash.base64EncodedString())
+                                                      hash: passcodeHash.base64EncodedString())
         func lines(_ result: ProfileApplier.Result) -> [String] {
             let profile = ConfigProfile(keyId: "k", profileId: "p", organizationName: "Org", issued: now, leaseDays: 30)
             return OrgProfileReview(document: "", source: .link, profile: profile, result: result,
