@@ -400,6 +400,8 @@ the firm's margin.
    CSV laid out the way that manufacturer asks.
 5. The claim's status and the amount recovered are recorded against the job.
 
+It starts before the job: see *Warranty status goes to the engineer, too* below.
+
 **Reuses.** `DeviceIdentityField` records model, serial, board part number, firmware and
 refrigerant, each with its source (nameplate, spoken or the machine's display). Its own comment
 already says why: *"a record that cannot say whether a serial was read by a camera or spoken by a
@@ -407,8 +409,19 @@ technician is a record a warranty department cannot use."* Evidence is already m
 `fix` (`EvidenceSelection.Role`); parts are in the work record; fault codes are in the vault's code
 tables.
 
-**Phone side.** None to start. Later, the install date if the register can't supply it, read off the
-nameplate or asked for.
+**Phone side.** **Plan EM P1b first.** Found 2026-09-25: the identity fields are never written
+outside tests, so today's reports carry no serial at all and a model is recorded only when the vault
+lists it (see EM, *Identity fields: found unwired*). P1b adds a spoken and nameplate capture with a
+character-by-character read-back. Later, the install date if the register can't supply it, read off
+the nameplate or asked for.
+
+**Warranty status goes to the engineer, too** (owner, 2026-09-25: base holds the information and
+feeds each engineer what their job needs). When a job's unit is under warranty, the job file says so
+and the brief's *Known equipment* section reads it out: *"Under warranty until March 2027 — keep the
+failed part, photograph the nameplate and the failed part, fit a manufacturer's part."* Those three
+are what a claim is most often rejected for, and they can only be done on site. It is a new optional
+field in the `.ogjob` job file with a format version, like the crew history, and it carries only
+this job's units — never the register.
 
 **Server side.** Warranty terms per manufacturer (entered by the firm), claim templates, and a
 claims list with status and amounts.
