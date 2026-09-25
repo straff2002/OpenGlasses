@@ -54,6 +54,13 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     /// The AI provider and model the organisation uses (Plan CT 3a). Which provider is not a
     /// secret; the key for it is, so the key never travels here — it is entered on the phone.
     var aiModel: AIModel?
+    /// Plan CT 3b — a named single-purpose presentation. `"fieldAssist"` is the one this build
+    /// knows; anything else is a named drop and the app keeps its normal presentation.
+    var edition: String?
+    /// Plan CT 3b — a verifier for the organisation's administrator passcode, never the passcode.
+    var adminPasscode: PasscodeVerifier?
+    /// Plan CT 3b — hex SHA-256 of the admin card's secret (`AdminSecrets.cardDigest`).
+    var adminCard: String?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
 
@@ -85,6 +92,27 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         }
     }
 
+    /// PBKDF2-HMAC-SHA256 of the passcode: `{salt, iterations, hash}`, salt and hash in base64.
+    /// Decoded without failing, like `AIModel`: a malformed entry is a named drop.
+    struct PasscodeVerifier: Codable, Equatable, Sendable {
+        var salt: String?
+        var iterations: Int?
+        var hash: String?
+
+        init(salt: String?, iterations: Int?, hash: String?) {
+            self.salt = salt
+            self.iterations = iterations
+            self.hash = hash
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            salt = try? container?.decodeIfPresent(String.self, forKey: .salt)
+            iterations = try? container?.decodeIfPresent(Int.self, forKey: .iterations)
+            hash = try? container?.decodeIfPresent(String.self, forKey: .hash)
+        }
+    }
+
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
         /// An organisation-hosted location for its own documents. A pointer, never bytes.
@@ -96,6 +124,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          undeliveredEraseDays: Int? = nil, licenceCode: String? = nil,
          vaultPack: VaultPackReference? = nil, skillPacks: [String]? = nil,
          revokedEnrolmentIds: [String]? = nil, aiModel: AIModel? = nil,
+         edition: String? = nil, adminPasscode: PasscodeVerifier? = nil, adminCard: String? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
          schemaVersion: Int = ConfigProfile.supportedSchemaVersion) {
@@ -114,6 +143,9 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.skillPacks = skillPacks
         self.revokedEnrolmentIds = revokedEnrolmentIds
         self.aiModel = aiModel
+        self.edition = edition
+        self.adminPasscode = adminPasscode
+        self.adminCard = adminCard
         self.settings = settings
     }
 }

@@ -165,6 +165,16 @@ private struct OrgProfileReviewList: View {
                 }
             }
 
+            if !review.adminLines.isEmpty {
+                Section {
+                    ForEach(review.adminLines, id: \.self) { Text(verbatim: $0) }
+                } header: {
+                    Text("What this phone shows")
+                } footer: {
+                    Text("Hidden is not locked: the administrator can open everything else, but the locks above still apply to everyone.")
+                }
+            }
+
             if let packId = review.packId {
                 Section {
                     Text(verbatim: packId)

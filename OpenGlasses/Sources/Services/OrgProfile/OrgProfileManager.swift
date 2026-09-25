@@ -106,6 +106,22 @@ struct OrgProfileReview: Identifiable, Equatable {
     /// The vault pack enrolment will install, if the profile names one.
     var packId: String? { profile.vaultPack?.packId }
 
+    /// What the edition changes and how administrator settings open (Plan CT 3b).
+    var adminLines: [String] {
+        guard let policy = result.adminPolicy else { return [] }
+        var lines: [String]
+        switch policy.edition {
+        case .fieldAssist: lines = ["Shows only Field Assist, Job and a short Settings list"]
+        }
+        switch policy.credentials.method {
+        case .card: lines.append("Administrator settings open with your organisation's admin card")
+        case .passcode: lines.append("Administrator settings open with your organisation's passcode")
+        case .cardOrPasscode: lines.append("Administrator settings open with the admin card or passcode")
+        case .deviceOwner: lines.append("Anyone who can unlock this phone can open administrator settings")
+        }
+        return lines
+    }
+
     /// The AI model the profile names, and where its prompts go when that is not the provider's own
     /// address. The key is not the profile's: it is entered on the next page.
     var aiModelLines: [String] {
@@ -430,6 +446,13 @@ final class OrgProfileManager: ObservableObject {
     /// The model the profile in force names, checked. Nil when it names none it can use.
     var organizationModel: OrgAIModel? {
         profile?.aiModel.flatMap { try? OrgAIModel.resolve($0).get() }
+    }
+
+    /// The edition in force and how its administrator gets past it (Plan CT 3b). Nil on an
+    /// unmanaged or revoked phone: a revocation lifts the organisation's rules, its view included.
+    var adminPolicy: AdminPolicy? {
+        guard let profile, record?.revoked != true else { return nil }
+        return ProfileApplier.apply(profile: profile, resolvableVaultIds: []).adminPolicy
     }
 
     /// The profile names a model that still waits for its key or sign-in — the "administrator
