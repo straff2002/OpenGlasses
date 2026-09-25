@@ -283,6 +283,39 @@ drivers as understood when this was written, and counsel should confirm them bef
 | New York, Connecticut, Delaware and others | written notice of electronic monitoring, with acknowledgement in some | the policy record |
 | Everywhere | off-shift and personal-phone tracking is where privacy claims arise | never off shift; status only on a personal phone by default |
 
+## Later parts: what the office does with what the phone sends
+
+Added 2026-09-25. Candidates for the console once Parts 1–5 are in, ranked by how much of the data
+already arrives. **Where the phone lacks something a tool needs, the phone gains it** (owner,
+2026-09-25): a missing capture is phone work to schedule, not a reason to drop the tool. The split
+stays the same throughout — **the phone captures, the console decides and answers** — and every
+phone addition keeps working without a server (it lands in the report and the email route as well)
+and is disclosed in the same PR if it sends anything new.
+
+| Tool | Console | Phone side |
+|---|---|---|
+| **Parts desk** | a queue of parts requests; the office answers ("ordered, arriving Thursday") | **small:** the request already carries a manual-checked part number, quantity, urgency, on-van and model, and `PartsRequest` already has `status: .answered` and `baseAnswer` ("what base said"). Today the technician records base's answer by saying it (`FieldSessionService.answerPartsRequest` via `PartsRequestTool`); the check-in delivers it instead, and it is spoken at a turn boundary |
+| **Follow-up queue** | the debrief's *Follow-ups* and *For base* lists (`DebriefSummary`) as an office to-do list; one click makes a return-visit job with site and equipment filled in | **none** beyond FT3's reports |
+| **Equipment and site history** | every visit to a serial or site across the crew | **small:** send the crew's history with a job so the brief (FO P3c) cites it; `.ogjob` is a strict schema, so this is a new, optional field and a format version, not a free-text note. Today `JobHistoryIndex` knows only this phone's visits |
+| **Job archive and search** | any job by customer, serial or date; the PDF and the signed summary; resend the report | **none** |
+| **Escalation log** | reasons, time to resolve, which models cause the most calls | **none:** `FieldSession.escalations` carries reason and resolution time |
+| **Team-learning review** | Plan FP's reviewer queue in the console | per FP; its reviewer-phone decision stands until the pilot asks |
+| **Timesheets** | time per job and shift start and end, exported for payroll | **none** beyond FT5: `billableSeconds` is already on the job |
+| **Certifications** | each technician's tickets and expiry dates (US EPA Section 608 for refrigerant work; provincial refrigerant certification in Canada), and a warning before a job goes to someone uncertified | **none:** office data. At most, the phone shows the technician their own expiry |
+| **Refrigerant log** | the service and leak-repair records US rules require above a refrigerant-charge threshold, per appliance | **new:** structured fields on the job (refrigerant type, amount added and recovered, leak found and repaired). Task readings today are free text (`WorkTask` evidence `readings: [String]`), which a regulator's record can't be built from. Thresholds and fields confirmed with the partner or counsel first |
+| **"On the way" message** | an arrival estimate sent to the customer from the status board — the estimate, never the engineer's position | **small:** a *Heading to the next job* event, which FT5's job events can carry |
+| **Manual-gap report** | questions the assistant could not answer from the manuals, grouped by model, so the office knows which manuals to add | **new:** the phone records when the retrieval gate refuses (`VaultRetriever`) and sends the question with the report. The question is the technician's own words going to base, so it is disclosed, and the technician can see what was sent |
+| **Performance figures** | first-visit fix rate, time on site, repeat visits by model | **none:** derived from reports |
+
+Suggested order: parts desk, follow-up queue, then history and the archive — cheapest, because the
+data already arrives, and what the office uses every day.
+
+**Scheduling waits on one question.** Most North American field-service firms already run dispatch
+software (ServiceTitan, Jobber, Housecall Pro, Salesforce Field Service and others). Where the partner
+or the firm does, the server pulls jobs from it and pushes reports back rather than becoming a second
+schedule to keep in step — the same reasoning as Part 3's draft invoices. Only a firm with none gets a
+scheduling calendar in the console.
+
 ## Privacy
 
 - **On the phone:** `baseServer` is disclosed as FT requires. The relay and the manuals use the same
@@ -350,6 +383,8 @@ phone-side code of its own; the rest of the phone side is FT's.
 - **Should the reviewer's queue for Plan FP (team learnings) move to the console?** FP designed it
   for a reviewer *phone* because there was no server. A console is the more natural home, but FP's
   decision stands until the pilot asks.
+- **Does the partner or the pilot firm run dispatch software, and which?** This decides whether the
+  console has a scheduling calendar at all (see *Later parts*).
 - **Does Part 5 need a shift at all**, or is "a job is open or travelling to one" enough? Leaning:
   an explicit shift, because an engineer between jobs is exactly who dispatch wants to find.
 - **Is the *Linked* flag in `PrivacyInfo.xcprivacy` set for location** once a named person's position
