@@ -1248,6 +1248,41 @@ first-run branch with the offline holding screen and the `aiModel` key page.
 - **Not in this slice:** a keyboard showing only the alphabet and inserting the dashes. That lands
   with the first-run page, which is where a technician types the key.
 
+**3a, third slice as built (2026-09-25) — the organisation's AI model.** The remaining 3a work is
+split in two. This part is the model; the next is the first-run screens.
+
+- **The profile field.** `ConfigProfile.aiModel` is `{provider, model, baseURL?, name?}`, and it is
+  decoded without failing: a malformed entry reads as empty fields.
+  - `OrgAIModel.resolve` checks it. The provider must be an `LLMProvider` raw value. `baseURL` is
+    allowed only for `custom` (where it is required) and `openrouter`, and must be HTTPS with no
+    credentials.
+  - Each failure is a drop keyed `aiModel`, and the phone behaves as if the profile named no model.
+  - `ProfileApplier.Result.aiModel` carries the checked model. The managed layer wins, as for
+    settings.
+  - `make-org-profile.swift` checks the same rules from its own provider list. A test holds that
+    list to `LLMProvider.allCases`.
+- **The review.** *Supplies* shows *AI model: ⟨provider⟩ · ⟨model⟩*, and *Prompts go to ⟨host⟩*
+  when the organisation names its own address. A footer says the key is not part of the profile.
+- **The key step.** After *Apply*, a profile naming a keyed or sign-in model moves the sheet to
+  `Stage.modelKey`.
+  - That page takes the provider's key in a secure field. Its check is onboarding's prefix check
+    (`OrgAIModel.keyProblem`). There is no model list to fetch, because the model is the profile's.
+  - `chatgpt` uses the existing `OnboardingAccountSignInSection`, and `geminiVertex` uses
+    `GoogleSignInRows`. On-device providers need nothing, and their config is made at apply.
+  - `OrgProfileManager.completeModelSetup` builds the `ModelConfig` (provider, model and address
+    from the profile, key from the field), saves it through `Config.setSavedModels` (the Keychain),
+    and makes it active. It records `modelConfigId`.
+  - *My administrator will add this* leaves `modelSetupPending` set. Field Assist then says *Your
+    administrator needs to finish setting up this phone*, and the managed row offers *Finish Setup*.
+    3b puts that behind the administrator passcode.
+- **Renewal.**
+  - **Same provider:** the model, address and label follow the profile, and the key stays.
+  - **New provider:** pending again. The old config stays active until the new key is in, and then
+    it is replaced.
+  - **No model named any more:** changes nothing.
+- **Removal** deletes the config enrolment made, key included. If it was active, the first
+  remaining config becomes active. The person's own configs are untouched.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on

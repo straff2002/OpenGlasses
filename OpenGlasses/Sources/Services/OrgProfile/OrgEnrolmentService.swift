@@ -28,6 +28,8 @@ final class OrgEnrolmentService: ObservableObject {
         case offer(host: String)
         case fetching(host: String)
         case reviewing(OrgProfileReview)
+        /// Applied, and the profile names an AI model that needs its key or sign-in (Plan CT 3a).
+        case modelKey(OrgAIModel, organization: String)
         case applied(String)
         case failed(String)
 
@@ -65,6 +67,8 @@ final class OrgEnrolmentService: ObservableObject {
     private var enteredLicence: String?
     private let licenceKey: String
     private let activationResolver: ActivationKeyResolver
+    /// Tells the app the active model changed, so what it shows follows.
+    private let modelDidChange: @MainActor () -> Void
 
     /// The organisation a licence key named, while its profile is being fetched — the sheet says
     /// "Setting up this phone for …" rather than naming a host.
@@ -74,10 +78,12 @@ final class OrgEnrolmentService: ObservableObject {
          fetch: @escaping (URL) async throws -> Data = OrgEnrolmentService.boundedFetch,
          isPastOnboarding: @escaping () -> Bool = { Config.isPastOnboarding },
          licenceKey: String = LicenseService.productionPublicKeyBase64,
-         activationResolver: ActivationKeyResolver = ActivationKeyResolver()) {
+         activationResolver: ActivationKeyResolver = ActivationKeyResolver(),
+         modelDidChange: @escaping @MainActor () -> Void = {}) {
         self.manager = manager
         self.licenceKey = licenceKey
         self.activationResolver = activationResolver
+        self.modelDidChange = modelDidChange
         self.fetch = fetch
         self.isPastOnboarding = isPastOnboarding
     }
@@ -279,12 +285,37 @@ final class OrgEnrolmentService: ObservableObject {
         guard case .reviewing(let review) = stage else { return }
         switch manager.apply(review) {
         case .success:
-            stage = .applied(review.organizationName)
+            if manager.needsModelSetup, let model = manager.organizationModel {
+                stage = .modelKey(model, organization: review.organizationName)
+            } else {
+                stage = .applied(review.organizationName)
+                modelDidChange()
+            }
             // Step 3 of the enrolment sequence: the pack, if the profile names one. It does not hold
             // up the sheet — the profile's bounds are already in force.
             Task { [manager] in await manager.completePendingPack() }
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
+    }
+
+    /// The key page's Save: the key is checked, saved as the organisation's model, and made the
+    /// active model. Returns what is wrong with it, or nil once it is saved. A sign-in provider
+    /// passes no key, once its sign-in has connected.
+    func submitModelKey(_ key: String) -> String? {
+        guard case .modelKey(let model, let organization) = stage else { return nil }
+        if model.access == .key, let problem = model.keyProblem(key) { return problem }
+        guard manager.completeModelSetup(apiKey: key) else {
+            return "Couldn't save the key. Try again."
+        }
+        modelDidChange()
+        stage = .applied(organization)
+        return nil
+    }
+
+    /// "My administrator will add this": the phone stays in the administrator-needs-to-finish state.
+    func deferModelKey() {
+        guard case .modelKey(_, let organization) = stage else { return }
+        stage = .applied(organization)
     }
 
     func dismiss() {

@@ -22,7 +22,8 @@ import CryptoKit
 //   profileId, organizationName, leaseDays (7–365)                                    required
 //   policyExpiry (ISO 8601), eraseAfterLapseDays, undeliveredEraseDays (1–365),
 //   licenceCode, vaultPack {packId, documentsSource}, skillPacks [..],
-//   revokedEnrolmentIds [..], settings {<SettingKey>: {value, disposition}}             optional
+//   revokedEnrolmentIds [..], settings {<SettingKey>: {value, disposition}},
+//   aiModel {provider, model, baseURL, name}  (the provider and model only — never a key)  optional
 //
 // The signature covers "openglasses.org-profile.v1\n" (or "…org-revocation.v1\n") followed by the
 // payload bytes, which are shipped as-is — so the encoding here only has to be valid, not
@@ -64,6 +65,12 @@ enum ProfileValue: Codable, Equatable {
 
 struct RawSetting: Codable { let value: ProfileValue; let disposition: String }
 struct VaultPackReference: Codable { let packId: String; let documentsSource: String? }
+struct AIModel: Codable { let provider: String; let model: String; let baseURL: String?; let name: String? }
+
+/// LLMProvider's raw values in the app (OpenGlasses/Sources/Services/LLMService.swift).
+let knownProviders: Set<String> = ["anthropic", "openai", "chatgpt", "gemini", "geminiVertex", "groq", "deepseek",
+                                   "mistral", "zai", "qwen", "minimax", "xai", "openrouter", "custom", "local",
+                                   "appleOnDevice"]
 
 struct Input: Codable {
     let profileId: String
@@ -77,6 +84,7 @@ struct Input: Codable {
     let skillPacks: [String]?
     let revokedEnrolmentIds: [String]?
     let settings: [String: RawSetting]?
+    let aiModel: AIModel?
 }
 
 struct ConfigProfile: Codable {
@@ -94,6 +102,7 @@ struct ConfigProfile: Codable {
     let vaultPack: VaultPackReference?
     let skillPacks: [String]?
     let revokedEnrolmentIds: [String]?
+    let aiModel: AIModel?
     let settings: [String: RawSetting]
 }
 
@@ -146,6 +155,23 @@ func check(_ input: Input) {
             fail("error: policyExpiry is not ISO 8601 (e.g. 2027-09-30T00:00:00Z)")
         }
         if date < Date() { fail("error: policyExpiry is in the past") }
+    }
+    if let model = input.aiModel {
+        guard knownProviders.contains(model.provider) else {
+            fail("error: aiModel.provider \(model.provider) is not one of \(knownProviders.sorted().joined(separator: ", "))")
+        }
+        if model.model.trimmingCharacters(in: .whitespaces).isEmpty { fail("error: aiModel.model is empty") }
+        if let base = model.baseURL {
+            guard ["custom", "openrouter"].contains(model.provider) else {
+                fail("error: aiModel.baseURL is only for custom and openrouter")
+            }
+            guard let url = URL(string: base), url.scheme?.lowercased() == "https", url.host != nil,
+                  url.user == nil, url.password == nil, url.fragment == nil else {
+                fail("error: aiModel.baseURL must be https with no credentials or fragment")
+            }
+        } else if model.provider == "custom" {
+            fail("error: a custom aiModel needs its baseURL")
+        }
     }
     for (key, setting) in input.settings ?? [:] {
         guard let kind = allowList[key] else {
@@ -306,7 +332,7 @@ case "make":
         leaseDays: input.leaseDays, eraseAfterLapseDays: input.eraseAfterLapseDays,
         undeliveredEraseDays: input.undeliveredEraseDays, licenceCode: input.licenceCode,
         vaultPack: input.vaultPack, skillPacks: input.skillPacks,
-        revokedEnrolmentIds: input.revokedEnrolmentIds, settings: input.settings ?? [:])
+        revokedEnrolmentIds: input.revokedEnrolmentIds, aiModel: input.aiModel, settings: input.settings ?? [:])
     guard let payload = try? encoder.encode(profile) else { fail("error: could not encode the profile") }
     let document = sign(payload, domain: "openglasses.org-profile.v1\n", key: key)
     guard FileManager.default.createFile(atPath: positional[2], contents: Data((document + "\n").utf8)) else {

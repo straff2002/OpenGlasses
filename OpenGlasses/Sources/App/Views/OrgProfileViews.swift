@@ -29,7 +29,13 @@ struct OrgEnrolmentSheet: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button { service.dismiss() } label: {
-                            if isFinished { Text("Done") } else { Text("Cancel") }
+                            if isFinished {
+                                Text("Done")
+                            } else if case .modelKey = service.stage {
+                                Text("Later")
+                            } else {
+                                Text("Cancel")
+                            }
                         }
                         .disabled(service.stage.isBusy)
                     }
@@ -85,6 +91,11 @@ struct OrgEnrolmentSheet: View {
 
         case .reviewing(let review):
             OrgProfileReviewList(review: review) { service.confirm() }
+
+        case .modelKey(let model, let organization):
+            OrgModelKeyPage(model: model, organization: organization,
+                            submit: { service.submitModelKey($0) },
+                            later: { service.deferModelKey() })
 
         case .applied(let name):
             List {
@@ -164,14 +175,19 @@ private struct OrgProfileReviewList: View {
                 }
             }
 
-            if !review.organizationLines.isEmpty || review.carriesLicence {
+            if !review.organizationLines.isEmpty || review.carriesLicence || !review.aiModelLines.isEmpty {
                 Section {
                     ForEach(review.organizationLines, id: \.self) { Text(verbatim: $0) }
                     if review.carriesLicence {
                         Text("A Field Assist licence")
                     }
+                    ForEach(review.aiModelLines, id: \.self) { Text(verbatim: $0) }
                 } header: {
                     Text("Supplies")
+                } footer: {
+                    if let model = review.result.aiModel, model.access != .onDevice {
+                        Text("The AI model's key is not part of the profile. You enter it on this phone next, and it stays here.")
+                    }
                 }
             }
 
@@ -202,6 +218,7 @@ struct ManagedByOrganisationSection: View {
     @ObservedObject var manager: OrgProfileManager
     @State private var confirmingRemoval = false
     @State private var removalError: String?
+    @State private var finishingModel = false
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
@@ -227,6 +244,27 @@ struct ManagedByOrganisationSection: View {
                         OGNotice(text: "Installing \(packId). Field Assist turns on once it is in.",
                                  systemImage: "arrow.down.circle")
                             .padding(12)
+                    }
+                }
+                if manager.needsModelSetup, let model = manager.organizationModel {
+                    OGDivider()
+                    OGNotice(text: "Your administrator needs to finish setting up this phone: \(model.summary) still needs its key.",
+                             systemImage: "key")
+                        .padding(12)
+                    Button {
+                        finishingModel = true
+                    } label: {
+                        OGRow("Finish Setup", icon: "key", showsChevron: false) { EmptyView() }
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $finishingModel) {
+                        NavigationStack {
+                            OrgModelKeyPage(model: model, organization: profile.organizationName,
+                                            submit: { finishModel(model, key: $0) },
+                                            later: { finishingModel = false })
+                                .navigationTitle("Organisation Profile")
+                                .navigationBarTitleDisplayMode(.inline)
+                        }
                     }
                 }
                 if record.profileURL != nil, record.revoked != true, !(manager.lease?.isLiveAndQuiet ?? false) {
@@ -311,6 +349,13 @@ struct ManagedByOrganisationSection: View {
         return parts.joined(separator: " · ")
     }
 
+    private func finishModel(_ model: OrgAIModel, key: String) -> String? {
+        if model.access == .key, let problem = model.keyProblem(key) { return problem }
+        guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
+        finishingModel = false
+        return nil
+    }
+
     private func remove() {
         removalError = nil
         OwnerGateAuth.authenticate(reason: "Remove your organisation's profile from this phone") { granted in
@@ -349,5 +394,88 @@ private extension ProfileLease.Status {
     var isLiveAndQuiet: Bool {
         if case .live = self { return true }
         return false
+    }
+}
+
+/// The page after the review when the profile names an AI model (Plan CT 3a): the organisation's
+/// provider key, typed here, or the provider's sign-in. The provider and model are the profile's; the
+/// key is the only thing entered, and it goes to the Keychain with the phone's other model keys —
+/// never to the profile's address.
+struct OrgModelKeyPage: View {
+    let model: OrgAIModel
+    let organization: String
+    /// Returns what is wrong with the key, or nil once it is saved.
+    let submit: (String) -> String?
+    let later: () -> Void
+
+    @State private var key = ""
+    @State private var problem: String?
+    @ObservedObject private var google = GoogleOAuthService.shared
+    @ObservedObject private var chatgpt = ChatGPTOAuthService.shared
+
+    var body: some View {
+        List {
+            Section {
+                Text(verbatim: model.summary)
+                    .font(.headline)
+                if let host = model.host {
+                    Text("Prompts go to \(host)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("\(organization) uses")
+            }
+
+            switch (model.access, model.provider) {
+            case (.signIn, .chatgpt):
+                OnboardingAccountSignInSection(
+                    service: ChatGPTOAuthService.shared,
+                    signInLabel: "Sign in with ChatGPT",
+                    caption: "Sign in with the ChatGPT account \(organization) gave you.",
+                    connectedCaption: "Signed in. Conversation uses \(organization)'s ChatGPT plan.",
+                    pasteInstructions: "Sign in in the browser. When it ends on a localhost page that can't connect, copy the full URL from the address bar and paste it here.",
+                    onConnected: { problem = submit("") })
+                if chatgpt.isConnected {
+                    // Already signed in before this page opened: nothing will call onConnected.
+                    Section {
+                        Button("Continue") { problem = submit("") }
+                    }
+                }
+            case (.signIn, _):
+                Section {
+                    GoogleSignInRows()
+                    Button("Continue") { problem = submit("") }
+                        .disabled(!google.isConnected)
+                } header: {
+                    Text("Sign in")
+                }
+            default:
+                Section {
+                    SecureField("\(model.provider.displayName) API key", text: $key)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.system(.body, design: .monospaced))
+                    Button("Save Key") { problem = submit(key) }
+                        .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } header: {
+                    Text("Enter the \(model.provider.displayName) API key from \(organization)")
+                } footer: {
+                    Text("The key stays on this phone, in the Keychain. It is never sent to \(organization)'s profile address.")
+                }
+            }
+
+            if let problem {
+                Section {
+                    Label { Text(verbatim: problem) } icon: { Image(systemName: "exclamationmark.triangle") }
+                }
+            }
+
+            Section {
+                Button("My administrator will add this", action: later)
+            } footer: {
+                Text("Field Assist will say the administrator needs to finish setting up this phone until the key is in.")
+            }
+        }
     }
 }
