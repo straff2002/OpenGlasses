@@ -107,9 +107,9 @@ in"**, never "online".
 
 **Jobs.** A job is created in the console — or arrives through a dispatch connector (*Later parts*),
 which is optional — scheduled (a date and time window, which `.ogjob`'s `scheduled_for` already
-carries), assigned to one phone (by enrolment id) or left for anyone, and served as a signed `.ogjob` — the same file `Scripts/make-job-file.swift` makes today, whose `Body`
-must stay field-for-field identical to the app's `JobFile.Body`. The phone fetches it and runs it
-through `JobFileImportPolicy` unchanged, so a job from the server and a job from email are the same
+carries), assigned to one phone (by enrolment id) or left for anyone, and served as a signed
+`.ogjob` — the same file `Scripts/make-job-file.swift` makes today, whose `Body` must stay
+field-for-field identical to the app's `JobFile.Body`. The phone fetches it and runs it through `JobFileImportPolicy` unchanged, so a job from the server and a job from email are the same
 file. The email path stays beside the server (FT's leaning), and the console can download a job as an
 `.ogjob` to email when a phone can't reach the server.
 
@@ -364,7 +364,7 @@ provider and what is sent to it are disclosed in the console, and the firm turns
 | **Record a senior's know-how** | a senior does a job while explaining it; base turns it into a guided procedure the glasses walk juniors through | vault procedures, Plan FP's review before anything is published | **new:** a narrated-procedure capture mode | audio and video of a customer's site; needs its own consent question, which FO P2b deliberately never asked |
 | **Warranty claim packs** | a drafted manufacturer warranty claim — serial, fault code, failed part, photos — for base to check and submit | equipment identity (Plan EL), the vault's code tables, parts used, evidence | none | base submits, never the server on its own |
 | **Same-day quotes** | a finding ("heat exchanger corroded") becomes a good/better/best quote with photos, reviewed by base and sent that day | debrief findings, evidence, the customer summary (FO P2c) | none | base reviews every quote; nothing goes to a customer unreviewed |
-| **Equipment register and recalls** | every serial the crew sees: age, warranty status, contract renewal; a recall on a serial range alerts the technician on arrival and gives the office a call list | *Later parts* history, Plan EL | **small:** a recall notice delivered with the job and spoken in the brief | recall data from a trustworthy source only; a false recall alarm costs trust |
+| **Equipment register and recalls** | every serial the crew sees: age, warranty status, contract renewal; a recall on a serial range, once the office confirms the match, gives it a call list and reaches the technician in the next brief | *Later parts* history, Plan EL | **small:** a recall notice delivered with the job and spoken in the brief | recall data from a trustworthy source only; a false recall alarm costs trust |
 | **Parts for tomorrow** | from tomorrow's fault reports and each machine's history, what each van should carry; restock lists from what was used | the parts desk, history, `onVan` on parts requests | none | a suggestion, never an order |
 | **Lone-worker safety** | a missed check-in, or no movement during a job, alerts base | Part 5's shift and check-ins | **small:** an *"I'm OK"* prompt and a timer the technician sets | inside Part 5's on-shift rules; never outside a shift |
 | **Site notes that carry forward** | "dog in the yard", "asbestos in the ceiling", "needs a 10 m ladder", recorded once and read out before the next visit | the job brief (FO P3c), site history | **small:** a site-note capture, and a section in the brief | notes are about the site, never about the customer as a person |
@@ -374,6 +374,329 @@ provider and what is sent to it are disclosed in the console, and the firm turns
 **Suggested first three:** warranty claim packs (recovers money from data that already exists),
 asking the crew's work (makes everything recorded useful to the office), and the job at a glance for
 the helper (makes every help call faster).
+
+### Each idea in detail
+
+Each section says what the office struggles with today, how the idea works, what it reuses, what
+the phone and the server need, the consent and risk points, how we would know it works, and a rough
+size (S: a few days, M: a couple of weeks, L: a month or more, server and phone together).
+
+#### Warranty claim packs (M)
+
+**The problem.** A manufacturer's warranty claim needs the serial, the install and failure dates, the
+fault, the failed part and proof. Gathering them afterwards from a technician's memory and a phone's
+camera roll takes long enough that firms often don't claim at all, and the parts cost comes out of
+the firm's margin.
+
+**How it works.**
+1. A job closes with a part replaced on a machine the crew identified.
+2. The server checks the machine against the equipment register (below) and the manufacturer's
+   warranty terms, where the firm has entered them, and marks the job *possible warranty claim*.
+3. It drafts the pack: make, model and serial, each with **where it came from**; the fault code and
+   what the manual says about it; the failed and fitted part numbers; the job date; the *Fault* and
+   *Fix* photos; the technician's name.
+4. The base user checks it and submits it through the manufacturer's own portal, using a PDF and a
+   CSV laid out the way that manufacturer asks.
+5. The claim's status and the amount recovered are recorded against the job.
+
+**Reuses.** `DeviceIdentityField` records model, serial, board part number, firmware and
+refrigerant, each with its source (nameplate, spoken or the machine's display). Its own comment
+already says why: *"a record that cannot say whether a serial was read by a camera or spoken by a
+technician is a record a warranty department cannot use."* Evidence is already marked `fault` or
+`fix` (`EvidenceSelection.Role`); parts are in the work record; fault codes are in the vault's code
+tables.
+
+**Phone side.** None to start. Later, the install date if the register can't supply it, read off the
+nameplate or asked for.
+
+**Server side.** Warranty terms per manufacturer (entered by the firm), claim templates, and a
+claims list with status and amounts.
+
+**Consent and risk.** Base submits every claim; the server never files one itself. Photos are the
+blurred copies. A wrong serial is a rejected claim, so each value shows its source and a spoken
+serial is flagged for checking.
+
+**Measure.** Claims filed per month and dollars recovered, compared with before.
+
+**Open.** Which manufacturers first. The pilot's vault is Lennox, so probably Lennox.
+
+#### Ask the crew's work (M)
+
+**The problem.** What the crew knows is spread across hundreds of reports that nobody rereads.
+Questions such as *"what fixed E223 on these units?"* or *"when were we last at 14 Elm St, and
+what did we replace?"* go to whoever happens to remember.
+
+**How it works.** A search box in the console. The server finds matching reports, debrief items,
+approved team learnings and manual passages, and a model writes a short answer **citing each job,
+debrief item or manual page it relies on**. Each citation opens the source. If nothing matches, it
+says there is nothing on file, as the job brief already does, and never guesses.
+
+**Reuses.** The report archive; debrief items, which already carry `sourceTurnIds`; Plan FP's
+approved learnings; the manuals from Part 4. The phone's retrieval rules (EJ's gate: cite, or
+refuse) are the model to copy.
+
+**Phone side.** None. Technicians already get the relevant history in the job brief (FO P3c).
+
+**Server side.** A search index over the archive, and a model call using the organisation's AI key.
+
+**Consent and risk.** A model on the server (see the rule above). Answers can contain customers'
+names and addresses, so only administrators can use it and every question is kept in the audit
+log. The technicians' own words in debriefs are the firm's records and are quoted as such.
+
+**Measure.** Questions asked per week; how many answers the base user marks as useful; how many
+answers came back with no citation (the target is none).
+
+#### The job at a glance for the helper (S)
+
+**The problem.** A help call opens with the technician explaining everything from the start:
+which machine, what they've tried, what the manual said. That is the slowest part of the call.
+
+**How it works.** A help request also sends a bounded snapshot of the open job: the machine and how
+it was identified, the tasks and where each stands, the manual pages opened, what the assistant
+suggested, the fault report, and thumbnails of the photos. The console shows it beside the relayed
+view, so the helper starts from the same page as the technician.
+
+**Reuses.** `FieldSessionContextSnapshot` already builds a bounded working view of the job (8,000
+characters) for the live model; the helper's snapshot is the same kind of view, built for a person.
+Escalations already carry a reason and a resolution time.
+
+**Phone side.** Small: build the snapshot and attach it to the help request (the
+`WebhookExpertNotifier` payload, or the base server's help endpoint).
+
+**Server side.** Show it; drop it when the help request closes.
+
+**Consent and risk.** Sent only with a help request, and kept only while that request is open. It
+carries the assistant's suggestions labelled as suggestions, never as work done.
+
+**Measure.** Time from the helper joining to the first useful instruction, and help-call length.
+
+#### One senior, several apprentices (M)
+
+**The problem.** Experienced technicians are scarce. Sending an apprentice out alone is a risk,
+and sending two people costs twice as much.
+
+**How it works.** One senior at base works a help queue. Each request shows how long it has waited,
+whether a safety concern was raised, whether the customer is waiting, and a three-line summary of
+the problem. The senior picks by urgency, answers some by voice message without video, and joins the
+relayed view for the rest. Over time the firm sees which apprentices need help, on what, and how
+often, and can decide when each is ready to work alone.
+
+**Reuses.** Part 2's relay, the snapshot above, voice messages to base (below), the escalation log.
+
+**Phone side.** None beyond the snapshot and voice messages.
+
+**Server side.** The queue, the ordering, and the model call for summaries.
+
+**Consent and risk.** The summary is a model on the server (see the rule above). "Who needed help"
+is information about an employee's performance, so the firm's monitoring policy (Part 5) covers it,
+and the apprentice can see their own history.
+
+**Measure.** Apprentice jobs per senior per day; first-visit fix rate on those jobs; how long
+apprentices wait for help.
+
+#### Record a senior's know-how (L)
+
+**The problem.** When a senior retires, their way of doing the jobs the manual explains badly
+leaves with them.
+
+**How it works.**
+1. The senior switches on *Record a walk-through* on a job and explains what they're doing as they go.
+2. **The phone keeps the transcript, not the audio.** Transcription happens on the phone and the
+   recording is discarded, so a bystander's voice never becomes a file. The senior marks steps by
+   voice ("next step") and takes photos as usual (faces blurred).
+3. At base, the walk-through becomes a draft procedure: steps, the checks at each step, and photos.
+   A model can do the first split into steps; a person edits it.
+4. It is reviewed the way Plan FP reviews team learnings, then published into the organisation's
+   vault as a procedure (the `procedures/*.json` format the glasses already walk technicians
+   through), marked with who recorded it and who approved it.
+
+**Reuses.** On-device transcription, vault procedures (Plan F), FP's review before anything is
+published. Publishing is new: Part 4's manual set fills a vault's *documents* tier, and a
+procedure is a vault file, so the overlay needs a procedure set of its own, signed and hash-checked
+the same way.
+
+**Phone side.** New: the walk-through capture mode and step marking.
+
+**Server side.** A draft editor, the review queue, and publishing.
+
+**Consent and risk.** The senior agrees to each recording. The customer is told a walk-through is
+being recorded on their site, since photos and the senior's words are about their equipment. Plan
+FO P2b never asked about recording audio, and this design avoids having to by keeping no audio.
+A procedure can be wrong: it carries its review, and cites the manual wherever it contradicts it.
+
+**Measure.** Procedures published; how often juniors use them; juniors' fix rate on those models.
+
+#### Same-day quotes (M)
+
+**The problem.** The technician finds a failing heat exchanger, and the quote goes out days later,
+by which point the customer has called someone else.
+
+**How it works.**
+1. A debrief finding, or a task the technician skipped or put off, becomes *quote suggested*.
+2. The console drafts good/better/best options from the firm's price list (kept in the console, or
+   taken from the dispatch connector), with the *Fault* photos and a plain explanation drawn from the
+   customer-facing summary wording.
+3. The base user edits it and sends it by email or text link the same day.
+4. The customer accepts on a simple page, and the acceptance becomes a new job.
+
+**Reuses.** Debrief findings, tasks and their states, evidence roles, the customer summary's
+allow-list (FO P2c), dispatch connectors.
+
+**Phone side.** None. Later, *"quote them for it"* by voice, which is a voice message to base.
+
+**Server side.** A price list, quote drafting, a customer acceptance page, and conversion to a job.
+
+**Consent and risk.** Base reviews every quote; nothing reaches a customer unreviewed. Internal
+notes never reach a quote, for the same allow-list reason as the customer summary. **The acceptance
+page is the first page the base server shows to the public**, so it gets its own security review:
+a single-use link, nothing on it but the quote, and it expires.
+
+**Measure.** Quotes sent within 24 hours; the share accepted; revenue from accepted quotes.
+
+#### Equipment register and recalls (M)
+
+**The problem.** Firms don't know what equipment they look after, how old it is, when its warranty
+ends or when a service contract is due. When a recall comes out, nobody can tell which customers are
+affected.
+
+**How it works.**
+1. Every report adds or updates a register entry: make, model, serial, site, what was fitted, when.
+   Entries merge on make plus serial.
+2. The age comes from the serial where the manufacturer documents how the build date is encoded
+   (many do, differently per make), and otherwise from the install date.
+3. Warranty end and contract renewal dates come from the firm's own terms, giving a renewals list for
+   the office.
+4. **Recalls.** The server checks public recall sources (the US Consumer Product Safety Commission's
+   recalls, Health Canada's recalls and safety alerts) and manufacturers' bulletins against the
+   register. A match is a **lead**: the office confirms it, and only then does it produce a call list
+   and a line in the next brief for that site.
+
+**Reuses.** `DeviceIdentityField`, equipment identity (Plan EL), site details on jobs, the
+*Later parts* history.
+
+**Phone side.** Small: the recall line in the job brief (the *Known equipment* section).
+
+**Server side.** The register, serial decoding per make, renewal dates, and the recall matcher.
+
+**Consent and risk.** A false recall match costs trust, which is why the office confirms every one.
+The register is the firm's customer data, held on the firm's server like everything else.
+
+**Measure.** Contracts renewed from the renewals list; recall matches confirmed.
+
+#### Parts for tomorrow (S–M)
+
+**The problem.** A second trip because the van didn't carry the part is the most expensive way to
+fix anything.
+
+**How it works.** The evening before, the server looks at each of tomorrow's jobs: the fault report,
+the manual's likely causes for that fault code, and what has failed on that machine and model
+before. It suggests a short list per van (*"a flame sensor for the 9:00, a capacitor for the
+11:30"*), each suggestion saying why. The technician ticks off what is already on the van. A weekly
+restock list comes from parts used.
+
+**Reuses.** Upcoming jobs and their fault reports, the vault's code tables, the history, parts
+requests and their `onVan` flag.
+
+**Phone side.** None beyond showing the list in the job brief (*Parts and prerequisites*).
+
+**Server side.** The suggestion rules. These can start as plain rules (fault code to likely parts)
+before any model is involved.
+
+**Consent and risk.** A suggestion, never an order. Each item shows its reason, so a technician can
+ignore it with good cause.
+
+**Measure.** Return visits because a part was missing, compared with before.
+
+#### Lone-worker safety (S)
+
+**The problem.** A technician alone in a plant room or on a roof who falls or is hurt may not be
+missed for hours. Several Canadian provinces, British Columbia and Alberta among them, require
+employers to have a check-in procedure for people working alone.
+
+**How it works.** On shift, the technician can start a working-alone timer (for example 60
+minutes). When it runs out, the glasses ask *"are you OK?"*, and the technician answers by voice or
+tap. No answer within a grace period alerts base, with the job, the site and the last known position.
+A spoken *"I need help"* alerts base immediately.
+
+**Reuses.** Part 5's shift and check-ins, the escalation path.
+
+**Phone side.** Small: the timer, the spoken check and the alert. It must work when the app is in
+the background, which is the hard part on iOS and needs testing on a device.
+
+**Server side.** An alert that is hard to miss, with a clear record of who acknowledged it.
+
+**Consent and risk.** Inside Part 5's rules: only on shift, and the technician starts it. It adds to
+existing safety procedures and never replaces them. That limit is written down, because a phone that
+can be out of signal is not a guarantee.
+
+**Measure.** Check-ins answered, alerts raised and how quickly they were acknowledged, and meeting
+the provinces' working-alone rules.
+
+#### Site notes that carry forward (S)
+
+**The problem.** The dog, the asbestos ceiling, the gate code and the need for a 10 m ladder are
+learned again on every visit.
+
+**How it works.** The technician says *"site note: …"* on a job. Base can add notes as well. A note
+is one of three kinds: **hazard**, **access** or **equipment location**. It shows who recorded it and
+when, and it has a review date. Hazard notes are read out before arrival and appear at the top of the
+brief's *Site and history* section.
+
+**Reuses.** The job brief (FO P3c), the site history.
+
+**Phone side.** Small: the note tool and the section in the brief.
+
+**Server side.** Notes per site, review dates, and editing.
+
+**Consent and risk.** Notes are about the site and never about the customer as a person: no
+opinions, which the customer could ask to see. A stale hazard note is worse than none, so notes past
+their review date are shown as such.
+
+**Measure.** Notes recorded, and notes read on later visits.
+
+#### Quality spot-checks (S)
+
+**The problem.** The only way to check a technician's work today is a ride-along, so it seldom
+happens.
+
+**How it works.** Each month the console picks a random sample of each technician's finished jobs.
+A reviewer checks each against a short rubric (evidence present, tasks match the report, sign-off
+handled, manual followed where it applies) using the job's own record. The results feed fix rates
+and coaching.
+
+**Reuses.** The archive, the evidence, *Later parts* figures.
+
+**Phone side.** None.
+
+**Server side.** Sampling, the rubric, and results per technician.
+
+**Consent and risk.** Covered by the firm's monitoring policy (Part 5). The technician sees which of
+their jobs were reviewed and what was found. By default it is for coaching; using it for discipline
+is the firm's decision to state in its policy, not something the console does by default.
+
+**Measure.** Share of jobs reviewed; trends in rubric scores.
+
+#### Voice messages to base (S)
+
+**The problem.** Small questions to the office ("is this covered by their contract?", "can I order
+the blower motor?") mean a phone call that interrupts both people.
+
+**How it works.** *"Tell base the customer wants a quote for a new furnace."* The phone reads the
+message back and queues it with the job reference. Base sees it in the console and replies in
+writing. The reply is delivered at the next check-in and read to the technician between turns. An
+urgent message says so, and base is prompted to phone instead.
+
+**Reuses.** The parts-desk answer loop, generalised; the read-back pattern from job intake.
+
+**Phone side.** Small: the message tool and spoken replies.
+
+**Server side.** An inbox beside the job, and replies.
+
+**Consent and risk.** The technician's own words go to base, disclosed like the manual-gap report.
+It is not a radio: a reply arrives at the next check-in, and the phone says so when a message is
+sent.
+
+**Measure.** Messages per day, time to reply, phone calls avoided.
 
 **Deferred: drawing on what the technician sees.** The base user circles a part on the relayed
 picture and it appears on the lens. Deferred on 2026-09-25 because most crews' glasses have no
