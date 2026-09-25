@@ -490,6 +490,8 @@ struct OpenGlassesApp: App {
             case .background:
                 appState.skillPackSideload.handleBackground()
                 appState.orgEnrolment.handleBackground()
+                // Plan CT 3b: an administrator session never outlives the app leaving the screen.
+                AdminGate.shared.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 if appState.isConnected {

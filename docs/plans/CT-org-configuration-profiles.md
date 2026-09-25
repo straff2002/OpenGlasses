@@ -1312,6 +1312,46 @@ split in two. This part is the model; the next is the first-run screens.
   the organisation's key mid-onboarding is the same write onboarding's own key page makes; CD P1's
   predicates already cover it (`WearablesBootstrapTests`).
 
+**3b, first slice as built (2026-09-25) — the edition and the administrator gate, underneath.** 3b
+ships in three slices, with this one first:
+
+1. the profile fields and the gate;
+2. the technician's Field Assist view, with *Finish Setup* behind the gate;
+3. the administrator phone.
+
+- **Profile fields.** `ConfigProfile` gains `edition` (`"fieldAssist"`), `adminPasscode`
+  (`{salt, iterations, hash}`, decoded without failing) and `adminCard` (hex digest).
+  - `ProfileApplier.Result.adminPolicy` carries the checked edition and its `AdminCredentials`.
+  - **Named drops:** an unknown edition; a verifier with a salt under 16 bytes, a hash that is not 32
+    bytes, or iterations outside 10 000–5 000 000; a card that is not 64 hex characters; a
+    passcode or card with no edition.
+  - With the edition but no usable credential, the method is `.deviceOwner`.
+  - The review gains *What this phone shows*. It names the edition and how administrator settings
+    open, including *Anyone who can unlock this phone can open administrator settings*.
+  - `OrgProfileManager.adminPolicy` is nil on a revoked phone, which also lifts the edition.
+- **`AdminSecrets`.**
+  - PBKDF2-HMAC-SHA256 through CommonCrypto's `CCKeyDerivationPBKDF`.
+  - The card digest is SHA-256(`"openglasses.admin-card.v1\n"` + secret).
+  - A scanned card reads as `og-admin:` followed by 26 Crockford characters (130 bits).
+  - Comparison is constant-time.
+  - Vectors: RFC-style PBKDF2 plus a Node-computed passcode and card, which pin the script.
+- **`AdminGate`** (`shared`, with seams).
+  - `tryPasscode`, `tryCard`, and `deviceOwnerPassed` (only when neither credential was issued).
+  - **Backoff, persisted as two scalars:** five free attempts, then 30 s doubling to an hour. A
+    wrong card counts like a wrong passcode. Nothing is checked during a wait. Text that is not a
+    card is not an attempt.
+  - **The session** ends on background (wired in the app's scene-phase handler) or after ten idle
+    minutes. `noteActivity` restarts the clock. `isRestricted` is read-only, so a view can ask it
+    without publishing.
+- **`make-org-profile.swift`.**
+  - `admin-card <card.png>` makes a 26-character secret, renders it with `CIQRCodeGenerator` into
+    the PNG only, and prints the digest for the organisation's input JSON.
+  - `make … --admin-passcode` prompts twice with echo off (`getpass`) and refuses fewer than eight
+    characters or all digits. It carries a 210 000-iteration verifier with a fresh 16-byte salt.
+  - `edition` and `adminCard` are input fields.
+- **Not yet:** the view the edition hides behind (the next slice), and VoiceOver announcing a wait,
+  which lands with that view.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on

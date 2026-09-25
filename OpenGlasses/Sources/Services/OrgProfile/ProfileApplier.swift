@@ -62,6 +62,9 @@ enum ProfileApplier {
         /// The AI model the winning layer names, checked (Plan CT 3a). Nil when none names one, or
         /// when the one named could not be used — that is a drop keyed `aiModel`.
         var aiModel: OrgAIModel?
+        /// The presentation the winning layer names, and how its administrator gets past it
+        /// (Plan CT 3b). Nil when no layer names an edition this build knows.
+        var adminPolicy: AdminPolicy?
 
         /// The value a read of `key` must return, given what the person has stored.
         ///
@@ -112,6 +115,33 @@ enum ProfileApplier {
         let undelivered = window(layer.undeliveredEraseDays, field: "undeliveredEraseDays", into: &result)
         result.eraseAfterLapseDays = eraseAfterLapse
         result.undeliveredEraseDays = undelivered ?? ConfigProfile.defaultUndeliveredEraseDays
+        if let raw = layer.edition {
+            if let edition = ProfileEdition(rawValue: raw) {
+                var credentials = AdminCredentials()
+                if let verifier = layer.adminPasscode {
+                    switch AdminSecrets.resolve(verifier) {
+                    case .success(let passcode): credentials.passcode = passcode
+                    case .failure(let reason): result.drops.append(Drop(key: "adminPasscode", reason: reason))
+                    }
+                }
+                if let card = layer.adminCard {
+                    switch AdminSecrets.resolveCard(card) {
+                    case .success(let digest): credentials.cardDigest = digest
+                    case .failure(let reason): result.drops.append(Drop(key: "adminCard", reason: reason))
+                    }
+                }
+                result.adminPolicy = AdminPolicy(edition: edition, credentials: credentials)
+            } else {
+                result.drops.append(Drop(key: "edition",
+                                         reason: .invalidValue("\u{201C}\(raw)\u{201D} is not an edition this version of the app knows")))
+            }
+        } else {
+            // A passcode or card opens what an edition hides; with no edition there is nothing to open.
+            for (key, present) in [("adminPasscode", layer.adminPasscode != nil), ("adminCard", layer.adminCard != nil)]
+            where present {
+                result.drops.append(Drop(key: key, reason: .invalidValue("it only applies with an edition")))
+            }
+        }
         if let spec = layer.aiModel {
             switch OrgAIModel.resolve(spec) {
             case .success(let model): result.aiModel = model

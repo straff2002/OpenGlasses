@@ -1,6 +1,8 @@
 #!/usr/bin/env swift
 import Foundation
 import CryptoKit
+import CommonCrypto
+import CoreImage
 
 // Mint an OpenGlasses organisation profile (Plan CT) — the document hosted at the URL an
 // organisation's QR code or enrolment link points at — or a revocation of one.
@@ -17,13 +19,22 @@ import CryptoKit
 //   keygen <privateKeyFile>
 //       One-off: the private half to a 0600 file, the public half printed — it goes in
 //       ProfileVerification.productionKeys under a new key id. Never the licence key.
+//   admin-card <card.png>
+//       Plan CT 3b, once per organisation: a new admin card. The secret goes into the QR in the PNG
+//       and nowhere else; the digest printed goes into every profile for that organisation as
+//       `adminCard`. A lost or photographed card is a new card and re-minted profiles.
+//   make … --admin-passcode
+//       Plan CT 3b: prompt (echo off, twice) for the organisation's administrator passcode and
+//       carry a PBKDF2 verifier of it — never the passcode — with a fresh salt. At least eight
+//       characters and not all digits. Never taken as an argument.
 //
 // Input fields:
 //   profileId, organizationName, leaseDays (7–365)                                    required
 //   policyExpiry (ISO 8601), eraseAfterLapseDays, undeliveredEraseDays (1–365),
 //   licenceCode, vaultPack {packId, documentsSource}, skillPacks [..],
 //   revokedEnrolmentIds [..], settings {<SettingKey>: {value, disposition}},
-//   aiModel {provider, model, baseURL, name}  (the provider and model only — never a key)  optional
+//   aiModel {provider, model, baseURL, name}  (the provider and model only — never a key),
+//   edition ("fieldAssist"), adminCard (the digest `admin-card` printed)                    optional
 //
 // The signature covers "openglasses.org-profile.v1\n" (or "…org-revocation.v1\n") followed by the
 // payload bytes, which are shipped as-is — so the encoding here only has to be valid, not
@@ -66,6 +77,63 @@ enum ProfileValue: Codable, Equatable {
 struct RawSetting: Codable { let value: ProfileValue; let disposition: String }
 struct VaultPackReference: Codable { let packId: String; let documentsSource: String? }
 struct AIModel: Codable { let provider: String; let model: String; let baseURL: String?; let name: String? }
+struct PasscodeVerifier: Codable { let salt: String; let iterations: Int; let hash: String }
+
+/// Mirrors AdminSecrets in the app (OpenGlasses/Sources/Services/OrgProfile/AdminSecrets.swift).
+enum AdminSecrets {
+    static let iterations = 210_000
+    static let cardPrefix = "og-admin:"
+    static let crockford = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+
+    static func pbkdf2(_ passcode: String, salt: Data, iterations: Int) -> Data {
+        let password = Data(passcode.utf8)
+        var derived = Data(count: 32)
+        let status: Int32 = derived.withUnsafeMutableBytes { out in
+            salt.withUnsafeBytes { saltBytes in
+                password.withUnsafeBytes { passwordBytes in
+                    CCKeyDerivationPBKDF(CCPBKDFAlgorithm(kCCPBKDF2),
+                                         passwordBytes.baseAddress?.assumingMemoryBound(to: CChar.self), password.count,
+                                         saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self), salt.count,
+                                         CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256), UInt32(iterations),
+                                         out.baseAddress?.assumingMemoryBound(to: UInt8.self), 32)
+                }
+            }
+        }
+        guard status == Int32(kCCSuccess) else { fail("error: PBKDF2 failed") }
+        return derived
+    }
+
+    static func verifier(for passcode: String) -> PasscodeVerifier {
+        var generator = SystemRandomNumberGenerator()
+        let salt = Data((0..<16).map { _ in UInt8.random(in: 0...255, using: &generator) })
+        let hash = pbkdf2(passcode, salt: salt, iterations: iterations)
+        return PasscodeVerifier(salt: salt.base64EncodedString(), iterations: iterations,
+                                hash: hash.base64EncodedString())
+    }
+
+    /// 26 Crockford characters: 130 random bits.
+    static func newCardSecret() -> String {
+        var generator = SystemRandomNumberGenerator()
+        return String((0..<26).map { _ in crockford[Int.random(in: 0..<32, using: &generator)] })
+    }
+
+    static func cardDigest(secret: String) -> String {
+        SHA256.hash(data: Data(("openglasses.admin-card.v1\n" + secret).utf8))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Read a passcode from the terminal with echo off, twice, and hold it to the app's floor.
+func promptPasscode() -> String {
+    guard let first = getpass("Administrator passcode: ").map({ String(cString: $0) }),
+          let second = getpass("Again: ").map({ String(cString: $0) }) else {
+        fail("error: could not read the passcode from the terminal")
+    }
+    guard first == second else { fail("error: the two entries differ") }
+    guard first.count >= 8 else { fail("error: the passcode must be at least eight characters") }
+    guard !first.allSatisfy({ $0.isNumber }) else { fail("error: the passcode must not be all digits") }
+    return first
+}
 
 /// LLMProvider's raw values in the app (OpenGlasses/Sources/Services/LLMService.swift).
 let knownProviders: Set<String> = ["anthropic", "openai", "chatgpt", "gemini", "geminiVertex", "groq", "deepseek",
@@ -85,6 +153,8 @@ struct Input: Codable {
     let revokedEnrolmentIds: [String]?
     let settings: [String: RawSetting]?
     let aiModel: AIModel?
+    let edition: String?
+    let adminCard: String?
 }
 
 struct ConfigProfile: Codable {
@@ -103,6 +173,9 @@ struct ConfigProfile: Codable {
     let skillPacks: [String]?
     let revokedEnrolmentIds: [String]?
     let aiModel: AIModel?
+    let edition: String?
+    let adminPasscode: PasscodeVerifier?
+    let adminCard: String?
     let settings: [String: RawSetting]
 }
 
@@ -155,6 +228,17 @@ func check(_ input: Input) {
             fail("error: policyExpiry is not ISO 8601 (e.g. 2027-09-30T00:00:00Z)")
         }
         if date < Date() { fail("error: policyExpiry is in the past") }
+    }
+    if let edition = input.edition, edition != "fieldAssist" {
+        fail("error: edition \(edition) is not one this app knows (fieldAssist)")
+    }
+    if let card = input.adminCard {
+        guard card.count == 64, card.allSatisfy({ $0.isHexDigit }) else {
+            fail("error: adminCard must be the 64-character digest `admin-card` printed")
+        }
+    }
+    if input.edition == nil && (input.adminCard != nil || adminPasscodeRequested) {
+        fail("error: an admin card or passcode only applies with an edition")
     }
     if let model = input.aiModel {
         guard knownProviders.contains(model.provider) else {
@@ -276,9 +360,12 @@ refuseInlineKey(arguments)
 var positional: [String] = []
 var keyFile: String?
 var keyId = "og-profile-2026-09"
+var adminPasscodeRequested = false
 var iterator = arguments.dropFirst().makeIterator()
 while let argument = iterator.next() {
     switch argument {
+    case "--admin-passcode":
+        adminPasscodeRequested = true
     case "--key-file":
         guard let path = iterator.next() else { fail("error: --key-file needs a path") }
         keyFile = path
@@ -290,7 +377,8 @@ while let argument = iterator.next() {
 }
 
 let usage = """
-usage: make-org-profile.swift make <input.json> <output.txt> [--key-file <path|->] [--key-id <id>]
+usage: make-org-profile.swift make <input.json> <output.txt> [--key-file <path|->] [--key-id <id>] [--admin-passcode]
+       make-org-profile.swift admin-card <card.png>
        make-org-profile.swift revoke <profileId> <output.txt> [--key-file <path|->] [--key-id <id>]
        make-org-profile.swift keygen <privateKeyFile>
 """
@@ -318,6 +406,34 @@ case "keygen":
     print("private key written (mode 0600): \(path)")
     print("public  (embed in app under a new key id):  \(key.publicKey.rawRepresentation.base64EncodedString())")
 
+case "admin-card":
+    guard positional.count == 2 else { fail(usage) }
+    let path = positional[1]
+    guard !FileManager.default.fileExists(atPath: path) else {
+        fail("\(path) already exists — refusing to overwrite another card")
+    }
+    let secret = AdminSecrets.newCardSecret()
+    guard let filter = CIFilter(name: "CIQRCodeGenerator") else { fail("error: no QR generator") }
+    filter.setValue(Data((AdminSecrets.cardPrefix + secret).utf8), forKey: "inputMessage")
+    filter.setValue("M", forKey: "inputCorrectionLevel")
+    guard let qr = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 12, y: 12)),
+          let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+        fail("error: could not render the card")
+    }
+    do {
+        try CIContext().writePNGRepresentation(of: qr, to: URL(fileURLWithPath: path),
+                                               format: .RGBA8, colorSpace: colorSpace)
+    } catch {
+        fail("error: could not write \(path): \(error)")
+    }
+    print("admin card written: \(path)")
+    print("adminCard (put this in every profile for the organisation): \(AdminSecrets.cardDigest(secret: secret))")
+    FileHandle.standardError.write(Data("""
+    The card's secret is in the PNG and nowhere else. Print it or send it to the administrator,
+    then delete the file. A lost or photographed card is a new card and re-minted profiles.
+
+    """.utf8))
+
 case "make":
     guard positional.count == 3 else { fail(usage) }
     guard let raw = FileManager.default.contents(atPath: positional[1]) else { fail("error: cannot read \(positional[1])") }
@@ -332,7 +448,11 @@ case "make":
         leaseDays: input.leaseDays, eraseAfterLapseDays: input.eraseAfterLapseDays,
         undeliveredEraseDays: input.undeliveredEraseDays, licenceCode: input.licenceCode,
         vaultPack: input.vaultPack, skillPacks: input.skillPacks,
-        revokedEnrolmentIds: input.revokedEnrolmentIds, aiModel: input.aiModel, settings: input.settings ?? [:])
+        revokedEnrolmentIds: input.revokedEnrolmentIds, aiModel: input.aiModel,
+        edition: input.edition,
+        adminPasscode: adminPasscodeRequested ? AdminSecrets.verifier(for: promptPasscode()) : nil,
+        adminCard: input.adminCard?.lowercased(),
+        settings: input.settings ?? [:])
     guard let payload = try? encoder.encode(profile) else { fail("error: could not encode the profile") }
     let document = sign(payload, domain: "openglasses.org-profile.v1\n", key: key)
     guard FileManager.default.createFile(atPath: positional[2], contents: Data((document + "\n").utf8)) else {
