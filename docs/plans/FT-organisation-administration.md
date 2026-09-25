@@ -1,7 +1,7 @@
 # Plan FT — Organisation Administration (the base server sets up and manages the crew's phones)
 
 **Status:** 📋 Planned 2026-09-24. This is the phone side and the contract only. The base server
-itself needs its own plan.
+itself is Plan [FU](FU-base-server.md) (drafted 2026-09-25).
 **Origin:** The pilot partner's direction for Plan CT (see CT's *Revision 2026-09-24 (evening)*):
 technicians see only Field Assist, and everything else is behind an administrator's unlock. The
 owner then asked how an organisation sets up phones and manages them, and whether the API key could
@@ -11,7 +11,8 @@ that sends jobs, so [it] could be admin for setup."*
 record, PR 2b's lease and revocation in [#551](https://github.com/straff2002/OpenGlasses/pull/551),
 3a's activation key and `aiModel`, and 3b's edition and admin card). Plan FO (the `.ogjob` job file,
 `organizationJobSigningKey`, the report route).
-**Related:** Plan CR (the organisation gateway). Plan CT PR 4 (erasure on removal).
+**Related:** Plan CR (the organisation gateway). Plan CT PR 4 (erasure on removal). Plan
+[FU](FU-base-server.md) (the base server itself).
 
 ---
 
@@ -176,6 +177,13 @@ question CT left open (*Where do an organisation's manuals actually come from?*)
   `VaultImporter.syncDocuments` into the documents tier of the vault the pack installed. That path is
   already gated at team tier and already routes scans through Plan EF's extractor. The sync is
   resumable and runs in the background. A binder of scans is large, and nothing waits on it.
+  **Revised 2026-09-25 (Plan [FU](FU-base-server.md) Part 4):** the server converts each manual once,
+  so a set entry carries the converted text (for retrieval) and the PDF (for showing a page), and
+  the phone reads no scans; EF's on-phone extractor remains for phones with no server. The server
+  may also send an **organisation vault set** — the configuration it drafted from the manuals and a
+  person approved (models, fault codes, parts, service values, safety, procedures) — signed and
+  hash-checked the same way, installed as the firm's own vault beside the pack, and validated by the
+  phone's importer like any other vault.
 - **Which vault.** The set names its target vault id. It must be a vault the phone has, usually the
   pack's, or the set is a named drop.
 - **Updates and removal.** A later set with a higher overlay sequence adds, replaces and removes
@@ -209,6 +217,22 @@ third-party SDK. It still has to be disclosed, and the PR that first contacts it
 or advertising. `TelemetryOptOutGuardTests`' rule on disclosing new egress is met by the two items
 above.
 
+## Location while on shift (Plan FU Part 5)
+
+Added 2026-09-25. The base server's status board needs job and shift events, and, where the
+organisation turns it on, the phone's last known position during a shift. The phone side:
+
+- **Shift start and end** are the technician's own actions (Job tab, and by voice). Outside a shift
+  nothing is sent but the check-in itself.
+- **Position rides existing messages**: attached to check-ins and job events while on shift, never a
+  stream of its own, and no `location` background mode.
+- **Only when the profile turns it on, and only on a company phone** unless the enrolment says
+  otherwise. The enrolment review sheet names it, and the technician acknowledges the
+  organisation's monitoring policy before the first shift.
+- **An indicator** — *"Base can see your location"* — whenever a position is being shared.
+- **The "Always" permission string and `privacy.html`** stop promising location reminders only, in
+  the same PR.
+
 ## The administrator phone, reduced to what the server does not cover
 
 - **The admin card stays as CT 3b designed it**: a scan that opens hidden settings on one phone for
@@ -226,12 +250,13 @@ above.
 | **FT1** (headless) | the `baseServer` and `adminKey` profile fields; the overlay schema; the applier's administrator layer with each key's overlay permission; target, sequence and "profile first" checks; sealing to a P-256 key; the registration and check-in messages, as `Codable` shapes with a written wire contract the server can be built against. Tests: an overlay from the wrong key, for another phone, replayed with an older sequence, or arriving before the profile verifies is refused by name; one that tries to loosen a vendor ceiling or touch entitlement is dropped by name; a sealed key opens only with the registered key; precedence as a table with the new layer |
 | **FT2** | the setup QR code (`og-setup:` parsing, the one-time token, the loop check that the profile's `baseServer` is the QR code's address, auto-approval), registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint for typed-key setups, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
 | **FT3** | reports posted to the server, with the report route as the fallback; `unenrol` wired to CT PR 4 |
-| **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments`, and removal by hash |
+| **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments` (converted text plus the PDF, so the phone reads no scans), the organisation vault set installed beside the pack and validated on arrival, and removal by hash |
+| **FT5** | shift start and end; job and shift events on check-in; the on-shift position when the profile enables it and the enrolment is a company phone; the indicator; the monitoring-policy acknowledgement at enrolment; the rewritten "Always" string and privacy copy (Plan FU Part 5) |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use
-a stub. **The base server needs its own plan**: who builds and hosts it (the partner, the
-organisation, or a small reference server this project ships), its console, and its storage of the
-organisation's AI key.
+a stub, and Plan FU's first server PR (FU1) is built to be that stub. **The base server is Plan
+[FU](FU-base-server.md)**: where it runs, its console, its storage of the organisation's AI key, and
+what else it carries (live support, the accounting hand-off, the manuals).
 
 ## Traps
 
@@ -252,9 +277,11 @@ organisation's AI key.
 
 ## Open questions
 
-- **Who builds the base server?** The partner (who may already run dispatch for its customers), each
-  organisation, or a reference server from this project. This decides where the job format, the
-  console and the AI key's storage live.
+- ~~**Who builds the base server?**~~ **Direction 2026-09-25 (Plan [FU](FU-base-server.md)):** one
+  self-contained package, one organisation per install, with a browser console. The partner hosts
+  the pilot firm's instance, pending the partner's agreement; running it in-house stays a supported
+  option. Never a vendor-hosted service for every firm. `baseServer` names an address on the firm's
+  own domain, so moving hosts is a DNS change rather than a re-minted profile.
 - **Does the base server replace email `.ogjob` or sit beside it?** Leaning beside: email stays the
   no-server path, and both carry the same signed file.
 - **Push, or fetch on foreground?** Fetch is enough for a day's dispatch. Push needs the vendor's APNs
