@@ -1460,9 +1460,19 @@ and photos reach the firm unattended once Plan FT's base server exists.
   It offers and never forces. Whatever is not sent goes to the endpoint if there is one, and to the
   window either way. `OrgDepartureService.managedSessionIds` is the one rule for which logs are the
   firm's, shared with the departure.
+- **`eraseAfterLapseDays` (4c).** The organisation's opt-in, which needs no network.
+  - `evaluateLease` starts a departure with the new reason `.lapsed` once the lease has been lapsed
+    for that many days (1–365, or else ignored). It runs only while the content is locked, so never
+    mid-job, and only once (`lapseErasedAt`).
+  - The firm's content goes at once. Its records follow the same deliver-then-erase path.
+  - The profile's rules stay, because a lapse is not a revocation. The pack is marked pending, and
+    the pending-pack pass leaves it alone while lapse-erased.
+  - A renewal heard afterwards clears `lapseErasedAt`, reinstalls the pack straight away, and
+    `cancelLapse` ends the lapse departure. Records it still owed are the firm's again and are kept.
+    A revocation or removal is never undone this way.
+  - The managed row warns when erasure is due, and says so once it has happened.
 - **Not yet:**
   - sealing under a per-enrolment `ScopedKeyring` class, so erasure is `.cryptographic` (PR 4b);
-  - `eraseAfterLapseDays` (PR 4c);
   - the registry's wearer/organisation axis (`owner` already names the owning type, so it will be
     a new field, e.g. `custodian`);
   - enterprise vaults imported while managed, which carry no marker yet.

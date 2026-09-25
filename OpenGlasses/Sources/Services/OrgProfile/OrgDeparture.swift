@@ -11,6 +11,9 @@ struct OrgDeparture: Codable, Equatable, Sendable {
         case revoked
         /// The device owner removed the profile — treated exactly as revocation.
         case removed
+        /// The lease lapsed for the organisation's `eraseAfterLapseDays` without a renewal. The
+        /// profile stays; a later renewal ends this departure (`cancelLapse`).
+        case lapsed
     }
 
     let organizationName: String
@@ -124,6 +127,15 @@ final class OrgDepartureService: ObservableObject {
     /// One rule for the departure and for the removal prompt that offers to send them first.
     nonisolated static func managedSessionIds(_ sessions: [FieldSession], since enrolledAt: Date) -> [String] {
         sessions.filter { $0.startedAt >= enrolledAt }.map { $0.id }
+    }
+
+    /// A renewal was heard after a lapse erasure: the phone is the firm's again, so the records a
+    /// lapse departure still owes are no longer erased. A revocation or removal is never undone.
+    func cancelLapse(enrolmentId: String) {
+        guard let current = departure, current.isPending, current.reason == .lapsed,
+              current.enrolmentId == enrolmentId else { return }
+        departure = nil
+        seams.save(nil)
     }
 
     // MARK: - Storage
