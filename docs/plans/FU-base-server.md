@@ -341,6 +341,44 @@ connector is down, still creates, schedules, assigns and sends jobs from the con
 The accounting hand-off (Part 3) follows the same rule: the CSV export always works, and a connector
 is an addition, never a dependency.
 
+## Blue sky: what only this product can give the office
+
+Added 2026-09-25 from the owner's question *"blue sky, from a base user, what else would be good to
+have?"* All kept as candidates; none is scheduled. They come from what competitors' dispatch software
+does not have: a first-person view of every job, answers grounded in the manuals, an identified
+machine, and a structured, cited debrief. The same rule as *Later parts* applies — the phone
+captures, the console decides, and missing phone capture gets built.
+
+**The rule that comes before any of them.** Anything that reuses what the glasses saw or heard —
+training footage, a senior's recorded walk-through, a review of past jobs — must fit the consent
+rules already in the plans or change them openly: clips are silent and faces blurred (Plan FO P2b),
+and live support is not recorded by default (Part 2, Plan M). Anything that runs a model on the
+server is a new use of the organisation's AI key, which today is only sealed to phones: the
+provider and what is sent to it are disclosed in the console, and the firm turns it on.
+
+| Idea | What it gives the office | Builds on | Phone side | Consent and risk |
+|---|---|---|---|---|
+| **Ask the crew's work** | *"Which of our Lennox units threw E223 this winter, and what fixed it?"*, answered with the jobs, debriefs and manual pages cited | reports (Part 1), debrief items that already cite their turns, the manuals (Part 4) | none | a model on the server (above); answers cite or say there is nothing on file, never guess |
+| **The job at a glance for the helper** | on a help request: tasks, manual pages opened, what the assistant suggested, photos, fault report — help without asking the technician to start over | escalations, the work record, Part 2's help queue | **small:** a live job snapshot sent with the help request (bounded, like the continuity snapshot) | only while help is requested; not kept after |
+| **One senior, several apprentices** | a help queue ordered by urgency, each with a short summary ready before the senior joins | Part 2, the snapshot above | none beyond the snapshot | the summary is a model on the server (above) |
+| **Record a senior's know-how** | a senior does a job while explaining it; base turns it into a guided procedure the glasses walk juniors through | vault procedures, Plan FP's review before anything is published | **new:** a narrated-procedure capture mode | audio and video of a customer's site; needs its own consent question, which FO P2b deliberately never asked |
+| **Warranty claim packs** | a drafted manufacturer warranty claim — serial, fault code, failed part, photos — for base to check and submit | equipment identity (Plan EL), the vault's code tables, parts used, evidence | none | base submits, never the server on its own |
+| **Same-day quotes** | a finding ("heat exchanger corroded") becomes a good/better/best quote with photos, reviewed by base and sent that day | debrief findings, evidence, the customer summary (FO P2c) | none | base reviews every quote; nothing goes to a customer unreviewed |
+| **Equipment register and recalls** | every serial the crew sees: age, warranty status, contract renewal; a recall on a serial range alerts the technician on arrival and gives the office a call list | *Later parts* history, Plan EL | **small:** a recall notice delivered with the job and spoken in the brief | recall data from a trustworthy source only; a false recall alarm costs trust |
+| **Parts for tomorrow** | from tomorrow's fault reports and each machine's history, what each van should carry; restock lists from what was used | the parts desk, history, `onVan` on parts requests | none | a suggestion, never an order |
+| **Lone-worker safety** | a missed check-in, or no movement during a job, alerts base | Part 5's shift and check-ins | **small:** an *"I'm OK"* prompt and a timer the technician sets | inside Part 5's on-shift rules; never outside a shift |
+| **Site notes that carry forward** | "dog in the yard", "asbestos in the ceiling", "needs a 10 m ladder", recorded once and read out before the next visit | the job brief (FO P3c), site history | **small:** a site-note capture, and a section in the brief | notes are about the site, never about the customer as a person |
+| **Quality spot-checks** | a random sample of finished jobs reviewed from their evidence, feeding fix rates and coaching | the archive, *Later parts* figures | none | coaching, not discipline, by default; the technician can see which of their jobs were reviewed |
+| **Voice messages to base** | *"tell base…"* on the phone; base's reply is read into the technician's ear | the parts-desk answer loop, generalised | **small:** a message tool and replies delivered by check-in, spoken at a turn boundary | the message is the technician's own words going to base, disclosed like the manual-gap report |
+
+**Suggested first three:** warranty claim packs (recovers money from data that already exists),
+asking the crew's work (makes everything recorded useful to the office), and the job at a glance for
+the helper (makes every help call faster).
+
+**Deferred: drawing on what the technician sees.** The base user circles a part on the relayed
+picture and it appears on the lens. Deferred on 2026-09-25 because most crews' glasses have no
+display. Revisit when display glasses are common in the crews the product sells to.
+
 ## Privacy
 
 - **On the phone:** `baseServer` is disclosed as FT requires. The relay and the manuals use the same
