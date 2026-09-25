@@ -210,6 +210,22 @@ third-party SDK. It still has to be disclosed, and the PR that first contacts it
 or advertising. `TelemetryOptOutGuardTests`' rule on disclosing new egress is met by the two items
 above.
 
+## Location while on shift (Plan FU Part 5)
+
+Added 2026-09-25. The base server's status board needs job and shift events, and, where the
+organisation turns it on, the phone's last known position during a shift. The phone side:
+
+- **Shift start and end** are the technician's own actions (Job tab, and by voice). Outside a shift
+  nothing is sent but the check-in itself.
+- **Position rides existing messages**: attached to check-ins and job events while on shift, never a
+  stream of its own, and no `location` background mode.
+- **Only when the profile turns it on, and only on a company phone** unless the enrolment says
+  otherwise. The enrolment review sheet names it, and the technician acknowledges the
+  organisation's monitoring policy before the first shift.
+- **An indicator** — *"Base can see your location"* — whenever a position is being shared.
+- **The "Always" permission string and `privacy.html`** stop promising location reminders only, in
+  the same PR.
+
 ## The administrator phone, reduced to what the server does not cover
 
 - **The admin card stays as CT 3b designed it**: a scan that opens hidden settings on one phone for
@@ -228,6 +244,7 @@ above.
 | **FT2** | the setup QR code (`og-setup:` parsing, the one-time token, the loop check that the profile's `baseServer` is the QR code's address, auto-approval), registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint for typed-key setups, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
 | **FT3** | reports posted to the server, with the report route as the fallback; `unenrol` wired to CT PR 4 |
 | **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments`, and removal by hash |
+| **FT5** | shift start and end; job and shift events on check-in; the on-shift position when the profile enables it and the enrolment is a company phone; the indicator; the monitoring-policy acknowledgement at enrolment; the rewritten "Always" string and privacy copy (Plan FU Part 5) |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use
 a stub, and Plan FU's first server PR (FU1) is built to be that stub. **The base server is Plan

@@ -14,7 +14,7 @@ invoices; and is a TURN server really needed. This plan records the answers.
 
 ## The shape
 
-One server per organisation, with a browser console served by the same server. It does four
+One server per organisation, with a browser console served by the same server. It does five
 things, built and shipped as separate parts behind one login:
 
 | Part | What it does | Phone side |
@@ -23,9 +23,10 @@ things, built and shipped as separate parts behind one login:
 | **2 · Live support** | relays the glasses' view to an administrator's browser when a technician asks for help | the MJPEG transport (Plan L), pointed at the server |
 | **3 · Accounting hand-off** | turns a finished job's record into a draft invoice in the firm's accounting package | nothing new |
 | **4 · Manuals** | holds the organisation's manuals and serves them by hash | FT4 |
+| **5 · Where the crew is** | a status board from job events, and each engineer's last known position while on shift | FT5 |
 
-Core ships first, because a phone can't be set up without it. The other three can each wait for
-the pilot to ask for them.
+Core ships first, because a phone can't be set up without it. The others can each wait for the
+pilot to ask for them.
 
 ## Where it runs
 
@@ -61,7 +62,12 @@ console. It never holds more than one organisation's data.
 **For the pilot, the partner runs the firm's instance in the cloud.** FT notes the partner may already
 run dispatch for its customers. This still needs the partner's agreement (see *Open questions*).
 
-**The address lives on the firm's own domain**, for example `jobs.firmname.co.nz`, and that is what
+**Hosted in the firm's own region.** The primary market is Canada and the United States (owner,
+2026-09-25). A Canadian firm's instance is normally hosted in Canada, and a Quebec firm's ideally in
+Quebec: Quebec's Law 25 requires a privacy impact assessment before personal information leaves the
+province. The partner hosts each firm's copy in that firm's region rather than wherever is cheapest.
+
+**The address lives on the firm's own domain**, for example `jobs.firmname.com`, and that is what
 the profile's `baseServer` names. Moving from partner hosting to in-house hosting is then a DNS change,
 not a re-minted profile.
 
@@ -223,6 +229,60 @@ manual set (file names, sizes, SHA-256s, target vault id), and serves each file 
 resumably (HTTP range requests), because a binder of scans is large. Withdrawing a file is a new set
 without it, which removes it from each phone at its next check-in.
 
+## Part 5 · Where the crew is: a status board, and position only while on shift
+
+**Decided direction, 2026-09-25: the console shows where each engineer is in their work day, not a
+live dot that follows them.** A dispatcher's real questions — who is free, who is on site, who is
+closest to an urgent job — are answered by status plus a recent position during working hours.
+Continuous tracking adds legal exposure, battery drain on a phone already streaming from the
+glasses, an App Review justification, a change to FT's fetch-only design, a dataset that reveals
+where every van parks overnight, and a crew that feels watched.
+
+**What the phone already does with location.** A job records where it started and ended
+(`FieldSession.startLocation`/`endLocation`), and the start travels in the exported report
+(`SessionExporter`). A help request can send the technician's location to the organisation's
+notification address, and `privacy.html` says so. The app's "Always" permission is explained, in the
+permission string and in `privacy.html`, as used **only** for location reminders, and the app declares
+no `location` background mode.
+
+**The design:**
+
+- **Status board first.** Each engineer shows as *Travelling to job 1042*, *On site at ⟨site⟩ since
+  10:42*, *Available* or *Off shift*, derived from job events the phone already produces (a job
+  started, a job closed) plus shift start and end. This needs no position at all.
+- **Last known position, only on shift.** The phone attaches its position to each check-in and job
+  event between the technician's own *Start shift* and *End shift*, and never outside them. The
+  console shows it with its age — *"as of 10:42"* — the same discipline as "last checked in". No
+  continuous stream and no `location` background mode; in the background the phone uses whatever
+  check-ins FT already makes.
+- **Latest position only.** The server keeps each engineer's most recent position and overwrites it,
+  never a trail. Job records keep their start and end as today. Ending a shift clears the position.
+- **The technician can always tell.** An indicator on the phone — *"Base can see your location"* —
+  whenever sharing is on; shift start and end are the technician's actions.
+- **Never switched on silently.** The organisation turns the feature on in its profile; the enrolment
+  review sheet says so; the technician acknowledges the organisation's monitoring policy before the
+  first shift, and the acknowledgement is recorded.
+- **Company phone or personal phone** is set per enrolment. On a personal phone the default is status
+  only, with no position.
+- **A help request** sends a precise position, as it can already.
+
+**The monitoring-policy record.** The console stores the organisation's written monitoring policy,
+its version, and when each technician acknowledged which version. That one record serves the
+jurisdictions below.
+
+**Designed once, to the strictest rules in the primary market** (Canada and the US). These are the
+drivers as understood when this was written, and counsel should confirm them before FU6 ships:
+
+| Where | What it asks for | Met by |
+|---|---|---|
+| Ontario | employers with 25+ employees keep a written electronic-monitoring policy saying whether and how they monitor, GPS included (Employment Standards Act, as amended by the Working for Workers Act 2022) | the policy record |
+| Quebec (Law 25) | tell people when a technology can locate them and how the function is activated; a privacy impact assessment before information leaves Quebec | the technician's own shift toggle, the enrolment review, hosting in region |
+| Alberta, BC (PIPA) | employee information reasonable for managing the employment, with notice; commissioners have accepted vehicle GPS for dispatch and safety, not much beyond | on shift only, latest only, notice at enrolment |
+| Federally regulated employers (PIPEDA) | legitimate purpose, effective, proportionate, no less intrusive way | status first, position only on shift |
+| California (CCPA/CPRA) | employee data covered; notice at collection; precise geolocation is sensitive personal information with limited use | notice at enrolment, use limited to dispatch |
+| New York, Connecticut, Delaware and others | written notice of electronic monitoring, with acknowledgement in some | the policy record |
+| Everywhere | off-shift and personal-phone tracking is where privacy claims arise | never off shift; status only on a personal phone by default |
+
 ## Privacy
 
 - **On the phone:** `baseServer` is disclosed as FT requires. The relay and the manuals use the same
@@ -235,6 +295,11 @@ without it, which removes it from each phone at its next check-in.
   is neither, because the vendor holds nothing.
 - **Accounting:** the connector is an egress from the firm's server to the firm's own accounting
   package. It is not an egress from the phone.
+- **Location (Part 5):** the phone's "Always" permission string and `privacy.html` currently promise
+  location reminders only. The PR that first sends a position to `baseServer` rewrites both, and adds
+  the on-shift sharing to the enrolment review. It also answers the question
+  `PrivacyInfo.xcprivacy`'s header comment leaves open — revisit every *Linked* flag once there is a
+  backend — for a named person's position sent to the organisation's server.
 
 ## Delivery
 
@@ -246,6 +311,7 @@ without it, which removes it from each phone at its next check-in.
 | **FU3** | Part 2: the authenticated relay and the viewer page in the console; the escalation webhook received; **phone side** — relay and viewer addresses derived from `baseServer`, the streamer connection signed, the watcher count shown, the privacy sentence |
 | **FU4** | Part 3: CSV export, then the one connector |
 | **FU5** | Part 4: manual storage, the set in the overlay, signed resumable download (with FT4) |
+| **FU6** | Part 5: the status board from job and shift events, the latest-position store, the monitoring-policy record and acknowledgements; counsel's confirmation of the jurisdiction table first (phone side is FT5) |
 
 FU1 can start once FT1's contract is written, and it is also the stub FT2's tests need. Only FU3 has
 phone-side code of its own; the rest of the phone side is FT's.
@@ -266,6 +332,11 @@ phone-side code of its own; the rest of the phone side is FT's.
 | Invoice lines taken from the work record's notes instead of the signed summary | internal notes and escalations reach a customer |
 | Adding TURN "just in case" | a third-party egress and a service to run, for a transport the pilot doesn't use |
 | Calling "last checked in" "online" | an administrator trusts a stale phone as current (FT) |
+| Hosting a Canadian firm's instance in the US "because it's cheaper" | a Quebec privacy impact assessment, and a harder sale |
+| Keeping a trail of positions "for reports" | a record of where each named engineer goes, including where the van parks overnight |
+| Sending position outside a shift, or on a personal phone by default | the monitoring the law and the crew object to most |
+| A position shown without its age | a dispatcher sends the nearest engineer who left an hour ago |
+| Turning location sharing on without the enrolment review saying so | undisclosed monitoring, and the "Always" string's promise broken |
 
 ## Open questions
 
@@ -279,5 +350,10 @@ phone-side code of its own; the rest of the phone side is FT's.
 - **Should the reviewer's queue for Plan FP (team learnings) move to the console?** FP designed it
   for a reviewer *phone* because there was no server. A console is the more natural home, but FP's
   decision stands until the pilot asks.
+- **Does Part 5 need a shift at all**, or is "a job is open or travelling to one" enough? Leaning:
+  an explicit shift, because an engineer between jobs is exactly who dispatch wants to find.
+- **Is the *Linked* flag in `PrivacyInfo.xcprivacy` set for location** once a named person's position
+  goes to the organisation's server? The server is not the developer's, which is the argument for
+  leaving it; the answer belongs in the PR that sends the first position.
 - **Does the console need to show the job's live progress** (the task the technician is on), or is
   "status as last reported" enough? Leaning: last reported, fetched like everything else.
