@@ -186,6 +186,13 @@ struct DeliverySettings: Codable, Equatable {
         }
         _ = KeychainService.setString(endpointToken, for: Self.tokenKeychainKey)
     }
+
+    /// Forget the stored settings and the endpoint token — the firm's route, erased once a phone
+    /// that has left the firm has delivered what it owed (Plan CT PR 4).
+    static func clearStored(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: storageKey)
+        _ = KeychainService.delete(tokenKeychainKey)
+    }
 }
 
 /// May this report go by this channel, to these people, with these files?

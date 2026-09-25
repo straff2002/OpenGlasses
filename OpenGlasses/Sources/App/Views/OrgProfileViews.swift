@@ -230,6 +230,7 @@ struct ManagedByOrganisationSection: View {
     @State private var removalError: String?
     @State private var finishingModel = false
     @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var departures = OrgDepartureService.shared
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
@@ -322,6 +323,13 @@ struct ManagedByOrganisationSection: View {
         } else if let problem = manager.loadProblem {
             OGSection(header: "Organisation") {
                 OGNotice(text: problem, systemImage: "exclamationmark.triangle")
+                    .padding(12)
+            }
+        } else if let departure = departures.departure, departure.isPending {
+            // Plan CT PR 4: this phone has left the firm and still owes it its records.
+            OGSection(header: "Organisation") {
+                OGNotice(text: "This phone has left \(departure.organizationName). Its job records from that time go to \(departure.organizationName) when this phone can reach it, and are erased by \(departure.eraseBy.formatted(date: .abbreviated, time: .omitted)) either way.",
+                         systemImage: "tray.and.arrow.up")
                     .padding(12)
             }
         }

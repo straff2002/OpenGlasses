@@ -77,6 +77,7 @@ enum SensitiveStore: String, CaseIterable {
     case fieldDeliverySettings
     case jobDeliveryQueue
     case upcomingJobs
+    case orgEnrolment
     case safetyAssessments
 
     // Clinical
@@ -570,6 +571,22 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "UpcomingJobStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/UpcomingJobStore.swift"],
                           location: "Application Support/FieldAssist/upcoming-jobs.json")
+
+        case .orgEnrolment:
+            // Plan CT: the organisation profile this phone is enrolled with — the signed document,
+            // the lease, and what enrolment wrote and must put back — and, once the phone has left
+            // the firm, what it still owes the firm (`OrgDeparture`: which session logs, and by
+            // when they are erased). No content: names, ids and dates. The wearer's, as the
+            // delivery settings are; removing the profile is the delete, and a departure record
+            // is kept after it only until the firm's records have gone.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("OrgProfileManager.remove()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OrgProfileManager",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OrgProfile/OrgProfileManager.swift",
+                                       "OpenGlasses/Sources/Services/OrgProfile/OrgDeparture.swift"],
+                          location: "preferences keys `orgProfileEnrolment` and `orgDeparture`")
 
         case .safetyAssessments:
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,

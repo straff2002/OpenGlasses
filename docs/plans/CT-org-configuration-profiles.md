@@ -1413,6 +1413,49 @@ an edition is in force and no administrator session is open.
   **Removal and revocation also forget it** (`OrgProfileManager.Seams.forgetAdminCard`), so a phone
   handed on and re-enrolled is not quietly an administrator phone again.
 
+**PR 4, first slice as built (2026-09-25) — deliver, then erase.**
+
+**Delivery, decided 2026-09-25.** Only the firm's endpoint delivers unattended, and a record counts
+as delivered only once the endpoint has *accepted* it. When the device owner removes the profile,
+they are first offered the waiting report sends and an export of the session logs for the firm.
+That prompt is the next slice. Anything undelivered stays and is erased after the window. Full logs
+and photos reach the firm unattended once Plan FT's base server exists.
+
+- **`OrgDepartureService`.** Revocation (`markRevoked`) and removal (`remove`) both call it, through
+  the manager's `beginDeparture` seam. Removal is treated exactly as revocation.
+  - The default seam does nothing, so no test inherits an erasure. `OrgProfileManager.shared` uses
+    `Seams.production`, which wires it.
+  - It keeps an `OrgDeparture` (UserDefaults `orgDeparture`) apart from the enrolment record, which
+    removal deletes. The record holds the organisation, the enrolment id, the reason, the session
+    ids owed, and `eraseBy`.
+  - `eraseBy` is `undeliveredEraseDays`, 30 by default, held to 1–365.
+  - Leaving twice for the same enrolment changes nothing, so a revoked phone its owner then removes
+    keeps the first window.
+- **At once** (`eraseContent`): the vault the profile's pack installed (found by the pack sidecar's
+  id), the jobs ahead, and the staged field-session exports.
+- **Delivered, then erased** (`settle`, run at the start, at launch and on every foreground):
+  - With an endpoint configured, the sync engine is flushed. Delivery holds only when no work record
+    for the owed sessions is still outstanding (`QueuedRecordRows.outstandingCount`).
+  - Without an endpoint, nothing counts as delivered, because the local sink marks records done with
+    nothing leaving the phone. Only the window decides.
+  - Nothing is erased while a job is open, not even past the window.
+  - `eraseRecords` deletes the owed session logs (new `FieldSessionService.deleteSessions(ids:)`,
+    never the session in progress), the report queue, the owed sessions' queued work records, and
+    the delivery settings and endpoint token (new `DeliverySettings.clearStored()`).
+  - The departure records `deliveredToFirm`, so an erasure that ran out the window says so.
+- **Settings.** The managed row, once the profile is gone, says the phone has left ⟨org⟩, and that
+  its records from that time go there when it can reach it and are erased by ⟨date⟩ either way.
+- **Registry.** `SensitiveStore.orgEnrolment` now registers the enrolment record and the departure.
+  It was an unregistered gap, because its codec lives in `ProfileVerification`. The matrix row is
+  added.
+- **Not yet:**
+  - the removal prompt;
+  - sealing under a per-enrolment `ScopedKeyring` class, so erasure is `.cryptographic` (PR 4b);
+  - `eraseAfterLapseDays` (PR 4c);
+  - the registry's wearer/organisation axis (`owner` already names the owning type, so it will be
+    a new field, e.g. `custodian`);
+  - enterprise vaults imported while managed, which carry no marker yet.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on

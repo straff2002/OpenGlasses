@@ -13,6 +13,7 @@ final class OrgAIModelTests: XCTestCase {
     private var activeId = ""
     private var nextId = 0
     private var forgotAdminCard = 0
+    private var departures: [OrgDeparture.Reason] = []
     private var fetchResult: Result<Data, Error> = .failure(URLError(.notConnectedToInternet))
     private let issued = Date(timeIntervalSince1970: 1_790_000_000)
     private let address = URL(string: "https://config.northbridge.example/profile.txt")!
@@ -27,6 +28,7 @@ final class OrgAIModelTests: XCTestCase {
         activeId = "mine"
         nextId = 0
         forgotAdminCard = 0
+        departures = []
         fetchResult = .failure(URLError(.notConnectedToInternet))
     }
 
@@ -63,6 +65,7 @@ final class OrgAIModelTests: XCTestCase {
             return "org-\(self.nextId)"
         }
         seams.forgetAdminCard = { [unowned self] in self.forgotAdminCard += 1 }
+        seams.beginDeparture = { [unowned self] reason, _, _ in self.departures.append(reason) }
         return OrgProfileManager(seams: seams)
     }
 
@@ -186,6 +189,8 @@ final class OrgAIModelTests: XCTestCase {
         await manager.renewIfDue(force: true)
         XCTAssertEqual(stored?.revoked, true)
         XCTAssertEqual(forgotAdminCard, 2)
+        XCTAssertEqual(departures, [.removed, .revoked],
+                       "Plan CT PR 4: removal is treated exactly as revocation — both leave the firm")
     }
 
     func testRemovalDeletesTheOrganisationsConfigAndLeavesTheirOwn() throws {

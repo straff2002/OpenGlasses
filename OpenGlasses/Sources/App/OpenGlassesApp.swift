@@ -523,6 +523,8 @@ struct OpenGlassesApp: App {
                 // Plan CT PR 2b: renew the organisation profile's lease (at most once a day) and
                 // re-evaluate it — the clock moved while the app was away.
                 Task { await OrgProfileManager.shared.renewIfDue() }
+                // Plan CT PR 4: and a phone that has left the firm retries delivering what it owes.
+                Task { await OrgDepartureService.shared.settle() }
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
@@ -908,6 +910,51 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Everything device-facing is a closure here for the same reason the guided flow's are: the
     /// partition between "goes now" and "waits for a thumb" is the whole design, and it is only
     /// worth anything if a test can prove that Mail never sends.
+    /// Plan CT PR 4 — the departure's production seams: what the firm's content and records are on
+    /// this phone, and the only route that delivers them unattended (its endpoint, through the
+    /// offline queue's sync engine). An empty queue is not taken as delivery: `outstanding` counts
+    /// work records the endpoint has not accepted, and delivery is only asked of it at all when an
+    /// endpoint is configured, because without one the local sink marks records done.
+    private func configureOrgDeparture() {
+        OrgDepartureService.shared.seams = .init(
+            now: { Date() },
+            load: { OrgDepartureService.loadStored() },
+            save: { OrgDepartureService.saveStored($0) },
+            sessionIds: { since in
+                FieldSessionService.shared.history.filter { $0.startedAt >= since }.map(\.id)
+            },
+            activeJobId: { FieldSessionService.shared.activeSession?.id },
+            eraseContent: { [weak self] packId in
+                guard let self else { return }
+                if let packId {
+                    for manifest in VaultImporter.installedManifests()
+                    where VaultImporter.installedPack(for: manifest.id)?.id == packId {
+                        await VaultImporter.uninstall(id: manifest.id, documentStore: self.documentStore)
+                    }
+                    VaultRegistry.shared.reloadUserManifests()
+                }
+                self.upcomingJobs.removeAll()
+                StagedExportCoordinator.fieldSession.revokeAll()
+            },
+            hasEndpoint: { Config.deliverySettings.hasEndpoint },
+            flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
+            outstanding: { [weak self] ids in
+                guard let self else { return 0 }
+                let ops = self.offlineQueue.all(limit: 500)
+                return ids.reduce(0) { $0 + QueuedRecordRows.outstandingCount(in: ops, sessionId: $1) }
+            },
+            eraseRecords: { [weak self] ids in
+                guard let self else { return }
+                FieldSessionService.shared.deleteSessions(ids: Set(ids))
+                self.jobSends.queue.removeAll()
+                for op in self.offlineQueue.all(limit: 500) where ids.contains(op.sessionId) {
+                    self.offlineQueue.delete(id: op.id)
+                }
+                DeliverySettings.clearStored()
+            })
+        OrgDepartureService.shared.loadAtLaunch()
+    }
+
     private func configureJobSends() {
         jobSends.connect(.init(
             speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
@@ -1801,6 +1848,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // is re-evaluated as jobs start and end; and it renews once at launch.
         OrgProfileManager.shared.observeJobs()
         Task { await OrgProfileManager.shared.renewIfDue() }
+        // Plan CT PR 4: a phone that has left the firm keeps trying to deliver what it owes.
+        configureOrgDeparture()
+        Task { await OrgDepartureService.shared.settle() }
 
         // Clinical exports must not outlive the app being onscreen: anything not held by a live
         // share controller goes when the app backgrounds.
