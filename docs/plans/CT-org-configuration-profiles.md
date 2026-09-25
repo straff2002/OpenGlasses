@@ -1448,8 +1448,19 @@ and photos reach the firm unattended once Plan FT's base server exists.
 - **Registry.** `SensitiveStore.orgEnrolment` now registers the enrolment record and the departure.
   It was an unregistered gap, because its codec lives in `ProfileVerification`. The matrix row is
   added.
+- **The removal prompt** (second slice). *Remove Profile* on a phone that still holds the firm's
+  records opens a step first, inline on the managed row so the send composers (hosted by `MainView`)
+  can present:
+  - *Send N Waiting Reports* (`JobSendService.sendAll`);
+  - *Share Job Records for ⟨org⟩*, each managed session's export in one share sheet, taken while the
+    licence is still in force;
+  - *Remove Profile Now*;
+  - *Not Now*.
+
+  It offers and never forces. Whatever is not sent goes to the endpoint if there is one, and to the
+  window either way. `OrgDepartureService.managedSessionIds` is the one rule for which logs are the
+  firm's, shared with the departure.
 - **Not yet:**
-  - the removal prompt;
   - sealing under a per-enrolment `ScopedKeyring` class, so erasure is `.cryptographic` (PR 4b);
   - `eraseAfterLapseDays` (PR 4c);
   - the registry's wearer/organisation axis (`owner` already names the owning type, so it will be

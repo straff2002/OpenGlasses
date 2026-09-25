@@ -921,7 +921,7 @@ class AppState: ObservableObject, AppStateProtocol {
             load: { OrgDepartureService.loadStored() },
             save: { OrgDepartureService.saveStored($0) },
             sessionIds: { since in
-                FieldSessionService.shared.history.filter { $0.startedAt >= since }.map(\.id)
+                OrgDepartureService.managedSessionIds(FieldSessionService.shared.history, since: since)
             },
             activeJobId: { FieldSessionService.shared.activeSession?.id },
             eraseContent: { [weak self] packId in

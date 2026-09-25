@@ -120,6 +120,12 @@ final class OrgDepartureService: ObservableObject {
         seams.save(current)
     }
 
+    /// The session logs from the managed period: the firm's record, and what a departure owes it.
+    /// One rule for the departure and for the removal prompt that offers to send them first.
+    nonisolated static func managedSessionIds(_ sessions: [FieldSession], since enrolledAt: Date) -> [String] {
+        sessions.filter { $0.startedAt >= enrolledAt }.map { $0.id }
+    }
+
     // MARK: - Storage
 
     nonisolated static let storageKey = "orgDeparture"
