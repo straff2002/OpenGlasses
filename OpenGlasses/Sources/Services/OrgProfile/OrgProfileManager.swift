@@ -60,6 +60,12 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// The profile names a model that still needs its key (or its sign-in): Field Assist says the
     /// administrator needs to finish setting up this phone.
     var modelSetupPending: Bool?
+
+    // Plan CT PR 4 — the organisation's opt-in erasure after a lapse heard offline.
+
+    /// When the firm's content was erased because the lease had lapsed for `eraseAfterLapseDays`.
+    /// Cleared by the renewal that brings the phone back, which reinstalls the pack.
+    var lapseErasedAt: Date?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -195,10 +201,14 @@ final class OrgProfileManager: ObservableObject {
         /// Plan CT PR 4: the phone has left the firm. Does nothing by default — erasure is too
         /// consequential to be a default a test inherits; `production` wires it.
         var beginDeparture: @MainActor (OrgDeparture.Reason, OrgEnrolmentRecord, ConfigProfile?) -> Void = { _, _, _ in }
+        /// A renewal heard after a lapse erasure: the phone is the firm's again, so the records
+        /// still owed from that erasure are no longer to be erased.
+        var endLapseDeparture: @MainActor (_ enrolmentId: String) -> Void = { _ in }
 
         /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
         static var production: Seams {
             var seams = Seams()
+            seams.endLapseDeparture = { OrgDepartureService.shared.cancelLapse(enrolmentId: $0) }
             seams.beginDeparture = { reason, record, profile in
                 Task { @MainActor in
                     await OrgDepartureService.shared.begin(
@@ -414,7 +424,8 @@ final class OrgProfileManager: ObservableObject {
     /// pack that turns out to provide a different vault leaves the default where it was, rather than
     /// pointing it at nothing.
     func completePendingPack() async {
-        guard let current = record, let packId = current.pendingPackId, current.revoked != true else { return }
+        guard let current = record, let packId = current.pendingPackId, current.revoked != true,
+              current.lapseErasedAt == nil else { return }
         let outcome = await seams.installPack(packId)
         guard var latest = record, latest.enrolmentId == current.enrolmentId,
               latest.pendingPackId == packId else { return }
@@ -572,6 +583,17 @@ final class OrgProfileManager: ObservableObject {
         var lock = current.leaseLock ?? ProfileLease.Lock()
         let locked = lock.isLocked(status: status, activeJob: seams.activeJobId())
         current.leaseLock = lock
+        // Plan CT PR 4: the organisation's opt-in — erase its content once the lease has been lapsed
+        // this long without a renewal. Locked means no job is holding the lock off, so never mid-job.
+        // No network is needed; the pack is reinstalled if a renewal is ever heard.
+        var erasingForLapse = false
+        if case .lapsed(let since) = status, locked, current.lapseErasedAt == nil,
+           let days = profile.eraseAfterLapseDays, ConfigProfile.erasureDaysRange.contains(days),
+           now >= since.addingTimeInterval(TimeInterval(days) * 86_400) {
+            current.lapseErasedAt = now
+            if let packId = profile.vaultPack?.packId { current.pendingPackId = packId }
+            erasingForLapse = true
+        }
         if current != record {
             seams.saveRecord(current)
             record = current
@@ -580,6 +602,7 @@ final class OrgProfileManager: ObservableObject {
         contentLocked = locked
         seams.withholdLicence(locked && current.activatedLicence
                               ? (current.activatedLicenceCode ?? profile.licenceCode) : nil)
+        if erasingForLapse { seams.beginDeparture(.lapsed, current, profile) }
         return status
     }
 
@@ -623,6 +646,8 @@ final class OrgProfileManager: ObservableObject {
                 markRevoked()
             } else {
                 renew(with: renewed, document: text)
+                // A renewal after a lapse erasure reinstalls the pack now, not at the next pass.
+                if record?.pendingPackId != nil { await completePendingPack() }
             }
         default:
             break
@@ -674,6 +699,12 @@ final class OrgProfileManager: ObservableObject {
         current.lastRenewedAt = seams.now()
         current.revoked = false
         current.leaseLock = nil
+        if current.lapseErasedAt != nil {
+            // Back in touch after a lapse erasure: the firm's again. Its pack is reinstalled by the
+            // next pending-pack pass, and the records owed from the erasure stay.
+            current.lapseErasedAt = nil
+            seams.endLapseDeparture(current.enrolmentId)
+        }
         reconcileModel(result.aiModel, organizationName: renewed.organizationName, record: &current)
         seams.saveRecord(current)
         record = current
