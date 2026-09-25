@@ -1406,6 +1406,9 @@ an edition is in force and no administrator session is open.
   - `AdminCardDisplay` renders the QR full screen with `CIQRCodeGenerator`. It hides after 30 s, and
     whenever the scene leaves `.active`. *Show Again* brings it back.
   - A replaced card is never shown (`cardToShow`).
+  - This is the one place the app renders a code. Plan FS decision 2 (the app never renders a vault
+    link) is enforced by `VaultLinkNoShareTests`. That test now names `AdminGateViews.swift` as the
+    single allowed renderer, and holds it to never touching a vault link or archive.
 - **Stopping.** *Stop Being an Administrator Phone* deletes the kept secret, after a confirmation.
   **Removal and revocation also forget it** (`OrgProfileManager.Seams.forgetAdminCard`), so a phone
   handed on and re-enrolled is not quietly an administrator phone again.

@@ -45,13 +45,28 @@ final class VaultLinkNoShareTests: XCTestCase {
 
     // MARK: - No QR is ever produced
 
+    /// The one place the app renders a code, and why it is not a vault. Each entry is held to the
+    /// rule that matters here: it never touches a vault link or archive.
+    private static let codeRenderers: [String: String] = [
+        "OpenGlasses/Sources/App/Views/AdminGateViews.swift":
+            "Plan CT 3b: an administrator phone shows the organisation's admin card for a "
+                + "technician's phone to scan — a key to administrator settings, never a vault",
+    ]
+
     func testNothingInTheAppGeneratesAQRCode() throws {
-        // The two APIs that turn data into a code on iOS. Neither has any business in this app:
-        // the QR story is entirely the receiving half.
+        // The two APIs that turn data into a code on iOS. Neither has any business near a vault:
+        // for vaults the QR story is entirely the receiving half.
         let generators = ["CIQRCodeGenerator", "CIFilter.qrCode", "AztecCodeGenerator",
                           "CIPDF417BarcodeGenerator", "CICode128BarcodeGenerator"]
         for path in Self.sourcePaths {
             let text = try source(path)
+            if Self.codeRenderers[path] != nil {
+                let lower = text.lowercased()
+                XCTAssertFalse(lower.contains("vaultlink") || lower.contains("vaultarchive")
+                                   || lower.contains("vaultreceipt"),
+                               "\(path) may render a code only because it has nothing to do with vaults")
+                continue
+            }
             for generator in generators {
                 XCTAssertFalse(text.contains(generator),
                                "\(path) builds a barcode with \(generator). The app receives vault "
