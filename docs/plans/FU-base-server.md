@@ -105,8 +105,9 @@ the phone will refuse — the licence, its tier or packs, a vendor ceiling, `bas
 the lease. The phone list shows label, app version, overlay sequence, lease date and **"last checked
 in"**, never "online".
 
-**Jobs.** A job is created in the console, assigned to one phone (by enrolment id) or left for anyone,
-and served as a signed `.ogjob` — the same file `Scripts/make-job-file.swift` makes today, whose `Body`
+**Jobs.** A job is created in the console — or arrives through a dispatch connector (*Later parts*),
+which is optional — scheduled (a date and time window, which `.ogjob`'s `scheduled_for` already
+carries), assigned to one phone (by enrolment id) or left for anyone, and served as a signed `.ogjob` — the same file `Scripts/make-job-file.swift` makes today, whose `Body`
 must stay field-for-field identical to the app's `JobFile.Body`. The phone fetches it and runs it
 through `JobFileImportPolicy` unchanged, so a job from the server and a job from email are the same
 file. The email path stays beside the server (FT's leaning), and the console can download a job as an
@@ -310,11 +311,35 @@ and is disclosed in the same PR if it sends anything new.
 Suggested order: parts desk, follow-up queue, then history and the archive — cheapest, because the
 data already arrives, and what the office uses every day.
 
-**Scheduling waits on one question.** Most North American field-service firms already run dispatch
-software (ServiceTitan, Jobber, Housecall Pro, Salesforce Field Service and others). Where the partner
-or the firm does, the server pulls jobs from it and pushes reports back rather than becoming a second
-schedule to keep in step — the same reasoning as Part 3's draft invoices. Only a firm with none gets a
-scheduling calendar in the console.
+**Dispatch connectors: offered, never relied on** (owner, 2026-09-25). Most North American
+field-service firms already run dispatch software (ServiceTitan, Jobber, Housecall Pro, Salesforce
+Field Service and others). The server connects to it where a firm has it, but **the console's own
+jobs and schedule are the baseline and always work**: a firm with no dispatch software, or one whose
+connector is down, still creates, schedules, assigns and sends jobs from the console.
+
+- **The base server owns what the phones receive.** Every job reaches a phone as the server's signed
+  `.ogjob`, whatever its source. **The phone never talks to dispatch software**, so no connector adds
+  a destination to the phone's privacy copy, and changing or dropping one changes nothing on the
+  phone.
+- **Jobs in, status and reports out.** A connector imports jobs (by webhook where the product offers
+  one, polling where it doesn't) and posts status and the finished report back. Outbound posts go
+  through a queue keyed on the report's `op_id`, the same idempotency the phone uses, so an outage
+  delays them and never duplicates them.
+- **One owner per field.** An imported job's schedule and customer details belong to the dispatch
+  system and update from it; a local change in the console is marked as an override and shown as
+  one. What the phone reports (status, the work record) belongs to the base server and is only ever
+  pushed out. That stops two systems overwriting each other in a loop.
+- **An imported job is keyed on the product's own id**, so a re-import or a replayed webhook updates
+  the job instead of creating a second.
+- **A failing connector is visible, not blocking.** The console shows each connector's last good
+  sync and what is waiting to go out; dispatch carries on regardless.
+- **CSV import and export are the universal connector**, available for any product and any firm from
+  the start. Then **one connector per product behind a common interface**, the pilot's product first.
+- **Credentials** (usually OAuth tokens) are held on the firm's server, encrypted at rest like the AI
+  key; the egress is from the firm's server to the firm's own dispatch vendor.
+
+The accounting hand-off (Part 3) follows the same rule: the CSV export always works, and a connector
+is an addition, never a dependency.
 
 ## Privacy
 
@@ -345,6 +370,7 @@ scheduling calendar in the console.
 | **FU4** | Part 3: CSV export, then the one connector |
 | **FU5** | Part 4: manual storage, the set in the overlay, signed resumable download (with FT4) |
 | **FU6** | Part 5: the status board from job and shift events, the latest-position store, the monitoring-policy record and acknowledgements; counsel's confirmation of the jurisdiction table first (phone side is FT5) |
+| **FU7** | dispatch connectors: CSV import and export first, then the connector interface and the pilot's product; per-field ownership, overrides, keyed imports, the outbound queue and connector health in the console. No phone change |
 
 FU1 can start once FT1's contract is written, and it is also the stub FT2's tests need. Only FU3 has
 phone-side code of its own; the rest of the phone side is FT's.
@@ -366,6 +392,10 @@ phone-side code of its own; the rest of the phone side is FT's.
 | Adding TURN "just in case" | a third-party egress and a service to run, for a transport the pilot doesn't use |
 | Calling "last checked in" "online" | an administrator trusts a stale phone as current (FT) |
 | Hosting a Canadian firm's instance in the US "because it's cheaper" | a Quebec privacy impact assessment, and a harder sale |
+| Letting dispatch wait on a connector | an outage at the firm's dispatch vendor stops its crew getting work |
+| A phone that talks to dispatch software directly | a new destination per product on every phone, and the server no longer the one source of signed jobs |
+| Both systems editing the same field | changes bounce between them, or one silently overwrites the other |
+| Importing without the product's own id as the key | a replayed webhook dispatches the same job twice |
 | Keeping a trail of positions "for reports" | a record of where each named engineer goes, including where the van parks overnight |
 | Sending position outside a shift, or on a personal phone by default | the monitoring the law and the crew object to most |
 | A position shown without its age | a dispatcher sends the nearest engineer who left an hour ago |
@@ -383,8 +413,8 @@ phone-side code of its own; the rest of the phone side is FT's.
 - **Should the reviewer's queue for Plan FP (team learnings) move to the console?** FP designed it
   for a reviewer *phone* because there was no server. A console is the more natural home, but FP's
   decision stands until the pilot asks.
-- **Does the partner or the pilot firm run dispatch software, and which?** This decides whether the
-  console has a scheduling calendar at all (see *Later parts*).
+- **Which dispatch connector comes first?** Whichever product the partner or the pilot firm runs. The
+  console's own scheduling is built either way (see *Later parts*).
 - **Does Part 5 need a shift at all**, or is "a job is open or travelling to one" enough? Leaning:
   an explicit shift, because an engineer between jobs is exactly who dispatch wants to find.
 - **Is the *Linked* flag in `PrivacyInfo.xcprivacy` set for location** once a named person's position
