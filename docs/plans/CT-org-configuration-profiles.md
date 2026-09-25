@@ -1471,8 +1471,21 @@ and photos reach the firm unattended once Plan FT's base server exists.
     `cancelLapse` ends the lapse departure. Records it still owed are the firm's again and are kept.
     A revocation or removal is never undone this way.
   - The managed row warns when erasure is due, and says so once it has happened.
+- **Sealing (4b) is deferred** (decided 2026-09-25). PR 4 stops at logical erasure: the firm's
+  files are deleted and its keys and tokens removed, but nothing is re-encrypted under a
+  per-enrolment key. So **a backup, or a device snapshot, taken before the erasure can still hold
+  the firm's content.**
+  - The largest stores are the vault pack's documents (read by the document store, the search
+    index and the manual viewer) and the session logs (appended line by line, read by the
+    exporter, the debrief and the Job tab). Sealing them means reworking every one of those
+    readers, which is several PRs with risk to Field Assist's core.
+  - `SensitiveStore` already records the vault stores and `fieldSessionLogs` as not backup-excluded
+    where that is so, and the managed row says the limit in plain words, beside the camera roll,
+    screenshots and reports already sent.
+  - If it is taken up, it is its own plan item. `ScopedKeyring` needs a keying scheme per
+    enrolment (its account is the class's raw value today), and every reader of a sealed store
+    has to open through it.
 - **Not yet:**
-  - sealing under a per-enrolment `ScopedKeyring` class, so erasure is `.cryptographic` (PR 4b);
   - the registry's wearer/organisation axis (`owner` already names the owning type, so it will be
     a new field, e.g. `custodian`);
   - enterprise vaults imported while managed, which carry no marker yet.

@@ -123,6 +123,11 @@ final class OrgDepartureService: ObservableObject {
         seams.save(current)
     }
 
+    /// What erasure cannot reach, said on the managed row rather than implied away (Plan CT PR 4).
+    /// The erasure deletes files; it does not re-encrypt them (sealing, 4b, is deferred), so a
+    /// backup taken before it is outside it too.
+    nonisolated static let erasureLimits = "Erasing covers this app only. Photos saved to the camera roll, screenshots, reports already sent, and backups of this phone made before the erasure are outside it."
+
     /// The session logs from the managed period: the firm's record, and what a departure owes it.
     /// One rule for the departure and for the removal prompt that offers to send them first.
     nonisolated static func managedSessionIds(_ sessions: [FieldSession], since enrolledAt: Date) -> [String] {

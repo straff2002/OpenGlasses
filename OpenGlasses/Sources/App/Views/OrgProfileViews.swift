@@ -343,6 +343,9 @@ struct ManagedByOrganisationSection: View {
                 OGNotice(text: "This phone has left \(departure.organizationName). Its job records from that time go to \(departure.organizationName) when this phone can reach it, and are erased by \(departure.eraseBy.formatted(date: .abbreviated, time: .omitted)) either way.",
                          systemImage: "tray.and.arrow.up")
                     .padding(12)
+                OGDivider()
+                OGNotice(text: OrgDepartureService.erasureLimits, systemImage: "info.circle")
+                    .padding(12)
             }
         }
     }
@@ -363,7 +366,7 @@ struct ManagedByOrganisationSection: View {
             let reach = host.map { " until this phone reaches \($0) again" } ?? " until your organisation re-issues its link"
             if record.lapseErasedAt != nil {
                 // Plan CT PR 4: the organisation's opt-in erasure after a lapse has run.
-                return ("Management expired on \(since.formatted(date: .abbreviated, time: .omitted)), and as \(name) asked, its content has been erased from this phone. Its vault pack is reinstalled when this phone reaches \(host ?? "your organisation") again.",
+                return ("Management expired on \(since.formatted(date: .abbreviated, time: .omitted)), and as \(name) asked, its content has been erased from this phone. Its vault pack is reinstalled when this phone reaches \(host ?? "your organisation") again. \(OrgDepartureService.erasureLimits)",
                         "exclamationmark.triangle")
             }
             if let days = profile.eraseAfterLapseDays, ConfigProfile.erasureDaysRange.contains(days) {
