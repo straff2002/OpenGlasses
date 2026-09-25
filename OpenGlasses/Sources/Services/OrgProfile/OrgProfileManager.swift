@@ -190,6 +190,8 @@ final class OrgProfileManager: ObservableObject {
         var activeModelId: () -> String = { Config.activeModelId }
         var setActiveModelId: (String) -> Void = { Config.setActiveModelId($0) }
         var newModelConfigId: () -> String = { UUID().uuidString }
+        /// Plan CT 3b: an administrator phone's kept card goes with the enrolment it belonged to.
+        var forgetAdminCard: @MainActor () -> Void = { AdminGate.shared.stopBeingAdministratorPhone() }
     }
 
     /// The app's one manager. `PolicyEnvelope` is process-wide, so there is only ever one
@@ -615,6 +617,8 @@ final class OrgProfileManager: ObservableObject {
         current.revoked = true
         seams.saveRecord(current)
         record = current
+        // A revoked administrator phone is no longer one — re-enrolling must not quietly restore it.
+        seams.forgetAdminCard()
         // Its rules lift with the revocation; its content stays locked (the lease is not in force).
         seams.clearEnvelope()
     }
@@ -681,6 +685,7 @@ final class OrgProfileManager: ObservableObject {
             seams.saveModels(models)
             if seams.activeModelId() == id, let next = models.first { seams.setActiveModelId(next.id) }
         }
+        seams.forgetAdminCard()
         seams.saveRecord(nil)
         record = nil
         profile = nil

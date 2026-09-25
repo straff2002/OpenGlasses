@@ -12,6 +12,7 @@ final class OrgAIModelTests: XCTestCase {
     private var models: [ModelConfig] = []
     private var activeId = ""
     private var nextId = 0
+    private var forgotAdminCard = 0
     private var fetchResult: Result<Data, Error> = .failure(URLError(.notConnectedToInternet))
     private let issued = Date(timeIntervalSince1970: 1_790_000_000)
     private let address = URL(string: "https://config.northbridge.example/profile.txt")!
@@ -25,6 +26,7 @@ final class OrgAIModelTests: XCTestCase {
         models = [ownConfig]
         activeId = "mine"
         nextId = 0
+        forgotAdminCard = 0
         fetchResult = .failure(URLError(.notConnectedToInternet))
     }
 
@@ -60,6 +62,7 @@ final class OrgAIModelTests: XCTestCase {
             self.nextId += 1
             return "org-\(self.nextId)"
         }
+        seams.forgetAdminCard = { [unowned self] in self.forgotAdminCard += 1 }
         return OrgProfileManager(seams: seams)
     }
 
@@ -167,6 +170,22 @@ final class OrgAIModelTests: XCTestCase {
         XCTAssertFalse(manager.needsModelSetup)
         XCTAssertEqual(models.last?.name, "Workshop model")
         XCTAssertEqual(activeId, "org-1")
+    }
+
+    /// Plan CT 3b: an administrator phone's kept card goes with the enrolment, so re-enrolling a
+    /// phone handed on to a technician does not quietly make it an administrator phone again.
+    func testRemovalAndRevocationForgetTheAdminCard() async throws {
+        let manager = makeManager()
+        try enrol(manager, nil)
+        try manager.remove().get()
+        XCTAssertEqual(forgotAdminCard, 1)
+
+        try enrol(manager, nil)
+        let revocation = ProfileRevocation(keyId: "k", profileId: "northbridge", issued: issued)
+        fetchResult = .success(Data(try ProfileVerification.makeDocument(revocation, privateKeyBase64: privateKeyBase64).utf8))
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(stored?.revoked, true)
+        XCTAssertEqual(forgotAdminCard, 2)
     }
 
     func testRemovalDeletesTheOrganisationsConfigAndLeavesTheirOwn() throws {

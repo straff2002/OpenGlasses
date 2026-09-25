@@ -14,6 +14,11 @@ import Combine
 ///   activity, whichever comes first; the phone then returns to the technician's view.
 /// - **No local reset.** A forgotten passcode or lost card is a re-minted profile, picked up at the
 ///   next renewal — a local reset would be a way round the gate.
+/// - **An administrator phone** is an ordinary enrolled phone that kept the card's secret, in the
+///   Keychain and never in a backup. It shows the full view while the kept secret matches the
+///   profile's current card; a renewal carrying a new card drops it back to the technician's view
+///   until the new card is scanned. It can show the card, behind the device owner, for a
+///   technician's phone to scan.
 @MainActor
 final class AdminGate: ObservableObject {
 
@@ -41,6 +46,8 @@ final class AdminGate: ObservableObject {
             let stamp = UserDefaults.standard.double(forKey: AdminGate.waitUntilKey)
             return stamp > 0 ? Date(timeIntervalSince1970: stamp) : nil
         }
+        var loadCardSecret: () -> String? = { KeychainService.string(for: AdminGate.cardSecretKey) }
+        var saveCardSecret: (String?) -> Void = { _ = KeychainService.setString($0, for: AdminGate.cardSecretKey) }
         var saveWaitUntil: (Date?) -> Void = {
             if let date = $0 {
                 UserDefaults.standard.set(date.timeIntervalSince1970, forKey: AdminGate.waitUntilKey)
@@ -52,6 +59,8 @@ final class AdminGate: ObservableObject {
 
     nonisolated static let failuresKey = "orgAdminFailedAttempts"
     nonisolated static let waitUntilKey = "orgAdminWaitUntil"
+    /// Keychain, `…ThisDeviceOnly`: the card secret an administrator phone keeps.
+    nonisolated static let cardSecretKey = "orgAdminCardSecret"
 
     static let shared = AdminGate()
 
@@ -59,6 +68,8 @@ final class AdminGate: ObservableObject {
     @Published private(set) var sessionActive = false
     private var lastActivity: Date?
     private let seams: Seams
+    /// The kept card secret, read from the Keychain once rather than on every redraw.
+    private lazy var keptSecret: String? = seams.loadCardSecret()
 
     init(seams: Seams = Seams()) {
         self.seams = seams
@@ -70,7 +81,34 @@ final class AdminGate: ObservableObject {
     /// Whether the technician's view is what this phone shows right now. Read-only — a session
     /// that has idled out counts as closed here, and `refresh()` makes that official.
     var isRestricted: Bool {
-        policy != nil && !isSessionLive
+        policy != nil && !isSessionLive && !isAdministratorPhone
+    }
+
+    // MARK: - The administrator phone
+
+    /// This phone kept the organisation's current admin card: the full view, all the time.
+    var isAdministratorPhone: Bool {
+        guard let digest = policy?.credentials.cardDigest, let secret = keptSecret else { return false }
+        return AdminSecrets.constantTimeEqual(AdminSecrets.cardDigest(secret: secret), digest)
+    }
+
+    /// This phone kept a card the organisation has since replaced — it asks for the new one.
+    var keptCardIsStale: Bool {
+        keptSecret != nil && policy?.credentials.cardDigest != nil && !isAdministratorPhone
+    }
+
+    /// The card, as its QR carries it, for a technician's phone to scan. Only on an administrator
+    /// phone, and the caller has already passed the device owner's gate, failing closed.
+    var cardToShow: String? {
+        guard isAdministratorPhone, let secret = keptSecret else { return nil }
+        return AdminSecrets.cardPrefix + secret
+    }
+
+    /// "Stop being an administrator phone": the kept secret is deleted.
+    func stopBeingAdministratorPhone() {
+        objectWillChange.send()
+        keptSecret = nil
+        seams.saveCardSecret(nil)
     }
 
     /// An open session that has not idled out.
@@ -96,11 +134,18 @@ final class AdminGate: ObservableObject {
     }
 
     /// A code read by the in-app scanner. Text that is not an admin card at all is not an attempt.
-    func tryCard(_ scanned: String) -> Attempt {
+    /// `remember` makes this an administrator phone once the card is accepted.
+    func tryCard(_ scanned: String, remember: Bool = false) -> Attempt {
         guard let policy, let digest = policy.credentials.cardDigest else { return .notApplicable }
         guard let secret = AdminSecrets.cardSecret(from: scanned) else { return .notApplicable }
         if let until = waitUntil { return .waiting(until: until) }
-        return settle(AdminSecrets.constantTimeEqual(AdminSecrets.cardDigest(secret: secret), digest))
+        let attempt = settle(AdminSecrets.constantTimeEqual(AdminSecrets.cardDigest(secret: secret), digest))
+        if attempt == .granted, remember {
+            objectWillChange.send()
+            keptSecret = secret
+            seams.saveCardSecret(secret)
+        }
+        return attempt
     }
 
     /// The device owner's own gate passed, on a phone whose profile issued neither a card nor a
