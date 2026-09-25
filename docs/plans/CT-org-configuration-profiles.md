@@ -1283,6 +1283,35 @@ split in two. This part is the model; the next is the first-run screens.
 - **Removal** deletes the config enrolment made, key included. If it was active, the first
   remaining config becomes active. The person's own configs are untouched.
 
+**3a, fourth slice as built (2026-09-25) — the first-run branch.**
+
+- **The welcome page.** *My organisation gave me a code* becomes **My company gave me a key or
+  code**. The footer keeps the same number of buttons.
+- **`OrgKeyEntrySheet`** has one field for the activation key or a full licence code.
+  - `OrgFirstRun.formatKeyEntry` upper-cases an attempt at a key and groups it in fours as it is
+    typed. A pasted code is left exactly as it is.
+  - *Scan a code instead* reuses `OrgCodeScannerView`. An enrolment link or profile address goes to
+    the link's path, and anything else is looked up as if typed.
+  - `resolveEntry` runs before the sheet closes. What it resolves to is acted on only in `onDismiss`,
+    so the review sheet never presents over it.
+- **A licence naming a profile** is activated at once, since it verifies offline. Onboarding then
+  holds on **Setting up for ⟨licensee⟩**:
+  - The holding page is shown whenever `OrgFirstRun.holdingLicensee` is non-nil: the active licence
+    carries a `profile` claim, and no profile is in force. So a relaunch comes back to it rather
+    than to the general app.
+  - `OrgSetupStatus` follows the enrolment stage. Offline it says to connect once and try again.
+  - *Try Again* re-opens the stored licence. *Use a different key* clears it.
+  - There is no *Skip setup* on this page.
+- **A plain licence** activates as it always has, and says so on the welcome page.
+- **Once the profile is in force.** When it names the AI model, *Get Started* skips the provider and
+  key pages (`OrgFirstRun.pageAfterWelcome`), and Back from the services page returns to the
+  welcome page. The key was entered, or left for the administrator, on the review sheet's key step
+  from the previous slice.
+- **Completion.** Onboarding still finishes through its one `completeOnboarding`, which writes
+  `hasCompletedOnboarding` and runs `WearablesBootstrap`. The branch adds no second way out. Saving
+  the organisation's key mid-onboarding is the same write onboarding's own key page makes; CD P1's
+  predicates already cover it (`WearablesBootstrapTests`).
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
