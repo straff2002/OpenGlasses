@@ -145,4 +145,18 @@ final class OrgDepartureTests: XCTestCase {
         XCTAssertEqual(saved, first, "a revoked phone its owner then removes keeps the first window")
         XCTAssertEqual(erasedContentFor.count, 1)
     }
+
+    // MARK: - Which logs are the firm's
+
+    func testOnlyLogsFromTheManagedPeriodAreTheFirms() {
+        func session(_ id: String, _ offset: TimeInterval) -> FieldSession {
+            FieldSession(id: id, vaultId: "v", assetId: nil, mode: .aiOnly,
+                         startedAt: enrolledAt.addingTimeInterval(offset), outcome: .resolved,
+                         escalations: [], billableSeconds: 0)
+        }
+        let history = [session("mine", -60), session("theirs", 0), session("theirs-too", 3_600)]
+        XCTAssertEqual(OrgDepartureService.managedSessionIds(history, since: enrolledAt),
+                       ["theirs", "theirs-too"],
+                       "the removal prompt and the departure agree on what is owed")
+    }
 }

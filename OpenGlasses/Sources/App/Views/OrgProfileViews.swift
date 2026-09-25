@@ -231,6 +231,11 @@ struct ManagedByOrganisationSection: View {
     @State private var finishingModel = false
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var departures = OrgDepartureService.shared
+    @EnvironmentObject private var appState: AppState
+    /// Plan CT PR 4: the step before removal that offers the firm its records.
+    @State private var leaving = false
+    @State private var recordsShare: ShareItem?
+    @State private var exportProblem: String?
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
@@ -292,9 +297,16 @@ struct ManagedByOrganisationSection: View {
                     .buttonStyle(.plain)
                 }
                 OGDivider()
-                if record.source.isLocallyRemovable {
+                if record.source.isLocallyRemovable, leaving {
+                    leavingPanel(organization: profile.organizationName, record: record)
+                } else if record.source.isLocallyRemovable {
                     Button(role: .destructive) {
-                        confirmingRemoval = true
+                        // Plan CT PR 4: removal is leaving the firm. Offer it its records first.
+                        if owedReports > 0 || !owedSessions(record).isEmpty {
+                            leaving = true
+                        } else {
+                            confirmingRemoval = true
+                        }
                     } label: {
                         OGRow("Remove Profile", icon: "xmark.circle", showsChevron: false) { EmptyView() }
                     }
@@ -371,6 +383,81 @@ struct ManagedByOrganisationSection: View {
         return parts.joined(separator: " · ")
     }
 
+    // MARK: - Leaving the firm (Plan CT PR 4)
+
+    private var owedReports: Int { appState.jobSends.stagedCount }
+
+    private func owedSessions(_ record: OrgEnrolmentRecord) -> [String] {
+        OrgDepartureService.managedSessionIds(FieldSessionService.shared.history, since: record.enrolledAt)
+    }
+
+    /// Before the profile goes: the reports still waiting to be sent, and the job records from the
+    /// managed period, both the firm's. Offered, never forced — removing without sending leaves them
+    /// to the endpoint if there is one, and to the erasure window if not.
+    @ViewBuilder
+    private func leavingPanel(organization: String, record: OrgEnrolmentRecord) -> some View {
+        OGNotice(text: "Before you remove \(organization)'s profile, send it what is still its own. Anything you don't send goes to \(organization) automatically if it has a report endpoint, and is erased from this phone either way.",
+                 systemImage: "tray.and.arrow.up")
+            .padding(12)
+        if owedReports > 0 {
+            OGDivider()
+            Button {
+                _ = appState.jobSends.sendAll()
+            } label: {
+                OGRow("Send \(owedReports) Waiting Reports", icon: "paperplane", showsChevron: false) { EmptyView() }
+            }
+            .buttonStyle(.plain)
+        }
+        let sessions = owedSessions(record)
+        if !sessions.isEmpty {
+            OGDivider()
+            Button {
+                shareRecords(sessions)
+            } label: {
+                OGRow("Share Job Records for \(organization)", icon: "square.and.arrow.up", showsChevron: false) { EmptyView() }
+            }
+            .buttonStyle(.plain)
+            .sheet(item: $recordsShare) { item in
+                ShareSheet(items: item.items)
+            }
+        }
+        if let exportProblem {
+            OGDivider()
+            OGStatusLabel(exportProblem, kind: .error)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+        }
+        OGDivider()
+        Button(role: .destructive) {
+            confirmingRemoval = true
+        } label: {
+            OGRow("Remove Profile Now", icon: "xmark.circle", showsChevron: false) { EmptyView() }
+        }
+        .buttonStyle(.plain)
+        OGDivider()
+        Button {
+            leaving = false
+            exportProblem = nil
+        } label: {
+            OGRow("Not Now", icon: "arrow.uturn.backward", showsChevron: false) { EmptyView() }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Each managed session's record, as the job export writes it, handed to the share sheet at once.
+    private func shareRecords(_ sessionIds: [String]) {
+        exportProblem = nil
+        var files: [URL] = []
+        for id in sessionIds {
+            do {
+                files += try FieldSessionService.shared.exportSession(id: id).map(\.fileURL)
+            } catch {
+                exportProblem = "Couldn't export every job record: \(error.localizedDescription)"
+            }
+        }
+        if !files.isEmpty { recordsShare = ShareItem(items: files) }
+    }
+
     private func finishModel(_ model: OrgAIModel, key: String) -> String? {
         if model.access == .key, let problem = model.keyProblem(key) { return problem }
         guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
@@ -380,6 +467,7 @@ struct ManagedByOrganisationSection: View {
 
     private func remove() {
         removalError = nil
+        leaving = false
         OwnerGateAuth.authenticate(reason: "Remove your organisation's profile from this phone") { granted in
             Task { @MainActor in
                 guard granted else {
