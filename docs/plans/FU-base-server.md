@@ -109,8 +109,9 @@ in"**, never "online".
 which is optional — scheduled (a date and time window, which `.ogjob`'s `scheduled_for` already
 carries), assigned to one phone (by enrolment id) or left for anyone, and served as a signed
 `.ogjob` — the same file `Scripts/make-job-file.swift` makes today, whose `Body` must stay
-field-for-field identical to the app's `JobFile.Body`. The phone fetches it and runs it through `JobFileImportPolicy` unchanged, so a job from the server and a job from email are the same
-file. The email path stays beside the server (FT's leaning), and the console can download a job as an
+field-for-field identical to the app's `JobFile.Body`. The phone fetches it and runs it through
+`JobFileImportPolicy` unchanged, so a job from the server and a job from email are the same file.
+The email path stays beside the server (FT's leaning), and the console can download a job as an
 `.ogjob` to email when a phone can't reach the server.
 
 **Reports.** The endpoint the phone posts to today is `EndpointSyncSink`
