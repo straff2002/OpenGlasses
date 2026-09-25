@@ -88,6 +88,9 @@ struct BottomControlBar: View {
     /// Not read for its value — `Config.quickActions` owns that. This is the republish, so an
     /// action made on the edit page appears on the grid the moment the sheet closes.
     @AppStorage("quickActions") private var quickActionsBeacon = Data()
+    /// Plan CT 3b: the Field Assist edition hides the model picker — the organisation chose it.
+    @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
 
     private var photoDisabledForLocalModel: Bool {
         guard let model = Config.activeModel, model.llmProvider == .local else { return false }
@@ -100,10 +103,12 @@ struct BottomControlBar: View {
         let available = DockGridCatalog.available(controlOrder: controlOrder,
                                                   quickActions: quickActions).map(\.id)
         let arrangement = HomeGridStore.decode(storedArrangement, available: available).arrangement
+        let restricted = adminGate.isRestricted
         return DockGridCatalog.slots(arrangement: arrangement,
                                      controlOrder: controlOrder,
                                      quickActions: quickActions,
                                      showsActions: showsActions)
+            .filter { !EditionPresentation.hidesDockSlot($0, restricted: restricted) }
     }
 
     /// Four tiles at their floor width need ~268 pt, which every supported width provides — at the

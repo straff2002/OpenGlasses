@@ -229,6 +229,7 @@ struct ManagedByOrganisationSection: View {
     @State private var confirmingRemoval = false
     @State private var removalError: String?
     @State private var finishingModel = false
+    @ObservedObject private var adminGate = AdminGate.shared
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
@@ -261,6 +262,9 @@ struct ManagedByOrganisationSection: View {
                     OGNotice(text: "Your administrator needs to finish setting up this phone: \(model.summary) still needs its key.",
                              systemImage: "key")
                         .padding(12)
+                }
+                // Under the Field Assist edition the key is the administrator's to enter (Plan CT 3b).
+                if manager.needsModelSetup, let model = manager.organizationModel, !adminGate.isRestricted {
                     Button {
                         finishingModel = true
                     } label: {
