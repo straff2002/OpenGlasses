@@ -1385,6 +1385,31 @@ an edition is in force and no administrator session is open.
   - a UI-test launch flag for the edition;
   - the administrator phone (the third slice).
 
+**3b, third slice as built (2026-09-25) — the administrator phone.**
+
+- **Making one.** *Administrator Settings* gains *Make this an administrator phone* beside *Scan the
+  Admin Card*.
+  - On an accepted scan with it on, `AdminGate.tryCard(_:remember:)` keeps the card's secret in the
+    Keychain (`KeychainService`, `…AfterFirstUnlockThisDeviceOnly`, key `orgAdminCardSecret`). It is
+    read once per launch, not on every redraw.
+  - A passcode never makes an administrator phone, and neither does a wrong card.
+- **What it shows.** `isAdministratorPhone` holds while the kept secret matches the profile's
+  current card digest. `isRestricted` is false then, whatever the session, and backgrounding does
+  not lock it.
+  - Settings shows an **Administrator Phone** section in place of the locked row, so it is never
+    mistaken for a technician's.
+- **Rotation.** A renewal carrying a new card digest makes `keptCardIsStale` true. The phone drops to
+  the technician's view, and the locked row's footer asks for the new card.
+- **Show Admin Card.**
+  - It sits behind `OwnerGateAuth.authorize`, failing closed. The card is the organisation's key to
+    every technician's phone.
+  - `AdminCardDisplay` renders the QR full screen with `CIQRCodeGenerator`. It hides after 30 s, and
+    whenever the scene leaves `.active`. *Show Again* brings it back.
+  - A replaced card is never shown (`cardToShow`).
+- **Stopping.** *Stop Being an Administrator Phone* deletes the kept secret, after a confirmation.
+  **Removal and revocation also forget it** (`OrgProfileManager.Seams.forgetAdminCard`), so a phone
+  handed on and re-enrolled is not quietly an administrator phone again.
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on

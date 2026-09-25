@@ -13,6 +13,7 @@ final class AdminGateTests: XCTestCase {
     private var failures = 0
     private var waitUntil: Date?
     private var policy: AdminPolicy?
+    private var keptCard: String?
 
     /// "correct horse" under this salt at 100 000 iterations.
     private let salt = Data(base64Encoded: "b3BlbmdsYXNzZXMtc2FsdA==")!
@@ -26,6 +27,7 @@ final class AdminGateTests: XCTestCase {
         failures = 0
         waitUntil = nil
         policy = nil
+        keptCard = nil
     }
 
     private func makeGate() -> AdminGate {
@@ -36,6 +38,8 @@ final class AdminGateTests: XCTestCase {
         seams.saveFailures = { [unowned self] in self.failures = $0 }
         seams.loadWaitUntil = { [unowned self] in self.waitUntil }
         seams.saveWaitUntil = { [unowned self] in self.waitUntil = $0 }
+        seams.loadCardSecret = { [unowned self] in self.keptCard }
+        seams.saveCardSecret = { [unowned self] in self.keptCard = $0 }
         return AdminGate(seams: seams)
     }
 
@@ -204,6 +208,63 @@ final class AdminGateTests: XCTestCase {
         XCTAssertEqual(gate.tryPasscode("correct horse"), .granted)
         gate.handleBackground()
         XCTAssertTrue(gate.isRestricted)
+    }
+
+    // MARK: - The administrator phone
+
+    func testACardKeptOnScanMakesAnAdministratorPhone() throws {
+        policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials())
+        let gate = makeGate()
+        XCTAssertEqual(gate.tryCard("og-admin:\(cardBody)"), .granted)
+        XCTAssertNil(keptCard, "a plain unlock keeps nothing")
+        gate.endSession()
+
+        XCTAssertEqual(gate.tryCard("og-admin:\(cardBody)", remember: true), .granted)
+        XCTAssertEqual(keptCard, cardBody)
+        gate.handleBackground()
+        XCTAssertTrue(gate.isAdministratorPhone)
+        XCTAssertFalse(gate.isRestricted, "the full view, all the time — backgrounding does not lock it")
+        XCTAssertEqual(makeGate().isAdministratorPhone, true, "and across a relaunch")
+        XCTAssertEqual(gate.cardToShow, "og-admin:\(cardBody)")
+    }
+
+    func testANewCardDropsItBackToTheTechniciansView() throws {
+        policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials())
+        keptCard = cardBody
+        let gate = makeGate()
+        XCTAssertTrue(gate.isAdministratorPhone)
+
+        policy = AdminPolicy(edition: .fieldAssist, credentials: AdminCredentials(
+            passcode: nil, cardDigest: AdminSecrets.cardDigest(secret: "ZZZZZZZZZZZZZZZZZZZZZZZZZZ")))
+        XCTAssertFalse(gate.isAdministratorPhone)
+        XCTAssertTrue(gate.keptCardIsStale)
+        XCTAssertTrue(gate.isRestricted)
+        XCTAssertNil(gate.cardToShow, "a replaced card is never shown")
+    }
+
+    func testStoppingDeletesTheKeptCard() throws {
+        policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials())
+        keptCard = cardBody
+        let gate = makeGate()
+        gate.stopBeingAdministratorPhone()
+        XCTAssertNil(keptCard)
+        XCTAssertTrue(gate.isRestricted)
+        XCTAssertNil(gate.cardToShow)
+    }
+
+    func testAPasscodeNeverMakesAnAdministratorPhone() throws {
+        policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials())
+        let gate = makeGate()
+        XCTAssertEqual(gate.tryPasscode("correct horse"), .granted)
+        XCTAssertNil(keptCard)
+        XCTAssertFalse(gate.isAdministratorPhone)
+    }
+
+    func testAWrongCardIsNeverKept() throws {
+        policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials())
+        let gate = makeGate()
+        XCTAssertEqual(gate.tryCard("og-admin:ZZZZZZZZZZZZZZZZZZZZZZZZZZ", remember: true), .refused(waitUntil: nil))
+        XCTAssertNil(keptCard)
     }
 }
 
