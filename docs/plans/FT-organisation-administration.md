@@ -1,7 +1,7 @@
 # Plan FT — Organisation Administration (the base server sets up and manages the crew's phones)
 
 **Status:** 📋 Planned 2026-09-24. This is the phone side and the contract only. The base server
-itself needs its own plan.
+itself is Plan [FU](FU-base-server.md) (drafted 2026-09-25).
 **Origin:** The pilot partner's direction for Plan CT (see CT's *Revision 2026-09-24 (evening)*):
 technicians see only Field Assist, and everything else is behind an administrator's unlock. The
 owner then asked how an organisation sets up phones and manages them, and whether the API key could
@@ -11,7 +11,8 @@ that sends jobs, so [it] could be admin for setup."*
 record, PR 2b's lease and revocation in [#551](https://github.com/straff2002/OpenGlasses/pull/551),
 3a's activation key and `aiModel`, and 3b's edition and admin card). Plan FO (the `.ogjob` job file,
 `organizationJobSigningKey`, the report route).
-**Related:** Plan CR (the organisation gateway). Plan CT PR 4 (erasure on removal).
+**Related:** Plan CR (the organisation gateway). Plan CT PR 4 (erasure on removal). Plan
+[FU](FU-base-server.md) (the base server itself).
 
 ---
 
@@ -229,9 +230,9 @@ above.
 | **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments`, and removal by hash |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use
-a stub. **The base server needs its own plan**: who builds and hosts it (the partner, the
-organisation, or a small reference server this project ships), its console, and its storage of the
-organisation's AI key.
+a stub, and Plan FU's first server PR (FU1) is built to be that stub. **The base server is Plan
+[FU](FU-base-server.md)**: where it runs, its console, its storage of the organisation's AI key, and
+what else it carries (live support, the accounting hand-off, the manuals).
 
 ## Traps
 
@@ -252,9 +253,11 @@ organisation's AI key.
 
 ## Open questions
 
-- **Who builds the base server?** The partner (who may already run dispatch for its customers), each
-  organisation, or a reference server from this project. This decides where the job format, the
-  console and the AI key's storage live.
+- ~~**Who builds the base server?**~~ **Direction 2026-09-25 (Plan [FU](FU-base-server.md)):** one
+  self-contained package, one organisation per install, with a browser console. The partner hosts
+  the pilot firm's instance, pending the partner's agreement; running it in-house stays a supported
+  option. Never a vendor-hosted service for every firm. `baseServer` names an address on the firm's
+  own domain, so moving hosts is a DNS change rather than a re-minted profile.
 - **Does the base server replace email `.ogjob` or sit beside it?** Leaning beside: email stays the
   no-server path, and both carry the same signed file.
 - **Push, or fetch on foreground?** Fetch is enough for a day's dispatch. Push needs the vendor's APNs

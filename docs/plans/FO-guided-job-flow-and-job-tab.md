@@ -1618,7 +1618,9 @@ followed at motorway speed are **owed to P4**.
 - Auto-suggest closing a job after long inactivity or a large location change — useful, but it is
   a nag risk and touches billing; out of scope until a pilot asks.
 - Team tier: does the office need to push a job number/assignment to the phone (ops bridge)
-  instead of the technician speaking it? Natural follow-on, not v1.
+  instead of the technician speaking it? Natural follow-on, not v1. **2026-09-25:** the base server
+  does this — a job created in its console is served to one phone as a signed `.ogjob` (Plans FT and
+  [FU](FU-base-server.md)).
 - ~~Clip limits: maximum length per clip and total size per delivery channel.~~ **Narrowed in
   P2b:** 30 s default / 60 s maximum, and 20 MB (email) / 5 MB (Messages) per report, all four
   stored in `Config` rather than compiled in. They are conservative defaults chosen from what a
@@ -1629,7 +1631,8 @@ followed at motorway speed are **owed to P4**.
   customer is a consent question this plan has not asked and a face blur has no equivalent for.
   Open if a pilot asks for it, and HIPAA mode has to be answered separately.
 - Should the office also receive full-resolution originals automatically through the sync sink, in
-  addition to the share-sheet route?
+  addition to the share-sheet route? **2026-09-25:** Plan [FU](FU-base-server.md) FU1 defines the
+  file-upload shape the base server takes; the phone half flips `EndpointSyncSink.carriesFiles`.
 - Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a
   session log a compliance record). Photos and clips make that harder to defend — does a job's media
   need its own retention rule, separate from the log it belongs to?
