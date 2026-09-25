@@ -177,6 +177,13 @@ question CT left open (*Where do an organisation's manuals actually come from?*)
   `VaultImporter.syncDocuments` into the documents tier of the vault the pack installed. That path is
   already gated at team tier and already routes scans through Plan EF's extractor. The sync is
   resumable and runs in the background. A binder of scans is large, and nothing waits on it.
+  **Revised 2026-09-25 (Plan [FU](FU-base-server.md) Part 4):** the server converts each manual once,
+  so a set entry carries the converted text (for retrieval) and the PDF (for showing a page), and
+  the phone reads no scans; EF's on-phone extractor remains for phones with no server. The server
+  may also send an **organisation vault set** — the configuration it drafted from the manuals and a
+  person approved (models, fault codes, parts, service values, safety, procedures) — signed and
+  hash-checked the same way, installed as the firm's own vault beside the pack, and validated by the
+  phone's importer like any other vault.
 - **Which vault.** The set names its target vault id. It must be a vault the phone has, usually the
   pack's, or the set is a named drop.
 - **Updates and removal.** A later set with a higher overlay sequence adds, replaces and removes
@@ -243,7 +250,7 @@ organisation turns it on, the phone's last known position during a shift. The ph
 | **FT1** (headless) | the `baseServer` and `adminKey` profile fields; the overlay schema; the applier's administrator layer with each key's overlay permission; target, sequence and "profile first" checks; sealing to a P-256 key; the registration and check-in messages, as `Codable` shapes with a written wire contract the server can be built against. Tests: an overlay from the wrong key, for another phone, replayed with an older sequence, or arriving before the profile verifies is refused by name; one that tries to loosen a vendor ceiling or touch entitlement is dropped by name; a sealed key opens only with the registered key; precedence as a table with the new layer |
 | **FT2** | the setup QR code (`og-setup:` parsing, the one-time token, the loop check that the profile's `baseServer` is the QR code's address, auto-approval), registration after enrolment, the Secure Enclave key, the waiting-for-approval screen with its fingerprint for typed-key setups, the check-in loop and lease renewal from it, jobs fetched from the server into the Job tab through `JobFileImportPolicy` unchanged, overlays applied, and the privacy copy |
 | **FT3** | reports posted to the server, with the report route as the fallback; `unenrol` wired to CT PR 4 |
-| **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments`, and removal by hash |
+| **FT4** | the manual set in the overlay, the hash-checked fetch from `baseServer`, resumable ingestion into the pack's documents tier through `VaultImporter.syncDocuments` (converted text plus the PDF, so the phone reads no scans), the organisation vault set installed beside the pack and validated on arrival, and removal by hash |
 | **FT5** | shift start and end; job and shift events on check-in; the on-shift position when the profile enables it and the enrolment is a company phone; the indicator; the monitoring-policy acknowledgement at enrolment; the rewritten "Always" string and privacy copy (Plan FU Part 5) |
 
 FT1 can land after CT 3a, because it needs `aiModel`. FT2 needs a server to talk to, so its tests use

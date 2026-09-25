@@ -22,7 +22,7 @@ things, built and shipped as separate parts behind one login:
 | **1 · Core** | sets phones up, manages them with overlays, sends jobs, receives reports | FT1–FT3 |
 | **2 · Live support** | relays the glasses' view to an administrator's browser when a technician asks for help | the MJPEG transport (Plan L), pointed at the server |
 | **3 · Accounting hand-off** | turns a finished job's record into a draft invoice in the firm's accounting package | nothing new |
-| **4 · Manuals** | holds the organisation's manuals and serves them by hash | FT4 |
+| **4 · Manuals** | imports the organisation's manuals, converts them once, drafts the vault configuration for a person to approve, and serves both | FT4 |
 | **5 · Where the crew is** | a status board from job events, and each engineer's last known position while on shift | FT5 |
 
 Core ships first, because a phone can't be set up without it. The others can each wait for the
@@ -224,12 +224,77 @@ reviews, numbers, sends and reconciles it.
 - **Suppliers' invoices** for parts belong in the accounting package. At most, the server matches one
   to the parts request on the job.
 
-## Part 4 · Manuals
+## Part 4 · Manuals: import, conversion and configuration
 
-FT4's server side. The server stores the organisation's manuals, lists them in the overlay as a
-manual set (file names, sizes, SHA-256s, target vault id), and serves each file to a signed request,
-resumably (HTTP range requests), because a binder of scans is large. Withdrawing a file is a new set
-without it, which removes it from each phone at its next check-in.
+**Decided direction, 2026-09-25: the server imports the organisation's manuals, converts them once,
+drafts the vault configuration they imply, and publishes both after a person approves them.** A vault
+is more than its manuals: the model list decides which machine the engineer is on (`VaultModelIndex`),
+the parts index is how parts are verified (`VaultPartsIndex`), and the fault-code tables feed the job
+brief. The Lennox example vault shows the set: `models.md`, `error_codes.md`, `parts.md`,
+`service_values.md`, `safety.md` and `procedures/`. Writing those is skilled work most firms can't do.
+
+**What exists to build on.** `Scripts/extract-manual-text.swift` converts a manual to page-marked
+Markdown ("Page N" markers, `## Heading`, `### Figure N — Title`, `<!-- page: diagram -->`), the same
+grammar the phone's own PDF extractor emits, so the phone's chunker treats both alike.
+`Scripts/make-vault-archive.swift` packages a vault with its manuals already extracted, *"so the
+customer's phone never runs recognition."* Both run on a Mac only: they use PDFKit and Apple Vision.
+
+**The server is not a Mac** (owner, 2026-09-25), so conversion is rebuilt for Linux:
+
+- **Pages with a text layer** are extracted deterministically with a PDF library that exposes font
+  size and weight, because EK's structure rules come from type, not from the words.
+- **Scanned pages and diagrams** are read by a vision-capable model through the **organisation's own
+  AI provider and key** (owner, 2026-09-25: *"we can use an agent if needed if the same key is
+  used"*). The phones already send retrieved manual passages to that same provider on every answer,
+  so this adds no new third party. It does send whole manuals rather than passages, so the console
+  says so, and the firm turns it on.
+- **A model can misread a digit as confidently as it reads one correctly.** Each model-read page is
+  also run through a conventional OCR engine (Tesseract or similar); where the two disagree on a
+  number, the page is flagged for a person, and a flagged page is never published unread.
+- **Where the key can't be used.** A provider the phones sign in to (ChatGPT, Gemini on Vertex) or an
+  on-device model has no key a server can use. Those firms either give the server its own key for the
+  same provider or get conventional OCR only, with more pages flagged.
+- **It has to earn trust.** The Linux converter must match the Mac extractor on the Lennox manual pair
+  (`examples/vaults/lennox-slp99`, `ExampleVaultLennoxTests`, EJ's retrieval figures) before anything
+  it produces is published.
+
+**The pipeline:**
+
+1. **Collect.** An upload in the console, a watched folder, or a document-store connector (SharePoint,
+   Google Drive). Duplicates are caught by SHA-256. A newer revision of the same document replaces the
+   old one, which is withdrawn.
+2. **Identify.** Suggest the make, the models covered, the kind (service manual, installation guide,
+   wiring diagram, parts list) and the revision, from the cover and front matter. An administrator
+   confirms: a wrong model match poisons every answer that follows (Plan EL).
+3. **Convert once**, as above, to the phone's grammar.
+4. **Draft the configuration.** An agent, on the same key, drafts the model list, the fault-code
+   table, the parts index, service values, safety notes and candidate procedures. **Every value
+   cites its manual page**, and a deterministic check confirms each value appears verbatim on the page
+   it cites; one that doesn't is dropped and listed, never repaired by the model.
+5. **Check before release.** Pages the conversion was unsure of; a retrieval test of sample questions
+   per manual (does the right page come back?), the same measure EJ used; `VaultValidator`'s rules,
+   including the core budget (`coreBudgetCharacters`, 32,768).
+6. **Approve.** A person reviews every drafted value before it goes anywhere, with the cited page
+   beside it. A misread gas pressure would otherwise reach an engineer as fact from the manual.
+7. **Publish.** The manual set (converted text for retrieval, and the PDF for showing a page) and the
+   configuration go out through the overlay, signed with `adminKey`. The phone still runs its own
+   importer and validator on what arrives, so **the phone stays the final gate**.
+
+**Where the configuration lives.** A vendor pack is signed by the vendor and never altered. The
+firm's drafted configuration becomes its **own organisation vault**, beside the pack, sent from base
+and signed with `adminKey`: a vault set in the overlay, the same mechanism the blue-sky procedures
+need. Custom vaults are already allowed at team tier (Plan FS's `FieldAssistCapability`).
+
+**Only what the firm may hold.** Manuals come from the firm's own copies. Collecting from a
+manufacturer's dealer portal uses the firm's own login, and only where the portal's terms allow it.
+No scraping.
+
+**Serving.** Each file goes to a signed request, resumably (HTTP range requests), because a binder of
+scans is large. Withdrawing a file is a new set without it, which removes it from each phone at its
+next check-in.
+
+**Without a base server**, nothing changes: manuals are imported on the phone, and scans are read on
+the phone (Plans H, ED, EF).
 
 ## Part 5 · Where the crew is: a status board, and position only while on shift
 
@@ -743,7 +808,8 @@ display. Revisit when display glasses are common in the crews the product sells 
 | **FU2** (server) | the console for Part 1: phones, approvals, add phone(s) with QR codes, jobs, reports inbox |
 | **FU3** | Part 2: the authenticated relay and the viewer page in the console; the escalation webhook received; **phone side** — relay and viewer addresses derived from `baseServer`, the streamer connection signed, the watcher count shown, the privacy sentence |
 | **FU4** | Part 3: CSV export, then the one connector |
-| **FU5** | Part 4: manual storage, the set in the overlay, signed resumable download (with FT4) |
+| **FU5a** | Part 4, first stage: collection, identification, conversion on Linux (text layer, model-read scans cross-checked by OCR), matched against the Mac extractor on the Lennox pair, the manual set in the overlay, signed resumable download (with FT4). Saves every phone from reading scans |
+| **FU5b** | Part 4, second stage: the drafted configuration with page citations and verbatim checks, the retrieval test, review and approval, and the organisation vault set in the overlay |
 | **FU6** | Part 5: the status board from job and shift events, the latest-position store, the monitoring-policy record and acknowledgements; counsel's confirmation of the jurisdiction table first (phone side is FT5) |
 | **FU7** | dispatch connectors: CSV import and export first, then the connector interface and the pilot's product; per-field ownership, overrides, keyed imports, the outbound queue and connector health in the console. No phone change |
 
@@ -771,6 +837,10 @@ phone-side code of its own; the rest of the phone side is FT's.
 | A phone that talks to dispatch software directly | a new destination per product on every phone, and the server no longer the one source of signed jobs |
 | Both systems editing the same field | changes bounce between them, or one silently overwrites the other |
 | Importing without the product's own id as the key | a replayed webhook dispatches the same job twice |
+| Publishing a drafted value nobody reviewed | a misread gas pressure reaches an engineer as fact from the manual |
+| Letting the model "fix" a value that fails the verbatim check | a plausible number with a real citation that doesn't say it |
+| Trusting the Linux converter before it matches the Mac extractor | retrieval quietly worse than EJ measured, on the firm's own manuals |
+| Editing a vendor pack's files with the firm's configuration | a pack that no longer verifies, or firm content lost on the next pack update |
 | Keeping a trail of positions "for reports" | a record of where each named engineer goes, including where the van parks overnight |
 | Sending position outside a shift, or on a personal phone by default | the monitoring the law and the crew object to most |
 | A position shown without its age | a dispatcher sends the nearest engineer who left an hour ago |
