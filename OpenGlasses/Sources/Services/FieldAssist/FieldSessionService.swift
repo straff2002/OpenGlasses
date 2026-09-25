@@ -981,11 +981,14 @@ final class FieldSessionService: ObservableObject {
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
         guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        // The job number is not evidence. "Open a new job 108" handed 108 to the exact-token search,
+        // and a vent-length table with 108 in a cell opened on the phone (field report, build 420).
+        let searchTurn = ManualTurnScope.removingJobReferences(from: turn)
         // Equipment before evidence. A question about a machine this vault is not for cannot be
         // answered by any passage in it, however well the words line up (Plan EL §3), so the block
         // becomes the scope sentence and the vault's rules relay it verbatim.
         var scopeNote: String?
-        switch equipmentScope(turn: turn) {
+        switch equipmentScope(turn: searchTurn) {
         case .unknownEquipment(_, let sentence):
             stageFigure(nil)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
@@ -997,12 +1000,14 @@ final class FieldSessionService: ObservableObject {
             break
         }
         let outcome = manualRetriever(store: store).retrieve(
-            .init(turn: turn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+            .init(turn: searchTurn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
-        // attached to a question about condensate.
-        stageFigure(makeStagedFigure(for: Self.bestFigure(in: outcome.passages), vaultId: store.manifest.id))
+        // attached to a question about condensate. A turn that opens, closes or switches a job
+        // asked for no page, so it stages none; its passages still go to the model.
+        let figure = ManualTurnScope.isJobManagement(turn) ? nil : Self.bestFigure(in: outcome.passages)
+        stageFigure(makeStagedFigure(for: figure, vaultId: store.manifest.id))
         let block = VaultRetriever.promptBlock(outcome)
         return scopeNote.map { block + "\n\n" + $0 } ?? block
     }
