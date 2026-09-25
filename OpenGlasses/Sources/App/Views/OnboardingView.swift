@@ -81,8 +81,11 @@ struct OnboardingView: View {
 
     // Plan CT PR 3: an organisation's code, scanned from the welcome page.
     @ObservedObject private var orgProfile = OrgProfileManager.shared
-    @State private var showingOrgScanner = false
-    @State private var scannedOrgCode: String?
+    /// Plan CT 3a: the key-or-code sheet, what it handed back, and what came of it.
+    @State private var showingOrgKeyEntry = false
+    @State private var orgEntryOutcome: OrgKeyEntrySheet.Outcome?
+    @State private var orgEntryMessage: String?
+    @ObservedObject private var license = LicenseService.shared
     @State private var isRegistering = false
 
     // Metrics that sit beside type and have to scale with it.
@@ -158,7 +161,7 @@ struct OnboardingView: View {
             if page > 0 {
                 HStack {
                     Button {
-                        go(to: page - 1)
+                        go(to: OrgFirstRun.pageBefore(page, organisationChoseModel: orgChoseModel))
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
@@ -210,7 +213,10 @@ struct OnboardingView: View {
     /// gets the introduction, unchanged.
     @ViewBuilder
     private var welcomePage: some View {
-        if isWelcomeBack {
+        if let licensee = OrgFirstRun.holdingLicensee(licence: license.activeLicense,
+                                                      isManaged: orgProfile.isManaged) {
+            orgHoldingPage(licensee)
+        } else if isWelcomeBack {
             welcomeBackPage
         } else {
             firstRunWelcomePage
@@ -319,29 +325,98 @@ struct OnboardingView: View {
                 // A phone set up from an organisation's code still needs its AI provider: a
                 // profile never carries a key (Plan CT), so onboarding carries on from here.
                 if let organization = orgProfile.profile?.organizationName {
-                    OGNotice(text: "Managed by \(organization). Next, choose the AI provider your organisation uses.",
-                             systemImage: "building.2")
+                    if orgChoseModel {
+                        OGNotice(text: "Managed by \(organization). Your organisation chose the AI model, so there is nothing to pick.",
+                                 systemImage: "building.2")
+                    } else {
+                        OGNotice(text: "Managed by \(organization). Next, choose the AI provider your organisation uses.",
+                                 systemImage: "building.2")
+                    }
+                }
+                if let orgEntryMessage {
+                    OGNotice(text: orgEntryMessage, systemImage: "info.circle")
                 }
             }
 
             pageFooter {
-                primaryButton("Get Started") { go(to: 1) }
+                primaryButton("Get Started") {
+                    go(to: OrgFirstRun.pageAfterWelcome(organisationChoseModel: orgChoseModel))
+                }
                 if !orgProfile.isManaged {
-                    Button("My organisation gave me a code") { showingOrgScanner = true }
-                        .buttonStyle(.ogQuiet)
+                    Button("My company gave me a key or code") {
+                        orgEntryMessage = nil
+                        showingOrgKeyEntry = true
+                    }
+                    .buttonStyle(.ogQuiet)
                 }
                 skipButton()
             }
         }
-        .sheet(isPresented: $showingOrgScanner, onDismiss: {
-            // Handed over only once the scanner has gone, so the review sheet is not asked to
+        .sheet(isPresented: $showingOrgKeyEntry, onDismiss: {
+            // Acted on only once the entry sheet has gone, so the review sheet is not asked to
             // present while this one is still dismissing.
-            if let code = scannedOrgCode {
-                scannedOrgCode = nil
-                appState.orgEnrolment.openScanned(code)
+            guard let outcome = orgEntryOutcome else { return }
+            orgEntryOutcome = nil
+            switch outcome {
+            case .licence(let code): startOrgLicence(code)
+            case .scanned(let code): appState.orgEnrolment.openScanned(code)
             }
         }) {
-            OrgCodeScannerView { code in scannedOrgCode = code }
+            OrgKeyEntrySheet(service: appState.orgEnrolment) { orgEntryOutcome = $0 }
+        }
+    }
+
+    /// Whether the organisation's profile names the AI model, so the provider and key pages are
+    /// not the technician's to fill in.
+    private var orgChoseModel: Bool { orgProfile.organizationModel != nil }
+
+    /// A licence entered on the welcome page (Plan CT 3a). One that names its organisation's
+    /// profile is activated at once — it is verified offline — and the page holds on "Setting up
+    /// for …" until the profile is in force; one that names none activates as it always has.
+    private func startOrgLicence(_ code: String) {
+        switch appState.orgEnrolment.openLicence(code) {
+        case .enrolling:
+            _ = try? license.activate(code: code)
+        case .plain:
+            do {
+                let payload = try license.activate(code: code)
+                orgEntryMessage = "Field Assist is licensed to \(payload.licensee)."
+            } catch {
+                orgEntryMessage = error.localizedDescription
+            }
+        case .refused(let message):
+            orgEntryMessage = message
+        }
+    }
+
+    /// "Setting up for ⟨licensee⟩": the licence is active and its organisation's profile is not in
+    /// force yet. No "Skip setup" here — the way out is a different key, not the general app.
+    private func orgHoldingPage(_ licensee: String) -> some View {
+        VStack(spacing: 0) {
+            centeredScroll {
+                VStack(spacing: 14) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 44))
+                        .foregroundStyle(accent)
+                        .accessibilityHidden(true)
+                    pageTitle("Setting up for \(licensee)", page: 0)
+                }
+                OrgSetupStatus(service: appState.orgEnrolment)
+            }
+
+            pageFooter {
+                primaryButton("Try Again") {
+                    if let code = license.storedCode {
+                        _ = appState.orgEnrolment.openLicence(code)
+                    }
+                }
+                Button("Use a different key") {
+                    license.clear()
+                    appState.orgEnrolment.dismiss()
+                    showingOrgKeyEntry = true
+                }
+                .buttonStyle(.ogQuiet)
+            }
         }
     }
 

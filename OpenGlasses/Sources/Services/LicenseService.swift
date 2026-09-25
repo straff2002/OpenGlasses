@@ -127,6 +127,10 @@ final class LicenseService: ObservableObject {
         return payload
     }
 
+    /// The activated code as stored — for a first-run phone retrying the organisation setup its
+    /// licence names (Plan CT 3a). Re-verified wherever it is used, like every stored code.
+    var storedCode: String? { defaults.string(forKey: Self.storageKey) }
+
     /// Remove the stored license and drop the entitlement.
     func clear() {
         defaults.removeObject(forKey: Self.storageKey)
