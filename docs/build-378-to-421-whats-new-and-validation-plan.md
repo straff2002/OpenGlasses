@@ -90,7 +90,6 @@ New in this range. A firm can manage a fleet of phones instead of every technici
 | Product | Plans in this build | Notes |
 |---|---|---|
 | Field Assist (solo) | $129.99 a month, $1,299.99 a year | Auto-renewing App Store subscriptions, no free trial. Includes building your own vaults and adding vaults by link. |
-| Field Assist one-time unlock | No longer sold | Existing owners keep the bundled vaults only. No vault building. |
 | Field Assist Team / Enterprise | Not sold in the App Store | Signed licence from the team. Adds audited PDF export and organisation configuration. |
 | Medical Compliance | $9.99 a month, $99.99 a year | One-week free trial on both. Its paywall now shows only Medical plans. |
 | Vault packs | Per-pack App Store product | The mechanism exists, but the catalogue is empty. Nothing to buy yet. |
@@ -211,20 +210,11 @@ Use the app on a phone and glasses. No code or developer tools. Sections match P
 | 3 | Wake word several times in a row, including interrupting mid-answer. | Never stuck listening or not listening. |
 | 4 | Any long session. | Note any crash or freeze and send an Email Report with the time. |
 
-## 9. Purchases (sandbox)
-
-| # | Do this | Expect |
-|---|---|---|
-| 1 | Field Assist paywall. | Monthly and annual only, no one-time, no trial. Write down the exact prices. |
-| 2 | Medical Compliance paywall. | Medical plans only, one-week trial. |
-| 3 | Buy, delete and reinstall the app, then Restore Purchases. | Field Assist back at startup without a second tap. |
-| 4 | Field Assist locked screen › Remove Stored Code. | The stored licence code is cleared. |
-
 ## Priority if time is short
 
 1. Sections 1 and 2: the newest work, and explicitly waiting on a device run.
 2. Section 6: a VoiceOver pass on real hardware.
-3. Section 4 steps 3 to 5 (vault by QR over cellular) and section 9 (prices).
+3. Section 4 steps 3 to 5 (vault by QR over cellular).
 4. Section 3 if the team issues a licence, then 5, 7 and 8.
 
 ## Intentional, not bugs
