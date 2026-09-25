@@ -15,6 +15,10 @@ struct SettingsView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var lockGlyphSize: CGFloat = 44
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
+    /// Plan CT 3b: the Field Assist edition's short list, lifted by an administrator session.
+    @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+    private var restricted: Bool { adminGate.isRestricted }
     @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
     @AppStorage("activeModelId") private var activeModelId = ""
@@ -39,7 +43,8 @@ struct SettingsView: View {
     // unfolding a card never changes what it hides.
 
     private var visibleCategories: [CapabilityCategory] {
-        journey.state.visibleCategories(simpleMode: simpleModeEnabled)
+        EditionPresentation.categories(journey.state.visibleCategories(simpleMode: simpleModeEnabled),
+                                       restricted: restricted)
     }
 
     private var discoverCards: [CapabilityCategory] {
@@ -65,6 +70,7 @@ struct SettingsView: View {
 
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
             ManagedByOrganisationSection(manager: OrgProfileManager.shared)
+            OrgAdministratorSection(gate: adminGate, manager: orgProfile)
 
             OGSection {
                 ForEach(Array(visibleCategories.enumerated()), id: \.element.id) { index, category in
@@ -82,26 +88,41 @@ struct SettingsView: View {
                 }
             }
 
-            discoverSection
+            // The edition keeps Language, which otherwise lives inside Look & Feel.
+            if restricted {
+                OGSection {
+                    categoryLink(destination: LanguageSettingsView()) {
+                        OGRow("Language", icon: "globe")
+                    }
+                }
+            }
 
-            // MARK: Simple Mode (always visible so the owner can leave it — behind the owner gate)
-            OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
-                OGRow(
-                    "Simple Mode",
-                    isOn: Binding(
-                        get: { simpleModeEnabled },
-                        set: { requestSimpleModeChange(to: $0) }
-                    ),
-                    icon: "dial.low"
-                )
-                OGDivider()
-                OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
-                    .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
-                if exitGate.lastFailed {
+            // Discover, Show everything and Simple Mode are the owner's configuration surface: the
+            // edition hides them behind the administrator with everything else.
+            if !restricted {
+                discoverSection
+            }
+
+            // MARK: Simple Mode (always visible outside the edition, so the owner can leave it — behind the owner gate)
+            if !restricted {
+                OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
+                    OGRow(
+                        "Simple Mode",
+                        isOn: Binding(
+                            get: { simpleModeEnabled },
+                            set: { requestSimpleModeChange(to: $0) }
+                        ),
+                        icon: "dial.low"
+                    )
                     OGDivider()
-                    OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                    OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
+                        .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
+                    if exitGate.lastFailed {
+                        OGDivider()
+                        OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
                 }
             }
 

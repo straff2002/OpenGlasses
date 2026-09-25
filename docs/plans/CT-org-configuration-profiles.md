@@ -1352,6 +1352,39 @@ ships in three slices, with this one first:
 - **Not yet:** the view the edition hides behind (the next slice), and VoiceOver announcing a wait,
   which lands with that view.
 
+**3b, second slice as built (2026-09-25) — the technician's view.** `EditionPresentation` holds the
+drawing rules as pure functions. The views read `AdminGate.shared.isRestricted`, which is true when
+an edition is in force and no administrator session is open.
+
+- **Tabs.**
+  - `MainView` drops Modes and Chat (`hiddenTabs`), so the bar is Voice, Job, Settings.
+  - The edition implies Field Assist for the Job rule (`featureEnabled || restricted`) without
+    writing the switch.
+  - A session ending, or a request for a hidden tab (the Job tab's *Open conversation*), falls back
+    to Voice (`EditionPresentation.tab`).
+  - A 30 s tick calls `AdminGate.refresh()`, so an idled-out session closes on screen.
+- **Settings.**
+  - The rows are the kept list: Accessibility (pinned, so it can never be withheld), Glasses &
+    Privacy, and Diagnostics & Support. A **Language** row appears, because Language otherwise lives
+    inside Look & Feel. The managed row and About stay.
+  - Discover, *Show everything* and the Simple Mode section are hidden.
+  - A category added to the app later is hidden from technicians by default, because the list is the
+    inverted form.
+- **Administrator Settings** (`OrgAdministratorSection`, `AdminUnlockSheet`).
+  - It unlocks with the card, scanned in the app, or the passcode. Only when neither was issued, it
+    uses the device owner through `OwnerGateAuth.authorize`, which fails closed.
+  - Every refusal and wait is shown and spoken through `SessionAnnouncer`.
+  - While a session is open, a banner says how it ends and offers *End Administrator Session*.
+  - The managed row's *Finish Setup* (the organisation's AI key) appears only outside the
+    technician's view.
+- **Voice tab.** The dock's Model tile is hidden, because the organisation chose the model. The
+  persona switcher on this tab was already unused; the real ones go with the Modes and Chat tabs.
+- **Not yet:**
+  - the dock's edit page;
+  - moving *Remove Profile* one level down;
+  - a UI-test launch flag for the edition;
+  - the administrator phone (the third slice).
+
 ### PR 4 — leaving the firm: lease, revocation, and erasure
 
 Decided 2026-09-24. The case is an engineer who leaves the firm and keeps the phone with the app on
