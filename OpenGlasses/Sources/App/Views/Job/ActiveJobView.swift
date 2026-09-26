@@ -35,6 +35,8 @@ struct ActiveJobView: View {
     /// Reports asked for by voice and waiting for a thumb (Plan FO P3b). Above the job itself for
     /// the same reason the empty state puts it first.
     var sendCard: JobSendQueueSection?
+    /// Today's conversations so far — this job's and any others — as a support report.
+    var onSendToday: (() -> Void)?
 
     @Environment(\.appAccent) private var accent
     @FocusState private var referenceFocused: Bool
@@ -279,6 +281,11 @@ struct ActiveJobView: View {
 
             choice("Read back the job", action: onReadBack)
                 .disabled(!job.hasRecord)
+
+            if let onSendToday {
+                choice("Send today's conversations…", action: onSendToday)
+                    .accessibilityHint("Everything said today so far, this job included, for support. You see it before anything is sent.")
+            }
 
             Button("Close job", role: .destructive, action: onClose)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)

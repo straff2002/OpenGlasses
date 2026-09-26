@@ -4039,6 +4039,17 @@ struct Config {
     }
     static func setExpertTurnCredential(_ v: String) { KeychainService.setString(v, for: "expertTurnCredential") }
 
+    /// Where support reports are emailed (support ask 2026-09-26). Empty means the developer's
+    /// support address. An organisation profile can set it as a starting value; the person can
+    /// change it in Diagnostics & Support.
+    static var supportReportEmail: String {
+        get { UserDefaults.standard.string(forKey: "supportReportEmail") ?? "" }
+        set {
+            UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                                      forKey: "supportReportEmail")
+        }
+    }
+
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
     static var fieldAssistDefaultMode: String {

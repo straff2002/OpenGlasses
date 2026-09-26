@@ -116,6 +116,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |
 | toolDefinitionDigests | `ToolDefinitionDigestStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `ToolDefinitionDigestStore.forget(serverID:) per server` | n/a — no subject linkage |
+| turnTraces | `TurnTraceStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | 14 days, at most 2000 turns | `TurnTraceStore.shared.removeAll()` | n/a — no subject linkage |
 | upcomingJobs | `UpcomingJobStore` | operationalAudit | wearer | complete | yes | cap 100 | `UpcomingJobStore.removeAll()` | n/a — no subject linkage |
 | usage | `UsageStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |

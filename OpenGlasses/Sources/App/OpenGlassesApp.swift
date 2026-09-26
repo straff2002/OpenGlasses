@@ -935,6 +935,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
                 self.upcomingJobs.removeAll()
                 StagedExportCoordinator.fieldSession.revokeAll()
+                // The turn records name the organisation's manuals and jobs.
+                TurnTraceStore.shared.removeAll()
             },
             hasEndpoint: { Config.deliverySettings.hasEndpoint },
             flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
@@ -1817,6 +1819,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // `ToolDeclarations.openAIRealtimeTools`.
         openAIRealtimeSession.nativeToolRouter = nativeToolRouter
         configureLiveJobBridges()
+        configureSupportTrace()
 
         // Medical export share sheet — triggered by agent tool. The lease is released when the
         // provider finishes, whichever way it finishes; backgrounding and the launch scavenge are
@@ -3625,6 +3628,12 @@ class AppState: ObservableObject, AppStateProtocol {
     var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.
     @Published var deliveryShareItem: ShareItem?
+    /// The offer to send a support report, raised when an AI turn fails (support ask 2026-09-26).
+    @Published var supportPrompt: SupportPrompt?
+    /// The support report being reviewed before it is sent.
+    @Published var supportReportRequest: SupportReportRequest?
+    /// When the wearer last dismissed the offer — it is not raised again for a while after that.
+    var supportPromptDismissedAt: Date?
 
     /// Put a staged report in front of the operator.
     ///
@@ -3747,6 +3756,36 @@ class AppState: ObservableObject, AppStateProtocol {
     func presentEvidenceShare(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         deliveryShareItem = ShareItem(items: urls)
+    }
+
+    /// Hand a job's transcript, or a whole day's, to the system share sheet as a text file.
+    ///
+    /// Encrypted conversations are unlocked first (Face ID), because a transcript built while they
+    /// are locked would say every job's replies are gone. The file is a protected, short-lived
+    /// lease: it is removed when the share finishes, however it finishes. Returns what went wrong,
+    /// in words for the screen, or nil once the sheet is up.
+    func presentTranscriptExport(_ scope: JobTranscriptExport.Scope) async -> String? {
+        if conversationStore.isLocked {
+            _ = await conversationStore.unlock()
+        }
+        let document: JobTranscriptExport.Document
+        switch JobTranscriptExporter.document(scope, sessions: FieldSessionService.shared,
+                                              store: conversationStore) {
+        case .success(let built): document = built
+        case .failure(let failure): return failure.message
+        }
+        let coordinator = StagedExportCoordinator.fieldSession
+        guard let lease = try? JobTranscriptExporter.lease(for: document, coordinator: coordinator) else {
+            return JobTranscriptExporter.Failure.writeFailed.message
+        }
+        coordinator.beginShare(lease)
+        deliveryShareItem = ShareItem(
+            items: [ProtectedExportActivityItem(fileURL: lease.fileURL,
+                                                displayName: lease.displayName)]
+        ) { completed in
+            coordinator.finishShare(lease, outcome: completed ? .completed : .cancelled)
+        }
+        return nil
     }
 
     /// Send a record the queue is still holding, by email, from the sync screen. Summary only:
@@ -3909,6 +3948,7 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak(response)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             isProcessing = false
             speechService.stopThinkingSound()
             errorMessage = error.localizedDescription
@@ -3960,6 +4000,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -4227,6 +4268,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
