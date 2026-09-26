@@ -8,6 +8,8 @@
 
 [开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [无障碍功能](docs/CAPABILITIES.md#accessibility) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
 
+> **OpenGlasses 即将更名为 OhGee。** 它正在成为你的个人 AI 助手，可在手机、手表或眼镜上使用，眼镜不再是必需。Field Assist 将更名为 *Field Assist, powered by OhGee*。应用本身不变：你的设置、API 密钥、对话记录和订阅都会保留。[查看计划](docs/plans/FX-rename-to-ohgee.md)。
+
 ---
 
 ## 需要帮助时，开口就好
@@ -80,7 +82,7 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 团队可以导入自己的手册与知识库，获取附有来源的答案，并导出会话记录。临床录音功能另提供生物识别访问控制、数据保留设置、审计记录及医疗数据导出选项。
 
-这些功能按不同权限等级开放。[了解专业功能](docs/CAPABILITIES.md#field-and-clinical-work)、[创建现场知识库](docs/field-assist-vault-guide.md)，或[联系 Skunkworks NZ](mailto:g@skunkworks.kiwi)了解团队授权。
+这些功能按不同权限等级开放。[了解专业功能](docs/CAPABILITIES.md#field-and-clinical-work)、[创建现场知识库](docs/field-assist-vault-guide.md)，或[联系 Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi)了解团队授权。
 
 ## 开始使用
 
@@ -114,4 +116,4 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 OpenGlasses 采用 **[BSL 1.1](LICENSE)，源代码可用**，允许非商业用途，注明于 2030 年 3 月 24 日转为 Apache 2.0。商业用途需要另行授权，请联系 [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi)。
 
-由 **Skunkworks NZ** 的 [Skunk0](https://github.com/straff2002) 开发。本项目独立于 Meta 和 Anthropic。
+由 **Skunkworks NZ Ltd** 的 [Skunk0](https://github.com/straff2002) 开发。本项目独立于 Meta 和 Anthropic。
