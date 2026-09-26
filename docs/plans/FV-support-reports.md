@@ -45,9 +45,12 @@ Nothing leaves the phone until the person sends it.
 
 ## Not covered
 
-- **Live voice modes** (Gemini Live, OpenAI Realtime): `TurnRecorder` has no turn boundaries there
-  (`TurnBackend.geminiLive` is documented as unreachable), so those turns have transcript lines but
-  no trace and raise no banner. Next step if the pilot runs a live mode.
+- **Live voice modes** (Gemini Live, OpenAI Realtime). They keep no conversation at all (Plan FF
+  keeps live turns in memory only): in a job only the wearer's words reach the job log, outside a job
+  nothing is kept, and the assistant's replies are kept nowhere. `TurnRecorder` has no turn
+  boundaries there either, so there are no traces and no banner. Planned as Plan
+  [FW](FW-live-conversation-keeping.md): an option to keep live conversations, live-turn traces, and
+  the learning loops fed from live turns.
 - **Audio.** Never kept; the transcript is what the recogniser produced.
 - **The full text of the instructions.** Block names and sizes only: the instructions can carry the
   wearer's memories and other context from outside the job.
