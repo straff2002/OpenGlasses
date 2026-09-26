@@ -12,6 +12,8 @@ struct PastJobView: View {
 
     @EnvironmentObject private var appState: AppState
     @State private var problem: String?
+    @State private var transcriptProblem: String?
+    @State private var choosingExport = false
     @State private var readBack: [String]?
     /// The customer sign-off, when it is being taken after the close (Plan FO P2c).
     @State private var signOffStep: SignOffStep?
@@ -46,6 +48,13 @@ struct PastJobView: View {
             Button("OK") { problem = nil }
         } message: {
             Text(problem ?? "")
+        }
+        .alert("Can't export the transcript",
+               isPresented: Binding(get: { transcriptProblem != nil },
+                                    set: { if !$0 { transcriptProblem = nil } })) {
+            Button("OK") { transcriptProblem = nil }
+        } message: {
+            Text(transcriptProblem ?? "")
         }
         .onAppear { canStillSign = model.signOffIsStillOpen(sessionId: sessionId) }
         .sheet(isPresented: $showingDebrief) {
@@ -174,6 +183,19 @@ struct PastJobView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                choice("Export transcript…") { choosingExport = true }
+                    .accessibilityHint("A text file of everything said on this job, or a support report with the details of each AI turn. Nothing leaves the phone until you choose where it goes.")
+                    .confirmationDialog("Export this job", isPresented: $choosingExport,
+                                        titleVisibility: .visible) {
+                        Button("Transcript") { exportTranscript() }
+                        Button("Support report with troubleshooting details") {
+                            appState.openSupportReport(.job(sessionId: sessionId))
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("The transcript is who said what. The support report adds, for each AI turn, the model, the manual pages and photos sent, timings and errors — for support.")
+                    }
+
                 choice("Read back the job") { readBack = job.summaryLines }
 
                 choice("Debrief this job") { beginDebrief() }
@@ -275,6 +297,16 @@ struct PastJobView: View {
         Button(action: action) {
             Text(title)
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+        }
+    }
+
+    /// The job's conversation as a text file, in the share sheet — for support, or for the office
+    /// when a customer says something went wrong on the visit.
+    private func exportTranscript() {
+        Task {
+            if let trouble = await appState.presentTranscriptExport(.job(sessionId: sessionId)) {
+                transcriptProblem = trouble
+            }
         }
     }
 

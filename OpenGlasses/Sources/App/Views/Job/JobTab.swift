@@ -103,7 +103,10 @@ private struct JobTabContent: View {
                                     upcoming: UpcomingJobsSection(
                                         rows: UpcomingJobsModel.rows(upcoming.jobs),
                                         onOpen: { path.append(.upcomingJob(id: $0)) },
-                                        onAdd: { addingUpcoming = true }))
+                                        onAdd: { addingUpcoming = true }),
+                                    onExportDay: exportDay,
+                                    onReportDay: { appState.openSupportReport(.day($0)) },
+                                    onSendToday: { appState.openSupportReport(.day(Date())) })
                 case .running(let job), .paused(let job):
                     ActiveJobView(job: job, model: model,
                                   typedReference: $typedReference,
@@ -122,7 +125,8 @@ private struct JobTabContent: View {
                                   onOpenConversation: openConversation,
                                   onReadBack: readBackTheJob,
                                   onClose: startClosing,
-                                  sendCard: sendCard)
+                                  sendCard: sendCard,
+                                  onSendToday: { appState.openSupportReport(.day(Date())) })
                 }
             }
             .navigationTitle("Job")
@@ -342,6 +346,15 @@ private struct JobTabContent: View {
             // Through the flow above, which has already resumed the thread — id *and* history.
             // All that is left is to put the technician in front of it.
             appState.openChatThread(threadId)
+        }
+    }
+
+    /// Every job started on `day`, as one transcript file in the share sheet.
+    private func exportDay(_ day: Date) {
+        Task {
+            if let trouble = await appState.presentTranscriptExport(.day(day)) {
+                problem = trouble
+            }
         }
     }
 

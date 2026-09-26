@@ -422,6 +422,19 @@ class LLMService: ObservableObject {
             prompt = Config.systemPrompt
         }
 
+        // Support trace (2026-09-26): which blocks this prompt is made of, and how big each is.
+        // Names and sizes only — the text itself never leaves this function through here.
+        var blocks: [TurnTimeline.PromptBlock] = []
+        var blockStart = 0
+        // UTF-8 length, not `count`: constant time on a prompt that runs to tens of thousands of
+        // characters, and the same as the character count for the English the blocks are made of.
+        func closeBlock(_ name: String) {
+            let size = prompt.utf8.count - blockStart
+            if size > 0 { blocks.append(.init(name: name, characters: size)) }
+            blockStart = prompt.utf8.count
+        }
+        closeBlock(Config.agentModeEnabled && !(agentContext ?? "").isEmpty ? "agent persona" : "system prompt")
+
         // Helper: check if a section should be included. When promptSections is nil (no classifier), include everything.
         let shouldInclude: (ConversationClassifier.PromptSections) -> Bool = { section in
             guard let sections = promptSections else { return true }
@@ -441,6 +454,8 @@ class LLMService: ObservableObject {
             - After reading text from an image, offer to copy it to clipboard or translate it.
             """
         }
+
+        closeBlock("vision guidance")
 
         if includeTools && shouldInclude(.tools) {
             var toolSection = """
@@ -531,6 +546,7 @@ class LLMService: ObservableObject {
 
             prompt += toolSection
         }
+        closeBlock("tools")
         if hasImage {
             prompt += """
 
@@ -547,42 +563,52 @@ class LLMService: ObservableObject {
             - For barcodes/QR codes: note their presence even if you can't decode them.
             """
         }
+        closeBlock("image instructions")
         if let memory = memoryContext {
             prompt += Self.memoryPromptBlock(memory)
         }
+        closeBlock("memory")
         if let playbook = playbookContext {
             prompt += "\n\n\(playbook)"
         }
+        closeBlock("playbook")
         // Models have no clock — without this one ~15-token line they answer date/time
         // reasoning from their training cutoff, confidently wrong ("local LLM doesn't
         // know day or time"). Unconditional: cheap enough for every turn, both paths.
         prompt += "\n\nCURRENT DATE & TIME: \(Self.currentDateTimeLine())"
+        closeBlock("date and time")
 
         if let location = locationContext {
             prompt += "\n\nUSER LOCATION: \(location)"
         }
+        closeBlock("location")
         if let nowPlaying = nowPlayingContext {
             prompt += "\n\n\(nowPlaying)"
         }
+        closeBlock("now playing")
         // Inject voice-taught skills
         if shouldInclude(.tools), let skills = VoiceSkillStore.shared.promptContext(for: turn) {
             prompt += "\n\n\(skills)"
         }
+        closeBlock("voice skills")
         // Inject Field Assist vault content when a session is active.
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
         if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
             prompt += "\n\n<field_assist_context>\n\(vaultContext)\n</field_assist_context>"
         }
+        closeBlock("field assist: vault, job and manual passages")
         // Inject the debrief block while one is running (Plan FO P3b): which job it is about and
         // what the model may not do during one. Outside the vault context on purpose — a debrief
         // usually runs on a finished job, with no session active and no vault loaded.
         if let debrief = debriefContext() {
             prompt += "\n\n\(debrief)"
         }
+        closeBlock("job debrief")
         // Inject the active project's knowledge-base grounding when it has documents (Plan AN).
         if let projectContext = ProjectContextService.shared.promptContext() {
             prompt += "\n\n\(projectContext)"
         }
+        closeBlock("project documents")
         // Inject the pages read so far when a reading session is live (Plan BT). Ungated by the
         // classifier on purpose: mid-book questions ("who is she?") match no keyword list, so the
         // live session is the signal — same call the playbook context makes. Here rather than as a
@@ -592,6 +618,7 @@ class LLMService: ObservableObject {
         if let readingContext = ReadingCompanionService.shared.promptContext(turn: turn) {
             prompt += "\n\n\(readingContext)"
         }
+        closeBlock("reading session")
         // Inject project-scoped notes for the active job (what the user is mid-way through).
         if Config.projectMemoryEnabled,
            let session = FieldSessionService.shared.activeSession, session.isActive {
@@ -600,17 +627,22 @@ class LLMService: ObservableObject {
             let block = ProjectMemoryFormatter.block(eligible)
             if !block.isEmpty { prompt += "\n\n\(block)" }
         }
+        closeBlock("job notes")
         // Inject social context (people the user knows)
         if shouldInclude(.social), let social = SocialContextStore.shared.promptContext() {
             prompt += "\n\n\(social)"
         }
+        closeBlock("people")
         // Inject installed ClawHub skills
         if shouldInclude(.openClaw), let skillContext = InstalledSkillStore.shared.promptContext(for: turn) {
             prompt += "\n\n\(skillContext)"
         }
+        closeBlock("installed skills")
         // Always append the prompt-injection / untrusted-content policy. This is a security
         // baseline — it is never stripped by the classifier and applies in every mode.
         prompt += PromptInjectionPolicy.systemPromptPolicy
+        closeBlock("safety policy")
+        TurnRecorder.notePromptBlocks(blocks)
         return prompt
     }
 
@@ -635,20 +667,39 @@ class LLMService: ObservableObject {
                 guard let self else {
                     return .failedBeforeExecution(reason: "Service unavailable")
                 }
+                let outcome: ToolExecutionOutcome
                 if let router = self.nativeToolRouter {
                     // The provider's own call id, where it gave one: a redelivery of this exact
                     // call then resolves to the operation that already ran instead of running again.
-                    return await router.executeRoot(name: name, args: args, origin: .model,
-                                                    invocationID: callID ?? UUID().uuidString)
+                    outcome = await router.executeRoot(name: name, args: args, origin: .model,
+                                                       invocationID: callID ?? UUID().uuidString)
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
-                    return ToolExecutionOutcome(
+                    outcome = ToolExecutionOutcome(
                         await bridge.delegateTask(task: taskDesc, toolName: name))
+                } else {
+                    outcome = .failedBeforeExecution(reason: "No tool handler available")
                 }
-                return .failedBeforeExecution(reason: "No tool handler available")
+                // Support trace: the tool's name and the class of result, never its arguments or
+                // output. A name the registry doesn't know is the model's own string, so it is
+                // not written down as given.
+                let known = self.nativeToolRouter?.registry.tool(named: name) != nil
+                TurnRecorder.noteToolCall(name: known ? name : "unrecognised tool",
+                                          outcome: LLMService.traceOutcome(outcome))
+                return outcome
             },
             onStatus: { [weak self] status in self?.toolCallStatus = status }
         )
+    }
+
+    /// The class of a tool's result, for the support trace.
+    private static func traceOutcome(_ outcome: ToolExecutionOutcome) -> String {
+        switch outcome {
+        case .completed: return "completed"
+        case .rejected: return "refused"
+        case .failedBeforeExecution: return "failed"
+        case .outcomeUnknown: return "outcome unknown"
+        }
     }
 
     /// - Parameter onToken: optional per-token callback for streaming the assistant reply into the
@@ -699,6 +750,7 @@ class LLMService: ObservableObject {
         // it returns, so anything that asks once the turn is over names the model that didn't
         // answer. Tags are last-wins, so a cascade's final attempt is the one that sticks.
         TurnRecorder.noteBackend(.direct(provider), model: modelConfig.model)
+        if imageData != nil { TurnRecorder.noteImageSent() }
 
         let isOnDevice = (provider == .local || provider == .appleOnDevice)
         let hasNativeTools = nativeToolRouter != nil

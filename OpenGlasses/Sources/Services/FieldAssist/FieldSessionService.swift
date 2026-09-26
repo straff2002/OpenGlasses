@@ -991,6 +991,7 @@ final class FieldSessionService: ObservableObject {
         switch equipmentScope(turn: searchTurn) {
         case .unknownEquipment(_, let sentence):
             stageFigure(nil)
+            TurnRecorder.noteManualPassages([], refused: true)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
         case .otherKnownModel(let token, let model):
             if let active = activeEquipment {
@@ -1001,6 +1002,8 @@ final class FieldSessionService: ObservableObject {
         }
         let outcome = manualRetriever(store: store).retrieve(
             .init(turn: searchTurn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+        // Support trace: which pages went to the model, by citation — or that the gate refused.
+        TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.isSufficient)
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
@@ -1587,9 +1590,14 @@ final class FieldSessionService: ObservableObject {
     /// Where a session's evidence files live. Needed by the share sheet, which hands out the
     /// stored (already filtered) originals rather than anything re-encoded.
     func photosDirectory(sessionId: String) -> URL {
-        sessionsRoot
-            .appendingPathComponent(sessionId, isDirectory: true)
+        sessionDirectory(sessionId: sessionId)
             .appendingPathComponent("photos", isDirectory: true)
+    }
+
+    /// Where a session's `session.json` and `log.jsonl` live, for readers that only read
+    /// (`SessionLogger.readEvents(at:)`) and must not open a logger on a finished job.
+    func sessionDirectory(sessionId: String) -> URL {
+        sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
     }
 
     /// The finished session's own evidence, for a past job's review and re-share.

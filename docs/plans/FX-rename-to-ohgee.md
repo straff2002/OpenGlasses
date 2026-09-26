@@ -1,4 +1,4 @@
-# Plan FV — Rename to OhGee (a personal agent; glasses become one device among several)
+# Plan FX — Rename to OhGee (a personal agent; glasses become one device among several)
 
 **Status:** 📝 Drafted 2026-09-26 — for review before any code changes. Nothing is built.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **OhGee**. It is
@@ -194,7 +194,7 @@ The shipped prompts give the assistant a glasses identity whatever the device:
 7. **Docs and website:** `README.md`, `README.zh-CN.md`, `SECURITY.md`, `index.html`, `about.html`,
    `privacy.html`, `support.html`, `docs/BUILDING.md`, `docs/CAPABILITIES.md`, the Field Assist guide.
    Historical plan documents in `docs/plans/` are **not** rewritten; they record what was true then.
-   The plan index gets a one-line note that plans before FV say OpenGlasses.
+   The plan index gets a one-line note that plans before FX say OpenGlasses.
 8. **Tests:** 34 test files assert brand strings. Update the assertions to the new copy; do not
    loosen them.
 

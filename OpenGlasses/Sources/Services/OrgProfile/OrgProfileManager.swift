@@ -834,6 +834,7 @@ extension SettingKey {
         switch (self, value) {
         case (.fieldAssistEnabled, .bool(let on)): return on ? "Field Assist is turned on" : "Field Assist is turned off"
         case (.fieldAssistDefaultVaultId, .string(let id)): return "Field Assist opens with the \(id) vault"
+        case (.supportReportEmail, .string(let address)): return "Support reports are emailed to \(address)"
         case (.fieldAssistDefaultMode, .string(let mode)):
             return mode == FieldSession.Mode.humanAssisted.rawValue
                 ? "Field Assist starts in human-assisted mode" : "Field Assist starts in AI-only mode"

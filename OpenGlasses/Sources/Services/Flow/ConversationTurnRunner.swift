@@ -70,6 +70,7 @@ enum ConversationTurnRunner {
             if Task.isCancelled {
                 deps.onCancelled()
             } else {
+                TurnRecorder.noteFailure(error)
                 await deps.onError(error)
             }
         }

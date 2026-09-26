@@ -895,7 +895,7 @@ applies to the assistive surface and the privacy filter, instead of special-casi
 |---|---|---|
 | **Profile-owned** — organisation identity, never a user preference | `organizationDisplayName`, `organizationJobSigningKey`, `organizationJobReportChannel`, `organizationReportRecipients` | set; there is no user surface to override them, and removal clears them |
 | **Ceiling, tighten only** | `organizationAllowsUnsignedVaults` → `false`; `organizationRequiresSignedJobFiles` → `true`; `organizationRequiresCustomerSignOff` → `true`; `privacyFilterEnabled` → `true`; `remoteInvokeObserveEnabled` / `remoteInvokeOutputEnabled` / `remoteInvokeCaptureEnabled` → `false`; `mcpServerEnabled` → `false`; `agentModeEnabled` → `false` | pin in the stated direction; the other direction is refused and reported |
-| **Default** | `fieldAssistEnabled`, `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode` | set a starting value the person may change afterwards |
+| **Default** | `fieldAssistEnabled`, `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode`, `supportReportEmail` (added 2026-09-26, Plan FV) | set a starting value the person may change afterwards |
 
 Four notes on that cut:
 

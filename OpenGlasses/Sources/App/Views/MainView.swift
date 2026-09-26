@@ -108,6 +108,18 @@ struct MainView: View {
                     .zIndex(1)
             }
         }
+        // An AI turn just failed: offer to send the details to support, from whatever tab the
+        // person is on, rather than leaving them to find a report page.
+        .overlay(alignment: .top) {
+            if let prompt = appState.supportPrompt, !showOnboarding {
+                SupportPromptBanner(prompt: prompt,
+                                    onSend: { appState.openSupportReport(from: prompt) },
+                                    onDismiss: { appState.dismissSupportPrompt() })
+                    .padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: appState.supportPrompt)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             PrivacyLog.app(.memoryWarning)
         }
@@ -180,6 +192,11 @@ struct MainView: View {
         }
         .sheet(item: $appState.deliveryShareItem) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
+        }
+        // The support report, read in full before it is sent (support ask 2026-09-26).
+        .sheet(item: $appState.supportReportRequest) { request in
+            SupportReportSheet(request: request)
+                .environmentObject(appState)
         }
     }
 }
