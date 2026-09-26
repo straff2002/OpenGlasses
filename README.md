@@ -8,6 +8,8 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 [Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 
+> **OpenGlasses is becoming OhGee.** The app is growing into a personal AI agent for your phone, your watch or your glasses, with glasses optional. Field Assist becomes *Field Assist, powered by OhGee*. It stays the same app: your settings, API keys, conversations and subscription carry over. [Read the plan](docs/plans/FV-rename-to-ohgee.md).
+
 ---
 
 ## A little help, right when you need it

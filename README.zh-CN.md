@@ -8,6 +8,8 @@
 
 [开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [无障碍功能](docs/CAPABILITIES.md#accessibility) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
 
+> **OpenGlasses 即将更名为 OhGee。** 它正在成为你的个人 AI 助手，可在手机、手表或眼镜上使用，眼镜不再是必需。Field Assist 将更名为 *Field Assist, powered by OhGee*。应用本身不变：你的设置、API 密钥、对话记录和订阅都会保留。[查看计划](docs/plans/FV-rename-to-ohgee.md)。
+
 ---
 
 ## 需要帮助时，开口就好
