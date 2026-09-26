@@ -157,7 +157,7 @@ struct SupportReportSheet: View {
             }
             .buttonStyle(.plain)
 
-            Text("Goes to \(DiagnosticsReportBuilder.supportEmail) with the file attached. You can add to the email before you send it.")
+            Text("Goes to \(Config.supportReportRecipient) with the file attached. You can add to the email before you send it. Change the address in Settings → Diagnostics & Support.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -273,7 +273,7 @@ struct SupportReportSheet: View {
     private func statusLabel(_ status: Status) -> some View {
         switch status {
         case .sharedInstead:
-            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(DiagnosticsReportBuilder.supportEmail).",
+            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(Config.supportReportRecipient).",
                           kind: .warn, systemImage: "envelope.badge")
         case .finished(.sent):
             OGStatusLabel("Report sent. Thank you.", kind: .ok)
@@ -297,7 +297,7 @@ struct SupportReportMailComposer: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let controller = MFMailComposeViewController()
         controller.mailComposeDelegate = context.coordinator
-        controller.setToRecipients([DiagnosticsReportBuilder.supportEmail])
+        controller.setToRecipients([Config.supportReportRecipient])
         controller.setSubject(document.title)
         var body = [String]()
         if let reason { body.append(reason) }

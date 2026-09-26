@@ -37,6 +37,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case fieldAssistEnabled
     case fieldAssistDefaultVaultId
     case fieldAssistDefaultMode
+    case supportReportEmail
 
     enum ValueType: Equatable, Sendable {
         case bool
@@ -70,7 +71,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: false)
         case .fieldAssistEnabled:
             return .startingValue(.bool)
-        case .fieldAssistDefaultVaultId, .fieldAssistDefaultMode:
+        case .fieldAssistDefaultVaultId, .fieldAssistDefaultMode, .supportReportEmail:
             return .startingValue(.string)
         }
     }
@@ -104,6 +105,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return resolvableVaultIds.contains(id) ? nil : "no vault with that id is installed"
         case (.fieldAssistDefaultMode, .string(let raw)):
             return FieldSession.Mode(rawValue: raw) == nil ? "not a Field Assist mode" : nil
+        case (.supportReportEmail, .string(let address)):
+            return SupportReportRecipient.isPlausible(address.trimmingCharacters(in: .whitespacesAndNewlines))
+                ? nil : "not an email address"
         default:
             return nil
         }

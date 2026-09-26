@@ -43,6 +43,15 @@ report can include conversations outside jobs (on by default, a toggle on the sh
 tokens are masked across the whole file by `DiagnosticsRedactor`, configured secrets included.
 Nothing leaves the phone until the person sends it.
 
+## Where reports go
+
+**Settings → Diagnostics & Support → Support email** (`Config.supportReportEmail`). Empty, or not
+shaped like an address, falls back to `DiagnosticsReportBuilder.supportEmail`
+(`SupportReportRecipient.resolve`), so a typo never sends a report nowhere. An organisation profile
+can set it as a starting value (`SettingKey.supportReportEmail`, checked for shape, shown on the
+enrolment review as "Support reports are emailed to …"); the person can still change it. *Report a
+Problem* (Plan DC) still goes to the developer: it reports the app, not a job.
+
 ## Not covered
 
 - **Live voice modes** (Gemini Live, OpenAI Realtime). They keep no conversation at all (Plan FF

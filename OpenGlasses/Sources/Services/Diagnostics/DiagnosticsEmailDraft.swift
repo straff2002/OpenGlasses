@@ -19,6 +19,27 @@ struct DiagnosticsEmailDraft: Equatable {
     }
 }
 
+/// Where a support report is emailed: the address set in Diagnostics & Support (or by an
+/// organisation profile), or the developer's support address when none is set or the one set is
+/// not an email address. Pure, so "a typo never sends a report nowhere" is a test.
+enum SupportReportRecipient {
+    static func resolve(configured: String) -> String {
+        let trimmed = configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isPlausible(trimmed) ? trimmed : DiagnosticsReportBuilder.supportEmail
+    }
+
+    /// One `@`, something before it, a dotted domain after it, and no spaces. Deliberately loose:
+    /// Mail is the real check, and this only has to stop an obvious typo becoming the recipient.
+    static func isPlausible(_ address: String) -> Bool {
+        guard !address.isEmpty, address.count <= 254,
+              address.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
+        let parts = address.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty else { return false }
+        let domain = parts[1]
+        return domain.contains(".") && !domain.hasPrefix(".") && !domain.hasSuffix(".")
+    }
+}
+
 /// Where "Email Report" goes on this device.
 ///
 /// A phone with no Mail account (and every simulator) cannot show a mail composer, and a button

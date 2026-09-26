@@ -16,6 +16,8 @@ struct DiagnosticsSupportView: View {
     @State private var showingReport = false
     @State private var copied = false
     @State private var turnRecordsCleared = false
+    /// Where support reports go. Empty means the developer's support address.
+    @AppStorage("supportReportEmail") private var supportEmail: String = ""
 
     init(appState: AppState) {
         self.appState = appState
@@ -31,8 +33,10 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Send to Support",
-                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it."
+                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
             ) {
+                supportEmailField
+                OGDivider()
                 Button {
                     appState.openSupportReport(.day(Date()))
                 } label: {
@@ -163,6 +167,29 @@ struct DiagnosticsSupportView: View {
                 DiagnosticsReportSheet(report: report)
             }
         }
+    }
+
+    /// The support email, typed once and used by every support report on this phone.
+    private var supportEmailField: some View {
+        let trimmed = supportEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Support email")
+                .font(.subheadline.weight(.semibold))
+            TextField(DiagnosticsReportBuilder.supportEmail, text: $supportEmail)
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityHint("Where support reports are emailed. Leave empty to use the app's own support address.")
+            if !trimmed.isEmpty && !SupportReportRecipient.isPlausible(trimmed) {
+                Text("That doesn't look like an email address, so reports will go to \(DiagnosticsReportBuilder.supportEmail) until it's fixed.")
+                    .font(.caption)
+                    .foregroundStyle(OGTheme.warnLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder

@@ -2,6 +2,15 @@
 
 *OpenGlasses · a guide for support · September 2026*
 
+## First: set the support email
+
+Do this once on each phone, so reports come to you.
+
+1. Open **Settings** → **Diagnostics & Support**.
+2. In **Support email**, type the address reports should go to, for example *support@yourcompany.com*.
+
+If it's left empty, reports go to the OpenGlasses team. Phones set up by an organisation can have it filled in already.
+
 ## What's new
 
 1. **Transcripts.** Save everything said on a job, or on every job in a day, as a text file.
@@ -30,7 +39,7 @@ Every support report opens on a review screen first. It shows:
 
 Two buttons send it:
 
-- **Email to Support** opens an email to support with the report attached. You can add a note before sending.
+- **Email to Support** opens an email to the support email address with the report attached. You can add a note before sending.
 - **Share the File…** sends it another way, such as Messages or AirDrop.
 
 For a whole day, a switch lets you include or leave out conversations that weren't part of a job.
@@ -71,7 +80,7 @@ The app keeps a record of each AI request for 14 days, on the phone only. It con
 
 ## Quick test (1 minute)
 
-You need one finished job on the phone, and Mail set up with an email account.
+You need the support email set (see the start of this guide), one finished job on the phone, and Mail set up with an email account.
 
 **Send a job's transcript**
 
