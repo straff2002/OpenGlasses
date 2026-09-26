@@ -98,14 +98,14 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Report a Problem",
-                footer: "A report carries your app and iOS versions, device model, language, glasses connection, and the recent debug log. Keys and personal identifiers are masked automatically. Your conversations, contacts, location, and saved memories are never included."
+                footer: "For problems with the app itself. This goes to the developer of OpenGlasses, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
             ) {
                 Button {
                     presentReport()
                 } label: {
                     OGRow(
                         "Report a Problem", icon: "ladybug",
-                        subtitle: "Review what's included, then email it or open an issue"
+                        subtitle: "Goes to the app's developer. No conversations or private data."
                     )
                 }
                 .buttonStyle(.plain)
@@ -335,7 +335,7 @@ private struct DiagnosticsReportSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("Goes to \(DiagnosticsReportBuilder.supportEmail). No account needed, and you can add to it before you send.")
+                    Text("Goes to the developer of OpenGlasses at \(DiagnosticsReportBuilder.supportEmail), not to your company's support. It contains no conversations or private data. No account needed, and you can add to it before you send.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

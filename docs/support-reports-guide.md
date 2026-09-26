@@ -74,6 +74,10 @@ Each job starts with its job number, the machine, and when it started and finish
 - **Recordings.** The app never keeps audio, only the written transcript.
 - **The live conversation modes** (Gemini Live and OpenAI Realtime). These don't save conversations yet, so use the normal voice mode for the pilot.
 
+## Report a Problem is different
+
+**Settings** → **Diagnostics & Support** → **Report a Problem** is for problems with the app itself. It goes to the developer of OpenGlasses, not to your company, and it never includes conversations or private data. For anything about a job or a customer, use **Send to Support**.
+
 ## Privacy
 
 The app keeps a record of each AI request for 14 days, on the phone only. It contains no conversation, just timings, pages used and errors. It can be deleted in **Settings** → **Diagnostics & Support** → **Delete AI Turn Records**. A support report does contain conversations, so it is only made when someone asks for one, and only sent when they send it.
