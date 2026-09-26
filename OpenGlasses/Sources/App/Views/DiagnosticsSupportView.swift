@@ -170,21 +170,36 @@ struct DiagnosticsSupportView: View {
     }
 
     /// The support email, typed once and used by every support report on this phone.
+    ///
+    /// On an organisation's phone the empty field says the organisation's address is needed, and
+    /// nothing falls back to the developer (`SupportReportRecipient`).
     private var supportEmailField: some View {
         let trimmed = supportEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let organisation = appState.isOrganisationPhone
+        let fallback = SupportReportRecipient.resolve(
+            configured: "", organisationPhone: organisation,
+            organisationRecipients: Config.organizationReportRecipients)
         return VStack(alignment: .leading, spacing: 4) {
             Text("Support email")
                 .font(.subheadline.weight(.semibold))
-            TextField(DiagnosticsReportBuilder.supportEmail, text: $supportEmail)
+            TextField(organisation ? "Your organisation's support address" : DiagnosticsReportBuilder.supportEmail,
+                      text: $supportEmail)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .accessibilityHint("Where support reports are emailed. Leave empty to use the app's own support address.")
+                .accessibilityHint("Where support reports from this phone are emailed.")
             if !trimmed.isEmpty && !SupportReportRecipient.isPlausible(trimmed) {
-                Text("That doesn't look like an email address, so reports will go to \(DiagnosticsReportBuilder.supportEmail) until it's fixed.")
+                Text(verbatim: fallback.map { "That doesn't look like an email address, so reports will go to \($0) until it's fixed." }
+                     ?? "That doesn't look like an email address. Reports can only be shared until it's fixed.")
                     .font(.caption)
                     .foregroundStyle(OGTheme.warnLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if trimmed.isEmpty {
+                Text(verbatim: fallback.map { "Empty: reports go to \($0)." }
+                     ?? "Empty: this phone belongs to an organisation, so reports can only be shared until its support address is added.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

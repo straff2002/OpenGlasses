@@ -19,13 +19,28 @@ struct DiagnosticsEmailDraft: Equatable {
     }
 }
 
-/// Where a support report is emailed: the address set in Diagnostics & Support (or by an
-/// organisation profile), or the developer's support address when none is set or the one set is
-/// not an email address. Pure, so "a typo never sends a report nowhere" is a test.
+/// Where a support report is emailed. Pure, so each rule is a test.
+///
+/// 1. The address set in Diagnostics & Support (or by an organisation profile), when it is shaped
+///    like one.
+/// 2. **On an organisation's phone, never the developer.** A technician who taps *Send to support*
+///    means their own office, and a support report carries customers' names and addresses the
+///    developer has no business receiving. So an organisation phone with no support address uses the
+///    office that already receives its job reports, and with neither there is no address at all —
+///    the sheet says so and offers the share sheet instead.
+/// 3. A personal phone falls back to the developer's support address, so a typo never sends a
+///    report nowhere.
 enum SupportReportRecipient {
-    static func resolve(configured: String) -> String {
+    static func resolve(configured: String, organisationPhone: Bool = false,
+                        organisationRecipients: [String] = []) -> String? {
         let trimmed = configured.trimmingCharacters(in: .whitespacesAndNewlines)
-        return isPlausible(trimmed) ? trimmed : DiagnosticsReportBuilder.supportEmail
+        if isPlausible(trimmed) { return trimmed }
+        if organisationPhone {
+            return organisationRecipients
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first(where: isPlausible)
+        }
+        return DiagnosticsReportBuilder.supportEmail
     }
 
     /// One `@`, something before it, a dotted domain after it, and no spaces. Deliberately loose:

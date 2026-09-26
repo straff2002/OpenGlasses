@@ -9,7 +9,7 @@ Do this once on each phone, so reports come to you.
 1. Open **Settings** → **Diagnostics & Support**.
 2. In **Support email**, type the address reports should go to, for example *support@yourcompany.com*.
 
-If it's left empty, reports go to the OpenGlasses team. Phones set up by an organisation can have it filled in already.
+On a company phone, reports only ever go to your company. If the support email is empty, they go to the office address that receives job reports. If that's empty too, the email button is hidden and the report can only be shared, so a technician can't send it to the app's makers by mistake. Your company's setup can fill the address in for you.
 
 ## What's new
 

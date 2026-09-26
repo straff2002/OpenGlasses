@@ -4050,11 +4050,6 @@ struct Config {
         }
     }
 
-    /// The address a support report actually goes to.
-    static var supportReportRecipient: String {
-        SupportReportRecipient.resolve(configured: supportReportEmail)
-    }
-
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.
     static var fieldAssistDefaultMode: String {

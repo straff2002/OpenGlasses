@@ -45,9 +45,18 @@ Nothing leaves the phone until the person sends it.
 
 ## Where reports go
 
-**Settings → Diagnostics & Support → Support email** (`Config.supportReportEmail`). Empty, or not
-shaped like an address, falls back to `DiagnosticsReportBuilder.supportEmail`
-(`SupportReportRecipient.resolve`), so a typo never sends a report nowhere. An organisation profile
+**Settings → Diagnostics & Support → Support email** (`Config.supportReportEmail`), resolved by
+`SupportReportRecipient.resolve`:
+
+- a set address shaped like one wins;
+- **an organisation's phone never falls back to the developer** (owner, 2026-09-26: technicians
+  would take the button for their own work support, and the developer would receive customer data
+  and a flood of mail). "Organisation phone" is `OrgProfileManager.isManaged` or an active
+  organisation licence. It falls back to the office that receives its job reports
+  (`organizationReportRecipients`), and with neither there is no address: the sheet hides *Email to
+  Support*, says to ask a manager, and offers the share sheet;
+- a personal phone falls back to `DiagnosticsReportBuilder.supportEmail`, so a typo never sends a
+  report nowhere. An organisation profile
 can set it as a starting value (`SettingKey.supportReportEmail`, checked for shape, shown on the
 enrolment review as "Support reports are emailed to …"); the person can still change it. *Report a
 Problem* (Plan DC) still goes to the developer: it reports the app, not a job.

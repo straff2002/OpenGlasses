@@ -113,7 +113,8 @@ struct SupportReportSheet: View {
             }
             .sheet(isPresented: $showingMail) {
                 if let document {
-                    SupportReportMailComposer(document: document, reason: request.reason) { outcome in
+                    SupportReportMailComposer(document: document, reason: request.reason,
+                                              recipient: appState.supportReportRecipient ?? "") { outcome in
                         showingMail = false
                         status = .finished(outcome)
                     }
@@ -140,33 +141,13 @@ struct SupportReportSheet: View {
                 .padding(14)
         }
 
-        VStack(spacing: 8) {
-            Button {
-                email()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "envelope")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Email to Support")
-                        .font(.body.weight(.semibold))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(accent, in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Text("Goes to \(Config.supportReportRecipient) with the file attached. You can add to the email before you send it. Change the address in Settings → Diagnostics & Support.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-
-            if let status {
-                statusLabel(status)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        if let recipient = appState.supportReportRecipient {
+            emailSection(to: recipient)
+        } else {
+            // An organisation phone with nowhere to send it: never the developer (see
+            // `SupportReportRecipient`). Share still works, so the report is not stuck.
+            OGStatusLabel("Your organisation hasn't set a support email. Ask your manager for the address and add it in Settings → Diagnostics & Support, or share the file below.",
+                          kind: .warn, systemImage: "envelope.badge")
         }
 
         OGSection {
@@ -186,6 +167,37 @@ struct SupportReportSheet: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
+        }
+    }
+
+    private func emailSection(to recipient: String) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                email()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "envelope")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Email to Support")
+                        .font(.body.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Text("Goes to \(recipient) with the file attached. You can add to the email before you send it. Change the address in Settings → Diagnostics & Support.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+
+            if let status {
+                statusLabel(status)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -273,7 +285,7 @@ struct SupportReportSheet: View {
     private func statusLabel(_ status: Status) -> some View {
         switch status {
         case .sharedInstead:
-            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(Config.supportReportRecipient).",
+            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(appState.supportReportRecipient ?? "your support address").",
                           kind: .warn, systemImage: "envelope.badge")
         case .finished(.sent):
             OGStatusLabel("Report sent. Thank you.", kind: .ok)
@@ -292,12 +304,13 @@ struct SupportReportSheet: View {
 struct SupportReportMailComposer: UIViewControllerRepresentable {
     let document: JobTranscriptExport.Document
     let reason: String?
+    let recipient: String
     let onFinish: (DiagnosticsEmailOutcome) -> Void
 
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let controller = MFMailComposeViewController()
         controller.mailComposeDelegate = context.coordinator
-        controller.setToRecipients([Config.supportReportRecipient])
+        controller.setToRecipients([recipient])
         controller.setSubject(document.title)
         var body = [String]()
         if let reason { body.append(reason) }

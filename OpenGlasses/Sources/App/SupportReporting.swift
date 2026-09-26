@@ -87,6 +87,20 @@ extension AppState {
                                               environment: supportEnvironment())
     }
 
+    /// Whether this phone belongs to an organisation: set up by a profile, or running on an
+    /// organisation licence. Support reports from these phones never go to the developer.
+    var isOrganisationPhone: Bool {
+        OrgProfileManager.shared.isManaged || LicenseService.shared.activeLicense != nil
+    }
+
+    /// Where a support report from this phone is emailed, or nil when an organisation phone has
+    /// no support address and no job-report office to fall back on.
+    var supportReportRecipient: String? {
+        SupportReportRecipient.resolve(configured: Config.supportReportEmail,
+                                       organisationPhone: isOrganisationPhone,
+                                       organisationRecipients: Config.organizationReportRecipients)
+    }
+
     /// What only the running app knows: the phone, the glasses, the app's event log and the
     /// debug log, and the configured secrets the report is masked with.
     func supportEnvironment() -> JobTranscriptExporter.Environment {
