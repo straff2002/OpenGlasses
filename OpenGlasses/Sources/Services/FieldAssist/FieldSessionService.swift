@@ -1587,9 +1587,14 @@ final class FieldSessionService: ObservableObject {
     /// Where a session's evidence files live. Needed by the share sheet, which hands out the
     /// stored (already filtered) originals rather than anything re-encoded.
     func photosDirectory(sessionId: String) -> URL {
-        sessionsRoot
-            .appendingPathComponent(sessionId, isDirectory: true)
+        sessionDirectory(sessionId: sessionId)
             .appendingPathComponent("photos", isDirectory: true)
+    }
+
+    /// Where a session's `session.json` and `log.jsonl` live, for readers that only read
+    /// (`SessionLogger.readEvents(at:)`) and must not open a logger on a finished job.
+    func sessionDirectory(sessionId: String) -> URL {
+        sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
     }
 
     /// The finished session's own evidence, for a past job's review and re-share.

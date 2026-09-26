@@ -19,6 +19,8 @@ struct NoActiveJobView: View {
     var sendCard: JobSendQueueSection?
     /// Jobs ahead (Plan FO P3c), between starting one now and the ones already done.
     var upcoming: UpcomingJobsSection?
+    /// Every job started on the chosen day, as one transcript file in the share sheet.
+    var onExportDay: ((Date) -> Void)?
 
     @FocusState private var referenceFocused: Bool
 
@@ -134,9 +136,35 @@ struct NoActiveJobView: View {
                     .accessibilityAddTraits(.isButton)
                 }
             }
+            if let onExportDay, model.hasPastJobs {
+                exportDayMenu(onExportDay)
+            }
         } header: {
             Text("Past jobs")
         }
+    }
+
+    /// A menu of the days that have jobs, rather than a date picker that can land on a day with
+    /// none. A menu, not a sheet, because the share sheet it leads to cannot open over a sheet.
+    private func exportDayMenu(_ export: @escaping (Date) -> Void) -> some View {
+        Menu {
+            ForEach(model.transcriptDays) { entry in
+                Button {
+                    export(entry.day)
+                } label: {
+                    Text(verbatim: Self.dayLabel(entry.day, jobCount: entry.jobCount))
+                }
+            }
+        } label: {
+            Text("Export a day's transcripts…")
+                .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+        }
+        .accessibilityHint("Choose a day. Everything said on that day's jobs goes into one text file. Nothing leaves the phone until you choose where it goes.")
+    }
+
+    static func dayLabel(_ day: Date, jobCount: Int) -> String {
+        let date = day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
+        return jobCount == 1 ? "\(date) · 1 job" : "\(date) · \(jobCount) jobs"
     }
 }
 

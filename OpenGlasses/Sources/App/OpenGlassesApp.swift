@@ -3749,6 +3749,36 @@ class AppState: ObservableObject, AppStateProtocol {
         deliveryShareItem = ShareItem(items: urls)
     }
 
+    /// Hand a job's transcript, or a whole day's, to the system share sheet as a text file.
+    ///
+    /// Encrypted conversations are unlocked first (Face ID), because a transcript built while they
+    /// are locked would say every job's replies are gone. The file is a protected, short-lived
+    /// lease: it is removed when the share finishes, however it finishes. Returns what went wrong,
+    /// in words for the screen, or nil once the sheet is up.
+    func presentTranscriptExport(_ scope: JobTranscriptExport.Scope) async -> String? {
+        if conversationStore.isLocked {
+            _ = await conversationStore.unlock()
+        }
+        let document: JobTranscriptExport.Document
+        switch JobTranscriptExporter.document(scope, sessions: FieldSessionService.shared,
+                                              store: conversationStore) {
+        case .success(let built): document = built
+        case .failure(let failure): return failure.message
+        }
+        let coordinator = StagedExportCoordinator.fieldSession
+        guard let lease = try? JobTranscriptExporter.lease(for: document, coordinator: coordinator) else {
+            return JobTranscriptExporter.Failure.writeFailed.message
+        }
+        coordinator.beginShare(lease)
+        deliveryShareItem = ShareItem(
+            items: [ProtectedExportActivityItem(fileURL: lease.fileURL,
+                                                displayName: lease.displayName)]
+        ) { completed in
+            coordinator.finishShare(lease, outcome: completed ? .completed : .cancelled)
+        }
+        return nil
+    }
+
     /// Send a record the queue is still holding, by email, from the sync screen. Summary only:
     /// the exported files belong to a session that may be long finished, and a body a person can
     /// read is better than an attachment that may no longer be on disk.

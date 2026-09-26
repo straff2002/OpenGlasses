@@ -29,6 +29,8 @@ renderer and its bounded block in the continuity snapshot, the maps preference w
 CarPlay hand-off, and the `.ogjob` file: format, strict validator, the organisation's signature
 check, the medical/organisation refusal, the review sheet and duplicate handling. See *P3c as
 built* below. No car, no device, no mail client. P4 unbuilt.
+**Transcript export added 2026-09-26, headless** — *Export transcript…* on a past job and *Export
+a day's transcripts…* under Past jobs; see *Transcript export* below.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -1607,6 +1609,39 @@ followed at motorway speed are **owed to P4**.
   `origin: .jobFile`-style provenance; the review sheet is the place an office push would also
   need a technician's tap.
 - "Call ahead" (the open question below) is one `phone_call` away from the contact line.
+
+## Transcript export (2026-09-26)
+
+**Why.** Pilot support asked to see what the technician said and what the assistant answered when
+a customer reports a problem, without a server to sync it to (the base server, Plan FU, is not
+built and nobody hosts one yet). The conversation was already on the phone; the only way to read
+it was bubble by bubble on the read-only transcript page.
+
+**What.** `JobTranscriptExport` (pure) turns one job, or every job **started** on one calendar day,
+into a plain-text file: a header saying what the file can contain, then per job its number,
+equipment, outcome, vault and times, then each line stamped `HH:mm` (with the date when it falls on
+another day than the job started) as *Technician* or *Assistant*, with `[with photo]` where a
+frame went with the message. System messages are left out. Dates use fixed `yyyy-MM-dd` and
+`HH:mm` formats with the UTC offset, so a reader in another country doesn't guess at 03/04.
+
+- **Source.** The job's own conversation thread, both sides. When the thread is gone or empty, the
+  technician's words from the job log (`user_message` events), and the file says the replies are
+  no longer on the phone. With neither, it says nothing said on the job is on the phone.
+- **Locked conversations** are unlocked with Face ID first; the export refuses rather than printing
+  "no longer on the phone" for every job while they are locked.
+- **Nothing is sent from here.** The file is a `StagedExportCoordinator.fieldSession` lease handed
+  to the share sheet, released when the share finishes or is cancelled, like the other field
+  exports. `PrivacyLog` records the line and job counts only.
+- **Where.** *Export transcript…* in a past job's *This job* section; *Export a day's
+  transcripts…* under *Past jobs*, a menu of the 14 most recent days that have jobs (a menu rather
+  than a sheet, because the share sheet cannot open over a sheet).
+
+**Not in it.** What was sent to the model beyond the conversation (system prompt, manual passages,
+the continuity snapshot), errors, and audio: none of these is recorded on the phone today. The job
+log does not record the assistant's replies either — they live only in the conversation thread —
+so a job whose thread was deleted exports the technician's side only.
+
+Tests: `JobTranscriptExportTests` (headless). No device run.
 
 ## Open questions
 
