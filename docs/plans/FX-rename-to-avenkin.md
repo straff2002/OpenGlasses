@@ -1,9 +1,9 @@
-# Plan FX — Rename to OhGee (a personal agent; glasses become one device among several)
+# Plan FX — Rename to Avenkin (a private assistant; glasses become one device among several)
 
 **Status:** 📝 Drafted 2026-09-26 — for review before any code changes. Nothing is built.
-**Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **OhGee**. It is
+**Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
 primarily a **personal AI agent**, sold as a **one-time purchase**, and glasses are optional. Field
-Assist stays as the professional tier, presented as **"Field Assist, powered by OhGee"** and unlocked
+Assist stays as the professional tier, presented as **"Field Assist, powered by Avenkin"** and unlocked
 by the in-app subscription or a signed licence key, as it is today. The same app, under the same name,
 sits on the home screen of both kinds of user.
 **Depends on:** nothing in code.
@@ -34,7 +34,10 @@ has stored. Every identifier that data, purchases, signatures or links depend on
 
 ## Decisions and invariants
 
-**D1 — The name is OhGee.** Display name `OhGee`, with the capital G. Owner's decision, 2026-09-26.
+**D1 — The name is Avenkin.** Display name `Avenkin`. Owner's decision, 2026-09-26, after comparing
+OhGee, TaskRook and Ogee: Avenkin is a coined word, reads as credible behind "Field Assist, powered
+by Avenkin", and is distinctive enough to be a wake word on its own. Pronounced **AV-en-kin**
+("haven" without the h, plus "kin"); the in-app voices must say it that way (P1 item 9).
 
 **D2 — Keep every stored or signed identifier.** Renaming these costs data, purchases or trust, and
 buys nothing a user can see:
@@ -52,18 +55,20 @@ buys nothing a user can see:
 | Wire identifiers: `nz.co.skunkworks.openglasses/idempotency-key`, `nz.co.openglasses.bounded-http.*` | `MCPClient.swift:197`, bounded HTTP client | Idempotency and log correlation with MCP servers that already key on them |
 | Target, scheme and module names (`OpenGlasses`, `OpenGlassesTests`, …) | `project*.yml`, 549 `@testable import`s, CI workflows | Nothing functional, but a very large diff. Deferred to P4 and optional |
 
-**D3 — The URL scheme gains `ohgee://`; `openglasses://` is never retired.** Both are registered and
-both are accepted everywhere a link is handled. Link *generation* switches to `ohgee://` only in P3's
+**D3 — The URL scheme gains `avenkin://`; `openglasses://` is never retired.** Both are registered and
+both are accepted everywhere a link is handled. Link *generation* switches to `avenkin://` only in P3's
 second step, once the build that accepts it has shipped. Meta DAT's `AppLinkURLScheme` stays
 `openglasses://` until the Meta Wearables developer portal registration is changed to match, because
 a mismatch breaks the glasses registration callback.
 
-**D4 — Wake word: "hey ohgee", never a bare "ohgee".** Said aloud, "OhGee" is the everyday
-interjection "oh gee", and `Config.defaultAlternativesForPhrase` already records why a phrase without
-"hey" is only safe when it is not ordinary speech. Anyone who still has the old default
-(`openglasses` or `hey openglasses`) is migrated once; a phrase the user chose is left alone.
+**D4 — Wake word: "avenkin", with no "hey".** It keeps the current design: the default is the bare
+name, matched as whole words anywhere in the utterance, so "hey avenkin" is caught too
+(`Config.wakePhrase`). `Config.defaultAlternativesForPhrase` records that a phrase without "hey" is
+only safe when it is not ordinary speech; three syllables of a coined word pass that test, as
+"openglasses" did. Anyone who still has the old default (`openglasses` or `hey openglasses`) is
+migrated once; a phrase the user chose is left alone.
 
-**D5 — The assistant's default name becomes OhGee; a name the user chose is left alone.**
+**D5 — The assistant's default name becomes Avenkin; a name the user chose is left alone.**
 `AssistantIdentity.defaultName` changes, and **the old default is recognised as a default**:
 `resolve(preference:personaName:)` compares against `defaultName`, and the migration persona created
 on first run (`Config.swift:1574`) stores the literal `"OpenGlasses"`. Without a legacy check, an
@@ -88,8 +93,8 @@ only in XML comments, which are updated in the same PR; their declarations do no
 
 ## P0 — Store and design (owner; no code)
 
-1. **App Store listing text:** name (up to 30 characters, for example "OhGee: Personal AI Agent"),
-   subtitle, description, keywords and screenshots, submitted with the P1 build. The name can only
+1. **App Store listing text:** name (up to 30 characters, for example "Avenkin: Private AI
+   Assistant"), subtitle (for example "Your AI, on your terms"), description, keywords and screenshots, submitted with the P1 build. The name can only
    change with a version submission.
 2. **Meta Wearables developer portal:** the app's display name. The URL scheme there only changes if
    P3 step 3 goes ahead.
@@ -133,20 +138,20 @@ doses.
 
 `AssistantIdentity.resolve` treats a persona named `defaultName` as "not a name anybody picked" and
 lets the preference win. The first-run persona is created with the literal `"OpenGlasses"`
-(`Config.swift:1574`). Changing `defaultName` to `"OhGee"` alone would make every existing install's
+(`Config.swift:1574`). Changing `defaultName` to `"Avenkin"` alone would make every existing install's
 first-run persona look like a name the user chose, and the assistant would keep calling itself
 OpenGlasses.
 
-1. `defaultName` becomes `"OhGee"`. Add `legacyDefaultNames = ["OpenGlasses"]` and an
+1. `defaultName` becomes `"Avenkin"`. Add `legacyDefaultNames = ["OpenGlasses"]` and an
    `isDefaultName(_:)` check, and use it everywhere `resolve` or the UI compares against
    `defaultName`.
 2. `Config.savedPersonas` creates the first-run persona with `AssistantIdentity.defaultName`, not a
    literal.
 3. A one-time migration, behind a stored flag: a saved persona still named `"OpenGlasses"` is renamed
-   `"OhGee"`, so the Personas list shows the new name too. A stored `assistantDisplayName` of
+   `"Avenkin"`, so the Personas list shows the new name too. A stored `assistantDisplayName` of
    `"OpenGlasses"` is cleared, which resets it to the default.
-4. Tests: a fresh install speaks as OhGee; an existing install with the first-run persona speaks as,
-   and lists, OhGee; any other persona name and any other typed name are untouched; the migration
+4. Tests: a fresh install speaks as Avenkin; an existing install with the first-run persona speaks as,
+   and lists, Avenkin; any other persona name and any other typed name are untouched; the migration
    runs once. Known edge: someone who deliberately named a persona "OpenGlasses" is renamed too. That
    is accepted, and they can rename it back.
 
@@ -171,13 +176,13 @@ The shipped prompts give the assistant a glasses identity whatever the device:
 
 1. **Bundle display names:** `CFBundleDisplayName` in the app, `GlassesActivityWidget`,
    `OpenGlassesWatch`, `OpenGlassesWatchWidget` and `OpenGlassesShareExtension` `Info.plist`s, and
-   the `project.watch.yml` overrides. The share extension becomes "OhGee Teleprompter".
+   the `project.watch.yml` overrides. The share extension becomes "Avenkin Teleprompter".
 2. **Permission prompts** (`NS*UsageDescription` in `OpenGlasses/Info.plist`): the name, and
    device-neutral wording where the permission is not glasses-only (D6). Bluetooth may keep "smart
    glasses" because that is what it is for.
-3. **In-app strings:** views, App Intents phrases and responses (`App/Intents/*`: "Ask OhGee…",
-   "OhGee is not running"), notification titles (`ProactiveAlertService`, `GeofenceTool`), the Live
-   Activity default (`LiveActivityManager`), the Settings footer, and the "OhGee Job" document type
+3. **In-app strings:** views, App Intents phrases and responses (`App/Intents/*`: "Ask Avenkin…",
+   "Avenkin is not running"), notification titles (`ProactiveAlertService`, `GeofenceTool`), the Live
+   Activity default (`LiveActivityManager`), the Settings footer, and the "Avenkin Job" document type
    description.
 4. **Localisation:** 44 `Localizable.xcstrings` entries whose source text contains the name. The
    source text is the key, so each renamed entry must carry its translations across. The 32 mentions
@@ -190,23 +195,38 @@ The shipped prompts give the assistant a glasses identity whatever the device:
    and none is a lookup key. The `userAgent` is the only one a gateway might filter on, so it is
    checked against the OpenClaw gateway before it changes.
 6. **Echo stripping:** `LocalOutputPolicy.swift:285` strips a model's echoed speaker label. Add
-   `"OhGee"` and **keep** `"OpenGlasses"`, since old conversation history still carries it.
+   `"Avenkin"` and **keep** `"OpenGlasses"`, since old conversation history still carries it.
 7. **Docs and website:** `README.md`, `README.zh-CN.md`, `SECURITY.md`, `index.html`, `about.html`,
    `privacy.html`, `support.html`, `docs/BUILDING.md`, `docs/CAPABILITIES.md`, the Field Assist guide.
    Historical plan documents in `docs/plans/` are **not** rewritten; they record what was true then.
    The plan index gets a one-line note that plans before FX say OpenGlasses.
 8. **Tests:** 34 test files assert brand strings. Update the assertions to the new copy; do not
    loosen them.
+9. **Pronunciation.** The assistant says its own name in its identity line and in replies. Check
+   "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **AV-en-kin**;
+   where a voice gets it wrong, substitute a spelling it reads correctly at the TTS boundary only,
+   never in displayed text or stored data.
+10. **The watch wordmark.** `WatchMainView.swift:147–154` draws "OpenGlasses" from four separate
+    `Text` pieces ("O", "pen", "G", "lasses"), so a search for the name misses it. Replace it with an
+    Avenkin wordmark.
 
-**Exit:** the app, its extensions, Siri, notifications, the website and the README say OhGee, and the
-assistant introduces itself as OhGee on an existing install; `rg -i openglasses` finds only D2's kept
+**Exit:** the app, its extensions, Siri, notifications, the website and the README say Avenkin, and the
+assistant introduces itself as Avenkin on an existing install; `rg -i openglasses` finds only D2's kept
 identifiers (now pinned by F1), target, module and file names, historical plans, and the legacy-name
 checks this plan adds.
 
 ## P2 — Repositioning the copy (one PR; can merge with P1)
 
-1. **Tagline:** "AI assistant for your smart glasses" becomes, for example, "Your private AI agent —
-   on your phone, your watch, or your glasses". Final wording is the owner's.
+1. **Positioning and tagline.** Lead with *private* and *yours*, and put glasses last:
+   - One sentence: *Avenkin is a private AI assistant that works for you, not for a platform: your
+     choice of AI, your memory on your device, on your phone, your watch or your glasses.*
+   - Tagline (proposed): **"Your AI. Your terms."**
+   - Device line: **"On your phone, from your wrist, or hands-free with glasses."** Not "better with
+     your watch": today the watch is a remote that needs the phone nearby, and most of its controls
+     drive glasses (Plan CS drafts the standalone watch). The copy can say more when CS ships.
+   - Claims stay as precise as the README's: "offline" and "fully private" only for the on-device
+     setup; "buy once, no subscription to us", since cloud AI providers bill their own usage.
+   Final wording is the owner's.
 2. **Onboarding** (`OnboardingView.swift`, Plans DB/DD): lead with the agent (name, voice, model,
    memory). Devices become an "Add a device" step where glasses are one choice and "Use this phone"
    is a complete answer. "Skip — no glasses yet" goes.
@@ -214,7 +234,7 @@ checks this plan adds.
 4. **The glasses-copy sweep:** the ~59 UI strings and 34 `Info.plist` lines. Each keeps "glasses"
    only when the feature needs glasses (D6). The sweep produces a short table in the PR description
    of what kept the word and why.
-5. **Field Assist surfaces:** "Field Assist, powered by OhGee" in Settings → Field Assist, the
+5. **Field Assist surfaces:** "Field Assist, powered by Avenkin" in Settings → Field Assist, the
    licence page, the paywall and the Field Assist guide.
 
 **Exit:** a first run with no glasses never shows a screen that treats the user as unfinished, and
@@ -222,18 +242,20 @@ the assistant does not describe itself as a glasses product during a phone-only 
 
 ## P3 — Scheme alias and wake-phrase migration (one PR)
 
-1. **Accept `ohgee://` everywhere.** Register it in `CFBundleURLSchemes` next to `openglasses`.
+1. **Accept `avenkin://` everywhere.** Register it in `CFBundleURLSchemes` next to `openglasses`.
    Replace the scattered `url.scheme == "openglasses"` checks (`OpenGlassesApp.swift:346–472`,
    `SkillPackSideload.swift:34`, `OrgEnrolmentService.swift:95`, `VaultLinkPolicy.swift:54`,
    `Shared/DeepLinkTrust.swift`) with one helper that accepts both, so no path accepts only one.
    Test: every route, both schemes, same result; an unknown scheme is still refused.
 2. **Migrate the default wake phrase once**, behind a stored flag: `openglasses` or
-   `hey openglasses` → `hey ohgee`, including on the first-run persona, with new alternates in
-   `defaultAlternativesForPhrase` (for example "hey oh gee", "hey o g", "hey og"). The picker lists in
-   `SettingsScreens.swift` and `PersonasView.swift` offer "Hey OhGee" and keep the old phrases
+   `hey openglasses` → `avenkin`, including on the first-run persona, with alternates in
+   `defaultAlternativesForPhrase` for the recogniser splitting or mishearing it (for example
+   "aven kin", "haven kin", "avon kin", "avenkins"), each checked against ordinary speech before it
+   is added. The picker lists in `SettingsScreens.swift` and `PersonasView.swift` offer "Avenkin" and
+   "Hey Avenkin" and keep the old phrases
    selectable. (The assistant's name is migrated earlier, in P1 F2.)
    Tests: an untouched install migrates; a user-chosen phrase survives; the migration runs once.
-3. **Later, in a following release:** generate `ohgee://` links (enrolment links, widget and quick
+3. **Later, in a following release:** generate `avenkin://` links (enrolment links, widget and quick
    action URLs) once the P3 build is what users have. `openglasses://` stays accepted for good. Meta's
    `AppLinkURLScheme` changes only after the portal does (D3).
 
@@ -254,12 +276,12 @@ old URL).
 - **Field Assist users** are told before the build lands: same app, same subscription, same
   licence, new name. Nothing is re-issued.
 - **Rollback:** P1's copy and P2 revert cleanly. F1 changes no values. The F2 and P3 migrations only
-  rewrite values that still equal the old defaults, so reverting leaves "OhGee" and `hey ohgee` in
+  rewrite values that still equal the old defaults, so reverting leaves "Avenkin" and `avenkin` in
   place, which an old build treats as a name and phrase the user chose. No identifier in D2 changes,
   so no rollback can strand data.
 - **Done when:** the P1 and P2 exits hold; `StorageIdentifierGuardTests` exists and passes; both
   schemes open every route; the migration tests pass; `TelemetryOptOutGuardTests` and the full suite
-  are green; the App Store listing reads OhGee.
+  are green; the App Store listing reads Avenkin.
 
 ## Open questions for review
 
