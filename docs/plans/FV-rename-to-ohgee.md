@@ -74,8 +74,10 @@ Fixed in P1 (F2), so the name changes in the same release as everything else.
 where you are: phone, watch, or glasses". Copy that describes a glasses-only feature keeps the word
 glasses; copy that describes the product or a device-neutral feature drops it.
 
-**D7 — The company name is unchanged.** The copyright lines, `LICENSE`, the privacy, support and
-about pages and the support email keep the current company name. This plan renames the product only.
+**D7 — The company name is unchanged.** The company is **Skunkworks NZ Limited**, written
+"Skunkworks NZ Ltd" in copy: the copyright lines, `LICENSE`, the privacy, support and about pages and
+the contact lines always use the full name, never a bare "Skunkworks NZ". This plan renames the product
+only.
 
 **D8 — Privacy copy moves in the same PR as any change to it.** The website privacy page and the
 in-app privacy copy are renamed together. The `PrivacyInfo.xcprivacy` manifests mention the name
