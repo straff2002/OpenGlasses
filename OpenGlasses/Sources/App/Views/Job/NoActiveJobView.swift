@@ -21,6 +21,8 @@ struct NoActiveJobView: View {
     var upcoming: UpcomingJobsSection?
     /// Every job started on the chosen day, as one transcript file in the share sheet.
     var onExportDay: ((Date) -> Void)?
+    /// The chosen day as a support report, reviewed before it is sent.
+    var onReportDay: ((Date) -> Void)?
 
     @FocusState private var referenceFocused: Bool
 
@@ -149,17 +151,20 @@ struct NoActiveJobView: View {
     private func exportDayMenu(_ export: @escaping (Date) -> Void) -> some View {
         Menu {
             ForEach(model.transcriptDays) { entry in
-                Button {
-                    export(entry.day)
+                Menu {
+                    Button("Transcript") { export(entry.day) }
+                    if let onReportDay {
+                        Button("Support report with troubleshooting details") { onReportDay(entry.day) }
+                    }
                 } label: {
                     Text(verbatim: Self.dayLabel(entry.day, jobCount: entry.jobCount))
                 }
             }
         } label: {
-            Text("Export a day's transcripts…")
+            Text("Export a day…")
                 .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
         }
-        .accessibilityHint("Choose a day. Everything said on that day's jobs goes into one text file. Nothing leaves the phone until you choose where it goes.")
+        .accessibilityHint("Choose a day, then a transcript of that day's jobs or a support report with the details of each AI turn. Nothing leaves the phone until you choose where it goes.")
     }
 
     static func dayLabel(_ day: Date, jobCount: Int) -> String {

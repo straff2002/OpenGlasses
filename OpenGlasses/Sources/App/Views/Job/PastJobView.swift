@@ -13,6 +13,7 @@ struct PastJobView: View {
     @EnvironmentObject private var appState: AppState
     @State private var problem: String?
     @State private var transcriptProblem: String?
+    @State private var choosingExport = false
     @State private var readBack: [String]?
     /// The customer sign-off, when it is being taken after the close (Plan FO P2c).
     @State private var signOffStep: SignOffStep?
@@ -182,8 +183,18 @@ struct PastJobView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                choice("Export transcript…") { exportTranscript() }
-                    .accessibilityHint("Makes a text file of everything said on this job. Nothing leaves the phone until you choose where it goes.")
+                choice("Export transcript…") { choosingExport = true }
+                    .accessibilityHint("A text file of everything said on this job, or a support report with the details of each AI turn. Nothing leaves the phone until you choose where it goes.")
+                    .confirmationDialog("Export this job", isPresented: $choosingExport,
+                                        titleVisibility: .visible) {
+                        Button("Transcript") { exportTranscript() }
+                        Button("Support report with troubleshooting details") {
+                            appState.openSupportReport(.job(sessionId: sessionId))
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("The transcript is who said what. The support report adds, for each AI turn, the model, the manual pages and photos sent, timings and errors — for support.")
+                    }
 
                 choice("Read back the job") { readBack = job.summaryLines }
 

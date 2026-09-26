@@ -1636,10 +1636,12 @@ frame went with the message. System messages are left out. Dates use fixed `yyyy
   transcripts…* under *Past jobs*, a menu of the 14 most recent days that have jobs (a menu rather
   than a sheet, because the share sheet cannot open over a sheet).
 
-**Not in it.** What was sent to the model beyond the conversation (system prompt, manual passages,
-the continuity snapshot), errors, and audio: none of these is recorded on the phone today. The job
-log does not record the assistant's replies either — they live only in the conversation thread —
-so a job whose thread was deleted exports the technician's side only.
+**Not in it.** The plain transcript is only who said what. The same day, Plan
+[FV](FV-support-reports.md) added a second choice beside it — a support report with each AI turn's
+model, prompt blocks, manual pages, tools, timings and errors — and *Export a day's transcripts…*
+became *Export a day…* with both. Audio is never kept. The job log does not record the assistant's
+replies — they live only in the conversation thread — so a job whose thread was deleted exports the
+technician's side only.
 
 Tests: `JobTranscriptExportTests` (headless). No device run.
 

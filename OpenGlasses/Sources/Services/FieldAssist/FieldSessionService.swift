@@ -991,6 +991,7 @@ final class FieldSessionService: ObservableObject {
         switch equipmentScope(turn: searchTurn) {
         case .unknownEquipment(_, let sentence):
             stageFigure(nil)
+            TurnRecorder.noteManualPassages([], refused: true)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
         case .otherKnownModel(let token, let model):
             if let active = activeEquipment {
@@ -1001,6 +1002,8 @@ final class FieldSessionService: ObservableObject {
         }
         let outcome = manualRetriever(store: store).retrieve(
             .init(turn: searchTurn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+        // Support trace: which pages went to the model, by citation — or that the gate refused.
+        TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.isSufficient)
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram

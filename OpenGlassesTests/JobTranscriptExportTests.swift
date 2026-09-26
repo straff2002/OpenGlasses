@@ -178,6 +178,159 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertEqual(document.lineCount, 3)
     }
 
+    // MARK: - Troubleshooting details
+
+    private static func trace(at date: Date, session: String? = nil, thread: String? = nil,
+                              failed: Bool = false) -> TurnTrace {
+        var timeline = TurnTimeline(backend: .direct(.anthropic), model: "/var/models/claude.bin")
+        timeline.mark(.commit, at: date)
+        timeline.mark(.firstToken, at: date.addingTimeInterval(1.2))
+        timeline.mark(.generationDone, at: date.addingTimeInterval(3.4))
+        timeline.transcriber = .onDevice
+        timeline.imageSent = true
+        timeline.promptBlocks = [.init(name: "system prompt", characters: 4000),
+                                 .init(name: "field assist: vault, job and manual passages", characters: 1500)]
+        timeline.manualPassages = ["Lennox SLP99 IOM, page 12"]
+        timeline.toolCalls = [.init(name: "lookup_part", outcome: "completed")]
+        timeline.fieldSessionId = session
+        timeline.threadId = thread
+        if failed {
+            timeline.abandoned = true
+            timeline.failure = SafeErrorSummary(category: .rateLimited, code: 429)
+        }
+        return TurnTrace(timeline, sealedAt: date.addingTimeInterval(4))
+    }
+
+    func testASupportReportPutsEachAITurnUnderTheLineItAnswered() {
+        let session = Self.session("s1", startedAt: Self.date(26, 9, 12))
+        let thread = Self.thread([
+            Self.message("user", "What's the gas pressure?", at: Self.date(26, 9, 13)),
+            Self.message("assistant", "3.5 inches water column.", at: Self.date(26, 9, 14)),
+        ])
+        let job = JobTranscriptExport.job(session: session, vaultName: "Refrigeration",
+                                          thread: thread, events: [])
+        let events = [
+            Self.said("What's the gas pressure?", at: Self.date(26, 9, 13)),
+            SessionLogger.Event(timestamp: Self.date(26, 9, 20), kind: .taskStarted,
+                                text: "Replace the flame sensor", payload: nil),
+        ]
+        let details = JobTranscriptExport.Details(
+            traces: [Self.trace(at: Self.date(26, 9, 13), session: "s1"),
+                     Self.trace(at: Self.date(26, 9, 30), session: "s1", failed: true)],
+            jobEvents: ["s1": events],
+            phone: ["Device: iPhone17,1"],
+            appEvents: [.init(at: Self.date(26, 9, 30), line: "[network] request event=failed")],
+            debugLog: [])
+        let document = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
+                                                    exportedAt: Self.date(26, 14, 0),
+                                                    timeZone: Self.utc, details: details)
+        let lines = document.body.components(separatedBy: "\n")
+
+        XCTAssertEqual(document.title, "Job 1005 support report — 2026-09-26")
+        XCTAssertTrue(document.body.contains(JobTranscriptExport.troubleshootingPreamble))
+        XCTAssertEqual(document.turnCount, 2)
+        XCTAssertEqual(document.failedTurnCount, 1)
+
+        let asked = lines.firstIndex(of: "09:13  Technician: What's the gas pressure?")!
+        let turn = lines.firstIndex(of: "09:13  · AI turn answered")!
+        let answered = lines.firstIndex(of: "09:14  Assistant: 3.5 inches water column.")!
+        XCTAssertLessThan(asked, turn)
+        XCTAssertLessThan(turn, answered)
+
+        // The local model's path is reduced to its file name.
+        XCTAssertTrue(document.body.contains("model: anthropic / claude.bin · transcribed by onDevice"))
+        XCTAssertTrue(document.body.contains("instructions of 5500 characters (system prompt 4000, field assist: vault, job and manual passages 1500) + a photo"))
+        XCTAssertTrue(document.body.contains("manual pages: Lennox SLP99 IOM, page 12"))
+        XCTAssertTrue(document.body.contains("tools: lookup_part (completed)"))
+        XCTAssertTrue(document.body.contains("timing: first output after 1.2 s, reply complete after 3.4 s"))
+        XCTAssertTrue(lines.contains("09:30  · AI turn FAILED — rateLimited#429"))
+
+        // The job log is in the timeline; its conversation events are not repeated.
+        XCTAssertTrue(lines.contains("09:20  [job] task started — Replace the flame sensor"))
+        XCTAssertFalse(document.body.contains("[job] user message"))
+
+        XCTAssertTrue(lines.contains("Device: iPhone17,1"))
+        XCTAssertTrue(lines.contains("09:30:00  [network] request event=failed"))
+    }
+
+    func testAPlainTranscriptCarriesNoTroubleshootingLayer() {
+        let job = JobTranscriptExport.job(
+            session: Self.session("s1", startedAt: Self.date(26, 9, 12)), vaultName: "Refrigeration",
+            thread: nil, events: [Self.said("Hello", at: Self.date(26, 9, 13))])
+        let document = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
+                                                    exportedAt: Self.date(26, 14, 0), timeZone: Self.utc)
+        XCTAssertFalse(document.body.contains("AI turn"))
+        XCTAssertFalse(document.body.contains("This phone"))
+        XCTAssertFalse(document.body.contains(JobTranscriptExport.troubleshootingPreamble))
+    }
+
+    func testASupportReportMasksConfiguredSecretsEvenInWhatWasSaid() {
+        let job = JobTranscriptExport.job(
+            session: Self.session("s1", startedAt: Self.date(26, 9, 12)), vaultName: "Refrigeration",
+            thread: Self.thread([Self.message("user", "the gateway code is plover-quartz-lantern",
+                                              at: Self.date(26, 9, 13))]),
+            events: [])
+        let document = JobTranscriptExport.document(
+            scope: .job(sessionId: "s1"), jobs: [job], exportedAt: Self.date(26, 14, 0),
+            timeZone: Self.utc, details: .init(), secrets: ["plover-quartz-lantern"])
+        XCTAssertFalse(document.body.contains("plover-quartz-lantern"))
+        XCTAssertFalse(document.redactionHits.isEmpty)
+    }
+
+    func testADayCanCarryConversationsOutsideJobsWithTheirOwnTurns() {
+        let job = JobTranscriptExport.job(
+            session: Self.session("s1", startedAt: Self.date(26, 9, 0)), vaultName: "Refrigeration",
+            thread: nil, events: [Self.said("On the job", at: Self.date(26, 9, 5))])
+        let outside = JobTranscriptExport.Conversation(
+            threadId: "t-outside", title: "Weather this afternoon",
+            lines: [.init(timestamp: Self.date(26, 12, 0), speaker: .technician,
+                          text: "Will it rain?", imageAttached: false)])
+        let details = JobTranscriptExport.Details(traces: [
+            Self.trace(at: Self.date(26, 12, 0), thread: "t-outside", failed: true),
+            Self.trace(at: Self.date(26, 15, 0)),
+        ])
+        let document = JobTranscriptExport.document(
+            scope: .day(Self.date(26, 0, 0)), jobs: [job], exportedAt: Self.date(26, 18, 0),
+            timeZone: Self.utc, conversations: [outside], details: details)
+
+        XCTAssertEqual(document.title, "Support report — 2026-09-26 (1 job)")
+        XCTAssertTrue(document.body.contains("Outside a job: Weather this afternoon"))
+        XCTAssertTrue(document.body.contains("12:00  Technician: Will it rain?"))
+        XCTAssertTrue(document.body.contains("12:00  · AI turn FAILED — rateLimited#429"))
+        // A turn with no saved conversation still appears, on its own.
+        XCTAssertTrue(document.body.contains("Other AI turns (no saved conversation)"))
+        XCTAssertTrue(document.body.contains("15:00  · AI turn answered"))
+        XCTAssertEqual(document.turnCount, 2)
+        XCTAssertEqual(document.lineCount, 2)
+    }
+
+    func testAJobReportNeverCarriesTurnsFromOutsideTheJob() {
+        let job = JobTranscriptExport.job(
+            session: Self.session("s1", startedAt: Self.date(26, 9, 0)), vaultName: "Refrigeration",
+            thread: nil, events: [])
+        let details = JobTranscriptExport.Details(traces: [Self.trace(at: Self.date(26, 12, 0), thread: "elsewhere")])
+        let document = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
+                                                    exportedAt: Self.date(26, 18, 0), timeZone: Self.utc,
+                                                    details: details)
+        XCTAssertFalse(document.body.contains("AI turn answered"))
+        XCTAssertEqual(document.turnCount, 0)
+    }
+
+    func testATurnThatNeverReachedTheAIDoesNotReadAsAnAnswer() {
+        var timeline = TurnTimeline()
+        timeline.mark(.commit, at: Self.date(26, 10, 0))
+        let lines = JobTranscriptExport.render(TurnTrace(timeline, sealedAt: Self.date(26, 10, 0)),
+                                               stamp: "10:00")
+        XCTAssertEqual(lines, ["10:00  · Turn handled by the app (no AI request)"])
+    }
+
+    func testLinesCanBeLimitedToAWindow() {
+        let messages = [Self.message("user", "yesterday", at: Self.date(25, 23, 0)),
+                        Self.message("user", "today", at: Self.date(26, 8, 0))]
+        let window = JobTranscriptExport.window(of: Self.date(26, 12, 0), calendar: Self.calendar)
+        XCTAssertEqual(JobTranscriptExport.lines(of: messages, within: window).map(\.text), ["today"])
+    }
+
     func testADayFileNamesTheDayAndHoldsEveryJob() {
         let first = JobTranscriptExport.job(
             session: Self.session("a", reference: "1005", startedAt: Self.date(26, 8, 0)),

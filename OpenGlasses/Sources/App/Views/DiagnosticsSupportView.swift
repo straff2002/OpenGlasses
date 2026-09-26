@@ -15,6 +15,7 @@ struct DiagnosticsSupportView: View {
     @State private var report: DiagnosticsReport?
     @State private var showingReport = false
     @State private var copied = false
+    @State private var turnRecordsCleared = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -27,6 +28,21 @@ struct DiagnosticsSupportView: View {
                 text: "Nothing is ever sent on its own. A report is built only when you ask for one, and you see every line of it before you share it.",
                 systemImage: "hand.raised"
             )
+
+            OGSection(
+                header: "Send to Support",
+                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it."
+            ) {
+                Button {
+                    appState.openSupportReport(.day(Date()))
+                } label: {
+                    OGRow(
+                        "Send Today's Activity", icon: "paperplane",
+                        subtitle: "Review it, then email it to support"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
 
             OGSection(
                 header: "Self-Test",
@@ -111,6 +127,18 @@ struct DiagnosticsSupportView: View {
                         "Export Diagnostics", icon: "doc.text.magnifyingglass",
                         subtitle: "Preview every line, then share the file"
                     )
+                }
+                .buttonStyle(.plain)
+                OGDivider()
+                Button {
+                    TurnTraceStore.shared.removeAll()
+                    turnRecordsCleared = true
+                } label: {
+                    OGRow("Delete AI Turn Records", icon: "trash", mutedIcon: true,
+                          subtitle: "Kept on this phone for 14 days for support reports. No words — only models, timings, manual pages and errors.",
+                          showsChevron: false) {
+                        OGRowValue(value: turnRecordsCleared ? "Deleted" : nil)
+                    }
                 }
                 .buttonStyle(.plain)
             }

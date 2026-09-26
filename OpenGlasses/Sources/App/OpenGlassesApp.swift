@@ -935,6 +935,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
                 self.upcomingJobs.removeAll()
                 StagedExportCoordinator.fieldSession.revokeAll()
+                // The turn records name the organisation's manuals and jobs.
+                TurnTraceStore.shared.removeAll()
             },
             hasEndpoint: { Config.deliverySettings.hasEndpoint },
             flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
@@ -1817,6 +1819,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // `ToolDeclarations.openAIRealtimeTools`.
         openAIRealtimeSession.nativeToolRouter = nativeToolRouter
         configureLiveJobBridges()
+        configureSupportTrace()
 
         // Medical export share sheet — triggered by agent tool. The lease is released when the
         // provider finishes, whichever way it finishes; backgrounding and the launch scavenge are
@@ -3625,6 +3628,12 @@ class AppState: ObservableObject, AppStateProtocol {
     var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.
     @Published var deliveryShareItem: ShareItem?
+    /// The offer to send a support report, raised when an AI turn fails (support ask 2026-09-26).
+    @Published var supportPrompt: SupportPrompt?
+    /// The support report being reviewed before it is sent.
+    @Published var supportReportRequest: SupportReportRequest?
+    /// When the wearer last dismissed the offer — it is not raised again for a while after that.
+    var supportPromptDismissedAt: Date?
 
     /// Put a staged report in front of the operator.
     ///
@@ -3939,6 +3948,7 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak(response)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             isProcessing = false
             speechService.stopThinkingSound()
             errorMessage = error.localizedDescription
@@ -3990,6 +4000,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -4257,6 +4268,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }

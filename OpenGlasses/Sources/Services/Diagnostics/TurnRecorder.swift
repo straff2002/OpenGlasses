@@ -106,6 +106,25 @@ enum TurnRecorder {
     /// with it, so a reason can never outlive the utterance it describes and be claimed by the next.
     private static var pendingEndOfTurnReason: EndOfTurnPolicy.Reason?
 
+    /// Which recogniser transcribed the pending utterance. Kept and cleared with the speech-end
+    /// stamp for the same reason the end-of-turn reason is.
+    private static var pendingTranscriber: ASREngine?
+
+    // MARK: - The support trace (2026-09-26)
+
+    /// Where a sealed turn goes to be kept. `nil` keeps nothing beyond the in-memory ledger, which
+    /// is what tests get; the app points it at `TurnTraceStore` at launch.
+    static var traceSink: ((TurnTimeline) -> Void)?
+
+    /// The conversation thread and job a turn belongs to, read when the turn seals — after the
+    /// reply was saved, so it names the thread the reply is actually in. Set by the app at launch.
+    static var traceContext: () -> (threadId: String?, fieldSessionId: String?) = { (nil, nil) }
+
+    /// Caps on the trace's lists, so a runaway tool loop or a long prompt cannot grow one turn.
+    static let maxPromptBlocks = 32
+    static let maxManualPassages = 12
+    static let maxToolCalls = 24
+
     /// The utterance parked by `TurnAdmissionPolicy`, and when the replay that should claim it was
     /// announced. Both halves are needed: the park time is what the turn records, while `notedAt` is
     /// what the staleness ceiling is measured against — bounding the *park* would refuse a
@@ -146,6 +165,7 @@ enum TurnRecorder {
     static func forgetPendingUtterance() {
         pendingSpeechEndAt = nil
         pendingEndOfTurnReason = nil
+        pendingTranscriber = nil
         pendingHeld = nil
     }
 
@@ -185,11 +205,13 @@ enum TurnRecorder {
             // release above, so the reason that ended speech no longer describes the mark it would
             // sit beside. A held turn reports no endpointing reason rather than a misleading one.
             timeline.endOfTurnReason = pendingEndOfTurnReason
+            timeline.transcriber = pendingTranscriber
         }
 
         pendingHeld = nil
         pendingSpeechEndAt = nil
         pendingEndOfTurnReason = nil
+        pendingTranscriber = nil
         sawFirstToken = false
         speechHandedOff = false
         currentID = ledger.start(timeline)
@@ -199,10 +221,16 @@ enum TurnRecorder {
     /// error and cancellation paths.
     static func endTurn() {
         guard let id = currentID else { return }
+        let context = traceContext()
+        ledger.update(id) {
+            $0.threadId = context.threadId
+            $0.fieldSessionId = context.fieldSessionId
+        }
         currentID = nil
         sawFirstToken = false
         speechHandedOff = false
         ledger.seal(id)
+        if let traceSink, let sealed = ledger.turn(id) { traceSink(sealed) }
     }
 
     /// Seal a turn that failed before it reached a backend, handing its utterance back so the thing
@@ -273,6 +301,45 @@ enum TurnRecorder {
     /// the same reason `noteSpeechEnd` works that way.
     static func noteEndOfTurnReason(_ reason: EndOfTurnPolicy.Reason) {
         pendingEndOfTurnReason = reason
+    }
+
+    /// Which recogniser transcribed the pending utterance. Pending for the same reason the
+    /// end-of-turn reason is: the transcript exists before the turn does.
+    static func noteTranscriber(_ engine: ASREngine) {
+        guard isEnabled else { return }
+        pendingTranscriber = engine
+    }
+
+    /// A camera frame or photo is going to the model with this turn.
+    static func noteImageSent() {
+        update { $0.imageSent = true }
+    }
+
+    /// The system prompt this turn is sending, block by block. Last-wins: a cascade that rebuilds
+    /// the prompt for the next model replaces the list rather than doubling it.
+    static func notePromptBlocks(_ blocks: [TurnTimeline.PromptBlock]) {
+        update { $0.promptBlocks = Array(blocks.prefix(maxPromptBlocks)) }
+    }
+
+    /// The manual passages retrieved for this turn, by citation, or the gate's refusal.
+    static func noteManualPassages(_ citations: [String], refused: Bool) {
+        update {
+            $0.manualPassages = Array(citations.prefix(maxManualPassages))
+            $0.manualRefused = refused
+        }
+    }
+
+    /// One tool call and the class of its result.
+    static func noteToolCall(name: String, outcome: String) {
+        update {
+            guard $0.toolCalls.count < maxToolCalls else { return }
+            $0.toolCalls.append(.init(name: name, outcome: outcome))
+        }
+    }
+
+    /// The turn failed with `error`. Only its category is kept, never its description.
+    static func noteFailure(_ error: Error) {
+        update { $0.failure = SafeErrorSummary(error) }
     }
 
     /// Seconds spent waiting on a frame from the glasses, timed from `start`.
@@ -393,7 +460,10 @@ enum TurnRecorder {
         speechHandedOff = false
         pendingSpeechEndAt = nil
         pendingEndOfTurnReason = nil
+        pendingTranscriber = nil
         pendingHeld = nil
+        traceSink = nil
+        traceContext = { (nil, nil) }
     }
 }
 

@@ -104,7 +104,8 @@ private struct JobTabContent: View {
                                         rows: UpcomingJobsModel.rows(upcoming.jobs),
                                         onOpen: { path.append(.upcomingJob(id: $0)) },
                                         onAdd: { addingUpcoming = true }),
-                                    onExportDay: exportDay)
+                                    onExportDay: exportDay,
+                                    onReportDay: { appState.openSupportReport(.day($0)) })
                 case .running(let job), .paused(let job):
                     ActiveJobView(job: job, model: model,
                                   typedReference: $typedReference,
