@@ -105,7 +105,8 @@ private struct JobTabContent: View {
                                         onOpen: { path.append(.upcomingJob(id: $0)) },
                                         onAdd: { addingUpcoming = true }),
                                     onExportDay: exportDay,
-                                    onReportDay: { appState.openSupportReport(.day($0)) })
+                                    onReportDay: { appState.openSupportReport(.day($0)) },
+                                    onSendToday: { appState.openSupportReport(.day(Date())) })
                 case .running(let job), .paused(let job):
                     ActiveJobView(job: job, model: model,
                                   typedReference: $typedReference,
@@ -124,7 +125,8 @@ private struct JobTabContent: View {
                                   onOpenConversation: openConversation,
                                   onReadBack: readBackTheJob,
                                   onClose: startClosing,
-                                  sendCard: sendCard)
+                                  sendCard: sendCard,
+                                  onSendToday: { appState.openSupportReport(.day(Date())) })
                 }
             }
             .navigationTitle("Job")

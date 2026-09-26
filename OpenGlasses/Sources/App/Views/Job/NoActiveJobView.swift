@@ -23,6 +23,8 @@ struct NoActiveJobView: View {
     var onExportDay: ((Date) -> Void)?
     /// The chosen day as a support report, reviewed before it is sent.
     var onReportDay: ((Date) -> Void)?
+    /// Today's conversations so far, as a support report.
+    var onSendToday: (() -> Void)?
 
     @FocusState private var referenceFocused: Bool
 
@@ -34,6 +36,7 @@ struct NoActiveJobView: View {
             vaultSection
             startSection
             upcoming
+            todaySection
             pastJobsSection
         }
         .ogFormStyle()
@@ -108,6 +111,23 @@ struct NoActiveJobView: View {
             Text("New job")
         } footer: {
             Text("You can also just say it — \u{201C}start a job\u{201D} — and the number will be asked for and read back to you.")
+        }
+    }
+
+    // MARK: - Today, in one tap
+
+    @ViewBuilder
+    private var todaySection: some View {
+        if let onSendToday {
+            Section {
+                Button(action: onSendToday) {
+                    Text("Send today's conversations…")
+                        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+                }
+                .accessibilityHint("Everything said today so far, in jobs and out of them, for support. You see it before anything is sent.")
+            } footer: {
+                Text("Everything said today so far, for support. You read it before it's sent.")
+            }
         }
     }
 

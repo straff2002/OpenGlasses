@@ -25,8 +25,9 @@ Nothing is ever sent on its own. The person always sees the report first and tap
 |---|---|
 | Save one job's transcript | **Job** tab → tap a past job → **Export transcript…** → **Transcript** |
 | Send one job to support | **Job** tab → tap a past job → **Export transcript…** → **Support report with troubleshooting details** |
-| Save or send a whole day | **Job** tab → **Past jobs** → **Export a day…** → pick a day → **Transcript** or **Support report** |
-| Send today to support, from anywhere | **Settings** → **Diagnostics & Support** → **Send Today's Activity** |
+| Send today's conversations so far | **Job** tab → **Send today's conversations…** |
+| Send an earlier day | **Job** tab → **Past jobs** → **Export a day…** → pick a day → **Transcript** or **Support report** |
+| Send today from Settings | **Settings** → **Diagnostics & Support** → **Send Today's Activity** |
 | Send straight after a problem | tap **Send to support** on the **That didn't work** banner |
 
 ## The review screen
@@ -93,7 +94,7 @@ You need the support email set (see the start of this guide), one finished job o
 
 **Send it at the end of the day**
 
-1. **Settings** → **Diagnostics & Support** → **Send Today's Activity**.
+1. **Job** tab → **Send today's conversations…**.
 2. Tap **Email to Support**, then **Send**.
 
 **Send it when there's a problem**
