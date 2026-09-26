@@ -69,64 +69,24 @@ Each job starts with its job number, the machine, and when it started and finish
 
 The app keeps a record of each AI request for 14 days, on the phone only. It contains no conversation, just timings, pages used and errors. It can be deleted in **Settings** → **Diagnostics & Support** → **Delete AI Turn Records**. A support report does contain conversations, so it is only made when someone asks for one, and only sent when they send it.
 
-## Demo walkthrough
+## Quick test (1 minute)
 
-This takes about 15 minutes and covers everything a technician or office user needs to know. Run it once yourself, then use it to show others.
+You need one finished job on the phone, and Mail set up with an email account.
 
-**Before you start**
+**Send a job's transcript**
 
-- The app is installed, and **Field Assist** is switched on with a vault loaded.
-- The phone is online, and the Mail app is set up with an email account.
-- The app is in its normal voice mode, not Gemini Live or OpenAI Realtime.
+1. **Job** tab → tap a past job → **Export transcript…** → **Support report with troubleshooting details**.
+2. Tap **Email to Support**, then **Send**.
 
-### 1. Do a short job (3 minutes)
+**Send it at the end of the day**
 
-1. Open the **Job** tab, type **1001** in **Job number**, and tap **Start job**.
-2. Ask the assistant two questions, for example *"How do I check the flame sensor?"* and *"What's the normal gas pressure?"*
-3. Tap **Close job** and confirm. When asked for a customer signature, tap **Close without a signature**.
+1. **Settings** → **Diagnostics & Support** → **Send Today's Activity**.
+2. Tap **Email to Support**, then **Send**.
 
-*You should see:* Job 1001 in the **Past jobs** list.
+**Send it when there's a problem**
 
-### 2. Save the transcript (2 minutes)
+1. Turn on **Airplane Mode** and ask the assistant a question.
+2. When the **That didn't work** banner appears, tap **Send to support**.
+3. Turn **Airplane Mode** off, tap **Email to Support**, then **Send**.
 
-1. In **Past jobs**, tap **Job 1001**.
-2. Tap **Export transcript…**, then **Transcript**.
-3. Choose **Save to Files** (or AirDrop it to a computer) and open the file.
-
-*You should see:* your two questions and the assistant's two answers, each with the time.
-
-### 3. Send the job to support (3 minutes)
-
-1. Open **Job 1001** again and tap **Export transcript…**.
-2. This time tap **Support report with troubleshooting details**.
-3. Scroll through the review screen. Point out the **AI turn** lines under each question.
-4. Tap **Email to Support**. For the demo you can cancel instead of sending.
-
-*You should see:* an email to support with the report attached.
-
-### 4. Show what happens when something goes wrong (3 minutes)
-
-1. Turn on **Airplane Mode**.
-2. Ask the assistant a question.
-3. The assistant says it couldn't answer, and the **That didn't work** banner appears.
-4. Tap **Send to support**. Show the **FAILED** line in the report.
-5. Turn **Airplane Mode** off, then tap **Email to Support**.
-
-*You should see:* the banner, then a report that shows the failure.
-
-### 5. Send today's activity from Settings (1 minute)
-
-1. Go to **Settings** → **Diagnostics & Support**.
-2. Tap **Send Today's Activity**.
-
-*You should see:* the same review screen, covering everything from today, including chats outside jobs.
-
-### 6. Points to make while demoing
-
-- Nothing leaves the phone until you tap Send.
-- Passwords and keys are hidden automatically.
-- If a customer reports a problem, ask the technician to tap **Send Today's Activity**. It takes one minute and gives support the whole picture.
-
-### If something doesn't work as described
-
-Send **Today's Activity** from **Settings** → **Diagnostics & Support**, and write in the email which step didn't work.
+If any step doesn't work, send **Today's Activity** and say in the email which step it was.
