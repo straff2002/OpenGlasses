@@ -162,7 +162,7 @@ targets:
         # placeholders are what the launch-time check in OpenGlassesApp looks for.
         MWDAT_META_APP_ID: YOUR_META_APP_ID
         MWDAT_CLIENT_TOKEN_HASH: YOUR_CLIENT_TOKEN_HASH
-        INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
+        INFOPLIST_KEY_CFBundleDisplayName: "Avenkin"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
         # Compiles the real on-device sherpa-onnx inference paths — Kokoro TTS (Additional
         # Capabilities #1, `#if KOKORO_ENABLED`) and SenseVoice ASR (#8, `#if SHERPA_ONNX_ENABLED`).
@@ -240,7 +240,7 @@ targets:
     info:
       path: GlassesActivityWidget/Info.plist
       properties:
-        CFBundleDisplayName: "OpenGlasses"
+        CFBundleDisplayName: "Avenkin"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
@@ -272,7 +272,7 @@ targets:
     info:
       path: OpenGlassesShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: "OpenGlasses Teleprompter"
+        CFBundleDisplayName: "Avenkin Teleprompter"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
