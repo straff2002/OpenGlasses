@@ -114,12 +114,22 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
     /// point is inside the keyboard: the gesture lands on a key and the list never moves. That is
     /// a property of the device's height rather than of the app, which is why it showed up on
     /// CI's phone and not on a taller one.
+    ///
+    /// Slow swipes, and it steers. A full-speed swipe flings the list, and on CI's iPhone 16e one
+    /// fling carried a past job's "Debrief" header from below the fold to above the top of the
+    /// list — after which swiping on up can never bring it back. So an element that exists above
+    /// the list's middle is swiped back down to.
     private func reach(_ element: XCUIElement, in app: XCUIApplication, named name: String,
                        swipes: Int = 20) {
         let list = app.collectionViews.firstMatch
         for _ in 0..<swipes {
             if element.exists && element.isHittable { return }
-            if list.exists { list.swipeUp() } else { app.swipeUp() }
+            let surface: XCUIElement = list.exists ? list : app
+            if element.exists && element.frame.maxY < surface.frame.midY {
+                surface.swipeDown(velocity: .slow)
+            } else {
+                surface.swipeUp(velocity: .slow)
+            }
         }
         XCTAssertTrue(element.exists && element.isHittable,
                       "\(name) never came into reach after \(swipes) swipes")
