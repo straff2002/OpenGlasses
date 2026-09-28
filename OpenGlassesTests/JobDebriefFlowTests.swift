@@ -47,6 +47,7 @@ final class JobDebriefFlowTests: XCTestCase {
     }
 
     override func tearDown() {
+        LLMService.debriefContext = { nil }
         flow = nil
         service = nil
         store = nil
@@ -291,6 +292,102 @@ final class JobDebriefFlowTests: XCTestCase {
         XCTAssertTrue(call.user.contains("[\(flow.debrief!.turns[0].id)]"),
                       "the model is handed the turn ids it must cite")
         XCTAssertTrue(call.system.contains("must cite"))
+    }
+
+    // MARK: - The block reaches the model in every mode
+
+    /// Direct mode: the system prompt carries the block while the debrief runs — on a finished
+    /// job, with no session open — and drops it once the debrief is saved.
+    func testADebriefInProgressIsInTheDirectModePromptUntilItIsSaved() async throws {
+        LLMService.debriefContext = { [weak self] in self?.flow?.debriefBlock() }
+        let job = try finishedJob(reference: "1004")
+        XCTAssertNil(service.activeSession, "a debrief is on a finished job, with nothing open")
+
+        var prompt = await directPrompt()
+        XCTAssertFalse(prompt.contains(DebriefContract.heading), "no debrief, no block")
+
+        _ = await flow.startDebrief(jobId: job.id)
+        prompt = await directPrompt()
+        XCTAssertTrue(prompt.contains(DebriefContract.heading))
+        XCTAssertTrue(prompt.contains(DebriefContract.lede))
+        XCTAssertTrue(prompt.contains("DEBRIEF SUBJECT: \"Job 1004"), prompt)
+
+        await say("the drier looked wet")
+        summaries = [summaryJSON("Drier looks wet", turn: "\(flow.debrief!.id)-t1")]
+        await say("that's it")
+        await say("save it")
+        XCTAssertEqual(service.debriefs(sessionId: job.id).count, 1)
+        prompt = await directPrompt()
+        XCTAssertFalse(prompt.contains(DebriefContract.heading), "a saved debrief is over")
+    }
+
+    func testAScrappedDebriefLeavesNoBlockInTheDirectModePrompt() async throws {
+        LLMService.debriefContext = { [weak self] in self?.flow?.debriefBlock() }
+        let job = try finishedJob(reference: "1004")
+        _ = await flow.startDebrief(jobId: job.id)
+        await say("compressor sounded rough")
+        let running = await directPrompt()
+        XCTAssertTrue(running.contains(DebriefContract.heading))
+
+        summaries = [summaryJSON("Compressor sounded rough", turn: "\(flow.debrief!.id)-t1")]
+        await say("that's it")
+        await say("scrap it")
+        let scrapped = await directPrompt()
+        XCTAssertFalse(scrapped.contains(DebriefContract.heading))
+
+        // Put away without settling is the same: nothing is running, so nothing is said.
+        _ = await flow.startDebrief(jobId: job.id)
+        flow.endDebrief()
+        let ended = await directPrompt()
+        XCTAssertFalse(ended.contains(DebriefContract.heading))
+    }
+
+    /// Live backends: the bridge both managers own takes the block from the real flow — at setup,
+    /// when the debrief starts, when it moves to another job, and once more when it settles.
+    func testTheLiveBridgeFollowsTheDebriefThroughItsSeam() async throws {
+        let first = try finishedJob(reference: "1004", note: "Trap replaced.")
+        _ = try finishedJob(reference: "1005", note: "Sensor cleaned.")
+        var injected: [String] = []
+        let bridge = LiveJobBridge()
+        bridge.connect(.init(
+            generation: { 1 },
+            canInject: { true },
+            isBusy: { false },
+            injectText: { injected.append($0) },
+            debriefBlock: { [weak self] in self?.flow?.debriefBlock() }))
+        XCTAssertNil(bridge.setupDebriefBlock())
+
+        _ = await flow.startDebrief(jobId: first.id)
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.count, 1)
+        XCTAssertTrue(injected[0].hasPrefix(DebriefContract.heading))
+        XCTAssertTrue(injected[0].contains("Job 1004"))
+
+        // A line of the account changes nothing the model can see.
+        await say("the drier looked wet")
+        XCTAssertNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.count, 1)
+
+        _ = await flow.switchDebrief(to: "debrief job 1005")
+        XCTAssertEqual(flow.debrief?.jobNumber, "Job 1005")
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.count, 2)
+        XCTAssertTrue(injected[1].contains("Job 1005"))
+
+        await say("the sensor was filthy")
+        summaries = [summaryJSON("Sensor was filthy", turn: "\(flow.debrief!.id)-t1")]
+        await say("that's it")
+        await say("save it")
+        XCTAssertNil(flow.debriefBlock())
+        XCTAssertNotNil(bridge.refreshDebrief())
+        XCTAssertEqual(injected.last, DebriefContract.endedBlock)
+        XCTAssertNil(bridge.refreshDebrief(), "the end of a debrief is said once")
+        XCTAssertEqual(injected.count, 3)
+    }
+
+    private func directPrompt() async -> String {
+        await LLMService.leanOnDevicePrompt(locationContext: nil, memoryContext: nil,
+                                            hasImage: false, turn: "the drier looked wet")
     }
 
     // MARK: - An unrelated question is still a question

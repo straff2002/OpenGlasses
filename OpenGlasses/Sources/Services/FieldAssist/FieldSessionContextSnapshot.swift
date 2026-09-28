@@ -63,6 +63,12 @@ enum FieldSessionContextSnapshot {
         // the protected region with the identity fields, so a hundred-turn job cannot compact away
         // the fact that a number is still owed.
         lines.append(contentsOf: jobFlowLines(session: session))
+        // What was known before the visit, and the brief the technician heard on the way
+        // (Plan FO P3c). Bounded on its own (`JobBriefContract.characterLimit`) and absent on a
+        // job born on site, so every session that existed before this renders exactly as it did.
+        lines.append(contentsOf: JobBriefContract.lines(site: session.site,
+                                                        faultReport: session.faultReport,
+                                                        brief: session.brief))
         // These are protected state, not optional historical detail. If too large, the outer
         // request budget must refuse the request rather than silently deleting a safety check.
         for field in session.identityFields

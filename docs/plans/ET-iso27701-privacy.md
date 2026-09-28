@@ -96,6 +96,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | objectMemory | `ObjectMemoryStore` | personalMemory | wearer | platformDefault | no | none | none — entries are removed one object at a time | `ObjectMemoryStore.delete(_:)` |
 | offlineQueue | `OfflineQueue` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | purgeDone plus a photo-evidence byte budget | `OfflineQueue.deleteAll()` | `OfflineQueue.delete(id:)` |
 | operationJournal | `ProtectedOperationJournal` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | OperationJournalRetention (age and count) | none — the journal is the at-most-once evidence; retention prunes it | n/a — no subject linkage |
+| orgEnrolment | `OrgProfileManager` | operationalAudit | wearer | platformDefault | no | none | `OrgProfileManager.remove()` | n/a — no subject linkage |
 | playbooks | `PlaybookStore` | skillDefinition | wearer | platformDefault | no | none | none — playbooks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
 | ragDocuments | `DocumentStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
@@ -115,6 +116,8 @@ subject column distinguishes the wearer from a third party who never installed t
 | studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |
 | toolDefinitionDigests | `ToolDefinitionDigestStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `ToolDefinitionDigestStore.forget(serverID:) per server` | n/a — no subject linkage |
+| turnTraces | `TurnTraceStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | 14 days, at most 2000 turns | `TurnTraceStore.shared.removeAll()` | n/a — no subject linkage |
+| upcomingJobs | `UpcomingJobStore` | operationalAudit | wearer | complete | yes | cap 100 | `UpcomingJobStore.removeAll()` | n/a — no subject linkage |
 | usage | `UsageStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | none | `UsageStore.deleteAll()` | n/a — no subject linkage |
 | vaultDocuments | `VaultStore` | documentCorpus | none | platformDefault | no | none | none — vaults are removed individually by identity | n/a — no subject linkage |
 | vaultLedger | `VaultDocumentLedger` | derivedIndex | wearer | platformDefault | no | none | `VaultDocumentLedger.clear(in:)` | `VaultDocumentLedger.forget(documentId:in:)` |

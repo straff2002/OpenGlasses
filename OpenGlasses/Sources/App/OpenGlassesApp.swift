@@ -28,6 +28,7 @@ func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
     case "action": return .capture
     case "listen": return .listen
     case "quickaction": return .quickAction
+    case "enrol": return .enrol
     default: return .other
     }
 }
@@ -220,6 +221,12 @@ struct OpenGlassesApp: App {
         // field — that value is already what it is migrating from, so an interrupted run leaves the
         // previous behaviour exactly intact.
         LocalModelSelection.store().migrateIfNeeded()
+        // Put the enrolled organisation profile's ceiling in force (Plan CT PR 2) before anything
+        // reads a setting it may lock — the journey signals below among them. The stored document
+        // is re-verified here, never trusted from storage.
+        MainActor.assumeIsolated {
+            OrgProfileManager.shared.loadAtLaunch()
+        }
         // Establish the settings-journey state before anything can change it, and in
         // particular before onboarding runs (Plan DE): "has this app been used before"
         // is only answerable at launch — once a first-time user finishes onboarding they
@@ -254,6 +261,9 @@ struct OpenGlassesApp: App {
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
 
+                // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
+                OrgEnrolmentOverlay(service: appState.orgEnrolment)
+
                 // A vault link scanned outside the app (Plan FS PR2). Nothing is fetched or
                 // installed from the link itself — this raises the review flow and no more.
                 Color.clear
@@ -262,6 +272,17 @@ struct OpenGlassesApp: App {
                         set: { if !$0 { appState.vaultLink.dismiss() } })) {
                         VaultLinkSheet(service: appState.vaultLink)
                             .environmentObject(appState)
+                    }
+
+                // A job file opened from Mail, Files or Messages (Plan FO P3c). Nothing is added
+                // from the file itself — this raises the review, and its one button is the write.
+                Color.clear
+                    .sheet(isPresented: Binding(
+                        get: { appState.jobFiles.stage != .idle },
+                        set: { if !$0 { appState.jobFiles.dismiss() } })) {
+                        JobFileReviewSheet(service: appState.jobFiles) {
+                            appState.requestedTab = .job
+                        }
                     }
 
                 // Apple Translation session host (BY P3) — invisible; the framework only hands
@@ -313,6 +334,14 @@ struct OpenGlassesApp: App {
                     appState.medicalExportService.leases.scavenge()
                 }
                 .onOpenURL { url in
+                    // A job file (Plan FO P3c). Files only — there is deliberately no
+                    // `openglasses://job` link, because a link in an email that proposes a job is
+                    // the shape of a phishing message.
+                    if JobFileService.isJobFile(url) {
+                        Task { @MainActor in appState.jobFiles.open(url) }
+                        return
+                    }
+
                     // Handle shortcut x-callback-url results
                     if url.scheme == "openglasses",
                        ["shortcut-result", "shortcut-cancel", "shortcut-error"].contains(url.host) {
@@ -358,6 +387,16 @@ struct OpenGlassesApp: App {
                     // second confirmation follows the archive's contents.
                     if url.scheme == "openglasses", url.host == "vault" {
                         Task { @MainActor in appState.vaultLink.open(url) }
+                        return
+                    }
+
+                    // An organisation profile offered by a code or link (Plan CT PR 2). Outside the
+                    // DeepLinkTrust gate for the reason the vault and skill-pack routes are, with the
+                    // same control: the link never acts. It raises a review of the host, and a second
+                    // of the verified profile, and only the second one's button changes anything.
+                    if url.scheme == "openglasses", url.host == "enrol" {
+                        PrivacyLog.deepLink(route: .enrol, source: PrivacyToken("SwiftUI"), verdict: .received)
+                        Task { @MainActor in appState.orgEnrolment.open(url) }
                         return
                     }
 
@@ -450,6 +489,9 @@ struct OpenGlassesApp: App {
             switch newPhase {
             case .background:
                 appState.skillPackSideload.handleBackground()
+                appState.orgEnrolment.handleBackground()
+                // Plan CT 3b: an administrator session never outlives the app leaving the screen.
+                AdminGate.shared.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
                 // Ending it on background causes crashes (ActivityKit lifecycle conflict).
                 if appState.isConnected {
@@ -478,6 +520,11 @@ struct OpenGlassesApp: App {
                 // activation and the sweep still happens on a phone that is never relaunched.
                 appState.retention?.runIfDue()
                 SceneNarrationService.shared.noteInterruption(.backgrounded, active: false)
+                // Plan CT PR 2b: renew the organisation profile's lease (at most once a day) and
+                // re-evaluate it — the clock moved while the app was away.
+                Task { await OrgProfileManager.shared.renewIfDue() }
+                // Plan CT PR 4: and a phone that has left the firm retries delivering what it owes.
+                Task { await OrgDepartureService.shared.settle() }
                 // Teleprompter (PR B): pull in any scripts shared via the iOS share sheet
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
@@ -649,7 +696,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 PrivacyLog.app(.micMuted)
             } else if glassesConnectionIsLive() {
                 Task {
-                    try? await wakeWordService.startListening()
+                    await startWakeWordIfListeningEnabled(PrivacyToken("unmute"))
                     PrivacyLog.app(.micUnmuted)
                 }
             }
@@ -863,6 +910,53 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Everything device-facing is a closure here for the same reason the guided flow's are: the
     /// partition between "goes now" and "waits for a thumb" is the whole design, and it is only
     /// worth anything if a test can prove that Mail never sends.
+    /// Plan CT PR 4 — the departure's production seams: what the firm's content and records are on
+    /// this phone, and the only route that delivers them unattended (its endpoint, through the
+    /// offline queue's sync engine). An empty queue is not taken as delivery: `outstanding` counts
+    /// work records the endpoint has not accepted, and delivery is only asked of it at all when an
+    /// endpoint is configured, because without one the local sink marks records done.
+    private func configureOrgDeparture() {
+        OrgDepartureService.shared.seams = .init(
+            now: { Date() },
+            load: { OrgDepartureService.loadStored() },
+            save: { OrgDepartureService.saveStored($0) },
+            sessionIds: { since in
+                OrgDepartureService.managedSessionIds(FieldSessionService.shared.history, since: since)
+            },
+            activeJobId: { FieldSessionService.shared.activeSession?.id },
+            eraseContent: { [weak self] packId in
+                guard let self else { return }
+                if let packId {
+                    for manifest in VaultImporter.installedManifests()
+                    where VaultImporter.installedPack(for: manifest.id)?.id == packId {
+                        await VaultImporter.uninstall(id: manifest.id, documentStore: self.documentStore)
+                    }
+                    VaultRegistry.shared.reloadUserManifests()
+                }
+                self.upcomingJobs.removeAll()
+                StagedExportCoordinator.fieldSession.revokeAll()
+                // The turn records name the organisation's manuals and jobs.
+                TurnTraceStore.shared.removeAll()
+            },
+            hasEndpoint: { Config.deliverySettings.hasEndpoint },
+            flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
+            outstanding: { [weak self] ids in
+                guard let self else { return 0 }
+                let ops = self.offlineQueue.all(limit: 500)
+                return ids.reduce(0) { $0 + QueuedRecordRows.outstandingCount(in: ops, sessionId: $1) }
+            },
+            eraseRecords: { [weak self] ids in
+                guard let self else { return }
+                FieldSessionService.shared.deleteSessions(ids: Set(ids))
+                self.jobSends.queue.removeAll()
+                for op in self.offlineQueue.all(limit: 500) where ids.contains(op.sessionId) {
+                    self.offlineQueue.delete(id: op.id)
+                }
+                DeliverySettings.clearStored()
+            })
+        OrgDepartureService.shared.loadAtLaunch()
+    }
+
     private func configureJobSends() {
         jobSends.connect(.init(
             speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
@@ -937,8 +1031,19 @@ class AppState: ObservableObject, AppStateProtocol {
                                                                 userText: text, jsonSchema: schema)
             },
             provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
+        // Plan FO P3b — Direct mode's system prompt carries the debrief block while one runs.
+        LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
+        guidedJobFlow.connectUpcoming(upcomingJobs)
+        // The organisation's key and its rule are CT stand-ins read at the moment a file is
+        // opened, so a profile applied mid-session governs the next file.
+        jobFiles.connect(.init(
+            store: { [weak self] in self?.upcomingJobs },
+            policy: { JobFileImportPolicy.current() },
+            organisationKey: { Config.organizationJobSigningKey },
+            organisationName: { Config.organizationDisplayName },
+            fieldAssistActive: { Config.fieldAssistActive }))
         // The blur the phone-sourced evidence goes through. Wired here rather than constructed
         // with the service, because `privacyFilter` is built alongside it and a filter that is
         // merely absent would fail every attachment closed.
@@ -985,7 +1090,8 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             recordTurn: { text, sourceID in
                 sessions().recordConversationTurn(text, sourceID: sourceID)
-            }))
+            },
+            debriefBlock: { [weak self] in self?.guidedJobFlow.debriefBlock() }))
         openAIRealtimeSession.jobBridge.connect(.init(
             activeSession: { sessions().activeSession },
             generation: { [weak self] in self?.openAIRealtimeSession.sessionIdentity ?? 0 },
@@ -1002,7 +1108,8 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             recordTurn: { text, sourceID in
                 sessions().recordConversationTurn(text, sourceID: sourceID)
-            }))
+            },
+            debriefBlock: { [weak self] in self?.guidedJobFlow.debriefBlock() }))
     }
 
     /// Wire the coordinator to the services that own context. Done once, in `init`, so all three
@@ -1084,6 +1191,12 @@ class AppState: ObservableObject, AppStateProtocol {
         return VaultLinkService(isOnCellular: metered)
     }()
 
+    /// An organisation profile arriving by link (Plan CT PR 2). The profile itself, once applied,
+    /// lives in `OrgProfileManager.shared` and `PolicyEnvelope`.
+    lazy var orgEnrolment = OrgEnrolmentService(
+        manager: OrgProfileManager.shared,
+        modelDidChange: { [weak self] in self?.llmService.refreshActiveModel() })
+
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()
 
@@ -1104,6 +1217,11 @@ class AppState: ObservableObject, AppStateProtocol {
     let guidedJobFlow: GuidedJobFlow
     /// Reports and addenda asked for by voice, and the ones waiting for a thumb (Plan FO P3b).
     let jobSends: JobSendService
+    /// Jobs ahead of the technician — typed, spoken, or opened from a job file (Plan FO P3c).
+    let upcomingJobs = UpcomingJobStore()
+    /// A job file handed to the app, while it is being reviewed (Plan FO P3c). Nothing reaches
+    /// `upcomingJobs` without the technician's tap on its sheet.
+    let jobFiles = JobFileService()
     /// The lens cue last raised for an outstanding job question (Plan FO P3a). Held so the same
     /// question is not flashed again every time anything else about the session moves.
     private var lastJobQuestionCue: JobQuestionHUDCue.Cue?
@@ -1701,6 +1819,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // `ToolDeclarations.openAIRealtimeTools`.
         openAIRealtimeSession.nativeToolRouter = nativeToolRouter
         configureLiveJobBridges()
+        configureSupportTrace()
 
         // Medical export share sheet — triggered by agent tool. The lease is released when the
         // provider finishes, whichever way it finishes; backgrounding and the launch scavenge are
@@ -1722,6 +1841,19 @@ class AppState: ObservableObject, AppStateProtocol {
                 )
             }
         }
+
+        // The organisation policy changed under a running app (Plan CT PR 2): anything that cached a
+        // setting at launch re-reads it, and anything the new policy switched off stops.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.applyOrgPolicyChange() }
+        }
+        // Plan CT PR 2b: a lease that lapses during a job locks when that job closes, so the lease
+        // is re-evaluated as jobs start and end; and it renews once at launch.
+        OrgProfileManager.shared.observeJobs()
+        Task { await OrgProfileManager.shared.renewIfDue() }
+        // Plan CT PR 4: a phone that has left the firm keeps trying to deliver what it owes.
+        configureOrgDeparture()
+        Task { await OrgDepartureService.shared.settle() }
 
         // Clinical exports must not outlive the app being onscreen: anything not held by a live
         // share controller goes when the app backgrounds.
@@ -2288,7 +2420,7 @@ class AppState: ObservableObject, AppStateProtocol {
             case .startSubstrate(let target):
                 switch target {
                 case .direct:
-                    try? await wakeWordService.startListening()
+                    await startWakeWordIfListeningEnabled(PrivacyToken("modeSwitch"))
                 case .geminiLive, .openaiRealtime:
                     // Nothing to start here for audio: a live session keeps running when the
                     // app is backgrounded on the `audio` background mode alone. The session
@@ -2530,8 +2662,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // publisher is the trigger set rather than three hooks that can each be forgotten. What it
         // drives: the bounded job block on both live backends, the lens cue for whichever question
         // is outstanding, and the watch's read-only job state.
-        let jobStateToken = FieldSessionService.shared.$activeSession
-            .removeDuplicates { JobSurfaceRefresh.key(for: $0) == JobSurfaceRefresh.key(for: $1) }
+        //
+        // `$activeSession` publishes before the property is set, and the bridges, the watch and
+        // CarPlay all read `FieldSessionService.shared.activeSession` rather than the value handed
+        // to this sink — so `trigger` delivers it on the next main-queue turn, where they read the
+        // new session instead of the one before it. The lens cue uses `session` either way.
+        let jobStateToken = JobSurfaceRefresh.trigger(FieldSessionService.shared.$activeSession)
             .sink { [weak self] session in
                 guard let self else { return }
                 self.geminiLiveSession.jobBridge.refresh()
@@ -2544,6 +2680,30 @@ class AppState: ObservableObject, AppStateProtocol {
                 CarPlaySceneDelegate.current?.refreshJobsTab()
             }
         cancellables.append(jobStateToken)
+
+        // Plan FO P3b — the debrief block follows the same path on both live backends: re-injected
+        // when a debrief starts or moves to another job, and closed out once when it settles. Keyed
+        // on the rendered block, so a turn landing in the debrief sends nothing. `$debrief`
+        // publishes before the property is set, so the refresh is delivered on the next main-queue
+        // turn, where the bridge's seam reads the new value rather than the old one.
+        let debriefToken = guidedJobFlow.$debrief
+            .map { [weak self] debrief in self?.guidedJobFlow.debriefBlock(for: debrief) }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.geminiLiveSession.jobBridge.refreshDebrief()
+                self.openAIRealtimeSession.jobBridge.refreshDebrief()
+            }
+        cancellables.append(debriefToken)
+
+        // The car's Jobs list carries jobs ahead too (Plan FO P3c): a job file accepted on the
+        // phone, or one said out loud, has to be on the car screen before the drive starts.
+        let upcomingJobsToken = upcomingJobs.$jobs
+            .map { jobs in jobs.map { "\($0.id)|\($0.title)|\($0.destination ?? "")" } }
+            .removeDuplicates()
+            .sink { _ in CarPlaySceneDelegate.current?.refreshJobsTab() }
+        cancellables.append(upcomingJobsToken)
 
         // Auto-present the interactive HUD task card (Display Phase 3 / Plan X) when a
         // Playbook session starts; the router self-dismisses when the workflow ends.
@@ -2752,9 +2912,13 @@ class AppState: ObservableObject, AppStateProtocol {
         // What the mic is hearing from us, so a transcript arriving during playback can be told
         // from the assistant's own voice coming back through it. There is no echo cancellation on
         // this path — without this the reply cut itself off one to two seconds in, every time.
+        // The route is read now, not cached: the phone's loudspeaker is the case where the reply
+        // is loudest in the microphone (build 420 cut every answer off on it).
         wakeWordService.assistantSpeechContext = { [weak self] in
             guard let self, self.speechService.isSpeaking else { return .silent }
-            return .speaking(text: self.speechService.lastSpokenText)
+            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
+            return .speaking(text: self.speechService.lastSpokenText,
+                             openSpeaker: MicRoutePolicy.isOpenSpeaker(outputs))
         }
 
         // Voice-activity barge-in: user starts speaking during TTS → stop and process new query
@@ -3314,12 +3478,8 @@ class AppState: ObservableObject, AppStateProtocol {
             }
 
             if !wakeWordService.isListening {
-                do {
-                    try await wakeWordService.startListening()
-                } catch {
-                    PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
-                    // Not fatal — user can still use Test Microphone button
-                }
+                // Not fatal if it fails — user can still use Test Microphone button.
+                await startWakeWordIfListeningEnabled(PrivacyToken("launch"))
             }
         }
     }
@@ -3468,6 +3628,12 @@ class AppState: ObservableObject, AppStateProtocol {
     var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.
     @Published var deliveryShareItem: ShareItem?
+    /// The offer to send a support report, raised when an AI turn fails (support ask 2026-09-26).
+    @Published var supportPrompt: SupportPrompt?
+    /// The support report being reviewed before it is sent.
+    @Published var supportReportRequest: SupportReportRequest?
+    /// When the wearer last dismissed the offer — it is not raised again for a while after that.
+    var supportPromptDismissedAt: Date?
 
     /// Put a staged report in front of the operator.
     ///
@@ -3590,6 +3756,36 @@ class AppState: ObservableObject, AppStateProtocol {
     func presentEvidenceShare(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         deliveryShareItem = ShareItem(items: urls)
+    }
+
+    /// Hand a job's transcript, or a whole day's, to the system share sheet as a text file.
+    ///
+    /// Encrypted conversations are unlocked first (Face ID), because a transcript built while they
+    /// are locked would say every job's replies are gone. The file is a protected, short-lived
+    /// lease: it is removed when the share finishes, however it finishes. Returns what went wrong,
+    /// in words for the screen, or nil once the sheet is up.
+    func presentTranscriptExport(_ scope: JobTranscriptExport.Scope) async -> String? {
+        if conversationStore.isLocked {
+            _ = await conversationStore.unlock()
+        }
+        let document: JobTranscriptExport.Document
+        switch JobTranscriptExporter.document(scope, sessions: FieldSessionService.shared,
+                                              store: conversationStore) {
+        case .success(let built): document = built
+        case .failure(let failure): return failure.message
+        }
+        let coordinator = StagedExportCoordinator.fieldSession
+        guard let lease = try? JobTranscriptExporter.lease(for: document, coordinator: coordinator) else {
+            return JobTranscriptExporter.Failure.writeFailed.message
+        }
+        coordinator.beginShare(lease)
+        deliveryShareItem = ShareItem(
+            items: [ProtectedExportActivityItem(fileURL: lease.fileURL,
+                                                displayName: lease.displayName)]
+        ) { completed in
+            coordinator.finishShare(lease, outcome: completed ? .completed : .cancelled)
+        }
+        return nil
     }
 
     /// Send a record the queue is still holding, by email, from the sync screen. Summary only:
@@ -3752,6 +3948,7 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak(response)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             isProcessing = false
             speechService.stopThinkingSound()
             errorMessage = error.localizedDescription
@@ -3803,6 +4000,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -3910,6 +4108,23 @@ class AppState: ObservableObject, AppStateProtocol {
               let command = AssistiveRouter.narrationCommand(in: text) else { return false }
         SceneNarrationService.shared.handle(command)
         return true
+    }
+
+    /// The organisation policy in force changed (Plan CT PR 2). `Config` already answers with the
+    /// clamped values; this brings the few things that hold a value from earlier into line with it:
+    /// the live privacy filter, and anything running that the policy has now switched off.
+    func applyOrgPolicyChange() {
+        privacyFilter.isEnabled = Config.privacyFilterEnabled
+        if !Config.agentModeEnabled {
+            agentScheduler.stop()
+            // Both are gated on agent mode at start; one already running would otherwise outlive
+            // a policy that has just switched agent mode off.
+            if !hermesBridge.isEnabled { hermesBridge.disconnect() }
+            webHUDMirror.stop()
+        }
+        if !(Config.agentModeEnabled && Config.mcpServerEnabled) {
+            MCPGlassesServer.shared.stop()
+        }
     }
 
     /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.
@@ -4053,6 +4268,7 @@ class AppState: ObservableObject, AppStateProtocol {
             generator.notificationOccurred(.success)
         } catch {
             TurnRecorder.noteAbandoned()
+            TurnRecorder.noteFailure(error)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
             }
@@ -5686,7 +5902,7 @@ class AppState: ObservableObject, AppStateProtocol {
             wakeWordService.stopListening()
             isListening = false
         } else {
-            Task { try? await wakeWordService.startListening() }
+            Task { await startWakeWordIfListeningEnabled(PrivacyToken("pushToTalkOff")) }
         }
     }
 
@@ -5696,7 +5912,32 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             wakeWordService.stopListening()
             try? await Task.sleep(nanoseconds: 300_000_000)
-            try? await wakeWordService.startListening()
+            await startWakeWordIfListeningEnabled(PrivacyToken("settingsChanged"))
+        }
+    }
+
+    /// Start the always-on listener from a path the app owns — launch, a settings change, a mode
+    /// switch, push-to-talk or mute being turned off — but only while the master listening switch
+    /// is on.
+    ///
+    /// Build 420: these paths started the listener whatever the switch said, while the end of
+    /// every turn (`returnToWakeWord`) honoured it. With the switch off that is a wake word that
+    /// works exactly once per launch — or once per trip into Settings — and then never re-arms,
+    /// logged as `listeningDisabled detail=masterOff`. The switch now wins everywhere, and
+    /// Settings › Voice shows it so an "off" left by the Lock Screen button, Control Center or
+    /// Siri can be seen and undone.
+    ///
+    /// Not used by `setListeningEnabled(true)` (that *is* the switch) or by the TTS stop
+    /// listener, which only listens for "stop" over a reply the wearer asked for.
+    func startWakeWordIfListeningEnabled(_ source: PrivacyToken) async {
+        guard listeningEnabled else {
+            PrivacyLog.wakeWord(.listenerSkippedDisabled, reason: source)
+            return
+        }
+        do {
+            try await wakeWordService.startListening()
+        } catch {
+            PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
         }
     }
 

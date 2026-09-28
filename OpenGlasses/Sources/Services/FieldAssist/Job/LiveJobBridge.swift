@@ -50,6 +50,12 @@ enum LiveJobSnapshotPolicy {
 ///    before the app treats it as an ordinary turn, and an unrelated utterance passes straight
 ///    through.
 ///
+/// The debrief (Plan FO P3b) rides the same path as a second block: ``DebriefContract``'s bounded
+/// "JOB DEBRIEF:" block, put in the setup when a debrief is running and re-injected when one starts,
+/// switches jobs or settles. It has its own last-sent record and its own held slot, so a debrief
+/// changing never re-sends the job block (or the reverse), and it goes through the same
+/// ``LiveJobSnapshotPolicy``, so a debrief block built before a reset never lands after it.
+///
 /// ### The per-provider audio decision
 ///
 /// **Both providers: the app speaks, gated on the session's own busy signal.** Neither backend can
@@ -88,15 +94,35 @@ final class LiveJobBridge {
         var speakPendingQuestion: () async -> Void = {}
         /// Write the wearer's turn into the session's audit log. The gap P0 found on Gemini Live.
         var recordTurn: (String, String) -> Void = { _, _ in }
+        /// The debrief block while one is running (P3b). `GuidedJobFlow.debriefBlock()` in the app.
+        var debriefBlock: () -> String? = { nil }
     }
 
+    /// One block's delivery record. The job block and the debrief block each have one, so either
+    /// can change without re-sending the other.
+    private struct Lane {
+        /// The block last sent, so a trigger that changed nothing the model can see sends nothing.
+        var lastSent: String?
+        /// The generation `lastSent` was sent for. A new session has been told nothing.
+        var lastSentGeneration: Int?
+        /// A block that was ready while the session was busy.
+        var held: LiveJobSnapshot?
+    }
+
+    private enum LaneID { case job, debrief }
+
     private var seams: Seams
-    /// The block last sent, so a trigger that changed nothing the model can see sends nothing.
-    private(set) var lastSentBlock: String?
-    /// The generation `lastSentBlock` was sent for. A new session has been told nothing.
-    private var lastSentGeneration: Int?
-    /// A block that was ready while the session was busy.
-    private(set) var heldBlock: LiveJobSnapshot?
+    private var jobLane = Lane()
+    private var debriefLane = Lane()
+
+    /// The job block last sent.
+    var lastSentBlock: String? { jobLane.lastSent }
+    /// A job block that was ready while the session was busy.
+    var heldBlock: LiveJobSnapshot? { jobLane.held }
+    /// The debrief block last sent, or the line saying the debrief is over.
+    var lastSentDebriefBlock: String? { debriefLane.lastSent }
+    /// A debrief block that was ready while the session was busy.
+    var heldDebriefBlock: LiveJobSnapshot? { debriefLane.held }
 
     init(seams: Seams = Seams()) { self.seams = seams }
 
@@ -110,17 +136,24 @@ final class LiveJobBridge {
     /// model was actually given rather than against nothing.
     func setupBlock() -> String? {
         let block = LiveJobContract.block(session: seams.activeSession())
-        lastSentBlock = block
-        lastSentGeneration = seams.generation()
-        heldBlock = nil
+        jobLane = Lane(lastSent: block, lastSentGeneration: seams.generation(), held: nil)
+        return block
+    }
+
+    /// The debrief block for the session's setup instruction, or nil when no debrief is running.
+    ///
+    /// Independent of ``setupBlock()`` on purpose: a debrief usually runs on a finished job, so a
+    /// session with no open job still has to be told which job the debrief is about.
+    func setupDebriefBlock() -> String? {
+        let block = seams.debriefBlock()
+        debriefLane = Lane(lastSent: block, lastSentGeneration: seams.generation(), held: nil)
         return block
     }
 
     /// The session went away. Nothing it was told survives it.
     func sessionEnded() {
-        lastSentBlock = nil
-        lastSentGeneration = nil
-        heldBlock = nil
+        jobLane = Lane()
+        debriefLane = Lane()
     }
 
     // MARK: - Refresh
@@ -130,43 +163,68 @@ final class LiveJobBridge {
     /// - Returns: the snapshot that was sent, the one being held, or nil when nothing was due.
     @discardableResult
     func refresh() -> LiveJobSnapshot? {
-        let generation = seams.generation()
-        let block = LiveJobContract.block(session: seams.activeSession())
         // A job that has closed is worth saying once: a model still holding "JOB: open" would
         // answer as though the visit were running.
-        let text = block ?? (lastSentBlock == nil ? nil : LiveJobContract.heading + "\nNo job is open.")
-        guard let text else { return nil }
-        if generation == lastSentGeneration, text == lastSentBlock, heldBlock == nil { return nil }
-        return send(LiveJobSnapshot(generation: generation, text: text))
+        refresh(.job, block: LiveJobContract.block(session: seams.activeSession()),
+                closed: LiveJobContract.heading + "\nNo job is open.")
     }
 
-    /// Try the held block again — called at a turn boundary, where the session is quiet.
+    /// A debrief started, moved to another job, or settled. Re-inject its block when what the
+    /// model can see has moved.
+    ///
+    /// A debrief that settled or was put away is said once, the way a closed job is: a model still
+    /// holding "DEBRIEF SUBJECT: Job 1004" would go on hearing everything as an account of 1004.
+    @discardableResult
+    func refreshDebrief() -> LiveJobSnapshot? {
+        refresh(.debrief, block: seams.debriefBlock(), closed: DebriefContract.endedBlock)
+    }
+
+    /// Try the held blocks again — called at a turn boundary, where the session is quiet.
+    ///
+    /// - Returns: the job block's snapshot when one was held and went out, else the debrief's.
     @discardableResult
     func flushHeldBlock() -> LiveJobSnapshot? {
-        guard let held = heldBlock else { return nil }
-        return send(held)
+        let heldJob = jobLane.held
+        let heldDebrief = debriefLane.held
+        let job = heldJob.flatMap { send($0, on: .job) }
+        let debrief = heldDebrief.flatMap { send($0, on: .debrief) }
+        return job ?? debrief
+    }
+
+    private func refresh(_ id: LaneID, block: String?, closed: String) -> LiveJobSnapshot? {
+        let generation = seams.generation()
+        let lane = id == .job ? jobLane : debriefLane
+        let text = block ?? (lane.lastSent == nil ? nil : closed)
+        guard let text else { return nil }
+        if generation == lane.lastSentGeneration, text == lane.lastSent, lane.held == nil { return nil }
+        return send(LiveJobSnapshot(generation: generation, text: text), on: id)
+    }
+
+    private func update(_ id: LaneID, _ change: (inout Lane) -> Void) {
+        switch id {
+        case .job: change(&jobLane)
+        case .debrief: change(&debriefLane)
+        }
     }
 
     @discardableResult
-    private func send(_ snapshot: LiveJobSnapshot) -> LiveJobSnapshot? {
+    private func send(_ snapshot: LiveJobSnapshot, on id: LaneID) -> LiveJobSnapshot? {
         switch LiveJobSnapshotPolicy.decide(snapshot,
                                             currentGeneration: seams.generation(),
                                             canInject: seams.canInject(),
                                             isBusy: seams.isBusy()) {
         case .apply(let text):
             seams.injectText(text)
-            lastSentBlock = text
-            lastSentGeneration = snapshot.generation
-            heldBlock = nil
+            update(id) { $0 = Lane(lastSent: text, lastSentGeneration: snapshot.generation, held: nil) }
             return snapshot
         case .holdBusy:
-            heldBlock = snapshot
+            update(id) { $0.held = snapshot }
             return snapshot
         case .discardStaleGeneration:
             // Built for a session that no longer exists. Dropping it is the whole point: a block
             // that landed here would be describing a job to a conversation that was deliberately
             // emptied, or to the wrong session entirely.
-            heldBlock = nil
+            update(id) { $0.held = nil }
             return nil
         }
     }

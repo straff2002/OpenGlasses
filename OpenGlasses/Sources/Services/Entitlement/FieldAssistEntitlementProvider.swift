@@ -94,7 +94,10 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
 
         set.evidence.append(contentsOf: storePurchases.allEvidence)
 
-        if let raw = licenseCode()?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+        if let raw = licenseCode()?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+           raw != PolicyEnvelope.withheldLicenceCode {
+            // An organisation's licence whose lease has run out, or been revoked, is not evidence
+            // (Plan CT PR 2b): its content locks, and a renewal puts it back.
             if let payload = try? LicenseService.decode(code: raw, publicKeyBase64: licensePublicKeyBase64) {
                 set.evidence.append(.verifiedOrganizationLicense(
                     licenseIDHash: Self.licenseIDHash(for: raw),

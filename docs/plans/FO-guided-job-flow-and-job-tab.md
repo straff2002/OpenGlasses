@@ -22,7 +22,15 @@ built* below.
 **P3a implemented 2026-09-23, headless** — one guided-job seam applied by both live backends,
 Field Assist wired into OpenAI Realtime for the first time, a lens cue for the two questions, a
 read-only CarPlay Jobs list and read-only job state on the watch; see *P3a as built* below. No
-device, car, glasses or watch run. P3b, P3c and P4 unbuilt.
+device, car, glasses or watch run.
+**P3c implemented 2026-09-24, headless** — the job ahead (its own store, not a scheduled
+session), the site/serial/model history index, the five-section cited brief with its spoken
+renderer and its bounded block in the continuity snapshot, the maps preference with Waze and the
+CarPlay hand-off, and the `.ogjob` file: format, strict validator, the organisation's signature
+check, the medical/organisation refusal, the review sheet and duplicate handling. See *P3c as
+built* below. No car, no device, no mail client. P4 unbuilt.
+**Transcript export added 2026-09-26, headless** — *Export transcript…* on a past job and *Export
+a day's transcripts…* under Past jobs; see *Transcript export* below.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -494,7 +502,8 @@ PDF is unchanged: the customer signs the summary, not the whole work order.
   survives restart; several debriefs on one journey each land on their own job and the queue holds
   them in order, Send all opens each composer in turn and a cancelled one stays queued; the CarPlay
   list model (pure) shows number and date only. Device/car acceptance owed to P4.
-- **P3c — job ahead, brief, directions, and the job file.** `site`/`faultReport`/`scheduled` on the
+- **P3c — job ahead, brief, directions, and the job file.** ✅ **Implemented 2026-09-24,
+  headless.** See *P3c as built*. `site`/`faultReport`/`scheduled` on the
   session (decode-if-present), Upcoming on the Job tab and CarPlay, the site/serial history index,
   `JobBrief` assembly with the five cited sections and its spoken renderer, the FM snapshot
   section, `preferredMapsApp` + Waze + the CarPlay hand-off — and §8's `.ogjob` format and
@@ -1128,6 +1137,54 @@ speech is audible while a live session holds the audio route, and whether it can
 talking over the model — is **owed to P4** and is the one decision here that a headless test cannot
 stand behind.
 
+### A defect fixed after the fact: the job-state trigger was one change behind (2026-09-24)
+
+As shipped, the job-state trigger subscribed to `FieldSessionService.shared.$activeSession` and
+refreshed its surfaces synchronously. `@Published` emits in `willSet`, so inside that sink the
+service still held the *previous* session. Only the lens cue used the value the sink is handed. The
+other three read the service:
+
+- **Both live bridges.** `LiveJobBridge.refresh()` reads the job through its `activeSession` seam,
+  which is `FieldSessionService.shared.activeSession`. Each re-injection of the `FIELD JOB STATE:`
+  block described the job as it was one change ago. On the change that records the number, the
+  bridge read the session that still owed it, found nothing new against what the model had, and
+  sent nothing. The model then went on being told the number was owed until the *next* change.
+- **The watch.** `WatchConnectivityManager.sendStatusUpdate()` builds
+  `JobWatchPayload.payload(for: FieldSessionService.shared.activeSession)` synchronously, so the
+  wrist was one change behind in the same way.
+- **CarPlay.** `refreshJobsTab()` reads the service too, but inside a `Task { @MainActor }`, which
+  runs on a later turn. It was already reading the new value, by accident of how it was written.
+
+The fix is the one the P3b debrief trigger already uses. The pipeline now lives in
+`JobSurfaceRefresh.trigger(_:)`: de-duplicated on `JobSurfaceRefresh.key` as before, then
+`.receive(on: DispatchQueue.main)`. The app subscribes through it, so every surface in the sink
+runs on the next main-queue turn, after the property is set. De-duplication still runs first, on
+the value each emission carries, so what counts as a change is unchanged. The lens cue still uses
+`session` and still compares against `lastJobQuestionCue`. Both now run a turn later, and in the
+same order, because the main queue is serial. If two changes land in one turn, the first delivery
+already reads the final value and the second finds nothing new to send.
+
+Tests: `JobStateTriggerTests` subscribes a `LiveJobBridge` to a real `FieldSessionService`'s
+`$activeSession` through `JobSurfaceRefresh.trigger`, the way the app does. It asserts that
+recording job 1005 injects a block carrying `"1005"`, that recording 1006 next injects 1006 and
+not 1005, and that closing the job says "No job is open." once. It also asserts that on every
+delivery the service's value matches the value the sink was handed, which is the property the
+watch and CarPlay depend on. With a synchronous trigger, the first assertion gets no injection
+and the second gets a stale read on every change. `LiveJobBridgeWiringTests` scrapes the app for
+the trigger and `JobSurfaceRefresh.trigger` for the `.receive(on: DispatchQueue.main)` after the
+de-duplication. It also checks that the watch and CarPlay still read the shared value.
+
+Written without a Swift toolchain, so CI was the first compile and the first run, on
+[#546](https://github.com/straff2002/OpenGlasses/pull/546). It went green on the third run
+(2026-09-24). Both failures were in the new wiring test, and the app code was not changed after
+the first push. The first run executed 7,227 tests with one failure: the CarPlay check looked for
+`FieldSessionService.shared.activeSession`, but `refreshJobsTab()` reads through a local
+`let sessions = FieldSessionService.shared`, so the check now asserts the two lines it actually
+has. The second run did not compile, because the corrected check redeclared a local `body` in the
+same test. The behavioural tests in `JobStateTriggerTests` passed on the first run. **Nothing here
+has been run on hardware**: whether a live model actually stops asking for a number the app has
+already recorded is owed to P4, with the rest of P3a's device checks.
+
 ### Seams left for P3b
 
 - `CarPlayJobsList.Selection` is where the **Debrief** action goes: a third case, and the row's
@@ -1345,6 +1402,57 @@ A UI-test launch now clears the queue where it already clears the sessions, and 
 own file so the two cannot drift apart (`DeliveryQueueStore.eraseStoredQueue`). The claim above
 holds only from the run that fixed it onwards.
 
+### A defect fixed after the fact: the debrief block reached no model (2026-09-24)
+
+As shipped, `GuidedJobFlow.debriefBlock()` had **no callers** (P3c found it; see its "defect found"
+note). `DebriefContract.block` was built and tested (`DebriefCoreTests`, one assertion in
+`JobDebriefFlowTests`) and was never handed to a model. So in Direct mode and on both live
+backends, the model was never told which job a debrief was about, or that it must not propose
+work, treat anything said as a completed task, or claim a save. The only guard left was the
+decoder on the summary, and the summary is not the conversation.
+
+Now it goes where the job's own blocks go:
+
+- **Direct mode.** `LLMService.buildSystemPrompt` appends `LLMService.debriefContext()` right after
+  the `<field_assist_context>` block. The app sets that seam to `guidedJobFlow.debriefBlock()` in
+  `configureGuidedJobFlow`. It is a separate `if`, not inside the vault context, because a debrief
+  usually runs on a finished job, with no session open and no `activeVault`. The full prompt, the
+  cloud-agent prompt and the lean on-device prompt all go through `buildSystemPrompt`, so all
+  three get it. `leanCloudPrompt` (the small-context cloud tier) carries no Field Assist context
+  at all, and still does not.
+- **Live backends.** `LiveJobBridge` gains a second lane beside the job block. It has its own
+  last-sent record and its own held slot, so a debrief change never re-sends the job block, and
+  the reverse. The pieces are a `debriefBlock` seam, `setupDebriefBlock()` (called by both
+  managers right after `setupBlock()`, so a session that starts mid-debrief is told), and
+  `refreshDebrief()`. A debrief that settles, or is put away, is said once as
+  `DebriefContract.endedBlock`, the way a closed job is said once as "No job is open": text
+  already injected into a live conversation cannot be taken back out. Both lanes go through
+  `LiveJobSnapshotPolicy`, so a debrief block built before a reset is discarded, not applied, and
+  a block held while the session was busy goes out at the next `turnCompleted()`.
+- **The trigger.** The app subscribes to `guidedJobFlow.$debrief`, keyed on the *rendered* block
+  (`debriefBlock(for:)`). A start, a switch or a settle moves the block. An account line lands on
+  the debrief and moves nothing, so it sends nothing. `@Published` emits before the property is
+  set, so the refresh goes out on the next main-queue turn (`receive(on: DispatchQueue.main)`),
+  where the bridge's seam reads the new value.
+
+Tests: in `JobDebriefFlowTests`, the block is in the Direct-mode prompt while a debrief on a
+finished job runs, and is gone once the debrief is saved, scrapped or put away. The bridge
+follows the real flow through start, switch and save. `LiveJobBridgeTests` covers the debrief
+lane: setup with no job open, start and switch, ended said once, the lanes kept apart, the
+generation guard, and held-until-the-turn-boundary. `LiveJobBridgeWiringTests` scrapes both
+managers for `setupDebriefBlock()`, and the app for both bridges' seam, both `refreshDebrief()`
+calls and the `LLMService.debriefContext` assignment. It also scrapes `buildSystemPrompt` for
+the append.
+
+**A neighbouring defect found while doing this, and since fixed.** P3a's job-state trigger
+(`FieldSessionService.shared.$activeSession … .sink`) calls `jobBridge.refresh()`, which reads
+`FieldSessionService.shared.activeSession` through its seam. `@Published` emits before the
+property is set, so that read got the *previous* session: each live re-injection was one change
+behind, and so was the watch status. (The CarPlay Jobs refresh reads inside a `Task`, so it was
+already reading the new value.) Only the lens cue used the value the sink is handed. It was left
+out of this change and fixed separately, the same way as the debrief trigger above: see "A defect
+fixed after the fact: the job-state trigger was one change behind" under P3a.
+
 ### Seams left for P3c
 
 - `DebriefJobResolver.Candidate` is the shape the job-ahead list needs, and `debriefCandidates()`
@@ -1353,6 +1461,211 @@ holds only from the run that fixed it onwards.
   `QueuedSend.DocumentKind` takes a third case without reshaping the queue.
 - `DebriefContract.block` is the second bounded block on the same pattern as P3a's; a third (the
   brief before site) composes beside them rather than inside either.
+
+## P3c as built (2026-09-24)
+
+The job ahead, the brief before site, directions, and the job file. Twelve new files: eight under
+`OpenGlasses/Sources/Services/FieldAssist/Job/` (six of them pure), `MapsHandoff.swift` beside
+`DirectionsTool`, two SwiftUI files under `App/Views/Job/`, and `Scripts/make-job-file.swift`.
+
+```swift
+struct UpcomingJob: Codable { id, jobReference?, site: JobSite, faultReport: FaultReport?,
+                              equipment: [KnownEquipment], scheduledFor?, notes?, attachments,
+                              origin (spoken | typed | job_file), provenance: JobFileProvenance?,
+                              brief: JobBrief?, createdAt, updatedAt }
+@MainActor final class UpcomingJobStore      // Application Support/FieldAssist/upcoming-jobs.json
+struct JobHistoryIndex { init(sessions:); visits(site:) / visits(serial:) / visits(model:);
+                         matches(for: UpcomingJob) -> [Match(visit, reason)] }
+struct JobBrief: Codable { sections: [Section(kind, items: [Item(text, citation)])] × 5,
+                           faultUnmatched }
+enum JobBriefAssembler { static func assemble(_ inputs: Inputs) -> JobBrief }
+enum JobBriefSpeech   { spoken(_:title:), more(_:in:), section(named:) }
+enum JobBriefContract { lines(site:faultReport:brief:) }          // the snapshot's third block
+struct MapsHandoff    { static func plan(destination:mode:preferred:isInstalled:) -> MapsHandoff? }
+struct JobFile        { Body (what the signature covers), Signature? }
+enum JobFileValidator { validate(Data) -> Result<JobFile, Refusal> }
+enum JobFileSignatureCheck { check(_:organisationKey:organisationName:) -> signed | unsigned
+                             | unverifiable | invalid }
+struct JobFileImportPolicy { resolve(medicalMode:organisationRequiresSigned:); decide(_:) }
+struct JobFileReview  { proposed, lines, signatureLine, duplicate?, claimedIssuer? }
+@MainActor final class JobFileService { open(URL), handle(data:fileName:), accept(_:) }
+extension GuidedJobFlow { addUpcomingJob, assembleBrief, briefAloud, moreOfBrief,
+                          startUpcomingJob, startedLine(for:) }
+```
+
+### Decisions the draft left open
+
+- **A job ahead is not a session.** The draft put a `scheduled` state on `FieldSession`. The launch
+  restore (`restoreInProgressSessionIfAny`) reopens the first session with no `endedAt`, and a
+  session needs an unlocked vault and a log directory the moment it exists — so the day's third
+  job would have come back at launch as the open one, counting time. A job ahead is its own value
+  in its own store; *starting* it is the ordinary `startJob`, followed by one
+  `FieldSessionService.applyJobAhead` that copies the site, the fault report, the brief and the
+  file's provenance onto the new session (all decode-if-present) and writes `job_ahead_started`
+  into its audit log. "Scheduled jobs count no time" is then true by construction: there is no
+  clock to stop. The test that pins it relaunches and asserts nothing is open.
+- **The office's model is not a recognition.** Starting a job ahead passes no `assetId`, so the
+  equipment the office named never sets the session's equipment; the machine in front of the
+  technician is recognised on site as on every other job. §8's "a job file cannot change
+  equipment" holds on the start path as well as on the file path.
+- **"The intake still confirms the number" is the intake recording it and the app saying it
+  back.** A job ahead carrying a number starts `.recorded` — the number came from the office or
+  from the technician earlier, typed or read back — and the app says "Starting job 1007 at …"
+  so the technician hears which job the time now counts against. One without a number is asked
+  for it exactly like any other job.
+- **The five sections, and where the history went.** Section 1 carries the site and the earlier
+  visits' outcomes and work done; section 4 carries their follow-ups (open or deferred tasks and a
+  saved debrief's follow-ups) and the debriefs' findings and notes for base, plus the FP seam
+  (`Inputs.learnings`). The draft put the follow-ups and debrief items in both; one place each.
+- **Ranking is by evidence strength, and history stays history.** A code-table row under a heading
+  that names this job's make ranks first, then any other code-table row, then manual passages that
+  cleared EJ's gate, strongest first. The draft's example ("two of those were the fix on the last
+  two visits") would need a fuzzy match between a candidate's words and a task title, which is
+  exactly the kind of guess a brief must not make; what the brief does instead is list what was
+  **recorded as done** on this machine's earlier visits, each line ending "History, not a
+  diagnosis", cited to the visit.
+- **Codes need a letter and a digit.** "E200", "U0", "T01" are looked up; "20 psi" is not. A table
+  row whose first cell equals a code is a candidate, cited to its file and heading.
+- **An empty section is said.** Each has its own empty line, spoken and shown. A fault report
+  that matched nothing keeps the report's words and adds "Nothing in the … vault or its manuals
+  matches those words", cited to what was searched.
+- **The spoken brief is capped at about a minute (900 characters)** with two lines a section and
+  "And N more"; "say more about the fault" reads that one section whole. The app speaks it, as P3a
+  decided for the two questions: `brief_next_job` returns a result telling the model the app has
+  already read it and not to repeat it, because a brief relayed through a model is a brief that
+  can be paraphrased.
+- **The model's copy is a third bounded block** (`JobBriefContract`, 1,200 characters, protected
+  site and fault-report lines) in the continuity snapshot, beside P3a's and P3b's. Absent on every
+  session that did not start from a job ahead, so their snapshots render exactly as before.
+- **Directions: one table for three callers.** `MapsHandoff` serves the tool, the Job tab and the
+  car. A missing app falls back to Apple Maps and says so; so does Waze asked for walking or
+  transit, because Waze only drives. The old tool fell back from Google Maps to the Google Maps
+  *website* — which cannot take a car screen — and now falls back to Apple Maps like everything
+  else. Addresses are encoded so `&`, `#`, `+`, `=` and `?` cannot split the query. From CarPlay,
+  `CPTemplateApplicationScene.open` hands the URL to the maps app on the car screen; the phone path
+  is used only when no car is connected.
+- **Upcoming on the Job tab sits between New job and Past jobs**, only in the no-job state; a job
+  ahead cannot start over an open job anyway, and the page says why its Start is disabled.
+- **The job file is strict.** A field this version does not know is refused, not ignored — a review
+  sheet that silently dropped something would not be the whole truth; a new field is a new
+  `format_version`. Plain text only: a tag or an entity is refused, a bare "<" ("suction < 20
+  psi") is not; line breaks only in the fault report and notes; attachments are names, and a
+  `data:` reference is refused as an embedded attachment.
+- **The signature covers a re-encoding**, `Body.canonicalData()` (sorted keys, slashes
+  unescaped) — the vault archive's rule, so an office's mail system can re-indent the file. The
+  key is the organisation's, never the vendor's pack key. A file signed by any other key, or
+  altered after signing, is `invalid` and refused whatever the policy; a signed file on a phone
+  with no organisation key is `unverifiable` and treated exactly as unsigned.
+- **CT stand-ins:** `Config.organizationJobSigningKey` (empty — no profile, no key, so every file
+  honestly shows as not signed) and `Config.organizationRequiresSignedJobFiles` (false), on the
+  terms `organizationRequiresCustomerSignOff` set. Medical mode refuses an unsigned file
+  regardless, through `JobFileImportPolicy`, which is `VaultLinkInstallPolicy`'s shape.
+- **Field Assist off refuses a job file** before reading it: the Job tab — where it would go —
+  does not exist then, and a job added to a hidden list is a job lost.
+- **The store** is protected and excluded from backup, capped at 100 (the oldest *unscheduled*
+  job makes room; a booked one never does), and registered as `SensitiveStore.upcomingJobs` with
+  the wearer's linkage, like the session log it feeds: an organisation's work order issued to this
+  technician. Unlike the session log it is not yet a compliance record, so it can be cleared.
+
+### What the draft got wrong
+
+- **"Add `waze` to `LSApplicationQueriesSchemes`" would have done nothing.** iOS honours only the
+  first fifty entries and the list had fifty-two — so `line` and `zalo` were already dead, and a
+  `waze` appended at the end would have made every Waze user fall back to Apple Maps with a
+  sentence blaming them for not having it installed. Three entries nothing in the app uses
+  (`qqmap`, `mqqapi`, `tmall`) were removed and `waze` sits beside `comgooglemaps`; the list is
+  exactly fifty, and a test pins both the count and that every maps scheme is inside it.
+- **"From email" cannot be claimed.** The system hands the app a copy of the file and never says
+  which app it came from, so the review says "Not signed — check it came from your office", and
+  the record says "opened", not "emailed".
+- **The draft's `RetrievalSource` seam does not exist.** The learnings hook is
+  `JobBriefAssembler.Inputs.learnings`, a list of cited items FP fills when it ships.
+- **A refused job file is not in any audit log.** It arrives outside a job, so there is no session
+  to log into; the refusal is on the sheet and nothing is written. The provenance of an *accepted*
+  one is on the job ahead, then on the visit's record and in its `job_ahead_started` event.
+
+### A defect found in a neighbouring surface, and left alone
+
+`GuidedJobFlow.debriefBlock()` (P3b) has **no callers**. The bounded `JOB DEBRIEF:` block — which
+job, and the rules against proposing work or claiming a save — is built and tested and never
+handed to the model on any backend. Not P3c's to fix; recorded here, and raised as its own task.
+**Since fixed**: see "A defect fixed after the fact" under P3b.
+
+### What is on screen
+
+- **The Job tab** gains *Upcoming* between New job and Past jobs: number or site, when, and for a
+  job file whether it was signed; *Add an upcoming job* opens a form where every field is optional.
+- **An upcoming job's page:** what is known (anything nobody gave stays empty), *Brief me*,
+  *Directions* (disabled without an address, and says so), *Start this job* (disabled with the
+  reason when a job is open or the vault is locked), the brief's five sections with each line's
+  source under it, and *Remove*.
+- **The job file review sheet:** who it is from — signed, not signed, or signed with a key this
+  phone cannot check — with the file's own `issued_by` shown only as a claim; the job's fields;
+  and one button, or, for a number already on the phone, *Update job 1007* / *Keep both*.
+- **Settings → Field Assist → On the Way to a Job:** the maps app, and *Brief the next job when
+  CarPlay connects* (off by default).
+- **CarPlay's Jobs list** carries jobs ahead after the open job: number or site and when — never
+  the fault report or the contact. Tapping one pushes two rows, *Brief me* and *Directions*.
+
+### Verification
+
+Headless: `JobBriefTests` (23), `JobAheadTests` (25), `JobFileTests` (29) and `JobAheadFlowTests`
+(10) new, over fixture vault text, fixture sessions, an ephemeral Curve25519 pair and the bundled
+refrigeration vault. They were written in an environment without a Swift toolchain, so the first
+compile and the first run were CI's: the Unit Tests job on
+[#544](https://github.com/straff2002/OpenGlasses/pull/544) built the app and the test bundle and
+ran the full suite green on the first push (2026-09-24), with nothing changed after it.
+`DataStoreRegistryTests`' generated matrix was updated by hand for the new row.
+
+**Owed:** the plan's "a fixture `.ogjob` opens on the simulator in the audit" — no UI audit of the
+Upcoming section, the page or the review sheet was added in this phase. **Nothing has been run in a
+car, on a phone or from Mail**: whether "Open with OpenGlasses" appears on an `.ogjob`
+attachment, whether the car-screen hand-off takes the display, and whether a spoken brief can be
+followed at motorway speed are **owed to P4**.
+
+### Seams left for P4 and later
+
+- `JobSendService.propose`'s `spokenChannel` is still where a job file's own report route would
+  arrive; this format carries none, deliberately, until an office asks.
+- The ops bridge (BL) can push a job ahead through `UpcomingJobStore.add` with
+  `origin: .jobFile`-style provenance; the review sheet is the place an office push would also
+  need a technician's tap.
+- "Call ahead" (the open question below) is one `phone_call` away from the contact line.
+
+## Transcript export (2026-09-26)
+
+**Why.** Pilot support asked to see what the technician said and what the assistant answered when
+a customer reports a problem, without a server to sync it to (the base server, Plan FU, is not
+built and nobody hosts one yet). The conversation was already on the phone; the only way to read
+it was bubble by bubble on the read-only transcript page.
+
+**What.** `JobTranscriptExport` (pure) turns one job, or every job **started** on one calendar day,
+into a plain-text file: a header saying what the file can contain, then per job its number,
+equipment, outcome, vault and times, then each line stamped `HH:mm` (with the date when it falls on
+another day than the job started) as *Technician* or *Assistant*, with `[with photo]` where a
+frame went with the message. System messages are left out. Dates use fixed `yyyy-MM-dd` and
+`HH:mm` formats with the UTC offset, so a reader in another country doesn't guess at 03/04.
+
+- **Source.** The job's own conversation thread, both sides. When the thread is gone or empty, the
+  technician's words from the job log (`user_message` events), and the file says the replies are
+  no longer on the phone. With neither, it says nothing said on the job is on the phone.
+- **Locked conversations** are unlocked with Face ID first; the export refuses rather than printing
+  "no longer on the phone" for every job while they are locked.
+- **Nothing is sent from here.** The file is a `StagedExportCoordinator.fieldSession` lease handed
+  to the share sheet, released when the share finishes or is cancelled, like the other field
+  exports. `PrivacyLog` records the line and job counts only.
+- **Where.** *Export transcript…* in a past job's *This job* section; *Export a day's
+  transcripts…* under *Past jobs*, a menu of the 14 most recent days that have jobs (a menu rather
+  than a sheet, because the share sheet cannot open over a sheet).
+
+**Not in it.** The plain transcript is only who said what. The same day, Plan
+[FV](FV-support-reports.md) added a second choice beside it — a support report with each AI turn's
+model, prompt blocks, manual pages, tools, timings and errors — and *Export a day's transcripts…*
+became *Export a day…* with both. Audio is never kept. The job log does not record the assistant's
+replies — they live only in the conversation thread — so a job whose thread was deleted exports the
+technician's side only.
+
+Tests: `JobTranscriptExportTests` (headless). No device run.
 
 ## Open questions
 
@@ -1364,7 +1677,9 @@ holds only from the run that fixed it onwards.
 - Auto-suggest closing a job after long inactivity or a large location change — useful, but it is
   a nag risk and touches billing; out of scope until a pilot asks.
 - Team tier: does the office need to push a job number/assignment to the phone (ops bridge)
-  instead of the technician speaking it? Natural follow-on, not v1.
+  instead of the technician speaking it? Natural follow-on, not v1. **2026-09-25:** the base server
+  does this — a job created in its console is served to one phone as a signed `.ogjob` (Plans FT and
+  [FU](FU-base-server.md)).
 - ~~Clip limits: maximum length per clip and total size per delivery channel.~~ **Narrowed in
   P2b:** 30 s default / 60 s maximum, and 20 MB (email) / 5 MB (Messages) per report, all four
   stored in `Config` rather than compiled in. They are conservative defaults chosen from what a
@@ -1375,7 +1690,8 @@ holds only from the run that fixed it onwards.
   customer is a consent question this plan has not asked and a face blur has no equivalent for.
   Open if a pilot asks for it, and HIPAA mode has to be answered separately.
 - Should the office also receive full-resolution originals automatically through the sync sink, in
-  addition to the share-sheet route?
+  addition to the share-sheet route? **2026-09-25:** Plan [FU](FU-base-server.md) FU1 defines the
+  file-upload shape the base server takes; the phone half flips `EndpointSyncSink.carriesFiles`.
 - Deleting a job's media: sessions cannot be deleted at all today (`DataStoreRegistry` calls a
   session log a compliance record). Photos and clips make that harder to defend — does a job's media
   need its own retention rule, separate from the log it belongs to?

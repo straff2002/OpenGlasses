@@ -98,6 +98,33 @@ struct BoundedHTTPClient {
             idleTimeout: 20
         )
 
+        /// An organisation configuration profile (Plan CT): a few kilobytes of signed text from
+        /// the organisation's own hosting, so the cap and deadlines are a small document's.
+        static let orgProfile = Profile(
+            name: "orgProfile",
+            maximumBytes: 64 * 1024,
+            acceptedMIMETypes: ["text/plain", "application/json", "application/octet-stream"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
+        )
+
+        /// A sealed licence for an activation key (Plan CT 3a): a few hundred bytes of base64 from
+        /// the static host. HTML is not accepted: the host answers a missing key with its HTML error
+        /// page, and the resolver reads that refusal as "no file for this key".
+        static let activationKey = Profile(
+            name: "activationKey",
+            maximumBytes: 8 * 1024,
+            acceptedMIMETypes: ["application/octet-stream", "text/plain"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
+        )
+
         #if DEBUG
         static let internalSkillPack = Profile(
             name: "internalSkillPack",

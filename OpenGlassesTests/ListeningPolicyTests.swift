@@ -177,3 +177,42 @@ final class WakeRearmPolicyTests: XCTestCase {
                                  "a re-arm that keeps trying forever is a mic that turns itself on")
     }
 }
+
+/// Build 420: a wake word that worked once per launch. The master listening switch was off, and
+/// the launch auto-start, the settings-change restart, the mode switch, push-to-talk-off and
+/// unmute all started the listener without reading it — while the end of every turn did read it,
+/// and so never re-armed (`listeningDisabled detail=masterOff`, every turn).
+///
+/// Every place the app entry point opens the always-on listener must now be visibly deciding on
+/// the switch — or be one of the two starts that are not the always-on listener at all. A new
+/// start path that skips the switch fails here rather than on a customer's job.
+final class MasterListeningSwitchSourceTests: XCTestCase {
+
+    /// The one wake-word start that may ignore the switch, and why: `startStopListener` listens
+    /// for "stop" over a reply the wearer asked for. `armWakeWord` is reached only through
+    /// `WakeRearmPolicy`, which reads the switch first.
+    private static let exemptions = ["func startStopListener", "func armWakeWord"]
+
+    /// How far above a start call the decision must be visible.
+    private static let window = 12
+
+    func testEveryWakeWordStartInTheAppEntryPointReadsTheMasterSwitch() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("OpenGlasses/Sources/App/OpenGlassesApp.swift")
+        let lines = try String(contentsOf: url, encoding: .utf8)
+            .components(separatedBy: "\n")
+        var sites = 0
+        for (index, line) in lines.enumerated() where line.contains("wakeWordService.startListening()") {
+            sites += 1
+            let context = lines[max(0, index - Self.window)...index].joined(separator: "\n")
+            let decides = context.contains("listeningEnabled")
+                || Self.exemptions.contains(where: { context.contains($0) })
+            XCTAssertTrue(decides, """
+                OpenGlassesApp.swift:\(index + 1) starts the wake-word listener without reading \
+                the master listening switch — use startWakeWordIfListeningEnabled(_:)
+                """)
+        }
+        XCTAssertGreaterThan(sites, 0, "no start sites found — the scan would be vacuous")
+    }
+}

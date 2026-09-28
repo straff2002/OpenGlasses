@@ -77,9 +77,22 @@ enum SubsystemProbes {
                 return .pass("Opt-out set · no uploads attempted")
             },
             SubsystemTest(id: "wakeword", name: "Wake Word", icon: "waveform.badge.mic") { @MainActor in
-                appState.wakeWordService.isListening
-                    ? .pass("Listening for “\(Config.wakePhrase.capitalized)”")
-                    : .fail("Not listening — check mic permission or silent mode")
+                // Name the switch that is actually off. "Check mic permission or silent mode" was
+                // the answer on build 420 when the real cause was the master listening switch,
+                // which neither of those hints leads to.
+                if appState.wakeWordService.isListening {
+                    return .pass("Listening for “\(Config.wakePhrase.capitalized)”")
+                }
+                if !appState.listeningEnabled {
+                    return .fail("Listening is switched off — turn on Listen for Wake Phrase in Settings › Voice")
+                }
+                if Config.silentMode {
+                    return .fail("Push-to-Talk is on — the wake phrase is not listened for")
+                }
+                if appState.micMuted {
+                    return .fail("Microphone is muted")
+                }
+                return .fail("Not listening — check microphone and speech recognition permission")
             },
         ]
         return SubsystemTestRunner(tests: tests, log: { [weak appState] message in

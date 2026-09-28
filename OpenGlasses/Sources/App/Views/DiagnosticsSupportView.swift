@@ -15,6 +15,9 @@ struct DiagnosticsSupportView: View {
     @State private var report: DiagnosticsReport?
     @State private var showingReport = false
     @State private var copied = false
+    @State private var turnRecordsCleared = false
+    /// Where support reports go. Empty means the developer's support address.
+    @AppStorage("supportReportEmail") private var supportEmail: String = ""
 
     init(appState: AppState) {
         self.appState = appState
@@ -27,6 +30,23 @@ struct DiagnosticsSupportView: View {
                 text: "Nothing is ever sent on its own. A report is built only when you ask for one, and you see every line of it before you share it.",
                 systemImage: "hand.raised"
             )
+
+            OGSection(
+                header: "Send to Support",
+                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+            ) {
+                supportEmailField
+                OGDivider()
+                Button {
+                    appState.openSupportReport(.day(Date()))
+                } label: {
+                    OGRow(
+                        "Send Today's Activity", icon: "paperplane",
+                        subtitle: "Review it, then email it to support"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
 
             OGSection(
                 header: "Self-Test",
@@ -78,14 +98,14 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Report a Problem",
-                footer: "A report carries your app and iOS versions, device model, language, glasses connection, and the recent debug log. Keys and personal identifiers are masked automatically. Your conversations, contacts, location, and saved memories are never included."
+                footer: "For problems with the app itself. This goes to the developer of OpenGlasses, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
             ) {
                 Button {
                     presentReport()
                 } label: {
                     OGRow(
                         "Report a Problem", icon: "ladybug",
-                        subtitle: "Review what's included, then email it or open an issue"
+                        subtitle: "Goes to the app's developer. No conversations or private data."
                     )
                 }
                 .buttonStyle(.plain)
@@ -113,6 +133,18 @@ struct DiagnosticsSupportView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                OGDivider()
+                Button {
+                    TurnTraceStore.shared.removeAll()
+                    turnRecordsCleared = true
+                } label: {
+                    OGRow("Delete AI Turn Records", icon: "trash", mutedIcon: true,
+                          subtitle: "Kept on this phone for 14 days for support reports. No words — only models, timings, manual pages and errors.",
+                          showsChevron: false) {
+                        OGRowValue(value: turnRecordsCleared ? "Deleted" : nil)
+                    }
+                }
+                .buttonStyle(.plain)
             }
 
             OGSection(footer: "The Discord is the fastest way to ask a question or share what you've built.") {
@@ -135,6 +167,44 @@ struct DiagnosticsSupportView: View {
                 DiagnosticsReportSheet(report: report)
             }
         }
+    }
+
+    /// The support email, typed once and used by every support report on this phone.
+    ///
+    /// On an organisation's phone the empty field says the organisation's address is needed, and
+    /// nothing falls back to the developer (`SupportReportRecipient`).
+    private var supportEmailField: some View {
+        let trimmed = supportEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let organisation = appState.isOrganisationPhone
+        let fallback = SupportReportRecipient.resolve(
+            configured: "", organisationPhone: organisation,
+            organisationRecipients: Config.organizationReportRecipients)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Support email")
+                .font(.subheadline.weight(.semibold))
+            TextField(organisation ? "Your organisation's support address" : DiagnosticsReportBuilder.supportEmail,
+                      text: $supportEmail)
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityHint("Where support reports from this phone are emailed.")
+            if !trimmed.isEmpty && !SupportReportRecipient.isPlausible(trimmed) {
+                Text(verbatim: fallback.map { "That doesn't look like an email address, so reports will go to \($0) until it's fixed." }
+                     ?? "That doesn't look like an email address. Reports can only be shared until it's fixed.")
+                    .font(.caption)
+                    .foregroundStyle(OGTheme.warnLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if trimmed.isEmpty {
+                Text(verbatim: fallback.map { "Empty: reports go to \($0)." }
+                     ?? "Empty: this phone belongs to an organisation, so reports can only be shared until its support address is added.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -265,7 +335,7 @@ private struct DiagnosticsReportSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("Goes to \(DiagnosticsReportBuilder.supportEmail). No account needed, and you can add to it before you send.")
+                    Text("Goes to the developer of OpenGlasses at \(DiagnosticsReportBuilder.supportEmail), not to your company's support. It contains no conversations or private data. No account needed, and you can add to it before you send.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

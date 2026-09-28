@@ -68,7 +68,7 @@ enum FieldAssistPaywallCopy {
     static let locked = "Field Assist is locked"
     static let lockedDetail = "Unlock the solo tier with a subscription, or enter the licence code your organisation issued."
     static let licenseHeader = "Organisation Licence"
-    static let licenseFooter = "Enter the code your organisation issued. Codes are signed and validated on-device — no network required."
+    static let licenseFooter = "Enter the activation key or licence code your organisation issued. Licence codes are signed and checked on the phone; an activation key needs the internet once, to look it up."
     static let purchaseHeader = "Solo — In-App Purchase"
     static let purchaseFooter = "Subscription on this Apple ID. It covers the bundled vaults, vaults of your own with your manuals indexed on this phone, guided procedures, domain calculators, session log, and expert escalation."
     static let purchased = "Unlocked with a legacy purchase"

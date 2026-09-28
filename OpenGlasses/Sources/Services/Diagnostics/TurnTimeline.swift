@@ -140,6 +140,42 @@ struct TurnTimeline: Identifiable, Equatable {
     /// Counts and case names only; see `MemoryContextSnapshot` for why no memory text can reach it.
     var memoryContext: MemoryContextSnapshot?
 
+    // MARK: - What the turn sent, and how it ended (support trace, 2026-09-26)
+    //
+    // Names, counts, manual citations and error categories only — never the words. The words are
+    // in the conversation; these say what went with them, so a support reader can line the two up
+    // (`TurnTrace`). Arrays are capped by `TurnRecorder`, so a long tool loop cannot grow a turn.
+
+    /// One block of the system prompt: which part it was, and how big.
+    struct PromptBlock: Equatable, Codable {
+        let name: String
+        let characters: Int
+    }
+
+    /// One tool the model called during the turn, and the class of its result.
+    struct ToolNote: Equatable, Codable {
+        let name: String
+        let outcome: String
+    }
+
+    /// Which recogniser transcribed the utterance this turn answers. `nil` when the turn did not
+    /// start from dictation (typed, a wake phrase with its question inline, a live session).
+    var transcriber: ASREngine?
+    /// A camera frame or photo went to the model with this turn.
+    var imageSent = false
+    /// The system prompt, block by block, as it was assembled for this turn.
+    var promptBlocks: [PromptBlock] = []
+    /// The manual passages retrieved for this turn, by citation ("<manual>, page 12").
+    var manualPassages: [String] = []
+    /// The manuals were searched and the evidence gate refused: nothing reliable was found.
+    var manualRefused = false
+    var toolCalls: [ToolNote] = []
+    /// Why the turn failed, when it did. A category from `SafeErrorSummary`'s closed vocabulary.
+    var failure: SafeErrorSummary?
+    /// The conversation thread the turn was saved into, and the job it belonged to, when known.
+    var threadId: String?
+    var fieldSessionId: String?
+
     /// The turn never delivered — a backend error, a supersession, a wearer who walked away.
     var abandoned: Bool
     /// The wearer barged in over playback. Deliberately distinct from `abandoned`: this turn worked

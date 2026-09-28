@@ -15,6 +15,16 @@
 > **Precondition if a deploy ever happens: room-token auth on the signaling protocol first** — see
 > Plan M's risk note.
 >
+> **Live support through the base server (2026-09-25, Plan [FU](FU-base-server.md) Part 2).** For
+> an organisation with a base server, live support is the **MJPEG** transport with the base server
+> as its relay: the phone streams to its own server, and only a logged-in administrator can watch.
+> Both ends connect outward, so **no TURN server is needed**; voice is an ordinary phone call.
+> WebRTC and TURN wait for a firm that needs two-way audio in one call or less delay. Found on the
+> way: the **meeting-link transport never carries the glasses' view** — `MeetingLinkTransport.start`
+> ignores its `framePublisher`, so the expert sees whatever the meeting app shows, normally the
+> phone's camera. It stays the zero-infrastructure option for a firm with no server, with that
+> limit said plainly.
+>
 > **No built-in relay (2026-09-11, [#471](https://github.com/straff2002/OpenGlasses/pull/471)).**
 > The MJPEG transport (`MJPEGExpertTransport`, which wraps `WebRTCStreamingService`) used to
 > default to a hosted relay. The app now ships no relay address: `Config.webRTCSignalingURL` and
@@ -77,7 +87,7 @@ OpenGlasses already juggles the `AVAudioSession` across wake word, transcription
 
 ## Open questions
 
-- Managed TURN (Twilio/Cloudflare, per-minute cost) vs self-hosted coturn? *Recommendation: managed for MVP, self-host later for cost.*
+- Managed TURN (Twilio/Cloudflare, per-minute cost) vs self-hosted coturn? *Recommendation: managed for MVP, self-host later for cost.* **2026-09-25:** not needed for the pilot at all — live support goes through the base server's MJPEG relay (Plan [FU](FU-base-server.md)); this question returns only with WebRTC.
 - Record the expert call into the session audit (consent + storage)? Ties into `SessionExport`.
 - Multi-party (more than one expert)? Out of scope for v1 — 1:1 tech↔expert.
 

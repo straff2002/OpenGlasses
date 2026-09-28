@@ -50,6 +50,12 @@ struct WorkRecord: Codable, Equatable {
     /// record's own lines: a debrief is the technician's account, and the tasks, the readings and
     /// the time on the job above it are the visit's own facts.
     let debriefs: [Debrief]
+    /// Where the job was and what was reported wrong, when both were known before the visit
+    /// (Plan FO P3c). The report is the office's words, printed as theirs — never as a finding.
+    let site: JobSite?
+    let faultReport: FaultReport?
+    /// The job file the visit came from, when it came from one (Plan FO §8).
+    let jobFile: JobFileProvenance?
     let escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
@@ -76,6 +82,9 @@ struct WorkRecord: Codable, Equatable {
         case evidenceSelection = "evidence_selection"
         case signOff = "sign_off"
         case debriefs
+        case site
+        case faultReport = "fault_report"
+        case jobFile = "job_file"
         case escalations
         case startedAt = "started_at"
         case endedAt = "ended_at"
@@ -109,6 +118,9 @@ struct WorkRecord: Codable, Equatable {
         self.evidenceSelection = session.evidenceSelection
         self.signOff = session.signOff
         self.debriefs = session.debriefs
+        self.site = session.site
+        self.faultReport = session.faultReport
+        self.jobFile = session.jobFile
         self.escalations = session.escalations.map {
             Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil)
         }
@@ -148,6 +160,9 @@ struct WorkRecord: Codable, Equatable {
         evidenceSelection = try c.decodeIfPresent(EvidenceSelection.self, forKey: .evidenceSelection)
         signOff = try c.decodeIfPresent(CustomerSignOff.self, forKey: .signOff)
         debriefs = try c.decodeIfPresent([Debrief].self, forKey: .debriefs) ?? []
+        site = try c.decodeIfPresent(JobSite.self, forKey: .site)
+        faultReport = try c.decodeIfPresent(FaultReport.self, forKey: .faultReport)
+        jobFile = try c.decodeIfPresent(JobFileProvenance.self, forKey: .jobFile)
         escalations = try c.decodeIfPresent([Escalation].self, forKey: .escalations) ?? []
         startedAt = try c.decode(Date.self, forKey: .startedAt)
         endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
@@ -230,6 +245,14 @@ struct WorkRecord: Codable, Equatable {
         // Said once, near the top, before anything drawn from the vault is read back: a reviewer
         // has to know the shelf was unverified before they read what came off it.
         if let vaultSourceNote { lines.append(vaultSourceNote) }
+        // What was known before the visit (Plan FO P3c), each line absent when nothing was — so a
+        // job born on site prints exactly what it always has.
+        if let headline = site?.headline { lines.append("Site: \(headline).") }
+        if let faultReport {
+            lines.append("Reported fault (\(faultReport.source.attribution), not a finding): "
+                         + "\u{201C}\(faultReport.text)\u{201D}")
+        }
+        if let jobFile { lines.append(jobFile.recordLine) }
         if let equipmentLine { lines.append(equipmentLine) }
         lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
 

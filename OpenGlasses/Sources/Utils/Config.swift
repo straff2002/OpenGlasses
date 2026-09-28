@@ -21,8 +21,9 @@ struct Config {
     private static let secretsMigratedKey = "secretsMigratedToKeychain_v1"
 
     /// Plain-string secrets that historically lived in UserDefaults and now live in the Keychain.
-    /// The UserDefaults key name is reused verbatim as the Keychain account.
-    private static let migratableStringSecretKeys = [
+    /// The UserDefaults key name is reused verbatim as the Keychain account. Not private: Plan CT's
+    /// tests assert no organisation-profile `SettingKey` is ever one of these, or of the list below.
+    static let migratableStringSecretKeys = [
         "anthropicAPIKey",
         "openAIAPIKey",
         "elevenLabsAPIKey",
@@ -36,7 +37,7 @@ struct Config {
 
     /// JSON `Data` blobs that embed secrets (provider API keys, gateway tokens, MCP
     /// auth headers) and so must also move out of plaintext UserDefaults.
-    private static let migratableDataSecretKeys = [
+    static let migratableDataSecretKeys = [
         modelsKey,        // "savedModelConfigs" — ModelConfig.apiKey
         "savedGateways",  // GatewayConfig.token
         "mcpServers",     // MCPServerConfig.headers (Authorization)
@@ -1922,9 +1923,27 @@ struct Config {
     // Per-class consent for gateway-initiated device commands. The whole surface additionally
     // gates on `agentModeEnabled`; capture (photo/video/audio/transcription/translation) is the
     // surveillance class and defaults OFF.
-    @UserDefaultsBacked("remoteInvokeObserveEnabled", default: true) static var remoteInvokeObserveEnabled: Bool
-    @UserDefaultsBacked("remoteInvokeOutputEnabled", default: true) static var remoteInvokeOutputEnabled: Bool
-    @UserDefaultsBacked("remoteInvokeCaptureEnabled", default: false) static var remoteInvokeCaptureEnabled: Bool
+    static var remoteInvokeObserveEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeObserveEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeObserveEnabled") as? Bool ?? true) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeObserveEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeObserveEnabled")
+        }
+    }
+    static var remoteInvokeOutputEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeOutputEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeOutputEnabled") as? Bool ?? true) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeOutputEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeOutputEnabled")
+        }
+    }
+    static var remoteInvokeCaptureEnabled: Bool {
+        get { PolicyEnvelope.bool(.remoteInvokeCaptureEnabled, stored: UserDefaults.standard.object(forKey: "remoteInvokeCaptureEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.remoteInvokeCaptureEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "remoteInvokeCaptureEnabled")
+        }
+    }
 
     static var remoteInvokeToggles: RemoteCommandPolicy.Toggles {
         RemoteCommandPolicy.Toggles(
@@ -2199,12 +2218,13 @@ struct Config {
     /// been given a profile.
     static var organizationAllowsUnsignedVaults: Bool {
         get {
-            guard UserDefaults.standard.object(forKey: "organizationAllowsUnsignedVaults") != nil else {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: "organizationAllowsUnsignedVaults")
+            let stored = UserDefaults.standard.object(forKey: "organizationAllowsUnsignedVaults") as? Bool ?? true
+            return PolicyEnvelope.bool(.organizationAllowsUnsignedVaults, stored: stored)
         }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults") }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationAllowsUnsignedVaults) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationAllowsUnsignedVaults")
+        }
     }
 
     // MARK: - Spoken sends from the car (Plan FO P3b)
@@ -2221,18 +2241,80 @@ struct Config {
     /// from would be a policy with one branch nobody could ever take.
     static var organizationJobReportChannel: DeliveryChannel? {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: "organizationJobReportChannel"),
-                  !raw.isEmpty else { return nil }
+            let stored = UserDefaults.standard.string(forKey: "organizationJobReportChannel") ?? ""
+            let raw = PolicyEnvelope.string(.organizationJobReportChannel, stored: stored)
+            guard !raw.isEmpty else { return nil }
             return DeliveryChannel(rawValue: raw)
         }
-        set { UserDefaults.standard.set(newValue?.rawValue ?? "", forKey: "organizationJobReportChannel") }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationJobReportChannel) else { return }
+            UserDefaults.standard.set(newValue?.rawValue ?? "", forKey: "organizationJobReportChannel")
+        }
     }
 
     /// Addresses the organisation's profile supplies, as the last step of the recipient order.
     /// A stand-in for the same reason and on the same terms; empty by default.
     static var organizationReportRecipients: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "organizationReportRecipients") ?? [] }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients") }
+        get {
+            PolicyEnvelope.strings(.organizationReportRecipients,
+                                   stored: UserDefaults.standard.stringArray(forKey: "organizationReportRecipients") ?? [])
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationReportRecipients) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationReportRecipients")
+        }
+    }
+
+    // MARK: - Directions (Plan FO P3c)
+
+    /// The maps app directions are handed to, chosen once in Settings. Apple Maps by default —
+    /// the one that is always installed — and when the chosen app is missing the hand-off falls
+    /// back to Apple Maps and says so (`MapsHandoff`).
+    static var preferredMapsApp: MapsApp {
+        get {
+            UserDefaults.standard.string(forKey: "preferredMapsApp").flatMap(MapsApp.init(rawValue:)) ?? .apple
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "preferredMapsApp") }
+    }
+
+    /// Brief the selected upcoming job when CarPlay connects. Off by default: a car that starts
+    /// talking the moment it is switched on is a nag unless the technician asked for it.
+    static var briefOnCarPlayConnect: Bool {
+        get { UserDefaults.standard.bool(forKey: "briefOnCarPlayConnect") }
+        set { UserDefaults.standard.set(newValue, forKey: "briefOnCarPlayConnect") }
+    }
+
+    // MARK: - Job files (Plan FO P3c)
+
+    /// The organisation's public key for signing `.ogjob` files — Curve25519 raw, base64.
+    ///
+    /// **A stand-in on the terms the sign-off and report-route keys above are.** The key that signs
+    /// a job file is the organisation's, carried in its CT profile — never the vendor's content
+    /// key that packs are verified against — and CT P1 replaces this with the profile that sets
+    /// it. Empty by default: a phone with no profile has no key, so every job file it opens is
+    /// shown as not signed, which is the truth.
+    static var organizationJobSigningKey: String {
+        get {
+            PolicyEnvelope.string(.organizationJobSigningKey,
+                                  stored: UserDefaults.standard.string(forKey: "organizationJobSigningKey") ?? "")
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationJobSigningKey) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationJobSigningKey")
+        }
+    }
+
+    /// Whether the organisation refuses job files that are not signed with its key. A stand-in on
+    /// the same terms; false by default. Medical mode refuses unsigned files regardless.
+    static var organizationRequiresSignedJobFiles: Bool {
+        get {
+            PolicyEnvelope.bool(.organizationRequiresSignedJobFiles,
+                                stored: UserDefaults.standard.bool(forKey: "organizationRequiresSignedJobFiles"))
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationRequiresSignedJobFiles) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationRequiresSignedJobFiles")
+        }
     }
 
     // MARK: - Customer sign-off (Plan FO P2c)
@@ -2246,8 +2328,14 @@ struct Config {
     /// developer writes. False — no organisation profile, so the step is offered and never
     /// demanded, which is the behaviour of a phone that has never been given one.
     static var organizationRequiresCustomerSignOff: Bool {
-        get { UserDefaults.standard.bool(forKey: "organizationRequiresCustomerSignOff") }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationRequiresCustomerSignOff") }
+        get {
+            PolicyEnvelope.bool(.organizationRequiresCustomerSignOff,
+                                stored: UserDefaults.standard.bool(forKey: "organizationRequiresCustomerSignOff"))
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationRequiresCustomerSignOff) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationRequiresCustomerSignOff")
+        }
     }
 
     /// The name the customer-facing sign-off sheet is headed with — the trading name the customer
@@ -2257,8 +2345,14 @@ struct Config {
     /// does this is an unset default. Empty means the sheet simply omits the line rather than
     /// inventing a name for a business it knows nothing about.
     static var organizationDisplayName: String {
-        get { UserDefaults.standard.string(forKey: "organizationDisplayName") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "organizationDisplayName") }
+        get {
+            PolicyEnvelope.string(.organizationDisplayName,
+                                  stored: UserDefaults.standard.string(forKey: "organizationDisplayName") ?? "")
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.organizationDisplayName) else { return }
+            UserDefaults.standard.set(newValue, forKey: "organizationDisplayName")
+        }
     }
 
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
@@ -2926,7 +3020,13 @@ struct Config {
 
     // MARK: - Privacy Filter
 
-    @UserDefaultsBacked("privacyFilterEnabled", default: false) static var privacyFilterEnabled: Bool
+    static var privacyFilterEnabled: Bool {
+        get { PolicyEnvelope.bool(.privacyFilterEnabled, stored: UserDefaults.standard.object(forKey: "privacyFilterEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.privacyFilterEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "privacyFilterEnabled")
+        }
+    }
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
@@ -3571,10 +3671,11 @@ struct Config {
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.
     /// The agent has its own identity and learns about the user over time.
     static var agentModeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "agentModeEnabled")
+        PolicyEnvelope.bool(.agentModeEnabled, stored: UserDefaults.standard.bool(forKey: "agentModeEnabled"))
     }
 
     static func setAgentModeEnabled(_ enabled: Bool) {
+        guard !PolicyEnvelope.isLocked(.agentModeEnabled) else { return }
         UserDefaults.standard.set(enabled, forKey: "agentModeEnabled")
     }
 
@@ -3655,7 +3756,13 @@ struct Config {
 
     /// Developer-only: run the local MCP glasses HTTP server (Plan E). Only effective when
     /// `agentModeEnabled` is also on.
-    @UserDefaultsBacked("mcpServerEnabled", default: false) static var mcpServerEnabled: Bool
+    static var mcpServerEnabled: Bool {
+        get { PolicyEnvelope.bool(.mcpServerEnabled, stored: UserDefaults.standard.object(forKey: "mcpServerEnabled") as? Bool ?? false) }
+        set {
+            guard !PolicyEnvelope.isLocked(.mcpServerEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "mcpServerEnabled")
+        }
+    }
 
     static func setMCPServerEnabled(_ enabled: Bool) { mcpServerEnabled = enabled }
 
@@ -3931,6 +4038,17 @@ struct Config {
         KeychainService.string(for: "expertTurnCredential") ?? ""
     }
     static func setExpertTurnCredential(_ v: String) { KeychainService.setString(v, for: "expertTurnCredential") }
+
+    /// Where support reports are emailed (support ask 2026-09-26). Empty means the developer's
+    /// support address. An organisation profile can set it as a starting value; the person can
+    /// change it in Diagnostics & Support.
+    static var supportReportEmail: String {
+        get { UserDefaults.standard.string(forKey: "supportReportEmail") ?? "" }
+        set {
+            UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                                      forKey: "supportReportEmail")
+        }
+    }
 
     /// Default session mode for Field Assist ("ai_only" or "human_assisted").
     /// Human-assisted requires Phase 5 work to ship; UI should grey it out until then.

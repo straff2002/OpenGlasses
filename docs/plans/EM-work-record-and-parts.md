@@ -1,7 +1,9 @@
 # Plan EM — Work Record and Parts (what was recommended, what was done, what base needs)
 
 **Status:** 🚧 P1 + P2 implemented 2026-09-08 (headless); one real email and one real message
-from a device still pending. P3 (with BL) not started.
+from a device still pending. P3 (with BL) not started. **P1b planned 2026-09-25:** the device
+identity fields P1 built are never written outside tests — a spoken serial never reaches the record
+(see *Identity fields: found unwired*).
 Sequenced after [Plan EL](EL-equipment-identity.md) so the record
 carries the equipment identity; builds on [Plan EK](EK-manual-structure-and-figures.md) P3's
 verified-page audit trail. Independent of [Plan BL](BL-ops-platform-agent-bridge.md) but is the
@@ -151,6 +153,10 @@ plain summary for a message body. They cannot disagree.
   restrictions, `deliver_report` + staging, `EndpointSyncSink`, queue view for pending records, the
   session screen's task list and read-back, HUD line for the active task, guide Step 7. Live edge:
   one real email and one real message from a device, **not yet run** — no device in this session.
+- **P1b — identity fields by voice and nameplate (one PR).** 📋 Planned 2026-09-25. The capture
+  half of the device identity fields, which P1 stored but nothing fills: a voice action, read-back
+  before saving, unlisted models kept as text, nameplate reads through the same path. See
+  *Identity fields: found unwired*.
 - **P3 — with BL.** Post the record and parts requests to the operations platform; speak its
   answers. Deferred to BL's own phases.
 
@@ -299,3 +305,61 @@ handover is a wiring change. "Send by email instead" on the sync screen sends th
 body without attachments: the exported files belong to a session that may be long finished, and a
 body a person can read beats an attachment that may no longer be on disk. And no real email or
 message has left a device yet — the live edge named in the phase list stands.
+
+## Identity fields: found unwired (2026-09-25)
+
+**How it was found.** Pilot feedback: the glasses don't always read the model number, so the
+engineer says it. The question was whether spoken values reach the record. The warranty claim packs
+and equipment register in Plan [FU](FU-base-server.md) depend on the answer.
+
+**What happens today, verified in code:**
+
+| Spoken | Recorded? | Where |
+|---|---|---|
+| A model the vault lists (*"it's the ML180"*) | **yes**: recognised, set as the job's equipment with source `spoken` | `WorkRecord.equipment`; the work order prints the provenance (`EquipmentLookupTool` `recogniseEquipment` / `setEquipment`) |
+| A model the vault doesn't list (another make, an unlisted model) | **no**: the tool answers "No vault entry found" and writes nothing | nowhere |
+| A serial | **no**, except as `serial` on `field_session add_upcoming_job`, which is for a job not yet started | nowhere on the live job |
+| Board part number, firmware, refrigerant | **no** | nowhere |
+
+**Why.** P1 built `DeviceIdentityField` (name, value, source `nameplate` / `spoken` / `display`,
+time), `FieldSession.identityFields`, `WorkRecord.identityFields` (`identity_fields` in the JSON, a
+section in the work order) and `FieldSessionService.recordIdentityField`, which writes one and logs
+`identity_field_recorded`. **Nothing outside the tests calls `recordIdentityField`**: no tool
+declares an action for it and no nameplate reader reaches it. The serial on a unit
+(`recordSerialForActiveUnit`, via the unit-change question's `candidateSerial`) is never given one
+either: the only caller of `GuidedJobFlow.proposeEquipment` passes no serial. And the read-back
+before recording that *Device identity fields* above asks for was never built. So every report so
+far has an empty `identity_fields`, and `JobHistoryIndex`'s serial matching (which reads
+`identityFields`) has had nothing to match.
+
+**P1b, the fix:**
+
+1. **A voice action.** `equipment_lookup` (or `field_session`) gains `record_identity` with `field`
+   (`model`, `serial`, `board_part_number`, `firmware`, `refrigerant`, `charge`) and `value`:
+   *"serial 5819L00312"*, *"model is a Carrier 59TP6"*. It writes through `recordIdentityField` with
+   source `spoken`.
+2. **Read-back before saving.** The app, not the model, reads the value back — a serial character
+   by character (*"5-8-1-9-L-0-0-3-1-2, is that right?"*), with the letters that are confused with
+   digits said as letters (*"O as in Oscar"*, *"I as in India"*) — and only a yes saves it, the same
+   pattern as FO's job-number read-back. A no asks again; a second no records nothing and says so.
+3. **An unlisted model is kept as text.** A model the vault's model index doesn't match is recorded
+   as an identity field marked *not matched to a vault model*, instead of being lost. It does not set
+   the job's equipment (no manual scoping follows from it), and the work order says it is unmatched.
+4. **Nameplate reads go through the same path**, with source `nameplate` and the same read-back,
+   because on-device text recognition fails quietly on exactly these characters.
+5. **The serial also lands on the unit.** Recording a serial calls `recordSerialForActiveUnit` too,
+   so two identical machines on one site are told apart, and `JobHistoryIndex` can match the next
+   visit by serial.
+6. **Correction.** Saying the field again replaces it (the existing rule in `recordIdentityField`);
+   the audit log keeps both.
+
+**Tests.** A spoken serial read back and confirmed lands in `identity_fields` with source `spoken`;
+a declined read-back records nothing; an unlisted model is recorded as unmatched and leaves the job's
+equipment unchanged; a nameplate read is recorded as `nameplate` only after confirmation; a serial
+recorded on a job is found by `JobHistoryIndex` on the next; the work order and JSON print each
+field with its source.
+
+**Downstream.** Base flags spoken serials for checking in a warranty pack (Plan FU), and the
+equipment register merges entries on make plus serial, so until P1b ships the register has models
+and no serials.
+

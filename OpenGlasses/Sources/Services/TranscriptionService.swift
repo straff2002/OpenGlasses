@@ -168,6 +168,7 @@ class TranscriptionService: ObservableObject {
         // `perceivedLatency` show the floor being removed instead of absorbing it.
         TurnRecorder.noteSpeechEnd(at: acousticSpeechEndedAt ?? lastSpeechObservedAt ?? Date())
         if let reason = endOfTurnReason { TurnRecorder.noteEndOfTurnReason(reason) }
+        TurnRecorder.noteTranscriber(useOnDevice ? .onDevice : .appleSpeech)
         lastSpeechObservedAt = nil
         acousticSpeechEndedAt = nil
         speechActivityDetector?.end()

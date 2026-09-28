@@ -82,6 +82,62 @@ enum StreamRecoveryPolicy {
     }
 }
 
+/// Paces stall recoveries whose rebuilt stream never delivered a frame (pure).
+///
+/// Device-traced 2026-09-25: fourteen `rebuildStream` recoveries in a row, about 9 s apart, none
+/// of which ever got a frame through. Each rebuild restarts a ~7 s warmup, so rebuilding again
+/// the moment the new stream goes quiet just repeats the same failure. A recovery that does get
+/// a frame through clears the count. One that does not makes the next attempt wait longer, and
+/// after two of those it stops asking for the tier that is failing.
+enum StallRecoveryBackoff {
+
+    enum Decision: Equatable {
+        /// Rebuild the stream after waiting `delay` seconds. `stepDownTier` asks for the next
+        /// resolution down (see `steppedDown(resolution:)`).
+        case rebuild(delay: TimeInterval, stepDownTier: Bool)
+        /// Stop streaming and say so. More rebuilds will not fix this.
+        case giveUp
+    }
+
+    /// Frameless recoveries after which the next attempt asks for a lower tier.
+    static let stepDownAfter = 2
+
+    /// Frameless recoveries after which recovery stops. With the delays below that is roughly
+    /// 75 s of waiting on top of six warmups: long enough to ride out a glasses link that is
+    /// re-associating, short enough that the wearer is told rather than left watching "Connecting…".
+    static let maxFramelessRecoveries = 6
+
+    /// Longest wait between attempts.
+    static let maxDelay: TimeInterval = 30
+
+    /// `framelessRecoveries` counts the recoveries since the last fresh picture, so the first
+    /// stall after healthy streaming arrives here as 0 and rebuilds at once, as it always has.
+    static func decision(framelessRecoveries: Int) -> Decision {
+        guard framelessRecoveries < maxFramelessRecoveries else { return .giveUp }
+        return .rebuild(delay: delay(framelessRecoveries: framelessRecoveries),
+                        stepDownTier: framelessRecoveries >= stepDownAfter)
+    }
+
+    /// 0, 3, 6, 12, 24, then capped at 30 s.
+    static func delay(framelessRecoveries: Int) -> TimeInterval {
+        guard framelessRecoveries > 0 else { return 0 }
+        let doubled = 3 * pow(2, Double(min(framelessRecoveries, 16) - 1))
+        return min(doubled, maxDelay)
+    }
+
+    /// The tier to ask for once the current one has failed repeatedly. High steps down to medium.
+    /// Medium stays where it is, because below medium the stream can move onto the Bluetooth
+    /// radio and starve the glasses mic (see `StreamConfigPolicy`). An unrecognised setting reads
+    /// as high, the same way `MetaCameraBackend` maps it.
+    static func steppedDown(resolution: String) -> String {
+        resolution == "low" ? "low" : "medium"
+    }
+
+    /// Said once when recovery gives up.
+    static let gaveUpNotice =
+        "The glasses camera kept reconnecting without sending video, so it has stopped. Start the camera again to retry."
+}
+
 /// Chooses the effective stream configuration for a capture session (pure).
 ///
 /// Device-traced: at low resolution the video stream can ride the *Bluetooth* radio

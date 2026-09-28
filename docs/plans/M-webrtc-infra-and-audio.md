@@ -78,6 +78,12 @@ transitions). Keep the transition logic in a small, testable coordinator rather 
 > compliance/self-host requirement. M1 (`docs/webrtc/signaling-server.js`) and M2
 > (`docs/webrtc/expert-client.html`) stand as reference implementations until then.
 
+> **Base server first (2026-09-25).** Plan [FU](FU-base-server.md) makes the organisation's base
+> server the **MJPEG** relay for live support, so an organisation with a server needs neither M1
+> nor TURN. When WebRTC is wanted after all, the base server is where M1 lives, and it issues the
+> room token this plan's risk note makes a precondition — it already knows every phone (signed
+> requests) and every administrator (console login).
+
 ## Build order (on-demand — triggered by a self-host customer, not by default)
 
 1. **M1** signaling relay + deploy; point a test build's `expertSignalingURL` at it.

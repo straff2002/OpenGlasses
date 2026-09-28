@@ -114,6 +114,12 @@ extension GuidedJobFlow {
     /// The same shape FM and P3a use, so Direct mode and both live backends are told the same
     /// thing by the same renderer.
     func debriefBlock() -> String? {
+        debriefBlock(for: debrief)
+    }
+
+    /// The block a given debrief renders to. `$debrief` publishes before the property is set, so
+    /// a subscriber that has to know whether the block moved renders the value it was handed.
+    func debriefBlock(for debrief: ActiveDebrief?) -> String? {
         guard let current = debrief, !current.state.isSettled else { return nil }
         return DebriefContract.block(job: current.job, record: debriefRecord(current.sessionId))
     }

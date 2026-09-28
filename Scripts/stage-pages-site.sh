@@ -123,6 +123,16 @@ for rel in "${ALLOW[@]}"; do
   cp -R "$src" "$out/$rel"
 done
 
+# --- activation keys (Plan CT 3a) -----------------------------------------------------------------
+#
+# activation/ holds one sealed licence file per activation key, named by a 64-character hex digest
+# (Scripts/generate-field-license.swift --activation-key). It is optional — the directory exists
+# once the first key is minted — and it may hold nothing else: the gate below refuses any staged
+# path under activation/ that is not such a name, so a README or a stray key note never ships.
+if [ -d "$repo_root/activation" ]; then
+  cp -R "$repo_root/activation" "$out/activation"
+fi
+
 if [ "$missing" -ne 0 ]; then
   echo "stage-pages-site: FAIL — allowlist names paths that are not in the tree." >&2
   echo "  Either the file moved (update the allowlist) or the checkout is incomplete." >&2
@@ -139,6 +149,11 @@ violations=0
 while IFS= read -r path; do
   rel="${path#"$out"/}"
   [ "$rel" = "$out" ] && continue
+  if [[ "$rel" == activation/* ]] && ! [[ "$rel" =~ ^activation/[0-9a-f]{64}$ ]]; then
+    echo "stage-pages-site: DENIED '$rel' (activation/ holds only sealed files named by their digest)" >&2
+    violations=$((violations + 1))
+    continue
+  fi
   for pat in "${DENY[@]}"; do
     # shellcheck disable=SC2053  # deliberate glob match, not a string comparison
     if [[ "$rel" == $pat ]]; then

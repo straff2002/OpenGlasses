@@ -328,6 +328,18 @@ Recipients need an address the channel can use: a contact name resolves to a pho
 
 A composer you dismiss sends nothing, and nothing pretends otherwise: the record stays in the queue, any parts requests stay *requested*, and the Active Session card says **Unsent**. Open **Settings › Field Assist › Field Sync** to see every job report and parts request the office has not received, listed by job reference with what is in it. Each row has **Retry**, which puts it back through the queue, and a work record also offers **Send by email instead**, which opens the composer with the record in the body. WhatsApp and Telegram cannot tell the app whether you tapped Send in them, so a report handed to one of those is recorded as not confirmed and stays queued — deliberately.
 
+## Sending the technician their next job
+
+An office can send a job before the visit as a small file — `.ogjob` — attached to an email. On the phone the technician taps the attachment, chooses **Open with OpenGlasses**, reads what it says on a review sheet, and taps **Add to upcoming jobs**. Nothing is added without that tap, and a job file cannot start a job, change equipment, create a task or send anything: it only proposes a job ahead, which then appears under **Upcoming** on the Job tab and on the car screen, where it can be briefed, navigated to, and started on site.
+
+**The format, in one line:** a JSON object with `"format": "openglasses.job"`, `"format_version": 1`, and any of `job_reference`, `site` {`customer`, `address`, `contact`}, `fault_report` (the words the customer gave, verbatim), `equipment` [{`model`, `serial`}], `scheduled_for` (ISO 8601), `notes`, `attachments` [{`name`, `reference`}] (named, never embedded) and `issued_by`, plus an optional `signature`. Plain text only, 64 KB at most; a field the app does not know is refused rather than ignored.
+
+**Make one** with `swift Scripts/make-job-file.swift make job.json 1007.ogjob --key-file office.key`, which checks the app's limits before writing. Leave out `--key-file` to write it unsigned — the phone will say *Not signed — check it came from your office*.
+
+**Signing is your organisation's, not ours.** Mint a key once with `swift Scripts/make-job-file.swift keygen office.key`; it prints the public half, which goes into your organisation's profile on the phone. A job file signed with it shows *Signed by* your organisation's name; one signed with any other key, or altered after signing, is refused. In medical mode, or when your profile requires it, an unsigned job file is refused outright.
+
+**Receive only.** The app never emails a job file out, and there is no link form — a link in an email that opens a job is the shape of a phishing message.
+
 ## Updating a vault
 
 Edit the folder on the computer, bump `version`, and import again with the same `id`. Manuals whose content has not changed are skipped; a changed manual is re-indexed and its old index removed; a manual you dropped from the manifest is removed. Technicians' in-app edits to the core files are kept and layered over your new originals. To pull a vault off the phone with those edits included, swipe the vault row and choose **Export**.

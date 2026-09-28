@@ -79,6 +79,14 @@ final class GuidedJobFlow: ObservableObject {
     /// `GuidedJobFlow+Debrief.swift`, can move it. Nothing outside the flow writes it.
     @Published var debrief: ActiveDebrief?
 
+    /// The jobs ahead (Plan FO P3c), once the app has connected its store. Internal so the
+    /// job-ahead half of the flow (`GuidedJobFlow+Upcoming.swift`) can reach it; nil headless
+    /// until a test connects one.
+    private(set) var upcoming: UpcomingJobStore?
+
+    /// Hand the flow the app's upcoming-jobs store.
+    func connectUpcoming(_ store: UpcomingJobStore) { upcoming = store }
+
     init(sessions: FieldSessionService, store: ConversationStore, seams: Seams = Seams()) {
         self.sessions = sessions
         self.store = store

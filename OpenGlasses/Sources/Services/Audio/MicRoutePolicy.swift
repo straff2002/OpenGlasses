@@ -90,6 +90,13 @@ enum MicRoutePolicy {
         ports.contains { bluetoothOutputPorts.contains($0) }
     }
 
+    /// Whether playback is coming out of the phone's own loudspeaker — the output the phone's
+    /// microphone hears loudest, with no echo cancellation on the wake-word path. The earpiece
+    /// (`builtInReceiver`) is not included: it is quiet and held away from the bottom mic.
+    static func isOpenSpeaker(_ outputs: [AVAudioSession.Port]) -> Bool {
+        outputs.contains(.builtInSpeaker)
+    }
+
     /// Category options per route. The phone route deliberately excludes
     /// every Bluetooth option — with them present, iOS re-routes input to
     /// the glasses on its own and the "phone mic" choice silently stops

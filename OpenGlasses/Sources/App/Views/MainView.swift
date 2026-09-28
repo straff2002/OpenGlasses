@@ -17,6 +17,13 @@ struct MainView: View {
     // said otherwise. Kept in sync with `SettingsView` and `LookFeelSettingsScreen`.
     @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("accentColorName") private var accentColorName: String = AppAccent.defaultPresetID
+    /// Plan CT 3b: the organisation's edition, and the administrator session that lifts it.
+    @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+
+    /// Whether the technician's view is in force: an edition, and no administrator session.
+    private var restricted: Bool { adminGate.isRestricted }
+    private let adminIdleTick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     private var colorScheme: ColorScheme? {
         switch appearance {
@@ -39,7 +46,8 @@ struct MainView: View {
     /// answer is real — and it can only ever appear, never flash away.
     private var jobTabPresence: JobTabPresence.Decision {
         JobTabPresence.decide(.init(
-            featureEnabled: fieldAssistEnabled,
+            // The edition implies Field Assist for the technician without writing the switch.
+            featureEnabled: fieldAssistEnabled || restricted,
             entitled: Config.fieldAssistUnlocked,
             entitlementChecked: store.hasCheckedEntitlements,
             hasOpenJob: sessions.activeSession.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false))
@@ -53,14 +61,20 @@ struct MainView: View {
                     VoiceTab()
                 }
 
-                Tab("Modes", systemImage: "person.2.fill", value: MainTab.modes) {
-                    NavigationStack {
-                        PersonaPickerTab(appState: appState)
+                // The Field Assist edition hides the other modes and chat from the technician
+                // (Plan CT 3b, `EditionPresentation.hiddenTabs`); an administrator session shows them.
+                if !restricted {
+                    Tab("Modes", systemImage: "person.2.fill", value: MainTab.modes) {
+                        NavigationStack {
+                            PersonaPickerTab(appState: appState)
+                        }
                     }
                 }
 
-                Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
-                    ChatListView()
+                if !restricted {
+                    Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
+                        ChatListView()
+                    }
                 }
 
                 // Field Assist only, and only once the entitlement is a real answer — see
@@ -94,6 +108,18 @@ struct MainView: View {
                     .zIndex(1)
             }
         }
+        // An AI turn just failed: offer to send the details to support, from whatever tab the
+        // person is on, rather than leaving them to find a report page.
+        .overlay(alignment: .top) {
+            if let prompt = appState.supportPrompt, !showOnboarding {
+                SupportPromptBanner(prompt: prompt,
+                                    onSend: { appState.openSupportReport(from: prompt) },
+                                    onDismiss: { appState.dismissSupportPrompt() })
+                    .padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: appState.supportPrompt)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             PrivacyLog.app(.memoryWarning)
         }
@@ -108,11 +134,19 @@ struct MainView: View {
         .onChange(of: jobTabPresence) { _, presence in
             selectedTab = JobTabPresence.selection(selectedTab, after: presence)
         }
+        // The same for the edition: a session ending never leaves the technician on a hidden tab.
+        .onChange(of: restricted) { _, isRestricted in
+            selectedTab = EditionPresentation.tab(selectedTab, restricted: isRestricted)
+        }
+        // An administrator session idles out after ten minutes; this is what notices.
+        .onReceive(adminIdleTick) { _ in
+            adminGate.refresh()
+        }
         // Another surface asked for a tab — the Job tab's "Open conversation", so far. Cleared
         // here, so nothing is left holding a request that has already been honoured.
         .onChange(of: appState.requestedTab) { _, requested in
             guard let requested else { return }
-            selectedTab = requested
+            selectedTab = EditionPresentation.tab(requested, restricted: restricted)
             appState.requestedTab = nil
         }
         .environment(\.appAccent, accent)
@@ -158,6 +192,11 @@ struct MainView: View {
         }
         .sheet(item: $appState.deliveryShareItem) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
+        }
+        // The support report, read in full before it is sent (support ask 2026-09-26).
+        .sheet(item: $appState.supportReportRequest) { request in
+            SupportReportSheet(request: request)
+                .environmentObject(appState)
         }
     }
 }

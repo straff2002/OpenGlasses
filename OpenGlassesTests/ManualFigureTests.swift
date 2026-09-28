@@ -181,6 +181,69 @@ final class ManualFigureTests: XCTestCase {
         XCTAssertEqual(service.stagedFigure?.figure, "Figure 3")
     }
 
+    // MARK: - Turns that run the job
+
+    /// Field report, build 420: "Open a new job 108, equipment Lennox SLP99UH070" opened Table 8 of
+    /// the installation manual, because 108 is a cell in it and the job number went to the
+    /// exact-token search. Here the drawing's "HUM 120 VAC OUTPUT" label plays the table cell.
+    func testOpeningAJobOpensNoPageEvenWhenItsNumberIsOnOne() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+
+        // The same number as a reading still finds the drawing, so the fixture does reproduce it.
+        _ = service.promptContext(turn: "what does the 120 VAC output feed")
+        XCTAssertEqual(service.stagedFigure?.figure, "Figure 3", "a bare 120 is a value off the drawing")
+
+        _ = service.promptContext(turn: "Open a new job 120 equipment Figure Test furnace")
+        XCTAssertNil(service.stagedFigure, "opening a job asked for no page")
+    }
+
+    func testAJobNumberIsNotSearchedAsACode() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+
+        // Not a job-management turn: the only thing tying it to the drawing is the job number.
+        _ = service.promptContext(turn: "note for job 120, the customer says it hums")
+        XCTAssertNil(service.stagedFigure, "a job number is not evidence for a drawing")
+    }
+
+    func testAJobTurnThatAlsoAsksStillGetsItsPassagesButNoPage() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+
+        let context = try XCTUnwrap(service.promptContext(turn: "start a job, what does 24VAXC connect to"))
+        XCTAssertTrue(context.contains("wiring diagram, Figure 3"), "the model still reads the drawing")
+        XCTAssertNil(service.stagedFigure, "but the phone does not open it unasked")
+    }
+
+    func testJobReferencesAreTakenOutAndEverythingElseStays() {
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "Open a new job 108 equipment Lennox SLP99UH070"),
+                       "Open a new job equipment Lennox SLP99UH070")
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "work order #4411, no heat"),
+                       "work order no heat")
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "Job number 1005-B is on the Lennox"),
+                       "Job number is on the Lennox")
+        // Nothing reference-shaped after the job word: nothing removed.
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "job no heat call"), "job no heat call")
+        // A number that is not a job's is a reading or a code, and stays.
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "code 108 on the control"),
+                       "code 108 on the control")
+        XCTAssertEqual(ManualTurnScope.removingJobReferences(from: "max vent length for the 070 with 3 elbows"),
+                       "max vent length for the 070 with 3 elbows")
+    }
+
+    func testJobManagementIsTheJobBeingRunNotAQuestionThatMentionsIt() {
+        for turn in ["Open a new job 108 equipment Lennox SLP99UH070", "start a job",
+                     "next job 1007, no heat, Smith Street", "close the job", "this job's finished",
+                     "switch to work order 4411", "open ticket 12"] {
+            XCTAssertTrue(ManualTurnScope.isJobManagement(turn), turn)
+        }
+        for turn in ["what's the next step on this job", "what does 24VAXC connect to",
+                     "open the blower door", "start the inducer", "note for job 120, the customer says it hums"] {
+            XCTAssertFalse(ManualTurnScope.isJobManagement(turn), turn)
+        }
+    }
+
     func testSourcePageResolvesForThePDFRouteAndNotForTheTextRoute() async throws {
         let store = makeStore()
         let service = try await startSession(store: store)

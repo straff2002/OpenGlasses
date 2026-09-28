@@ -37,6 +37,7 @@ struct AgenticFeaturesView: View {
                     isOn: $enabled,
                     info: "Enables autonomous agent capabilities. The assistant can loop, branch, make decisions, and take multi-step actions without waiting for your input each time. Includes background tasks, a notification queue, scheduled actions, and persistent memory. Each persona can be an independent agent with its own soul, skills, and tools. Compatible with OpenClaw and NanoClaw gateways."
                 )
+                .disabled(PolicyEnvelope.isLocked(.agentModeEnabled))
                 .onChange(of: enabled) { _, on in
                     Config.setAgentModeEnabled(on)
                     if on {
@@ -45,6 +46,7 @@ struct AgenticFeaturesView: View {
                         appState.agentScheduler.stop()
                     }
                 }
+                ManagedSettingNote(key: .agentModeEnabled)
             } header: {
                 Text("Agentic Mode")
             } footer: {

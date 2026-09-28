@@ -353,6 +353,17 @@ final class DataStoreRegistryTests: XCTestCase {
     }
 
     @MainActor
+    func testTurnTraceAttributesMatchTheRegistry() throws {
+        let url = workspace.appendingPathComponent("turn-traces.json")
+        let store = TurnTraceStore(url: url)
+        var timeline = TurnTimeline()
+        timeline.mark(.commit, at: Date())
+        store.append(TurnTrace(timeline, sealedAt: Date()))
+        store.waitForPendingWrites()
+        try assertAttributes(of: url, match: .turnTraces)
+    }
+
+    @MainActor
     func testDocumentCorpusDatabaseAttributesMatchTheRegistry() throws {
         _ = DocumentStore(directory: workspace)
         try assertAttributes(of: workspace.appendingPathComponent("documents.sqlite"),

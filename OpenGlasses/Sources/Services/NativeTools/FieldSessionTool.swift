@@ -31,14 +31,18 @@ final class FieldSessionTool: NativeTool {
     For the user's default vault, omit vault or use 'default'. Use 'vaults' to discover installed \
     vault IDs, names and the configured default. Never substitute another vault after a failure \
     without the user's choice. An equipment/asset name does not select its knowledge vault. \
-    The default applies to new jobs only; an active job keeps its vault until ended.
+    The default applies to new jobs only; an active job keeps its vault until ended. \
+    Jobs ahead: 'add_upcoming_job' records a job the technician describes before going there \
+    ("next job: 1007, no heat, Smith Street") — pass only the fields they actually said, word for \
+    word, and never fill one in; 'brief_next_job' has the app read the cited brief aloud; \
+    'brief_more' reads one section of it in full. For directions to it, use get_directions with next_job.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON."
+                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
             ],
             "format": [
                 "type": "string",
@@ -63,6 +67,38 @@ final class FieldSessionTool: NativeTool {
             "job_reference": [
                 "type": "string",
                 "description": "The technician's exact job or work-order number. Required on 'set_job_reference'; optional on 'start' when they already said it (\"start job 1005\"). Pass only a number they actually gave. Do not invent or normalize it, and never take it from an asset id."
+            ],
+            "customer": [
+                "type": "string",
+                "description": "On add_upcoming_job: the customer's name, exactly as said."
+            ],
+            "address": [
+                "type": "string",
+                "description": "On add_upcoming_job: the site address, exactly as said. Never looked up or completed."
+            ],
+            "contact": [
+                "type": "string",
+                "description": "On add_upcoming_job: the site contact, exactly as said."
+            ],
+            "fault_report": [
+                "type": "string",
+                "description": "On add_upcoming_job: the fault as the technician relayed it (\"no heat, showing E200\"), verbatim."
+            ],
+            "model": [
+                "type": "string",
+                "description": "On add_upcoming_job: a machine model they named. Omit unless said."
+            ],
+            "serial": [
+                "type": "string",
+                "description": "On add_upcoming_job: a serial number they read out. Omit unless said."
+            ],
+            "notes": [
+                "type": "string",
+                "description": "On add_upcoming_job: anything else they asked to note."
+            ],
+            "section": [
+                "type": "string",
+                "description": "On brief_more: which part of the brief — 'site', 'equipment', 'fault', 'crew' or 'parts'."
             ],
             "mode": [
                 "type": "string",
@@ -113,8 +149,14 @@ final class FieldSessionTool: NativeTool {
             return await escalate(args: args, service: service)
         case "export":
             return await exportSession(args: args, service: service)
+        case "add_upcoming_job":
+            return addUpcomingJob(args: args)
+        case "brief_next_job":
+            return await briefNextJob()
+        case "brief_more":
+            return await briefMore(args: args)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', or 'export'."
+            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', 'export', 'add_upcoming_job', 'brief_next_job', or 'brief_more'."
         }
     }
 
@@ -166,6 +208,59 @@ final class FieldSessionTool: NativeTool {
         } catch {
             return "Could not start session: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Jobs ahead (Plan FO P3c)
+
+    /// Record a job ahead from what the technician said. Every field is optional and is taken
+    /// exactly as the model passed it; a field it did not pass stays empty, and the brief says so.
+    private func addUpcomingJob(args: [String: Any]) -> String {
+        guard Config.fieldAssistActive else {
+            return "Field Assist is disabled. Enable it in Settings → Field Assist before adding a job."
+        }
+        guard let flow else { return "Jobs ahead can't be recorded here." }
+        func text(_ key: String) -> String? { JobSite.cleaned(args[key] as? String) }
+        let job = UpcomingJob(
+            jobReference: text("job_reference"),
+            site: JobSite(customer: text("customer"), address: text("address"), contact: text("contact")),
+            faultReport: text("fault_report").map { FaultReport(text: $0, source: .spoken) },
+            equipment: [KnownEquipment(model: text("model"), serial: text("serial"))],
+            notes: text("notes"),
+            origin: .spoken)
+        guard job.jobReference != nil || !job.site.isEmpty || job.faultReport != nil else {
+            return "Nothing was recorded: a job ahead needs at least a job number, a site or a fault. Ask the technician what the job is."
+        }
+        guard let added = flow.addUpcomingJob(job) else { return "The job couldn't be recorded." }
+        var missing: [String] = []
+        if added.jobReference == nil { missing.append("no job number") }
+        if added.site.address == nil { missing.append("no address") }
+        if added.faultReport == nil { missing.append("no fault report") }
+        let gaps = missing.isEmpty ? "" : " It has \(missing.joined(separator: ", ")); leave those empty unless the technician gives them."
+        return "Added \(added.spoken) to upcoming jobs. It has not started and counts no time.\(gaps) Confirm briefly in one sentence."
+    }
+
+    /// Have the app read the next job's brief aloud. The app speaks it — the model is told not to
+    /// repeat it, because a brief relayed through a model is a brief that can be paraphrased.
+    private func briefNextJob() async -> String {
+        guard let flow, let next = flow.nextUpcomingJob else {
+            return "There is no upcoming job on this phone. Say so in one sentence."
+        }
+        let spoken = await flow.briefAloud(jobId: next.id)
+        return spoken
+            ? "The app has just read the brief for \(next.title) aloud. Do not repeat or summarise it; reply with at most a few words."
+            : "The brief for \(next.title) could not be assembled."
+    }
+
+    private func briefMore(args: [String: Any]) async -> String {
+        guard let flow, let next = flow.nextUpcomingJob else {
+            return "There is no upcoming job on this phone."
+        }
+        let request = (args["section"] as? String) ?? ""
+        if next.brief == nil { flow.assembleBrief(jobId: next.id) }
+        guard await flow.moreOfBrief(jobId: next.id, request: request) != nil else {
+            return "Ask which part: the site, the equipment, the fault, what the crew learned, or parts."
+        }
+        return "The app has just read that part of the brief aloud. Do not repeat it."
     }
 
     private func vaultSummary() -> String {

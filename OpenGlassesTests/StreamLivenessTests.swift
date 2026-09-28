@@ -104,6 +104,73 @@ final class StreamLivenessTests: XCTestCase {
         XCTAssertEqual(liveness.verdict(now: start + 10), .healthy)
     }
 
+    // MARK: - First-frame grace
+
+    /// The loop from the 2026-09-25 device trace. A rebuilt hvc1 stream reached `.streaming`, and
+    /// 1.5 s later had not delivered a frame yet. That was read as a stall and it was rebuilt again,
+    /// with another ~7 s warmup. The one rebuild that got through delivered its first frame ~1.3 s
+    /// after `.streaming`, so "nothing yet" at 1.5 s is a slow first frame, not a dead link.
+    func testAStreamThatHasNotDeliveredYetIsNotStalledAtTheBetweenFramesThreshold() {
+        var liveness = StreamLiveness(now: start)
+        liveness.restart(at: start)
+        XCTAssertEqual(liveness.verdict(now: start + 1.6), .healthy)
+        XCTAssertEqual(liveness.verdict(now: start + StreamLiveness.firstFrameGrace), .healthy)
+    }
+
+    /// The grace ends. A stream that never sends anything is still a link stall, only judged
+    /// against the longer first-frame allowance.
+    func testAStreamThatNeverDeliversIsALinkStallOnceTheGraceRunsOut() {
+        var liveness = StreamLiveness(now: start)
+        liveness.restart(at: start)
+        XCTAssertEqual(liveness.verdict(now: start + StreamLiveness.firstFrameGrace + 0.1),
+                       .linkStalled)
+    }
+
+    /// The grace applies only to the first frame. Once anything has arrived, a gap between frames
+    /// is caught at 1.5 s exactly as before.
+    func testOnceAFrameHasArrivedTheBetweenFramesThresholdApplies() {
+        var liveness = StreamLiveness(now: start)
+        liveness.restart(at: start)
+        liveness.pictureProduced(at: start + 1.3)
+        XCTAssertEqual(liveness.verdict(now: start + 1.3 + 1.6), .linkStalled)
+    }
+
+    /// The grace is for a *first* frame. It has to be longer than the between-frames threshold,
+    /// or it would change nothing.
+    func testTheFirstFrameGraceIsLongerThanTheStallThreshold() {
+        XCTAssertGreaterThan(StreamLiveness.firstFrameGrace, StreamLiveness.stallThreshold)
+    }
+
+    /// A rebuilt decoder holds every sample until the next keyframe. Samples arriving keep the
+    /// link clock on its short threshold, but the picture clock waits out the grace. Otherwise an
+    /// encoder whose keyframe interval is longer than 1.5 s would have its decoder rebuilt, and
+    /// its hold re-armed, before any keyframe arrived.
+    func testARebuiltDecoderGetsTheGraceForItsFirstPicture() {
+        var liveness = StreamLiveness(now: start)
+        liveness.restart(at: start)   // what `rebuildDecoder()` does to the clocks
+        for tick in stride(from: 0.0, through: 3.0, by: 1.0 / 15.0) {
+            liveness.sampleArrived(at: start + tick)   // held: no picture yet
+        }
+        XCTAssertEqual(liveness.verdict(now: start + 3), .healthy)
+        for tick in stride(from: 3.0, through: 5.5, by: 1.0 / 15.0) {
+            liveness.sampleArrived(at: start + tick)
+        }
+        XCTAssertEqual(liveness.verdict(now: start + 5.5), .decodeStalled,
+                       "a decoder that never produces a picture is still caught after the grace")
+    }
+
+    /// Every restart gives the clocks their first-frame grace again.
+    func testARestartReturnsBothClocksToTheirGrace() {
+        var liveness = StreamLiveness(now: start)
+        liveness.pictureProduced(at: start)
+        XCTAssertTrue(liveness.sawSampleSinceRestart)
+        XCTAssertTrue(liveness.sawPictureSinceRestart)
+        liveness.restart(at: start + 1)
+        XCTAssertFalse(liveness.sawSampleSinceRestart)
+        XCTAssertFalse(liveness.sawPictureSinceRestart)
+        XCTAssertEqual(liveness.verdict(now: start + 3), .healthy)
+    }
+
     // MARK: - The keyframe hold
 
     /// A session that has just been built cannot start mid-GOP. Feeding it non-keyframe samples

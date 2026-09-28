@@ -777,6 +777,17 @@ struct JobTabModel {
 
     var hasPastJobs: Bool { host.history.contains { $0.endedAt != nil } }
 
+    /// How many days "Export a day's transcripts" offers. Two working weeks: support asks about
+    /// the visit a customer just complained about, not one from last quarter, which is still one
+    /// tap away on its own page.
+    static let transcriptDayLimit = 14
+
+    /// Days with at least one job, newest first, with how many jobs each has.
+    var transcriptDays: [JobTranscriptExport.Day] {
+        Array(JobTranscriptExport.days(in: host.history, calendar: .current)
+            .prefix(Self.transcriptDayLimit))
+    }
+
     private func row(for session: FieldSession) -> PastJobRow {
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         let vaultName = defaults.vaultName(session.vaultId)

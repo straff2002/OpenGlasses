@@ -14,10 +14,17 @@ struct FieldAssistSettingsView: View {
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
     @AppStorage("fieldAssistBillingBasis") private var billingBasis: String = "minutes"
     @AppStorage("fieldAssistMinutesPerBillingUnit") private var minutesPerBillingUnit: Int = 15
+    /// `Config.preferredMapsApp`'s key and default, stored as its raw value.
+    @AppStorage("preferredMapsApp") private var preferredMapsApp: String = MapsApp.apple.rawValue
+    @AppStorage("briefOnCarPlayConnect") private var briefOnCarPlayConnect: Bool = false
 
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+    @State private var showingOrgScanner = false
+    @State private var scannedOrgCode: String?
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
     @State private var licenseMessageIsError = false
+    @State private var isLookingUpKey = false
     @State private var shareItem: ShareItem?
     @State private var exportError: String?
     /// Whether the equipment row is showing its heading and provenance (Plan EL P2).
@@ -58,6 +65,12 @@ struct FieldAssistSettingsView: View {
     /// Both settings are live at once — every enabled persona's phrase wakes the app, and so does
     /// the one in Voice settings. Saying so is the only way the row is not a half-truth.
     private var wakeWordFooter: String {
+        // On a job the wake word is the whole interface, so a switched-off listener is said here
+        // rather than discovered at the customer's door.
+        if !appState.listeningEnabled {
+            return "Listening is switched off, so this phrase won't start a turn. Turn on Listen "
+                + "for Wake Phrase in Settings › Voice."
+        }
         let global = Config.wakePhrase
         if let persona = governingPersona, persona.wakePhrase != global {
             return "Say this to start a hands-free turn. It belongs to the \(persona.name) persona; "
@@ -92,6 +105,24 @@ struct FieldAssistSettingsView: View {
                 entitlementStatus
             } else {
                 entitlementPaywall
+            }
+
+            // ──────────────── The organisation's AI model still needs its key (Plan CT 3a)
+            if orgProfile.needsModelSetup, let organization = orgProfile.profile?.organizationName {
+                Section {
+                    Label("Your administrator needs to finish setting up this phone.", systemImage: "key")
+                } footer: {
+                    Text("\(organization)'s AI model still needs its key. It is added from Settings › Organisation › Finish Setup.")
+                }
+            }
+
+            // ──────────────── Organisation code (Plan CT PR 3)
+            if !orgProfile.isManaged {
+                Section {
+                    Button("Scan an Organisation Code") { showingOrgScanner = true }
+                } footer: {
+                    Text("If your organisation set up Field Assist for you, scan the code it gave you. You'll see what it sets before anything changes.")
+                }
             }
 
             // ──────────────── Vault selection
@@ -293,6 +324,20 @@ struct FieldAssistSettingsView: View {
                     Text("Optional. When a technician escalates, the expert pool is paged with the live join URL via this Slack-compatible webhook (in addition to an on-device notification).")
                 }
 
+                // ──────────────── Directions and the brief (Plan FO P3c)
+                Section {
+                    Picker("Maps app", selection: $preferredMapsApp) {
+                        ForEach(MapsApp.allCases, id: \.rawValue) { app in
+                            Text(app.label).tag(app.rawValue)
+                        }
+                    }
+                    Toggle("Brief the next job when CarPlay connects", isOn: $briefOnCarPlayConnect)
+                } header: {
+                    Text("On the Way to a Job")
+                } footer: {
+                    Text("\u{201C}Take me there\u{201D} opens this app with directions to the job's address. If it isn't installed, Apple Maps is used and you're told so. The brief is always one tap or one sentence away; switching it on here also reads it when the car connects.")
+                }
+
                 // ──────────────── Job reports (Plan EM P2)
                 jobReportSection
 
@@ -370,6 +415,14 @@ struct FieldAssistSettingsView: View {
             }
         }
         .navigationTitle("Field Assist")
+        .sheet(isPresented: $showingOrgScanner, onDismiss: {
+            if let code = scannedOrgCode {
+                scannedOrgCode = nil
+                appState.orgEnrolment.openScanned(code)
+            }
+        }) {
+            OrgCodeScannerView { code in scannedOrgCode = code }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
         .onAppear {
@@ -837,12 +890,16 @@ struct FieldAssistSettingsView: View {
     @ViewBuilder
     private var licenseEntrySection: some View {
         Section {
-            TextField("Paste licence code", text: $licenseCode, axis: .vertical)
+            TextField("Activation key or licence code", text: $licenseCode, axis: .vertical)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.system(.footnote, design: .monospaced))
             Button("Activate Licence") { activateLicense() }
-                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLookingUpKey)
+            if isLookingUpKey {
+                ProgressView("Looking up the key…")
+                    .font(.caption)
+            }
             if let licenseMessage {
                 Text(licenseMessage)
                     .font(.caption)
@@ -928,8 +985,42 @@ struct FieldAssistSettingsView: View {
     }
 
     private func activateLicense() {
+        // A short activation key is looked up first and becomes the licence it stands for (Plan CT
+        // 3a); a licence code goes straight through.
+        let entered = licenseCode
+        isLookingUpKey = true
+        licenseMessage = nil
+        Task { @MainActor in
+            let entry = await appState.orgEnrolment.resolveEntry(entered)
+            isLookingUpKey = false
+            switch entry {
+            case .licence(let code):
+                activateLicense(code: code)
+            case .refused(let message):
+                licenseMessageIsError = true
+                licenseMessage = message
+            }
+        }
+    }
+
+    private func activateLicense(code: String) {
+        // A licence that names its organisation's profile enrols the phone instead (Plan CT 3a);
+        // the review sheet takes it from here, and the licence activates when it is confirmed.
+        switch appState.orgEnrolment.openLicence(code) {
+        case .enrolling(let licensee):
+            licenseMessageIsError = false
+            licenseMessage = "This licence is for \(licensee) — setting up this phone."
+            licenseCode = ""
+            return
+        case .refused(let message):
+            licenseMessageIsError = true
+            licenseMessage = message
+            return
+        case .plain:
+            break
+        }
         do {
-            let payload = try license.activate(code: licenseCode)
+            let payload = try license.activate(code: code)
             licenseMessageIsError = false
             licenseMessage = "Activated — licensed to \(payload.licensee)."
             licenseCode = ""

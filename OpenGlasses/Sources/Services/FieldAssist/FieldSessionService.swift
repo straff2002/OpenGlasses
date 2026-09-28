@@ -359,6 +359,35 @@ final class FieldSessionService: ObservableObject {
 
     // MARK: - Guided job flow (Plan FO P1)
 
+    /// Carry what was known before the visit onto the job just started from it (Plan FO P3c):
+    /// the site, the fault report as it was given, the brief the technician heard, and the job
+    /// file's provenance. **Not** the equipment — a job ahead names machines the office believes
+    /// are there, and the machine in front of the technician is recognised on site, as always.
+    func applyJobAhead(_ job: UpcomingJob) {
+        guard activeSession != nil else { return }
+        mutateSession { session in
+            session.site = job.site.isEmpty ? nil : job.site
+            session.faultReport = job.faultReport
+            session.brief = job.brief
+            session.jobFile = job.provenance
+        }
+        var payload: [String: AnyCodable] = [
+            "origin": AnyCodable(job.origin.rawValue),
+            "has_site": AnyCodable(!job.site.isEmpty),
+            "has_fault_report": AnyCodable(job.faultReport != nil),
+            "has_brief": AnyCodable(job.brief != nil),
+        ]
+        if let provenance = job.provenance {
+            payload["job_file"] = AnyCodable(provenance.fileName)
+            payload["signature"] = AnyCodable(provenance.signature.rawValue)
+            payload["signer"] = AnyCodable(provenance.signer ?? "")
+            payload["received_at"] = AnyCodable(ISO8601DateFormatter().string(from: provenance.receivedAt))
+            payload["digest"] = AnyCodable(provenance.digest)
+        }
+        logger?.append(.init(timestamp: Date(), kind: .jobAheadStarted,
+                             text: job.provenance?.recordLine ?? job.title, payload: payload))
+    }
+
     /// Bind the job to a saved conversation, or let go of one.
     ///
     /// Everything the technician says on a job belongs in one thread. This is where the job
@@ -952,13 +981,17 @@ final class FieldSessionService: ObservableObject {
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
         guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        // The job number is not evidence. "Open a new job 108" handed 108 to the exact-token search,
+        // and a vent-length table with 108 in a cell opened on the phone (field report, build 420).
+        let searchTurn = ManualTurnScope.removingJobReferences(from: turn)
         // Equipment before evidence. A question about a machine this vault is not for cannot be
         // answered by any passage in it, however well the words line up (Plan EL §3), so the block
         // becomes the scope sentence and the vault's rules relay it verbatim.
         var scopeNote: String?
-        switch equipmentScope(turn: turn) {
+        switch equipmentScope(turn: searchTurn) {
         case .unknownEquipment(_, let sentence):
             stageFigure(nil)
+            TurnRecorder.noteManualPassages([], refused: true)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
         case .otherKnownModel(let token, let model):
             if let active = activeEquipment {
@@ -968,12 +1001,16 @@ final class FieldSessionService: ObservableObject {
             break
         }
         let outcome = manualRetriever(store: store).retrieve(
-            .init(turn: turn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+            .init(turn: searchTurn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
+        // Support trace: which pages went to the model, by citation — or that the gate refused.
+        TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.isSufficient)
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
-        // attached to a question about condensate.
-        stageFigure(makeStagedFigure(for: Self.bestFigure(in: outcome.passages), vaultId: store.manifest.id))
+        // attached to a question about condensate. A turn that opens, closes or switches a job
+        // asked for no page, so it stages none; its passages still go to the model.
+        let figure = ManualTurnScope.isJobManagement(turn) ? nil : Self.bestFigure(in: outcome.passages)
+        stageFigure(makeStagedFigure(for: figure, vaultId: store.manifest.id))
         let block = VaultRetriever.promptBlock(outcome)
         return scopeNote.map { block + "\n\n" + $0 } ?? block
     }
@@ -1535,12 +1572,32 @@ final class FieldSessionService: ObservableObject {
                                        "total": AnyCodable(selection.entries.count)]))
     }
 
+    /// Plan CT PR 4 — erase session logs from a phone that has left the firm: its logs from the
+    /// managed period are the firm's record, delivered to it first (`OrgDepartureService`). Never
+    /// the session in progress. Returns how many were removed.
+    @discardableResult
+    func deleteSessions(ids: Set<String>) -> Int {
+        let erasable = ids.subtracting(activeSession.map { [$0.id] } ?? [])
+        var removed = 0
+        for id in erasable {
+            let directory = sessionsRoot.appendingPathComponent(id, isDirectory: true)
+            if (try? FileManager.default.removeItem(at: directory)) != nil { removed += 1 }
+        }
+        history.removeAll { erasable.contains($0.id) }
+        return removed
+    }
+
     /// Where a session's evidence files live. Needed by the share sheet, which hands out the
     /// stored (already filtered) originals rather than anything re-encoded.
     func photosDirectory(sessionId: String) -> URL {
-        sessionsRoot
-            .appendingPathComponent(sessionId, isDirectory: true)
+        sessionDirectory(sessionId: sessionId)
             .appendingPathComponent("photos", isDirectory: true)
+    }
+
+    /// Where a session's `session.json` and `log.jsonl` live, for readers that only read
+    /// (`SessionLogger.readEvents(at:)`) and must not open a logger on a finished job.
+    func sessionDirectory(sessionId: String) -> URL {
+        sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
     }
 
     /// The finished session's own evidence, for a past job's review and re-share.

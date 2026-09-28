@@ -84,8 +84,25 @@ struct StreamLiveness {
     /// caught exactly as fast as it was before the decoder existed.
     static let stallThreshold: TimeInterval = 1.5
 
+    /// How long a (re)started clock may wait for its *first* sample, and its first picture, before
+    /// the silence counts as a stall.
+    ///
+    /// `stallThreshold` is a gap *between* frames, and it is the wrong question to ask of a stream
+    /// that has not delivered anything yet. Device-traced 2026-09-25 (hvc1, high tier): the first
+    /// sample landed ~1.3 s after `.streaming` on the one rebuild that got through, and the others
+    /// were declared stalled at 1.5 s having delivered nothing. Every one of those rebuilds
+    /// restarted a ~7 s warmup, so the detector kept the camera in a loop it had caused itself.
+    /// The same grace covers a rebuilt decoder, which holds every sample until the next keyframe:
+    /// judged at 1.5 s, an encoder whose keyframe interval is longer than that would never get one
+    /// through.
+    static let firstFrameGrace: TimeInterval = 5
+
     private(set) var lastSample: Date
     private(set) var lastPicture: Date
+    /// Whether anything has arrived since the clocks last (re)started. Until it has, the clock is
+    /// judged against `firstFrameGrace` rather than `stallThreshold`.
+    private(set) var sawSampleSinceRestart = false
+    private(set) var sawPictureSinceRestart = false
 
     init(now: Date = Date()) {
         lastSample = now
@@ -93,15 +110,18 @@ struct StreamLiveness {
     }
 
     /// Both clocks start again — used when a stream (re)starts, so a warmup is not read as a
-    /// stall the instant the detector arms.
+    /// stall the instant the detector arms. Each clock is back on its first-frame grace.
     mutating func restart(at now: Date = Date()) {
         lastSample = now
         lastPicture = now
+        sawSampleSinceRestart = false
+        sawPictureSinceRestart = false
     }
 
     /// A frame arrived from the SDK, whatever shape it turned out to be.
     mutating func sampleArrived(at now: Date = Date()) {
         lastSample = now
+        sawSampleSinceRestart = true
     }
 
     /// A picture was actually produced — the helper's image, or a freshly decoded one. A picture
@@ -110,6 +130,8 @@ struct StreamLiveness {
     mutating func pictureProduced(at now: Date = Date()) {
         lastSample = now
         lastPicture = now
+        sawSampleSinceRestart = true
+        sawPictureSinceRestart = true
     }
 
     /// The app was handed the *previous* picture again because the decoder is holding. Refreshes
@@ -118,8 +140,10 @@ struct StreamLiveness {
     mutating func heldFrameDelivered() {}
 
     func verdict(now: Date = Date()) -> Verdict {
-        if now.timeIntervalSince(lastSample) > Self.stallThreshold { return .linkStalled }
-        if now.timeIntervalSince(lastPicture) > Self.stallThreshold { return .decodeStalled }
+        let sampleLimit = sawSampleSinceRestart ? Self.stallThreshold : Self.firstFrameGrace
+        let pictureLimit = sawPictureSinceRestart ? Self.stallThreshold : Self.firstFrameGrace
+        if now.timeIntervalSince(lastSample) > sampleLimit { return .linkStalled }
+        if now.timeIntervalSince(lastPicture) > pictureLimit { return .decodeStalled }
         return .healthy
     }
 
