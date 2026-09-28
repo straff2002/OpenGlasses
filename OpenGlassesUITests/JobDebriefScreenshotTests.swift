@@ -138,6 +138,10 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
             // Submitted rather than left mid-edit, so the keyboard goes away before anything has
             // to be scrolled past it.
             field.typeText("1004\n")
+            let keyboardDismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+            XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 10), .completed,
+                           "The search keyboard must dismiss before scrolling to the past job")
         }
         let row = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
