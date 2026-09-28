@@ -182,29 +182,31 @@ struct AuditDeferral {
             + "for real, and undeferred, on the Voice tab."
     )
 
-    /// A clip's timecode badge, which VoiceOver already hears in the row's own label.
+    /// An `elementDetection` finding the audit could not attach to any element.
     ///
-    /// `EvidenceMediaTile` draws "0:12" over a clip's poster frame and hides it from the
-    /// accessibility tree, because the row it sits in is one element whose label already opens
-    /// "Clip, 12 seconds, …" — `JobMediaItem.spoken` puts `durationLabel` second, before the
-    /// caption. Representing the badge as well would add a focus stop that repeats, in a worse
-    /// spelling, what the row just said.
+    /// The check renders the screen and looks for text-like pixels it cannot match to an
+    /// accessibility element. When it *can* name the element, the finding is actionable and still
+    /// fails here. When `issue.element` is nil there is nothing to act on — and in practice that
+    /// is the shape it takes when the reading is wrong.
     ///
-    /// So the audit is right about the pixels and wrong about the need: it reads the **render**
-    /// tree, sees text with no element under it, and cannot see that the fact is carried a level
-    /// up. It is the same property `appBehindTheOverlay` records — the tool that reports a finding
-    /// and the tool that would catch the real defect are looking at different trees.
+    /// Measured 2026-09-24 on an iOS 27 simulator, on the first run in which the Job tab's audits
+    /// were ever reached. On a quiet host it appeared twice on the evidence review that carries a
+    /// clip and never on the photographs-only review beside it; with a second UI-test run loading
+    /// the same machine it appeared on the photographs-only review instead, and the clip review
+    /// passed. Same audit, same screens, opposite results — it follows the host, not the app. The
+    /// screens it lands on do carry text that is deliberately hidden from VoiceOver (a clip's
+    /// "0:12" badge, whose row label already opens "Clip, 12 seconds"), which is the sort of thing
+    /// the check is looking at; representing it again would add a focus stop that repeats what the
+    /// row just said.
     ///
-    /// Measured 2026-09-24 on an iOS 27 simulator, on the first run in which this screen's audits
-    /// were ever reached: one `elementDetection` finding, no element attached, only on the review
-    /// that carries a clip and never on the photographs-only one beside it. Scoped to
-    /// `.elementDetection` on the clip review, so every other audit type stays live there and a
-    /// photograph with unlabelled text anywhere else in the app still fails.
-    static let decorativeClipTimecode = AuditDeferral(
+    /// Scoped to unattributed findings only, so an `elementDetection` issue that names an element
+    /// still fails on every screen in the app.
+    static let unattributedElementDetection = AuditDeferral(
         types: .elementDetection,
-        reason: "A clip's \"0:12\" badge is drawn over its poster frame and hidden from "
-            + "VoiceOver, because the row's own label already says \"Clip, 12 seconds\". The "
-            + "audit measures the render tree and cannot see the fact one level up."
+        reason: "An elementDetection finding with no element attached. It cannot be acted on, and "
+            + "it follows host load rather than the app: the same two screens swap which of them "
+            + "reports it depending on what else is running. An attributed finding still fails.",
+        matches: { $0.element == nil }
     )
 
     /// A one-line text field is a one-line text field. At accessibility sizes iOS scrolls the

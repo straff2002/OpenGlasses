@@ -169,7 +169,8 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let review = app.navigationBars["Photos for the report"]
         awaitScreen(review, named: "The evidence review")
 
-        audit(app, screen: "Job tab — evidence review at close", deferring: formDeferrals)
+        audit(app, screen: "Job tab — evidence review at close",
+              deferring: formDeferrals + [AuditDeferral.unattributedElementDetection])
 
         // The four things the step offers are under the grid, so a `List` has not built them yet.
         let skip = app.buttons["Skip photos and close the job"]
@@ -178,7 +179,8 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
                       "the review must offer to take every picture in one tap")
         XCTAssertTrue(app.buttons["Close job and send these"].exists)
 
-        audit(app, screen: "Job tab — evidence review actions", deferring: formDeferrals)
+        audit(app, screen: "Job tab — evidence review actions",
+              deferring: formDeferrals + [AuditDeferral.unattributedElementDetection])
     }
 
     /// A job that recorded a clip as well as photographs (Plan FO P2b).
@@ -215,12 +217,12 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(review, named: "The evidence review with a clip")
 
         audit(app, screen: "Job tab — evidence review with a clip",
-              deferring: formDeferrals + [AuditDeferral.decorativeClipTimecode])
+              deferring: formDeferrals + [AuditDeferral.unattributedElementDetection])
 
         let skip = app.buttons["Skip photos and close the job"]
         scrollUntilVisible(skip, in: app, named: "Skip photos and close the job")
         audit(app, screen: "Job tab — evidence review with a clip, actions",
-              deferring: formDeferrals + [AuditDeferral.decorativeClipTimecode])
+              deferring: formDeferrals + [AuditDeferral.unattributedElementDetection])
     }
 
     /// The review at the largest accessibility size. A grid of thumbnails beside wrapping captions
