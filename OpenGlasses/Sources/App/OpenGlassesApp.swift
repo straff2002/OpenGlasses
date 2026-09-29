@@ -60,6 +60,12 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
             PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .failed,
                                 error: summary)
             AppStateProvider.shared?.addDebugEvent("handleUrl failed from \(source): \(summary)")
+            // A refused registration comes back through this callback. Logging it alone left the
+            // wearer looking at an unchanged screen after Meta AI turned them away.
+            if let urlError = error as? WearablesHandleURLError,
+               let message = RegistrationFlow.callbackFailureMessage(urlError) {
+                NoticeCenter.shared.post(message, severity: .error, source: .glasses)
+            }
         }
     }
 }
