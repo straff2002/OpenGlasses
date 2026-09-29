@@ -182,6 +182,33 @@ struct AuditDeferral {
             + "for real, and undeferred, on the Voice tab."
     )
 
+    /// An `elementDetection` finding the audit could not attach to any element.
+    ///
+    /// The check renders the screen and looks for text-like pixels it cannot match to an
+    /// accessibility element. When it *can* name the element, the finding is actionable and still
+    /// fails here. When `issue.element` is nil there is nothing to act on — and in practice that
+    /// is the shape it takes when the reading is wrong.
+    ///
+    /// Measured 2026-09-24 on an iOS 27 simulator, on the first run in which the Job tab's audits
+    /// were ever reached. On a quiet host it appeared twice on the evidence review that carries a
+    /// clip and never on the photographs-only review beside it; with a second UI-test run loading
+    /// the same machine it appeared on the photographs-only review instead, and the clip review
+    /// passed. Same audit, same screens, opposite results — it follows the host, not the app. The
+    /// screens it lands on do carry text that is deliberately hidden from VoiceOver (a clip's
+    /// "0:12" badge, whose row label already opens "Clip, 12 seconds"), which is the sort of thing
+    /// the check is looking at; representing it again would add a focus stop that repeats what the
+    /// row just said.
+    ///
+    /// Scoped to unattributed findings only, so an `elementDetection` issue that names an element
+    /// still fails on every screen in the app.
+    static let unattributedElementDetection = AuditDeferral(
+        types: .elementDetection,
+        reason: "An elementDetection finding with no element attached. It cannot be acted on, and "
+            + "it follows host load rather than the app: the same two screens swap which of them "
+            + "reports it depending on what else is running. An attributed finding still fails.",
+        matches: { $0.element == nil }
+    )
+
     /// A one-line text field is a one-line text field. At accessibility sizes iOS scrolls the
     /// text inside it rather than growing the row, and the same is true of a `Picker`'s selected
     /// value in a `Form` — so the audit reports both as text that may clip, on every such row in

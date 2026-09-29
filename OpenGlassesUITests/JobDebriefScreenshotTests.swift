@@ -108,11 +108,28 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
     /// Swipe until the element is reachable. Generous at AX5, where every row is several times
     /// taller and a `List` builds its rows lazily — an element below the fold does not merely sit
     /// off-screen, it does not exist yet.
+    ///
+    /// The swipe goes to the **list**, not to the application. A swipe addressed to the app is
+    /// synthesised at the app's centre, and with the search keyboard up on a smaller screen that
+    /// point is inside the keyboard: the gesture lands on a key and the list never moves. That is
+    /// a property of the device's height rather than of the app, which is why it showed up on
+    /// CI's phone and not on a taller one.
+    ///
+    /// Slow swipes, and it steers. A full-speed swipe flings the list, and on CI's iPhone 16e one
+    /// fling carried a past job's "Debrief" header from below the fold to above the top of the
+    /// list — after which swiping on up can never bring it back. So an element that exists above
+    /// the list's middle is swiped back down to.
     private func reach(_ element: XCUIElement, in app: XCUIApplication, named name: String,
                        swipes: Int = 20) {
+        let list = app.collectionViews.firstMatch
         for _ in 0..<swipes {
             if element.exists && element.isHittable { return }
-            app.swipeUp()
+            let surface: XCUIElement = list.exists ? list : app
+            if element.exists && element.frame.maxY < surface.frame.midY {
+                surface.swipeDown(velocity: .slow)
+            } else {
+                surface.swipeUp(velocity: .slow)
+            }
         }
         XCTAssertTrue(element.exists && element.isHittable,
                       "\(name) never came into reach after \(swipes) swipes")
@@ -128,7 +145,13 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
         let field = app.searchFields.firstMatch
         if field.waitForExistence(timeout: 20) {
             field.tap()
-            field.typeText("1004")
+            // Submitted rather than left mid-edit, so the keyboard goes away before anything has
+            // to be scrolled past it.
+            field.typeText("1004\n")
+            let keyboardDismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+            XCTAssertEqual(XCTWaiter.wait(for: [keyboardDismissed], timeout: 10), .completed,
+                           "The search keyboard must dismiss before scrolling to the past job")
         }
         let row = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch

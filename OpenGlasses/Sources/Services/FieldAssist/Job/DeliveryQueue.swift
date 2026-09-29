@@ -282,18 +282,35 @@ final class DeliveryQueueStore: ObservableObject {
     private let fileURL: URL
 
     /// The default location, and the one the registry documents.
-    static func defaultDirectory() -> URL {
+    nonisolated static func defaultDirectory() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory,
                                             in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("FieldAssist", isDirectory: true)
     }
 
+    /// The queue's file. Named here rather than spelled out again by anyone who has to reach it,
+    /// so a reset and the store cannot drift apart onto two different paths.
+    nonisolated static func fileURL(in directory: URL? = nil) -> URL {
+        (directory ?? defaultDirectory()).appendingPathComponent("delivery-queue.json")
+    }
+
+    /// Delete the stored queue outright, for a caller that has to start from no queue at all.
+    ///
+    /// Distinct from `removeAll()`, which empties a queue *through* a live store and writes the
+    /// emptiness back. This is for the moment before a store exists — the UI-test seed, which
+    /// resets the device's field state at launch and would otherwise inherit whatever the
+    /// simulator was left holding.
+    nonisolated static func eraseStoredQueue(in directory: URL? = nil) {
+        try? FileManager.default.removeItem(at: fileURL(in: directory))
+    }
+
     init(directory: URL? = nil) {
-        let folder = directory ?? Self.defaultDirectory()
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        fileURL = folder.appendingPathComponent("delivery-queue.json")
-        queue = Self.read(fileURL) ?? DeliveryQueue()
+        let url = Self.fileURL(in: directory)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        fileURL = url
+        queue = Self.read(url) ?? DeliveryQueue()
         protectFile()
     }
 
