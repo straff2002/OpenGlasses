@@ -450,6 +450,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
             for await error in session.errorStream() {
                 guard let self, !Task.isCancelled else { return }
                 PrivacyLog.camera(.glasses, .sessionError, error: SafeErrorSummary(error))
+                // DAT 1.0: an advisory (`.dwaOutOfStuRange`) arrives here too, but the session
+                // carries on. Recording it as `lastSessionError` would make the start wait throw
+                // it as the reason a perfectly healthy start "failed".
+                if let advisory = DATCompatibilityMessage.advisory(for: error) {
+                    self.debug(advisory)
+                    continue
+                }
                 self.lastSessionError = error
                 if let notice = DATCompatibilityMessage.message(for: error) {
                     self.compatibilityNotice = notice

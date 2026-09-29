@@ -100,7 +100,9 @@ class GlassesConnectionService: ObservableObject {
 
             PrivacyLog.device(.glasses, .registrationState,
                               state: PrivacyToken(String(stateAfter.rawValue)))
-            connectionStatus = RegistrationFlow.status(stateRaw: stateAfter.rawValue)
+            connectionStatus = RegistrationFlow.isRegistered(stateRaw: stateAfter.rawValue)
+                ? RegistrationFlow.status(stateRaw: stateAfter.rawValue)
+                : RegistrationFlow.approvalTimedOutStatus()
         } catch {
             // `startRegistration()` uses typed throws, so every error reaching this catch is a
             // `RegistrationError`; testing the type again is both redundant and a Swift 6 warning.

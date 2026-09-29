@@ -137,6 +137,11 @@ final class BRHardeningTests: XCTestCase {
 
     func testCompatibilityMessages() {
         XCTAssertNotNil(DATCompatibilityMessage.message(for: .datAppOnTheGlassesUpdateRequired))
+        XCTAssertEqual(DATCompatibilityMessage.message(for: .insufficientSDKVersion),
+                       DATCompatibilityMessage.message(for: Compatibility.sdkUpdateRequired),
+                       "both 'this build is too old' signals should read the same")
+        XCTAssertNil(DATCompatibilityMessage.message(for: .dwaOutOfStuRange),
+                     "a nonblocking warning is not a refusal")
         XCTAssertNil(DATCompatibilityMessage.message(for: .thermalCritical),
                      "non-compat device errors are not update messaging")
         XCTAssertNotNil(DATCompatibilityMessage.message(for: Compatibility.deviceUpdateRequired))

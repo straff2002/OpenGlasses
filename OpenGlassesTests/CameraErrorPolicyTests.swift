@@ -9,8 +9,7 @@ final class CameraErrorPolicyTests: XCTestCase {
 
     /// Cases that should abandon a pending capture immediately (the photo won't arrive).
     private let terminal: [StreamError] = [
-        .hingesClosed, .timeout, .thermalCritical, .thermalEmergency,
-        .peakPowerShutdown, .batteryCritical, .permissionDenied,
+        .hingesClosed, .timeout, .thermalHot, .peakPowerLimit, .batteryLow, .permissionDenied,
         .deviceNotConnected("dev"), .deviceNotFound("dev"),
     ]
     /// Transient cases where the capture or the timeout backstop may still resolve.
@@ -63,8 +62,18 @@ final class CameraErrorPolicyTests: XCTestCase {
 
     func testMessagesAreSpecificForKeyConditions() {
         XCTAssertTrue(CameraErrorPolicy.message(for: .hingesClosed).localizedCaseInsensitiveContains("hinge"))
-        XCTAssertTrue(CameraErrorPolicy.message(for: .thermalCritical).localizedCaseInsensitiveContains("hot"))
-        XCTAssertTrue(CameraErrorPolicy.message(for: .batteryCritical).localizedCaseInsensitiveContains("battery"))
+        XCTAssertTrue(CameraErrorPolicy.message(for: .thermalHot).localizedCaseInsensitiveContains("hot"))
+        XCTAssertTrue(CameraErrorPolicy.message(for: .batteryLow).localizedCaseInsensitiveContains("battery"))
         XCTAssertTrue(CameraErrorPolicy.message(for: .permissionDenied).localizedCaseInsensitiveContains("permission"))
+    }
+
+    /// DAT 1.0 `.audioStreamingError`: only reachable with camera audio enabled, which is
+    /// [Experimental] and never requested. If it ever arrives it is about audio, so it neither
+    /// abandons a photo nor aborts a video warmup, and the ladder treats it as transient.
+    func testAudioStreamingErrorIsNeverTerminal() {
+        XCTAssertFalse(CameraErrorPolicy.abortsCapture(.audioStreamingError))
+        XCTAssertFalse(CameraErrorPolicy.abortsWarmup(.audioStreamingError))
+        XCTAssertEqual(CameraErrorPolicy.retryDisposition(for: .audioStreamingError), .retryWithBackoff)
+        XCTAssertTrue(CameraErrorPolicy.message(for: .audioStreamingError).localizedCaseInsensitiveContains("audio"))
     }
 }

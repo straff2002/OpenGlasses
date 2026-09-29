@@ -106,9 +106,27 @@ final class RegistrationFlowConfigMessageTests: XCTestCase {
                        "must not send the user chasing an AppLink problem they don't have")
     }
 
-    func testHealthyConfigKeepsTheExistingLinkBackDiagnosis() {
-        let message = RegistrationFlow.connectFailureMessage(stateRaw: 0, configStatus: .ok)
+    func testHealthyConfigKeepsTheLinkBackDiagnosisOnAContributorBuild() {
+        let message = RegistrationFlow.connectFailureMessage(
+            stateRaw: 0, configStatus: .ok, bundleID: "com.example.myglasses")
         XCTAssertTrue(message.contains("registration didn't complete"))
+    }
+
+    /// On the published app a stalled registration is most likely Meta refusing a wearer who
+    /// isn't in the release channel — AppLink advice there is advice they can't act on.
+    func testPublishedBuildExplainsTheInviteGateInsteadOfAppLinks() {
+        let message = RegistrationFlow.connectFailureMessage(
+            stateRaw: 0, configStatus: .ok, bundleID: RegistrationFlow.publishedBundleID,
+            appName: "Avenkin")
+        XCTAssertEqual(message, RegistrationFlow.notApprovedMessage(appName: "Avenkin"))
+        XCTAssertFalse(message.contains("associated-domains"))
+    }
+
+    func testBadConfigPreemptsTheInviteGateOnThePublishedBuildToo() {
+        let message = RegistrationFlow.connectFailureMessage(
+            stateRaw: 0, configStatus: .placeholder(key: "MetaAppID"),
+            bundleID: RegistrationFlow.publishedBundleID)
+        XCTAssertTrue(message.contains("project.local.yml"))
     }
 
     func testRegisteredStateIgnoresConfigStatus() {

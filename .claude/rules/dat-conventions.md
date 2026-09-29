@@ -2,17 +2,26 @@
 description: Swift patterns, async/await, naming conventions, key types for DAT SDK iOS development
 ---
 
-# DAT SDK Conventions (iOS) — v0.9.0
+# DAT SDK Conventions (iOS) — v1.0.0
 
 ## Architecture
 
 The SDK is organized into modules:
-- **MWDATCore**: Device discovery, registration, permissions, device selectors, `DeviceSession`, device state (`deviceStateStream` / `ThermalLevel`), `ListenerTokenBag`
+- **MWDATCore**: Device discovery, registration, permissions, device selectors, `DeviceSession`, device state (`Device` accessors / `addDeviceStateListener`, `ThermalLevel`), `ListenerTokenBag`
 - **MWDATCamera**: `Camera` (owns the hardware resource) → `Stream`, `VideoFrame`, `PhotoData`, photo capture
 - **MWDATDisplay**: in-lens HUD — `Display` + view types (`FlexBox`, `Text`, `Button`, `ButtonGroup`, `Image`, `Icon`, `VideoPlayer`)
 - **MWDATMockDevice**: `MockDeviceKit` for testing without hardware (UI-test oriented)
 
-Minimum deployment target is **iOS 17.2** (bumped from 15.2 in 0.9.0).
+Minimum deployment target is **iOS 17.2** (bumped from 15.2 in 0.9.0; unchanged in 1.0.0).
+
+**1.0.0 is semver — for the stable surface only.** Anything Meta labels **[Experimental]** may change
+in any minor, and **apps that use it cannot be published**. In 1.0.0 that is the `MWDATInputs`,
+`MWDATMotion` and `MWDATSpeech` modules, voice invocations in `MWDATCore` (`VoiceInvocationsStream`),
+and in `MWDATCamera` standalone `Camera.photo` capture and camera audio
+(`StreamConfiguration.audioCodec`, `Stream.audioFramePublisher`). **Do not link the experimental
+modules or call the experimental APIs** — the Core/Camera ones ship inside modules we already link,
+so nothing but review stops them. The package stays pinned exact in `project.base.yml` so a 1.y
+is read and adopted deliberately.
 
 ## Swift Patterns
 
@@ -61,9 +70,13 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
 ## Key Types
 
 - `Wearables` — SDK entry point. Call `Wearables.configure()` at launch, then use `Wearables.shared`.
-  Device state via `Wearables.deviceStateStream(for:)` (`DeviceState.thermalLevel`); there is no
-  `DeviceStateSession` (removed in 0.7.0).
+  `Wearables.deviceStateStream(for:)` was **removed in 1.0.0** (as was `DeviceStateSession` in
+  0.7.0): device state lives on `Device` — `Wearables.shared.deviceForIdentifier(_:)`, then the
+  accessors `batteryLevel` (`Int?`), `chargingState`, `donState`, `hingeState`, `thermalLevel`, or
+  `Device.addDeviceStateListener(_:)`, which delivers the full `DeviceState` (now also `linkState`
+  and `compatibility`) immediately and on every change. We don't observe device state yet.
 - `DeviceSession` — owns the connection; create with a device selector, then `addCamera`/`addDisplay`.
+  `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,
   `camera.state`/`statePublisher` report the capability lifecycle (`CameraState`), `stop()` is sync
   and cascades to the stream.
@@ -96,9 +109,37 @@ do {
 
 // Camera errors arrive on the publisher (StreamError), not by throwing from capturePhoto:
 stream.errorPublisher.listen { (error: StreamError) in /* map via CameraErrorPolicy */ }
+
+// Session errors (update-required, device conditions) arrive on the session, not the stream:
+for await error in deviceSession.errorStream() { /* DATCompatibilityMessage, CameraErrorPolicy */ }
 ```
 
 Notes from the field:
+- **1.0.0 renamed `StreamError`'s device-condition cases** to match Android: `.thermalCritical` and
+  `.thermalEmergency` → `.thermalHot`, `.peakPowerShutdown` → `.peakPowerLimit`, `.batteryCritical` →
+  `.batteryLow`; and added `.audioStreamingError` (only reachable with the experimental camera audio,
+  which we never enable). `DeviceSessionError` kept the **old** names — `.thermalCritical`,
+  `.thermalEmergency`, `.peakPowerShutdown`, `.batteryCritical` are still its cases.
+- **`DeviceSessionError` gained two cases in 1.0.0 with opposite meanings.**
+  `.insufficientSDKVersion` is **terminal**: the glasses refuse an app built against this SDK, and
+  only shipping a newer build fixes it — `CameraErrorPolicy` stops retrying and
+  `DATCompatibilityMessage` says to update OpenGlasses. `.dwaOutOfStuRange` is a **nonblocking
+  warning**: the session carries on. `DATCompatibilityMessage.isAdvisory(_:)` marks it so the
+  camera's session-error watcher logs it and moves on, rather than recording it as the reason a
+  healthy start failed; at most, a gentle update suggestion — never an announcement.
+- **1.0.0 also broke API its changelog doesn't mention** (diff the `.swiftinterface`s, not the
+  changelog): `RegistrationError.timeout` and `UnregistrationError.timeout` are gone;
+  `DisplayError.deviceNotFound`/`.connectionNotAvailable` are gone; `WearablesError` gained
+  `missingInfoDictionary`/`missingBundleIdentifier`/`missingAppName`/`missingAppVersion`/
+  `missingBuildNumber` (`configure()` now validates those `Info.plist` basics); and
+  `RegistrationError`, `UnregistrationError`, `WearablesError`, `WearablesHandleURLError`,
+  `NavigationError` and `DeviceSessionError` are no longer `@frozen` — every switch over them needs
+  `@unknown default` (or `default`). `DeviceState`'s memberwise init grew the new fields (all
+  defaulted).
+- `NavigationError` (MWDATCore, the error `openFirmwareUpdate()`/`openDATGlassesAppUpdate()` throw)
+  conforms to `DatError` as of 1.0.0. The app has its own `NavigationError` in
+  `WalkingRouteService.swift`; within the app module ours shadows the SDK's, so qualify the SDK one
+  as `MWDATCore.NavigationError` if you ever need to name it.
 - `CaptureError` was **removed** in 0.9.0 (it was declared but never emitted in 0.8.0). Photo-capture
   failure now arrives as `StreamError.photoCaptureFailed` on `errorPublisher`.
 - `StreamError.hingesClosed` now also fires when the device is doffed (0.9.0) — previously that case
@@ -113,7 +154,9 @@ Notes from the field:
   absent or `NO` means opted **in**. `MetaTelemetryBlock` is the backstop: it registers a
   `URLProtocol` before `Wearables.configure()` that answers that endpoint locally and counts what
   it stopped. Attestation (`/wearables/attestation/challenge`) shares the host and is deliberately
-  **not** blocked — it gates device access.
+  **not** blocked — it gates device access. Re-checked against the 1.0.0 binaries: same two URLs,
+  same `ar_wearables_sdk_*` event names, same documented opt-out keys, no bundled privacy manifest. Repeat the
+  `strings` diff on every bump.
 - **Telemetry posture for any newly linked SDK: off by default, disclosed by exception, never
   silent.** Before a new third-party dependency ships, review what it sends home by default and
   either disable it or disclose it — in `PrivacyInfo.xcprivacy` *and* the in-app privacy copy, in
@@ -125,6 +168,6 @@ Notes from the field:
 
 ## Links
 
-- [iOS API Reference](https://wearables.developer.meta.com/docs/reference/ios_swift/dat/0.9)
+- [iOS API Reference](https://wearables.developer.meta.com/docs/reference/ios_swift/dat/latest)
 - [Developer Documentation](https://wearables.developer.meta.com/docs/develop/)
 - [GitHub Repository](https://github.com/facebook/meta-wearables-dat-ios)

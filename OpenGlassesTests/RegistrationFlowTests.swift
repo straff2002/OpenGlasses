@@ -51,7 +51,7 @@ final class RegistrationFlowTests: XCTestCase {
     func testEveryRegistrationMessageFitsTheStatusCapsule() {
         let cases: [RegistrationError] = [
             .alreadyRegistered, .metaAINotInstalled, .networkUnavailable,
-            .timeout, .configurationInvalid, .unknown
+            .configurationInvalid, .unknown
         ]
         for error in cases {
             let message = RegistrationFlow.registrationErrorMessage(error)
@@ -63,9 +63,42 @@ final class RegistrationFlowTests: XCTestCase {
 
     /// House rule for this type: tell the user what to *do*. A message that only names the SDK's
     /// internal state is the thing `connectFailureMessage` was written to stop.
+    // MARK: - Refused registration (release-channel gate)
+
+    /// Outside Developer Mode Meta registers a distributed app only for invited testers. The
+    /// refused wearer has to learn both ways in from the message itself.
+    func testNotApprovedMessageNamesBothWaysIn() {
+        let message = RegistrationFlow.notApprovedMessage(appName: "Avenkin")
+        XCTAssertTrue(message.contains("Avenkin"))
+        XCTAssertTrue(message.contains("invite-only"))
+        XCTAssertTrue(message.contains("tester group"))
+        XCTAssertTrue(message.contains("Developer Mode"))
+        XCTAssertFalse(message.contains(where: \.isNumber), "no internal state numbers")
+    }
+
+    func testRefusedCallbackGetsTheNotApprovedMessage() {
+        XCTAssertEqual(RegistrationFlow.callbackFailureMessage(.registrationError, appName: "Avenkin"),
+                       RegistrationFlow.notApprovedMessage(appName: "Avenkin"))
+    }
+
+    func testUnregistrationCallbackFailureStaysQuiet() {
+        XCTAssertNil(RegistrationFlow.callbackFailureMessage(.unregistrationError))
+    }
+
+    func testApprovalTimeoutStatusFitsTheCapsuleAndMentionsTheGate() {
+        let status = RegistrationFlow.approvalTimedOutStatus(appName: "Avenkin")
+        XCTAssertLessThanOrEqual(status.count, 80, "too long for the status capsule: \(status)")
+        XCTAssertTrue(status.contains("Meta AI"))
+        XCTAssertTrue(status.contains("invite-only"))
+    }
+
+    func testStatusNamesTheApp() {
+        XCTAssertTrue(RegistrationFlow.status(stateRaw: 2, appName: "Avenkin").contains("Avenkin"))
+    }
+
     func testActionableFailuresNameAnAction() {
         XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.metaAINotInstalled).contains("Meta AI"))
-        XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.timeout).lowercased().contains("try again"))
+        XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.unknown).lowercased().contains("try again"))
         XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.networkUnavailable).lowercased().contains("connection"))
     }
 }

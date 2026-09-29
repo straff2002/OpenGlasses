@@ -248,7 +248,7 @@ final class CameraRetryDispositionTests: XCTestCase {
 
     /// Transient: the link flapping is the ordinary case the ladder exists for.
     func testTransientStartupFailuresAreRetried() {
-        for error in [StreamError.timeout, .videoStreamingError, .internalError,
+        for error in [StreamError.timeout, .videoStreamingError, .audioStreamingError, .internalError,
                       .deviceNotConnected(DeviceIdentifier("device")),
                       .deviceNotFound(DeviceIdentifier("device"))] {
             XCTAssertEqual(CameraErrorPolicy.retryDisposition(for: error), .retryWithBackoff,
@@ -267,6 +267,28 @@ final class CameraRetryDispositionTests: XCTestCase {
         XCTAssertEqual(notice, DATCompatibilityMessage.message(for: .datAppOnTheGlassesUpdateRequired))
     }
 
+    /// DAT 1.0 `insufficientSDKVersion` is terminal: the glasses refuse this build, and only a
+    /// newer OpenGlasses fixes it — so the ladder stops and the notice says to update the app.
+    func testAnInsufficientSDKVersionIsNotRetried() {
+        XCTAssertEqual(CameraErrorPolicy.retryDisposition(for: DeviceSessionError.insufficientSDKVersion),
+                       .stopRetrying(notice: DATCompatibilityMessage.appUpdateRequired))
+    }
+
+    /// DAT 1.0 `dwaOutOfStuRange` is a nonblocking warning: the session carries on, so it must
+    /// neither stop the ladder nor raise the refusal notice the retry loop reads as fatal.
+    func testACompatibilityWarningIsNotARefusal() {
+        let warning = DeviceSessionError.dwaOutOfStuRange
+        XCTAssertEqual(CameraErrorPolicy.retryDisposition(for: warning), .retryWithBackoff)
+        XCTAssertNil(DATCompatibilityMessage.message(for: warning))
+        XCTAssertTrue(DATCompatibilityMessage.isAdvisory(warning))
+        XCTAssertNotNil(DATCompatibilityMessage.advisory(for: warning))
+        for error in [DeviceSessionError.insufficientSDKVersion, .datAppOnTheGlassesUpdateRequired,
+                      .noEligibleDevice, .thermalCritical] {
+            XCTAssertFalse(DATCompatibilityMessage.isAdvisory(error), "\(error) is not an advisory")
+            XCTAssertNil(DATCompatibilityMessage.advisory(for: error), "\(error)")
+        }
+    }
+
     /// Physical: since 0.9.0 `hingesClosed` covers both folded hinges and a doff, and both are a
     /// person having put the camera away. The notice already names the move that undoes it.
     func testAPhysicalCauseIsNotRetried() {
@@ -278,8 +300,7 @@ final class CameraRetryDispositionTests: XCTestCase {
 
     /// Device conditions: a retry every 1.5 s neither cools the glasses down nor charges them.
     func testThermalAndPowerConditionsAreNotRetried() {
-        for error in [StreamError.thermalCritical, .thermalEmergency,
-                      .peakPowerShutdown, .batteryCritical] {
+        for error in [StreamError.thermalHot, .peakPowerLimit, .batteryLow] {
             guard case .stopRetrying = CameraErrorPolicy.retryDisposition(for: error) else {
                 return XCTFail("\(error) is not fixed by trying again")
             }
