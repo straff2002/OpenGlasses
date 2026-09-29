@@ -6,7 +6,8 @@ changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icon
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
 coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). **F1 built
 2026-09-29 (PR pending):** the storage and signing constants renamed to read as keys, values unchanged,
-and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. P1 and P2 now wait only on open questions 1 and 10. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
+and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
+questions answered*), so P1 and P2 are unblocked. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
 primarily a **personal AI agent**, sold as a **one-time purchase**, and glasses are optional. Field
@@ -79,8 +80,9 @@ buys nothing a user can see:
 **D2a — Frozen until a migration (the desktop).** These desktop identifiers locate a user's data, so
 they stay as they are until P5 moves them with a tested migration. Only lab and preview installs exist
 today, so this is the cheapest the move will ever be; it must happen before the first production
-desktop release, after which the chosen identifier is frozen like D2. Both live in the private
-desktop repository from 2026-09-29, and both are pinned there, not here.
+desktop release, after which the chosen identifier is frozen like D2. The production identifier is
+`com.avenkin.office` (open question 11, decided 2026-09-29). Both live in the private desktop
+repository from 2026-09-29, and both are pinned there, not here.
 
 | Identifier | Where | What changing it without a migration would break |
 |---|---|---|
@@ -206,8 +208,8 @@ The direction is **Open Span**, committed with PR #571 at `docs/branding/avenkin
 ### Still open from that day
 
 The licence for the desktop's private code, whether the brand orange and the AI accent converge, and
-Avenkin Office's production identifier: *Open questions* 9–11. The public repository's fate and
-hosting (questions 7 and 8) were decided on 2026-09-29.
+Avenkin Office's production identifier: *Open questions* 9–11. All three, and the public repository's
+fate and hosting (questions 7 and 8), were decided on 2026-09-29.
 
 ---
 
@@ -268,6 +270,32 @@ The desktop thread carries out the split. **Anything the phone app needs stays p
 - The private desktop repository copies `Contracts/` in at a pinned commit. **This repository never
   depends on the private one.**
 
+### Open questions answered
+
+The owner answered the remaining open questions on 2026-09-29. Each is marked in *Open questions*, and
+the phases below are written to match:
+
+- **Store listing (Q1):** App Store name "Avenkin: Private AI Assistant", subtitle "Your AI, on your
+  terms", tagline "Your AI. Your terms." (P0.1, P2.1).
+- **Field Assist and glasses (Q2):** Field Assist users do use glasses, but not all the time. The "Add a
+  device" step keeps glasses prominent for them, one tap away, and "Use this phone" stays a complete
+  answer (P2.2).
+- **Prompt role (Q3):** F3 names the current device, not a device-neutral role.
+- **Old wake phrases (Q4):** "OpenGlasses" and "Hey OpenGlasses" stay in the pickers, listed below
+  "Avenkin" and "Hey Avenkin", for **one App Store version** (the one that ships P1 and P3; one
+  marketing version, not one build), then leave the presets. After that the old name is still usable as
+  a custom wake phrase (P3.2).
+- **OpenClaw `userAgent` (Q5):** renamed to `avenkin-ios/…` in P1.5; no gateway keys on it.
+- **P4 (Q6):** not done. It stays unscheduled, revisited only if the old names confuse contributors.
+- **Desktop licence (Q9):** Avenkin Office's private code carries a plain "© 2026 Skunkworks NZ Ltd.
+  All rights reserved." notice, with a customer licence agreement shipped with the installer later.
+  `Contracts/` and `Transport/` keep this repository's BSL 1.1 (and MPL-2.0 for the vendored sync
+  engine).
+- **Brand orange and the AI accent (Q10):** they converge. The AI accent becomes the brand orange
+  `#E77F47` in P1 (item 11).
+- **Avenkin Office's production identifier (Q11):** `com.avenkin.office`. P5 migrates the lab
+  identifier to it (D2a).
+
 ---
 
 ## Sequencing with the desktop work (Plan FX)
@@ -299,8 +327,8 @@ or breaks signatures.
 
 ## P0 — Store, design, domain and repository (owner and repository work; item 7's base-URL PR is the only app code)
 
-1. **App Store listing text:** name (up to 30 characters, for example "Avenkin: Private AI
-   Assistant"), subtitle (for example "Your AI, on your terms"), description, keywords and screenshots, submitted with the P1 build. The name can only
+1. **App Store listing text:** name "Avenkin: Private AI Assistant" (29 of 30 characters), subtitle
+   "Your AI, on your terms" (both decided 2026-09-29), description, keywords and screenshots, submitted with the P1 build. The name can only
    change with a version submission. The privacy policy, support and marketing URLs in App Store
    Connect follow item 7 (avenkin.com).
 2. **Meta Wearables developer portal:** the app's display name. The URL scheme there only changes if
@@ -311,7 +339,8 @@ or breaks signatures.
    **The branding commit and the app icons merged in [#571](https://github.com/straff2002/OpenGlasses/pull/571)** (*Decisions 2026-09-28 →
    Branding*): the phone's `AppIcon` light, dark and tinted appearances from `avenkin-light`,
    `avenkin-dark` and `avenkin-monochrome`, and the watch icon from the same set. Still to do:
-   `OpenGlassesLogo` and `OpenGlassesSymbol` are replaced by the mark. Avenkin Office uses the
+   `OpenGlassesLogo` and `OpenGlassesSymbol` are replaced by the mark, including where onboarding
+   shows them (the first-run welcome logo and the Meta AI link row, `OnboardingView.swift`). Avenkin Office uses the
    `avenkin-office-*` set in P5. Check the tinted appearance on a device, as the branding README warns.
 4. **The repository and CI stay where they are** (*Decisions 2026-09-29*): `origin`, Xcode Cloud, the
    Actions setup and secrets are unchanged, and there is no cutover. What is still owed here: when the
@@ -427,7 +456,9 @@ OpenGlasses.
    `isDefaultName(_:)` check, and use it everywhere `resolve` or the UI compares against
    `defaultName`.
 2. `Config.savedPersonas` creates the first-run persona with `AssistantIdentity.defaultName`, not a
-   literal.
+   literal. So do onboarding's name step (`OnboardingView.swift`): the name field's placeholder
+   (`TextField("OpenGlasses", …)`) and "Skip — call it OpenGlasses" read `defaultName`, so they follow
+   the rename rather than being rewritten by it.
 3. A one-time migration, behind a stored flag: a saved persona still named `"OpenGlasses"` is renamed
    `"Avenkin"`, so the Personas list shows the new name too. A stored `assistantDisplayName` of
    `"OpenGlasses"` is cleared, which resets it to the default.
@@ -498,8 +529,8 @@ complete:
    OpenClaw `displayName` (`OpenClawEventClient.swift:363`), the export and diagnostics file names
    (`openglasses-export`, `openglasses-diagnostics`) and the OpenClaw connect `userAgent`
    (`openglasses-ios/…`, `OpenClawConnectParams.swift:55`). These are labels other systems display,
-   and none is a lookup key. The `userAgent` is the only one a gateway might filter on, so it is
-   checked against the OpenClaw gateway before it changes.
+   and none is a lookup key. The `userAgent` becomes `avenkin-ios/…`; no gateway the owner runs or plans
+   keys on it (open question 5, decided 2026-09-29).
 6. **Echo stripping:** `LocalOutputPolicy.swift:285` strips a model's echoed speaker label. Add
    `"Avenkin"` and **keep** `"OpenGlasses"`, since old conversation history still carries it.
 7. **Docs and website:** `README.md`, `README.zh-CN.md`, `SECURITY.md`, `index.html`, `about.html`,
@@ -510,7 +541,9 @@ complete:
    The plan index gets a one-line note that plans before FY say OpenGlasses (Plan FX already says
    Avenkin, and its "Avenkin" for the desktop means Avenkin Office).
 8. **Tests:** 34 test files assert brand strings. Update the assertions to the new copy; do not
-   loosen them.
+   loosen them. That includes the UI test target, not only the unit tests:
+   `OnboardingAccessibilityTests` finds the welcome screen by the text "OpenGlasses", and
+   `SettingsAccessibilityTests` looks for "Open iOS Settings for OpenGlasses".
 9. **Pronunciation.** The assistant says its own name in its identity line and in replies. Check
    "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **AV-en-kin**;
    where a voice gets it wrong, substitute a spelling it reads correctly at the TTS boundary only,
@@ -518,6 +551,16 @@ complete:
 10. **The watch wordmark.** `WatchMainView.swift:147–154` draws "OpenGlasses" from four separate
     `Text` pieces ("O", "pen", "G", "lasses"), so a search for the name misses it. Replace it with an
     Avenkin wordmark.
+11. **The AI accent becomes the brand orange** (open question 10, decided 2026-09-29). The coral
+    `#F08A4B` preset becomes `#E77F47`, changed once in `AppAccent` (the preset stored as `"violet"`),
+    not in raw colour literals; any literal copy is routed through the preset in the same commit. The
+    accent's rule stands: never violet or cyan. Check contrast in light and dark and in the Dynamic
+    Type audit, since the new shade is slightly darker.
+12. **The onboarding wake-word hint.** The last onboarding page hard-codes `Say "OpenGlasses" or tap the
+    mic…` (`OnboardingView.swift`). It shows the configured wake phrase (`Config.wakePhrase`) instead
+    of a literal, so it can never disagree with the setting. This is why P3's wake-phrase migration
+    ships in the same App Store version as P1 (*Rollout*): otherwise a new user is told to say
+    "Avenkin" while the app still listens for "openglasses".
 
 **Exit:** the app, its extensions, Siri, notifications, the website and the README say Avenkin, and the
 assistant introduces itself as Avenkin on an existing install; `rg -i openglasses` finds only D2's kept
@@ -530,7 +573,7 @@ nothing.
 1. **Positioning and tagline.** Lead with *private* and *yours*, and put glasses last:
    - One sentence: *Avenkin is a private AI assistant that works for you, not for a platform: your
      choice of AI, your memory on your device, on your phone, your watch or your glasses.*
-   - Tagline (proposed): **"Your AI. Your terms."**
+   - Tagline: **"Your AI. Your terms."** (decided 2026-09-29)
    - Device line: **"On your phone, from your wrist, or hands-free with glasses."** Not "better with
      your watch": today the watch is a remote that needs the phone nearby, and most of its controls
      drive glasses (Plan CS drafts the standalone watch). The copy can say more when CS ships.
@@ -539,7 +582,8 @@ nothing.
    Final wording is the owner's.
 2. **Onboarding** (`OnboardingView.swift`, Plans DB/DD): lead with the agent (name, voice, model,
    memory). Devices become an "Add a device" step where glasses are one choice and "Use this phone"
-   is a complete answer. "Skip — no glasses yet" goes.
+   is a complete answer. Field Assist users do use glasses, though not all the time (open question 2),
+   so for them glasses stay prominent, one tap away. "Skip — no glasses yet" goes.
 3. **System prompts:** done in P1 (F3).
 4. **The glasses-copy sweep:** the ~59 UI strings and 34 `Info.plist` lines. Each keeps "glasses"
    only when the feature needs glasses (D6). The sweep produces a short table in the PR description
@@ -562,20 +606,33 @@ the assistant does not describe itself as a glasses product during a phone-only 
    `defaultAlternativesForPhrase` for the recogniser splitting or mishearing it (for example
    "aven kin", "haven kin", "avon kin", "avenkins"), each checked against ordinary speech before it
    is added. The picker lists in `SettingsScreens.swift` and `PersonasView.swift` offer "Avenkin" and
-   "Hey Avenkin" and keep the old phrases
-   selectable. (The assistant's name is migrated earlier, in P1 F2.)
-   Tests: an untouched install migrates; a user-chosen phrase survives; the migration runs once.
+   "Hey Avenkin" first, with "OpenGlasses" and "Hey OpenGlasses" listed below them for **one App Store
+   version** (the one that ships P1 and P3), then removed from the presets in the next (open question 4,
+   decided 2026-09-29). The migration itself stays for good, so an install that skipped a version still
+   migrates. (The assistant's name is migrated earlier, in P1 F2.)
+   - **The old name lives on as a custom phrase.** The wake word is whatever is stored, not whatever the
+     picker lists (`Config.wakePhrase` reads the stored value), so a stored `openglasses` keeps
+     working after the presets drop it. `SettingsScreens.swift` already shows a non-preset phrase as
+     "Custom: openglasses" and has a "Custom wake phrase" field, so someone who wants it back types it
+     in. Keep the `openglasses` and `hey openglasses` cases in `Config.defaultAlternativesForPhrase`,
+     which custom phrases also draw on, so the recogniser's splits of the old name stay covered.
+   - **One default, not five.** The default is written in five places: `Config.wakePhrase`'s fallback,
+     `@AppStorage("wakePhrase")` defaults in `SettingsView.swift` and `SettingsScreens.swift`, the
+     picker fallback in `SettingsScreens.swift`, and `PersonasView.swift`'s initial state. All read one
+     constant, and `BrandNameGuardTests` catches any literal left behind.
+   Tests: an untouched install migrates; a user-chosen phrase survives; the migration runs once; a
+   stored phrase no longer in the presets still wakes the app and shows as custom.
 3. **Later, in a following release:** generate `avenkin://` links (enrolment links, widget and quick
    action URLs) once the P3 build is what users have. `openglasses://` stays accepted for good. Meta's
    `AppLinkURLScheme` changes only after the portal does (D3).
 
-## P4 — Internal rename (optional; separate PR; not scheduled)
+## P4 — Internal rename (not being done; unscheduled)
 
 Targets, schemes, module, folders (`OpenGlasses/`, `OpenGlassesTests/`, `OpenGlassesWatch*`,
 `OpenGlassesShareExtension/`), `OpenGlassesApp.swift`, the `OPENGLASSES_*` build conditions and
 environment variables, CI `-scheme`/`-only-testing:` lines, and `ci_scripts/`. Mechanical but touches
-roughly 600 files, and nobody outside the codebase sees it. Worth doing only if the old name confuses
-contributors. Never touches D2's identifiers.
+roughly 600 files, and nobody outside the codebase sees it. **Decided 2026-09-29 (open question 6):
+not done**; revisit only if the old names confuse contributors. Never touches D2's identifiers.
 
 **The GitHub repository rename** is separate and also optional (*Decisions 2026-09-29*). GitHub
 redirects a renamed repository's web URL and git remotes, but not its Pages path, so a rename would
@@ -596,8 +653,9 @@ touches this repository is item 4's transport build variables.
 1. **Display name:** the desktop `productName` ("Avenkin") becomes "Avenkin Office", with the window
    and menu titles, installer and bundle names, the desktop's own copy and its README. Run it through a
    rule list like the D10 script's, in the private desktop repository.
-2. **Production identifier and data migration (D2a).** Choose the production desktop identifier once
-   (open question 11). On first launch of the renamed build: if the old app-data folder exists and the
+2. **Production identifier and data migration (D2a).** The production identifier is
+   `com.avenkin.office` (open question 11, decided 2026-09-29); the migration moves
+   `com.openglasses.office.lab` to it. On first launch of the renamed build: if the old app-data folder exists and the
    new one does not, copy it across, verify the copy (the workspace opens; content digests
    match), switch to the new folder, and leave the old one in place until the office removes it; if both
    exist, use the new one and say that an old folder was left behind; if neither, start empty. The
@@ -624,8 +682,9 @@ private desktop repository covers the desktop's user-visible sources.
   move to avenkin.com happens now and does not wait on the rename: the domain first, then the redirect
   check, then the base-URL PR (which can land before P1). The desktop thread's phone-side PR merges
   next. Then P1 + P2 ship as one App Store version with the P0.1 listing text, produced by the rename
-  script on the `main` of that day. P3 can ride the same version or the next. P3.3 is one release
-  later. P5 is carried out in the private desktop repository before its first production release. P4
+  script on the `main` of that day. **P3's wake-phrase migration ships in that same App Store
+  version** (P1 item 12). The next App Store version drops the old phrases from the pickers (P3.2),
+  and P3.3 is one release later. P5 is carried out in the private desktop repository before its first production release. P4
   and any repository rename stay optional, and the rename comes only after no supported build reads
   the old `github.io` addresses.
 - **Field Assist users** are told before the build lands: same app, same subscription, same
@@ -644,16 +703,22 @@ private desktop repository covers the desktop's user-visible sources.
 
 ## Open questions for review
 
-1. **Tagline and App Store name**: the owner's wording for P2.1 and P0.1.
+All eleven were answered by 2026-09-29 (*Decisions 2026-09-29 → Open questions answered*).
+
+1. **Tagline and App Store name**: the owner's wording for P2.1 and P0.1. **Decided 2026-09-29:**
+   "Avenkin: Private AI Assistant", subtitle "Your AI, on your terms", tagline "Your AI. Your terms."
 2. **Do Field Assist users use glasses?** If yes, the "Add a device" step keeps glasses
-   one tap away; if not, the phone path gets the attention first.
+   one tap away; if not, the phone path gets the attention first. **Decided 2026-09-29:** yes, but not
+   all the time; glasses stay one tap away for them, and the phone path is still complete.
 3. **F3 prompt wording:** the plan names the current device ("on the user's phone"). Say if a
-   device-neutral role is preferred instead.
+   device-neutral role is preferred instead. **Decided 2026-09-29:** name the current device.
 4. **Old wake phrases in the picker:** keep "OpenGlasses" selectable indefinitely, or for one
-   release?
+   release? **Decided 2026-09-29:** one App Store version, listed below the new phrases; after that
+   the old name is a custom phrase (P3.2).
 5. **OpenClaw `userAgent` (P1.5):** does any gateway you run, or plan to (Plan FU), key on
-   `openglasses-ios`? If unsure, keep it and change only the display names.
-6. **P4:** do it at all?
+   `openglasses-ios`? If unsure, keep it and change only the display names. **Decided 2026-09-29:**
+   none does; rename it.
+6. **P4:** do it at all? **Decided 2026-09-29:** no; unscheduled.
 
 Added 2026-09-28:
 
@@ -674,11 +739,14 @@ Added 2026-09-28:
    terms and notice for consistency, a plain all-rights-reserved notice, or a commercial licence.
    `Contracts/` and `Transport/` are public in this repository, so they carry this repository's
    licence (and, for the vendored sync engine, its own MPL-2.0 terms). The owner decides; nothing in
-   this plan depends on it.
+   this plan depends on it. **Decided 2026-09-29:** a plain "© 2026 Skunkworks NZ Ltd. All rights
+   reserved." notice, with a customer licence agreement shipped with the installer later.
 10. **Brand orange and the AI accent.** The app's AI accent is coral `#F08A4B`; the brand orange is
     `#E77F47`. They are close enough to read as a mistake side by side. Converge (the AI accent becomes
     the brand orange, or the reverse), or stay deliberately distinct (and far enough apart to look
     intended)? Either way the accent's existing rule (never violet or cyan) still applies.
+    **Decided 2026-09-29:** converge; the AI accent becomes `#E77F47` (P1 item 11).
 11. **Avenkin Office's production identifier** (P5). Stay in the `com.openglasses.*` family like the
     phone's bundle id (nobody sees it, and the family stays consistent), or start an `avenkin`
     namespace for the desktop? It is frozen once the first production release ships.
+    **Decided 2026-09-29:** `com.avenkin.office`.
