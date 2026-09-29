@@ -1,5 +1,12 @@
 # Plan FT — Organisation Administration (the base server sets up and manages the crew's phones)
 
+> **Architecture revised 2026-09-27:** [Plan FX — Desktop Office and Device Sync](FX-desktop-office-and-device-sync.md)
+> is authoritative for new implementation. The organisation now installs a Mac/Windows office app
+> with local storage and automatic direct/relay-assisted sync. This document retains the original
+> phone/business requirements, but its public `baseServer`, URL-bound setup, HTTP delivery and
+> same-host privacy assumptions are superseded. FX preserves
+> vendor verification, signed overlays/jobs, sealed credentials, removal and consent requirements.
+
 **Status:** 📋 Planned 2026-09-24. This is the phone side and the contract only. The base server
 itself is Plan [FU](FU-base-server.md) (drafted 2026-09-25).
 **Origin:** The pilot partner's direction for Plan CT (see CT's *Revision 2026-09-24 (evening)*):

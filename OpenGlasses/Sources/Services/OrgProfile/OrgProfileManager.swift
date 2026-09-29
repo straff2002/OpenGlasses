@@ -157,6 +157,7 @@ final class OrgProfileManager: ObservableObject {
         /// The licence key entered and the profile it points at name different organisations.
         case differentOrganisation(entered: String, profile: String)
         case licence(String)
+        case officePackage
         case notRemovable
 
         var errorDescription: String? {
@@ -167,6 +168,7 @@ final class OrgProfileManager: ObservableObject {
             case .differentOrganisation(let entered, let profile):
                 return "This licence is for \(entered), but the profile it points to is for \(profile). Ask your organisation for a new key."
             case .licence(let message): return message
+            case .officePackage: return "The office licence and profile do not verify as one organisation. Ask your organisation for a new setup package."
             case .notRemovable: return "Your organisation's device management applied this profile, so it can only be removed there."
             }
         }
@@ -309,6 +311,13 @@ final class OrgProfileManager: ObservableObject {
                                                               licenceKey: seams.licenceKey) {
             return .failure(.verification(refusal))
         }
+        if source == .office {
+            guard let enteredLicence,
+                  (try? OfficeInlineEntitlement.verify(
+                    profileDocument: document, licenceCode: enteredLicence,
+                    profileKeys: seams.verificationKeys, licenceKey: seams.licenceKey,
+                    now: seams.now())) != nil else { return .failure(.officePackage) }
+        }
         if let current = profile, current.profileId != verified.profileId {
             return .failure(.managedByAnother(current.organizationName))
         }
@@ -338,6 +347,13 @@ final class OrgProfileManager: ObservableObject {
 
     /// Apply a reviewed profile: licence first, then settings, then the ceiling.
     func apply(_ review: OrgProfileReview) -> Result<Void, Refusal> {
+        if review.source == .office {
+            guard let officeLicence = review.licenceToActivate ?? review.profile.licenceCode,
+                  (try? OfficeInlineEntitlement.verify(
+                    profileDocument: review.document, licenceCode: officeLicence,
+                    profileKeys: seams.verificationKeys, licenceKey: seams.licenceKey,
+                    now: seams.now())) != nil else { return .failure(.officePackage) }
+        }
         // The clock may have moved while the sheet was open.
         if let refusal = ProfileVerification.enrolmentRefusal(for: review.profile, now: seams.now(),
                                                               licenceKey: seams.licenceKey) {

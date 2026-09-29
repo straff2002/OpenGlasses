@@ -12,7 +12,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     static let formatId = "openglasses.org-profile"
     /// The newest schema this build understands. A newer profile is refused with a reason rather
     /// than applied with semantics this build does not know.
-    static let supportedSchemaVersion = 1
+    static let supportedSchemaVersion = 2
     /// The bounds the app holds `leaseDays` to, whatever the profile says — so a typo is neither a
     /// one-day lease nor no expiry at all.
     static let leaseDaysRange = 7...365
@@ -61,8 +61,18 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     var adminPasscode: PasscodeVerifier?
     /// Plan CT 3b — hex SHA-256 of the admin card's secret (`AdminSecrets.cardDigest`).
     var adminCard: String?
+    /// Schema 2 only. The vendor authorises an organisation administrator to bind office
+    /// peers; this carries no office private key, job-signing key or route URL.
+    var officeAuthority: OfficeAuthority?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
+
+    struct OfficeAuthority: Codable, Equatable, Sendable {
+        let organizationID: String
+        let administratorPublicKey: String
+        /// `privateLan` or `automatic`; a routing policy, never an endpoint.
+        let transportPolicy: String
+    }
 
     /// `{provider, model, baseURL?, name?}`, decoded without failing: a malformed entry reads as
     /// empty fields, which `OrgAIModel.resolve` reports as a named drop rather than refusing the
@@ -125,9 +135,10 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          vaultPack: VaultPackReference? = nil, skillPacks: [String]? = nil,
          revokedEnrolmentIds: [String]? = nil, aiModel: AIModel? = nil,
          edition: String? = nil, adminPasscode: PasscodeVerifier? = nil, adminCard: String? = nil,
+         officeAuthority: OfficeAuthority? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
-         schemaVersion: Int = ConfigProfile.supportedSchemaVersion) {
+         schemaVersion: Int = 1) {
         self.format = format
         self.schemaVersion = schemaVersion
         self.keyId = keyId
@@ -146,6 +157,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.edition = edition
         self.adminPasscode = adminPasscode
         self.adminCard = adminCard
+        self.officeAuthority = officeAuthority
         self.settings = settings
     }
 }
@@ -244,6 +256,8 @@ enum ProfileSource: String, Codable, CaseIterable, Sendable {
     /// A licence key whose signed `profile` claim named the profile (Plan CT 3a). Removal clears the
     /// licence it enrolled with: the key was the organisation's, whoever typed it.
     case licence
+    /// Vendor-signed licence and profile delivered inline from an approved Avenkin office.
+    case office
     /// Managed App Configuration written by an MDM. **No reader ships yet** (Plan CT, decided
     /// 2026-09-24); the case exists so removal and precedence are built and tested for it now.
     case managedConfig

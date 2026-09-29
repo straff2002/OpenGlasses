@@ -159,3 +159,10 @@ file through a shell substitution and was never committed.
 condition = "AND"
 commits = ["0fe3fb9bb570680d33e3a5dcee41ee06978a1c46"]
 paths = ['''docs/MAIA-FIX-HANDOFF\.md''']
+
+[[allowlists]]
+description = "Public Ed25519 office application key in the deterministic managed-job contract fixture; two exact historical and current public values in this file only."
+condition = "AND"
+paths = ['''^Contracts/fixtures/managed-job-fixture-keys\.json$''']
+regexTarget = "line"
+regexes = ['''11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=''', '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''']

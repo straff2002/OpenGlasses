@@ -1,5 +1,14 @@
 # Plan FU — Base Server (the organisation's own server and its admin console)
 
+> **Architecture revised 2026-09-27:** [Plan FX — Desktop Office and Device Sync](FX-desktop-office-and-device-sync.md)
+> replaces the hosting/deployment architecture and delivery phases below. No partner-hosted
+> instance or paid hosting account is required: a Mac/Windows app owns local storage, prepares
+> manuals and syncs with approved phones, using automatically selected encrypted relays when a
+> direct path is unavailable. The office features, approval rules and detailed later ideas here
+> remain requirements. Public HTTPS endpoints, Linux-only conversion, URL-bound trust and the
+> base-server MJPEG relay are historical assumptions; use FX's phone acceptance gates. Desktop
+> implementation details live in the private Avenkin Office repository.
+
 **Status:** 📝 Drafted 2026-09-25. This is the server side. The phone side and the wire contract
 are Plan [FT](FT-organisation-administration.md) (setup, overlays, jobs, reports, manuals), Plans
 [L](L-webrtc-expert-transport.md) and [M](M-webrtc-infra-and-audio.md) (live support transports), and

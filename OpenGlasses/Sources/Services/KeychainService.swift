@@ -96,6 +96,37 @@ enum KeychainService {
         throw isUnavailable(status) ? KeychainError.unavailable(status) : KeychainError.writeFailed(status)
     }
 
+    /// Replace a nonempty item without a delete/add gap. Monotonic security state such as an
+    /// accepted office generation must survive a crash during replacement; deleting first could
+    /// make an older signed message look new after relaunch.
+    static func upsertDataAtomically(_ data: Data, for key: String,
+                                     accessibility: Accessibility) throws {
+        guard !data.isEmpty else { throw KeychainError.writeFailed(errSecParam) }
+        let lookup: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+        let changes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessibility.attribute,
+        ]
+        let updated = SecItemUpdate(lookup as CFDictionary, changes as CFDictionary)
+        if updated == errSecSuccess { return }
+        if updated != errSecItemNotFound {
+            throw isUnavailable(updated) ? KeychainError.unavailable(updated) : KeychainError.writeFailed(updated)
+        }
+        let insertion = lookup.merging(changes) { _, new in new }
+        let added = SecItemAdd(insertion as CFDictionary, nil)
+        if added == errSecSuccess { return }
+        if added == errSecDuplicateItem {
+            let retried = SecItemUpdate(lookup as CFDictionary, changes as CFDictionary)
+            if retried == errSecSuccess { return }
+            throw isUnavailable(retried) ? KeychainError.unavailable(retried) : KeychainError.writeFailed(retried)
+        }
+        throw isUnavailable(added) ? KeychainError.unavailable(added) : KeychainError.writeFailed(added)
+    }
+
     /// Remove an item, throwing on anything other than success or a missing item.
     static func deleteItem(_ key: String) throws {
         let query: [String: Any] = [

@@ -66,6 +66,8 @@ final class OrgEnrolmentService: ObservableObject {
     /// The licence key that started this enrolment, when one did (Plan CT 3a).
     private var enteredLicence: String?
     private let licenceKey: String
+    private let profileKeys: [String: String]
+    private let now: () -> Date
     private let activationResolver: ActivationKeyResolver
     /// Tells the app the active model changed, so what it shows follows.
     private let modelDidChange: @MainActor () -> Void
@@ -78,10 +80,14 @@ final class OrgEnrolmentService: ObservableObject {
          fetch: @escaping (URL) async throws -> Data = OrgEnrolmentService.boundedFetch,
          isPastOnboarding: @escaping () -> Bool = { Config.isPastOnboarding },
          licenceKey: String = LicenseService.productionPublicKeyBase64,
+         profileKeys: [String: String] = ProfileVerification.productionKeys,
+         now: @escaping () -> Date = Date.init,
          activationResolver: ActivationKeyResolver = ActivationKeyResolver(),
          modelDidChange: @escaping @MainActor () -> Void = {}) {
         self.manager = manager
         self.licenceKey = licenceKey
+        self.profileKeys = profileKeys
+        self.now = now
         self.activationResolver = activationResolver
         self.modelDidChange = modelDidChange
         self.fetch = fetch
@@ -199,6 +205,40 @@ final class OrgEnrolmentService: ObservableObject {
         settingUpFor = payload.licensee
         Task { await fetchAndReview(target, host: Self.displayHost(target)) }
         return .enrolling(licensee: payload.licensee)
+    }
+
+    /// Inline desktop delivery never dereferences a profile URL or activation directory. It
+    /// verifies both vendor signatures and their stable-ID association before offering the same
+    /// human profile review as existing enrolment. No settings or licence are applied here.
+    func openOfficePackage(profileDocument: String, licenceCode: String) {
+        reset()
+        source = .office
+        do {
+            let pair = try OfficeInlineEntitlement.verify(
+                profileDocument: profileDocument, licenceCode: licenceCode,
+                profileKeys: profileKeys, licenceKey: licenceKey, now: now())
+            settingUpFor = pair.licence.licensee
+            switch manager.review(document: profileDocument, source: .office,
+                                  enteredLicence: licenceCode) {
+            case .success(let review): stage = .reviewing(review)
+            case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
+            }
+        } catch {
+            stage = .failed("This office setup package failed verification. Ask your organisation for a new package.")
+        }
+    }
+
+    /// A file imported from the desktop is only a carrier. Parsing it never applies settings or
+    /// creates a peer; the signed pair still goes through verification and the owner's review.
+    func openOfficePackageFile(_ data: Data) {
+        do {
+            let contents = try OfficeSetupPackage.decode(data)
+            openOfficePackage(profileDocument: contents.profileDocument, licenceCode: contents.licenceCode)
+        } catch {
+            reset()
+            source = .office
+            stage = .failed("This Avenkin setup file is invalid. Ask your organisation for a new file.")
+        }
     }
 
     /// What typed text comes to before the licence path sees it (Plan CT 3a).

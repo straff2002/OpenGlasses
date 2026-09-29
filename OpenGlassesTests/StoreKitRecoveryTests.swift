@@ -40,11 +40,41 @@ final class StoreKitRecoveryTests: XCTestCase {
         }, entitlementLoader: { [] })
         await store.loadProducts()
         XCTAssertTrue(store.catalogError?.contains("Test connection unavailable") == true)
+        XCTAssertTrue(store.medicalCatalogError?.contains("Test connection unavailable") == true)
         XCTAssertFalse(store.isLoadingProducts)
         await store.loadProducts()
         XCTAssertEqual(attempts, 2)
         XCTAssertTrue(store.catalogError?.contains("plans are unavailable") == true)
+        XCTAssertTrue(store.catalogError?.contains("Field Assist") == true)
+        XCTAssertTrue(store.medicalCatalogError?.contains("Medical Compliance") == true)
+        XCTAssertFalse(store.catalogError?.contains("Test connection unavailable") == true)
         XCTAssertFalse(store.isLoadingProducts)
+    }
+
+    func testConcurrentCatalogRequestsShareOneLoadAndClearErrorsWhileRetrying() async {
+        var attempts = 0
+        var finishLoading: CheckedContinuation<[Product], Error>?
+        let store = StoreKitService(startAutomatically: false, productLoader: { ids in
+            XCTAssertTrue(ids.contains(StoreKitService.fieldAssistMonthlyId))
+            XCTAssertFalse(ids.contains(StoreKitService.fieldAssistAnnualId), "Annual is no longer offered")
+            XCTAssertFalse(ids.contains(StoreKitService.fieldAssistId), "The retired unlock must stay off the paywall")
+            attempts += 1
+            if attempts == 1 { throw Offline.unavailable }
+            return try await withCheckedThrowingContinuation { finishLoading = $0 }
+        }, entitlementLoader: { [] })
+        await store.loadProducts()
+        let retry = Task { await store.loadProducts() }
+        while finishLoading == nil { await Task.yield() }
+        XCTAssertTrue(store.isLoadingProducts)
+        XCTAssertNil(store.catalogError)
+        XCTAssertNil(store.medicalCatalogError)
+        await store.loadProducts()
+        XCTAssertEqual(attempts, 2)
+        finishLoading?.resume(returning: [])
+        await retry.value
+        XCTAssertFalse(store.isLoadingProducts)
+        XCTAssertNotNil(store.catalogError)
+        XCTAssertNotNil(store.medicalCatalogError)
     }
 
     func testLegacyPurchaseUnlocksWhileCatalogIsStillLoading() async {
@@ -68,6 +98,24 @@ final class StoreKitRecoveryTests: XCTestCase {
         XCTAssertNil(decision.expiresAt)
         finishLoading?.resume(returning: [])
         await loading.value
+    }
+
+    func testRetiredAnnualSubscriptionStillRestoresAccessWithoutCatalog() async {
+        let expiration = Date().addingTimeInterval(30 * 24 * 3600)
+        let store = StoreKitService(startAutomatically: false,
+            productLoader: { _ in throw Offline.unavailable }, synchronize: {}, entitlementLoader: {
+                [.init(productID: StoreKitService.fieldAssistAnnualId, expiration: expiration)]
+            })
+        await store.loadProducts()
+        let restored = await store.restorePurchases()
+        XCTAssertTrue(restored)
+        XCTAssertTrue(store.isFieldAssistPurchased)
+        XCTAssertEqual(store.fieldAssistSubscription?.productId, StoreKitService.fieldAssistAnnualId)
+        XCTAssertEqual(store.fieldAssistSubscription?.expirationDate, expiration)
+        let decision = FieldAssistEntitlementEvaluator.decide(
+            LiveFieldAssistEntitlementProvider(licenseCode: { nil }).evidence())
+        XCTAssertTrue(decision.isGranted)
+        XCTAssertEqual(decision.expiresAt, expiration)
     }
 
     func testFailedRestoreReportsErrorWithoutClearingVerifiedPurchase() async {
