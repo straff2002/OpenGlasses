@@ -31,11 +31,21 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      # The website at the repository root (Pages). No test reads these; skillpacks/ and
+      # vaultpacks/ stay covered because SkillPackCatalogTests verifies the committed catalog.
+      - '*.html'
+      - '.well-known/**'
+      - 'activation/**'
   push:
     branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      # The website at the repository root (Pages). No test reads these; skillpacks/ and
+      # vaultpacks/ stay covered because SkillPackCatalogTests verifies the committed catalog.
+      - '*.html'
+      - '.well-known/**'
+      - 'activation/**'
 
 # A PR run is obsolete the moment a newer commit lands on the same branch, but without a
 # concurrency group the superseded run still bills a full ~17-minute macOS slot. Twelve August
