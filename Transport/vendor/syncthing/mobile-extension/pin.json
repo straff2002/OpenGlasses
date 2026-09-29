@@ -1,0 +1,7 @@
+{
+  "moduleVersion": "v1.30.0-rc.1.0.20260908065755-2ca95cf14981",
+  "upstreamSHA256": "87f6c1add8a1dde2c82f38a5fcd974f43315dfcb6b91d7d710083d1aa62e8ac2",
+  "source": "lib/syncthing/syncthing.go",
+  "extension": "avenkin-model-hook.1",
+  "upstreamModuleSum": "h1:Vv5Pmvz6eNhqkc+0V/TOKxriOrzq7xeJ3ync8YTKgfU="
+}

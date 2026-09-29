@@ -1,0 +1,32 @@
+{
+  "version": "v2.1.5",
+  "source": "https://github.com/syncthing/syncthing",
+  "licence": "MPL-2.0",
+  "assets": {
+    "aarch64-apple-darwin": {
+      "archive": "syncthing-macos-arm64-v2.1.5.zip",
+      "url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-macos-arm64-v2.1.5.zip",
+      "sha256": "4a3153cce6f3bdc6290824e409b1622c3b78ad8b8a8b2fc846c0061b61e44d4a"
+    },
+    "x86_64-apple-darwin": {
+      "archive": "syncthing-macos-amd64-v2.1.5.zip",
+      "url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-macos-amd64-v2.1.5.zip",
+      "sha256": "f4535e479472a1ae43d3e6ffc4bcfc7651179e948387c08f3696847d142b62c7"
+    },
+    "x86_64-pc-windows-msvc": {
+      "archive": "syncthing-windows-amd64-v2.1.5.zip",
+      "url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-windows-amd64-v2.1.5.zip",
+      "sha256": "39571e4d0900c2a2cab14c0b170f49751340a869e49734ccc8079d9b98a7974b"
+    },
+    "aarch64-pc-windows-msvc": {
+      "archive": "syncthing-windows-arm64-v2.1.5.zip",
+      "url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-windows-arm64-v2.1.5.zip",
+      "sha256": "082de37dc99621064bde8378ea26b28378f312f0a4147f52844ce7425f1baab0"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "archive": "syncthing-linux-amd64-v2.1.5.tar.gz",
+      "url": "https://github.com/syncthing/syncthing/releases/download/v2.1.5/syncthing-linux-amd64-v2.1.5.tar.gz",
+      "sha256": "3d222b609f7ab2944e02748cb10488b4160d446b49e0eafc107ef2a525ab3486"
+    }
+  }
+}
