@@ -78,6 +78,10 @@ xcuserdata/
 
 # Post-clone tool downloads — the pinned, checksum-verified XcodeGen and gitleaks
 .ci-tools/
+Transport/.tools/
+Transport/Frameworks/
+__pycache__/
+*.pyc
 
 # Release evidence, generated per run rather than committed. Both are reproducible from the
 # commit (Scripts/generate-sbom.sh is byte-deterministic), so a copy in the tree is a copy that

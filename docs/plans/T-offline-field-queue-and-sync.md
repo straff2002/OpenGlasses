@@ -1,5 +1,12 @@
 # Plan T — Offline Field Queue & Store-and-Forward Sync
 
+> **Desktop delivery revision 2026-09-27:** [Plan FX](FX-desktop-office-and-device-sync.md)
+> plans an office sync sink alongside the existing delivery paths. Internet reachability is not
+> office availability; an asleep/offline desktop or failed relay leaves work waiting, without
+> exhausting six delivery attempts. Only a verified application receipt after durable import
+> counts as delivered. FX also addresses attachment completeness and stable file identifiers.
+> These changes are planned, not behaviour already supplied by this queue.
+
 **Source pattern:** The offline edge-runtime / store-and-forward idea from our idea-source repo `~/Code/qaeros` (`plans/369` edge runtime — boot manifest + local store + reconnect reconciliation). Concept only; clean-room Swift sized down to a single-user device.
 
 **Strategic fit:** Unblocks real field deployment. Field Assist ([Plan F](F-field-assist.md)) is shipped through Phase 3, but its own open questions flag offline as unresolved ("queue with explicit *offline mode active* indicator; flush on reconnect" — [F open questions](F-field-assist.md)). Field work happens in plant rooms, basements, and rural sites with no signal. Today a session's vault is on-device but the LLM call, photo upload, and audit export assume connectivity, so a dropped connection mid-procedure loses or stalls work. This plan adds a durable local queue + a sync engine that flushes on reconnect, with conflict surfacing — turning Field Assist from a connected demo into something a technician can trust on site.

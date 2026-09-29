@@ -1,0 +1,25 @@
+# Opt-in embedded transport for physical Avenkin commissioning work. Build the pinned local
+# framework with Transport/scripts/build_ios_lab.sh, then generate with
+# OPENGLASSES_OFFICE_TRANSPORT=1 ./Scripts/generate-xcodeproj.sh.
+targets:
+  OpenGlasses:
+    sources:
+      - path: Transport/vendor/syncthing/LICENSE.txt
+        buildPhase: resources
+      - path: Transport/vendor/syncthing/AUTHORS.txt
+        buildPhase: resources
+      - path: Transport/vendor/syncthing/NOTICE.md
+        buildPhase: resources
+      - path: Transport/vendor/syncthing/mobile-extension/README.md
+        buildPhase: resources
+      - path: Transport/vendor/syncthing/mobile-extension/syncthing.go
+        buildPhase: resources
+      - path: Transport/vendor/syncthing/mobile-extension/pin.json
+        buildPhase: resources
+    dependencies:
+      - framework: Transport/Frameworks/Mobilecore.xcframework
+        embed: false
+    settings:
+      base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AVENKIN_OFFICE_TRANSPORT"
+        OTHER_LDFLAGS: "$(inherited) -lresolv"

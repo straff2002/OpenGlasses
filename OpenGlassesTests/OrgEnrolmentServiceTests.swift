@@ -20,9 +20,10 @@ final class OrgEnrolmentServiceTests: XCTestCase {
         pastOnboarding = true
     }
 
-    private func makeManager() -> OrgProfileManager {
+    private func makeManager(licenceKey: String = LicenseService.productionPublicKeyBase64) -> OrgProfileManager {
         var seams = OrgProfileManager.Seams()
         seams.verificationKeys = [keyId: signingKey.publicKey.rawRepresentation.base64EncodedString()]
+        seams.licenceKey = licenceKey
         seams.resolvableVaultIds = { [] }
         var record: OrgEnrolmentRecord?
         seams.loadRecord = { record }
@@ -46,8 +47,9 @@ final class OrgEnrolmentServiceTests: XCTestCase {
                                                     privateKeyBase64: signingKey.rawRepresentation.base64EncodedString())
     }
 
-    private func makeService(fetch: @escaping (URL) async throws -> Data) -> OrgEnrolmentService {
-        OrgEnrolmentService(manager: makeManager(), fetch: fetch,
+    private func makeService(fetch: @escaping (URL) async throws -> Data,
+                             licenceKey: String = LicenseService.productionPublicKeyBase64) -> OrgEnrolmentService {
+        OrgEnrolmentService(manager: makeManager(licenceKey: licenceKey), fetch: fetch,
                             isPastOnboarding: { [unowned self] in self.pastOnboarding })
     }
 
@@ -192,5 +194,58 @@ final class OrgEnrolmentServiceTests: XCTestCase {
         service.handleBackground()
         XCTAssertEqual(service.stage, .idle)
         XCTAssertNil(applied)
+    }
+
+    func testInlineOfficeDocumentsRequireMatchingSignedIDsAndHumanReviewWithoutFetch() throws {
+        let licenceSigner = Curve25519.Signing.PrivateKey()
+        let licenceKey = licenceSigner.publicKey.rawRepresentation.base64EncodedString()
+        let admin = Curve25519.Signing.PrivateKey()
+        let now = Date()
+        let profile = ConfigProfile(
+            keyId: keyId, profileId: "northbridge-field", organizationName: "Northbridge",
+            issued: now.addingTimeInterval(-60), policyExpiry: now.addingTimeInterval(86_400),
+            leaseDays: 30, officeAuthority: .init(
+                organizationID: "northbridge",
+                administratorPublicKey: admin.publicKey.rawRepresentation.base64EncodedString(),
+                transportPolicy: "privateLan"), schemaVersion: 2)
+        let document = try ProfileVerification.makeDocument(
+            profile, privateKeyBase64: signingKey.rawRepresentation.base64EncodedString())
+        func code(_ organizationID: String) throws -> String {
+            try LicenseService.makeCode(payload: .init(
+                feature: "field_assist", licensee: "Northbridge", issued: now.addingTimeInterval(-60),
+                expires: now.addingTimeInterval(86_400), organizationID: organizationID,
+                profileID: "northbridge-field"),
+                privateKeyBase64: licenceSigner.rawRepresentation.base64EncodedString())
+        }
+        var fetchCount = 0
+        let manager = makeManager(licenceKey: licenceKey)
+        let service = OrgEnrolmentService(
+            manager: manager, fetch: { _ in fetchCount += 1; return Data() },
+            licenceKey: licenceKey,
+            profileKeys: [keyId: signingKey.publicKey.rawRepresentation.base64EncodedString()],
+            now: { now })
+        service.openOfficePackage(profileDocument: document, licenceCode: try code("another-firm"))
+        guard case .failed = service.stage else { return XCTFail("foreign licence reached review") }
+        XCTAssertNil(applied)
+
+        service.openOfficePackageFile(try JSONEncoder().encode(OfficeSetupPackage.Contents(
+            version: 1, profileDocument: document, licenceCode: try code("northbridge"))))
+        guard case .reviewing(let review) = service.stage else { return XCTFail("\(service.stage)") }
+        XCTAssertEqual(review.source, .office)
+        XCTAssertEqual(fetchCount, 0)
+        XCTAssertNil(applied)
+        guard case .failure(.officePackage) = manager.review(document: document, source: .office) else {
+            return XCTFail("office review accepted a profile without its licence")
+        }
+        var changedReview = review
+        changedReview.licenceToActivate = try code("another-firm")
+        guard case .failure(.officePackage) = manager.apply(changedReview) else {
+            return XCTFail("office apply accepted a changed licence after review")
+        }
+        XCTAssertNil(applied)
+        service.confirm()
+        XCTAssertEqual(service.stage, .applied("Northbridge"))
+        XCTAssertNotNil(manager.record)
+        XCTAssertEqual(manager.record?.source, .office)
     }
 }

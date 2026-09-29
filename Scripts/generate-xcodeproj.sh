@@ -33,6 +33,14 @@ spec_file=.xcodegen-spec.yml
   if [[ "${OPENGLASSES_SKIP_TESTS:-}" != "1" ]]; then
     echo "  - project.tests.yml"
   fi
+  if [[ "${OPENGLASSES_OFFICE_TRANSPORT:-}" == "1" ]]; then
+    framework=Transport/Frameworks/Mobilecore.xcframework
+    if [[ ! -d "$framework/ios-arm64" ]] || [[ ! -d "$framework/ios-arm64_x86_64-simulator" ]]; then
+      echo "Build the pinned iOS/simulator bridge first: Transport/scripts/build_ios_lab.sh" >&2
+      exit 1
+    fi
+    echo "  - project.office-transport.yml"
+  fi
   if [[ -f project.local.yml ]]; then
     echo "  - project.local.yml"
   fi

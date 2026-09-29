@@ -14,6 +14,19 @@ targets:
       # Scripts/export-fingerspelling-fixtures.py); loaded via Bundle(for:).
       - path: OpenGlassesTests/Fixtures
         buildPhase: resources
+      # Shared FX1 public assignment/archive fixtures (no production keys or content).
+      - path: Contracts/fixtures/manual-assignment-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/manual-fixture-keys.json
+        buildPhase: resources
+      - path: Contracts/fixtures/manual-vault-v1.zip
+        buildPhase: resources
+      - path: Contracts/fixtures/managed-job-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/managed-job-v1.ogjob
+        buildPhase: resources
+      - path: Contracts/fixtures/managed-job-fixture-keys.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.tests

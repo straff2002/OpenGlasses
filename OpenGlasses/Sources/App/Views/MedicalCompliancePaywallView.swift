@@ -68,13 +68,18 @@ struct MedicalCompliancePaywallView: View {
 
                 // Subscription Options
                 VStack(spacing: 12) {
-                    if storeKit.medicalProducts.isEmpty {
+                    if storeKit.isLoadingProducts {
                         ProgressView("Loading plans...")
                             .padding()
-                    } else {
-                        ForEach(storeKit.medicalProducts, id: \.id) { product in
-                            subscriptionCard(product: product)
-                        }
+                    }
+                    ForEach(storeKit.medicalProducts, id: \.id) { product in
+                        subscriptionCard(product: product)
+                    }
+                    if !storeKit.isLoadingProducts, let error = storeKit.medicalCatalogError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Retry Loading Plans") { Task { await storeKit.loadProducts() } }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -129,6 +134,7 @@ struct MedicalCompliancePaywallView: View {
         .background(OGTheme.canvas.ignoresSafeArea())
         .navigationTitle("Medical Compliance")
         .navigationBarTitleDisplayMode(.inline)
+        .task { await storeKit.loadProducts() }
         .alert("No Subscription Found", isPresented: $showRestoreAlert) {
             Button("OK") {}
         } message: {

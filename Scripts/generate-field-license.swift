@@ -9,6 +9,7 @@ import CryptoKit
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //       [--profile https://…]   the organisation's hosted profile; entering the code enrols the phone (Plan CT 3a)
+//       [--organization-id ID --profile-id ID]  desktop-managed inline profile binding; both required
 //       [--activation-key [--activation-dir activation]]
 //                               also mint a short activation key and write its sealed file (Plan CT 3a)
 //
@@ -43,6 +44,8 @@ struct LicensePayload: Codable {
     var reference: String?
     var packs: [String]?
     var profile: String?
+    var organizationID: String?
+    var profileID: String?
 }
 
 /// Plan CT 3a — mirrors `ActivationKey` in the app, byte for byte: Crockford base32, fifteen random
@@ -245,6 +248,7 @@ usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--key-file <path|->]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
          [--seats N] [--reference TEXT] [--days N] [--pack KEY ...] [--profile https://…]
+         [--organization-id ID --profile-id ID]
          [--activation-key [--activation-dir DIR]]
        generate-field-license.swift keygen <privateKeyFile>
 
@@ -266,6 +270,8 @@ var reference: String?
 var days: Int?
 var packs: [String] = []
 var profileAddress: String?
+var organizationID: String?
+var profileID: String?
 var mintActivationKey = false
 var activationDirectory = "activation"
 var keyFile: String?
@@ -300,6 +306,10 @@ while let arg = iterator.next() {
             fail("--profile must be an https address with no credentials or fragment")
         }
         profileAddress = address
+    case "--organization-id":
+        organizationID = value(arg)
+    case "--profile-id":
+        profileID = value(arg)
     case "--activation-key":
         mintActivationKey = true
     case "--activation-dir":
@@ -329,6 +339,19 @@ if let days {
 }
 if plan == "pilot" && expires == nil { fail("a pilot code must expire — pass --days or an expiry") }
 if plan == "enterprise" && tier == nil { tier = "enterprise" }
+if organizationID != nil || profileID != nil {
+    func safeID(_ id: String?) -> Bool {
+        guard let id, !id.isEmpty, id.utf8.count <= 80, id != ".", id != ".." else { return false }
+        return id.utf8.allSatisfy { (48...57).contains($0) || (65...90).contains($0)
+            || (97...122).contains($0) || $0 == 45 || $0 == 95 || $0 == 46 }
+    }
+    guard safeID(organizationID), safeID(profileID) else {
+        fail("--organization-id and --profile-id must both be safe IDs (1–80 ASCII letters, digits, dot, hyphen or underscore)")
+    }
+    guard profileAddress == nil, !mintActivationKey else {
+        fail("desktop-managed licences use inline signed profiles; omit --profile and --activation-key")
+    }
+}
 
 guard let keyData = Data(base64Encoded: resolvePrivateKey(keyFile: keyFile)) else {
     fail("Signing key is not valid base64.")
@@ -339,7 +362,8 @@ do {
     let payload = LicensePayload(feature: "field_assist", licensee: licensee, issued: Date(), expires: expires,
                                  tier: tier, plan: plan, seats: seats, reference: reference,
                                  packs: packs.isEmpty ? nil : packs,
-                                 profile: profileAddress)
+                                 profile: profileAddress,
+                                 organizationID: organizationID, profileID: profileID)
 
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601

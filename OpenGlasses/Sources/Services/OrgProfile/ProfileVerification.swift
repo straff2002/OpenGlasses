@@ -47,6 +47,7 @@ enum ProfileVerification {
         case licenceExpired(Date)
         /// The licence the profile carries does not verify against the licence key.
         case licenceInvalid
+        case invalidOfficeAuthority
 
         var errorDescription: String? {
             switch self {
@@ -64,6 +65,8 @@ enum ProfileVerification {
                 return "The licence in this profile expired on \(date.formatted(date: .abbreviated, time: .omitted)). Ask your organisation to renew it."
             case .licenceInvalid:
                 return "The licence in this profile failed verification. Ask your organisation for a new code."
+            case .invalidOfficeAuthority:
+                return "This profile has an invalid office authority. Ask your organisation for a corrected profile."
             }
         }
     }
@@ -113,7 +116,24 @@ enum ProfileVerification {
         guard profile.schemaVersion <= ConfigProfile.supportedSchemaVersion else {
             throw Failure.unsupportedSchema(profile.schemaVersion)
         }
+        guard profile.schemaVersion >= 1,
+              (profile.schemaVersion == 2 ? validOfficeAuthority(profile.officeAuthority) : profile.officeAuthority == nil) else {
+            throw Failure.invalidOfficeAuthority
+        }
         return .profile(profile)
+    }
+
+    static func validOfficeAuthority(_ authority: ConfigProfile.OfficeAuthority?) -> Bool {
+        guard let authority,
+              !authority.organizationID.isEmpty, authority.organizationID.utf8.count <= 80,
+              authority.organizationID.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0)
+                  || (97...122).contains($0) || $0 == 45 || $0 == 95 || $0 == 46 }),
+              authority.organizationID != ".", authority.organizationID != "..",
+              ["privateLan", "automatic"].contains(authority.transportPolicy),
+              let key = Data(base64Encoded: authority.administratorPublicKey), key.count == 32,
+              key.base64EncodedString() == authority.administratorPublicKey,
+              (try? Curve25519.Signing.PublicKey(rawRepresentation: key)) != nil else { return false }
+        return true
     }
 
     /// Why a verified profile must not be enrolled right now, naming which clock ran out — or nil.

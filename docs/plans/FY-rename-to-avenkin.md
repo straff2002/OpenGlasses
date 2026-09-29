@@ -15,8 +15,8 @@ and only Avenkin Office moves to a private repository (*Decisions 2026-09-29*).
 **Depends on:** nothing in code for F1 and F3. P1 and P2 wait until the desktop thread's phone-side
 changes (with the `Contracts/` and `Transport/` moves) have merged into this repository as their own
 public PR (*Sequencing*).
-**Related:** Plan FX (Avenkin Office — desktop administration and device sync; developed in the
-private desktop repository from 2026-09-29), Plan EE (Field Assist commercial licensing — the
+**Related:** [Plan FX](FX-desktop-office-and-device-sync.md) (the phone's connection to Avenkin Office; the
+desktop itself is developed in the private desktop repository from 2026-09-29), Plan EE (Field Assist commercial licensing — the
 product ids and licence format stay), Plan CT (org profiles and activation keys — the signing domains stay, and add-on entitlements ride on
 the profile), Plans FT/FU (the office tools that become add-ons), Plan DQ (privacy copy — the
 same PR rule applies to renamed copy), Plan EC (UI localisation — the renamed strings must reach every

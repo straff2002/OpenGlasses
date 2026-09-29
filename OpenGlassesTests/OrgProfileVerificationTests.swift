@@ -19,13 +19,14 @@ final class OrgProfileVerificationTests: XCTestCase {
 
     private var privateKeyBase64: String { privateKey.rawRepresentation.base64EncodedString() }
 
-    private func profile(schemaVersion: Int = ConfigProfile.supportedSchemaVersion,
+    private func profile(schemaVersion: Int = 1,
                          policyExpiry: Date? = nil,
-                         licenceCode: String? = nil) -> ConfigProfile {
+                         licenceCode: String? = nil,
+                         officeAuthority: ConfigProfile.OfficeAuthority? = nil) -> ConfigProfile {
         ConfigProfile(
             keyId: keyId, profileId: "northbridge-field", organizationName: "Northbridge Mechanical",
             issued: Date(timeIntervalSince1970: 1_790_000_000), policyExpiry: policyExpiry,
-            leaseDays: 30, licenceCode: licenceCode,
+            leaseDays: 30, licenceCode: licenceCode, officeAuthority: officeAuthority,
             settings: ["privacyFilterEnabled": RawSetting(.bool(true), .ceiling)],
             schemaVersion: schemaVersion)
     }
@@ -43,6 +44,30 @@ final class OrgProfileVerificationTests: XCTestCase {
         let original = profile()
         let text = try ProfileVerification.makeDocument(original, privateKeyBase64: privateKeyBase64)
         XCTAssertEqual(try ProfileVerification.verify(text, keys: keys), .profile(original))
+    }
+
+    func testSchemaTwoRequiresValidOfficeAuthority() throws {
+        let admin = Curve25519.Signing.PrivateKey()
+        let authority = ConfigProfile.OfficeAuthority(
+            organizationID: "northbridge", administratorPublicKey: admin.publicKey.rawRepresentation.base64EncodedString(),
+            transportPolicy: "privateLan")
+        let valid = profile(schemaVersion: 2, officeAuthority: authority)
+        let validDocument = try ProfileVerification.makeDocument(valid, privateKeyBase64: privateKeyBase64)
+        XCTAssertEqual(try ProfileVerification.verify(validDocument, keys: keys), .profile(valid))
+
+        for invalid in [profile(schemaVersion: 2),
+                        profile(schemaVersion: 1, officeAuthority: authority),
+                        profile(schemaVersion: 2, officeAuthority: .init(
+                            organizationID: "../other", administratorPublicKey: authority.administratorPublicKey,
+                            transportPolicy: "privateLan")),
+                        profile(schemaVersion: 2, officeAuthority: .init(
+                            organizationID: "northbridge", administratorPublicKey: authority.administratorPublicKey,
+                            transportPolicy: "relay://arbitrary"))] {
+            let signed = try ProfileVerification.makeDocument(invalid, privateKeyBase64: privateKeyBase64)
+            XCTAssertThrowsError(try ProfileVerification.verify(signed, keys: keys)) {
+                XCTAssertEqual($0 as? ProfileVerification.Failure, .invalidOfficeAuthority)
+            }
+        }
     }
 
     func testSignedRevocationVerifies() throws {

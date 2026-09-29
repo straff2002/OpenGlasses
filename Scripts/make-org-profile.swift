@@ -34,7 +34,10 @@ import CoreImage
 //   licenceCode, vaultPack {packId, documentsSource}, skillPacks [..],
 //   revokedEnrolmentIds [..], settings {<SettingKey>: {value, disposition}},
 //   aiModel {provider, model, baseURL, name}  (the provider and model only — never a key),
-//   edition ("fieldAssist"), adminCard (the digest `admin-card` printed)                    optional
+//   edition ("fieldAssist"), adminCard (the digest `admin-card` printed),
+//   officeAuthority {organizationID, administratorPublicKey, transportPolicy}              optional
+//   officeAuthority emits schema 2. Older profiles remain schema 1. `transportPolicy` is
+//   `privateLan` or `automatic`; it is never a relay URL or a private key.
 //
 // The signature covers "openglasses.org-profile.v1\n" (or "…org-revocation.v1\n") followed by the
 // payload bytes, which are shipped as-is — so the encoding here only has to be valid, not
@@ -78,6 +81,11 @@ struct RawSetting: Codable { let value: ProfileValue; let disposition: String }
 struct VaultPackReference: Codable { let packId: String; let documentsSource: String? }
 struct AIModel: Codable { let provider: String; let model: String; let baseURL: String?; let name: String? }
 struct PasscodeVerifier: Codable { let salt: String; let iterations: Int; let hash: String }
+struct OfficeAuthority: Codable {
+    let organizationID: String
+    let administratorPublicKey: String
+    let transportPolicy: String
+}
 
 /// Mirrors AdminSecrets in the app (OpenGlasses/Sources/Services/OrgProfile/AdminSecrets.swift).
 enum AdminSecrets {
@@ -155,6 +163,7 @@ struct Input: Codable {
     let aiModel: AIModel?
     let edition: String?
     let adminCard: String?
+    let officeAuthority: OfficeAuthority?
 }
 
 struct ConfigProfile: Codable {
@@ -176,6 +185,7 @@ struct ConfigProfile: Codable {
     let edition: String?
     let adminPasscode: PasscodeVerifier?
     let adminCard: String?
+    let officeAuthority: OfficeAuthority?
     let settings: [String: RawSetting]
 }
 
@@ -240,6 +250,18 @@ func check(_ input: Input) {
     }
     if input.edition == nil && (input.adminCard != nil || adminPasscodeRequested) {
         fail("error: an admin card or passcode only applies with an edition")
+    }
+    if let authority = input.officeAuthority {
+        let id = authority.organizationID
+        guard !id.isEmpty, id.utf8.count <= 80, id != ".", id != "..",
+              id.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0)
+                  || (97...122).contains($0) || $0 == 45 || $0 == 95 || $0 == 46 }),
+              ["privateLan", "automatic"].contains(authority.transportPolicy),
+              let key = Data(base64Encoded: authority.administratorPublicKey), key.count == 32,
+              key.base64EncodedString() == authority.administratorPublicKey,
+              (try? Curve25519.Signing.PublicKey(rawRepresentation: key)) != nil else {
+            fail("error: officeAuthority needs a safe organizationID, a 32-byte signing public key and privateLan/automatic policy")
+        }
     }
     if let model = input.aiModel {
         guard knownProviders.contains(model.provider) else {
@@ -443,7 +465,7 @@ case "make":
     check(input)
     let key = readKey(keyFile)
     let profile = ConfigProfile(
-        format: "openglasses.org-profile", schemaVersion: 1, keyId: keyId,
+        format: "openglasses.org-profile", schemaVersion: input.officeAuthority == nil ? 1 : 2, keyId: keyId,
         profileId: input.profileId, organizationName: input.organizationName, issued: now(),
         policyExpiry: input.policyExpiry.flatMap { ISO8601DateFormatter().date(from: $0) },
         leaseDays: input.leaseDays, eraseAfterLapseDays: input.eraseAfterLapseDays,
@@ -453,6 +475,7 @@ case "make":
         edition: input.edition,
         adminPasscode: adminPasscodeRequested ? AdminSecrets.verifier(for: promptPasscode()) : nil,
         adminCard: input.adminCard?.lowercased(),
+        officeAuthority: input.officeAuthority,
         settings: input.settings ?? [:])
     guard let payload = try? encoder.encode(profile) else { fail("error: could not encode the profile") }
     let document = sign(payload, domain: "openglasses.org-profile.v1\n", key: key)
@@ -460,7 +483,9 @@ case "make":
         fail("error: could not write \(positional[2])")
     }
     FileHandle.standardError.write(payload + Data("\n".utf8))
-    print("profile written: \(positional[2]) — host it at the URL the QR code or link points to")
+    print(input.officeAuthority == nil
+        ? "profile written: \(positional[2]) — use the existing profile URL or link"
+        : "office-capable profile written: \(positional[2]) — signed inline delivery is supported; no hosting URL is required")
 
 case "revoke":
     guard positional.count == 3 else { fail(usage) }

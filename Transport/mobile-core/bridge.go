@@ -1,0 +1,604 @@
+// Package mobilecore embeds the pinned Syncthing engine for the FX0 lab and a managed,
+// certificate-pinned handshake. It exposes no management server, private keys or arbitrary
+// folder sharing.
+package mobilecore
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"avenkin.dev/mobilecore/officepreview"
+
+	"github.com/syncthing/syncthing/lib/build"
+	"github.com/syncthing/syncthing/lib/config"
+	"github.com/syncthing/syncthing/lib/events"
+	"github.com/syncthing/syncthing/lib/locations"
+	"github.com/syncthing/syncthing/lib/model"
+	"github.com/syncthing/syncthing/lib/protocol"
+	"github.com/syncthing/syncthing/lib/svcutil"
+	"github.com/syncthing/syncthing/lib/syncthing"
+)
+
+const controlFolder = "avenkin-fx0-phone-control"
+const reportFolder = "avenkin-fx0-phone-reports"
+
+var engineActive atomic.Bool // Syncthing locations are process-wide.
+
+type Client struct {
+	workers   sync.WaitGroup
+	guard     *requestGuard
+	manualLab bool
+	managed   bool
+	preview   *officepreview.Phone
+	mu        sync.Mutex
+	home      string
+	id        string
+	peer      protocol.DeviceID
+	app       *syncthing.App
+	cancel    context.CancelFunc
+	mode      string
+	route     string
+	routeMu   sync.Mutex
+}
+
+type binding struct {
+	ManualLab       bool   `json:"manualLab"`
+	DeviceID        string `json:"deviceID"`
+	Address         string `json:"address"`
+	Mode            string `json:"mode"`
+	RequiredNetwork string `json:"requiredNetwork"`
+}
+
+func parseBinding(raw string) (binding, protocol.DeviceID, error) {
+	var b binding
+	if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		return b, protocol.EmptyDeviceID, err
+	}
+	id, err := protocol.DeviceIDFromString(b.DeviceID)
+	if err != nil || id == protocol.EmptyDeviceID {
+		return b, id, errors.New("invalid office device ID")
+	}
+	if b.Mode == "" {
+		b.Mode = "lan"
+	}
+	if b.RequiredNetwork != "" && b.RequiredNetwork != "any" && b.RequiredNetwork != "cellular" {
+		return b, id, errors.New("invalid required network")
+	}
+	if b.Mode == "automatic" {
+		if b.Address != "dynamic" {
+			return b, id, errors.New("automatic mode requires discovery, not a fixed endpoint")
+		}
+		return b, id, nil
+	}
+	u, err := url.Parse(b.Address)
+	if b.Mode == "forced-relay" {
+		if err != nil || u.Scheme != "relay" || u.User != nil || (u.Path != "" && u.Path != "/") || u.Fragment != "" || u.Hostname() == "" || u.Port() == "" {
+			return b, id, errors.New("expected selected community relay URI")
+		}
+		query, err := url.ParseQuery(u.RawQuery)
+		if err != nil || len(query["id"]) != 1 || query.Has("token") {
+			return b, id, errors.New("expected public relay with pinned identity and no token")
+		}
+		if relayID, err := protocol.DeviceIDFromString(query.Get("id")); err != nil || relayID == protocol.EmptyDeviceID {
+			return b, id, errors.New("invalid relay identity")
+		}
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return b, id, errors.New("invalid relay port")
+		}
+		return b, id, nil
+	}
+	if b.Mode != "lan" || b.RequiredNetwork == "cellular" {
+		return b, id, errors.New("invalid LAN mode")
+	}
+	if err != nil || u.Scheme != "tcp" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return b, id, errors.New("expected a direct LAN tcp address")
+	}
+	ip := net.ParseIP(u.Hostname())
+	if ip == nil || !ip.IsPrivate() || u.Port() == "" {
+		return b, id, errors.New("office address must be a private LAN IP and port")
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil || port < 1 || port > 65535 {
+		return b, id, errors.New("invalid office port")
+	}
+	if _, err := net.ResolveTCPAddr("tcp", u.Host); err != nil {
+		return b, id, err
+	}
+	return b, id, nil
+}
+
+// NewClient creates an identity in the app's private Application Support directory.
+func NewClient(home string) (*Client, error) {
+	if !filepath.IsAbs(home) {
+		return nil, errors.New("expected an absolute app-private path")
+	}
+	if err := os.MkdirAll(home, 0700); err != nil {
+		return nil, err
+	}
+	cert, err := syncthing.LoadOrGenerateCertificate(filepath.Join(home, "cert.pem"), filepath.Join(home, "key.pem"))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{home: home, id: protocol.NewDeviceID(cert.Certificate[0]).String()}, nil
+}
+
+func (c *Client) DeviceID() string { return c.id }
+
+// Start accepts one explicit desktop fingerprint and an explicit network mode.
+func (c *Client) Start(bindingJSON string) error { return c.start(bindingJSON, nil) }
+
+// StartManagedOffice opens only a certificate-pinned private-LAN connection. It creates no
+// folders and cannot receive a job or manual. The native phone caller must reverify its saved
+// vendor/administrator binding and live entitlement before invoking this method.
+func (c *Client) StartManagedOffice(officeTransportID, address string) error {
+	raw, err := json.Marshal(binding{DeviceID: officeTransportID, Address: address,
+		Mode: "lan", RequiredNetwork: "any"})
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.startLocked(string(raw), nil, true)
+}
+
+func (c *Client) start(bindingJSON string, preview *officepreview.Phone) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.startLocked(bindingJSON, preview, false)
+}
+func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, managed bool) (err error) {
+	if c.app != nil {
+		return errors.New("engine already running")
+	}
+	b, peer, err := parseBinding(bindingJSON)
+	if err != nil {
+		return err
+	}
+	if b.DeviceID == c.id {
+		return errors.New("office and phone identities must differ")
+	}
+	if !engineActive.CompareAndSwap(false, true) {
+		return errors.New("another embedded engine is active")
+	}
+	defer func() {
+		if err != nil {
+			engineActive.Store(false)
+		}
+	}()
+	build.Version = "v2.1.5"
+	if managed {
+		build.User = "avenkin-managed-office"
+	} else {
+		build.User = "avenkin-device-lab"
+	}
+	locations.SetBaseDir(locations.DataBaseDir, c.home)
+	locations.SetBaseDir(locations.ConfigBaseDir, c.home)
+	locations.SetBaseDir(locations.UserHomeBaseDir, c.home)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		if err != nil {
+			cancel()
+			c.workers.Wait()
+		}
+	}()
+	logger := events.NewLogger()
+	c.workers.Add(1)
+	go func() { defer c.workers.Done(); _ = logger.Serve(ctx) }()
+	self, _ := protocol.DeviceIDFromString(c.id)
+	conf := networkConfig(self, b.Mode)
+	if managed {
+		// The phone dials the reviewed office address. This stage has no incoming
+		// listener, discovery, relay or shared folder.
+		conf.Options.RawListenAddresses = []string{}
+	}
+	device := conf.Defaults.Device.Copy()
+	peerName := "Avenkin synthetic office"
+	if managed {
+		peerName = "Avenkin approved office"
+	}
+	device.DeviceID, device.Name, device.Addresses = peer, peerName, []string{b.Address}
+	device.Introducer, device.AutoAcceptFolders = false, false
+	conf.SetDevice(device)
+	folders := []struct {
+		id   string
+		mode config.FolderType
+	}{}
+	if !managed {
+		folders = append(folders, struct {
+			id   string
+			mode config.FolderType
+		}{controlFolder, config.FolderTypeReceiveOnly}, struct {
+			id   string
+			mode config.FolderType
+		}{reportFolder, config.FolderTypeSendOnly})
+	}
+	if b.ManualLab {
+		folders = append(folders, struct {
+			id   string
+			mode config.FolderType
+		}{manualFolder, config.FolderTypeReceiveOnly})
+	}
+	if preview != nil {
+		i, e := preview.Binding()
+		if e != nil {
+			return e
+		}
+		in, out, manuals := officepreview.Folders(i.PairID)
+		folders = []struct {
+			id   string
+			mode config.FolderType
+		}{{in, config.FolderTypeReceiveOnly}, {out, config.FolderTypeSendOnly}, {manuals, config.FolderTypeReceiveOnly}}
+	}
+	for _, spec := range folders {
+		folder := conf.Defaults.Folder.Copy()
+		folder.ID, folder.Label, folder.Path, folder.Type = spec.id, "Synthetic fixtures only", filepath.Join(c.home, spec.id), spec.mode
+		folder.FSWatcherEnabled, folder.IgnorePerms, folder.RescanIntervalS = false, true, 1
+		folder.Devices = []config.FolderDeviceConfiguration{{DeviceID: self}, {DeviceID: peer}}
+		if err = os.MkdirAll(filepath.Join(folder.Path, ".stfolder"), 0700); err != nil {
+			return err
+		}
+		conf.SetFolder(folder)
+	}
+	wrapper := config.Wrap(filepath.Join(c.home, "config.xml"), conf, self, logger)
+	c.workers.Add(1)
+	go func() { defer c.workers.Done(); _ = wrapper.Serve(ctx) }()
+	if err = wrapper.Save(); err != nil {
+		return err
+	}
+	cert, err := syncthing.LoadOrGenerateCertificate(filepath.Join(c.home, "cert.pem"), filepath.Join(c.home, "key.pem"))
+	if err != nil {
+		return err
+	}
+	database, err := syncthing.OpenDatabase(locations.Get(locations.Database), 4320*time.Hour)
+	if err != nil {
+		return err
+	}
+	app, err := syncthing.New(wrapper, database, logger, cert, syncthing.Options{NoUpgrade: true, ModelWrapper: func(m model.Model) model.Model {
+		c.guard = &requestGuard{Model: m}
+		if preview != nil {
+			i, _ := preview.Binding()
+			_, out, _ := officepreview.Folders(i.PairID)
+			c.guard.allowedFolder = out
+		}
+		return c.guard
+	}})
+	if err != nil {
+		database.Close()
+		return err
+	}
+	subscription := logger.Subscribe(events.DeviceConnected)
+	c.workers.Add(1)
+	go func() {
+		defer c.workers.Done()
+		defer subscription.Unsubscribe()
+		for ctx.Err() == nil {
+			event, err := subscription.Poll(time.Second)
+			if err != nil {
+				continue
+			}
+			if data, ok := event.Data.(map[string]string); ok && data["id"] == b.DeviceID {
+				c.routeMu.Lock()
+				c.route = data["type"]
+				c.routeMu.Unlock()
+			}
+		}
+	}()
+	if err = app.Start(); err != nil {
+		app.Stop(svcutil.ExitError)
+		return err
+	}
+	c.app, c.cancel, c.peer, c.mode, c.manualLab, c.preview, c.managed = app, cancel, peer, b.Mode, b.ManualLab, preview, managed
+	return nil
+}
+
+func networkConfig(id protocol.DeviceID, mode string) config.Configuration {
+	conf := directConfig(id)
+	opt := &conf.Options
+	if mode == "automatic" {
+		opt.RawListenAddresses = []string{"tcp://0.0.0.0:0", "quic://0.0.0.0:0", "dynamic+https://relays.syncthing.net/endpoint"}
+		opt.RawGlobalAnnServers, opt.RawStunServers = []string{"default"}, []string{"default"}
+		opt.GlobalAnnEnabled, opt.LocalAnnEnabled, opt.RelaysEnabled, opt.NATEnabled = true, true, true, true
+		opt.StunKeepaliveStartS, opt.RelayReconnectIntervalM = 180, 1
+	} else if mode == "forced-relay" {
+		// Outbound only to the desktop's selected relay; no direct listener,
+		// dynamic peer lookup, NAT, STUN or local discovery can bypass it.
+		opt.RawListenAddresses = []string{}
+		opt.RelaysEnabled = true
+	}
+	return conf
+}
+
+func directConfig(id protocol.DeviceID) config.Configuration {
+	conf := config.New(id)
+	conf.Folders = nil
+	conf.GUI.Enabled = false
+	opt := &conf.Options
+	opt.RawListenAddresses = []string{"tcp://0.0.0.0:0"}
+	opt.RawGlobalAnnServers, opt.RawStunServers = []string{}, []string{}
+	opt.GlobalAnnEnabled, opt.LocalAnnEnabled, opt.RelaysEnabled, opt.NATEnabled = false, false, false, false
+	opt.StartBrowser, opt.CREnabled, opt.UpgradeToPreReleases = false, false, false
+	opt.URAccepted, opt.AutoUpgradeIntervalH, opt.StunKeepaliveStartS = -1, 0, 0
+	opt.CRURL, opt.URURL, opt.ReleasesURL = "", "", ""
+	opt.ReconnectIntervalS = 5
+	return conf
+}
+
+// Snapshot returns public test evidence only; no keys, paths, or logs.
+func (c *Client) Snapshot() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	status := map[string]any{"deviceID": c.id, "engineVersion": "v2.1.5", "running": c.app != nil, "connected": false, "receivedJob": false, "receiptPublished": false}
+	status["networkMode"] = c.mode
+	status["managedOffice"] = c.managed
+	status["engineExtension"] = "avenkin-model-hook.1"
+	if c.guard != nil {
+		status["outboundGuardActive"] = true
+		status["outboundRequestsDenied"] = c.guard.denied.Load()
+		status["temporaryRequestsDenied"] = c.guard.temporaryDenied.Load()
+		status["manualRequestsDenied"] = c.guard.manualDenied.Load()
+	}
+	c.routeMu.Lock()
+	status["observedConnectionType"] = c.route
+	c.routeMu.Unlock()
+	if c.app != nil {
+		status["connected"] = c.app.Internals.IsConnectedTo(c.peer)
+	}
+	if c.preview != nil {
+		if i, e := c.preview.Binding(); e == nil {
+			in, out, manuals := officepreview.Folders(i.PairID)
+			path := filepath.Join(c.home, in, "delivery.json")
+			if raw, e := officepreview.ReadFile(path, officepreview.MaximumEnvelope); e == nil {
+				ready, e := c.preview.Receive(string(raw), filepath.Join(c.home, manuals), officepreview.Now())
+				if e != nil {
+					status["deliveryError"] = e.Error()
+				} else if ready && c.app != nil {
+					destination := filepath.Join(c.home, out, "receipt.json")
+					previous, _ := officepreview.ReadFile(destination, officepreview.MaximumEnvelope)
+					if string(previous) != c.preview.State.Receipt {
+						if e = officepreview.Atomic(destination, []byte(c.preview.State.Receipt)); e != nil {
+							return "", e
+						}
+						if e = c.app.Internals.ScanFolderSubdirs(out, nil); e != nil {
+							return "", e
+						}
+					}
+				}
+			} else if !os.IsNotExist(e) {
+				status["deliveryError"] = e.Error()
+			}
+		}
+		status["officePreview"] = c.preview.Public()
+		return stringJSON(status)
+	}
+	if c.managed {
+		status["sharedFolders"] = 0
+		return stringJSON(status)
+	}
+	jobPath := filepath.Join(c.home, controlFolder, "job.json")
+	info, err := os.Lstat(jobPath)
+	if err == nil {
+		if !info.Mode().IsRegular() || info.Size() > 4096 {
+			return "", errors.New("invalid synthetic fixture file")
+		}
+		data, err := os.ReadFile(jobPath)
+		if err != nil {
+			return "", err
+		}
+		receipt, err := fixtureReceipt(data)
+		if err != nil {
+			return "", err
+		}
+		status["receivedJob"] = true
+		var parsed map[string]string
+		_ = json.Unmarshal(receipt, &parsed)
+		if c.manualLab {
+			digest, staged, err := c.inspectManualFixture(data)
+			if err != nil {
+				return "", err
+			}
+			status["manualSHA256"], status["manualStagingVerified"] = digest, staged
+			if digest != "" {
+				parsed["manualSHA256"] = digest
+				receipt, _ = json.Marshal(parsed)
+			}
+		}
+		status["jobSHA256"], status["nonce"] = parsed["jobSHA256"], parsed["nonce"]
+		status["desktopVerifiedNonce"] = verifiedDesktopNonce(c.home, parsed["nonce"], parsed["jobSHA256"])
+		dest := filepath.Join(c.home, reportFolder, "receipt.json")
+		previous, _ := os.ReadFile(dest)
+		if string(previous) != string(receipt) {
+			if c.app == nil {
+				return stringJSON(status)
+			}
+			// Stage outside the shared folder, then publish atomically.
+			staging := filepath.Join(c.home, "receipt.tmp")
+			if err := os.WriteFile(staging, receipt, 0600); err != nil {
+				return "", err
+			}
+			if err := os.Rename(staging, dest); err != nil {
+				return "", err
+			}
+			if err := c.app.Internals.ScanFolderSubdirs(reportFolder, nil); err != nil {
+				return "", err
+			}
+		}
+		status["receiptPublished"] = true
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	return stringJSON(status)
+}
+
+func fixtureReceipt(data []byte) ([]byte, error) {
+	var job struct {
+		Kind  string `json:"kind"`
+		Nonce string `json:"nonce"`
+	}
+	if len(data) > 4096 || json.Unmarshal(data, &job) != nil || job.Kind != "avenkin-fx0-synthetic-job" || len(job.Nonce) != 32 {
+		return nil, errors.New("expected an Avenkin synthetic job")
+	}
+	if _, err := hex.DecodeString(job.Nonce); err != nil {
+		return nil, fmt.Errorf("invalid test nonce: %w", err)
+	}
+	digest := sha256.Sum256(data)
+	return json.Marshal(map[string]string{"kind": "avenkin-fx0-synthetic-receipt", "nonce": job.Nonce, "jobSHA256": hex.EncodeToString(digest[:])})
+}
+
+func stringJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	return string(data), err
+}
+
+func (c *Client) Stop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.app != nil {
+		c.app.Stop(svcutil.ExitSuccess)
+		c.cancel()
+		c.workers.Wait()
+		c.app, c.cancel = nil, nil
+		c.managed = false
+		engineActive.Store(false)
+	}
+}
+
+// BeginOfficePairing proves the companion's application-key possession. Human
+// comparison and desktop approval are required before any preview folders start.
+func (c *Client) BeginOfficePairing(invite string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.app != nil {
+		return "", errors.New("stop the current connection before pairing")
+	}
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return "", e
+	}
+	response, comparison, e := p.Respond(invite, officepreview.Now())
+	if e != nil {
+		return "", e
+	}
+	c.preview = p
+	return stringJSON(map[string]string{"response": response, "comparison": comparison, "phoneID": c.id})
+}
+func (c *Client) ConfirmOfficePairing(confirmation string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.app != nil {
+		return errors.New("stop the current connection before confirming")
+	}
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return e
+	}
+	if e = p.Confirm(confirmation, officepreview.Now()); e != nil {
+		return e
+	}
+	c.preview = p
+	return nil
+}
+func (c *Client) StartOffice() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return e
+	}
+	i, e := p.Binding()
+	if e != nil {
+		return e
+	}
+	raw, e := json.Marshal(binding{DeviceID: i.OfficeID, Address: i.Address, Mode: "lan", RequiredNetwork: "any"})
+	if e != nil {
+		return e
+	}
+	return c.startLocked(string(raw), p, false)
+}
+func (c *Client) OfficePairingStatus() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return "", e
+	}
+	if p.State.Confirmation != "" {
+		if _, e = p.Binding(); e != nil {
+			return "", e
+		}
+	}
+	if c.app == nil && p.State.Invite != "" {
+		c.preview = p
+	}
+	return stringJSON(p.Public())
+}
+func (c *Client) CancelOfficePairing() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.app != nil {
+		return errors.New("stop the current connection first")
+	}
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return e
+	}
+	if p.State.Confirmation != "" {
+		return errors.New("paired devices require a separate revocation flow")
+	}
+	p.State.Invite = ""
+	p.State.Response = ""
+	if e = p.CancelPending(); e != nil {
+		return e
+	}
+	c.preview = nil
+	return nil
+}
+
+// OpenOfficeManual returns only a byte-verified, native-owned viewer copy from the
+// current signed delivery. There is no path or peer-supplied filename parameter.
+func (c *Client) OpenOfficeManual(manualID string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, e := officepreview.OpenPhone(filepath.Join(c.home, "OfficePreview"), c.id)
+	if e != nil {
+		return "", e
+	}
+	if _, e = p.Binding(); e != nil {
+		return "", e
+	}
+	if e = officepreview.ValidateManuals(p.State.Manuals); e != nil {
+		return "", e
+	}
+	if p.State.Receipt == "" {
+		return "", errors.New("manual delivery has not committed")
+	}
+	for _, m := range p.State.Manuals {
+		if m.ID == manualID {
+			b, e := officepreview.ReadFile(filepath.Join(p.Root, "library", m.SourceSHA256), m.Bytes)
+			if e != nil {
+				return "", e
+			}
+			if int64(len(b)) != m.Bytes || officepreview.Digest(b) != m.SourceSHA256 {
+				return "", errors.New("saved manual integrity check failed")
+			}
+			path := filepath.Join(p.Root, "viewer", m.SourceSHA256+"."+m.Format)
+			if e = officepreview.Atomic(path, b); e != nil {
+				return "", e
+			}
+			return path, nil
+		}
+	}
+	return "", errors.New("manual is not in the current delivery")
+}
