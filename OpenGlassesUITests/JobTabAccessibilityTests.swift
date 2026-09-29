@@ -77,7 +77,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
 
         let pastJob = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
-        awaitScreen(pastJob, named: "A past job row")
+        reachThePastJobs(pastJob, in: app)
 
         audit(app, screen: "Job tab — past jobs",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
@@ -321,7 +321,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
 
         let row = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
-        awaitScreen(row, named: "A past job row")
+        reachThePastJobs(row, in: app)
         row.tap()
 
         let block = app.staticTexts["Customer acceptance"]
@@ -420,6 +420,19 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     /// A `List` builds its rows lazily, so a control below the fold is not merely off-screen — it
     /// does not exist yet. Existence alone would therefore assert nothing about a long screen at a
     /// large text size, which is the case this is here to cover.
+    /// Bring a past job's row into reach on the no-job screen.
+    ///
+    /// Past jobs are the last section, under the vault, Start job, the jobs ahead and Today. On a
+    /// short phone (CI's iPhone 16e) that puts the first row below the fold, and a `List` has not
+    /// built a row it has not reached, so waiting for it alone never succeeds. Wait for the screen
+    /// itself, then scroll to the row.
+    private func reachThePastJobs(_ row: XCUIElement, in app: XCUIApplication,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+        awaitScreen(app.buttons["Start job"], named: "The Job tab's empty state",
+                    file: file, line: line)
+        scrollUntilVisible(row, in: app, named: "A past job row", file: file, line: line)
+    }
+
     private func scrollUntilVisible(_ element: XCUIElement, in app: XCUIApplication,
                                     named name: String, swipes: Int = 8,
                                     file: StaticString = #filePath, line: UInt = #line) {
