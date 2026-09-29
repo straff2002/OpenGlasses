@@ -10,7 +10,14 @@
 (function() {
   var search = window.location.search || '';
   var hash = window.location.hash || '';
-  var appScheme = 'mwdat-688603774243722://' + window.location.pathname;
+  // The Meta registration names this page at straff2002.github.io/OpenGlasses/. Served from a
+  // custom domain the same page sits at the root, so rebuild the /OpenGlasses/ path: the app
+  // must get the same link whichever address served the page.
+  var path = window.location.pathname || '/';
+  if (path.indexOf('/OpenGlasses/') !== 0) {
+    path = '/OpenGlasses' + (path.charAt(0) === '/' ? path : '/' + path);
+  }
+  var appScheme = 'mwdat-688603774243722://' + path;
   if (search) appScheme += search;
   if (hash) appScheme += hash;
   
