@@ -16,11 +16,11 @@ enum CameraErrorPolicy {
         switch error {
         case .hingesClosed:
             return "Glasses hinges are closed — open them to use the camera."
-        case .thermalCritical, .thermalEmergency:
+        case .thermalHot:
             return "Glasses are too hot — let them cool down."
-        case .batteryCritical:
+        case .batteryLow:
             return "Glasses battery is too low — charge them to use the camera."
-        case .peakPowerShutdown:
+        case .peakPowerLimit:
             return "Glasses hit a power limit — try again in a moment."
         case .permissionDenied:
             return "Camera permission is required."
@@ -32,6 +32,8 @@ enum CameraErrorPolicy {
             return "The glasses camera timed out — try again."
         case .videoStreamingError:
             return "Glasses video streaming hit an error — try again."
+        case .audioStreamingError:
+            return "Glasses audio streaming hit an error — try again."
         case .internalError:
             return "The glasses camera hit an internal error — try again."
         case .photoCaptureFailed:
@@ -47,13 +49,15 @@ enum CameraErrorPolicy {
     /// capture (or the existing timeout backstop) may still resolve.
     static func abortsCapture(_ error: StreamError) -> Bool {
         switch error {
-        case .hingesClosed, .timeout, .thermalCritical, .thermalEmergency,
-             .peakPowerShutdown, .batteryCritical, .permissionDenied,
-             .deviceNotConnected, .deviceNotFound, .photoCaptureFailed:
+        case .hingesClosed, .timeout, .thermalHot, .peakPowerLimit, .batteryLow,
+             .permissionDenied, .deviceNotConnected, .deviceNotFound, .photoCaptureFailed:
             // .photoCaptureFailed (0.9.0, replaces the never-emitted CaptureError) is the
             // device saying THIS capture is dead — fall back to the latest frame now.
             return true
-        case .internalError, .videoStreamingError:
+        case .internalError, .videoStreamingError,
+             // DAT 1.0; only reachable with camera audio enabled, which we never request (it is
+             // [Experimental]). Audio failing says nothing about the photo.
+             .audioStreamingError:
             return false
         @unknown default:
             return false
@@ -114,9 +118,9 @@ enum CameraErrorPolicy {
              .hingesClosed,
              // Device conditions. The glasses have switched the camera off to protect themselves;
              // a retry every 1.5 s neither cools them down nor charges them.
-             .thermalCritical, .thermalEmergency, .peakPowerShutdown, .batteryCritical:
+             .thermalHot, .peakPowerLimit, .batteryLow:
             return .stopRetrying(notice: message(for: error))
-        case .timeout, .videoStreamingError, .internalError,
+        case .timeout, .videoStreamingError, .audioStreamingError, .internalError,
              // Deliberately transient: the link flapping is the ordinary case the ladder exists
              // for — glasses waking, a Bluetooth handshake, a walk out of range and back.
              .deviceNotConnected, .deviceNotFound:
@@ -134,11 +138,18 @@ enum CameraErrorPolicy {
     /// stream's error publisher.
     static func retryDisposition(for error: DeviceSessionError) -> RetryDisposition {
         switch error {
-        case .datAppOnTheGlassesUpdateRequired:
+        case .datAppOnTheGlassesUpdateRequired,
+             // DAT 1.0: terminal — the glasses refuse an app built against this SDK. Only a newer
+             // OpenGlasses build fixes it, so the notice says to update the app.
+             .insufficientSDKVersion:
             return .stopRetrying(notice: DATCompatibilityMessage.message(for: error)
                                  ?? error.localizedDescription)
         case .thermalCritical, .thermalEmergency, .peakPowerShutdown, .batteryCritical:
             return .stopRetrying(notice: deviceConditionNotice)
+        case .dwaOutOfStuRange:
+            // DAT 1.0: a nonblocking compatibility warning, not a failure — the session carries
+            // on. Nothing to retry, and certainly nothing to stop for.
+            return .retryWithBackoff
         default:
             // Everything else is a window that closes: a link mid-wake (`noEligibleDevice`), a
             // session still tearing down on the glasses (`sessionAlreadyExists`), a capability not

@@ -73,7 +73,7 @@ These percentages are architectural estimates, not vendor guarantees.
 
 ### Meta: the reference full integration
 
-Meta is the strongest current integration. The repository pins the iOS Device Access Toolkit at 0.9.0 and uses `MWDATCore`, `MWDATCamera`, and `MWDATDisplay`. The app already has registration, camera streaming/stills, device selection, display rendering, and model-dependent interactive controls. Meta should remain the reference adapter and conformance oracle.
+Meta is the strongest current integration. The repository pins the iOS Device Access Toolkit at 1.0.0 and uses `MWDATCore`, `MWDATCamera`, and `MWDATDisplay`. The app already has registration, camera streaming/stills, device selection, display rendering, and model-dependent interactive controls. Meta should remain the reference adapter and conformance oracle.
 
 Capability must still be reported per physical model. Ray-Ban Meta camera/audio glasses do not inherit a display simply because the SDK also supports Meta Ray-Ban Display. The existing runtime `supportsDisplay()` check is the correct pattern.
 
@@ -177,7 +177,7 @@ OpenGlasses should not adopt the package wholesale yet:
 
 - it is pre-1.0 and several hardware paths remain unvalidated;
 - its iOS distribution uses a binary `XgGlassKit`, adding another opaque compatibility boundary;
-- its Meta path targets an older DAT release than OpenGlasses' current 0.9.0 integration;
+- its Meta path targets an older DAT release than OpenGlasses' current 1.0.0 integration;
 - OpenGlasses already has richer Meta lifecycle, privacy, HUD, feature-gating, and product behavior; and
 - abstraction code does not remove the need for vendor permission or a real iOS transport.
 

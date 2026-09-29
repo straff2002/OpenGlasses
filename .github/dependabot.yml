@@ -16,11 +16,11 @@
 # `ci_scripts/Package.resolved`. Dependabot has no XcodeGen support and would not touch either.
 #
 # The root pair is already measurably behind the authoritative one — it admits
-# meta-wearables-dat-ios `from: "0.7.0"` and records 0.8.0, where `project.base.yml` pins 0.9.0
-# exactly because that SDK breaks API on every minor bump. Pointing Dependabot at the root
-# manifest would open confident-looking PRs that move a manifest nothing compiles, leave the
-# real pins untouched, and widen that gap on a weekly schedule. A dependency PR that changes
-# nothing the app links is worse than no dependency PR.
+# meta-wearables-dat-ios `from: "0.7.0"` and records 0.8.0, where `project.base.yml` pins 1.0.0
+# exactly because that SDK broke API on every 0.x minor bump and its [Experimental] 1.x surface
+# still may. Pointing Dependabot at the root manifest would open confident-looking PRs that move
+# a manifest nothing compiles, leave the real pins untouched, and widen that gap on a weekly
+# schedule. A dependency PR that changes nothing the app links is worse than no dependency PR.
 #
 # The manual review path that replaces it is documented in docs/BUILDING.md ("Reviewing
 # dependency updates"): edit `project.base.yml`, regenerate, re-resolve, run

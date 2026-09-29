@@ -51,7 +51,7 @@ final class RegistrationFlowTests: XCTestCase {
     func testEveryRegistrationMessageFitsTheStatusCapsule() {
         let cases: [RegistrationError] = [
             .alreadyRegistered, .metaAINotInstalled, .networkUnavailable,
-            .timeout, .configurationInvalid, .unknown
+            .configurationInvalid, .unknown
         ]
         for error in cases {
             let message = RegistrationFlow.registrationErrorMessage(error)
@@ -65,7 +65,7 @@ final class RegistrationFlowTests: XCTestCase {
     /// internal state is the thing `connectFailureMessage` was written to stop.
     func testActionableFailuresNameAnAction() {
         XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.metaAINotInstalled).contains("Meta AI"))
-        XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.timeout).lowercased().contains("try again"))
+        XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.unknown).lowercased().contains("try again"))
         XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.networkUnavailable).lowercased().contains("connection"))
     }
 }

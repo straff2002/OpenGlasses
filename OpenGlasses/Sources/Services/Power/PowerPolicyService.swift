@@ -36,10 +36,10 @@ extension ThermalPressure {
 /// `PowerPolicy.decide` gets its hysteresis input across successive samples.
 ///
 /// **Glasses signals are optional and currently phone-led.** Glasses battery is fed from
-/// `GlassesConnectionService` (nil until firmware reports it); glasses thermal (DAT
-/// `deviceStateStream`) is not yet observed, so it defaults absent — a phone-only posture, which
-/// the plan requires to be useful on its own. When the device-state stream is wired, point
-/// `glassesThermal` at it via `ThermalPressure(_ level:)`.
+/// `GlassesConnectionService` (nil until firmware reports it); glasses thermal (DAT 1.0
+/// `Device.thermalLevel`, observed via `Device.addDeviceStateListener`) is not yet observed, so it
+/// defaults absent — a phone-only posture, which the plan requires to be useful on its own. When
+/// the device-state listener is wired, point `glassesThermal` at it via `ThermalPressure(_ level:)`.
 @MainActor
 final class PowerPolicyService: ObservableObject {
     static let shared = PowerPolicyService()

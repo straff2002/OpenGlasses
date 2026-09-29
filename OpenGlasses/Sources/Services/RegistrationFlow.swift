@@ -44,8 +44,9 @@ enum RegistrationFlow {
             return "Install the Meta AI app and pair your glasses there first."
         case .networkUnavailable:
             return "No network. Registration needs a connection — reconnect and try again."
-        case .timeout:
-            return "Registration timed out. Check the glasses are on and nearby, then try again."
+        // DAT 1.0 removed `.timeout` (not in its changelog). Our own `approvalDeadlineSeconds`
+        // still bounds the wait, and whatever the SDK reports instead lands in `.unknown` or
+        // `@unknown default`, whose copy already says what to do.
         case .configurationInvalid:
             return MWDATConfigCheck.message(for: .ok) ?? "This build's Meta SDK configuration is invalid."
         case .unknown:

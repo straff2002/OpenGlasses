@@ -7,7 +7,7 @@ import MWDATCamera
 /// Stall recovery previously tore down the whole `DeviceSession` every time. The session
 /// is the expensive, slow-to-restart half (BT connection + permission state); the `Camera`
 /// capability is cheap. Policy: rebuild the camera on the retained session first, and only
-/// escalate to a full session reset when camera-level rebuilds keep failing. (DAT 0.9 has
+/// escalate to a full session reset when camera-level rebuilds keep failing. (DAT 0.9+ has
 /// no `removeCamera` — a rebuild is `Camera.stop()` + `addCamera(config:)` on the live
 /// session; if that throws, the caller escalates.)
 enum StreamRecoveryPolicy {
@@ -174,6 +174,11 @@ enum StreamConfigPolicy {
 /// Maps DAT compatibility signals to actionable user copy — an outdated Meta AI app or
 /// glasses firmware otherwise presents as a mystery connection failure.
 enum DATCompatibilityMessage {
+    /// Shared by the two "this build is too old" signals — `Compatibility.sdkUpdateRequired` and
+    /// DAT 1.0's `DeviceSessionError.insufficientSDKVersion` — so they read the same.
+    static let appUpdateRequired =
+        "This version of OpenGlasses is too old for your glasses — update OpenGlasses from the App Store."
+
     static func message(for error: DeviceSessionError) -> String? {
         switch error {
         case .datAppOnTheGlassesUpdateRequired:
@@ -183,9 +188,30 @@ enum DATCompatibilityMessage {
             // that actually opens it (Settings → Hardware & Privacy → Update Glasses App, which
             // deep-links via the SDK) rather than sending the user hunting.
             return "The glasses' companion app needs updating — Settings › Hardware & Privacy › Update Glasses App."
+        case .insufficientSDKVersion:
+            // DAT 1.0, terminal: the glasses need an app built against a newer SDK. Nothing on
+            // the glasses or in Meta AI fixes this — only an OpenGlasses update does.
+            return appUpdateRequired
         default:
+            // Includes `.dwaOutOfStuRange`, deliberately: it is a nonblocking warning, and a
+            // notice here is read by the retry loop as a refusal. See `advisory(for:)`.
             return nil
         }
+    }
+
+    /// DAT 1.0: session errors that are advisories, not failures. The SDK documents
+    /// `.dwaOutOfStuRange` as a nonblocking compatibility warning — the session continues — so it
+    /// must never be recorded as the reason a start failed, nor stop a retry.
+    static func isAdvisory(_ error: DeviceSessionError) -> Bool {
+        if case .dwaOutOfStuRange = error { return true }
+        return false
+    }
+
+    /// Gentle copy for an advisory, or nil when the error is not one. Log-level only: the session
+    /// works, so this is a suggestion to update when convenient, never an announcement.
+    static func advisory(for error: DeviceSessionError) -> String? {
+        guard isAdvisory(error) else { return nil }
+        return "A newer OpenGlasses may work better with these glasses — update from the App Store when convenient."
     }
 
     static func message(for compatibility: Compatibility) -> String? {
@@ -193,7 +219,7 @@ enum DATCompatibilityMessage {
         case .deviceUpdateRequired:
             return "Your glasses need a firmware update — open the Meta AI app to update them."
         case .sdkUpdateRequired:
-            return "This version of OpenGlasses is too old for your glasses — update OpenGlasses from the App Store."
+            return appUpdateRequired
         case .compatible, .undefined:
             return nil
         @unknown default:

@@ -58,12 +58,15 @@ options:
 packages:
   meta-wearables-dat-ios:
     url: https://github.com/facebook/meta-wearables-dat-ios.git
-    # Pinned exact, not `from:`. For a 0.x package `from:` admits any later 0.y, and this SDK
-    # breaks API on minor bumps: 0.9.0 replaced `addStream` with the consolidated `Camera`
-    # capability (`addCamera`) and removed `CaptureError`; 0.8.0 removed the `Capability`
-    # protocol; 0.7.0 removed `DeviceStateSession` outright. A published 0.10.0 would be
-    # adopted on the next resolve and break the build with no change here.
-    version: "0.9.0"
+    # Pinned exact, not `from:`. Through 0.x this SDK broke API on every minor bump (0.9.0
+    # replaced `addStream` with `addCamera`, 0.8.0 removed `Capability`, 0.7.0 removed
+    # `DeviceStateSession`), and 1.0.0 still renamed `StreamError` cases, removed
+    # `Wearables.deviceStateStream` and — unannounced — `RegistrationError.timeout`. 1.x is
+    # semver, but only for the stable surface: Meta ships [Experimental] modules and APIs (Inputs,
+    # Motion, Speech, voice invocations, `Camera.photo`, camera audio) that may change in any minor
+    # and that published apps may not use. We link none of them; staying exact means a 1.y is read
+    # and adopted deliberately, never picked up by a resolve.
+    version: "1.0.0"
   HaishinKit:
     url: https://github.com/shogo4405/HaishinKit.swift.git
     from: "2.2.5"
