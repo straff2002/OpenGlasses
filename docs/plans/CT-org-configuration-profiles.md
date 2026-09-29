@@ -6,9 +6,15 @@ and locked controls — merged 2026-09-24 ([#549](https://github.com/straff2002/
 PR 2b — the lease, renewal, revocation, the clock guard and the mid-job grace — merged 2026-09-24
 ([#551](https://github.com/straff2002/OpenGlasses/pull/551)), green on its first CI run with 16 new tests.
 The scanner (3c, early) merged 2026-09-24 ([#553](https://github.com/straff2002/OpenGlasses/pull/553)).
-The pack at enrolment (3d) was written 2026-09-24 and is awaiting CI
-([#555](https://github.com/straff2002/OpenGlasses/pull/555)). Next, per the evening re-cut: 3a (the
-activation key) and 3b (the Field Assist edition). See *Numbering, reconciled*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
+The pack at enrolment (3d) merged 2026-09-24 ([#555](https://github.com/straff2002/OpenGlasses/pull/555)). 3a, the activation key, merged in four
+slices on 2026-09-24/25: enrolment by licence key ([#557](https://github.com/straff2002/OpenGlasses/pull/557)), the short activation key ([#558](https://github.com/straff2002/OpenGlasses/pull/558)), the
+organisation's AI model ([#560](https://github.com/straff2002/OpenGlasses/pull/560)) and the first-run branch ([#561](https://github.com/straff2002/OpenGlasses/pull/561)). 3b, the Field Assist edition,
+merged in three slices on 2026-09-25: the edition and administrator gate ([#562](https://github.com/straff2002/OpenGlasses/pull/562)), the technician's
+view ([#563](https://github.com/straff2002/OpenGlasses/pull/563)) and the administrator phone ([#564](https://github.com/straff2002/OpenGlasses/pull/564)). PR 4, leaving the firm, merged 2026-09-25:
+deliver, then erase ([#565](https://github.com/straff2002/OpenGlasses/pull/565)), offer the firm its records before removal ([#566](https://github.com/straff2002/OpenGlasses/pull/566)), and erase after a
+long lapse when opted in (4c, [#567](https://github.com/straff2002/OpenGlasses/pull/567)). Sealing (4b) is deferred. What remains is listed under
+*Deferred, and why* and in P4. Manuals were planned to come from the base server (Plan FT, FT4); Plan
+FX superseded FT on 2026-09-27, so they now come from Avenkin Office. See *Numbering, reconciled*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
 2026-09-03 ([#406](https://github.com/straff2002/OpenGlasses/pull/406)) — partner-configured edition
 (packs, tiers, EI issuance)

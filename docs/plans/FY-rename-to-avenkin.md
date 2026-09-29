@@ -1,8 +1,11 @@
 # Plan FY — Rename to Avenkin (a private assistant; glasses become one device among several)
 
 **Status:** 📝 Drafted 2026-09-26, revised 2026-09-28 and 2026-09-29 — for review before any code
-changes. Nothing else is built; the Home Screen name and icons are an early slice in review (PR #571,
-*Decisions 2026-09-28 → Branding*). Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
+changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
+*Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
+desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
+coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1, F2, F3
+and P1–P5 are not started. P1 and P2 now wait only on open questions 1 and 10. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
 primarily a **personal AI agent**, sold as a **one-time purchase**, and glasses are optional. Field
@@ -12,9 +15,9 @@ sits on the home screen of both kinds of user. The owner's decisions of 2026-09-
 the whole product — the desktop app becomes **Avenkin Office** (*Decisions 2026-09-28*). The
 decisions of 2026-09-29 settle where the code lives: the phone app stays public in this repository,
 and only Avenkin Office moves to a private repository (*Decisions 2026-09-29*).
-**Depends on:** nothing in code for F1 and F3. P1 and P2 wait until the desktop thread's phone-side
-changes (with the `Contracts/` and `Transport/` moves) have merged into this repository as their own
-public PR (*Sequencing*).
+**Depends on:** nothing in code for F1 and F3. P1 and P2 waited for the desktop thread's phone-side
+changes (with the `Contracts/` and `Transport/` moves) to merge into this repository as their own
+public PR (*Sequencing*). That PR merged 2026-09-29 ([#574](https://github.com/straff2002/OpenGlasses/pull/574)).
 **Related:** [Plan FX](FX-desktop-office-and-device-sync.md) (the phone's connection to Avenkin Office; the
 desktop itself is developed in the private desktop repository from 2026-09-29), Plan EE (Field Assist commercial licensing — the
 product ids and licence format stay), Plan CT (org profiles and activation keys — the signing domains stay, and add-on entitlements ride on
@@ -190,7 +193,7 @@ The direction is **Open Span**, committed with PR #571 at `docs/branding/avenkin
   joined foundation**, so the apps differ by silhouette as well as colour.
 - P0 and P1's icon work uses these masters rather than new artwork. The review sheet's typography is
   a label, not a wordmark, so the watch wordmark (P1 item 10) still needs one.
-- **An early slice is in review: PR #571 (build 422).** It sets the Home Screen name — "Avenkin" for
+- **An early slice merged 2026-09-29: [#571](https://github.com/straff2002/OpenGlasses/pull/571) (build 422).** It sets the Home Screen name — "Avenkin" for
   the app, the Watch app and the widgets, "Avenkin Teleprompter" for the share extension — adds the
   Open Span app icons (light, dark and tinted, for phone and watch), and commits the
   `docs/branding/avenkin/` assets. That is P0 item 3's icon work and P1 item 1's display names; once
@@ -244,9 +247,12 @@ else from that day stands.
 ### Only Avenkin Office is private
 
 - **The desktop app, Avenkin Office, moves to its own private repository** (`straff2002/avenkin-office`;
-  this plan calls it "the private desktop repository"). Its CI runs on Linux only, path-filtered, within
-  the free allowance; the macOS and Windows packages are built locally.
-- The interim all-private repository created on 2026-09-28 is retired (archived).
+  this plan calls it "the private desktop repository"). The intent is CI on Linux only, path-filtered.
+  **As of 2026-09-29 that isn't in place:** its workflow is dispatch-only and has never had a green
+  run, so Office's checks are run locally for now. The macOS and Windows packages are built locally.
+- The interim all-private repository created on 2026-09-28 (`straff2002/avenkin`) is retired: its
+  Actions are off (2026-09-29) and nothing new goes there. **It is not archived yet:** a few private
+  files still exist only there, and move to the private desktop repository first.
 
 ### The split boundary
 
@@ -301,7 +307,7 @@ or breaks signatures.
    site is the Meta auth redirect page; item 7 moves the registration to the avenkin.com page, and the
    old address keeps redirecting.
 3. **App icon and logo from the Open Span masters** (*Decisions 2026-09-28*), not new artwork.
-   **The branding commit and the app icons are in review in PR #571** (*Decisions 2026-09-28 →
+   **The branding commit and the app icons merged in [#571](https://github.com/straff2002/OpenGlasses/pull/571)** (*Decisions 2026-09-28 →
    Branding*): the phone's `AppIcon` light, dark and tinted appearances from `avenkin-light`,
    `avenkin-dark` and `avenkin-monochrome`, and the watch icon from the same set. Still to do:
    `OpenGlassesLogo` and `OpenGlassesSymbol` are replaced by the mark. Avenkin Office uses the
@@ -457,7 +463,7 @@ complete:
 1. **Bundle display names:** `CFBundleDisplayName` in the app, `GlassesActivityWidget`,
    `OpenGlassesWatch`, `OpenGlassesWatchWidget` and `OpenGlassesShareExtension` `Info.plist`s, and
    the `project.watch.yml` overrides. The share extension becomes "Avenkin Teleprompter".
-   **Done early in PR #571** (in review): once it merges, the script's rule for these only confirms
+   **Done early in [#571](https://github.com/straff2002/OpenGlasses/pull/571)** (merged 2026-09-29): the script's rule for these only confirms
    them, and the guard test keeps them.
 2. **Permission prompts** (`NS*UsageDescription` in `OpenGlasses/Info.plist`): the name, and
    device-neutral wording where the permission is not glasses-only (D6). Bluetooth may keep "smart
