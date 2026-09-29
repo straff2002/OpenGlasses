@@ -134,7 +134,7 @@ Try “Start a refrigeration session,” report a reading, then use “Next step
 | Team | Solo capabilities plus custom vaults and manuals, and audited export |
 | Enterprise | Team capabilities with separately agreed commercial terms |
 
-Use **Settings → Field Assist** to review access and activate a signed licence. Purchase and trial availability depend on the build and distribution channel. Contact [Skunkworks NZ](mailto:g@skunkworks.kiwi) for team or evaluation access.
+Use **Settings → Field Assist** to review access and activate a signed licence. Purchase and trial availability depend on the build and distribution channel. Contact [Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi) for team or evaluation access.
 
 For your own reference material, follow the [Field Assist vault guide](field-assist-vault-guide.md). It covers PDF, scanned manuals, EPUB, Markdown, and plain text, including source-page references. The [vault pack guide](../vaultpacks/README.md) covers packaging and publishing.
 
