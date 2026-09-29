@@ -20,12 +20,12 @@ targets:
         # project.local.yml when rebranding, or Watch install fails.
         WK_COMPANION_APP_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.9"
-        CURRENT_PROJECT_VERSION: "421"
+        CURRENT_PROJECT_VERSION: "422"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
-        INFOPLIST_KEY_CFBundleDisplayName: "OpenGlasses"
+        INFOPLIST_KEY_CFBundleDisplayName: "Avenkin"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: "YES"
     dependencies:
@@ -43,7 +43,7 @@ targets:
     info:
       path: OpenGlassesWatchWidget/Info.plist
       properties:
-        CFBundleDisplayName: OpenGlasses
+        CFBundleDisplayName: Avenkin
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
@@ -52,7 +52,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
         MARKETING_VERSION: "2026.9"
-        CURRENT_PROJECT_VERSION: "421"
+        CURRENT_PROJECT_VERSION: "422"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: "YES"
