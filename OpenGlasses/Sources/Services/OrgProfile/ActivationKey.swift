@@ -23,8 +23,18 @@ struct ActivationKey: Equatable, Sendable {
     /// Crockford's base32: no I, L, O or U.
     static let alphabet: [Character] = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
     static let length = 16
-    static let fileIdDomain = "openglasses.activation-id.v1\n"
-    static let sealingInfo = "openglasses.activation-key.v1"
+    /// **Signing domain, not a product name.** The prefix hashed with a key to name its sealed
+    /// file on the host, mirrored in `Scripts/generate-field-license.swift`.
+    ///
+    /// **Never change this value** (including in a rename): every activation key already issued
+    /// would look for a file name nothing was published under, and stop activating. Pinned by
+    /// `StorageIdentifierGuardTests`.
+    static let fileIdSigningDomain = "openglasses.activation-id.v1\n"
+    /// **Signing domain, not a product name.** The HKDF `info` the sealing key is derived with,
+    /// mirrored in `Scripts/generate-field-license.swift`. **Never change this value:** every
+    /// activation key already issued would derive the wrong key and fail to open its licence.
+    /// Pinned by `StorageIdentifierGuardTests`.
+    static let sealingSigningDomain = "openglasses.activation-key.v1"
     /// Where the sealed files are published (`activation/` in `Scripts/stage-pages-site.sh`).
     static let defaultDirectory = URL(string: "https://straff2002.github.io/OpenGlasses/activation/")!
 
@@ -147,14 +157,14 @@ struct ActivationKey: Equatable, Sendable {
 
     /// The sealed file's name on the static host. Knowing it tells nobody the key.
     var fileName: String {
-        SHA256.hash(data: Data((Self.fileIdDomain + canonical).utf8))
+        SHA256.hash(data: Data((Self.fileIdSigningDomain + canonical).utf8))
             .map { String(format: "%02x", $0) }
             .joined()
     }
 
     private var sealingKey: SymmetricKey {
         HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(canonical.utf8)),
-                               info: Data(Self.sealingInfo.utf8),
+                               info: Data(Self.sealingSigningDomain.utf8),
                                outputByteCount: 32)
     }
 

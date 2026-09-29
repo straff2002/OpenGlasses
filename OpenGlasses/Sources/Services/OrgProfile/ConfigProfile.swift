@@ -9,6 +9,11 @@ import Foundation
 /// drops instead of failing the whole profile.
 struct ConfigProfile: Codable, Equatable, Sendable {
     /// The one value `format` may hold; anything else is not a profile.
+    ///
+    /// **Signed identifier, not a product name** — it is inside every issued profile's signed
+    /// payload and selects the signing domain. **Never change this value** (including in a
+    /// rename): every issued profile would be refused as malformed. Pinned by
+    /// `StorageIdentifierGuardTests`.
     static let formatId = "openglasses.org-profile"
     /// The newest schema this build understands. A newer profile is refused with a reason rather
     /// than applied with semantics this build does not know.
@@ -230,6 +235,9 @@ enum ProfileValue: Codable, Equatable, Sendable {
 /// A whole-link revocation, hosted at the profile's URL in place of the profile. Signed with the
 /// profile key under its own domain, so neither document can be replayed as the other.
 struct ProfileRevocation: Codable, Equatable, Sendable {
+    /// **Signed identifier, not a product name.** **Never change this value** (including in a
+    /// rename): every issued revocation would be refused, so a revoked profile would be honoured
+    /// again. Pinned by `StorageIdentifierGuardTests`.
     static let formatId = "openglasses.org-revocation"
 
     let format: String

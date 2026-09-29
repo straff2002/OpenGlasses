@@ -390,7 +390,7 @@ class HIPAAComplianceService: ObservableObject {
     /// this app.
     func exportAuditLog() -> String {
         let document = AuditLogExportDocument(
-            schema: AuditLogExportDocument.currentSchema,
+            schema: AuditLogExportDocument.schemaSigningDomain,
             policyVersion: AuditPolicyVersion.current,
             exportedAt: AuditEvent.timestampFormatter.string(from: Date()),
             entryCount: chain.count,
@@ -401,7 +401,7 @@ class HIPAAComplianceService: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(document),
               let text = String(data: data, encoding: .utf8) else {
-            return "{\"schema\":\"\(AuditLogExportDocument.currentSchema)\",\"error\":\"encoding\"}"
+            return "{\"schema\":\"\(AuditLogExportDocument.schemaSigningDomain)\",\"error\":\"encoding\"}"
         }
         return text
     }
@@ -639,7 +639,14 @@ class HIPAAComplianceService: ObservableObject {
 /// The shape of an exported audit log. Typed all the way down: a reviewer reads the same fields
 /// the app stores, and there is no rendered prose in it for content to hide in.
 struct AuditLogExportDocument: Codable, Equatable {
-    static let currentSchema = "openglasses.audit.v1"
+    /// **Signing domain, not a product name.** The schema identifier stamped on every exported
+    /// audit log, so a reviewer's tooling can recognise it and re-walk the chain outside this app.
+    ///
+    /// **Never rename this value** (a rename is not a schema change): audit exports already held
+    /// by reviewers would no longer match what the app emits, so tooling keyed on it stops
+    /// recognising one of the two. A genuine schema change bumps the version, not the name.
+    /// Pinned by `StorageIdentifierGuardTests`.
+    static let schemaSigningDomain = "openglasses.audit.v1"
 
     let schema: String
     let policyVersion: String

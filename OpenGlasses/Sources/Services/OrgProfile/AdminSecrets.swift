@@ -59,7 +59,13 @@ enum AdminSecrets {
     /// more is one that would stall the phone on every attempt.
     static let iterationRange = 10_000...5_000_000
     static let cardPrefix = "og-admin:"
-    static let cardDomain = "openglasses.admin-card.v1\n"
+    /// **Signing domain, not a product name.** The prefix hashed with an admin card's secret to
+    /// make the verifier a profile carries, mirrored in `Scripts/make-org-profile.swift`.
+    ///
+    /// **Never change this value** (including in a rename): every admin card already issued would
+    /// stop matching its profile's verifier, locking administrators out of the settings they
+    /// manage. Pinned by `StorageIdentifierGuardTests`.
+    static let cardSigningDomain = "openglasses.admin-card.v1\n"
     /// Crockford base32 characters in a card's secret: 26 × 5 = 130 random bits.
     static let cardSecretLength = 26
 
@@ -89,7 +95,7 @@ enum AdminSecrets {
 
     /// The digest a profile carries for a card secret.
     static func cardDigest(secret: String) -> Data {
-        Data(SHA256.hash(data: Data((cardDomain + secret).utf8)))
+        Data(SHA256.hash(data: Data((cardSigningDomain + secret).utf8)))
     }
 
     /// The secret in a scanned card, canonical, or nil when the text is not an admin card.

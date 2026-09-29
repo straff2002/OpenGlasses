@@ -16,6 +16,11 @@ class StoreKitService: ObservableObject {
     static let shared = StoreKitService()
 
     // MARK: - Product Identifiers
+    //
+    // **Store identifiers, not product names.** Each id below is registered in App Store Connect,
+    // where a product id can never be renamed. **Never change these values** (including in a
+    // rename): subscribers and past purchasers would lose Field Assist or Medical Compliance,
+    // because their transactions carry the old id. Pinned by `StorageIdentifierGuardTests`.
 
     nonisolated static let medicalMonthlyId = "com.openglasses.medical_compliance_monthly"
     nonisolated static let medicalAnnualId = "com.openglasses.medical_compliance_annual"

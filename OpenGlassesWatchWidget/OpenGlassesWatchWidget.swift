@@ -13,6 +13,10 @@ private var watchWidgetFamilies: [WidgetFamily] {
 
 // MARK: - Shared State
 
+/// **Storage key, not a product name.** The App Group suite name the watch app and its widget
+/// read state through. A literal because this watch target compiles none of the phone's shared
+/// files. **Never change this value** (including in a rename): whatever is stored under the suite
+/// is stranded under the old name. Pinned by `StorageIdentifierGuardTests`.
 private let appGroupId = "group.com.openglasses.app"
 
 struct WatchState {

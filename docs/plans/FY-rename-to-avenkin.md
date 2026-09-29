@@ -4,8 +4,9 @@
 changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
-coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1, F2, F3
-and P1–P5 are not started. P1 and P2 now wait only on open questions 1 and 10. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
+coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). **F1 built
+2026-09-29 (PR pending):** the storage and signing constants renamed to read as keys, values unchanged,
+and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. P1 and P2 now wait only on open questions 1 and 10. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
 primarily a **personal AI agent**, sold as a **one-time purchase**, and glasses are optional. Field
@@ -400,6 +401,19 @@ doses.
    its own guard until P5 migrates them.
 
 **Exit:** a global replace of `OpenGlasses`/`openglasses` in the Swift sources fails the suite.
+
+**Built 2026-09-29 (PR pending).** Constants renamed to `storageService`/`storageAccount` (Keychain) and
+`*SigningDomain` (signing domains, and the audit export's schema); the StoreKit, vault-pack, job-file and
+MCP names already read as identifiers and only gained doc comments. `DeepLinkTrust` reads the App Group
+from `SharedAppState`, the one file its two targets share; the Share Extension and the two watch targets
+keep their literal and the test pins each. The guard spells the old name in pieces, so the same replace
+cannot rewrite its expectations. Three corrections to the text above: the org-profile, revocation and
+admin-card domains are mirrored in `Scripts/make-org-profile.swift` (only the activation-key domains are in
+`generate-field-license.swift`); the audit schema is stamped on exports rather than hashed into the chain;
+and the `avenkin.preview-*` kinds and `avenkin-model-hook.1` live only in `Transport/`, so they are pinned
+there. Also pinned, though not in D2: the scoped-erasure Keychain service `OpenGlasses.ScopedKey`, the
+activation file-id domain `openglasses.activation-id.v1`, the profile and revocation `format` ids, and the
+job file's `format`.
 
 ### F2 — Keep the assistant's name right across the rename
 

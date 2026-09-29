@@ -25,6 +25,10 @@ struct VaultPackManifest: Codable, Equatable {
     let redistributionNote: String?
 
     static let filename = "pack.json"
+    /// **Store identifier prefix, not a product name.** A pack's id is its App Store product id,
+    /// and product ids can never be renamed in App Store Connect. **Never change this value**
+    /// (including in a rename): purchased packs would no longer match their transactions. Pinned by
+    /// `StorageIdentifierGuardTests`.
     static let productPrefix = "com.openglasses.vault."
 
     init(id: String, vaultId: String, version: String, name: String, summary: String? = nil,

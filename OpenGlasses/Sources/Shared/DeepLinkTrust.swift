@@ -18,7 +18,9 @@ import Foundation
 /// Compiled into **both** the app and the widget extension — the producer and the consumer must
 /// agree on the query name and the policy, so they share one file.
 enum DeepLinkTrust {
-    static let appGroupID = "group.com.openglasses.app"
+    /// The shared App Group — a storage key, owned by `SharedAppState.appGroup`, which is compiled
+    /// into the same two targets as this file.
+    static let appGroupID = SharedAppState.appGroup
 
     /// Query item carrying the token. Short because widget links are built by hand.
     static let queryName = "k"

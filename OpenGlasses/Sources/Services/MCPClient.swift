@@ -194,6 +194,10 @@ final class MCPClient: ObservableObject {
     }
 
     /// Namespaced so it can never collide with a protocol-reserved `_meta` key.
+    ///
+    /// **Wire identifier, not a product name.** **Never change this value** (including in a
+    /// rename): MCP servers that already key idempotency on it would stop recognising retries and
+    /// could run a tool call twice. Pinned by `StorageIdentifierGuardTests`.
     nonisolated static let idempotencyMetaKey = "nz.co.skunkworks.openglasses/idempotency-key"
 
     // MARK: - Server Management

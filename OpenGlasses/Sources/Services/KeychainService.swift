@@ -12,13 +12,20 @@ import Security
 /// never sync to iCloud and never leave the device in an iTunes/Finder backup.
 ///
 /// This mirrors the Keychain pattern already used by `ConversationEncryptionService`
-/// (same `service` identifier, distinct accounts). API-key items intentionally use a
+/// (same `storageService` identifier, distinct accounts). API-key items intentionally use a
 /// looser accessibility class than the conversation key (no `.userPresence`) so they
 /// work unattended.
 enum KeychainService {
 
-    /// Shared service identifier for all OpenGlasses Keychain items.
-    private static let service = "OpenGlasses"
+    /// **Storage key, not a product name.** The Keychain `kSecAttrService` every item here is
+    /// filed under — every stored provider API key, auth token and secret-bearing config blob.
+    /// It happens to be spelled like the app's old name; that is history, not branding.
+    ///
+    /// **Never change this value** (including in a rename): the Keychain looks items up by it, so
+    /// a new value silently loses every stored API key on the next launch, and the wearer has to
+    /// re-enter all of them. `ConversationEncryptionService` files its key under the same service.
+    /// Pinned by `StorageIdentifierGuardTests`.
+    static let storageService = "OpenGlasses"
 
     /// Accessibility: readable after the first unlock following a reboot, this
     /// device only (never backed up, never synced to iCloud).
@@ -64,7 +71,7 @@ enum KeychainService {
     static func readData(for key: String) throws -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -86,7 +93,7 @@ enum KeychainService {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: accessibility.attribute,
@@ -104,7 +111,7 @@ enum KeychainService {
         guard !data.isEmpty else { throw KeychainError.writeFailed(errSecParam) }
         let lookup: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
         ]
         let changes: [String: Any] = [
@@ -131,7 +138,7 @@ enum KeychainService {
     static func deleteItem(_ key: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
         ]
         let status = SecItemDelete(query as CFDictionary)
@@ -145,7 +152,7 @@ enum KeychainService {
     static func data(for key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -175,7 +182,7 @@ enum KeychainService {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: accessible,
@@ -211,7 +218,7 @@ enum KeychainService {
     static func delete(_ key: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: storageService,
             kSecAttrAccount as String: key,
         ]
         let status = SecItemDelete(query as CFDictionary)
