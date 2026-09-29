@@ -255,7 +255,9 @@ final class StorageIdentifierGuardTests: XCTestCase {
     func testEntitlementsCarryTheAppGroup() throws {
         for path in ["OpenGlasses/OpenGlasses.entitlements",
                      "GlassesActivityWidget/GlassesActivityWidget.entitlements",
-                     "OpenGlassesShareExtension/OpenGlassesShareExtension.entitlements"] {
+                     "OpenGlassesShareExtension/OpenGlassesShareExtension.entitlements",
+                     "OpenGlassesWatch/OpenGlassesWatch.entitlements",
+                     "OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements"] {
             let groups = try plist(path)["com.apple.security.application-groups"] as? [String]
             XCTAssertEqual(groups, [Self.appGroup],
                            "\(path) no longer grants \(Self.appGroup). That target would lose the "
@@ -269,6 +271,16 @@ final class StorageIdentifierGuardTests: XCTestCase {
                                     "project.base.yml no longer grants \(Self.appGroup) to the app, "
                                         + "the widget and the Share Extension. The next project "
                                         + "generation would drop it and they would lose shared data.")
+
+        // The watch app writes its state to the suite and the watch widget's complications read
+        // it; without the group each process gets its own container and the complications never
+        // change.
+        let watchSpec = try sourceText("project.watch.yml")
+        let watchCopies = watchSpec.components(separatedBy: "- \(Self.appGroup)\n").count - 1
+        XCTAssertGreaterThanOrEqual(watchCopies, 2,
+                                    "project.watch.yml no longer grants \(Self.appGroup) to the watch "
+                                        + "app and the watch widget. The next project generation would "
+                                        + "drop it and the complications would stop following the app.")
     }
 
     /// A partial rename — one literal changed, the others not — is the failure that is hardest to

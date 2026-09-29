@@ -10,8 +10,13 @@ targets:
       - path: OpenGlassesWatch
       # Shared with iOS app — defines LogoIcon + AccentColors
       - path: GlassesActivityWidget/AccentColors.swift
+    # The watch app writes listening/recording/connected state to the App Group suite and the
+    # watch widget's complications read it back — two processes, so both need the group.
     entitlements:
       path: OpenGlassesWatch/OpenGlassesWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openglasses.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp
@@ -40,6 +45,9 @@ targets:
       - path: GlassesActivityWidget/AccentColors.swift
     entitlements:
       path: OpenGlassesWatchWidget/OpenGlassesWatchWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.openglasses.app
     info:
       path: OpenGlassesWatchWidget/Info.plist
       properties:
