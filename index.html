@@ -1,44 +1,159 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>OpenGlasses Authorization</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avenkin</title>
+<meta name="description" content="Avenkin is a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Coming soon.">
+<meta name="color-scheme" content="light dark">
 <script>
-// Meta auth redirects here with tokens in the URL.
-// Without Associated Domains, iOS opens Safari instead of the app.
-// This page redirects to the app via custom URL scheme.
+// Meta sign-in returns here with its result in the query string or fragment, and this page
+// hands that result to the app through its URL scheme. A plain visit (no query, no fragment)
+// shows the holding page instead.
+// The Meta registration names this page at straff2002.github.io/OpenGlasses/. Served from a
+// custom domain the same page sits at the root, so rebuild the /OpenGlasses/ path: the app
+// must get the same link whichever address served the page.
 (function() {
   var search = window.location.search || '';
   var hash = window.location.hash || '';
-  // The Meta registration names this page at straff2002.github.io/OpenGlasses/. Served from a
-  // custom domain the same page sits at the root, so rebuild the /OpenGlasses/ path: the app
-  // must get the same link whichever address served the page.
   var path = window.location.pathname || '/';
   if (path.indexOf('/OpenGlasses/') !== 0) {
     path = '/OpenGlasses' + (path.charAt(0) === '/' ? path : '/' + path);
   }
-  var appScheme = 'mwdat-688603774243722://' + path;
-  if (search) appScheme += search;
-  if (hash) appScheme += hash;
-  
-  // Try to open the app
+  var appScheme = 'mwdat-688603774243722://' + path + search + hash;
+  window.__avenkinAppLink = appScheme;
+  if (!search && !hash) return;
+
+  document.documentElement.className = 'returning';
   window.location.replace(appScheme);
-  
-  // Fallback message if redirect fails
+
+  // Fallback if the app did not open
   setTimeout(function() {
-    document.getElementById('status').textContent = 
-      'If OpenGlasses did not open, make sure the app is installed and try again.';
+    document.getElementById('status').textContent =
+      'If the app did not open, make sure it is installed and try again.';
     document.getElementById('manual').style.display = 'block';
     document.getElementById('manual-link').href = appScheme;
   }, 2000);
 })();
 </script>
+<style>
+  :root {
+    --bg: #F6F2EB;
+    --ink: #202B2D;
+    --muted: #5B6668;
+    --accent: #E77F47;
+    --rule: rgba(32, 43, 45, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #202B2D;
+      --ink: #F6F2EB;
+      --muted: #AEB6B7;
+      --rule: rgba(246, 242, 235, 0.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 64px 24px 32px;
+  }
+  .mark { width: 96px; height: 96px; }
+  h1 {
+    font-size: clamp(2.5rem, 7vw, 3.5rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 24px 0 12px;
+  }
+  .tagline {
+    font-size: clamp(1.1rem, 3.2vw, 1.35rem);
+    line-height: 1.5;
+    max-width: 30em;
+    margin: 0 0 32px;
+  }
+  .soon {
+    display: inline-block;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+  }
+  .office {
+    margin: 40px 0 0;
+    max-width: 30em;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .office strong { color: var(--ink); font-weight: 600; }
+  footer {
+    border-top: 1px solid var(--rule);
+    padding: 20px 24px 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover, footer a:focus-visible { color: var(--ink); text-decoration: underline; }
+
+  /* Returning from Meta sign-in: show only the hand-off message. */
+  #returning { display: none; }
+  .returning #home { display: none; }
+  .returning #returning { display: flex; }
+  #manual { display: none; margin-top: 20px; }
+  #manual a {
+    display: inline-block;
+    padding: 12px 24px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+  }
+</style>
 </head>
-<body style="font-family: -apple-system, sans-serif; text-align: center; padding: 60px 20px;">
-  <h2>Redirecting to OpenGlasses...</h2>
-  <p id="status">Opening the app...</p>
-  <div id="manual" style="display:none; margin-top: 20px;">
-    <a id="manual-link" href="#" style="display:inline-block; padding: 12px 24px; background: #007AFF; color: white; border-radius: 8px; text-decoration: none;">Open OpenGlasses</a>
+<body>
+  <div id="home">
+    <main>
+      <svg class="mark" viewBox="160 230 704 566" role="img" aria-label="Avenkin">
+        <path fill="#E77F47" d="M184 758 C219 654 264 486 360 348 C410 280 459 246 512 246 C565 246 614 280 664 348 C760 486 805 654 840 758 Q846 780 822 780 H712 Q696 780 690 763 C662 672 630 561 577 445 C556 400 534 374 512 374 C490 374 468 400 447 445 C394 561 362 672 334 763 Q328 780 312 780 H202 Q178 780 184 758 Z M350 560 H532 Q570 560 570 602 Q570 644 532 644 H350 Z"/>
+      </svg>
+      <h1>Avenkin</h1>
+      <p class="tagline">A private AI assistant that works for you: on your phone, from your wrist, or hands-free with glasses.</p>
+      <span class="soon">Coming soon</span>
+      <p class="office"><strong>Avenkin Office</strong> brings jobs, manuals and devices together for teams in the field. Also coming soon.</p>
+    </main>
+    <footer>
+      <a href="privacy.html">Privacy</a>
+      <a href="support.html">Support</a>
+      <a href="about.html">About</a>
+      <span>© 2026 Skunkworks NZ Ltd</span>
+    </footer>
   </div>
+
+  <main id="returning">
+    <h2>Opening the app…</h2>
+    <p id="status">Finishing sign-in.</p>
+    <div id="manual"><a id="manual-link" href="#">Open the app</a></div>
+  </main>
 </body>
 </html>
