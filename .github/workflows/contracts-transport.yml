@@ -1,0 +1,130 @@
+name: Contracts and Transport
+
+# The shared office contract (`Contracts/`) and the phone's embedded transport (`Transport/`).
+# Avenkin Office imports both from a pinned commit of this repository, so a change here that
+# breaks them breaks the desktop app's next import. Nothing else in CI runs these tests: the unit
+# test workflow builds the app, not the Go module, and never runs the contract checks.
+#
+# Two jobs:
+# - transport (Linux): prepares the pinned embedded engine the way Transport/scripts/build_ios_lab.sh
+#   does, then `go vet` and `go test -race` on the mobile core, plus the preparer's own unit test.
+# - contracts (macOS): the two contract checks copy the app's real verification sources into a
+#   throwaway Swift package and run them against the shared fixtures. They need CryptoKit, so macOS.
+#
+# A positive `paths:` list, not `paths-ignore`: in paths-ignore a `!` pattern re-includes rather
+# than excludes. The Swift paths are the sources and tests the two contract scripts copy in (see
+# SOURCES and TESTS at the top of each); a new file added to either list belongs here too.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Contracts/**'
+      - 'Transport/**'
+      - '.github/workflows/contracts-transport.yml'
+      - 'OpenGlasses/Sources/Services/OfficeSync/**'
+      - 'OpenGlasses/Sources/Services/OrgProfile/ConfigProfile.swift'
+      - 'OpenGlasses/Sources/Services/OrgProfile/ProfileVerification.swift'
+      - 'OpenGlasses/Sources/Services/LicenseService.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultArchive.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultPublisher.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultManifest.swift'
+      - 'OpenGlasses/Sources/Services/SkillPacks/SkillPackSignature.swift'
+      - 'OpenGlasses/Sources/Services/Reading/BookFileExtractor.swift'
+      - 'OpenGlassesTests/OfficeManualAssignmentTests.swift'
+      - 'OpenGlassesTests/OfficeManagedJobTests.swift'
+      - 'OpenGlassesTests/OfficeManualImportTests.swift'
+      - 'OpenGlassesTests/OfficeInlineEntitlementTests.swift'
+      - 'OpenGlassesTests/VaultArchiveFixtures.swift'
+  push:
+    branches: [main]
+    paths:
+      - 'Contracts/**'
+      - 'Transport/**'
+      - '.github/workflows/contracts-transport.yml'
+      - 'OpenGlasses/Sources/Services/OfficeSync/**'
+      - 'OpenGlasses/Sources/Services/OrgProfile/ConfigProfile.swift'
+      - 'OpenGlasses/Sources/Services/OrgProfile/ProfileVerification.swift'
+      - 'OpenGlasses/Sources/Services/LicenseService.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultArchive.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultPublisher.swift'
+      - 'OpenGlasses/Sources/Services/Vault/VaultManifest.swift'
+      - 'OpenGlasses/Sources/Services/SkillPacks/SkillPackSignature.swift'
+      - 'OpenGlasses/Sources/Services/Reading/BookFileExtractor.swift'
+      - 'OpenGlassesTests/OfficeManualAssignmentTests.swift'
+      - 'OpenGlassesTests/OfficeManagedJobTests.swift'
+      - 'OpenGlassesTests/OfficeManualImportTests.swift'
+      - 'OpenGlassesTests/OfficeInlineEntitlementTests.swift'
+      - 'OpenGlassesTests/VaultArchiveFixtures.swift'
+
+# Same rule as tests.yml: a superseded PR run is cancelled, a run on main never is.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The toolchain Transport/scripts/build_ios_lab.sh insists on. Bumping it means bumping both.
+      GO_VERSION: '1.27.1'
+      GO_SHA256: '63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # Pinned and checksum-verified, the same standard as the XcodeGen install, rather than a
+      # setup action that resolves a version at run time.
+      - name: Install Go (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          archive="go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "https://go.dev/dl/$archive"
+          echo "${GO_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/$archive"
+          echo "$RUNNER_TEMP/go/bin" >> "$GITHUB_PATH"
+
+      # Mirrors Transport/scripts/build_ios_lab.sh up to its test step: download the pinned upstream
+      # module, then let the preparer verify its checksums and write the ignored replacement module
+      # that go.mod's `replace` points at.
+      - name: Prepare the pinned embedded engine
+        working-directory: Transport
+        run: |
+          set -euo pipefail
+          go version
+          mkdir -p .tools
+          export GOMODCACHE="$PWD/.tools/gomod"
+          upstream=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["moduleVersion"])' vendor/syncthing/mobile-extension/pin.json)
+          go -C .tools mod download "github.com/syncthing/syncthing@$upstream"
+          python3 scripts/prepare_mobile_source.py "$GOMODCACHE" "$PWD/.tools/syncthing-mobile"
+
+      - name: go vet
+        working-directory: Transport/mobile-core
+        run: GOMODCACHE="$GITHUB_WORKSPACE/Transport/.tools/gomod" go vet -tags noassets ./...
+
+      - name: go test -race
+        working-directory: Transport/mobile-core
+        run: GOMODCACHE="$GITHUB_WORKSPACE/Transport/.tools/gomod" go test -race -tags noassets ./...
+
+      - name: Source preparer unit test
+        working-directory: Transport/scripts
+        run: python3 -m unittest -v test_prepare_mobile_source
+
+  contracts:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Manual and managed-job contracts
+        run: python3 Contracts/tests/test_manual_contracts.py
+
+      - name: Inline entitlement and pairing gate
+        run: python3 Contracts/tests/test_inline_entitlement.py
