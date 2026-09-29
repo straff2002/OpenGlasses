@@ -16,7 +16,8 @@
 (function() {
   var search = window.location.search || '';
   var hash = window.location.hash || '';
-  var path = window.location.pathname || '/';
+  // The github.io redirect can arrive as "//", so collapse leading slashes first.
+  var path = (window.location.pathname || '/').replace(/^\/+/, '/');
   if (path.indexOf('/OpenGlasses/') !== 0) {
     path = '/OpenGlasses' + (path.charAt(0) === '/' ? path : '/' + path);
   }
