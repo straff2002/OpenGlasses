@@ -159,7 +159,7 @@
         {
           "adHocOffers": [],
           "codeOffers": [],
-          "displayPrice": "129.99",
+          "displayPrice": "199.99",
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "field_assist_monthly_001",
@@ -173,27 +173,6 @@
           "productID": "com.openglasses.field_assist_monthly",
           "recurringSubscriptionPeriod": "P1M",
           "referenceName": "Field Assist Monthly",
-          "subscriptionGroupID": "field_assist",
-          "type": "RecurringSubscription",
-          "winbackOffers": []
-        },
-        {
-          "adHocOffers": [],
-          "codeOffers": [],
-          "displayPrice": "1299.99",
-          "familyShareable": false,
-          "groupNumber": 2,
-          "internalID": "field_assist_annual_001",
-          "localizations": [
-            {
-              "description": "Field Assist for one technician with annual billing. Save 36% compared to monthly.",
-              "displayName": "Annual",
-              "locale": "en_US"
-            }
-          ],
-          "productID": "com.openglasses.field_assist_annual",
-          "recurringSubscriptionPeriod": "P1Y",
-          "referenceName": "Field Assist Annual",
           "subscriptionGroupID": "field_assist",
           "type": "RecurringSubscription",
           "winbackOffers": []

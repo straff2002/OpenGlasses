@@ -1,5 +1,6 @@
 import StoreKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings UI for the Field Assist (B2B) feature: master toggle, vault picker,
 /// default session mode, and a manual session start/end for debugging.
@@ -20,6 +21,9 @@ struct FieldAssistSettingsView: View {
 
     @ObservedObject private var orgProfile = OrgProfileManager.shared
     @State private var showingOrgScanner = false
+    @State private var showingOfficeSetupImporter = false
+    @State private var showingOfficePairing = false
+    @State private var officeImportError: String?
     @State private var scannedOrgCode: String?
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
@@ -120,10 +124,20 @@ struct FieldAssistSettingsView: View {
             if !orgProfile.isManaged {
                 Section {
                     Button("Scan an Organisation Code") { showingOrgScanner = true }
+                    Button("Import Avenkin Setup File") { showingOfficeSetupImporter = true }
                 } footer: {
-                    Text("If your organisation set up Field Assist for you, scan the code it gave you. You'll see what it sets before anything changes.")
+                    Text("Scan your organisation's code or import its signed Avenkin setup file. You'll review the settings before anything changes.")
                 }
             }
+            #if AVENKIN_OFFICE_TRANSPORT
+            if orgProfile.record?.source == .office {
+                Section {
+                    Button("Pair with Avenkin Office") { showingOfficePairing = true }
+                } footer: {
+                    Text("Review the desktop identity and verify its administrator-signed binding before this phone can connect.")
+                }
+            }
+            #endif
 
             // ──────────────── Vault selection
             if enabled {
@@ -422,6 +436,37 @@ struct FieldAssistSettingsView: View {
             }
         }) {
             OrgCodeScannerView { code in scannedOrgCode = code }
+        }
+        #if AVENKIN_OFFICE_TRANSPORT
+        .sheet(isPresented: $showingOfficePairing) { OfficePairingSheet() }
+        #endif
+        .fileImporter(isPresented: $showingOfficeSetupImporter, allowedContentTypes: [.json]) { result in
+            switch result {
+            case .failure:
+                officeImportError = "Couldn't open the Avenkin setup file. Try selecting it again."
+            case .success(let url):
+                Task {
+                    do {
+                        let bytes = try await Task.detached {
+                            let access = url.startAccessingSecurityScopedResource()
+                            defer { if access { url.stopAccessingSecurityScopedResource() } }
+                            let handle = try FileHandle(forReadingFrom: url)
+                            defer { try? handle.close() }
+                            return try handle.read(upToCount: OfficeSetupPackage.maximumBytes + 1) ?? Data()
+                        }.value
+                        appState.orgEnrolment.openOfficePackageFile(bytes)
+                    } catch {
+                        officeImportError = "Couldn't read the Avenkin setup file. Try selecting it again."
+                    }
+                }
+            }
+        }
+        .alert("Setup file", isPresented: Binding(
+            get: { officeImportError != nil },
+            set: { if !$0 { officeImportError = nil } })) {
+            Button("OK") { officeImportError = nil }
+        } message: {
+            Text(officeImportError ?? "")
         }
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
@@ -848,8 +893,7 @@ struct FieldAssistSettingsView: View {
         licenseEntrySection
 
         Section {
-            purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime")
-            purchaseRow(store.fieldAssistAnnualProduct, title: "Annual", subtitle: "Billed once a year")
+            purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime", period: "/month")
             if !store.hasCheckedEntitlements {
                 ProgressView("Checking purchases…")
             }
@@ -913,7 +957,7 @@ struct FieldAssistSettingsView: View {
     }
 
     @ViewBuilder
-    private func purchaseRow(_ product: Product?, title: String, subtitle: String) -> some View {
+    private func purchaseRow(_ product: Product?, title: String, subtitle: String, period: String) -> some View {
         if let product {
             Button {
                 Task { await store.purchase(product) }
@@ -924,10 +968,21 @@ struct FieldAssistSettingsView: View {
                         Text(subtitle).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(product.displayPrice).foregroundStyle(.secondary)
+                    Text(product.displayPrice + period).foregroundStyle(.secondary)
                 }
             }
             .disabled(store.isPurchasing || store.isRestoring)
+        } else {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(store.isLoadingProducts ? "Loading…" : "Unavailable")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

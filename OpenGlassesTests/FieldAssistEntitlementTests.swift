@@ -75,12 +75,14 @@ final class FieldAssistEntitlementTests: XCTestCase {
 
     // MARK: - Store evidence
 
-    func testStoreCatalogOffersOnlySubscriptionsButLegacyPurchaseStillEntitles() {
+    func testStoreCatalogOffersOnlyMonthlyButRetiredProductsStillEntitle() {
         XCTAssertEqual(StoreKitService.fieldAssistCatalogProductIds,
-                       [StoreKitService.fieldAssistMonthlyId, StoreKitService.fieldAssistAnnualId])
+                       [StoreKitService.fieldAssistMonthlyId])
         XCTAssertFalse(StoreKitService.fieldAssistCatalogProductIds.contains(StoreKitService.fieldAssistId))
         XCTAssertTrue(StoreKitService.fieldAssistProductIds.contains(StoreKitService.fieldAssistId),
                       "Existing one-time purchases must remain entitled after the product is retired")
+        XCTAssertTrue(StoreKitService.fieldAssistSubscriptionIds.contains(StoreKitService.fieldAssistAnnualId),
+                      "Existing annual subscribers must retain access after annual is withdrawn")
     }
 
     func testVerifiedStorePurchaseGrants() {

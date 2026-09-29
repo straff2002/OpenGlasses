@@ -3,6 +3,19 @@ import Foundation
 import PDFKit
 import Vision
 import AppKit
+import CryptoKit
+
+// Avenkin compiles this source into a bundled worker; users need no Swift toolchain.
+let officeWorker = CommandLine.arguments.contains("--office-worker")
+let officeOutputLimit = 2 * 1024 * 1024
+struct OfficeProgress: Encodable {
+    let page: Int
+    let pages: Int
+}
+func officeProgress(page: Int, pages: Int) {
+    guard officeWorker, let data = try? JSONEncoder().encode(OfficeProgress(page: page, pages: pages)) else { return }
+    FileHandle.standardOutput.write(data + Data([10]))
+}
 
 // Extracts a manual's text on a Mac, page by page, for a vault's documents tier — so a pack or a
 // customer folder can ship pre-extracted text and the phone never pays for recognition.
@@ -44,6 +57,10 @@ usage: extract-manual-text.swift <manual.pdf> [output.md] [--dpi 200] [--lang en
 """
 
 func fail(_ message: String) -> Never {
+    if officeWorker, CommandLine.arguments.count == 5,
+       let data = try? JSONEncoder().encode(["error": message]) {
+        try? data.write(to: URL(fileURLWithPath: CommandLine.arguments[4]), options: .atomic)
+    }
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }
@@ -563,6 +580,8 @@ while let arg = iterator.next() {
         forceOCR = true
     case "--self-check":
         selfCheck = true
+    case "--office-worker":
+        break
     case "-h", "--help":
         print(usage); exit(0)
     default:
@@ -575,6 +594,13 @@ guard let inputPath = positional.first else { fail(usage) }
 let inputURL = URL(fileURLWithPath: inputPath)
 let outputURL = URL(fileURLWithPath: positional.count > 1 ? positional[1] : inputURL.deletingPathExtension().path + ".md")
 guard let document = PDFDocument(url: inputURL) else { fail("Could not open \(inputPath) as a PDF.") }
+if officeWorker {
+    guard positional.count == 3 else { fail("The office worker requires input, text output and report output paths.") }
+    guard !document.isLocked else { fail("This PDF is password locked. Import an unlocked copy before extracting text.") }
+    guard document.pageCount > 0, document.pageCount <= 500 else { fail("Choose a PDF with 1–500 pages for this build.") }
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: inputPath),
+          let bytes = attributes[.size] as? NSNumber, bytes.intValue <= 16 * 1024 * 1024 else { fail("PDF input exceeds the office size limit.") }
+}
 
 func recognise(_ image: CGImage) -> (text: String, confidence: Float) {
     let request = VNRecognizeTextRequest()
@@ -582,7 +608,10 @@ func recognise(_ image: CGImage) -> (text: String, confidence: Float) {
     request.usesLanguageCorrection = true
     request.recognitionLanguages = languages
     let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])
-    do { try handler.perform([request]) } catch { return ("", 0) }
+    do { try handler.perform([request]) } catch {
+        if officeWorker { fail("Text recognition could not finish: \(error.localizedDescription). The original and any previously saved text have been kept.") }
+        return ("", 0)
+    }
     guard let observations = request.results, !observations.isEmpty else { return ("", 0) }
     var blocks: [(text: String, confidence: Float, box: CGRect)] = []
     for observation in observations {
@@ -599,7 +628,14 @@ func recognise(_ image: CGImage) -> (text: String, confidence: Float) {
 
 func render(_ page: PDFPage) -> CGImage? {
     let bounds = page.bounds(for: .mediaBox)
-    let scale = CGFloat(dpi) / 72
+    var scale = CGFloat(dpi) / 72
+    if officeWorker {
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { return nil }
+        // Bound scan raster memory independently of unusual PDF page dimensions.
+        scale = min(scale, 4096 / max(bounds.width, bounds.height))
+        scale = min(scale, sqrt(10_000_000 / (bounds.width * bounds.height)))
+        guard scale.isFinite, scale > 0, bounds.width * scale >= 1, bounds.height * scale >= 1 else { return nil }
+    }
     let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
     let image = page.thumbnail(of: size, for: .mediaBox)
     var rect = CGRect(origin: .zero, size: image.size)
@@ -609,10 +645,15 @@ func render(_ page: PDFPage) -> CGImage? {
 // One pass over the type before any text is written: the body size is a property of the whole
 // document, and a diagram page's own mode is its labels, so it cannot be decided page by page.
 var typedPages: [Int: TypedPage] = [:]
+var layerBytes = 0
 if !forceOCR {
     for index in 0..<document.pageCount {
         guard let page = document.page(at: index),
               let attributed = page.attributedString, attributed.length > 0 else { continue }
+        if officeWorker {
+            layerBytes += attributed.string.utf8.count
+            guard attributed.length <= 500_000, layerBytes <= officeOutputLimit else { fail("Extracted text exceeds this build’s 2 MB limit.") }
+        }
         typedPages[index] = typedPage(from: attributed)
     }
 }
@@ -624,19 +665,37 @@ var lowConfidence = 0
 var numberingMismatches = 0
 var structuredHeadings = 0
 var diagramPages = 0
+var pageStartLines: [Int] = []
+var nextOutputLine = 2
+var ocrPageNumbers: [Int] = []
+var reviewPageNumbers: [Int] = []
+var emptyPageNumbers: [Int] = []
+var printedPageMismatches: [Int] = []
+var supplementedPages: [Int] = []
+var diagramPageNumbers: [Int] = []
+var readableCharacters = 0
+officeProgress(page: 0, pages: document.pageCount)
 for index in 0..<document.pageCount {
-    guard let page = document.page(at: index) else { continue }
+    guard let page = document.page(at: index) else {
+        if officeWorker { fail("A PDF page could not be read. The original has been kept.") }
+        continue
+    }
     let layer = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     var text = layer
     var diagram = false
+    let sparse = layer.filter { !$0.isWhitespace }.count < 160
+    let hasObject = layer.contains("\u{fffc}") || layer.contains("\u{fffd}")
+    let supplement = officeWorker && !forceOCR && !layer.isEmpty && (sparse || hasObject)
     if forceOCR || layer.isEmpty {
         if let image = render(page) {
             let result = recognise(image)
             text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             recognisedPages += 1
+            ocrPageNumbers.append(index + 1)
+            if result.confidence < 0.8 { reviewPageNumbers.append(index + 1) }
             if result.confidence < 0.5 { lowConfidence += 1 }
             FileHandle.standardError.write(Data("page \(index + 1)/\(document.pageCount): recognised (confidence \(String(format: "%.2f", result.confidence)))\n".utf8))
-        }
+        } else if officeWorker { fail("A scanned page could not be rendered. The original has been kept.") }
     } else if let typed = typedPages[index], body > 0 {
         // A recognised page has no type to read, so it keeps the lexical treatment; a typed page
         // gets its headings, captions and diagram tag marked.
@@ -646,21 +705,70 @@ for index in 0..<document.pageCount {
         diagram = structured.isDiagram
         if diagram { diagramPages += 1 }
     }
+    if supplement {
+        guard let image = render(page) else { fail("A potentially incomplete page could not be rendered. Previously saved text has been kept.") }
+        let result = recognise(image)
+        // Keep the digital text unchanged; OCR is visibly separate and cannot silently
+        // overwrite a readable number, part identifier or warning in the text layer.
+        text += "\n\n### OCR supplement — review against original\n" + (result.text.isEmpty ? "(No additional text recognised.)" : result.text)
+        recognisedPages += 1
+        ocrPageNumbers.append(index + 1)
+        supplementedPages.append(index + 1)
+        reviewPageNumbers.append(index + 1)
+    }
+    if diagram || hasObject {
+        diagramPageNumbers.append(index + 1)
+        if !text.contains(diagramMarker) { text = diagramMarker + "\n" + text }
+    }
     // The page's own running header, when it disagrees with where the page actually sits. The text
     // is left exactly as it is — only the reader is told.
     if let printed = numberingMismatch(pageText: text, physicalPage: index + 1) {
         numberingMismatches += 1
+        printedPageMismatches.append(index + 1)
         FileHandle.standardError.write(Data(
             "page \(index + 1)/\(document.pageCount): the page prints itself as page \(printed); citations will say page \(index + 1)\n".utf8))
     }
-    output += "\nPage \(index + 1)\n\n"
-    output += text.isEmpty ? "(no text on this page)\n" : text + "\n"
+    pageStartLines.append(nextOutputLine + 1)
+    let chunk = "\nPage \(index + 1)\n\n" + (text.isEmpty ? "(no text on this page)\n" : text + "\n")
+    output += chunk
+    nextOutputLine += chunk.utf8.filter { $0 == 10 }.count
+    readableCharacters += text.filter { !$0.isWhitespace }.count
+    if text.isEmpty { emptyPageNumbers.append(index + 1) }
+    if officeWorker, output.utf8.count > officeOutputLimit { fail("Extracted text exceeds this build’s 2 MB limit.") }
+    officeProgress(page: index + 1, pages: document.pageCount)
 }
+
+if officeWorker, readableCharacters == 0 { fail("No readable text was found. The original has been kept; attach a reviewed text file instead.") }
 
 do {
     try output.write(to: outputURL, atomically: true, encoding: .utf8)
 } catch {
     fail("Could not write \(outputURL.path): \(error)")
+}
+if officeWorker {
+    struct OfficeReport: Encodable {
+        let version: Int
+        let sourceSha256: String
+        let method: String
+        let pages: Int
+        let pageStartLines: [Int]
+        let ocrPages: [Int]
+        let lowConfidencePages: [Int]
+        let emptyPages: [Int]
+        let printedPageMismatches: [Int]
+        let supplementedPages: [Int]
+        let diagramPages: [Int]
+    }
+    do {
+        let source = try Data(contentsOf: inputURL, options: .mappedIfSafe)
+        let digest = SHA256.hash(data: source).map { String(format: "%02x", $0) }.joined()
+        let report = OfficeReport(version: 1, sourceSha256: digest, method: "macPDFKitVision", pages: document.pageCount,
+                                  pageStartLines: pageStartLines, ocrPages: ocrPageNumbers, lowConfidencePages: reviewPageNumbers,
+                                  emptyPages: emptyPageNumbers, printedPageMismatches: printedPageMismatches,
+                                  supplementedPages: supplementedPages, diagramPages: diagramPageNumbers)
+        try JSONEncoder().encode(report).write(to: URL(fileURLWithPath: positional[2]), options: .atomic)
+    } catch { fail("Could not save the extraction report. Previously saved text has been kept.") }
+    exit(0)
 }
 let stem = inputURL.deletingPathExtension().lastPathComponent
 FileHandle.standardError.write(Data("""

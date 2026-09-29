@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Combine
 
 /// Offline license-code validation for the Field Assist (B2B) feature.
 ///
@@ -65,10 +66,15 @@ final class LicenseService: ObservableObject {
         /// licence carrying it enrols the phone when entered; one without it activates as before.
         /// Signed like every other claim, so the address is the vendor's statement, not the host's.
         var profile: String?
+        /// Desktop-managed licences bind to a vendor-signed schema-2 profile by stable IDs.
+        /// Both are absent on legacy codes; a display name or URL is never that binding.
+        var organizationID: String?
+        var profileID: String?
 
         init(feature: String, licensee: String, issued: Date, expires: Date?,
              tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
-             packs: [String]? = nil, profile: String? = nil) {
+             packs: [String]? = nil, profile: String? = nil,
+             organizationID: String? = nil, profileID: String? = nil) {
             self.feature = feature
             self.licensee = licensee
             self.issued = issued
@@ -79,6 +85,8 @@ final class LicenseService: ObservableObject {
             self.reference = reference
             self.packs = packs
             self.profile = profile
+            self.organizationID = organizationID
+            self.profileID = profileID
         }
 
         /// The tier this payload grants; an unrecognised or missing claim is team, never more.

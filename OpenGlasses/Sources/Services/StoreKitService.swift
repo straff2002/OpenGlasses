@@ -31,9 +31,9 @@ class StoreKitService: ObservableObject {
     /// existing owners continue to pass receipt validation. Teams use signed licences.
     nonisolated static let fieldAssistProductIds: Set<String> = [fieldAssistId, fieldAssistMonthlyId, fieldAssistAnnualId]
     nonisolated static let fieldAssistSubscriptionIds: Set<String> = [fieldAssistMonthlyId, fieldAssistAnnualId]
-    /// Products offered for new Field Assist purchases. The legacy non-consumable is deliberately
-    /// excluded from catalog loading and therefore cannot appear on the paywall.
-    nonisolated static let fieldAssistCatalogProductIds: Set<String> = fieldAssistSubscriptionIds
+    /// Only monthly is offered for new purchases. Annual and the legacy non-consumable remain
+    /// valid entitlement sources, but are excluded from the catalog and paywall.
+    nonisolated static let fieldAssistCatalogProductIds: Set<String> = [fieldAssistMonthlyId]
 
     /// Medical Compliance subscription products.
     private static let medicalProductIds: Set<String> = [medicalMonthlyId, medicalAnnualId]
@@ -51,6 +51,7 @@ class StoreKitService: ObservableObject {
 
     @Published private(set) var isLoadingProducts = false
     @Published private(set) var catalogError: String?
+    @Published private(set) var medicalCatalogError: String?
     @Published private(set) var isRestoring = false
     /// False means unknown, not an absent purchase. Set only after recording verified evidence.
     @Published private(set) var hasCheckedEntitlements = false
@@ -142,6 +143,7 @@ class StoreKitService: ObservableObject {
         guard !isLoadingProducts else { return }
         isLoadingProducts = true
         catalogError = nil
+        medicalCatalogError = nil
         defer { isLoadingProducts = false }
         do {
             let loaded = try await productLoader(Self.allProductIds)
@@ -151,11 +153,15 @@ class StoreKitService: ObservableObject {
             if !Self.fieldAssistCatalogProductIds.isSubset(of: Set(loaded.map(\.id))) {
                 catalogError = "Some Field Assist plans are unavailable. Check your connection and App Store sign-in, then retry."
             }
+            if !Self.medicalProductIds.isSubset(of: Set(loaded.map(\.id))) {
+                medicalCatalogError = "Some Medical Compliance plans are unavailable. Check your connection and App Store sign-in, then retry."
+            }
             PrivacyLog.purchase(.catalogLoaded, count: loaded.count)
             let generation = entitlementGeneration
             Task { await refreshRenewalInformation(generation: generation) }
         } catch {
             catalogError = "Unable to load purchases: \(error.localizedDescription)"
+            medicalCatalogError = catalogError
             PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
         }
     }
@@ -343,11 +349,6 @@ class StoreKitService: ObservableObject {
     /// The Field Assist monthly subscription product.
     var fieldAssistMonthlyProduct: Product? {
         products.first { $0.id == Self.fieldAssistMonthlyId }
-    }
-
-    /// The Field Assist annual subscription product.
-    var fieldAssistAnnualProduct: Product? {
-        products.first { $0.id == Self.fieldAssistAnnualId }
     }
 
     /// Whether the retired perpetual unlock is owned. Kept for grandfathered receipt handling.
