@@ -1,23 +1,27 @@
 import SwiftUI
 
 /// The model editor's **Reasoning** setting (Plan GB P0): a per-model picker plus what the setting
-/// will actually do, with and without tools, and why. The readout comes from the same
-/// `ReasoningPolicy.resolve` call the request builder makes, so it cannot disagree with the wire.
+/// will actually do, with and without tools, and why. Plan GC: the readout names the endpoint too,
+/// and comes from the same `OpenAIRouteSelector` selection the request builder makes (base URL
+/// included, since a custom host opts into Responses through it), so it cannot disagree with the
+/// wire. The wording lives in `ModelReasoningReadout`.
 struct ModelReasoningSection: View {
     let provider: LLMProvider
     let model: String
+    let baseURL: String
     @Binding var reasoningEffort: String?
 
     private var draft: ModelConfig {
         var config = ModelConfig.defaultConfig(for: provider)
         config.model = model
+        config.baseURL = baseURL
         config.reasoningEffort = reasoningEffort
         return config
     }
 
     var body: some View {
-        let withTools = draft.reasoningResolution(toolsAttached: true)
-        let withoutTools = draft.reasoningResolution(toolsAttached: false)
+        let withTools = ModelReasoningReadout.lines(for: draft.routeSelection(toolsAttached: true))
+        let withoutTools = ModelReasoningReadout.lines(for: draft.routeSelection(toolsAttached: false))
         Section {
             Picker("Reasoning", selection: $reasoningEffort) {
                 Text("Automatic").tag(String?.none)
@@ -25,8 +29,8 @@ struct ModelReasoningSection: View {
                     Text(level.label).tag(Optional(level.rawValue))
                 }
             }
-            readout(title: "Effective with tools", resolution: withTools)
-            readout(title: "Effective without tools", resolution: withoutTools)
+            readout(title: "Effective with tools", lines: withTools)
+            readout(title: "Effective without tools", lines: withoutTools)
         } header: {
             Text("Reasoning")
         } footer: {
@@ -34,15 +38,15 @@ struct ModelReasoningSection: View {
         }
     }
 
-    private func readout(title: String, resolution: ReasoningPolicy.Resolution) -> some View {
+    private func readout(title: String, lines: ModelReasoningReadout.Lines) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(title)
                 Spacer()
-                Text(resolution.displayValue)
+                Text(lines.value)
                     .foregroundStyle(.secondary)
             }
-            Text(resolution.reason.explanation)
+            Text(lines.explanation)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

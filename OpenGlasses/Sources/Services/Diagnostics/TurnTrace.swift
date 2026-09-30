@@ -35,6 +35,8 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var imageSent: Bool
     /// The effective reasoning token (Plan GB P0). Optional: traces written before it decode as nil.
     var reasoning: String?
+    /// The OpenAI endpoint token (Plan GC). Optional: traces written before it decode as nil.
+    var route: String?
     var promptBlocks: [TurnTimeline.PromptBlock]
     var manualPassages: [String]
     var manualRefused: Bool
@@ -62,6 +64,7 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         endOfTurn = timeline.endOfTurnReason?.rawValue
         imageSent = timeline.imageSent
         reasoning = timeline.reasoning
+        route = timeline.route
         promptBlocks = timeline.promptBlocks
         manualPassages = timeline.manualPassages
         manualRefused = timeline.manualRefused

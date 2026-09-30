@@ -50,7 +50,7 @@ struct ModelEditorView: View {
                     keyValidated: $keyValidated,
                     resetModelOnProviderChange: false
                 )
-                ModelReasoningSection(provider: selectedProvider, model: model,
+                ModelReasoningSection(provider: selectedProvider, model: model, baseURL: baseURL,
                                       reasoningEffort: $reasoningEffort)
             }
             .ogFormStyle()
