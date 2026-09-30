@@ -976,7 +976,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let session = sessions.history.first(where: { $0.id == sessionId })
                         ?? sessions.activeSession else { return nil }
                 let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
-                let record = WorkRecord(session: session, vaultName: name)
+                let record = WorkRecord(session: session, vaultName: name,
+                                        usage: sessions.jobUsage(sessionId: session.id))
                 switch kind {
                 case .addendum:
                     guard let attachment = sessions.addendumAttachment(sessionId: sessionId) else {

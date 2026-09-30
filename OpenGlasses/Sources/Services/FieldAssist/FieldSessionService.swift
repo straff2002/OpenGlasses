@@ -56,7 +56,12 @@ final class FieldSessionService: ObservableObject {
 
     private let sessionsRoot: URL
 
+    /// Where a job's model usage is read from (Plan GD1). The app's one tracker; a test points it
+    /// at a tracker over a temporary store and states the figures.
+    var usageTracker: UsageTracker
+
     init(sessionsRoot: URL? = nil) {
+        usageTracker = UsageTracker.shared
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.sessionsRoot = sessionsRoot ?? documents.appendingPathComponent("FieldSessions", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.sessionsRoot, withIntermediateDirectories: true)
@@ -205,7 +210,8 @@ final class FieldSessionService: ObservableObject {
         let endedVaultName = activeVault?.manifest.name ?? session.vaultId
         let record = WorkRecord(session: session, vaultName: endedVaultName,
                                 vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: endedVaultName))
+                                    .recordLine(vaultName: endedVaultName),
+                                usage: jobUsage(sessionId: session.id))
         offlineQueue?.enqueue(QueuedOp.make(workRecord: record))
         activeSession = nil
         activeVault = nil
@@ -902,7 +908,14 @@ final class FieldSessionService: ObservableObject {
         let name = activeVault?.manifest.name ?? session.vaultId
         return WorkRecord(session: session, vaultName: name,
                           vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                              .recordLine(vaultName: name))
+                              .recordLine(vaultName: name),
+                          usage: jobUsage(sessionId: session.id))
+    }
+
+    /// What a job has cost in model usage so far (Plan GD1) — every request the usage store tagged
+    /// with its id. Empty for a job that made none, which the record then leaves out.
+    func jobUsage(sessionId: String) -> JobUsageSummary {
+        usageTracker.jobUsage(fieldSessionId: sessionId)
     }
 
     /// A finished job's record, built from the session as it was saved. Nil for an id this phone
@@ -912,7 +925,8 @@ final class FieldSessionService: ObservableObject {
         let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
         return WorkRecord(session: session, vaultName: name,
                           vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                              .recordLine(vaultName: name))
+                              .recordLine(vaultName: name),
+                          usage: jobUsage(sessionId: session.id))
     }
 
     /// Jobs that ended within `window` of `now`, as `ReportTargetResolver` needs them (Plan GB P0).
@@ -2272,7 +2286,8 @@ final class FieldSessionService: ObservableObject {
         let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
         let record = WorkRecord(session: session, vaultName: name,
                                 vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: name))
+                                    .recordLine(vaultName: name),
+                                usage: jobUsage(sessionId: session.id))
         let placement = DebriefDocumentPolicy.placement(
             debriefs: record.debriefs,
             reportAlreadySent: reportWasSent(sessionId: sessionId))
