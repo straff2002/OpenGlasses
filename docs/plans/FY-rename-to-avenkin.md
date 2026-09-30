@@ -4,9 +4,10 @@
 changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
-coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). **F1 built
-2026-09-29 (PR pending):** the storage and signing constants renamed to read as keys, values unchanged,
-and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
+coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1 shipped
+([#580](https://github.com/straff2002/OpenGlasses/pull/580)): the storage and signing constants renamed to read as keys, values unchanged,
+and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and the base-URL PR built
+2026-09-30; rename PR next. P1's rename itself and P2–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
 questions answered*), so P1 and P2 are unblocked. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
@@ -394,6 +395,17 @@ or breaks signatures.
    | Clone and download URLs | `docs/BUILDING.md:45`, `docs/field-assist-vault-guide.md:61` | Build-from-source and the manual extractor download | Still correct: the repository stays public under its name. Update them only if it is renamed (P4); GitHub redirects them after a rename |
    | PR and commit links | 57 files in `docs/plans/` | History | Leave as they are; they keep resolving, and GitHub redirects them if the repository is ever renamed |
 
+   **Redirects verified 2026-09-30:** each old `straff2002.github.io/OpenGlasses/…` address answers 301
+   to the same path on avenkin.com, and `avenkin.com/skillpacks/catalog.json` answers 200. The base-URL
+   PR shipped (branch `feat/fy-prereqs`): `PublicSite` (`Utils/PublicSite.swift`) derives the privacy,
+   support and about pages, both pack catalogs and the activation directory from `https://avenkin.com`,
+   keeping the paths the redirect preserves; the pack catalogs' `UserDefaults` overrides still work. The
+   OpenRouter `HTTP-Referer` is the base. The report link in Diagnostics & Support opens the support page
+   (no account needed) instead of a GitHub issue, and no longer carries the report in its address.
+   The translations address stays on the repository (it is not served by the site).
+   `PublicSiteGuardTests` pins every derived address under the base at its old path, and fails on any
+   `github.io` or repository address in `OpenGlasses/Sources` outside comments and that one line.
+
 ## P1 — The visible name (one PR)
 
 P1 rests on three fixes (F1–F3), all before any copy changes. **F1 lands ahead as its own PR, any
@@ -467,6 +479,19 @@ OpenGlasses.
    runs once. Known edge: someone who deliberately named a persona "OpenGlasses" is renamed too. That
    is accepted, and they can rename it back.
 
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.defaultName` is `"Avenkin"`, with
+`legacyDefaultNames` and `isDefaultName(_:)`; `resolve`, `Config.assistantDisplayName`, the setter,
+Settings' Reset button and the status badge all use the check, so the old default counts as the
+default wherever a name is compared (typing it is the same as choosing the default). The first-run
+persona, onboarding's placeholder and its "Skip — call it …" button, and Settings' placeholder and
+"Reset to …" button read `defaultName`. `Config.migrateAssistantNameToAvenkinIfNeeded()` runs at
+launch beside the other Config migrations, behind `assistantNameMigratedToAvenkin_v1`: a persona named
+exactly "OpenGlasses" becomes "Avenkin" and a stored display name equal to it is cleared; it reads the
+raw stored personas, so a fresh install is not seeded early. The legacy name is spelled in pieces in
+the source and in `AssistantNameMigrationTests`, so the rename's find-and-replace cannot turn the
+migration into a no-op. Two button titles become format keys ("Skip — call it %@", "Reset to %@"), so
+their translations return with the next catalog sync.
+
 ### F3 — Stop the assistant calling itself a glasses product when there are no glasses
 
 The shipped prompts give the assistant a glasses identity whatever the device:
@@ -483,6 +508,28 @@ The shipped prompts give the assistant a glasses identity whatever the device:
    `AssistantIdentity` rule).
 3. Tests: a phone-only prompt contains no "glasses"; a Meta glasses session says smart glasses; a G2
    session never says "Ray-Ban Meta"; a user's own prompt is unchanged.
+
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.Device` (`glasses`, `watch`, `phone`) with
+`devicePhrase(glassesConnected:watchOnly:)` — "on smart glasses", "on the user's watch", "on the
+user's phone" — and a Chinese counterpart ("智能眼镜上", "用户的手表上", "用户的手机上"). The default
+prompt's opening and context line, the four English identity role lines, the navigation and
+ultra-concise presets, the fourteen mode presets, the five Chinese openings and the lean cloud prompt
+are composed with it; no prompt names a vendor, and the two realtime vision notes lose "Ray-Ban Meta"
+too. The default prompt's camera sentence is now device-neutral ("You have a camera."). The device is
+read once per turn where the prompt is assembled, through `LLMService.deviceInUse` (set by the app
+from its existing glasses link, the same closure pattern as the debrief context), and passed down;
+`AssistantIdentity` and `Config` never read it. **Stored prompts stay untouched:** nothing is written
+back. Shipped presets were already recomposed on read when their body matched the shipped body
+(Plan FE P6), and a built-in the wearer edits stops being built-in; the comparison now folds the
+device-dependent sentences and their pre-F3 wording into one form, so a Default preset stored by an
+earlier build is recognised as shipped text and follows the device, while a user-owned prompt is
+returned byte for byte on every device. **No watch-turn signal exists yet**: the watch's "ask"
+starts the phone's own listening and nothing marks a turn as the watch's, so the app passes
+`watchOnly: false` and a watch turn reads as the phone until such a signal exists. The EVEN
+Realities link is not part of "glasses connected" yet either; its wearers read as the phone, which
+is honest if not complete, and never as Ray-Ban Meta. Left for the copy PR (P2): the "glasses camera"
+lines in the preset bodies, the Chinese default body's camera line, and the agent-mode document
+template.
 
 ### The rename itself
 

@@ -60,7 +60,7 @@ final class DiagnosticsReportBuilderTests: XCTestCase {
         XCTAssertTrue(report.body.contains("_No debug events recorded._"))
         XCTAssertEqual(report.includedLogLines, 0)
         XCTAssertEqual(report.omittedLogLines, 0)
-        XCTAssertEqual(report.issueURL.host, "github.com")
+        XCTAssertEqual(report.issueURL.host, "avenkin.com")
     }
 
     func testSelfTestSectionOnlyAppearsWhenProbesRan() {
@@ -167,11 +167,14 @@ final class DiagnosticsReportBuilderTests: XCTestCase {
 
     // MARK: - URL
 
-    func testURLTargetsTheProjectIssueTrackerWithBothParameters() {
+    /// The public support page (Plan FY P0 item 7): reporting a problem must not need a GitHub
+    /// account.
+    func testURLTargetsTheSupportPageWithBothParameters() {
         let report = DiagnosticsReportBuilder.build(snapshot(logTail: ["[10:00:00] hello"]))
         let url = report.issueURL.absoluteString
 
-        XCTAssertTrue(url.hasPrefix("https://github.com/straff2002/OpenGlasses/issues/new?"))
+        XCTAssertTrue(url.hasPrefix("https://avenkin.com/support.html?"))
+        XCTAssertFalse(url.contains("github"))
         XCTAssertTrue(url.contains("title="))
         XCTAssertTrue(url.contains("&body="))
         XCTAssertTrue(decodedURLBody(report).contains("[10:00:00] hello"))
@@ -223,7 +226,7 @@ final class DiagnosticsReportBuilderTests: XCTestCase {
 
         XCTAssertLessThanOrEqual(report.issueURL.absoluteString.count, 300)
         XCTAssertEqual(report.includedLogLines, 0)
-        XCTAssertEqual(report.issueURL.host, "github.com")
+        XCTAssertEqual(report.issueURL.host, "avenkin.com")
     }
 
     // MARK: - Determinism

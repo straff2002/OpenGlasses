@@ -323,6 +323,13 @@ class LLMService: ObservableObject {
     /// than being a singleton; the app sets it to `GuidedJobFlow.debriefBlock()` at launch.
     static var debriefContext: () -> String? = { nil }
 
+    /// The device the wearer is talking through, for the identity line (Plan FY F3). A closure
+    /// for the same reason as `debriefContext`: the prompt builders are static and the connection
+    /// state is the app's, which sets this at launch from the glasses link it already tracks.
+    /// Every route reads it **once**, where its prompt is assembled, and passes the result down —
+    /// `AssistantIdentity` and `Config` never read device state themselves.
+    static var deviceInUse: () -> AssistantIdentity.Device = { .phone }
+
     /// Build the full system prompt, optionally including location, tools, memory, and vision context.
     /// When `promptSections` is provided (from the ConversationClassifier), irrelevant sections are
     /// stripped to reduce token count. When nil, all sections are included (backward compatible).
@@ -331,29 +338,30 @@ class LLMService: ObservableObject {
     /// of the heavy optional contexts (playbook/shortcuts/OpenClaw). `sendLocal` appends its own
     /// reduced tool block, so the model still has usable tools. Used by every on-device path
     /// (active-model `sendMessage` and fast-tier `sendViaLocalAgent`) so they can't diverge.
-    static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil) async -> String {
+    static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil, device: AssistantIdentity.Device = .phone) async -> String {
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
-            hasImage: hasImage, memoryContext: memoryContext, turn: turn).combined
+            hasImage: hasImage, memoryContext: memoryContext, turn: turn, device: device).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
         // Gemma-style templates have no separate system channel — this whole prompt is merged
         // into the model's first *user* turn, and a small model can flip roles and reply to
         // "OpenGlasses" instead of the wearer. Pin the speaker identity explicitly.
-        return prompt + "\n\nThe person speaking to you is the user wearing the glasses. Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name."
+        let speaker = device == .glasses ? "the user wearing the glasses" : "the user"
+        return prompt + "\n\nThe person speaking to you is \(speaker). Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name."
     }
 
-    static func leanCloudPrompt(hasImage: Bool, memoryContext: String? = nil) -> String {
+    static func leanCloudPrompt(hasImage: Bool, memoryContext: String? = nil, device: AssistantIdentity.Device = .phone) -> String {
         var prompt = """
-        \(AssistantIdentity.line(name: Config.assistantName, role: "a voice assistant on smart glasses. Replies are spoken aloud."))
+        \(AssistantIdentity.line(name: Config.assistantName, role: "a voice assistant \(device.phrase). Replies are spoken aloud."))
         Answer in 1–2 short sentences. No markdown, lists, preamble, or follow-up questions.
         """
         if hasImage {
             prompt += """
 
 
-            A photo from the glasses camera is attached. You CAN see it — never deny vision.
+            A photo from the camera is attached. You CAN see it — never deny vision.
             Name the main subject and anything asked. Skip background, lighting, and composition unless asked.
             If asked to read text: quote it verbatim; translate only if asked.
             """
@@ -393,8 +401,8 @@ class LLMService: ObservableObject {
         return (String(memory.prefix(limit)) + "…", memory.count - limit)
     }
 
-    static func leanVisionCloudPrompt() -> String {
-        leanCloudPrompt(hasImage: true)
+    static func leanVisionCloudPrompt(device: AssistantIdentity.Device = .phone) -> String {
+        leanCloudPrompt(hasImage: true, device: device)
     }
 
     /// The memory block exactly as a full system prompt carries it: the rendered block itself,
@@ -432,13 +440,13 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
             prompt = agentContext
         } else {
-            prompt = Config.systemPrompt
+            prompt = Config.systemPrompt(device: device)
         }
 
         // Support trace (2026-09-26): which blocks this prompt is made of, and how big each is.
@@ -465,7 +473,7 @@ class LLMService: ObservableObject {
             prompt += """
 
             VISION & CAMERA:
-            - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
+            - \(Config.cameraSentence) When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
             - You CAN see images — never say you lack camera or vision access.
             - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
             - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
@@ -856,12 +864,16 @@ class LLMService: ObservableObject {
         // Plan GB P5: on OpenAI and Anthropic the volatile tail travels separately, after the
         // history (OpenAI) or as an uncached second system block (Anthropic).
         var volatileTail: String?
+        // Plan FY F3: the device this turn is on, read once here and passed to whichever prompt
+        // tier answers.
+        let device = Self.deviceInUse()
         if isOnDevice {
             fullPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
-                hasImage: imageData != nil, turn: text)
+                hasImage: imageData != nil, turn: text, device: device)
         } else if smallContext {
-            fullPrompt = Self.leanCloudPrompt(hasImage: imageData != nil, memoryContext: memoryContext)
+            fullPrompt = Self.leanCloudPrompt(hasImage: imageData != nil, memoryContext: memoryContext,
+                                              device: device)
         } else {
             // Plan GB P5: when the request carries machine-readable tool schemas, each tool's
             // description is already in them — sending it again in the prompt doubled ~8k tokens.
@@ -870,7 +882,7 @@ class LLMService: ObservableObject {
             let nativeToolDescriptions = schemasAttached
                 ? [] : (nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? [])
             let gatewayToolNames = openClawBridge?.availableToolNames ?? []
-            let layout = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text)
+            let layout = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text, device: device)
             if provider == .openai || provider == .anthropic {
                 fullPrompt = layout.stable
                 volatileTail = layout.volatile
@@ -2294,7 +2306,7 @@ class LLMService: ObservableObject {
 
                 // OpenRouter requires additional headers for tracking
                 if provider == .openrouter {
-                    request.setValue("https://github.com/straff2002/OpenGlasses", forHTTPHeaderField: "HTTP-Referer")
+                    request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
                     request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
                 }
 
@@ -2635,7 +2647,7 @@ class LLMService: ObservableObject {
                     request.setValue(authorization, forHTTPHeaderField: "Authorization")
                 }
                 if provider == .openrouter {
-                    request.setValue("https://github.com/straff2002/OpenGlasses", forHTTPHeaderField: "HTTP-Referer")
+                    request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
                     request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
                 }
 
@@ -4063,6 +4075,7 @@ class LLMService: ObservableObject {
     func sendViaLocalAgent(_ text: String, locationContext: String? = nil, memoryContext: String? = nil, weatherContext: String? = nil) async throws -> String {
         let agentModelId = Config.agentModelId
         let hasNativeTools = nativeToolRouter != nil
+        let device = Self.deviceInUse()   // Plan FY F3: read once for whichever prompt is built
 
         // The fast-tier setting can name a cloud configuration independently of the active chat
         // model. Resolve it before building a cloud prompt so Medical Local LLM Only cannot escape
@@ -4076,7 +4089,7 @@ class LLMService: ObservableObject {
             let localConfig = try medicalInferenceModel(requested: requested)
             let leanPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
-                hasImage: false, turn: text, weatherContext: weatherContext)
+                hasImage: false, turn: text, weatherContext: weatherContext, device: device)
             PrivacyLog.model(.agentSelected, model: PrivacyToken(localConfig.model),
                              detail: PrivacyToken("medicalLocalOnly"))
             switch localConfig.llmProvider {
@@ -4105,7 +4118,8 @@ class LLMService: ObservableObject {
                 nativeToolNames: nativeToolNames,
                 nativeToolDescriptions: nativeToolDescriptions,
                 memoryContext: memoryContext,
-                turn: text
+                turn: text,
+                device: device
             ).combined
             PrivacyLog.model(.agentSelected, model: PrivacyToken(cloudConfig.model),
                              configuration: PrivateIdentifier(cloudConfig.name),
@@ -4121,7 +4135,7 @@ class LLMService: ObservableObject {
         }
         let leanPrompt = await Self.leanOnDevicePrompt(
             locationContext: locationContext, memoryContext: memoryContext, hasImage: false, turn: text,
-            weatherContext: weatherContext)
+            weatherContext: weatherContext, device: device)
         if !localService.isModelLoaded || localService.loadedModelId != agentModelId {
             try await localService.loadModel(agentModelId)
         }
@@ -4290,11 +4304,12 @@ class LLMService: ObservableObject {
     static func promptLayoutForTesting(locationContext: String? = nil, memoryContext: String? = nil,
                                        hasImage: Bool = false, includeTools: Bool = true,
                                        nativeToolNames: [String] = ["get_weather", "web_search"],
-                                       turn: String? = nil) async -> PromptLayout {
+                                       turn: String? = nil,
+                                       device: AssistantIdentity.Device = .phone) async -> PromptLayout {
         await buildSystemPrompt(locationContext: locationContext, includeTools: includeTools,
                                 includeOpenClaw: false, hasImage: hasImage,
                                 nativeToolNames: nativeToolNames, memoryContext: memoryContext,
-                                turn: turn)
+                                turn: turn, device: device)
     }
 
     /// Start a test from a known history. Test-only.

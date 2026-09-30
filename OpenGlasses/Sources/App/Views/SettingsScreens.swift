@@ -47,7 +47,7 @@ struct VoiceTriggersSettingsScreen: View {
         Form {
             // MARK: Assistant Name (Plan FE P6)
             Section {
-                TextField("OpenGlasses", text: $assistantName)
+                TextField(AssistantIdentity.defaultName, text: $assistantName)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
                     .submitLabel(.done)
@@ -63,10 +63,10 @@ struct VoiceTriggersSettingsScreen: View {
                         .foregroundStyle(OGTheme.warnLabel)
                 }
 
-                Button("Reset to OpenGlasses") {
+                Button("Reset to \(AssistantIdentity.defaultName)") {
                     assistantName = AssistantIdentity.defaultName
                 }
-                .disabled(assistantName == AssistantIdentity.defaultName)
+                .disabled(AssistantIdentity.isDefaultName(assistantName))
             } header: {
                 Text("Assistant Name")
             } footer: {

@@ -143,8 +143,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 OGDivider()
                 Button {
-                    let webURL = URL(string: "https://straff2002.github.io/OpenGlasses/privacy.html")!
-                    UIApplication.shared.open(webURL)
+                    UIApplication.shared.open(PublicSite.privacy)
                 } label: {
                     OGRow("Privacy Policy", icon: "hand.raised", mutedIcon: true, showsChevron: false) {
                         Image(systemName: "arrow.up.right")

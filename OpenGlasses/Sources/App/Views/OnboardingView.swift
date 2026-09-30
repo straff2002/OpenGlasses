@@ -1477,7 +1477,7 @@ struct OnboardingView: View {
 
             List {
                 Section {
-                    TextField("OpenGlasses", text: $assistantName)
+                    TextField(AssistantIdentity.defaultName, text: $assistantName)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
                         .submitLabel(.done)
@@ -1500,7 +1500,7 @@ struct OnboardingView: View {
 
             pageFooter {
                 primaryButton("Continue") { go(to: 7) }
-                Button("Skip — call it OpenGlasses") {
+                Button("Skip — call it \(AssistantIdentity.defaultName)") {
                     Config.resetAssistantDisplayName()
                     assistantName = AssistantIdentity.defaultName
                     assistantNameRefused = false
