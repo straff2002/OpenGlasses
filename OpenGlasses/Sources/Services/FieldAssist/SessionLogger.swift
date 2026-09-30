@@ -46,6 +46,10 @@ final class SessionLogger {
             case sessionEnded = "session_ended"
             case userMessage = "user_message"
             case assistantMessage = "assistant_message"
+            /// An instruction the app sent to the model on the technician's behalf — the Field
+            /// Assist quick action's introduction (Plan GB P0). Kept in the log, because it
+            /// happened, and out of the transcript, because nobody said it.
+            case appInstruction = "app_instruction"
             case toolCall = "tool_call"
             case photoAttached = "photo_attached"
             /// A length-capped clip was recorded against the job (Plan FO P2b). Separate from
@@ -64,6 +68,10 @@ final class SessionLogger {
             case citation = "citation"
             case safetyAssessment = "safety_assessment"
             case captureRecordSaved = "capture_record"
+            /// A value the technician read out (Plan GB P3) — reported, not observed.
+            case readingRecorded = "reading_recorded"
+            /// …and a correction of one, naming the reading it supersedes.
+            case readingCorrected = "reading_corrected"
             /// A manual page was rendered and sent to the model as this turn's image (Plan EK).
             case figureSent = "figure_sent"
             /// A manual figure was put on the technician's phone.
@@ -74,6 +82,13 @@ final class SessionLogger {
             case pageVerified = "page_verified"
             /// A page was turned to inside the figure sheet.
             case pageViewed = "page_viewed"
+            /// The app put a manual page on screen by itself (Plan GB P1). Not a verification.
+            case pageShown = "page_shown"
+            /// The technician asked for a page and it opened. Not a verification either.
+            case pageOpened = "page_opened"
+            /// What the figure policy did with a turn's page — on the phone, to the model only,
+            /// or neither — and why.
+            case figurePresented = "figure_presented"
             /// A manual was removed from the session's vault while the session was running
             /// (Plan FN). The job continues; the record says which book stopped being available
             /// part-way through it, because an answer given before it and one given after it were
@@ -90,6 +105,10 @@ final class SessionLogger {
             case equipmentRecognised = "equipment_recognised"
             /// …and gave it up again.
             case equipmentCleared = "equipment_cleared"
+            /// The technician restated the model of the unit they are on (Plan GB P2): from, to.
+            case equipmentCorrected = "equipment_corrected"
+            /// The technician moved to the next unit on the same job (Plan GB P2).
+            case unitStarted = "unit_started"
             /// The assistant recommended something, with its citation (Plan EM).
             case taskProposed = "task_proposed"
             /// The technician accepted, declined or deferred it.

@@ -20,6 +20,33 @@ struct EquipmentIdentity: Codable, Equatable {
     /// an exported session can show what the recognition was based on, and it is never placed in a
     /// prompt or sent to a provider.
     let nameplateText: String?
+    /// What the technician said the model was, exactly as said (Plan GB P2). Always recorded on a
+    /// new identity; nil on one written before it existed, which reads `modelToken` instead.
+    /// Job 1011 said `…48C` and the record kept the vault's `…48CK`: the statement is the fact,
+    /// the vault section is evidence about it.
+    let statedModel: String?
+    /// The vault section the stated model matched, and how. Nil when it matched none — a unit the
+    /// technician named that the loaded manuals do not cover is still a unit.
+    let vaultMatch: VaultMatch?
+
+    /// Which vault section a stated model matched (Plan GB P2).
+    struct VaultMatch: Codable, Equatable {
+        enum Kind: String, Codable {
+            /// The section's own name.
+            case exact
+            /// One of the spellings the section lists.
+            case alias
+            /// Within two insertions or deletions of a spelling — "did you mean …?".
+            case near
+            /// Part of a spelling: a nameplate split in two, a model said by its tail.
+            case partial
+        }
+
+        let heading: String
+        /// The section's short name, as the report prints it.
+        let section: String
+        let kind: Kind
+    }
 
     enum Source: String, Codable, CaseIterable {
         /// The technician read the model aloud, or corrected it by voice.
@@ -52,19 +79,56 @@ struct EquipmentIdentity: Codable, Equatable {
     }
 
     init(modelToken: String, heading: String, file: String, source: Source,
-         recognisedAt: Date = Date(), nameplateText: String? = nil) {
+         recognisedAt: Date = Date(), nameplateText: String? = nil,
+         statedModel: String? = nil, vaultMatch: VaultMatch? = nil) {
         self.modelToken = modelToken
         self.heading = heading
         self.file = file
         self.source = source
         self.recognisedAt = recognisedAt
         self.nameplateText = nameplateText
+        self.statedModel = statedModel
+        self.vaultMatch = vaultMatch
     }
 
     init(model: VaultModelIndex.Model, token: String? = nil, source: Source,
-         recognisedAt: Date = Date(), nameplateText: String? = nil) {
+         recognisedAt: Date = Date(), nameplateText: String? = nil,
+         statedModel: String? = nil, vaultMatch: VaultMatch? = nil) {
         self.init(modelToken: token ?? model.name, heading: model.heading, file: model.file,
-                  source: source, recognisedAt: recognisedAt, nameplateText: nameplateText)
+                  source: source, recognisedAt: recognisedAt, nameplateText: nameplateText,
+                  statedModel: statedModel, vaultMatch: vaultMatch)
+    }
+
+    /// What the technician said — or, for an identity recorded before that was kept, the model the
+    /// record has always printed.
+    var stated: String { statedModel ?? modelToken }
+
+    /// The unit this identity is: the stated model, spelling-insensitively. Two statements of one
+    /// model are one unit; a correction of the model is the same unit restated.
+    var unitKey: String { EquipmentRecognition.normalised(stated) }
+
+    /// Whether this is a unit the loaded manuals do not cover — named by the technician, matched to
+    /// no section (Plan GB P2).
+    var isOutOfVault: Bool { statedModel != nil && vaultMatch == nil }
+
+    /// The vault section, when the report should name it beside what was said: never for an exact
+    /// match, which would say the same thing twice.
+    var vaultSectionIfDifferent: String? {
+        guard let vaultMatch, statedModel != nil,
+              EquipmentRecognition.normalised(vaultMatch.section) != unitKey else { return nil }
+        return vaultMatch.section
+    }
+
+    /// The same unit, restated (Plan GB P2): what was said and what it matched are replaced, when
+    /// it was first recognised is kept — "recognised at" is when the unit was identified, not when
+    /// its spelling was fixed.
+    func corrected(to replacement: EquipmentIdentity) -> EquipmentIdentity {
+        EquipmentIdentity(modelToken: replacement.modelToken, heading: replacement.heading,
+                          file: replacement.file, source: replacement.source,
+                          recognisedAt: recognisedAt,
+                          nameplateText: replacement.nameplateText ?? nameplateText,
+                          statedModel: replacement.statedModel ?? replacement.modelToken,
+                          vaultMatch: replacement.vaultMatch)
     }
 
     /// How the recognition is described in a sentence: "(from the nameplate)".
@@ -72,12 +136,22 @@ struct EquipmentIdentity: Codable, Equatable {
 
     /// The line the model sees at the top of every turn while this equipment is active.
     var promptBlock: String {
-        "ACTIVE EQUIPMENT: \(modelToken) — \"\(heading)\" (\(provenancePhrase), "
+        if isOutOfVault {
+            return "ACTIVE EQUIPMENT: \(stated) (\(provenancePhrase), \(Self.clock(recognisedAt))) — "
+                + "not a model the loaded manuals cover. Say so when you answer from them, and say "
+                + "which model a passage is for."
+        }
+        return "ACTIVE EQUIPMENT: \(modelToken) — \"\(heading)\" (\(provenancePhrase), "
             + "\(Self.clock(recognisedAt))). Answer for this model; say when a passage is for another model."
     }
 
     /// What the tool prefixes its answer with once it has recorded the machine.
-    var announcement: String { "Active equipment: \(modelToken) (\(provenancePhrase))." }
+    var announcement: String {
+        if isOutOfVault {
+            return "Active equipment: \(stated) (\(provenancePhrase)) — not a model the loaded manuals cover."
+        }
+        return "Active equipment: \(modelToken) (\(provenancePhrase))."
+    }
 }
 
 /// Is the question about a machine these manuals are for?
@@ -115,11 +189,16 @@ enum EquipmentScopeCheck {
     ///     a serial number, which is model-like and belongs to no model — so a read that resolves
     ///     to a model at all puts the whole turn in scope and its other tokens are ignored.
     ///   - index: the vault's models. An empty index makes this a no-op by construction.
+    ///   - asserted: units the technician has named on this job (Plan GB P2), by unit key. A
+    ///     machine the technician said is in front of them is a real unit whether or not the
+    ///     manuals cover it, so naming it again is never "not one of them".
     static func check(text: String?, nameplateText: String? = nil,
-                      index: VaultModelIndex, active: EquipmentIdentity?) -> Outcome {
+                      index: VaultModelIndex, active: EquipmentIdentity?,
+                      asserted: Set<String> = []) -> Outcome {
         guard !index.isEmpty else { return .inScope }
         let combined = [text, nameplateText].compactMap { $0 }.joined(separator: " ")
         let tokens = VaultModelIndex.modelLikeTokens(in: combined)
+            .filter { !asserted.contains(EquipmentRecognition.normalised($0)) }
         guard !tokens.isEmpty else { return .inScope }
 
         let known = tokens.filter { index.isKnown(token: $0) }

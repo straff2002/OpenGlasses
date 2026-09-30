@@ -927,11 +927,52 @@ final class VaultManualRemovalTests: XCTestCase {
         }
         _ = await (a, b, c)
         let order = await trace.order
-        guard let aOut = order.firstIndex(of: "a-out"), let bIn = order.firstIndex(of: "b-in") else {
+        guard let aIn = order.firstIndex(of: "a-in"), let aOut = order.firstIndex(of: "a-out"),
+              let bIn = order.firstIndex(of: "b-in"), let bOut = order.firstIndex(of: "b-out") else {
             return XCTFail("both holders should have run: \(order)")
         }
-        XCTAssertLessThan(aOut, bIn, "the second holder waited for the first: \(order)")
+        // `async let` does not promise which child reaches the lock first, so either order is
+        // correct — what must never happen is the two same-vault holders overlapping.
+        XCTAssertTrue(aOut < bIn || bOut < aIn, "the two holders of one vault interleaved: \(order)")
         XCTAssertTrue(order.contains("c"), "a different vault is never blocked")
+        XCTAssertFalse(VaultOperationLock.isBusy("lock_a"))
+        XCTAssertFalse(VaultOperationLock.isBusy("lock_b"))
+    }
+
+    func testASecondHolderWaitsUntilTheFirstReleases() async {
+        let trace = VaultLockTrace()
+        let (aHolds, aHoldsSignal) = AsyncStream<Void>.makeStream()
+        let (bQueued, bQueuedSignal) = AsyncStream<Void>.makeStream()
+        let (releaseA, releaseASignal) = AsyncStream<Void>.makeStream()
+        let a = Task { @MainActor in
+            await VaultOperationLock.withLock("lock_order") {
+                await trace.append("a-in")
+                aHoldsSignal.finish()
+                for await _ in releaseA {}
+                await trace.append("a-out")
+            }
+        }
+        for await _ in aHolds {}
+        XCTAssertTrue(VaultOperationLock.isBusy("lock_order"))
+
+        // Main-actor confined like the lock, so nothing runs between the signal and `b` parking in
+        // `acquire` — by the time this test resumes, `b` is already queued behind `a`.
+        let b = Task { @MainActor in
+            bQueuedSignal.finish()
+            await VaultOperationLock.withLock("lock_order") {
+                await trace.append("b-in")
+            }
+        }
+        for await _ in bQueued {}
+        let whileHeld = await trace.order
+        XCTAssertEqual(whileHeld, ["a-in"], "the second holder got in while the first held the lock")
+
+        releaseASignal.finish()
+        await a.value
+        await b.value
+        let order = await trace.order
+        XCTAssertEqual(order, ["a-in", "a-out", "b-in"])
+        XCTAssertFalse(VaultOperationLock.isBusy("lock_order"))
     }
 
     // MARK: - Reduced manifest

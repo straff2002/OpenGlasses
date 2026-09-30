@@ -1064,7 +1064,22 @@ class AppState: ObservableObject, AppStateProtocol {
         jobClips.connect(.init(
             sessions: { FieldSessionService.shared },
             readiness: { [weak self] in self?.cameraService.readinessNow },
-            filterEnabled: { Config.privacyFilterEnabled }))
+            filterEnabled: { Config.privacyFilterEnabled },
+            // Plan GB P4: a clip brings the stream up itself, like the preview and the record
+            // button do, and waits within FD's cold-start window for pictures.
+            ensureStream: { [weak self] in
+                guard let self else { return .claimFailed }
+                do {
+                    try await self.cameraService.claimStream(for: .jobClip)
+                } catch {
+                    return .claimFailed
+                }
+                return await ClipStreamWarmup.waitForFreshEvidence(
+                    readiness: { [weak self] in self?.cameraService.readinessNow })
+            },
+            releaseStream: { [weak self] in
+                await self?.cameraService.releaseStream(for: .jobClip)
+            }))
         jobClips.onFinished = { [weak self] finished in
             guard let self, let finished else { return }
             self.addDebugEvent("Job clip saved (\(Int(finished.duration.rounded()))s).")
@@ -1349,7 +1364,9 @@ class AppState: ObservableObject, AppStateProtocol {
     private func replayHeldUtteranceIfFresh() {
         guard let held = heldUtterance else { return }
         heldUtterance = nil
-        guard TurnAdmissionPolicy.heldUtteranceIsStillFresh(heldAt: held.heldAt) else {
+        // Plan GB P4: an utterance held behind a speech-engine failure is replayed, not dropped.
+        guard TurnAdmissionPolicy.shouldReplayHeldUtterance(
+            heldAt: held.heldAt, speechEngineFailedAt: speechService.lastEngineFailureAt) else {
             PrivacyLog.app(.utteranceStaleDropped, characters: held.text.count)
             return
         }
@@ -2619,6 +2636,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // model seeing it does not help the technician see it (Plan EK P2).
         let figureToken = FieldSessionService.shared.$stagedFigure
             .compactMap { $0 }
+            // A page staged for the model only is not put on the phone (Plan GB P1).
+            .filter(\.presentOnPhone)
             .sink { [weak self] staged in
                 self?.presentManualFigure(staged)
             }
@@ -3739,6 +3758,13 @@ class AppState: ObservableObject, AppStateProtocol {
         jobClips.start(from: outboundFrames.publisher, caption: caption, seconds: seconds)
     }
 
+    /// Start a clip, bringing the glasses stream up first when it isn't producing pictures
+    /// (Plan GB P4). What `record_clip` calls.
+    func startJobClipClaimingStream(caption: String? = nil,
+                                    seconds: TimeInterval? = nil) async -> Result<TimeInterval, JobClipRecorder.StartRefusal> {
+        await jobClips.startClaimingStream(from: outboundFrames.publisher, caption: caption, seconds: seconds)
+    }
+
     @discardableResult
     func stopJobClip() async -> JobClipRecorder.Finished? {
         await jobClips.stop()
@@ -4157,6 +4183,11 @@ class AppState: ObservableObject, AppStateProtocol {
         switch action.type {
         case .prompt:
             guard let text = action.promptText, !text.isEmpty else { return }
+            // The Field Assist introduction is the app talking to the model, not the technician
+            // talking: the job's log records it as an app instruction (Plan GB P0).
+            if action.id == QuickAction.fieldAssist.id {
+                FieldSessionService.shared.expectAppInstruction(text)
+            }
             speechService.startThinkingSound()
             do {
                 let response = try await llmService.sendMessage(

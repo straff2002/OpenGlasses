@@ -95,7 +95,11 @@ enum JobChangeDetector {
             return current == nil ? .same : .unclear(reason: reason)
         case .model(let identity):
             guard let current else { return .same }
-            guard current.heading == identity.heading else { return .additionalUnit(candidate: identity) }
+            // Same vault section and the same statement are both the same unit; a statement the
+            // vault does not cover is keyed by what was said (Plan GB P2).
+            guard current.heading == identity.heading || current.unitKey == identity.unitKey else {
+                return .additionalUnit(candidate: identity)
+            }
             guard let a = normalisedSerial(currentSerial), let b = normalisedSerial(candidateSerial),
                   a != b else { return .same }
             return .additionalUnit(candidate: identity)
@@ -183,6 +187,13 @@ struct VisitedUnit: Codable, Equatable {
     let firstSeenAt: Date
     /// The continuity scope the unit's work was recorded under (FM), so the export can partition.
     let continuityScope: String
+    /// What the technician said the model was (Plan GB P2). Nil on a unit recorded before it was
+    /// kept; `stated` then reads `modelToken`.
+    let statedModel: String?
+    /// The vault section it matched and how (`EquipmentIdentity.VaultMatch.Kind`), nil when it
+    /// matched none.
+    let vaultSection: String?
+    let vaultMatchKind: String?
 
     init(identity: EquipmentIdentity, serial: String? = nil, continuityScope: String,
          firstSeenAt: Date = Date()) {
@@ -191,6 +202,31 @@ struct VisitedUnit: Codable, Equatable {
         self.serial = serial
         self.firstSeenAt = firstSeenAt
         self.continuityScope = continuityScope
+        self.statedModel = identity.statedModel
+        self.vaultSection = identity.vaultMatch?.section
+        self.vaultMatchKind = identity.vaultMatch?.kind.rawValue
+    }
+
+    /// The same unit with its serial written on. Everything else — including what was said and
+    /// what it matched — is kept.
+    func withSerial(_ serial: String) -> VisitedUnit {
+        VisitedUnit(modelToken: modelToken, heading: heading, serial: serial,
+                    firstSeenAt: firstSeenAt, continuityScope: continuityScope,
+                    statedModel: statedModel, vaultSection: vaultSection,
+                    vaultMatchKind: vaultMatchKind)
+    }
+
+    private init(modelToken: String, heading: String, serial: String?, firstSeenAt: Date,
+                 continuityScope: String, statedModel: String?, vaultSection: String?,
+                 vaultMatchKind: String?) {
+        self.modelToken = modelToken
+        self.heading = heading
+        self.serial = serial
+        self.firstSeenAt = firstSeenAt
+        self.continuityScope = continuityScope
+        self.statedModel = statedModel
+        self.vaultSection = vaultSection
+        self.vaultMatchKind = vaultMatchKind
     }
 }
 

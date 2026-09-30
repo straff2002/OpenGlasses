@@ -153,6 +153,9 @@ struct ManualPageSheetModel: Equatable {
     /// Whether the manufacturer's PDF is the document itself rather than an original bundled
     /// beside extracted text. Decides which route the sheet opens on.
     let documentIsPDF: Bool
+    /// The caption the citation named on the cited page ("Figure 65"), when it named one — so the
+    /// page is recorded under the same label the citation used (Plan GB P1).
+    let citedFigure: String?
 
     private(set) var route: ManualPageRoute
     var integrity: ManualPageIntegrity = .unknown
@@ -161,8 +164,9 @@ struct ManualPageSheetModel: Equatable {
     init(citation: String, documentTitle: String, citedPage: Int,
          manufacturerPDF: URL? = nil, pdfPageCount: Int = 0,
          extractedPages: [Page] = [], publishedURL: URL? = nil,
-         ledgerHash: String? = nil, documentIsPDF: Bool = false) {
+         ledgerHash: String? = nil, documentIsPDF: Bool = false, citedFigure: String? = nil) {
         self.citation = citation
+        self.citedFigure = citedFigure
         self.documentTitle = documentTitle
         self.manufacturerPDF = manufacturerPDF
         self.extractedPages = extractedPages
@@ -254,24 +258,33 @@ struct ManualPageSheetModel: Equatable {
 final class ManualPageController: ObservableObject {
 
     @Published private(set) var model: ManualPageSheetModel
+    /// Pages the technician confirmed on this sheet, so the button can say so.
+    @Published private(set) var confirmedPages: Set<Int> = []
     private weak var session: FieldSessionService?
+    /// Whether the technician asked for this page or the app put it up (Plan GB P1).
+    private var origin: PageOrigin
     /// So a re-render cannot log the same page twice.
     private var viewedPages: Set<Int> = []
 
-    init(model: ManualPageSheetModel, session: FieldSessionService?) {
+    init(model: ManualPageSheetModel, session: FieldSessionService?, origin: PageOrigin = .requested) {
         self.model = model
         self.session = session
+        self.origin = origin
     }
 
-    /// Called once when the sheet appears: check the file against the ledger, then record what the
-    /// technician is verifying the answer against.
+    /// Called once when the sheet appears: check the file against the ledger, then record the page
+    /// as what it is — shown if the app put it up, opened if the technician asked. **Never as
+    /// verified**: the sheet appearing is not the technician checking anything (Plan GB P1).
     func open() async {
         if model.route == .manufacturerPDF {
             model.integrity = await ManualPageIntegrity.check(url: model.manufacturerPDF,
                                                               against: model.ledgerHash)
         }
-        recordVerification()
+        recordOnScreen()
     }
+
+    /// The sheet went away. A spoken "checked" after this is about nothing on screen.
+    func close() { session?.pageDidClose() }
 
     func next() { apply { $0.paging.goForward() } }
     func previous() { apply { $0.paging.goBack() } }
@@ -280,37 +293,61 @@ final class ManualPageController: ObservableObject {
     /// The viewer paged itself (a swipe in PDFKit). Logs one view per page actually reached.
     func viewerMoved(to page: Int) { apply { $0.paging.move(to: page) } }
 
-    /// Swap the transcription for the manufacturer's own page, at the page being read.
+    /// Swap the transcription for the manufacturer's own page, at the page being read. The
+    /// technician tapped for it, so the page is theirs from here on.
     func openOriginal() async {
         guard model.canOpenOriginal else { return }
         model.openOriginal()
         model.integrity = await ManualPageIntegrity.check(url: model.manufacturerPDF,
                                                           against: model.ledgerHash)
-        recordVerification()
+        origin = .requested
+        recordOnScreen()
     }
 
-    /// The manufacturer's published copy, for the caller to open outside the app. Recorded as a
-    /// verification of its own kind: a page on the manufacturer's website is not the page in this
-    /// vault, and an audit that conflated them would be worth nothing.
+    /// The manufacturer's published copy, for the caller to open outside the app. Recorded as an
+    /// open of its own kind: a page on the manufacturer's website is not the page in this vault,
+    /// and an audit that conflated them would be worth nothing.
     func openPublished() -> URL? {
         guard let url = model.publishedURL else { return nil }
-        session?.logPageVerified(title: model.documentTitle, page: model.paging.currentPage,
-                                 source: .externalURL)
+        session?.pageDidOpen(.init(title: model.documentTitle, page: model.paging.currentPage,
+                                   figure: nil, origin: .requested, source: .externalURL))
         return url
     }
+
+    /// "Checked against manual": the technician confirms the page on screen (Plan GB Decision 2).
+    func confirmChecked() {
+        guard model.hasContent, !confirmedPages.contains(model.paging.currentPage) else { return }
+        recordOnScreen()
+        if session?.confirmOpenPage(.tap) == .verified {
+            confirmedPages.insert(model.paging.currentPage)
+        }
+    }
+
+    /// Whether the page on screen has been confirmed.
+    var currentPageConfirmed: Bool { confirmedPages.contains(model.paging.currentPage) }
 
     private func apply(_ change: (inout ManualPageSheetModel) -> Int?) {
         var copy = model
         guard let page = change(&copy) else { return }
         model = copy
+        // The page on screen is the one a confirmation is about.
+        session?.pageDidOpen(onScreenPage)
         guard viewedPages.insert(page).inserted else { return }
         session?.logPageViewed(title: model.documentTitle, page: page)
     }
 
-    private func recordVerification() {
+    /// The page on screen, keyed the way every page list keys it: its figure when it is the cited
+    /// page, just the page number once the technician has paged away.
+    private var onScreenPage: FieldSessionService.OpenPage {
+        let page = model.paging.currentPage
+        let onCited = page == model.paging.citedPage
+        return .init(title: model.documentTitle, page: page,
+                     figure: onCited ? model.citedFigure : nil, origin: origin, source: model.route)
+    }
+
+    private func recordOnScreen() {
         guard model.hasContent else { return }
         viewedPages.insert(model.paging.currentPage)
-        session?.logPageVerified(title: model.documentTitle, page: model.paging.currentPage,
-                                 source: model.route)
+        session?.pageDidOpen(onScreenPage)
     }
 }

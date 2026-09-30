@@ -138,6 +138,9 @@ extension ScanAssistTool {
 extension ProposeTaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension TaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension PartsRequestTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+// Readings and evidence choices are written onto the open job and nowhere else (Plan GB P3).
+extension ReadingTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+extension EvidenceTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 // deliver_report only *stages* a report: the composer is what sends it, and only a person can tap
 // Send. So the tool itself is local — nothing has left the device when it returns — and it is not
 // idempotent, because a redelivered call is a second composer over the first.

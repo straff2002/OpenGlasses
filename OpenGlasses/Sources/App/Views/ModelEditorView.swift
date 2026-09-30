@@ -10,6 +10,7 @@ struct ModelEditorView: View {
     @State private var baseURL: String
     @State private var supportsVision: Bool
     @State private var smallContext: Bool
+    @State private var reasoningEffort: String?
 
     @State private var availableModels: [ModelFetcher.RemoteModel] = []
     @State private var isFetchingModels: Bool = false
@@ -29,6 +30,7 @@ struct ModelEditorView: View {
         _baseURL = State(initialValue: config.baseURL)
         _supportsVision = State(initialValue: config.visionEnabled)
         _smallContext = State(initialValue: config.smallContextEnabled)
+        _reasoningEffort = State(initialValue: config.reasoningEffort)
     }
 
     var body: some View {
@@ -48,6 +50,8 @@ struct ModelEditorView: View {
                     keyValidated: $keyValidated,
                     resetModelOnProviderChange: false
                 )
+                ModelReasoningSection(provider: selectedProvider, model: model,
+                                      reasoningEffort: $reasoningEffort)
             }
             .ogFormStyle()
             .navigationTitle("Edit Model")
@@ -66,7 +70,8 @@ struct ModelEditorView: View {
                             model: model,
                             baseURL: baseURL,
                             supportsVision: supportsVision,
-                            smallContext: smallContext
+                            smallContext: smallContext,
+                            reasoningEffort: reasoningEffort
                         )
                         onSave(updated)
                         dismiss()

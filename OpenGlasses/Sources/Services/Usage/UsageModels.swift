@@ -16,6 +16,9 @@ struct UsageRecord: Equatable {
     /// Estimated USD, or `nil` when the model is unpriced (tokens still recorded).
     let costUSD: Double?
     let at: Date
+    /// The Field Assist job the call served, when one was active (Plan GB P5) — so cost can be
+    /// split per job. Nil for calls outside a job and for rows written before the column existed.
+    let fieldSessionId: String?
 
     init(id: String = UUID().uuidString,
          sessionId: String,
@@ -26,7 +29,8 @@ struct UsageRecord: Equatable {
          cacheWriteTokens: Int = 0,
          cacheReadTokens: Int = 0,
          costUSD: Double?,
-         at: Date) {
+         at: Date,
+         fieldSessionId: String? = nil) {
         self.id = id
         self.sessionId = sessionId
         self.provider = provider
@@ -37,6 +41,36 @@ struct UsageRecord: Equatable {
         self.cacheReadTokens = cacheReadTokens
         self.costUSD = costUSD
         self.at = at
+        self.fieldSessionId = fieldSessionId
+    }
+}
+
+/// What one job cost in model usage (Plan GB P5): the internal record's usage line and the Job
+/// tab's figure. Never on the customer's page. Codable with every field optional-friendly so a work
+/// record can carry it decode-if-present.
+struct JobUsageSummary: Codable, Equatable {
+    let requests: Int
+    let inputTokens: Int
+    let cachedTokens: Int
+    let outputTokens: Int
+    /// Sum of the priced requests; nil when none was priced.
+    let estimatedUSD: Double?
+    /// Requests whose model had no price — the dollar figure leaves them out.
+    let unpricedRequests: Int
+
+    var isEmpty: Bool { requests == 0 }
+
+    /// Pure rollup of the rows tagged with `fieldSessionId`.
+    static func summarise(_ records: [UsageRecord], fieldSessionId: String) -> JobUsageSummary {
+        let rows = records.filter { $0.fieldSessionId == fieldSessionId }
+        let priced = rows.compactMap(\.costUSD)
+        return JobUsageSummary(
+            requests: rows.count,
+            inputTokens: rows.reduce(0) { $0 + $1.tokensIn },
+            cachedTokens: rows.reduce(0) { $0 + $1.cacheReadTokens },
+            outputTokens: rows.reduce(0) { $0 + $1.tokensOut },
+            estimatedUSD: priced.isEmpty ? nil : priced.reduce(0, +),
+            unpricedRequests: rows.filter { $0.costUSD == nil }.count)
     }
 }
 

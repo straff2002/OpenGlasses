@@ -300,6 +300,12 @@ class LLMService: ObservableObject {
     /// Maximum estimated tokens before compacting the context window.
     /// When exceeded, older messages are summarized and compressed rather than dropped blindly.
     private let maxEstimatedTokens = 80_000
+    /// Plan GB P5: where the current job's conversation starts in `conversationHistory`, and the
+    /// index of the current turn's user message — the request-copy budget's two anchors.
+    private var jobHistoryFloor = JobHistoryFloor()
+    private var turnHistoryStart = 0
+    /// Older messages the last request copy left out (`APIHistoryBudget`), for its note.
+    private var lastRequestOmittedMessages = 0
 
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
@@ -320,7 +326,7 @@ class LLMService: ObservableObject {
     static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil) async -> String {
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
-            hasImage: hasImage, memoryContext: memoryContext, turn: turn)
+            hasImage: hasImage, memoryContext: memoryContext, turn: turn).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
@@ -413,7 +419,12 @@ class LLMService: ObservableObject {
         return block
     }
 
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil) async -> String {
+    /// Plan GB P5: returns the prompt as a `PromptLayout` — a stable head (persona, vision and tool
+    /// guidance, safety policy) and a volatile tail (image instructions, memory, date and time,
+    /// location, skills, job and manual context, …) — so a route that can place the tail after the
+    /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
+    /// single string, head first.
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -547,6 +558,9 @@ class LLMService: ObservableObject {
             prompt += toolSection
         }
         closeBlock("tools")
+        // Plan GB P5: everything above is the stable head; everything below changes turn to turn
+        // (the safety policy, appended last, rejoins the head in `PromptLayout.split`).
+        let stableHeadBytes = prompt.utf8.count
         if hasImage {
             prompt += """
 
@@ -643,7 +657,8 @@ class LLMService: ObservableObject {
         prompt += PromptInjectionPolicy.systemPromptPolicy
         closeBlock("safety policy")
         TurnRecorder.notePromptBlocks(blocks)
-        return prompt
+        return PromptLayout.split(prompt, stableHeadBytes: stableHeadBytes,
+                                  trailingStable: PromptInjectionPolicy.systemPromptPolicy)
     }
 
     /// Frame a tool result before feeding it back to the model. Output from tools that return
@@ -739,10 +754,37 @@ class LLMService: ObservableObject {
             }
         }
 
+        // Plan GB P5: a job that became active since the last turn starts the request history here.
+        let turnStartIndex = conversationHistory.count
+        jobHistoryFloor.turnStarted(at: turnStartIndex, sessionId: FieldSessionService.shared.activeSession?.id)
+        defer {
+            // …and a job this turn started (a spoken "start a job") starts with this turn.
+            jobHistoryFloor.turnFinished(startedAt: min(turnStartIndex, conversationHistory.count),
+                                         sessionId: FieldSessionService.shared.activeSession?.id)
+        }
+
         guard let requestedModel = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured — add one in Settings")
         }
-        let modelConfig = try medicalInferenceModel(requested: requestedModel)
+        var modelConfig = try medicalInferenceModel(requested: requestedModel)
+
+        // Plan GB P5: spend caps — warn at 80%, ask at 100%, fall back only when opted in.
+        var spendCapNotice: String?
+        switch spendCapOutcome(utterance: text, config: modelConfig) {
+        case .proceed:
+            break
+        case .proceedWithNotice(let line):
+            spendCapNotice = line
+        case .answer(let line):
+            return line
+        case .confirmed(let window, let reply):
+            Config.spendCapOverrideWindow = window.key(now: Date())
+            PrivacyLog.model(.spendCap, detail: PrivacyToken("confirmed-\(window.rawValue)"))
+            return reply
+        case .useCheaperModel(let cheaper, let notice):
+            modelConfig = try medicalInferenceModel(requested: cheaper)
+            spendCapNotice = notice
+        }
 
         let provider = modelConfig.llmProvider
         // Plan CU P1: tag the turn with the model that is about to serve it, read here rather than
@@ -794,6 +836,9 @@ class LLMService: ObservableObject {
         let effectiveIncludeTools = smallContext ? false : includeTools
 
         var fullPrompt: String
+        // Plan GB P5: on OpenAI and Anthropic the volatile tail travels separately, after the
+        // history (OpenAI) or as an uncached second system block (Anthropic).
+        var volatileTail: String?
         if isOnDevice {
             fullPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
@@ -801,9 +846,20 @@ class LLMService: ObservableObject {
         } else if smallContext {
             fullPrompt = Self.leanCloudPrompt(hasImage: imageData != nil, memoryContext: memoryContext)
         } else {
-            let nativeToolDescriptions = nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? []
+            // Plan GB P5: when the request carries machine-readable tool schemas, each tool's
+            // description is already in them — sending it again in the prompt doubled ~8k tokens.
+            let schemasAttached = Self.toolSchemasAttached(provider: provider,
+                                                           customEndpointRejectsTools: Self.customEndpointRejectsTools)
+            let nativeToolDescriptions = schemasAttached
+                ? [] : (nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? [])
             let gatewayToolNames = openClawBridge?.availableToolNames ?? []
-            fullPrompt = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text)
+            let layout = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text)
+            if provider == .openai || provider == .anthropic {
+                fullPrompt = layout.stable
+                volatileTail = layout.volatile
+            } else {
+                fullPrompt = layout.combined
+            }
         }
 
         // Plan EK P2: the manual page a Field Assist turn pointed at goes into the turn's single
@@ -822,7 +878,11 @@ class LLMService: ObservableObject {
             if case .attach(let source, let page) = decision,
                let rendered = await ManualFigureAttachment.render(source: source, page: page) {
                 turnImage = rendered
-                fullPrompt += "\n\n" + ManualFigureAttachment.promptLine(for: stagedFigure)
+                if let tail = volatileTail {
+                    volatileTail = tail + "\n\n" + ManualFigureAttachment.promptLine(for: stagedFigure)
+                } else {
+                    fullPrompt += "\n\n" + ManualFigureAttachment.promptLine(for: stagedFigure)
+                }
                 FieldSessionService.shared.logFigureSent(stagedFigure)
             }
         }
@@ -859,12 +919,15 @@ class LLMService: ObservableObject {
         // outright. Prune here so all providers start the turn with at most one prior image.
         // These are disposable in-memory model attachments, not ConversationStore's saved
         // photos. Keep their lifetime bounded even when text history is retained for FM.
-        conversationHistory = HistoryHygiene.pruneImages(conversationHistory, keepLast: 1)
+        //
+        // Plan GB P5: keep none. An image rides only on the turn that asked about it; the old
+        // `keepLast: 1` re-sent the previous photo (~880 KB at the full size) on every request.
+        conversationHistory = HistoryHygiene.pruneImages(conversationHistory, keepLast: 0)
 
         let rawResponse: String
         switch provider {
         case .anthropic:
-            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendAnthropic(text, systemPrompt: fullPrompt, volatileTail: volatileTail, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .chatgpt:
             rawResponse = try await sendChatGPT(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         case .gemini, .geminiVertex:
@@ -874,7 +937,7 @@ class LLMService: ObservableObject {
         case .appleOnDevice:
             rawResponse = try await sendAppleOnDevice(text, systemPrompt: fullPrompt)
         case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+            rawResponse = try await sendOpenAICompatible(text, systemPrompt: fullPrompt, volatileTail: volatileTail, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
         }
 
         // Local reasoning models (LFM2.5) are stripped at the generate layer —
@@ -883,6 +946,7 @@ class LLMService: ObservableObject {
         // chain-of-thought for the prompt inspector and return the (already clean) text.
         if provider == .local, let localThink = localLLMService?.lastReasoning {
             lastReasoning = localThink
+            recordFieldAssistantReply(rawResponse)
             return rawResponse
         }
 
@@ -894,7 +958,49 @@ class LLMService: ObservableObject {
             // pass is a length problem), and the only part kept.
             PrivacyLog.model(.reasoningProduced, characters: reasoning.count)
         }
-        return spoken
+        // The job's log keeps the model's reply, not the app's spend notice in front of it.
+        recordFieldAssistantReply(spoken)
+        return spendCapNotice.map { $0 + " " + spoken } ?? spoken
+    }
+
+    // MARK: - Spend caps (Plan GB P5)
+
+    private var spendCapGate = SpendCapGate()
+
+    /// Evaluate the caps for a turn about to go to `config`. Priced spend comes from the local
+    /// usage store; nothing here leaves the device.
+    private func spendCapOutcome(utterance: String, config: ModelConfig) -> SpendCapGate.Outcome {
+        let caps = SpendCapPolicy.Caps(dailyUSD: Config.dailySpendCapUSD,
+                                       monthlyUSD: Config.monthlySpendCapUSD,
+                                       fallBackToCheaperModel: Config.spendCapFallbackToCheaperModel)
+        guard !caps.isEmpty else { return .proceed }
+        let now = Date()
+        let spent = UsageTracker.shared.spend(now: now)
+        let decision = SpendCapPolicy.decide(spentToday: spent.today, spentMonth: spent.month, caps: caps,
+                                             pricing: Self.spendPricing(config),
+                                             overrideKey: Config.spendCapOverrideWindow, now: now)
+        let outcome = spendCapGate.evaluate(decision, utterance: utterance, now: now) {
+            SpendCapPolicy.cheaperModel(than: config, among: Config.savedModels)
+        }
+        if outcome != .proceed {
+            PrivacyLog.model(.spendCap, detail: PrivacyToken(PrivacyToken.caseName(of: decision)?.description ?? "decision"))
+        }
+        return outcome
+    }
+
+    /// How a model's usage is billed, for the spend cap.
+    static func spendPricing(_ config: ModelConfig) -> SpendCapPolicy.Pricing {
+        switch config.llmProvider {
+        case .local, .appleOnDevice, .chatgpt: return .free
+        default: return ModelPricing.rate(for: config.model) == nil ? .unpriced : .priced
+        }
+    }
+
+    /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a
+    /// job's transcript has both sides. Direct mode only; no-op with no job open.
+    private func recordFieldAssistantReply(_ reply: String) {
+        FieldSessionService.shared.recordAssistantReply(
+            reply, sourceID: fieldConversationSourceID ?? UUID().uuidString)
     }
 
     // MARK: - Model Cascade (BK P2b)
@@ -1068,6 +1174,7 @@ class LLMService: ObservableObject {
 
     func clearHistory() {
         conversationHistory.removeAll()
+        jobHistoryFloor.historyReplaced(sessionId: FieldSessionService.shared.activeSession?.id)
     }
 
     /// Load a persisted conversation thread into the in-memory history.
@@ -1079,6 +1186,7 @@ class LLMService: ObservableObject {
         for msg in messages {
             conversationHistory.append(["role": msg.role, "content": msg.content])
         }
+        jobHistoryFloor.historyReplaced(sessionId: FieldSessionService.shared.activeSession?.id)
         // ChatGPT budgets a copy at submission, retaining the restored evidence.
         if Config.activeModel?.llmProvider != .chatgpt { compressContextWindowIfNeeded() }
         PrivacyLog.model(.historyLoaded, count: conversationHistory.count,
@@ -1151,6 +1259,8 @@ class LLMService: ObservableObject {
         } else {
             conversationHistory = messagesToKeep
         }
+        jobHistoryFloor.historyCompacted(before: originalCount, after: conversationHistory.count,
+                                         insertedSummary: signals.isEmpty ? 0 : 1)
 
         let newTokens = conversationHistory.reduce(0) { total, msg in
             let content = msg["content"] as? String ?? ""
@@ -1185,6 +1295,8 @@ class LLMService: ObservableObject {
                 "content": "[Conversation summary — \(messagesToCompress.count) earlier messages]\n\(summary)"
             ]
             conversationHistory = [summaryMessage] + messagesToKeep
+            jobHistoryFloor.historyCompacted(before: originalCount, after: conversationHistory.count,
+                                             insertedSummary: 1)
 
             let newTokens = conversationHistory.reduce(0) { total, msg in
                 let content = msg["content"] as? String ?? ""
@@ -1721,15 +1833,19 @@ class LLMService: ObservableObject {
     private func recordUsage(provider: LLMProvider, model: String, tokensIn: Int, tokensOut: Int,
                              cacheWriteTokens: Int = 0, cacheReadTokens: Int = 0) {
         guard tokensIn + tokensOut + cacheWriteTokens + cacheReadTokens > 0 else { return }
+        // Plan GB P5: tag the call with the job it served, read now rather than when the record
+        // lands, so a turn that closes the job still counts toward it.
+        let fieldSessionId = FieldSessionService.shared.activeSession?.id
         Task { @MainActor in
             UsageTracker.shared.record(provider: provider, model: model, tokensIn: tokensIn, tokensOut: tokensOut,
-                                       cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens)
+                                       cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens,
+                                       fieldSessionId: fieldSessionId)
         }
     }
 
     // Internal (not private) so the BM P9 fixture tests can drive the full streamed tool loop
     // through a stubbed `streamingSession`.
-    func sendAnthropic(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+    func sendAnthropic(_ text: String, systemPrompt: String, volatileTail: String? = nil, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         try enforceMedicalRemoteBoundary(config)
         // An explicit API key wins; otherwise fall back to a connected Claude account (OAuth).
         let apiKey = await AnthropicAuth.resolveCredential(apiKey: config.apiKey)
@@ -1759,6 +1875,7 @@ class LLMService: ObservableObject {
             conversationHistory.append(["role": "user", "content": text])
         }
         trimHistory()
+        turnHistoryStart = max(0, conversationHistory.count - 1)
 
         // A tool_use block with an id but missing name/input can't be dispatched, yet still needs a
         // tool_result or the next request 400s (Plan BF). Its id is carried per-turn and answered
@@ -1785,18 +1902,19 @@ class LLMService: ObservableObject {
                     HistoryHygiene.pruneImages(self.conversationHistory, keepLast: 1))
 
                 let historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                Self.noteReasoning(config.reasoningResolution(toolsAttached: includeTools),
+                                   provider: .anthropic, model: config.model)
 
                 // Prompt caching (Plan BF): the system prompt + tool schemas are large and byte-stable
                 // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
                 // cache on every follow-up turn instead of re-billing full input tokens each time.
+                // Plan GB P5: the breakpoint sits on the *untimestamped* head; the volatile tail
+                // (date and time, memory, passages) follows as its own uncached block.
+                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
                 var body: [String: Any] = [
                     "model": config.model,
                     "max_tokens": smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
-                    "system": [[
-                        "type": "text",
-                        "text": systemPrompt,
-                        "cache_control": ["type": "ephemeral"]
-                    ]],
+                    "system": PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile),
                     "messages": historyForRequest
                 ]
 
@@ -1804,7 +1922,7 @@ class LLMService: ObservableObject {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
                     let toolsData: Data = await MainActor.run {
                         let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient)
-                        return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
                     }
                     var tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
                     // Cache-breakpoint on the final tool caches the whole tools array as one prefix.
@@ -1815,7 +1933,8 @@ class LLMService: ObservableObject {
                 }
 
                 if onToken != nil { body["stream"] = true }
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                // Sorted keys: byte-identical bodies for identical content (Plan GB P5).
+                request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
                 // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
                 // the reconstructed content blocks + stop reason feed the shared tool loop unchanged.
@@ -1953,6 +2072,20 @@ class LLMService: ObservableObject {
     /// closure; a bool flag with one realistic writer needs no stronger isolation.
     nonisolated(unsafe) private static var customEndpointRejectsTools = false
 
+    /// Models whose provider refused reasoning alongside function tools this run (Plan GB P0,
+    /// `ReasoningRejectionClassifier`). Same isolation rationale as `customEndpointRejectsTools`.
+    nonisolated(unsafe) private static var reasoningToolRejections = Set<String>()
+
+    /// Record the effective reasoning setting of one request: a token in the turn trace (Turn
+    /// details) and in the privacy log. Never text — the reason is a case name.
+    static func noteReasoning(_ resolution: ReasoningPolicy.Resolution,
+                              provider: LLMProvider, model: String) {
+        PrivacyLog.model(.reasoningResolved, provider: PrivacyToken(provider.rawValue),
+                         model: PrivacyToken(model), detail: PrivacyToken(resolution.token))
+        PrivacyLog.model(.reasoningResolved, detail: PrivacyToken(resolution.reason.rawValue))
+        TurnRecorder.noteReasoning(resolution.token)
+    }
+
     /// Whether a provider reaching the OpenAI-compatible path can be handed a `tools` payload.
     ///
     /// This is an exhaustive switch on purpose. The bug it exists to prevent (issue 427) was a
@@ -1965,6 +2098,20 @@ class LLMService: ObservableObject {
     /// `local`, `appleOnDevice`) each have their own request builder and never reach this
     /// predicate; `false` is simply the answer for "an OpenAI-style `tools` array", not a
     /// statement that they lack tool calling.
+    /// Whether a Direct-mode request to `provider` carries machine-readable tool schemas (Plan GB
+    /// P5): Anthropic, Gemini and the ChatGPT backend always do; Chat Completions providers do when
+    /// `providerSupportsTools` says so. When they do, the prompt drops its per-tool descriptions.
+    nonisolated static func toolSchemasAttached(provider: LLMProvider, customEndpointRejectsTools: Bool) -> Bool {
+        switch provider {
+        case .anthropic, .chatgpt, .gemini, .geminiVertex:
+            return true
+        case .local, .appleOnDevice:
+            return false
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            return providerSupportsTools(provider, customEndpointRejectsTools: customEndpointRejectsTools)
+        }
+    }
+
     nonisolated static func providerSupportsTools(_ provider: LLMProvider,
                                                   customEndpointRejectsTools: Bool) -> Bool {
         switch provider {
@@ -1980,7 +2127,7 @@ class LLMService: ObservableObject {
         }
     }
 
-    private func sendOpenAICompatible(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+    private func sendOpenAICompatible(_ text: String, systemPrompt: String, volatileTail: String? = nil, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         try enforceMedicalRemoteBoundary(config)
         let provider = config.llmProvider
         let apiKey = config.apiKey
@@ -2038,6 +2185,7 @@ class LLMService: ObservableObject {
             conversationHistory.append(["role": "user", "content": text])
         }
         trimHistory()
+        turnHistoryStart = max(0, conversationHistory.count - 1)
 
         let adapter = ProviderLoopAdapter(
             label: provider.displayName,
@@ -2057,35 +2205,50 @@ class LLMService: ObservableObject {
                     request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
                 }
 
-                // OpenAI format: system prompt is a message in the array.
+                // OpenAI format: system prompt is a message in the array. Plan GB P5: with a split
+                // prompt the volatile tail follows the history, so the head and the conversation
+                // stay a byte-identical, cacheable prefix from turn to turn.
                 let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
-                var messages: [[String: Any]] = [
-                    ["role": "system", "content": systemPrompt]
-                ]
-                messages.append(contentsOf: historySlice)
-
-                var body: [String: Any] = [
-                    "model": config.model,
-                    "max_tokens": smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
-                    "messages": messages
-                ]
-                Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
-                                        disableThinking: smallContext || (imageData != nil && supportsVision))
+                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                let messages = PromptLayout.chatMessages(stable: system.stable, history: historySlice,
+                                                         volatile: system.volatile)
 
                 // Only attach Tools if the provider reliably supports function calling.
                 let providerSupportsTools = Self.providerSupportsTools(
                     provider,
                     customEndpointRejectsTools: Self.customEndpointRejectsTools
                 )
+                // Plan GB P0: the saved model's reasoning setting, resolved for this route and for
+                // whether tools ride along — the pair the `gpt-6-sol` 400 depends on.
+                let reasoning = config.reasoningResolution(
+                    toolsAttached: includeTools && providerSupportsTools,
+                    learnedToolRejection: Self.reasoningToolRejections.contains(config.model))
+                let baseOutputCap = smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens)
+
+                var body: [String: Any] = [
+                    "model": config.model,
+                    "max_tokens": reasoning.outputCap(base: baseOutputCap),
+                    "messages": messages
+                ]
+                Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
+                                        disableThinking: smallContext || (imageData != nil && supportsVision))
+                reasoning.apply(to: &body)
+                Self.noteReasoning(reasoning, provider: provider, model: config.model)
 
                 if includeTools && providerSupportsTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
                     let toolsData: Data = await MainActor.run {
                         let tools = ToolDeclarations.openAITools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient)
-                        return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
                     }
                     let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
                     body["tools"] = tools
+                    // Plan GB P5: route requests that share this prefix to the same cache. A hash of
+                    // the model, the stable head and the schemas — none of the prompt's text.
+                    if provider == .openai {
+                        body["prompt_cache_key"] = PromptPrefixDigest.cacheKey(
+                            model: config.model, stable: system.stable, tools: toolsData)
+                    }
                 }
 
                 if onToken != nil {
@@ -2096,7 +2259,8 @@ class LLMService: ObservableObject {
                 }
                 Self.applyMistralRequestShape(to: &body, provider: provider)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                // Sorted keys: byte-identical bodies for identical content (Plan GB P5).
+                request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
                 request.timeoutInterval = 60 // 60s timeout to prevent app freezing
 
                 // Shape of the request, not its contents — and not `baseURL` either: a custom
@@ -2122,11 +2286,12 @@ class LLMService: ObservableObject {
                     Self.customEndpointRejectsTools = true
                     body.removeValue(forKey: "tools")
                     var retried = request
-                    retried.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    retried.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
                     return retried
                 }
                 let toolsAttached = body["tools"] != nil
 
+                @MainActor func sendOnce(_ request: URLRequest) async throws -> [String: Any] {
                 if let onToken {
                     // New tool-loop iteration: clear the caller's accumulated bubble first, so an
                     // intermediate tool turn's text never concatenates with the final reply (BM P9).
@@ -2141,9 +2306,9 @@ class LLMService: ObservableObject {
                         }
                     }
                     do {
-                        message = try await streamTurn(request)
+                        return try await streamTurn(request)
                     } catch LLMError.apiError(_, 400, _) where provider == .custom && toolsAttached {
-                        message = try await streamTurn(try retryRequestWithoutTools())
+                        return try await streamTurn(try retryRequestWithoutTools())
                     }
                 } else {
                     var (data, response) = try await URLSession.shared.data(for: request)
@@ -2177,8 +2342,29 @@ class LLMService: ObservableObject {
                           let m = choices.first?["message"] as? [String: Any] else {
                         throw LLMError.invalidResponse(provider.displayName)
                     }
-                    message = m
                     self.recordUsage(provider: provider, model: config.model, json: json)
+                    return m
+                }
+                }
+
+                do {
+                    message = try await sendOnce(request)
+                } catch LLMError.apiError(_, 400, let rejection)
+                            where ReasoningRejectionClassifier.shouldRetry(
+                                status: 400, message: rejection,
+                                sentEffort: body["reasoning_effort"] as? String) {
+                    // Plan GB P0: a model missing from `ReasoningPolicy`'s table refused reasoning
+                    // with tools. Retry once at `none` instead of dead-ending in the cascade, and
+                    // remember the model so the rest of this run resolves to `none` up front.
+                    if toolsAttached { Self.reasoningToolRejections.insert(config.model) }
+                    body["reasoning_effort"] = ReasoningEffort.none.rawValue
+                    PrivacyLog.model(.reasoningRetried, provider: PrivacyToken(provider.rawValue),
+                                     model: PrivacyToken(config.model), attempt: 1,
+                                     detail: PrivacyToken(ReasoningEffort.none.rawValue))
+                    TurnRecorder.noteReasoning(ReasoningEffort.none.rawValue)
+                    var retried = request
+                    retried.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+                    message = try await sendOnce(retried)
                 }
 
                 var toolCalls: [ToolInvocation] = []
@@ -2321,10 +2507,13 @@ class LLMService: ObservableObject {
                 let limit = RequestContextBudget.resolve(
                     model: config.model, endpoint: endpoint,
                     catalogContext: ChatGPTContextCatalog.context(model: config.model, accountID: accountID))
+                let reasoning = config.reasoningResolution(toolsAttached: !(tools ?? []).isEmpty)
+                Self.noteReasoning(reasoning, provider: .chatgpt, model: config.model)
                 let responseJSON = try await self.budgetedResponsesTurn(
                     request: request, model: config.model, history: self.conversationHistory,
                     tools: tools, protectedStart: protectedStart, limit: limit, recovery: recovery,
                     instructions: { self.refreshedFieldInstructions(systemPrompt, turn: text) },
+                    reasoning: reasoning,
                     onToken: onToken, onStreamReset: onStreamReset)
 
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
@@ -2414,6 +2603,7 @@ class LLMService: ObservableObject {
                                tools: [[String: Any]]?, protectedStart: Int,
                                limit: RequestContextBudget.Limit, recovery: ResponsesContextRecovery,
                                instructions: () -> String,
+                               reasoning: ReasoningPolicy.Resolution? = nil,
                                onToken: ((String) -> Void)?, onStreamReset: (() -> Void)?) async throws -> [String: Any] {
         while true {
             try Task.checkCancellation()
@@ -2431,7 +2621,11 @@ class LLMService: ObservableObject {
                                  tokens: count, detail: PrivacyToken(component))
             }
             var request = template
-            request.httpBody = try JSONSerialization.data(withJSONObject: selected.body)
+            // Plan GB P0: `reasoning.effort` rides outside the budget — it is a few bytes of
+            // request shape, not context.
+            var body = selected.body
+            reasoning?.apply(to: &body)
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
             request.timeoutInterval = 120
             onStreamReset?()
             do {
@@ -2840,6 +3034,7 @@ class LLMService: ObservableObject {
             conversationHistory.append(["role": "user", "content": text])
         }
         trimHistory()
+        turnHistoryStart = max(0, conversationHistory.count - 1)
 
         let adapter = ProviderLoopAdapter(
             label: "Gemini",
@@ -2875,13 +3070,17 @@ class LLMService: ObservableObject {
                     }
                 }
 
+                // Plan GB P0: an explicit per-model level maps to a bounded thinking budget;
+                // Automatic keeps `GeminiBudgetPolicy`'s shipped behaviour.
+                let reasoning = config.reasoningResolution(toolsAttached: includeTools)
+                Self.noteReasoning(reasoning, provider: config.llmProvider, model: config.model)
                 var body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": contents,
                     // CO Item 2: a bounded thinking budget on the tool turn, and an allowance that
                     // covers thinking *plus* the answer. Without this, reasoning and reply compete
                     // for the same 1024 tokens and the turn can come back empty with a STOP finish.
-                    "generationConfig": GeminiBudgetPolicy.generationConfig(
+                    "generationConfig": reasoning.geminiGenerationConfig(
                         includesTools: includeTools,
                         configuredMaxTokens: smallContext && imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
                 ]
@@ -2890,7 +3089,7 @@ class LLMService: ObservableObject {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
                     let toolsData: Data = await MainActor.run {
                         let tools = ToolDeclarations.geminiRESTTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient)
-                        return (try? JSONSerialization.data(withJSONObject: tools)) ?? Data()
+                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
                     }
                     let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
                     body["tools"] = tools
@@ -3616,7 +3815,7 @@ class LLMService: ObservableObject {
                 nativeToolDescriptions: nativeToolDescriptions,
                 memoryContext: memoryContext,
                 turn: text
-            )
+            ).combined
             PrivacyLog.model(.agentSelected, model: PrivacyToken(cloudConfig.model),
                              configuration: PrivateIdentifier(cloudConfig.name),
                              detail: PrivacyToken("cloud"))
@@ -3663,12 +3862,41 @@ class LLMService: ObservableObject {
     /// `compactHistory` would also strip the tool exchange, and with tools *enabled* that changes
     /// an existing user's tool loop, which is not what a vision-image setting should do.
     private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
+        lastRequestOmittedMessages = 0
         if smallContext {
             return Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
         }
         // Groq's free tier has tight TPM limits — trim history aggressively.
         if provider == .groq { return Array(conversationHistory.suffix(6)) }
-        return conversationHistory
+        // FM's ChatGPT budget and the on-device paths are unchanged (they never reach here with
+        // this history, but the guard keeps the rule local).
+        guard provider != .chatgpt, provider != .local, provider != .appleOnDevice else { return conversationHistory }
+        // Plan GB P5: a budgeted request copy — this job's messages only, older exchanges dropped
+        // to the allowance, the current turn protected — and images only where the model has not
+        // yet answered from them (a photo is not resent on every tool round-trip).
+        let allowance = Config.apiHistoryTokenBudget
+        let selection = APIHistoryBudget.select(
+            history: conversationHistory,
+            protectedStart: min(turnHistoryStart, max(0, conversationHistory.count - 1)),
+            floor: jobHistoryFloor.floor(historyCount: conversationHistory.count),
+            allowance: allowance)
+        lastRequestOmittedMessages = selection.omittedMessages
+        if selection.omittedMessages > 0 {
+            PrivacyLog.model(.contextBudget, provider: PrivacyToken(provider.rawValue),
+                             count: selection.omittedMessages, total: allowance,
+                             tokens: selection.estimatedTokens, detail: PrivacyToken("apiHistory"))
+        }
+        return HistoryHygiene.imagesOnlyAfterLastAssistant(selection.history)
+    }
+
+    /// The volatile tail for a request, with the budget's omission note when older messages were
+    /// left out. `volatileTail` nil (a single-string provider) puts the note at the prompt's end.
+    private func requestSystemParts(stable systemPrompt: String, volatileTail: String?) -> (stable: String, volatile: String?) {
+        let note = APIHistoryBudget.omissionNote(lastRequestOmittedMessages)
+        if let volatileTail {
+            return (systemPrompt, [volatileTail, note.map { "\n\n" + $0 }].compactMap { $0 }.joined())
+        }
+        return (note.map { systemPrompt + "\n\n" + $0 } ?? systemPrompt, nil)
     }
 
     /// How many recent messages a small-context request carries.
@@ -3738,6 +3966,18 @@ class LLMService: ObservableObject {
             guard let role = turn["role"] as? String else { return nil }
             return (role: role, content: Self.plainText(from: turn) ?? "")
         }
+    }
+
+    /// The Direct-mode prompt layout for given per-turn inputs (Plan GB P5's prefix-stability
+    /// regression). Test-only; production builds it inside `sendMessage`.
+    static func promptLayoutForTesting(locationContext: String? = nil, memoryContext: String? = nil,
+                                       hasImage: Bool = false, includeTools: Bool = true,
+                                       nativeToolNames: [String] = ["get_weather", "web_search"],
+                                       turn: String? = nil) async -> PromptLayout {
+        await buildSystemPrompt(locationContext: locationContext, includeTools: includeTools,
+                                includeOpenClaw: false, hasImage: hasImage,
+                                nativeToolNames: nativeToolNames, memoryContext: memoryContext,
+                                turn: turn)
     }
 
     /// Start a test from a known history. Test-only.

@@ -118,6 +118,10 @@ struct TurnTimelineDebugView: View {
                 if let reason = turn.endOfTurnReason {
                     OGChip(text: reason.rawValue, available: true)
                 }
+                // Plan GB P0: the reasoning setting the request actually carried.
+                if let reasoning = turn.reasoning {
+                    OGChip(text: "reasoning \(reasoning)", available: true)
+                }
                 Spacer(minLength: 0)
                 Text(turn.id.uuidString.prefix(8))
                     .font(.caption2.monospaced())

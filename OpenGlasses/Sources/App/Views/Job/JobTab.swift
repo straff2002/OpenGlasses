@@ -277,8 +277,11 @@ private struct JobTabContent: View {
     /// Start a clip from the button. The refusal is shown rather than swallowed: a record button
     /// that does nothing when the glasses are asleep is the defect this phase is here to avoid.
     private func recordClip() {
-        if case .failure(let refusal) = appState.startJobClip() {
-            problem = refusal.spoken
+        // Plan GB P4: the button brings the glasses stream up itself, like `record_clip` does.
+        Task {
+            if case .failure(let refusal) = await appState.startJobClipClaimingStream() {
+                problem = refusal.spoken
+            }
         }
     }
 

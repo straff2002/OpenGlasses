@@ -166,6 +166,9 @@ enum JobTranscriptExport {
         messages.compactMap { message in
             let speaker: Speaker
             switch message.role {
+            // An app instruction is not something the technician said (Plan GB P0).
+            case "user" where TranscriptOriginClassifier.origin(of: message.content) == .appInstruction:
+                return nil
             case "user": speaker = .technician
             case "assistant": speaker = .assistant
             default: return nil
@@ -195,7 +198,7 @@ enum JobTranscriptExport {
             chosen = spoken
         } else {
             let logged: [Line] = events.compactMap { event in
-                guard event.kind == .userMessage,
+                guard TranscriptOriginClassifier.isTechnicianLine(event),
                       let text = event.text?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !text.isEmpty else { return nil }
                 return Line(timestamp: event.timestamp, speaker: .technician, text: text,

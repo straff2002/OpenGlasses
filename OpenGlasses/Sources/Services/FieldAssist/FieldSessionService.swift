@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 
 /// Coordinates the active Field Assist session for the app.
 ///
@@ -61,7 +62,15 @@ final class FieldSessionService: ObservableObject {
         try? FileManager.default.createDirectory(at: self.sessionsRoot, withIntermediateDirectories: true)
         loadHistory()
         restoreInProgressSessionIfAny()
+        // Fold the running clock into the saved total whenever the app leaves the foreground, so a
+        // kill in the background loses nothing already worked (Plan GB P3).
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkpointBillableTime() }
+        }
     }
+
+    private var backgroundObserver: NSObjectProtocol?
 
     // MARK: - Lifecycle
 
@@ -166,6 +175,7 @@ final class FieldSessionService: ObservableObject {
         }
         guard session.pausedAt != nil else { return session }
         session.pausedAt = nil
+        session.appClosedPause = nil
         session.resumedAt = Date()
         session.outcome = .inProgress
         activeSession = session
@@ -242,7 +252,10 @@ final class FieldSessionService: ObservableObject {
     /// path, so the audit record and a crash-restored session both carry it.
     func setEquipment(_ identity: EquipmentIdentity) {
         guard var session = activeSession else { return }
-        if let previous = session.equipment, previous.heading != identity.heading {
+        // A different unit: another vault section, or — for a unit the vault does not cover —
+        // another statement (Plan GB P2).
+        if let previous = session.equipment, previous.heading != identity.heading,
+           previous.unitKey != identity.unitKey {
             session.continuityScope = UUID().uuidString
             runner = nil
             activeProcedureId = nil
@@ -251,10 +264,12 @@ final class FieldSessionService: ObservableObject {
         // Every unit the job has been on, in the order they were first seen (Plan FO P1). Recorded
         // here rather than in the guided flow, because a job also reaches this by a spoken
         // correction, a tap on the phone's model list and a work order's asset id — a list that is
-        // only filled by one of the four routes is not a record of the job.
-        let unit = VisitedUnit(identity: identity, serial: nil, continuityScope: session.continuityScope)
-        if !session.visitedUnits.contains(where: { $0.heading == unit.heading }) {
-            session.visitedUnits.append(unit)
+        // only filled by one of the four routes is not a record of the job. One entry per scope
+        // (Plan GB P2): two identical machines are two units, and re-identifying the one in front
+        // of the technician is not a second one.
+        if !session.visitedUnits.contains(where: { $0.continuityScope == session.continuityScope }) {
+            session.visitedUnits.append(VisitedUnit(identity: identity, serial: nil,
+                                                    continuityScope: session.continuityScope))
         }
         activeSession = session
         activeEquipment = identity
@@ -264,11 +279,83 @@ final class FieldSessionService: ObservableObject {
                                              "heading": AnyCodable(identity.heading),
                                              "file": AnyCodable(identity.file),
                                              "source": AnyCodable(identity.source.rawValue)]
+        if let stated = identity.statedModel { payload["stated_model"] = AnyCodable(stated) }
+        payload["vault_match"] = AnyCodable(identity.vaultMatch?.kind.rawValue ?? "none")
         // The nameplate's own text is audit material — it is what the recognition was based on —
         // and it never goes anywhere near a prompt.
         if let nameplate = identity.nameplateText { payload["nameplate_text"] = AnyCodable(nameplate) }
         logger?.append(.init(timestamp: Date(), kind: .equipmentRecognised,
                              text: identity.heading, payload: payload))
+    }
+
+    /// The technician restated the model of the unit they are on (Plan GB P2) — "no, the model is
+    /// SLP99UH090XV48C". The same unit, restated: the scope, the work and when the unit was first
+    /// recognised all stay; what was said and what it matched are replaced, and the change is
+    /// logged as a correction. With no unit yet, it is simply the first identification.
+    @discardableResult
+    func correctEquipment(_ replacement: EquipmentIdentity) -> EquipmentIdentity {
+        guard var session = activeSession, let current = session.equipment else {
+            setEquipment(replacement)
+            return replacement
+        }
+        let corrected = current.corrected(to: replacement)
+        session.equipment = corrected
+        let unit = VisitedUnit(identity: corrected, continuityScope: session.continuityScope,
+                               firstSeenAt: current.recognisedAt)
+        if let index = session.visitedUnits.lastIndex(where: { $0.continuityScope == session.continuityScope }) {
+            let serial = session.visitedUnits[index].serial
+            session.visitedUnits[index] = serial.map(unit.withSerial) ?? unit
+        } else {
+            session.visitedUnits.append(unit)
+        }
+        activeSession = session
+        activeEquipment = corrected
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        logger?.append(.init(timestamp: Date(), kind: .equipmentCorrected, text: corrected.stated,
+                             payload: ["from": AnyCodable(current.stated),
+                                       "to": AnyCodable(corrected.stated),
+                                       "heading": AnyCodable(corrected.heading),
+                                       "vault_match": AnyCodable(corrected.vaultMatch?.kind.rawValue ?? "none")]))
+        return corrected
+    }
+
+    /// "Next unit": the technician moves to another machine on the same job (Plan GB P2), with or
+    /// without its model. Work from here on is recorded against the new unit; the one before keeps
+    /// its own.
+    func startNextUnit(_ identity: EquipmentIdentity?) {
+        guard var session = activeSession else { return }
+        session.continuityScope = UUID().uuidString
+        runner = nil
+        activeProcedureId = nil
+        session.equipment = identity
+        if let identity {
+            session.visitedUnits.append(VisitedUnit(identity: identity, continuityScope: session.continuityScope))
+        }
+        activeSession = session
+        activeEquipment = identity
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        logger?.append(.init(timestamp: Date(), kind: .unitStarted, text: identity?.stated,
+                             payload: ["scope": AnyCodable(session.continuityScope),
+                                       "stated_model": AnyCodable(identity?.stated ?? ""),
+                                       "vault_match": AnyCodable(identity?.vaultMatch?.kind.rawValue ?? "none")]))
+    }
+
+    /// The machines this job covered and the work done on each (Plan GB P2).
+    var unitLedger: UnitLedger {
+        activeSession.map(UnitLedger.init(session:)) ?? UnitLedger(units: [])
+    }
+
+    /// Units the technician named that the vault does not cover, by unit key — in scope because
+    /// the technician said so.
+    private var assertedUnitKeys: Set<String> {
+        guard let session = activeSession else { return [] }
+        var keys = Set(session.visitedUnits
+            .filter { $0.statedModel != nil && $0.vaultMatchKind == nil }
+            .map { EquipmentRecognition.normalised($0.stated) })
+        if let active = session.equipment, active.isOutOfVault { keys.insert(active.unitKey) }
+        return keys
     }
 
     /// Forget it — a wrong read, or the technician has moved to another unit.
@@ -293,7 +380,8 @@ final class FieldSessionService: ObservableObject {
     /// with passages that are genuinely about the subject and genuinely about the wrong machine.
     func equipmentScope(turn: String?, nameplateText: String? = nil) -> EquipmentScopeCheck.Outcome {
         EquipmentScopeCheck.check(text: turn, nameplateText: nameplateText,
-                                  index: modelIndex, active: activeEquipment)
+                                  index: modelIndex, active: activeEquipment,
+                                  asserted: assertedUnitKeys)
     }
 
     /// The retriever's view of the active machine: every spelling of it, and every spelling of
@@ -444,14 +532,9 @@ final class FieldSessionService: ObservableObject {
         guard let serial, !serial.isEmpty else { return }
         mutateSession { session in
             guard let idx = session.visitedUnits.lastIndex(where: {
-                $0.heading == session.equipment?.heading
+                $0.continuityScope == session.continuityScope
             }), session.visitedUnits[idx].serial != serial else { return }
-            let existing = session.visitedUnits[idx]
-            session.visitedUnits[idx] = VisitedUnit(
-                identity: .init(modelToken: existing.modelToken, heading: existing.heading,
-                                file: "", source: .spoken),
-                serial: serial, continuityScope: existing.continuityScope,
-                firstSeenAt: existing.firstSeenAt)
+            session.visitedUnits[idx] = session.visitedUnits[idx].withSerial(serial)
         }
     }
 
@@ -636,9 +719,14 @@ final class FieldSessionService: ObservableObject {
     }
 
     /// Close a task, with what the technician said they did.
+    ///
+    /// `confirmed` is the technician saying the check a fix waits on passed (Plan GB P3). Without
+    /// it, a fix that needs a retest closes and leaves an open "Verify: …" task behind, and the
+    /// check itself cannot be closed as done at all.
     @discardableResult
-    func completeTask(id: String, note: String? = nil, outcome: String? = nil) throws -> FieldSession.Task {
-        try closeTask(id: id, status: .done, note: note, outcome: outcome)
+    func completeTask(id: String, note: String? = nil, outcome: String? = nil,
+                      confirmed: Bool = false) throws -> FieldSession.Task {
+        try closeTask(id: id, status: .done, note: note, outcome: outcome, confirmed: confirmed)
     }
 
     /// Give a task up. Kept on the record — started and not finished is information.
@@ -649,12 +737,15 @@ final class FieldSessionService: ObservableObject {
 
     @discardableResult
     private func closeTask(id: String, status: FieldSession.Task.Status,
-                           note: String?, outcome: String?) throws -> FieldSession.Task {
+                           note: String?, outcome: String?,
+                           confirmed: Bool = false) throws -> FieldSession.Task {
         guard activeSession != nil else { throw FieldSessionError.noActiveSession }
         guard let existing = task(id: id) else { throw FieldSessionError.unknownTask(id) }
         guard existing.status.isOpen else {
             throw FieldSessionError.taskAlreadyClosed(existing.title, existing.status.rawValue)
         }
+        let decision = TaskClosePolicy.decide(task: existing, status: status, confirmed: confirmed)
+        if case .refuse(let reason) = decision { throw FieldSessionError.verificationOwed(reason) }
         let now = Date()
         mutateSession { session in
             guard let idx = session.tasks.firstIndex(where: { $0.id == id }) else { return }
@@ -663,6 +754,23 @@ final class FieldSessionService: ObservableObject {
             session.tasks[idx].acceptedAt = session.tasks[idx].acceptedAt ?? session.tasks[idx].createdAt
             if let note, !note.isEmpty { session.tasks[idx].completionNote = note }
             if let outcome, !outcome.isEmpty { session.tasks[idx].procedureOutcome = outcome }
+            if confirmed, status == .done, session.tasks[idx].verification != nil {
+                session.tasks[idx].verification?.verifiedAt = now
+            }
+            // The fix is done; the check it waits on stays open, on the same unit (Plan GB P3).
+            if case .closeSpawningVerification(let title) = decision,
+               let requirement = session.tasks[idx].verification {
+                let check = FieldSession.Task(
+                    title: title, why: requirement.instruction, origin: session.tasks[idx].origin,
+                    status: .accepted, createdAt: now, acceptedAt: now, verification: requirement)
+                session.tasks.append(check)
+                session.taskEquipmentScopes[check.id] = session.taskEquipmentScopes[id] ?? session.continuityScope
+            }
+        }
+        if case .closeSpawningVerification(let title) = decision {
+            logger?.append(.init(timestamp: now, kind: .taskProposed, text: title,
+                                 payload: ["origin": AnyCodable("verification"),
+                                           "for_task_id": AnyCodable(id)]))
         }
         let updated = task(id: id) ?? existing
         logger?.append(.init(timestamp: now, kind: .taskCompleted, text: updated.title, payload: [
@@ -677,12 +785,39 @@ final class FieldSessionService: ObservableObject {
 
     /// A procedure a task started has reached its end: the outcome closes the task, so nobody has
     /// to remember to say "done" twice.
-    private func closeTaskForProcedure(id procedureId: String?, outcome: String) {
+    private func closeTaskForProcedure(id procedureId: String?, outcome: String, confirmed: Bool = true) {
         guard let procedureId,
               let task = activeSession?.tasks.last(where: {
                   $0.procedureId == procedureId && $0.status.isOpen
               }) else { return }
-        _ = try? closeTask(id: task.id, status: .done, note: nil, outcome: outcome)
+        _ = try? closeTask(id: task.id, status: .done, note: nil, outcome: outcome, confirmed: confirmed)
+    }
+
+    /// The running procedure's task, when it has one.
+    private func procedureTaskIndex(in session: FieldSession) -> Int? {
+        guard let procedureId = activeProcedureId else { return nil }
+        return session.tasks.lastIndex { $0.procedureId == procedureId && $0.status.isOpen }
+    }
+
+    /// A check owed on a task (Plan GB P3). Set by a procedure's last step when it asks for one;
+    /// callable directly for work whose fix waits on a check the vault does not script.
+    func requireVerification(taskId: String, _ requirement: VerificationRequirement) throws {
+        guard task(id: taskId) != nil else { throw FieldSessionError.unknownTask(taskId) }
+        mutateSession { session in
+            guard let idx = session.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+            session.tasks[idx].verification = requirement
+        }
+    }
+
+    /// The procedure's last step asks for a check: the task it runs under now waits on it.
+    private func requireVerification(for step: Procedure.Step) {
+        guard step.needsConfirmation else { return }
+        mutateSession { session in
+            guard let idx = procedureTaskIndex(in: session),
+                  session.tasks[idx].verification == nil else { return }
+            session.tasks[idx].verification = VerificationRequirement(instruction: step.instruction,
+                                                                      procedureStepId: step.id)
+        }
     }
 
     // MARK: Evidence attachment
@@ -770,6 +905,31 @@ final class FieldSessionService: ObservableObject {
                               .recordLine(vaultName: name))
     }
 
+    /// A finished job's record, built from the session as it was saved. Nil for an id this phone
+    /// does not hold. The open job's record is `workRecord()`, which counts its running clock.
+    func workRecord(sessionId: String) -> WorkRecord? {
+        guard let session = history.first(where: { $0.id == sessionId }) else { return nil }
+        let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+        return WorkRecord(session: session, vaultName: name,
+                          vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                              .recordLine(vaultName: name))
+    }
+
+    /// Jobs that ended within `window` of `now`, as `ReportTargetResolver` needs them (Plan GB P0).
+    /// Only recent ones are read, because whether a report went is read off each job's own log.
+    /// A cancelled job has no report to send.
+    func recentlyEndedJobs(now: Date = Date(),
+                           window: TimeInterval = ReportTargetResolver.recentWindow)
+        -> [ReportTargetResolver.EndedJob] {
+        history.compactMap { session in
+            guard let endedAt = session.endedAt, session.outcome != .cancelled,
+                  now.timeIntervalSince(endedAt) <= window else { return nil }
+            return ReportTargetResolver.EndedJob(
+                sessionId: session.id, threadId: session.conversationThreadId,
+                endedAt: endedAt, reportSent: reportWasSent(sessionId: session.id))
+        }
+    }
+
     // MARK: Delivery (Plan EM P2)
 
     /// The report waiting for the operator's thumb, or nil when none is.
@@ -817,11 +977,8 @@ final class FieldSessionService: ObservableObject {
                         canSendAttachments: Bool = true,
                         sessionId: String? = nil) -> ReportDelivery {
         let record: WorkRecord?
-        if let sessionId, let session = history.first(where: { $0.id == sessionId }) {
-            let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
-            record = WorkRecord(session: session, vaultName: name,
-                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: name))
+        if let sessionId, activeSession?.id != sessionId {
+            record = workRecord(sessionId: sessionId)
         } else {
             record = workRecord()
         }
@@ -891,14 +1048,37 @@ final class FieldSessionService: ObservableObject {
         if stagedDelivery?.id == request.id { stagedDelivery = nil }
         lastDeliveryCancelled = !outcome.isSent
 
+        // A report sent after its job closed belongs to a finished session (Plan GB P0): its log is
+        // opened on its own directory — the route `recordSignOff` takes — so the send is recorded
+        // where `reportWasSent` reads it, and a second "send the report" knows it went.
+        let finishedLogger: SessionLogger?
+        if activeSession?.id == request.sessionId || deliveryLogger?.session.id == request.sessionId {
+            finishedLogger = nil
+        } else if let stored = history.first(where: { $0.id == request.sessionId }) {
+            finishedLogger = SessionLogger(session: stored,
+                                           root: sessionsRoot.appendingPathComponent(stored.id,
+                                                                                     isDirectory: true))
+        } else {
+            finishedLogger = nil
+        }
+
         if outcome.isSent, !request.partsRequestIds.isEmpty {
             let ids = Set(request.partsRequestIds)
-            mutateSession { session in
+            let markSent: (inout FieldSession) -> Void = { session in
                 for idx in session.partsRequests.indices
                 where ids.contains(session.partsRequests[idx].id)
                     && session.partsRequests[idx].status == .requested {
                     session.partsRequests[idx].status = .sent
                 }
+            }
+            if activeSession?.id == request.sessionId {
+                mutateSession(markSent)
+            } else if let stored = history.first(where: { $0.id == request.sessionId }) {
+                let owner = finishedLogger ?? deliveryLogger
+                    ?? SessionLogger(session: stored,
+                                     root: sessionsRoot.appendingPathComponent(stored.id, isDirectory: true))
+                let updated = owner.updateSession(markSent)
+                history = history.replacingFirst(matching: stored.id, with: updated)
             }
         }
 
@@ -921,7 +1101,7 @@ final class FieldSessionService: ObservableObject {
         // The active session's log when this report belongs to it; the log of the session that
         // just ended when a composer outlived it. Never somebody else's log.
         let target = activeSession?.id == request.sessionId ? logger
-            : (deliveryLogger?.session.id == request.sessionId ? deliveryLogger : nil)
+            : (deliveryLogger?.session.id == request.sessionId ? deliveryLogger : finishedLogger)
         target?.append(.init(timestamp: Date(), kind: kind, text: request.subject, payload: payload))
     }
 
@@ -952,10 +1132,30 @@ final class FieldSessionService: ObservableObject {
     /// Hooked into `LLMService.buildSystemPrompt`. When the vault declares a reference tier and
     /// `turn` is given, the passages retrieved for that turn ride along — or an explicit statement
     /// that nothing did, so the model cannot fall back to general knowledge silently.
+    /// The request context FM resolves for the active ChatGPT model, or nil off that route. The
+    /// same resolution the send path uses, so the vault bound and the request budget agree.
+    static func chatGPTRequestContext(for model: ModelConfig?) -> Int? {
+        guard let model, model.llmProvider == .chatgpt else { return nil }
+        let endpoint = model.baseURL.isEmpty ? ChatGPTOAuth.backendResponsesURL : model.baseURL
+        return RequestContextBudget.resolve(
+            model: model.model, endpoint: endpoint,
+            catalogContext: ChatGPTContextCatalog.context(model: model.model,
+                                                          accountID: ChatGPTOAuthService.shared.accountID)).context
+    }
+
     func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
+        // What this turn is, for the page rules below and for `manual_figure` later in the turn.
+        // Set on every turn, so a kind never outlives the turn it was read from (Plan GB P1).
+        lastTurnKind = turn.map(ManualTurnClassifier.classify)
+        // Plan GB P5: the vault core is bounded on every provider, not just ChatGPT — an
+        // unbounded core rode along on every API request and every tool round-trip. The bound is
+        // the validator's budget wherever the request context allows it (Decision 6).
+        let model = Config.activeModel
         var context = VaultPromptBuilder.promptContext(for: store,
-            referenceByteLimit: Config.activeModel?.llmProvider == .chatgpt ? 24_000 : nil, turn: turn)
+            referenceByteLimit: VaultPromptBuilder.referenceByteLimit(
+                for: model?.llmProvider, requestContext: Self.chatGPTRequestContext(for: model)),
+            turn: turn)
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }
@@ -1007,10 +1207,22 @@ final class FieldSessionService: ObservableObject {
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
-        // attached to a question about condensate. A turn that opens, closes or switches a job
-        // asked for no page, so it stages none; its passages still go to the model.
-        let figure = ManualTurnScope.isJobManagement(turn) ? nil : Self.bestFigure(in: outcome.passages)
-        stageFigure(makeStagedFigure(for: figure, vaultId: store.manifest.id))
+        // attached to a question about condensate. Whether it opens on the phone, goes to the
+        // model only, or is not staged at all is `FigureAutoOpenPolicy`'s call (Plan GB P1): a
+        // reading, a correction or job bookkeeping asked for no page, and a table opens only when
+        // asked for. Ranking is untouched — the passages below go to the model whatever is staged.
+        let kind = ManualTurnClassifier.classify(turn)
+        let candidate = Self.bestFigure(in: outcome.passages)
+        let decision = FigureAutoOpenPolicy.decide(
+            turnKind: kind,
+            passageKind: candidate.map { $0.kind == .diagram ? .diagram : .captioned },
+            tokenHits: candidate?.matchedTokens ?? [])
+        var staged = decision.stagesFigure ? makeStagedFigure(for: candidate, vaultId: store.manifest.id) : nil
+        staged?.origin = kind == .showMe ? .requested : .automatic
+        staged?.presentOnPhone = decision.presentsOnPhone
+        stageFigure(staged)
+        logFigurePresentation(staged ?? candidate.flatMap { makeStagedFigure(for: $0, vaultId: store.manifest.id) },
+                              decision: decision, turnKind: kind)
         let block = VaultRetriever.promptBlock(outcome)
         return scopeNote.map { block + "\n\n" + $0 } ?? block
     }
@@ -1124,14 +1336,23 @@ final class FieldSessionService: ObservableObject {
         /// ledger still knows it. Nil once the ledger entry has gone, and for a document the
         /// manifest lists as something other than a PDF.
         let sourceFile: String?
+        /// Whether the technician asked for this page or the app put it up by itself (Plan GB P1).
+        /// Decides what the page can be evidence of — see `PageEvidencePolicy`.
+        var origin: PageOrigin
+        /// Whether the phone opens it. False when the page goes to the model as the turn's picture
+        /// but was not asked for (`FigureAutoOpenPolicy.Decision.attachToModelOnly`).
+        var presentOnPhone: Bool
 
         init(documentId: String, documentTitle: String, page: Int, figure: String? = nil,
-             sourceFile: String? = nil) {
+             sourceFile: String? = nil, origin: PageOrigin = .requested,
+             presentOnPhone: Bool = true) {
             self.documentId = documentId
             self.documentTitle = documentTitle
             self.page = page
             self.figure = figure
             self.sourceFile = sourceFile
+            self.origin = origin
+            self.presentOnPhone = presentOnPhone
         }
 
         /// The same citation the passage carried, so what is said, shown and logged agree.
@@ -1173,8 +1394,11 @@ final class FieldSessionService: ObservableObject {
 
     /// Put the session's last figure back on the turn ("show me that figure again").
     @discardableResult
-    func restageLastFigure() -> StagedFigure? {
-        guard let last = lastShownFigure else { return nil }
+    func restageLastFigure(origin: PageOrigin = .requested) -> StagedFigure? {
+        guard var last = lastShownFigure else { return nil }
+        // Put back on the phone, whatever the turn that found it did with it (Plan GB P1).
+        last.origin = origin
+        last.presentOnPhone = true
         // "Show that again" is the one path that reaches back past the current turn, so it is also
         // the one that can reach a manual removed since it was shown. The session's own refresh
         // clears this; the check is here too because a figure outliving its manual by a route
@@ -1335,34 +1559,125 @@ final class FieldSessionService: ObservableObject {
             // PDF is bundled beside extracted text. Comparing the wrong one would report a
             // faithfully imported manual as changed.
             ledgerHash: isPDF ? entry?.contentHash : entry?.sourceContentHash,
-            documentIsPDF: isPDF)
+            documentIsPDF: isPDF,
+            citedFigure: figure.figure)
     }
 
     /// Audit: a technician opened a citation — from a chip under the answer, or by asking.
     func logCitationOpened(_ citation: Citation, origin: CitationOrigin) {
+        let label = PageEvidencePolicy.label(for: citation)
         logger?.append(SessionLogger.Event(
-            timestamp: Date(), kind: .citationOpened, text: citation.label,
+            timestamp: Date(), kind: .citationOpened, text: label,
             payload: ["document": AnyCodable(citation.title),
                       "page": AnyCodable(citation.page ?? 0),
                       "origin": AnyCodable(origin.rawValue),
                       "kind": AnyCodable(citation.kind.rawValue)]))
-        let label = citation.label
         attachEvidence { evidence in
             if !evidence.citationsOpened.contains(label) { evidence.citationsOpened.append(label) }
         }
     }
 
-    /// Audit: the page behind a citation was actually put on screen, and against what.
-    func logPageVerified(title: String, page: Int, source: ManualPageRoute) {
+    /// The kind of the turn retrieval last ran for (Plan GB P1). `manual_figure` reads it: a page
+    /// the model opens during a turn that asked for one is the technician's request; one it opens
+    /// on its own initiative is the app's.
+    private(set) var lastTurnKind: ManualTurnKind?
+
+    /// Whether the turn in progress asked for a page.
+    var turnAskedForPage: Bool { lastTurnKind == .showMe }
+
+    /// The manual page on the technician's screen, while there is one (Plan GB P1). What a spoken
+    /// "checked" is about.
+    struct OpenPage: Equatable {
+        let title: String
+        let page: Int
+        let figure: String?
+        let origin: PageOrigin
+        let source: ManualPageRoute
+
+        var label: String { PageEvidencePolicy.label(title: title, page: page, figure: figure) }
+    }
+
+    private(set) var openPage: OpenPage?
+
+    /// A page went on screen — or moved to another page. Records it as what `PageEvidencePolicy`
+    /// says it is before any confirmation: shown when the app put it there, opened when the
+    /// technician asked. **Never verified.** Job 1011 recorded six pages as verified this way.
+    func pageDidOpen(_ page: OpenPage) {
+        openPage = page
+        let state = PageEvidencePolicy.classify(origin: page.origin, confirmation: .none)
+        let label = page.label
         logger?.append(SessionLogger.Event(
-            timestamp: Date(), kind: .pageVerified, text: "\(title), page \(page)",
+            timestamp: Date(), kind: state == .shown ? .pageShown : .pageOpened, text: label,
+            payload: ["document": AnyCodable(page.title),
+                      "page": AnyCodable(page.page),
+                      "origin": AnyCodable(page.origin.rawValue),
+                      "source": AnyCodable(page.source.rawValue)]))
+        attachEvidence { evidence in
+            switch state {
+            case .shown:
+                if !evidence.pagesShown.contains(label) { evidence.pagesShown.append(label) }
+            case .opened, .verified:
+                if !evidence.citationsOpened.contains(label) { evidence.citationsOpened.append(label) }
+            }
+        }
+    }
+
+    /// The sheet closed.
+    func pageDidClose() { openPage = nil }
+
+    /// The technician confirmed the page on screen — a tap on "Checked against manual", or a
+    /// spoken confirmation. Returns what the page now counts as, or nil when nothing is open.
+    @discardableResult
+    func confirmOpenPage(_ confirmation: PageConfirmation) -> PageEvidenceState? {
+        guard let page = openPage else { return nil }
+        let state = PageEvidencePolicy.classify(origin: page.origin, confirmation: confirmation)
+        guard state == .verified else { return state }
+        logPageVerified(title: page.title, page: page.page, figure: page.figure, source: page.source,
+                        confirmation: confirmation)
+        return state
+    }
+
+    /// Audit: the technician confirmed a page, and against which route.
+    func logPageVerified(title: String, page: Int, figure: String? = nil, source: ManualPageRoute,
+                         confirmation: PageConfirmation = .tap) {
+        let label = PageEvidencePolicy.label(title: title, page: page, figure: figure)
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .pageVerified, text: label,
             payload: ["document": AnyCodable(title),
                       "page": AnyCodable(page),
-                      "source": AnyCodable(source.rawValue)]))
-        let label = "\(title), page \(page)"
+                      "source": AnyCodable(source.rawValue),
+                      "confirmed_by": AnyCodable(confirmation == .spoken ? "speech" : "tap")]))
         attachEvidence { evidence in
             if !evidence.pagesVerified.contains(label) { evidence.pagesVerified.append(label) }
         }
+    }
+
+    /// The pages the technician has verified so far on this job, newest last — what a reading may
+    /// cite (Plan GB Decision 2).
+    var verifiedPages: [String] {
+        guard let session = activeSession else { return [] }
+        return EvidenceRollup(tasks: session.tasks, jobEvidence: session.jobEvidence).verifiedPages
+    }
+
+    /// Audit: what the figure policy did with a turn's page, and why (Plan GB P1) — so the
+    /// diagnostics can say which turn put which page on screen. The turn's words are not written;
+    /// its kind is.
+    private func logFigurePresentation(_ figure: StagedFigure?, decision: FigureAutoOpenPolicy.Decision,
+                                       turnKind: ManualTurnKind) {
+        guard let figure else { return }
+        let presented: String
+        switch decision {
+        case .present: presented = "phone"
+        case .attachToModelOnly: presented = "model_only"
+        case .none: presented = "none"
+        }
+        logger?.append(SessionLogger.Event(
+            timestamp: Date(), kind: .figurePresented, text: figure.citation,
+            payload: ["document": AnyCodable(figure.documentTitle),
+                      "page": AnyCodable(figure.page),
+                      "presented": AnyCodable(presented),
+                      "reason": AnyCodable(decision.reason.rawValue),
+                      "turn_kind": AnyCodable(turnKind.rawValue)]))
     }
 
     /// Audit: a page was turned to.
@@ -1397,18 +1712,60 @@ final class FieldSessionService: ObservableObject {
         recordConversationTurn(text, sourceID: UUID().uuidString)
     }
 
+    /// The next user-role turn is the app's own instruction, not the technician's words
+    /// (Plan GB P0). Set by the caller that sends it — the Field Assist quick action — immediately
+    /// before the message goes, and consumed by the turn that carries exactly this text.
+    func expectAppInstruction(_ text: String) {
+        pendingAppInstruction = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var pendingAppInstruction: String?
+
     /// Preserve exact reports without interpreting questions as performed work.
+    ///
+    /// An app instruction is logged as what it is — `appInstruction`, never `userMessage` — so no
+    /// transcript can quote the app under the technician's name (Plan GB P0).
     func recordConversationTurn(_ text: String, sourceID: String) {
-        guard let session = activeSession, let logger, !text.isEmpty else { return }
-        if conversationSourceIDs == nil {
-            conversationSourceIDs = Set(logger.readEvents().compactMap { $0.payload?["source_id"]?.value as? String })
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var origin = TranscriptOriginClassifier.origin(of: trimmed)
+        if let pending = pendingAppInstruction, pending == trimmed {
+            origin = .appInstruction
+            pendingAppInstruction = nil
         }
-        guard conversationSourceIDs?.insert(sourceID).inserted == true else { return }
-        logger.append(.init(timestamp: Date(), kind: .userMessage, text: text, payload: [
+        guard let session = activeSession, let logger, !text.isEmpty else { return }
+        guard claimConversationSource(sourceID, logger: logger) else { return }
+        logger.append(.init(timestamp: Date(),
+                            kind: origin == .appInstruction ? .appInstruction : .userMessage,
+                            text: text, payload: [
             "source_id": AnyCodable(sourceID),
             "equipment_scope": AnyCodable(session.continuityScope),
             "task_id": AnyCodable(session.activeTask?.id ?? "")
         ]))
+    }
+
+    /// Log the assistant's final reply to a Direct-mode turn (Plan GB P0), so the job's transcript
+    /// carries both sides and the export's citations — which are read off assistant turns — are
+    /// not empty. Called once per turn with the text that was spoken; the turn's source id keeps a
+    /// retried or re-entered turn from logging its answer twice. The `Source:` lines are passed as
+    /// the answer's citations. Live modes (Gemini Live, OpenAI Realtime) keep what Plan FW says.
+    func recordAssistantReply(_ text: String, sourceID: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard activeSession != nil, let logger, !trimmed.isEmpty else { return }
+        guard claimConversationSource("assistant:" + sourceID, logger: logger) else { return }
+        var payload: [String: AnyCodable] = ["source_id": AnyCodable("assistant:" + sourceID)]
+        let citations = CitationLineParser.parse(trimmed).map(\.label)
+        if !citations.isEmpty { payload["citations"] = AnyCodable(citations) }
+        logger.append(.init(timestamp: Date(), kind: .assistantMessage, text: trimmed, payload: payload))
+    }
+
+    /// Whether a turn's source id is new to this session's log. The first sight claims it.
+    private func claimConversationSource(_ sourceID: String, logger: SessionLogger) -> Bool {
+        if conversationSourceIDs == nil {
+            conversationSourceIDs = Set(logger.readEvents().compactMap {
+                $0.payload?["source_id"]?.value as? String
+            })
+        }
+        return conversationSourceIDs?.insert(sourceID).inserted == true
     }
 
     func continuityContext(turn: String? = nil) -> String? {
@@ -1439,6 +1796,78 @@ final class FieldSessionService: ObservableObject {
         attachEvidence { evidence in
             if !evidence.readings.contains(record.id) { evidence.readings.append(record.id) }
         }
+    }
+
+    // MARK: Spoken readings (Plan GB P3)
+
+    /// Record a value the technician read out. It attaches to the task in progress — the one a
+    /// procedure opened, usually (Decision 1) — or to the job. `page` is kept only when the
+    /// technician verified that page (Decision 2); speech is the technician's report (FM).
+    @discardableResult
+    func recordReading(quantity: String, value: String, unit: String?, page: String? = nil,
+                       at: Date = Date()) -> SpokenReading? {
+        let quantity = quantity.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let session = activeSession, !quantity.isEmpty, !value.isEmpty else { return nil }
+        let reading = SpokenReading(quantity: quantity, value: value,
+                                    unit: SpokenReading.normalisedUnit(unit),
+                                    unitScope: session.continuityScope,
+                                    taskId: session.activeTask?.id, at: at,
+                                    citation: verifiedCitation(page))
+        mutateSession { $0.spokenReadings.append(reading) }
+        attachEvidence { evidence in
+            if !evidence.readings.contains(reading.id) { evidence.readings.append(reading.id) }
+        }
+        logReading(reading, kind: .readingRecorded)
+        return reading
+    }
+
+    /// Correct a reading: the new value supersedes the old one. It is **not** a second reading and
+    /// never a second finished task — the record prints "140 °F (corrected to 135 °F at 5:28 PM)".
+    /// With no id, the latest reading of that quantity on this unit (or the latest at all).
+    @discardableResult
+    func correctReading(id: String? = nil, quantity: String? = nil, value: String, unit: String?,
+                        page: String? = nil, at: Date = Date()) -> SpokenReading? {
+        guard let session = activeSession else { return nil }
+        let wanted = quantity?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let candidates = session.spokenReadings.filter { $0.unitScope == session.continuityScope }
+        let target = id.flatMap { id in session.spokenReadings.first { $0.id == id } }
+            ?? candidates.last { wanted == nil || wanted?.isEmpty == true || $0.quantity.lowercased() == wanted }
+            ?? session.spokenReadings.last
+        guard let target else { return nil }
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        let correction = SpokenReading(quantity: target.quantity, value: value,
+                                       unit: SpokenReading.normalisedUnit(unit) ?? target.unit,
+                                       unitScope: target.unitScope, taskId: target.taskId, at: at,
+                                       supersedes: target.id,
+                                       citation: verifiedCitation(page) ?? target.citation)
+        mutateSession { $0.spokenReadings.append(correction) }
+        logReading(correction, kind: .readingCorrected)
+        return correction
+    }
+
+    /// A page may be cited by a reading only once the technician verified it.
+    private func verifiedCitation(_ page: String?) -> String? {
+        guard let page = page?.trimmingCharacters(in: .whitespacesAndNewlines), !page.isEmpty else { return nil }
+        let wanted = page.lowercased()
+        return verifiedPages.first { $0.lowercased() == wanted || $0.lowercased().hasPrefix(wanted + ",") }
+    }
+
+    private func logReading(_ reading: SpokenReading, kind: SessionLogger.Event.Kind) {
+        var payload: [String: AnyCodable] = [
+            "reading_id": AnyCodable(reading.id),
+            "quantity": AnyCodable(reading.quantity),
+            "value": AnyCodable(reading.value),
+            "unit": AnyCodable(reading.unit ?? ""),
+            "equipment_scope": AnyCodable(reading.unitScope),
+            "task_id": AnyCodable(reading.taskId ?? ""),
+            "reported_by": AnyCodable("technician")
+        ]
+        if let supersedes = reading.supersedes { payload["supersedes"] = AnyCodable(supersedes) }
+        if let citation = reading.citation { payload["citation"] = AnyCodable(citation) }
+        logger?.append(.init(timestamp: reading.at, kind: kind,
+                             text: "\(reading.quantity) \(reading.valueWithUnit)", payload: payload))
     }
 
     /// Append a HECA safety-assessment event to the active session's audit log (no-op if no session).
@@ -1558,6 +1987,29 @@ final class FieldSessionService: ObservableObject {
             return EvidenceSelection.proposed(for: media)
         }
         return stored.reconciled(with: media)
+    }
+
+    /// Include or leave out one piece of evidence as the technician's own choice (Plan GB P3) —
+    /// a tap on its thumbnail, or "leave that photo out". `itemId` nil means the latest one.
+    /// Returns the item decided, or nil when there is nothing to decide about.
+    @discardableResult
+    func decideEvidence(itemId: String?, included: Bool) -> JobMediaItem? {
+        guard isOpenForEvidence else { return nil }
+        guard let item = itemId.flatMap({ id in jobMedia.first { $0.id == id } }) ?? jobMedia.last else {
+            return nil
+        }
+        var selection = evidenceSelection()
+        selection.decide(item.id, included: included)
+        setEvidenceSelection(selection)
+        return item
+    }
+
+    /// Every piece of evidence decided at once: all in, all out, or kept as it stands.
+    func decideAllEvidence(included: Bool?) {
+        guard isOpenForEvidence, !jobMedia.isEmpty else { return }
+        var selection = evidenceSelection()
+        selection.decideAll(included: included)
+        setEvidenceSelection(selection)
     }
 
     /// Record what the technician chose. Written **before** the job is closed, so the record the
@@ -1883,17 +2335,57 @@ final class FieldSessionService: ObservableObject {
         runner = newRunner
         activeProcedureId = procedure.id
         mutateSession { $0.procedureEquipmentScope = $0.continuityScope }
+        attachProcedureTask(procedure)
         guard let entry = newRunner.currentStep else { throw FieldSessionError.unknownProcedure(id) }
         return entry
+    }
+
+    /// A procedure opens — or attaches to — a task on the current unit (Plan GB Decision 1), so
+    /// the pages, photos and readings gathered while it runs have somewhere to go. Before this a
+    /// procedure started by `procedure_runner` created no task, and everything it gathered landed
+    /// on the job. An open task already naming the procedure is the one it attaches to — that is
+    /// how accepting a recommendation starts its procedure — and otherwise the procedure is the
+    /// technician's own work, recorded as such.
+    private func attachProcedureTask(_ procedure: Procedure) {
+        guard let session = activeSession else { return }
+        let now = Date()
+        if let existing = session.tasks.last(where: {
+            $0.procedureId == procedure.id && $0.status.isOpen && session.belongsToCurrentEquipment($0)
+        }) {
+            guard existing.status != .inProgress else { return }
+            mutateSession { session in
+                guard let idx = session.tasks.firstIndex(where: { $0.id == existing.id }) else { return }
+                session.tasks[idx].status = .inProgress
+                session.tasks[idx].acceptedAt = session.tasks[idx].acceptedAt ?? now
+            }
+            return
+        }
+        let task = FieldSession.Task(title: procedure.title, origin: .operatorAdded,
+                                     status: .inProgress, procedureId: procedure.id,
+                                     createdAt: now, acceptedAt: now)
+        mutateSession {
+            $0.tasks.append(task)
+            $0.taskEquipmentScopes[task.id] = $0.continuityScope
+        }
+        logger?.append(.init(timestamp: now, kind: .taskStarted, text: task.title,
+                             payload: ["task_id": AnyCodable(task.id),
+                                       "origin": AnyCodable("procedure"),
+                                       "procedure_id": AnyCodable(procedure.id)]))
+        raiseTaskCue(task, phase: .started)
     }
 
     @discardableResult
     func advanceProcedure(choice: String?) throws -> ProcedureRunner.Transition {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
         let transition = try runner.advance(choice: choice)
-        if case .completed(let outcome) = transition {
+        switch transition {
+        case .completed(let outcome):
             closeTaskForProcedure(id: activeProcedureId, outcome: outcome)
             clearRunner()
+        case .arrivedAtTerminal(let step):
+            requireVerification(for: step)
+        case .moved:
+            break
         }
         return transition
     }
@@ -1910,12 +2402,27 @@ final class FieldSessionService: ObservableObject {
         return try runner.repeatStep()
     }
 
-    func completeProcedure(outcome: String) throws {
+    /// Finish the running procedure. On a last step that asks for a check, `confirmed` is the
+    /// technician saying it passed; without it the procedure ends as `pending_verification`, its
+    /// fix is recorded done, and a "Verify: …" task stays open (Plan GB P3). Returns the outcome
+    /// recorded and the title of any check left open.
+    @discardableResult
+    func completeProcedure(outcome: String, confirmed: Bool = false) throws
+        -> (outcome: String, openVerification: String?) {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
-        _ = runner.complete(outcome: outcome)
-        closeTaskForProcedure(id: activeProcedureId, outcome: outcome)
+        if let step = runner.currentStep { requireVerification(for: step) }
+        let owesCheck = runner.currentStep?.needsConfirmation == true && !confirmed
+        let recorded = owesCheck ? Self.pendingVerificationOutcome : outcome
+        _ = runner.complete(outcome: recorded)
+        let procedureId = activeProcedureId
+        closeTaskForProcedure(id: procedureId, outcome: recorded, confirmed: !owesCheck)
         clearRunner()
+        let open = owesCheck ? activeSession?.openVerifications.last?.title : nil
+        return (recorded, open)
     }
+
+    /// The outcome a procedure ends with when its check is still owed.
+    static let pendingVerificationOutcome = "pending_verification"
 
     private func clearRunner() {
         runner = nil
@@ -1985,14 +2492,48 @@ final class FieldSessionService: ObservableObject {
         library = ProcedureLibrary(store: store)
         let restoredLogger = SessionLogger(session: inProgress, root: sessionsRoot.appendingPathComponent(inProgress.id, isDirectory: true))
         logger = restoredLogger
-        reconstructRunner(from: restoredLogger.readEvents(), logger: restoredLogger)
-        // On crash recovery, treat the session as paused so the user must explicitly resume.
-        if inProgress.pausedAt == nil {
-            _ = try? pauseSession()
-        } else {
-            lastResumeAt = nil
-        }
+        let events = restoredLogger.readEvents()
+        reconstructRunner(from: events, logger: restoredLogger)
+        // On crash recovery the job is paused so the technician resumes it deliberately — but at
+        // the app's last sign of life, with the time worked up to it counted (Plan GB P3). Pausing
+        // "now" with nothing to count from is how job 1011 lost twenty minutes.
+        lastResumeAt = nil
+        recoverBillableTime(lastEvidenceOfLife: events.map(\.timestamp).max(), now: Date())
     }
+
+    /// Credit the time worked before the app died, and pause the job at its last sign of life.
+    func recoverBillableTime(lastEvidenceOfLife: Date?, now: Date) {
+        guard var session = activeSession, let logger else { return }
+        let recovery = BillableClock.recover(session: session, lastEvidenceOfLife: lastEvidenceOfLife,
+                                             now: now)
+        guard recovery.wasRunning else { return }
+        session.billableSeconds += recovery.creditedSeconds
+        session.pausedAt = recovery.pausedAt
+        session.outcome = .paused
+        session.appClosedPause = FieldSession.AppClosedPause(pausedAt: recovery.pausedAt,
+                                                             uncountedSeconds: recovery.uncountedSeconds)
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger.updateSession { $0 = session }
+        logger.appendLifecycle(.sessionPaused,
+                               note: "app_closed credited_seconds=\(Int(recovery.creditedSeconds)) "
+                                   + "uncounted_seconds=\(Int(recovery.uncountedSeconds))")
+    }
+
+    /// Fold the running clock into the saved total (Plan GB P3). Called when the app leaves the
+    /// foreground; harmless when no job is running.
+    func checkpointBillableTime(now: Date = Date()) {
+        guard var session = activeSession, session.pausedAt == nil, let lastResumeAt else { return }
+        session.billableSeconds += max(0, now.timeIntervalSince(lastResumeAt))
+        session.billableCheckpointAt = now
+        self.lastResumeAt = now
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+    }
+
+    /// Billable time on the open job right now, counting the running clock.
+    var liveBillableSeconds: TimeInterval? { activeSessionSnapshot()?.billableSeconds }
 
     /// Rebuild the active `ProcedureRunner` from the audit log, if a procedure was in progress
     /// when the app was interrupted. Replays procedure events, using the visited-stack snapshot
@@ -2049,6 +2590,10 @@ enum FieldSessionError: LocalizedError {
     /// The organisation asks for the customer's sign-off, and this job has neither a signature nor
     /// a recorded decline (Plan FO P2c).
     case customerSignOffRequired(String)
+    /// A check a fix waits on has not been confirmed (Plan GB P3).
+    case verificationOwed(String)
+    /// The close is held on a question the technician has to answer first (Plan GB P3).
+    case jobCloseHeld(String)
 
     var errorDescription: String? {
         switch self {
@@ -2066,6 +2611,8 @@ enum FieldSessionError: LocalizedError {
         case .recommendationNeedsCitation:
             return "A recommendation needs a citation. Look the answer up in the manuals first, then recommend it with the source you found."
         case .customerSignOffRequired(let reason): return reason
+        case .verificationOwed(let reason): return reason
+        case .jobCloseHeld(let question): return question
         }
     }
 }

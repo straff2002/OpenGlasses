@@ -294,15 +294,23 @@ final class ManualCitationSheetTests: XCTestCase {
         controller.next()
         controller.returnToCitedPage()
 
-        let log = try logLines(of: service)
+        var log = try logLines(of: service)
         XCTAssertTrue(log.contains("citation_opened"), log)
         XCTAssertTrue(log.contains("\"origin\":\"chip\""), log)
-        XCTAssertTrue(log.contains("page_verified"), log)
+        // Opening is not verifying (Plan GB P1): the page is recorded as opened, and verified
+        // only once the technician says it checked out.
+        XCTAssertTrue(log.contains("page_opened"), log)
+        XCTAssertFalse(log.contains("page_verified"), log)
         XCTAssertTrue(log.contains("\"source\":\"manufacturer_pdf\""), log)
         XCTAssertTrue(log.contains("page_viewed"), log)
         XCTAssertTrue(log.contains("\(Self.pdfManual), page 3"), "the page swiped to is recorded: \(log)")
         XCTAssertEqual(log.components(separatedBy: "page_viewed").count - 1, 1,
                        "returning to a page already seen does not log it twice")
+
+        controller.confirmChecked()
+        log = try logLines(of: service)
+        XCTAssertTrue(log.contains("page_verified"), log)
+        XCTAssertTrue(controller.currentPageConfirmed)
     }
 
     func testAskingForAPageOutLoudIsRecordedAsSuch() async throws {
@@ -310,6 +318,8 @@ final class ManualCitationSheetTests: XCTestCase {
         let service = try await startSession(store: store)
         let tool = ManualFigureTool(documentStore: store, sessionService: service)
 
+        // The turn that asked — retrieval reads it before the model calls the tool (Plan GB P1).
+        _ = service.promptContext(turn: "show me page 2")
         let answer = try await tool.execute(args: ["page": 2])
         XCTAssertTrue(answer.contains("page 2"), answer)
         let log = try logLines(of: service)

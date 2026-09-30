@@ -101,7 +101,10 @@ final class FieldContinuityTests: XCTestCase {
         let restored = FieldSessionService(sessionsRoot: root)
         XCTAssertNil(restored.activeProcedureId)
         XCTAssertNil(restored.activeTask)
-        XCTAssertEqual(restored.activeSession?.tasks.count, 1, "Old work remains in the durable job record")
+        // The operator task and, when the vault has one, the task the procedure opened on the old
+        // unit (Plan GB Decision 1) — both stay on the record, neither is current work.
+        let expected = service.availableProcedureDefinitions().isEmpty ? 1 : 2
+        XCTAssertEqual(restored.activeSession?.tasks.count, expected, "Old work remains in the durable job record")
     }
 
     func testCapturedUnitsAndSessionEndIsolation() throws {

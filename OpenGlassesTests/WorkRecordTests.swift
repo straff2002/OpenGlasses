@@ -338,10 +338,14 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertEqual(service.activeTask?.title, "Check the pressure switch tubing",
                        "still running mid-procedure")
         let transition = try service.advanceProcedure(choice: "blocked")   // → clear_and_retest (terminal)
-        guard case .completed(let outcome) = transition else {
+        guard case .arrivedAtTerminal(let last) = transition else {
             return XCTFail("expected the terminal step, got \(transition)")
         }
-        XCTAssertEqual(outcome, "resolved")
+        XCTAssertTrue(last.needsConfirmation, "the retest has to pass first (Plan GB P3)")
+        XCTAssertEqual(service.activeTask?.title, "Check the pressure switch tubing", "not resolved yet")
+        let finished = try service.completeProcedure(outcome: "resolved", confirmed: true)
+        XCTAssertEqual(finished.outcome, "resolved")
+        XCTAssertNil(finished.openVerification)
 
         let task = try XCTUnwrap(service.activeSession?.tasks.first)
         XCTAssertEqual(task.status, .done, "the procedure's outcome closed it")

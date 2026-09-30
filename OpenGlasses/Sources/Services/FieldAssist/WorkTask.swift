@@ -66,6 +66,10 @@ extension FieldSession {
         let createdAt: Date
         var acceptedAt: Date?
         var completedAt: Date?
+        /// A check the task's outcome waits on (Plan GB P3) — set when its procedure reaches a
+        /// step that asks for one, and carried by the open "Verify: …" task a close leaves behind.
+        /// Nil, and absent from the JSON, on every other task.
+        var verification: VerificationRequirement?
 
         init(id: String = UUID().uuidString,
              title: String,
@@ -81,7 +85,8 @@ extension FieldSession {
              completionNote: String? = nil,
              createdAt: Date = Date(),
              acceptedAt: Date? = nil,
-             completedAt: Date? = nil) {
+             completedAt: Date? = nil,
+             verification: VerificationRequirement? = nil) {
             self.id = id
             self.title = title
             self.why = why
@@ -97,6 +102,7 @@ extension FieldSession {
             self.createdAt = createdAt
             self.acceptedAt = acceptedAt
             self.completedAt = completedAt
+            self.verification = verification
         }
 
         /// How long the task was open for, from the moment it was taken on to the moment it closed.
@@ -118,11 +124,50 @@ extension FieldSession {
         var photos: [String] = []
         /// Citation labels a technician opened.
         var citationsOpened: [String] = []
-        /// "<document>, page N" for every page actually put on screen.
+        /// "<document>, page N" for every page the technician confirmed against the work
+        /// (Plan GB P1). Before that plan this was every page put on screen, which is `pagesShown`.
         var pagesVerified: [String] = []
+        /// Pages the app put on screen by itself (Plan GB P1). Never verified by being shown; kept
+        /// in the JSON so a reviewer can see what was in front of the technician, and left out of
+        /// the PDF.
+        var pagesShown: [String] = []
+
+        init(readings: [String] = [], photos: [String] = [], citationsOpened: [String] = [],
+             pagesVerified: [String] = [], pagesShown: [String] = []) {
+            self.readings = readings
+            self.photos = photos
+            self.citationsOpened = citationsOpened
+            self.pagesVerified = pagesVerified
+            self.pagesShown = pagesShown
+        }
 
         var isEmpty: Bool {
             readings.isEmpty && photos.isEmpty && citationsOpened.isEmpty && pagesVerified.isEmpty
+                && pagesShown.isEmpty
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case readings, photos, citationsOpened, pagesVerified, pagesShown
+        }
+
+        /// Hand-written so evidence saved before `pagesShown` existed still decodes, and so a record
+        /// with nothing shown encodes byte-for-byte as it did before (the key is left out).
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            readings = try c.decodeIfPresent([String].self, forKey: .readings) ?? []
+            photos = try c.decodeIfPresent([String].self, forKey: .photos) ?? []
+            citationsOpened = try c.decodeIfPresent([String].self, forKey: .citationsOpened) ?? []
+            pagesVerified = try c.decodeIfPresent([String].self, forKey: .pagesVerified) ?? []
+            pagesShown = try c.decodeIfPresent([String].self, forKey: .pagesShown) ?? []
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(readings, forKey: .readings)
+            try c.encode(photos, forKey: .photos)
+            try c.encode(citationsOpened, forKey: .citationsOpened)
+            try c.encode(pagesVerified, forKey: .pagesVerified)
+            if !pagesShown.isEmpty { try c.encode(pagesShown, forKey: .pagesShown) }
         }
     }
 }

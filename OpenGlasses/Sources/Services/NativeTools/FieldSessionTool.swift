@@ -32,6 +32,9 @@ final class FieldSessionTool: NativeTool {
     vault IDs, names and the configured default. Never substitute another vault after a failure \
     without the user's choice. An equipment/asset name does not select its knowledge vault. \
     The default applies to new jobs only; an active job keeps its vault until ended. \
+    'next_unit' when the technician moves to another machine on the same job ("next unit", "now \
+    the second furnace") — pass 'unit' with its model if they say it, as said; work from then on \
+    is recorded against that unit. \
     Jobs ahead: 'add_upcoming_job' records a job the technician describes before going there \
     ("next job: 1007, no heat, Smith Street") — pass only the fields they actually said, word for \
     word, and never fill one in; 'brief_next_job' has the app read the cited brief aloud; \
@@ -42,7 +45,7 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
+                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'next_unit' to move to another machine on the same job, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
             ],
             "format": [
                 "type": "string",
@@ -96,6 +99,10 @@ final class FieldSessionTool: NativeTool {
                 "type": "string",
                 "description": "On add_upcoming_job: anything else they asked to note."
             ],
+            "unit": [
+                "type": "string",
+                "description": "On next_unit: the next machine's model, exactly as the technician said it. Omit when they did not say one."
+            ],
             "section": [
                 "type": "string",
                 "description": "On brief_more: which part of the brief — 'site', 'equipment', 'fault', 'crew' or 'parts'."
@@ -135,6 +142,8 @@ final class FieldSessionTool: NativeTool {
             return await startSession(args: args, service: service)
         case "set_job_reference":
             return setJobReference(args: args, service: service)
+        case "next_unit":
+            return nextUnit(args: args, service: service)
         case "pause":
             return await pauseSession(service: service)
         case "resume":
@@ -293,6 +302,34 @@ final class FieldSessionTool: NativeTool {
         return "Job reference \(reference) is recorded for this active session and will be included in its submitted record."
     }
 
+    /// "Next unit" (Plan GB P2): the job moves to another machine, identified or not. A model the
+    /// vault does not cover is still that unit's model, as said.
+    private func nextUnit(args: [String: Any], service: FieldSessionService) -> String {
+        guard service.activeSession != nil else {
+            return "Could not start the next unit: no Field Assist session is active."
+        }
+        let said = (args["unit"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var identity: EquipmentIdentity?
+        if let said, !said.isEmpty {
+            let index = service.modelIndex
+            let resolution = EquipmentRecognition.resolve(stated: said, index: index)
+            let fragments = resolution.model == nil ? index.match(fragment: said) : []
+            if let model = fragments.first, fragments.count == 1 {
+                identity = EquipmentIdentity(
+                    model: model, token: model.name, source: .spoken, statedModel: said,
+                    vaultMatch: .init(heading: model.heading, section: model.name, kind: .partial))
+            } else {
+                identity = EquipmentRecognition.identity(stated: said, resolution: resolution, source: .spoken)
+            }
+        }
+        service.startNextUnit(identity)
+        let unit = identity.map { ": \($0.stated)" } ?? ""
+        let caveat = identity?.isOutOfVault == true
+            ? " It is not a model the loaded manuals cover; say so when you answer from them." : ""
+        return "Started the next unit on this job\(unit). Work from now on is recorded against it; "
+            + "the previous unit keeps its own.\(caveat)"
+    }
+
     private func pauseSession(service: FieldSessionService) async -> String {
         do {
             _ = try service.pauseSession()
@@ -316,12 +353,21 @@ final class FieldSessionTool: NativeTool {
         let outcome = FieldSession.Outcome(rawValue: outcomeRaw) ?? .resolved
         do {
             // Through the flow when there is one: finishing the job is one of the two things that
-            // really do end its conversation (Plan FO P1).
-            let session = try flow?.closeJob(outcome: outcome) ?? service.endSession(outcome: outcome)
+            // really do end its conversation (Plan FO P1), and the flow's close sequence is the one
+            // the Job tab runs too — checks owed, photos, sign-off (Plan GB P3). A question it
+            // raises comes back for the model to put to the technician.
+            let session = try flow?.closeJob(outcome: outcome, route: .voice)
+                ?? service.endSession(outcome: outcome)
             let billing = WorkRecord.billingSummary(
                 seconds: session.billableSeconds, basis: session.billingBasis,
                 minutesPerUnit: session.minutesPerBillingUnit)
-            return "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved."
+            // The job is closed, not its report: `deliver_report` still reaches it from this
+            // conversation (Plan GB P0), and the model is told so rather than left to guess.
+            return "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved. "
+                + "If the technician wants the report sent, call deliver_report now — it sends this "
+                + "closed job's report; do not start or reopen a job to send it."
+        } catch FieldSessionError.jobCloseHeld(let question) {
+            return question
         } catch {
             return "Could not end session: \(error.localizedDescription)"
         }
@@ -332,11 +378,16 @@ final class FieldSessionTool: NativeTool {
             return "No active Field Assist session. " + vaultSummary()
         }
         let vaultName = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
-        let runningFor = Int(Date().timeIntervalSince(session.startedAt))
-        let mins = runningFor / 60
+        // Billable time — what the record will say — not the wall clock since the start, which
+        // counts pauses and a dead app alike (Plan GB P3).
+        let billable = WorkRecord.billingSummary(
+            seconds: service.liveBillableSeconds ?? session.billableSeconds,
+            basis: session.billingBasis, minutesPerUnit: session.minutesPerBillingUnit)
         let asset = session.assetId.map { ", asset \($0)" } ?? ""
         let pause = session.pausedAt != nil ? " [paused]" : ""
-        return "Active session: \(vaultName) [\(session.vaultId)]\(asset). Running about \(WorkRecord.minutesPhrase(minutes: mins)), \(session.escalations.count) escalation(s).\(pause)\n" + vaultSummary()
+        let owed = session.openVerifications.isEmpty ? ""
+            : " Still to verify: " + session.openVerifications.map(\.title).joined(separator: "; ") + "."
+        return "Active session: \(vaultName) [\(session.vaultId)]\(asset). Billable time so far: \(billable), \(session.escalations.count) escalation(s).\(pause)\(owed)\n" + vaultSummary()
     }
 
     private func historySummary(service: FieldSessionService) async -> String {

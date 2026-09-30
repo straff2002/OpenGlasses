@@ -20,7 +20,10 @@ final class EquipmentLookupTool: NativeTool {
     When a lookup or a nameplate read names exactly one model the vault covers, that model becomes \
     the session's active equipment and every later answer is scoped to it — say so to the \
     technician. Pass 'set_equipment' with a model or part of one to correct a wrong read ("no, it's \
-    the 070"), or 'clear_equipment' to forget it. Requires an active session.
+    the 070"), or to record the model the technician says the unit in front of them is — including \
+    one the manuals do not cover, which is still recorded as said. Pass 'serial' (and/or \
+    'field_name' + 'field_value' for another nameplate field) when the technician reads one out, so \
+    the record keeps it. Use 'clear_equipment' to forget the unit. Requires an active session.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -44,6 +47,18 @@ final class EquipmentLookupTool: NativeTool {
             "clear_equipment": [
                 "type": "boolean",
                 "description": "Forget the session's active equipment."
+            ],
+            "serial": [
+                "type": "string",
+                "description": "The unit's serial number, exactly as the technician read it out."
+            ],
+            "field_name": [
+                "type": "string",
+                "description": "Another nameplate field the technician read out (e.g. 'firmware', 'refrigerant'). Pass with field_value."
+            ],
+            "field_value": [
+                "type": "string",
+                "description": "The value of field_name, exactly as read."
             ]
         ],
         "required": [] as [String]
@@ -87,6 +102,21 @@ final class EquipmentLookupTool: NativeTool {
         let forceCamera = (args["use_camera"] as? Bool) ?? false
         let restrictTo = args["file"] as? String
 
+        // Nameplate fields the technician read out (Plan GB P2): written onto the unit before
+        // anything else, because digits are where recognition fails quietly and a spoken serial is
+        // the only thing that tells two identical machines apart.
+        var recordedFields: [String] = []
+        if let serial = (args["serial"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !serial.isEmpty, let field = session.recordIdentityField(name: "Serial", value: serial, source: .spoken) {
+            session.recordSerialForActiveUnit(serial)
+            recordedFields.append(field.summary)
+        }
+        if let name = args["field_name"] as? String, let value = args["field_value"] as? String,
+           let field = session.recordIdentityField(name: name, value: value, source: .spoken) {
+            recordedFields.append(field.summary)
+        }
+        let fieldsNote = recordedFields.isEmpty ? "" : "Recorded " + recordedFields.joined(separator: "; ") + ".\n\n"
+
         // Corrections first: they are what the technician says when the last read was wrong, and
         // they must not be treated as a question about a machine.
         if (args["clear_equipment"] as? Bool) == true {
@@ -97,7 +127,13 @@ final class EquipmentLookupTool: NativeTool {
         }
         if let fragment = (args["set_equipment"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !fragment.isEmpty {
-            return setEquipment(fragment: fragment)
+            let answer = setEquipment(fragment: fragment)
+            // The serial belongs to the unit as just stated, which may have only now been recorded.
+            if let serial = args["serial"] as? String { session.recordSerialForActiveUnit(serial) }
+            return fieldsNote + answer
+        }
+        if !recordedFields.isEmpty, query == nil || query?.isEmpty == true, !forceCamera {
+            return String(fieldsNote.dropLast(2))
         }
 
         // Camera/OCR path when requested, or when no spoken query was provided.
@@ -114,7 +150,12 @@ final class EquipmentLookupTool: NativeTool {
 
         if let hit = search(query: query!, store: store, restrictTo: restrictTo) { return prefix + hit }
         if let manual = manualFallback(query: query!, ocrText: nil, store: store) { return prefix + manual }
-        if let sentence = session.equipmentScope(turn: query!).refusalSentence { return sentence }
+        if let sentence = session.equipmentScope(turn: query!).refusalSentence {
+            // Naming a model is not the same as saying it is the machine in front of you. When it
+            // is, the technician's statement is recorded as said (Plan GB P2).
+            return sentence + " If this is the unit the technician is working on, record it with "
+                + "set_equipment so the job keeps the model as they said it."
+        }
         return "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail, or recommend escalation rather than guessing."
     }
 
@@ -134,9 +175,9 @@ final class EquipmentLookupTool: NativeTool {
             return (nil, "That reads as more than one model: \(names). Which one is it?")
         }
         let model = matches[0]
+        let identity = Self.identity(for: model, in: text, source: source, index: index,
+                                     nameplateText: nameplateText)
         if session.activeEquipment?.heading == model.heading { return (nil, nil) }
-        let identity = EquipmentIdentity(model: model, token: model.name, source: source,
-                                         nameplateText: nameplateText)
         // Plan FO P1: this is the path where recognition *happens to* the session — a model number
         // said in passing, a nameplate the camera read. On a job that is already on a machine,
         // re-scoping silently leaves the previous job open and still billing, so the flow holds the
@@ -153,28 +194,79 @@ final class EquipmentLookupTool: NativeTool {
                         + "the session stays on \(current) until they answer. Do not ask or answer "
                         + "that question yourself.", nil)
             }
-            return (identity.announcement, nil)
+            return (Self.announcement(for: identity), nil)
         }
         session.setEquipment(identity)
-        return (identity.announcement, nil)
+        return (Self.announcement(for: identity), nil)
     }
 
-    /// "No, it's the 070" — a fragment, matched as a substring of any spelling the vault lists.
+    /// The identity to record for a model the text named (Plan GB P2). A spoken model keeps what
+    /// was said beside the section it matched and how; a nameplate, a work order and a tap on the
+    /// phone's list are the vault's own spelling, recorded as before.
+    static func identity(for model: VaultModelIndex.Model, in text: String,
+                         source: EquipmentIdentity.Source, index: VaultModelIndex,
+                         nameplateText: String? = nil) -> EquipmentIdentity {
+        guard source == .spoken,
+              let stated = VaultModelIndex.modelLikeTokens(in: text)
+                .filter({ index.resolve(token: $0).contains(model) })
+                .max(by: { $0.count < $1.count }) else {
+            return EquipmentIdentity(model: model, token: model.name, source: source,
+                                     nameplateText: nameplateText)
+        }
+        let resolution = EquipmentRecognition.resolve(stated: stated, index: index)
+        let kind = resolution.model == model ? (resolution.kind ?? .partial) : .partial
+        return EquipmentIdentity(model: model, token: model.name, source: source,
+                                 nameplateText: nameplateText, statedModel: stated,
+                                 vaultMatch: .init(heading: model.heading, section: model.name, kind: kind))
+    }
+
+    /// What the tool says once it has recorded a unit. A near match is recorded as said and put to
+    /// the technician as a question — the model asks it, once (Plan GB P2).
+    static func announcement(for identity: EquipmentIdentity) -> String {
+        guard identity.vaultMatch?.kind == .near, let section = identity.vaultSectionIfDifferent else {
+            return identity.announcement
+        }
+        return "Recorded the unit as \(identity.stated), as the technician said it. The closest vault "
+            + "section is \(section); answers use it. Ask the technician once: \"Did you mean \(section)?\" "
+            + "If they confirm, call equipment_lookup with set_equipment '\(section)'; if not, leave it — "
+            + "what they said is what the record keeps."
+    }
+
+    /// "No, it's the 070" — a fragment, matched as a substring of any spelling the vault lists — or
+    /// "the model is SLP99UH090XV48C", a whole model number, resolved as stated (Plan GB P2). Either
+    /// way it restates the unit the technician is on: same unit, same work, same "first
+    /// recognised". A model the vault does not cover is recorded as said, not refused — the
+    /// technician is the authority on what is in front of them.
     private func setEquipment(fragment: String) -> String {
         let index = session.modelIndex
         guard !index.isEmpty else {
             return "The \(session.activeVault?.manifest.name ?? "active") vault does not list models, so there is no equipment to set."
         }
+        let wholeModel = EquipmentRecognition.normalised(fragment).count >= EquipmentRecognition.minimumNearLength
+        let resolution = wholeModel ? EquipmentRecognition.resolve(stated: fragment, index: index) : .unmatched
+        if resolution.model != nil {
+            let identity = EquipmentRecognition.identity(stated: fragment, resolution: resolution, source: .spoken)
+            let recorded = session.correctEquipment(identity)
+            return Self.announcement(for: recorded)
+                + "\n\n=== \(recorded.file) ===\n\(recorded.heading)"
+        }
         let matches = index.match(fragment: fragment)
-        guard let model = matches.first, matches.count == 1 else {
-            if matches.isEmpty {
-                return index.scopeSentence(unknown: fragment)
-            }
+        if let model = matches.first, matches.count == 1 {
+            let identity = EquipmentIdentity(
+                model: model, token: model.name, source: .spoken,
+                statedModel: wholeModel ? fragment : model.name,
+                vaultMatch: .init(heading: model.heading, section: model.name, kind: .partial))
+            let recorded = session.correctEquipment(identity)
+            return recorded.announcement + "\n\n=== \(model.file) ===\n\(model.heading)"
+        }
+        if matches.count > 1 {
             return "'\(fragment)' matches \(matches.map(\.name).joined(separator: ", ")). Which one is it?"
         }
-        let identity = EquipmentIdentity(model: model, token: model.name, source: .spoken)
-        session.setEquipment(identity)
-        return identity.announcement + "\n\n=== \(model.file) ===\n\(model.heading)"
+        guard VaultModelIndex.isModelLike(fragment) else { return index.scopeSentence(unknown: fragment) }
+        let recorded = session.correctEquipment(
+            EquipmentRecognition.identity(stated: fragment, resolution: .unmatched, source: .spoken))
+        return recorded.announcement + " Recorded as the technician said it. Answers from these manuals "
+            + "are for other models; say so when you use one."
     }
 
     // MARK: - Reference-tier fall-through

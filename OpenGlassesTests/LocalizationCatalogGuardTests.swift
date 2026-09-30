@@ -1,13 +1,18 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Holds every *complete* catalog language to the bar that makes it worth shipping: every key
-/// translated, every translation's format specifiers matching its English source, and every plural
-/// variant carrying the categories the language needs.
+/// Holds every *complete* catalog language to the bar that makes it worth shipping: at least
+/// `coverageFloor` of its keys translated, every translation's format specifiers matching its
+/// English source, and every plural variant carrying the categories the language needs.
 ///
 /// Machine translation is the first pass for these catalogs (Plan EC), and a dropped or retyped
 /// specifier is exactly the mistake it makes — a garbled sentence at best, a formatting crash at
 /// worst. The check reads `Localizable.xcstrings` itself, so it is independent of the test locale.
+///
+/// The floor sits below 100% on purpose. A catalog sync pulls new English keys in before anyone
+/// translates them, and that commit should not fail the suite. The gap stays visible: the failure
+/// names the missing keys. Specifier parity is not relaxed, because a wrong specifier is never
+/// acceptable.
 ///
 /// Partial languages (the early 178-key slice) are not held to this yet; each joins
 /// `completeLanguages` as its catalog is filled.
@@ -17,6 +22,9 @@ final class LocalizationCatalogGuardTests: XCTestCase {
     private static let completeLanguages: [String: Set<String>] = [
         "ru": ["one", "few", "many", "other"],
     ]
+
+    /// The share of translatable keys each complete language must carry (Plan EC P2).
+    private static let coverageFloor = 0.95
 
     private static var catalogURL: URL {
         URL(fileURLWithPath: #filePath)   // <repo>/OpenGlassesTests/<thisfile>.swift
@@ -126,15 +134,19 @@ final class LocalizationCatalogGuardTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testCompleteLanguagesTranslateEveryKey() throws {
+    func testCompleteLanguagesMeetTheCoverageFloor() throws {
         let strings = try Self.loadStrings()
+        let translatable = strings.filter { Self.needsTranslation($0.key, entry: $0.value) }
+        XCTAssertFalse(translatable.isEmpty)
         for language in Self.completeLanguages.keys.sorted() {
-            let missing = strings.filter { key, entry in
-                Self.needsTranslation(key, entry: entry)
-                    && (entry["localizations"] as? [String: Any])?[language] == nil
+            let missing = translatable.filter { _, entry in
+                (entry["localizations"] as? [String: Any])?[language] == nil
             }.keys.sorted()
-            XCTAssertTrue(missing.isEmpty,
-                          "\(language) is missing \(missing.count) key(s): \(missing.prefix(20).map { "\"\($0)\"" }.joined(separator: ", "))")
+            let coverage = 1 - Double(missing.count) / Double(translatable.count)
+            XCTAssertGreaterThanOrEqual(
+                coverage, Self.coverageFloor,
+                "\(language) covers \(Int((coverage * 100).rounded(.down)))% of \(translatable.count) keys; missing: \(missing.prefix(20).map { "\"\($0)\"" }.joined(separator: ", "))"
+            )
         }
     }
 

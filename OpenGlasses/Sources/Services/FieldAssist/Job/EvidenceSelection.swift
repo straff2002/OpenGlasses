@@ -41,22 +41,27 @@ struct EvidenceSelection: Codable, Equatable {
         var caption: String?
         /// Capture order, oldest first. Stable across re-sends; not the render order.
         var order: Int
+        /// True once the technician chose this item's fate themselves — a tap on its thumbnail, or
+        /// "leave that photo out" (Plan GB P3). A decided entry is honoured without the close
+        /// review (`EvidenceSelectionPolicy`). Nil — and absent from the JSON — otherwise.
+        var decided: Bool?
 
         var id: String { itemId }
 
         init(itemId: String, kind: JobMediaItem.Kind = .photo, included: Bool,
-             role: Role? = nil, caption: String? = nil, order: Int) {
+             role: Role? = nil, caption: String? = nil, order: Int, decided: Bool? = nil) {
             self.itemId = itemId
             self.kind = kind
             self.included = included
             self.role = role
             self.caption = caption
             self.order = order
+            self.decided = decided
         }
 
         enum CodingKeys: String, CodingKey {
             case itemId = "item_id"
-            case kind, included, role, caption, order
+            case kind, included, role, caption, order, decided
         }
 
         init(from decoder: Decoder) throws {
@@ -67,6 +72,7 @@ struct EvidenceSelection: Codable, Equatable {
             role = (try? c.decodeIfPresent(Role.self, forKey: .role)).flatMap { $0 }
             caption = try c.decodeIfPresent(String.self, forKey: .caption)
             order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
+            decided = try c.decodeIfPresent(Bool.self, forKey: .decided)
         }
     }
 

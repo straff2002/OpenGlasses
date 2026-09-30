@@ -26,6 +26,8 @@ final class ProcedureRunner {
         case unknownStep(String)
         case noNextStep
         case atStart
+        /// The last step asks for a check the technician has not confirmed (Plan GB P3).
+        case awaitingConfirmation(String)
 
         var errorDescription: String? {
             switch self {
@@ -33,6 +35,9 @@ final class ProcedureRunner {
             case .unknownStep(let id): return "Procedure step '\(id)' not found."
             case .noNextStep: return "This step has no next step. Resolve a branch or complete the procedure."
             case .atStart: return "Already at the first step."
+            case .awaitingConfirmation(let instruction):
+                return "This is the final step and it needs the technician's confirmation: \(instruction) "
+                    + "\(VerificationRequirement.notYetVerified)"
             }
         }
     }
@@ -40,6 +45,11 @@ final class ProcedureRunner {
     /// The result of advancing or stepping back.
     enum Transition {
         case moved(Procedure.Step)
+        /// The procedure has reached its last step. Nothing is complete yet: the step's instruction
+        /// is what the technician does next, and the procedure completes on an explicit
+        /// `complete` (Plan GB P3). It used to complete on *entering* the step, which is how job
+        /// 1011 was resolved before its retest.
+        case arrivedAtTerminal(Procedure.Step)
         case completed(outcome: String)
     }
 
@@ -71,7 +81,12 @@ final class ProcedureRunner {
     @discardableResult
     func advance(choice: String?) throws -> Transition {
         guard let step = currentStep else { throw RunnerError.unknownStep(currentStepId) }
-        if step.terminal { return complete(outcome: step.outcome ?? "resolved") }
+        if step.terminal {
+            // "Next" on the last step is finishing it — unless it asks for a confirmation, which
+            // only an explicit `complete` carries.
+            if step.needsConfirmation { throw RunnerError.awaitingConfirmation(step.instruction) }
+            return complete(outcome: step.outcome ?? "resolved")
+        }
 
         let targetId: String?
         var branchTaken: String?
@@ -92,7 +107,7 @@ final class ProcedureRunner {
         visited.append(target.id)
         logStep(target.id, branchTaken: branchTaken)
 
-        if target.terminal { return complete(outcome: target.outcome ?? "resolved") }
+        if target.terminal { return .arrivedAtTerminal(target) }
         return .moved(target)
     }
 
@@ -146,7 +161,11 @@ final class ProcedureRunner {
         if !step.citations.isEmpty {
             lines.append("Cite: \(step.citations.joined(separator: ", "))")
         }
-        if step.terminal {
+        if step.needsConfirmation {
+            lines.append("This is the final step. Give the technician the instruction above. It is not "
+                         + "resolved until they confirm the check passed: then call procedure_runner "
+                         + "'complete' with confirmed true. \(VerificationRequirement.notYetVerified)")
+        } else if step.terminal {
             lines.append("This is a terminal step. Call procedure_runner with action 'complete' (outcome: \(step.outcome ?? "resolved")).")
         } else if step.branches.isEmpty {
             lines.append("To continue, call procedure_runner action 'next' (no choice needed).")

@@ -40,6 +40,9 @@ struct CameraStreamClaims: Equatable {
         /// the stream outright so a check run on top of a live session gives back exactly what it
         /// took and never the session's own camera.
         static let readinessCheck = Owner("readinessCheck")
+        /// Plan GB P4 — a job clip (`record_clip`). Claims so a clip started after a relaunch can
+        /// bring the stream up itself, and gives back only what it opened.
+        static let jobClip = Owner("jobClip")
     }
 
     /// What the service should do about a `claim`.

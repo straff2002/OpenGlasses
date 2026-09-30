@@ -459,4 +459,84 @@ final class ManualFigureTests: XCTestCase {
                                               title: nil, icon: .info),
                        "\(frames)")
     }
+
+    // MARK: - What may open by itself (Plan GB P1)
+
+    /// The field test's screenshots: readings and a correction opened venting and CO₂ tables. Here
+    /// the drawing's "HUM 120 VAC OUTPUT" label plays the table cell a spoken value hit.
+    func testReadingsAndCorrectionsPresentNothingAndRecordNothing() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        for turn in ["120", "0.28", "0.35", "135 not 120", "supply air is 120",
+                     "correct the job number to 1011"] {
+            _ = service.promptContext(turn: turn)
+            XCTAssertNil(service.stagedFigure, "“\(turn)” asked for no page")
+        }
+        let evidence = try XCTUnwrap(service.activeSession?.jobEvidence)
+        XCTAssertTrue(evidence.pagesShown.isEmpty && evidence.pagesVerified.isEmpty
+                      && evidence.citationsOpened.isEmpty, "nothing recorded: \(evidence)")
+    }
+
+    func testAskingForTheWiringDiagramPresentsItAsTheTechniciansRequest() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        _ = service.promptContext(turn: "show me the wiring diagram for 24VAXC")
+        let staged = try XCTUnwrap(service.stagedFigure)
+        XCTAssertEqual(staged.figure, "Figure 3")
+        XCTAssertTrue(staged.presentOnPhone)
+        XCTAssertEqual(staged.origin, .requested)
+        XCTAssertTrue(service.turnAskedForPage)
+
+        // A question about the drawing still puts it up — as the app's doing, not the technician's.
+        _ = service.promptContext(turn: "what does 24VAXC connect to")
+        XCTAssertEqual(service.stagedFigure?.origin, .automatic)
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+    }
+
+    func testACaptionedPassageGoesToTheModelButOpensOnlyWhenAskedFor() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store)
+        _ = service.promptContext(turn: "what is terminal W951 for")
+        let cited = try XCTUnwrap(service.stagedFigure)
+        XCTAssertEqual(cited.figure, "Figure 9")
+        XCTAssertFalse(cited.presentOnPhone, "a captioned passage is not a drawing; it waits to be asked for")
+
+        _ = service.promptContext(turn: "show me figure 9 for terminal W951")
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+    }
+
+    func testTheLogSaysWhichTurnPutWhichPageUpAndWhy() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        _ = service.promptContext(turn: "what does 24VAXC connect to")
+        let id = try XCTUnwrap(service.activeSession?.id)
+        let events = SessionLogger.readEvents(at: tempRoot.appendingPathComponent("sessions")
+            .appendingPathComponent(id))
+        let presented = try XCTUnwrap(events.last { $0.kind == .figurePresented })
+        XCTAssertEqual(presented.payload?["reason"]?.value as? String, "diagram_for_question")
+        XCTAssertEqual(presented.payload?["turn_kind"]?.value as? String, "question")
+        XCTAssertEqual(presented.payload?["presented"]?.value as? String, "phone")
+    }
+
+    func testAProcedureOpensATaskOnTheCurrentUnitSoEvidenceHasAHome() async throws {
+        let service = FieldSessionService(sessionsRoot: tempRoot.appendingPathComponent("p", isDirectory: true))
+        _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
+        _ = try service.startProcedure(id: "low_pressure_diagnostic")
+        let task = try XCTUnwrap(service.activeTask, "the procedure opened a task")
+        XCTAssertEqual(task.procedureId, "low_pressure_diagnostic")
+        XCTAssertEqual(task.status, .inProgress)
+
+        service.logPageVerified(title: "Service Manual", page: 4, source: .extractedText)
+        XCTAssertEqual(service.task(id: task.id)?.evidence.pagesVerified, ["Service Manual, page 4"])
+        XCTAssertTrue(service.activeSession?.jobEvidence.pagesVerified.isEmpty ?? false)
+
+        // A recommendation naming the procedure is the task it attaches to — no second task.
+        try service.completeProcedure(outcome: "resolved")
+        let recommended = try service.proposeTask(title: "Run the low-pressure check",
+                                                  procedureId: "low_pressure_diagnostic",
+                                                  citation: "procedures")
+        _ = try service.decideTask(id: recommended.id, decision: .accept)
+        XCTAssertEqual(service.activeSession?.tasks.filter { $0.procedureId == "low_pressure_diagnostic" }.count, 2)
+        XCTAssertEqual(service.activeTask?.id, recommended.id)
+    }
 }

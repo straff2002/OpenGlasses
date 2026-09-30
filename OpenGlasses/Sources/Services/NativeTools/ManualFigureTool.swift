@@ -58,7 +58,8 @@ final class ManualFigureTool: NativeTool {
         }
 
         if (args["again"] as? Bool) == true {
-            guard let staged = session.restageLastFigure() else {
+            guard let staged = session.restageLastFigure(
+                origin: session.turnAskedForPage ? .requested : .automatic) else {
                 return "No figure has been shown yet in this session. Name a figure or a page number."
             }
             return show(staged, session: session, opening: "Back to")
@@ -103,9 +104,13 @@ final class ManualFigureTool: NativeTool {
             return "Name the figure to show (\"Figure 58\"), a page number, or ask for the last one again."
         }
 
-        guard let staged = session.makeStagedFigure(for: passage, vaultId: store.manifest.id) else {
+        guard var staged = session.makeStagedFigure(for: passage, vaultId: store.manifest.id) else {
             return "That passage has no page number, so there is no page to show."
         }
+        // A voice-originated open cannot tell the technician's request from the model's own
+        // initiative, so the turn decides: a turn that asked for a page makes it the technician's;
+        // anything else is the app putting a page up (Plan GB P1).
+        staged.origin = session.turnAskedForPage ? .requested : .automatic
         session.stageFigure(staged)
         return show(staged, session: session, opening: "Showing")
     }
@@ -120,7 +125,10 @@ final class ManualFigureTool: NativeTool {
         let presenter = ManualFigurePresenter(figure: staged, sourceURL: session.sourcePDFURL(for: staged))
         // Asked for out loud rather than tapped: the audit records which it was, because a
         // technician reading a page and a technician asking to be shown one are different evidence.
-        session.logCitationOpened(staged.asCitation, origin: .voice)
+        // A page the model put up without being asked is not an open at all (Plan GB P1).
+        if staged.origin == .requested {
+            session.logCitationOpened(staged.asCitation, origin: .voice)
+        }
         var lines = ["\(opening) \(staged.name) on the technician's phone. Source: \(staged.citation)."]
         if presenter.hasPicture {
             lines.append("The page is attached to your next turn as an image, so read the drawing there rather than describing it from the labels.")

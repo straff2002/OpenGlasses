@@ -109,7 +109,19 @@ final class JobClipRecorder: ObservableObject {
         /// Where the file is written before it is filed. Defaults to the system temporary
         /// directory; the session's own store is where it ends up.
         var scratchDirectory: () -> URL = { FileManager.default.temporaryDirectory }
+        /// Plan GB P4: claim the glasses stream and wait, within the cold-start window, for fresh
+        /// visual evidence. The default reports a failed claim, so a recorder with no camera wired
+        /// keeps refusing exactly as before.
+        var ensureStream: @MainActor () async -> ClipStreamWarmup.Result = { .claimFailed }
+        /// Give back a claim `ensureStream` took. Called on every ending — asked, cap, stall, job
+        /// close — and on a start that fails after the claim.
+        var releaseStream: @MainActor () async -> Void = {}
     }
+
+    /// Whether this recorder holds a stream claim to give back.
+    private(set) var holdsStreamClaim = false
+    /// A claiming start is waiting for the stream.
+    private var isStartingClip = false
 
     private var seams: Seams
 
@@ -227,6 +239,47 @@ final class JobClipRecorder: ObservableObject {
         return .success(cap)
     }
 
+    /// Start recording, claiming the glasses stream first when it is not producing pictures
+    /// (Plan GB P4).
+    ///
+    /// The field tester's clip was refused after a relaunch because nothing had restarted the
+    /// stream — while the preview, `video_recording` and the record button all start it on demand.
+    /// A clip now does the same: claim (`CameraStreamClaims`, so it never stops a stream somebody
+    /// else opened), wait within FD's cold-start window for `readinessNow` to show fresh visual
+    /// evidence, then record off the relay as before. Still a spoken refusal when the camera never
+    /// comes up — never a black clip.
+    func startClaimingStream(from publisher: PassthroughSubject<UIImage, Never>,
+                             caption: String? = nil,
+                             seconds: TimeInterval? = nil) async -> Result<TimeInterval, StartRefusal> {
+        guard !isRecording, !isStartingClip else { return .failure(.alreadyRecording(elapsed: elapsed)) }
+        guard seams.sessions().isOpenForEvidence else { return .failure(.noOpenJob) }
+        // A second start (a double tap, or a tap during a spoken start) while the first waits for
+        // the stream is refused, so it can never release the claim the first one is holding.
+        isStartingClip = true
+        defer { isStartingClip = false }
+        if seams.readiness()?.hasFreshVisualEvidence != true {
+            switch await seams.ensureStream() {
+            case .ready:
+                holdsStreamClaim = true
+            case .timedOut(let phrase):
+                await seams.releaseStream()
+                return .failure(.cameraNotReady(phrase))
+            case .claimFailed:
+                return .failure(.cameraNotReady("The glasses camera couldn't be started"))
+            }
+        }
+        let result = start(from: publisher, caption: caption, seconds: seconds)
+        if case .failure = result { await releaseClaimedStream() }
+        return result
+    }
+
+    /// Give back the stream claim, if this recorder took one.
+    private func releaseClaimedStream() async {
+        guard holdsStreamClaim else { return }
+        holdsStreamClaim = false
+        await seams.releaseStream()
+    }
+
     /// The cap a request resolves to: the default when nothing was asked for, and otherwise what
     /// was asked for held inside one second and the maximum. A request beyond the maximum is
     /// clamped rather than refused — the technician gets the longest clip there is, and is told.
@@ -241,6 +294,12 @@ final class JobClipRecorder: ObservableObject {
     @discardableResult
     func stop(ending: Finished.Ending = .asked) async -> Finished? {
         guard isRecording else { return nil }
+        let finished = await finishRecording(ending: ending)
+        await releaseClaimedStream()
+        return finished
+    }
+
+    private func finishRecording(ending: Finished.Ending) async -> Finished? {
         subscription?.cancel()
         subscription = nil
         ticker?.invalidate()
@@ -374,6 +433,7 @@ final class JobClipRecorder: ObservableObject {
         pendingURL = nil
         poster = nil
         caption = nil
+        await releaseClaimedStream()
         onFinished?(nil)
     }
 
@@ -501,5 +561,41 @@ final class AVAssetClipWriter: ClipWriting {
         guard started else { return }
         started = false
         writer.cancelWriting()
+    }
+}
+
+
+/// Plan GB P4 — waiting for the glasses to produce pictures after a clip claimed the stream.
+///
+/// Pure apart from the injected clock and sleep: poll `readiness` until it shows fresh visual
+/// evidence (the FD P0 question every see-something gate asks of `readinessNow`), or give up at
+/// `timeout` — FD's cold-start window, `StreamRecoveryPolicy.warmupTimeout` — with the phrase
+/// the readiness gave last, so the refusal names what was actually wrong.
+enum ClipStreamWarmup {
+    enum Result: Equatable {
+        case ready
+        case timedOut(String)
+        case claimFailed
+    }
+
+    static let pollInterval: TimeInterval = 0.25
+
+    @MainActor
+    static func waitForFreshEvidence(timeout: TimeInterval = StreamRecoveryPolicy.warmupTimeout,
+                                     pollInterval: TimeInterval = ClipStreamWarmup.pollInterval,
+                                     readiness: () -> CameraReadiness?,
+                                     now: () -> Date = { Date() },
+                                     sleep: (TimeInterval) async -> Void = { seconds in
+                                         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                                     }) async -> Result {
+        let deadline = now().addingTimeInterval(timeout)
+        while true {
+            let current = readiness()
+            if current?.hasFreshVisualEvidence == true { return .ready }
+            if now() >= deadline || Task.isCancelled {
+                return .timedOut(current?.statusPhrase ?? "The camera isn't running")
+            }
+            await sleep(pollInterval)
+        }
     }
 }

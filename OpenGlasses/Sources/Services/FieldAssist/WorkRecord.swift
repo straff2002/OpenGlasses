@@ -11,10 +11,34 @@ struct WorkRecord: Codable, Equatable {
 
     /// The machine, flattened out of the session's identity so the record stands alone.
     struct Equipment: Codable, Equatable {
+        /// What the technician said the model was — or, for a unit recorded before that was kept,
+        /// the vault's spelling it has always printed (Plan GB P2).
         let model: String
         let heading: String
         let source: String
         let recognisedAt: Date
+        /// The vault section the model matched, when it is not simply what was said. Absent from
+        /// the JSON otherwise, so an older record encodes exactly as it did.
+        var vaultSection: String? = nil
+        /// True for a unit the technician named that the loaded manuals do not cover.
+        var outOfVault: Bool? = nil
+
+        init(model: String, heading: String, source: String, recognisedAt: Date,
+             vaultSection: String? = nil, outOfVault: Bool? = nil) {
+            self.model = model
+            self.heading = heading
+            self.source = source
+            self.recognisedAt = recognisedAt
+            self.vaultSection = vaultSection
+            self.outOfVault = outOfVault
+        }
+
+        init(_ identity: EquipmentIdentity) {
+            self.init(model: identity.stated, heading: identity.heading,
+                      source: identity.source.rawValue, recognisedAt: identity.recognisedAt,
+                      vaultSection: identity.vaultSectionIfDifferent,
+                      outOfVault: identity.isOutOfVault ? true : nil)
+        }
     }
 
     struct Escalation: Codable, Equatable {
@@ -65,6 +89,13 @@ struct WorkRecord: Codable, Equatable {
     let billingBasis: FieldAssistBillingBasis?
     let minutesPerBillingUnit: Int?
     let billableUnits: Int?
+    /// The machines the job covered and which tasks were done on each (Plan GB P2). **Only when
+    /// there were two or more** — a job on one machine, or on none, carries no `units` key at all,
+    /// so its JSON and its lines are byte for byte what they were (FO).
+    let units: [UnitLedger.Unit]?
+    /// Values the technician read out, with their corrections (Plan GB P3). Absent when there were
+    /// none, so an older record encodes as it always did.
+    let spokenReadings: [SpokenReading]?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -93,6 +124,8 @@ struct WorkRecord: Codable, Equatable {
         case billingBasis = "billing_basis"
         case minutesPerBillingUnit = "minutes_per_unit"
         case billableUnits = "billable_units"
+        case units
+        case spokenReadings = "spoken_readings"
     }
 
     // MARK: - Assembly
@@ -106,10 +139,7 @@ struct WorkRecord: Codable, Equatable {
         self.vaultName = vaultName
         self.vaultSourceNote = vaultSourceNote
         self.assetId = session.assetId
-        self.equipment = session.equipment.map {
-            Equipment(model: $0.modelToken, heading: $0.heading,
-                      source: $0.source.rawValue, recognisedAt: $0.recognisedAt)
-        }
+        self.equipment = session.equipment.map(Equipment.init)
         self.identityFields = session.identityFields
         self.tasks = session.tasks
         self.partsRequests = session.partsRequests
@@ -134,6 +164,9 @@ struct WorkRecord: Codable, Equatable {
             ? FieldAssistBillingBasis.units(for: session.billableSeconds,
                                             minutesPerUnit: session.minutesPerBillingUnit)
             : nil
+        let ledger = UnitLedger(session: session)
+        self.units = ledger.isMultiUnit ? ledger.units : nil
+        self.spokenReadings = session.spokenReadings.isEmpty ? nil : session.spokenReadings
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -171,6 +204,8 @@ struct WorkRecord: Codable, Equatable {
         billingBasis = try c.decodeIfPresent(FieldAssistBillingBasis.self, forKey: .billingBasis)
         minutesPerBillingUnit = try c.decodeIfPresent(Int.self, forKey: .minutesPerBillingUnit)
         billableUnits = try c.decodeIfPresent(Int.self, forKey: .billableUnits)
+        units = try c.decodeIfPresent([UnitLedger.Unit].self, forKey: .units)
+        spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings)
     }
 
     // MARK: - Derived views
@@ -179,7 +214,8 @@ struct WorkRecord: Codable, Equatable {
     /// Fault before Fix before unmarked. Empty when the review was skipped or never reached — the
     /// record then prints the text bullets it always has.
     var evidencePlan: EvidenceRenderPlan {
-        guard let evidenceSelection, evidenceSelection.reviewed else {
+        // A choice made on the Job tab or by voice counts without the close review (Plan GB P3).
+        guard let evidenceSelection = EvidenceSelectionPolicy.effective(evidenceSelection) else {
             return EvidenceRenderPlan(groups: [])
         }
         return EvidenceRenderPlan.make(items: media, selection: evidenceSelection,
@@ -192,7 +228,7 @@ struct WorkRecord: Codable, Equatable {
     /// a clip that was never chosen has not been chosen, and "not chosen" is the only safe reading
     /// when what is at stake is a video of a customer's plant room leaving the device.
     var includedClips: [JobMediaItem] {
-        guard let evidenceSelection, evidenceSelection.reviewed else { return [] }
+        guard let evidenceSelection = EvidenceSelectionPolicy.effective(evidenceSelection) else { return [] }
         let byId = Dictionary(media.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return evidenceSelection.includedItemIds(kind: .clip).compactMap { byId[$0] }
     }
@@ -216,12 +252,11 @@ struct WorkRecord: Codable, Equatable {
         return tasks(status: .done).flatMap(\.parts).filter { seen.insert($0.number).inserted }
     }
 
-    /// Every page anyone actually put on screen during the visit, task-attached or not.
-    var pagesVerified: [String] {
-        var seen = Set<String>()
-        let all = tasks.flatMap(\.evidence.pagesVerified) + jobEvidence.pagesVerified
-        return all.filter { seen.insert($0).inserted }
-    }
+    /// The visit's manual pages, counted and listed from one set (Plan GB P0).
+    var evidenceRollup: EvidenceRollup { EvidenceRollup(tasks: tasks, jobEvidence: jobEvidence) }
+
+    /// Every page verified during the visit, task-attached or not.
+    var pagesVerified: [String] { evidenceRollup.verifiedPages }
 
     /// Every capture record taken during the visit.
     var readings: [String] {
@@ -253,13 +288,43 @@ struct WorkRecord: Codable, Equatable {
                          + "\u{201C}\(faultReport.text)\u{201D}")
         }
         if let jobFile { lines.append(jobFile.recordLine) }
-        if let equipmentLine { lines.append(equipmentLine) }
-        lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
+        if let units, units.count >= 2 {
+            // Several machines (Plan GB P2): each unit's work under its own heading, so two
+            // furnaces do not read as one.
+            lines.append("Units on this job: \(units.count).")
+            lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
+            var placed = Set<String>()
+            for unit in units {
+                lines.append(unit.headerLine)
+                for status in Self.statusOrder {
+                    for task in tasks(status: status) where unit.taskIds.contains(task.id) {
+                        placed.insert(task.id)
+                        lines.append("  " + Self.line(for: task))
+                    }
+                }
+                if unit.taskIds.isEmpty { lines.append("  No tasks were recorded on this unit.") }
+            }
+            for status in Self.statusOrder {
+                for task in tasks(status: status) where !placed.contains(task.id) {
+                    lines.append(Self.line(for: task))
+                }
+            }
+        } else {
+            if let equipmentLine { lines.append(equipmentLine) }
+            lines.append(contentsOf: identityFields.map { "  \($0.summary)" })
 
-        for status in Self.statusOrder {
-            for task in tasks(status: status) { lines.append(Self.line(for: task)) }
+            for status in Self.statusOrder {
+                for task in tasks(status: status) { lines.append(Self.line(for: task)) }
+            }
+            if tasks.isEmpty { lines.append("No tasks were recorded on this job.") }
         }
-        if tasks.isEmpty { lines.append("No tasks were recorded on this job.") }
+
+        // As the technician reported them — each once, corrections folded in (Plan GB P3).
+        let chains = SpokenReadingLedger.chains(spokenReadings ?? [])
+        if !chains.isEmpty {
+            lines.append("Readings reported by the technician:")
+            lines.append(contentsOf: chains.map { "  " + SpokenReadingLedger.line(for: $0) })
+        }
 
         let used = partsUsed
         if !used.isEmpty {
@@ -267,7 +332,10 @@ struct WorkRecord: Codable, Equatable {
             lines.append(contentsOf: used.map { "  \($0.summary)" })
         }
 
-        if !jobEvidence.isEmpty, let phrase = Self.evidencePhrase(jobEvidence) {
+        // The job's own pages are not counted here: they are listed below with every task's
+        // pages, and a count beside a list drawn from a different set is how job 1011's report
+        // said "5 pages verified" above a list of six (Plan GB P0).
+        if let phrase = evidenceRollup.jobPhrase {
             lines.append("Against the job itself: \(phrase).")
         }
         if !partsRequests.isEmpty {
@@ -314,7 +382,15 @@ struct WorkRecord: Codable, Equatable {
         }
         let phrase = EquipmentIdentity.Source(rawValue: equipment.source)?.provenancePhrase
             ?? equipment.source
-        var line = "Equipment: \(equipment.model) (\(phrase))"
+        // What was said, then — only when it differs — the vault section it matched (Plan GB P2).
+        var line: String
+        if let section = equipment.vaultSection {
+            line = "Equipment: \(equipment.model) (vault section \(section); \(phrase))"
+        } else if equipment.outOfVault == true {
+            line = "Equipment: \(equipment.model) (not in the vault; \(phrase))"
+        } else {
+            line = "Equipment: \(equipment.model) (\(phrase))"
+        }
         if let assetId, !assetId.isEmpty { line += ", work order asset \(assetId)" }
         return line + "."
     }
@@ -353,7 +429,9 @@ struct WorkRecord: Codable, Equatable {
     }
 
     static func line(for task: FieldSession.Task) -> String {
-        var head = "\(label(for: task.status)): \(task.title)"
+        // A check still owed says so, whatever its status word would be (Plan GB P3).
+        var head = task.awaitsVerification ? "Not yet verified: \(task.title)"
+            : "\(label(for: task.status)): \(task.title)"
         if task.origin == .operatorAdded { head += " (added by the technician)" }
         var parts = [head]
         if let why = task.why, !why.isEmpty { parts.append("Why: \(why)") }
@@ -372,15 +450,15 @@ struct WorkRecord: Codable, Equatable {
         if let elapsed = task.elapsed {
             parts.append(minutesPhrase(minutes: Int((elapsed / 60.0).rounded())))
         }
-        // The full stop is added only when the last piece does not already end a sentence. A
-        // completion note is the technician's own words and routinely arrives punctuated ("New
-        // trap fitted and tested."), which used to print as "…tested..".
-        let line = parts.joined(separator: ". ")
-        return Self.terminated(line)
+        // Every piece ends its own sentence before the pieces are joined. A completion note is
+        // the technician's own words and routinely arrives punctuated ("New trap fitted and
+        // tested."), and a joiner that added ". " after it printed "airflow.. Note:" in the middle
+        // of a line as well as "…tested.." at its end (Plan GB P0).
+        return parts.map(Self.terminated).joined(separator: " ")
     }
 
     /// End the line with exactly one sentence-ending mark.
-    private static func terminated(_ line: String) -> String {
+    static func terminated(_ line: String) -> String {
         guard let last = line.last else { return line }
         return ".!?".contains(last) ? line : line + "."
     }

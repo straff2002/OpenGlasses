@@ -207,13 +207,16 @@ final class EquipmentIdentityTests: XCTestCase {
         XCTAssertTrue(corrected.hasPrefix("Active equipment: SLP99UH070XV36BK (from the technician)."), corrected)
         XCTAssertEqual(service.activeEquipment?.modelToken, "SLP99UH070XV36BK")
 
-        // A correction naming a machine the vault has never heard of is refused, not obeyed.
-        let wrong = try await tool.execute(args: ["set_equipment": "58MVB"])
-        XCTAssertTrue(wrong.contains("58MVB is not one of them"), wrong)
-        XCTAssertEqual(service.activeEquipment?.modelToken, "SLP99UH070XV36BK")
+        // A model the vault has never heard of, stated by the technician as the unit in front of
+        // them, is recorded as said — a unit the manuals do not cover is still a unit (Plan GB P2
+        // reverses EL's refusal here, which is how job 1011 lost its first furnace).
+        let outside = try await tool.execute(args: ["set_equipment": "58MVB"])
+        XCTAssertTrue(outside.contains("not a model the loaded manuals cover"), outside)
+        XCTAssertEqual(service.activeEquipment?.stated, "58MVB")
+        XCTAssertEqual(service.activeEquipment?.isOutOfVault, true)
 
         let cleared = try await tool.execute(args: ["clear_equipment": true])
-        XCTAssertEqual(cleared, "Cleared the active equipment (was SLP99UH070XV36BK).")
+        XCTAssertEqual(cleared, "Cleared the active equipment (was 58MVB).")
         XCTAssertNil(service.activeEquipment)
         XCTAssertNil(service.activeSession?.equipment)
 

@@ -210,6 +210,9 @@ struct JobPhotosSection: View {
     var onRecordClip: (() -> Void)?
     var onStopClip: (() -> Void)?
     let onShare: () -> Void
+    /// Include or leave out one item, as the technician's own choice (Plan GB P3). Nil on a
+    /// finished job, whose report is already what it is.
+    var onToggle: ((String, Bool) -> Void)?
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var takingPhoto = false
@@ -312,7 +315,20 @@ struct JobPhotosSection: View {
                               dimmed: !included,
                               onPlay: { playing = row.item })
                 .overlay(alignment: .topTrailing) {
-                    if included {
+                    if let onToggle {
+                        // The tick is the choice itself (Plan GB P3): tapping it includes or
+                        // leaves out the item, and the report honours it without a review.
+                        Button { onToggle(row.item.id, !included) } label: {
+                            Image(systemName: included ? "checkmark.circle.fill" : "circle")
+                                .font(.body)
+                                .foregroundStyle(.white, Color.accentColor)
+                                .padding(6)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(included ? Text("Leave out of the report")
+                                                     : Text("Include in the report"))
+                    } else if included {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption)
                             .foregroundStyle(.white, Color.accentColor)

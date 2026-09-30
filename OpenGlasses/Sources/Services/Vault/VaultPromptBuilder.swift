@@ -7,6 +7,27 @@ import Foundation
 enum VaultPromptBuilder {
 
     /// Build the prompt addendum for a vault. Returns nil when the vault is empty.
+    /// The vault-core byte bound for a provider (Plan GB P5; was ChatGPT-only, unbounded
+    /// elsewhere). Every API provider is held to the validator's own core budget
+    /// (`VaultValidator.coreBudgetCharacters`, the size a vault is told its core may be): tighter
+    /// than that would drop a core file — service values, on the field tester's vault — from a
+    /// vault that validated clean, trading answer reliability for cost. ChatGPT keeps FM's 24k only
+    /// while its request context is the conservative 32k fallback (an unrecognised model or
+    /// endpoint); a recognised model resolves to a 272k context, where the whole validated core
+    /// fits and the same guarantee holds on both routes. Decision 6 in the plan.
+    static func referenceByteLimit(for provider: LLMProvider?, requestContext: Int? = nil) -> Int {
+        guard provider == .chatgpt else { return VaultValidator.coreBudgetCharacters }
+        if let requestContext, requestContext >= fullCoreMinimumContext {
+            return VaultValidator.coreBudgetCharacters
+        }
+        return conservativeChatGPTLimit
+    }
+
+    /// FM's ChatGPT bound, sized for the 32k-context fallback.
+    static let conservativeChatGPTLimit = 24_000
+    /// The smallest resolved request context at which the whole validated core is sent on ChatGPT.
+    static let fullCoreMinimumContext = 128_000
+
     static func promptContext(for store: VaultStore, referenceByteLimit: Int? = nil, turn: String? = nil) -> String? {
         let files = store.readAll()
         guard !files.isEmpty else { return nil }

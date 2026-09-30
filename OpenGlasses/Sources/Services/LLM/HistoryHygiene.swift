@@ -129,26 +129,74 @@ enum HistoryHygiene {
     }
 
     static func estimatedTokens(forMessage message: [String: Any]) -> Int {
-        if let text = message["content"] as? String {
-            return max(text.count / 4, 50)
+        // An OpenAI assistant turn that called tools carries its arguments outside `content`.
+        let toolCallTokens = (message["tool_calls"] as? [[String: Any]] ?? []).reduce(0) { total, call in
+            let function = call["function"] as? [String: Any] ?? [:]
+            let text = (function["name"] as? String ?? "") + (function["arguments"] as? String ?? "")
+            return total + max(text.count / 4, 1)
         }
-        guard let blocks = message["content"] as? [[String: Any]] else { return 50 }
-        var tokens = 0
+        if let text = message["content"] as? String {
+            return max(text.count / 4 + toolCallTokens, 50)
+        }
+        // Gemini history keeps its turns under `parts`.
+        guard let blocks = (message["content"] as? [[String: Any]]) ?? (message["parts"] as? [[String: Any]]) else {
+            return max(toolCallTokens, 50)
+        }
+        var tokens = toolCallTokens
         for block in blocks {
+            if let inline = block["inlineData"] as? [String: Any] {
+                tokens += imageTokens(base64Length: (inline["data"] as? String ?? "").count)
+                continue
+            }
             switch block["type"] as? String {
             case "text":
                 tokens += max((block["text"] as? String ?? "").count / 4, 1)
             case "image":
                 let base64 = (block["source"] as? [String: Any])?["data"] as? String ?? ""
-                // A JPEG this size costs roughly base64Bytes / 1500 tokens on Anthropic vision.
-                tokens += max(base64.count / 1500, 1)
+                tokens += imageTokens(base64Length: base64.count)
+            case "image_url":
+                // Plan GB P5: an OpenAI image block used to fall through to the 1-token default,
+                // so a resent ~880 KB photo never moved the estimate at all.
+                let url = (block["image_url"] as? [String: Any])?["url"] as? String ?? ""
+                let payload = url.range(of: "base64,").map { url[$0.upperBound...].count } ?? 0
+                tokens += imageTokens(base64Length: payload)
             case "tool_result":
-                let content = block["content"] as? String ?? ""
-                tokens += max(content.count / 4, 1)
+                if let content = block["content"] as? String {
+                    tokens += max(content.count / 4, 1)
+                } else if let nested = block["content"] as? [[String: Any]] {
+                    tokens += estimatedTokens(forMessage: ["content": nested])
+                } else {
+                    tokens += 1
+                }
+            case nil where block["text"] != nil:
+                tokens += max((block["text"] as? String ?? "").count / 4, 1)
             default:
                 tokens += 1
             }
         }
         return max(tokens, 50)
+    }
+
+    /// A JPEG costs roughly base64Bytes / 1500 tokens on Anthropic vision, and OpenAI's tiled
+    /// high-detail cost lands in the same range for the app's prepared sizes. An image whose bytes
+    /// are not in hand (a URL) still costs something: never less than 85 tokens (a low-detail tile).
+    static func imageTokens(base64Length: Int) -> Int {
+        max(base64Length / 1500, 85)
+    }
+
+    // MARK: - Stale images within a turn (Plan GB P5)
+
+    /// A request copy in which images ride only in the messages after the last assistant turn:
+    /// the user's own turn on the first request, a capture tool's photo on the round-trip after
+    /// it. An image the model has already answered from is not resent on every tool round-trip.
+    static func imagesOnlyAfterLastAssistant(_ history: [[String: Any]]) -> [[String: Any]] {
+        guard let lastAssistant = history.lastIndex(where: { ($0["role"] as? String) == "assistant" || ($0["role"] as? String) == "model" }) else {
+            return history
+        }
+        var out = history
+        for index in 0...lastAssistant where messageHasImage(out[index]) {
+            out[index] = stripImages(from: out[index])
+        }
+        return out
     }
 }
