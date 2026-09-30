@@ -27,9 +27,9 @@ final class StorageIdentifierGuardTests: XCTestCase {
     // the same replace, alongside the code they check, and the suite would pass over the damage.
 
     /// The lower-case slug, as in `com.<slug>.app`.
-    private static let slug = "open" + "glasses"
+    static let slug = "open" + "glasses"
     /// The capitalised name, as in the keychain service.
-    private static let name = "Open" + "Glasses"
+    static let name = "Open" + "Glasses"
 
     private static let appGroup = "group.com.\(slug).app"
     private static let bundleIdentifier = "com.\(slug).app"

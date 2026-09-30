@@ -10,6 +10,10 @@ targets:
       # the UI-test target but have no XCUITest dependency, so they are compiled here as well and
       # unit-tested by AuditTimingPolicyTests. A UI-test target has no fast suite of its own.
       - path: OpenGlassesUITests/AuditTimingPolicy.swift
+      # The product-rename script's rules (Plan FY P1), compiled in so BrandNameGuardTests can run
+      # them on fixtures and on the tree. Its entry point is a lazy global that a module never
+      # reads, so compiling it here runs nothing.
+      - path: Scripts/rename-to-avenkin.swift
       # Golden fixtures exported from the Python reference pipeline (Plan CK —
       # Scripts/export-fingerspelling-fixtures.py); loaded via Bundle(for:).
       - path: OpenGlassesTests/Fixtures
