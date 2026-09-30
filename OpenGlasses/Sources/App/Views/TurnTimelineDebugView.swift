@@ -122,6 +122,10 @@ struct TurnTimelineDebugView: View {
                 if let reasoning = turn.reasoning {
                     OGChip(text: "reasoning \(reasoning)", available: true)
                 }
+                // Plan GC: the endpoint the request went to.
+                if let route = turn.route {
+                    OGChip(text: "route \(route)", available: true)
+                }
                 Spacer(minLength: 0)
                 Text(turn.id.uuidString.prefix(8))
                     .font(.caption2.monospaced())

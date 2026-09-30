@@ -518,7 +518,8 @@ compared with the tracker's figures.
 
 ## Deferred and follow-ups
 
-- **OpenAI API via `/v1/responses`**, so reasoning can run *with* tools on the API. `ResponsesTranslator`
+- **OpenAI API via `/v1/responses`** → Plan [GC](GC-openai-responses-reasoning.md), shipped 2026-09-30.
+  So reasoning can run *with* tools on the API. `ResponsesTranslator`
   is mostly provider-neutral. The subscription-specific parts need separating: auth, the
   `RequestContextBudget` host check (`LLM/RequestContextBudget.swift:36-49`, 32k fallback),
   `ChatGPTVisionGate`, `refreshedFieldInstructions`, `cached_tokens` parsing, and replaying

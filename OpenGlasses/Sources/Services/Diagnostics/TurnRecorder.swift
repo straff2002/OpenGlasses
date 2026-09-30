@@ -321,6 +321,13 @@ enum TurnRecorder {
         update { $0.reasoning = token }
     }
 
+    /// The OpenAI endpoint that served this turn (Plan GC): `responses` or `chatCompletions`, from
+    /// `OpenAIRouteSelector.Selection.token`, never text. Last-wins across a cascade and across the
+    /// Responses → Chat Completions fallback.
+    static func noteRoute(_ token: String) {
+        update { $0.route = token }
+    }
+
     /// The system prompt this turn is sending, block by block. Last-wins: a cascade that rebuilds
     /// the prompt for the next model replaces the list rather than doubling it.
     static func notePromptBlocks(_ blocks: [TurnTimeline.PromptBlock]) {

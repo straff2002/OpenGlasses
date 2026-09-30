@@ -41,7 +41,8 @@ enum ReasoningEffort: String, CaseIterable, Codable, Comparable {
 enum ReasoningRoute: String, Equatable {
     /// OpenAI-style `/chat/completions`: OpenAI and every OpenAI-compatible provider.
     case chatCompletions
-    /// The Responses API — today the ChatGPT subscription backend only.
+    /// The Responses API: the ChatGPT subscription backend, and (Plan GC) OpenAI API tool turns
+    /// that carry reasoning — chosen per request by `OpenAIRouteSelector`, not by `route(for:)`.
     case responses
     case anthropicMessages
     case geminiREST
@@ -75,11 +76,16 @@ enum ReasoningRoute: String, Equatable {
 /// Reasoning is set per saved model (decided 2026-09-30). **Automatic** is the default:
 /// - Chat Completions with tools → the model's lowest setting (`none` on the GPT-5.1+ and GPT-6
 ///   families). Reasoning tokens bill as output, and a voice tool turn wants speed.
-/// - Chat Completions without tools, and the Responses route → nothing sent: the provider decides.
+/// - Chat Completions without tools, and the Responses route without tools → nothing sent: the
+///   provider decides.
+/// - Responses with tools on the API route (Plan GC) → the model's lowest setting, as on Chat
+///   Completions; the ChatGPT subscription route still sends nothing.
 /// - Gemini REST → the existing bounded tool-turn budget (`GeminiBudgetPolicy`, CO Item 2).
 /// An explicit level is honoured, except that a family which rejects reasoning with tools on Chat
 /// Completions is clamped to `none` there, and a level the model does not take moves to the nearest
-/// one it does. Anthropic thinking is not wired yet; nothing is sent. Gemini Live stays at 0.
+/// one it does. Plan GC: which *route* an OpenAI API turn takes — so whether the clamp applies at
+/// all — is `OpenAIRouteSelector`'s decision; this type resolves the level for the route it is given.
+/// Anthropic thinking is not wired yet; nothing is sent. Gemini Live stays at 0.
 ///
 /// Pure and table-tested. `LLMService` resolves once per request and applies the result; the model
 /// editor shows the same resolution with and without tools, so what the tester reads is what goes
@@ -92,8 +98,25 @@ enum ReasoningPolicy {
         let accepted: [ReasoningEffort]
         /// The server's default when nothing is sent.
         let providerDefault: ReasoningEffort
-        /// Chat Completions refuses function tools alongside any reasoning above `none`.
-        let rejectsReasoningWithToolsOnChat: Bool
+        /// Chat Completions takes function tools only at effort `none` (GPT-5.4 onwards, per the
+        /// provider's migration guide: no tool calling there unless `reasoning_effort` is `none`).
+        let chatToolsRequireNone: Bool
+        /// Chat Completions takes no function tools at all for this model, at any effort
+        /// (`gpt-6-astra`, `gpt-6.1-sol`). Tool turns can only go to the Responses API (Plan GC).
+        let chatToolsUnavailable: Bool
+
+        init(accepted: [ReasoningEffort], providerDefault: ReasoningEffort,
+             chatToolsRequireNone: Bool = false, chatToolsUnavailable: Bool = false) {
+            self.accepted = accepted
+            self.providerDefault = providerDefault
+            self.chatToolsRequireNone = chatToolsRequireNone
+            self.chatToolsUnavailable = chatToolsUnavailable
+        }
+
+        /// Chat Completions refuses function tools alongside any reasoning above `none` — either
+        /// because tools need `none` there, or because the model takes no tools there at all.
+        /// Kept for GB's call sites; Plan GC's route selector reads the two facts separately.
+        var rejectsReasoningWithToolsOnChat: Bool { chatToolsRequireNone || chatToolsUnavailable }
 
         var lowest: ReasoningEffort { accepted.first ?? ReasoningEffort.none }
 
@@ -107,27 +130,52 @@ enum ReasoningPolicy {
     }
 
     /// The OpenAI reasoning family a model id belongs to, or nil for a model that does not reason
-    /// (`gpt-4o`, `gpt-4.1`, `gpt-5-chat-latest`). Defaults verified 2026-09-30: GPT-5.5, GPT-5.6
-    /// and GPT-6 default to `medium`; GPT-5.1 and 5.2 default to `none`.
+    /// (`gpt-4o`, `gpt-4.1`, `gpt-5-chat-latest`).
+    ///
+    /// Verified 2026-09-30 against the provider's reasoning guide, migration guide and per-model
+    /// pages (Plan GC corrected GB's table, which marked only `gpt-6*` as refusing reasoning with
+    /// tools on Chat Completions):
+    /// - `gpt-6.1*`, `gpt-6-astra*`: `low`…`xhigh` only (`none` is a 400); no tools on Chat
+    ///   Completions at all. `gpt-6.1-sol` defaults to `medium`; `gpt-6-astra`'s default is not
+    ///   stated by the docs — `medium` is assumed, matching its siblings.
+    /// - `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6*`, `gpt-5.5*`: `none`…`xhigh`, default `medium`;
+    ///   tools on Chat Completions only at `none`.
+    /// - `gpt-5.4*`: the same, but defaults to `none`.
+    /// - `gpt-5.1*`, `gpt-5.2*`: `none`…`xhigh`, default `none`; tools with reasoning are fine on
+    ///   Chat Completions.
+    /// - `gpt-5`, `gpt-5-mini`, `gpt-5-nano`: `minimal`…`high`, default `medium`.
+    /// - `o1`, `o3`, `o4`: `low`…`high`, default `medium` (not stated for o3/o4-mini).
+    /// The docs also list `max` on several models; it is deliberately not offered (see
+    /// `ReasoningEffort`). Matching is by prefix, most specific first, so a dated snapshot
+    /// (`gpt-5.5-2026-06-01`) resolves to its family.
     static func openAIFamily(model: String) -> Family? {
         let id = model.lowercased().trimmingCharacters(in: .whitespaces)
         let fullRange: [ReasoningEffort] = [.none, .low, .medium, .high, .xhigh]
+        let noNone: [ReasoningEffort] = [.low, .medium, .high, .xhigh]
+        if id.hasPrefix("gpt-6.1") || id.hasPrefix("gpt-6-astra") {
+            return Family(accepted: noNone, providerDefault: .medium, chatToolsUnavailable: true)
+        }
         if id.hasPrefix("gpt-6") {
-            return Family(accepted: fullRange, providerDefault: .medium, rejectsReasoningWithToolsOnChat: true)
+            // gpt-6-sol, gpt-6-luna (there is no bare `gpt-6` id; an unknown 6.x variant is
+            // treated like sol, the conservative side: tools on Chat Completions only at `none`).
+            return Family(accepted: fullRange, providerDefault: .medium, chatToolsRequireNone: true)
+        }
+        if id.hasPrefix("gpt-5.4") {
+            return Family(accepted: fullRange, providerDefault: .none, chatToolsRequireNone: true)
+        }
+        if id.hasPrefix("gpt-5.5") || id.hasPrefix("gpt-5.6") {
+            return Family(accepted: fullRange, providerDefault: .medium, chatToolsRequireNone: true)
         }
         if id.hasPrefix("gpt-5.") {
-            let defaultsToNone = id.hasPrefix("gpt-5.1") || id.hasPrefix("gpt-5.2")
-            return Family(accepted: fullRange, providerDefault: defaultsToNone ? .none : .medium,
-                          rejectsReasoningWithToolsOnChat: false)
+            // gpt-5.1*, gpt-5.2* (and any other 5.x point release the table does not name).
+            return Family(accepted: fullRange, providerDefault: .none)
         }
+        if id.hasPrefix("gpt-5-chat") { return nil }
         if id.hasPrefix("gpt-5") {
-            if id.hasPrefix("gpt-5-chat") { return nil }
-            return Family(accepted: [.minimal, .low, .medium, .high], providerDefault: .medium,
-                          rejectsReasoningWithToolsOnChat: false)
+            return Family(accepted: [.minimal, .low, .medium, .high], providerDefault: .medium)
         }
         if id.hasPrefix("o1") || id.hasPrefix("o3") || id.hasPrefix("o4") {
-            return Family(accepted: [.low, .medium, .high], providerDefault: .medium,
-                          rejectsReasoningWithToolsOnChat: false)
+            return Family(accepted: [.low, .medium, .high], providerDefault: .medium)
         }
         return nil
     }
@@ -175,7 +223,7 @@ enum ReasoningPolicy {
                 case .asSet: return "As set for this model."
                 case .adjustedToAccepted: return "The nearest setting this model accepts."
                 case .chatToolsClamp: return "Chat Completions doesn't allow reasoning with tools for this model."
-                case .automaticToolTurn: return "Automatic turns reasoning off when tools are attached, to keep answers quick."
+                case .automaticToolTurn: return "Automatic uses this model's lowest setting when tools are attached, to keep answers quick."
                 case .automaticProviderDefault: return "Automatic sends nothing, so the provider's default applies."
                 case .automaticGeminiToolBudget: return "Automatic gives tool turns a small thinking budget."
                 case .learnedRejection: return "The provider refused reasoning with tools for this model earlier."
@@ -302,6 +350,15 @@ enum ReasoningPolicy {
         case .responses:
             let family = openAIFamily(model: model)
             guard let explicit else {
+                // Plan GC: on the API route a tool turn at Automatic reasons as little as the
+                // model allows — only models that take no tools on Chat Completions reach here
+                // at Automatic (`OpenAIRouteSelector`), and `low` is the cheapest they answer at.
+                // The ChatGPT subscription route keeps its shipped behaviour (nothing sent).
+                if toolsAttached, provider != .chatgpt, let family {
+                    let lowest = family.lowest
+                    let wire: Resolution.Wire = lowest == family.providerDefault ? .omit : .responsesEffort(lowest)
+                    return Resolution(wire: wire, effective: .level(lowest), reason: .automaticToolTurn)
+                }
                 return Resolution(wire: .omit, effective: .providerDefault(family?.providerDefault),
                                   reason: .automaticProviderDefault)
             }

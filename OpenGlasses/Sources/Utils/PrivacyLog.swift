@@ -1433,6 +1433,9 @@ enum PrivacyLog {
         case apiError, streamError, streamRetry, requestFailed
         case toolCallsParsed, toolCallDropped, toolsPayloadRejected, yieldedToHuman
         case emptyCompletion, imageSkipped, reasoningProduced, reasoningResolved, reasoningRetried
+        // Plan GC — the OpenAI endpoint a turn took, and a Responses refusal retried on Chat
+        // Completions. Endpoint and reason tokens only.
+        case routeSelected, routeFallback
         case spendCap
         case agentSelected, catalogDiscovered, catalogUnavailable
         case classified, classificationFailed, analysisCompleted

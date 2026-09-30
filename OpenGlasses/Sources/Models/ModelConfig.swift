@@ -45,6 +45,16 @@ struct ModelConfig: Codable, Identifiable, Equatable {
                                 learnedToolRejection: learnedToolRejection)
     }
 
+    /// Plan GC: the OpenAI endpoint this model's requests go to and the reasoning they carry
+    /// there. The model editor and the request builder read the same selection.
+    func routeSelection(toolsAttached: Bool, learnedToolRejection: Bool = false,
+                        learnedResponsesRejection: Bool = false) -> OpenAIRouteSelector.Selection {
+        OpenAIRouteSelector.select(provider: llmProvider, model: model, baseURL: baseURL,
+                                   toolsAttached: toolsAttached, requested: reasoningEffort,
+                                   learnedToolRejection: learnedToolRejection,
+                                   learnedResponsesRejection: learnedResponsesRejection)
+    }
+
     static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {
         switch provider {
         case .anthropic, .gemini, .geminiVertex, .openai:
