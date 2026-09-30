@@ -1,0 +1,47 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "Ask OpenGlasses" : {
+      "comment" : "Title of the \"Ask OpenGlasses\" action button.",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спросить OpenGlasses"
+          }
+        }
+      }
+    },
+    "Hey OpenGlasses" : {
+
+    },
+    "OpenGlasses" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenGlasses"
+          }
+        }
+      }
+    },
+    "Say \"OpenGlasses\" or tap the mic to start a conversation." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скажите «OpenGlasses» или нажмите на микрофон, чтобы начать разговор."
+          }
+        }
+      }
+    },
+    "Zoom" : {
+
+    }
+  },
+  "version" : "1.1"
+}

@@ -59,7 +59,7 @@ struct AgentHarnessSettingsView: View {
                     Label(issue, systemImage: "lock.slash")
                         .foregroundStyle(OGTheme.errorLabel)
                 } else {
-                    Text("Point OpenGlasses at any agent endpoint you already run. {id} is replaced with the run id, e.g. https://host/runs/{id}.")
+                    Text("Point Avenkin at any agent endpoint you already run. {id} is replaced with the run id, e.g. https://host/runs/{id}.")
                 }
             }
 

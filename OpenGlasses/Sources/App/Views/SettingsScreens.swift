@@ -5,7 +5,7 @@ import SwiftUI
 /// Wake word + hands-free trigger settings (always visible, including Simple Mode).
 struct VoiceTriggersSettingsScreen: View {
     @ObservedObject var appState: AppState
-    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
 
     // Plan FE P3. Seeded from the live preference and written straight back through `Config`, so
     // the clamp and the defaulting stay in one place rather than being re-implemented per control.
@@ -17,10 +17,7 @@ struct VoiceTriggersSettingsScreen: View {
     @State private var assistantName = Config.assistantDisplayName
     @State private var nameRefused = false
 
-    private let wakePhrasePresets = [
-        "openglasses", "hey openglasses", "hey claude", "hey jarvis",
-        "hey computer", "hey assistant", "hey rayban"
-    ]
+    private let wakePhrasePresets = Config.wakePhrasePresets
 
     /// The misrecognitions currently being listened for alongside the phrase. Shown because a
     /// custom phrase now gets generated ones, and a wake word that answers to words the wearer
@@ -95,9 +92,13 @@ struct VoiceTriggersSettingsScreen: View {
                 }
 
                 Picker("Wake Phrase", selection: Binding(
-                    get: { wakePhrase.isEmpty ? "openglasses" : wakePhrase },
+                    get: { wakePhrase.isEmpty ? Config.defaultWakePhrase : wakePhrase },
                     set: { newValue in adoptWakePhrase(newValue, replacing: wakePhrase) }
                 )) {
+                    // The new name first; the old name's phrases below it for one App Store
+                    // version (Plan FY P3.2). Tags match `Config.wakePhrasePresets`.
+                    Text("Avenkin").tag("avenkin")
+                    Text("Hey Avenkin").tag("hey avenkin")
                     Text("OpenGlasses").tag("openglasses")
                     Text("Hey OpenGlasses").tag("hey openglasses")
                     Text("Hey Claude").tag("hey claude")
@@ -105,7 +106,7 @@ struct VoiceTriggersSettingsScreen: View {
                     Text("Hey Computer").tag("hey computer")
                     Text("Hey Assistant").tag("hey assistant")
                     Text("Hey Rayban").tag("hey rayban")
-                    if !wakePhrasePresets.contains(wakePhrase) && !wakePhrase.isEmpty {
+                    if Config.isCustomWakePhrase(wakePhrase, presets: wakePhrasePresets) {
                         Text("Custom: \(wakePhrase)").tag(wakePhrase)
                     }
                 }
@@ -137,7 +138,7 @@ struct VoiceTriggersSettingsScreen: View {
                         get: { Config.silentMode },
                         set: { appState.setPushToTalk($0) }
                     ),
-                    info: "Turns off the always-on wake-word listener so the mic isn't held in the background — fixes conflicts with music/podcasts playing at the same time. Start a conversation on demand instead: the iPhone Action Button (\"Ask OpenGlasses\"), Siri, the home screen widget, the Apple Watch, or a manual mic tap."
+                    info: "Turns off the always-on wake-word listener so the mic isn't held in the background — fixes conflicts with music/podcasts playing at the same time. Start a conversation on demand instead: the iPhone Action Button (\"Ask Avenkin\"), Siri, the home screen widget, the Apple Watch, or a manual mic tap."
                 )
 
                 InfoToggle(
@@ -146,7 +147,7 @@ struct VoiceTriggersSettingsScreen: View {
                         get: { Config.siriAskOpensApp },
                         set: { Config.setSiriAskOpensApp($0) }
                     ),
-                    info: "When you say \"Hey Siri, ask OpenGlasses…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says OpenGlasses isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
+                    info: "When you say \"Hey Siri, ask Avenkin…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says Avenkin isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
                 )
             } header: {
                 Text("Voice")

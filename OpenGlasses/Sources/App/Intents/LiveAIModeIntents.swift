@@ -56,7 +56,7 @@ struct StartLiveAIModeIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running. Open the app first." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running. Open the app first." }
     }
 }
 
@@ -81,7 +81,7 @@ struct StartMuseumModeIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }
 
@@ -106,7 +106,7 @@ struct StartAccessibilityModeIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }
 
@@ -131,6 +131,6 @@ struct StartTranslatorModeIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }

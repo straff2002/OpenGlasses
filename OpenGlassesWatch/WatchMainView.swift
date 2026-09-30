@@ -140,22 +140,21 @@ struct WatchMainView: View {
         .sensoryFeedback(.error, trigger: errorFeedbackTrigger)
     }
 
-    // MARK: - OG Logo
+    // MARK: - Wordmark
 
+    /// The Avenkin wordmark, drawn the way the old one was: a large capital with the rest of the
+    /// name set small and raised beside it. Built from pieces, so it says its name to VoiceOver.
     private var ogLogo: some View {
         HStack(alignment: .lastTextBaseline, spacing: 0) {
-            Text("O")
+            Text(verbatim: "A")
                 .font(.system(size: 28, weight: .bold))
-            Text("pen")
-                .font(.system(size: 11, weight: .semibold))
-                .offset(y: -6)
-            Text("G")
-                .font(.system(size: 28, weight: .bold))
-            Text("lasses")
+            Text(verbatim: "venkin")
                 .font(.system(size: 11, weight: .semibold))
                 .offset(y: -6)
         }
         .foregroundStyle(accentColor)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Avenkin")
     }
 
     // MARK: - Status Bar

@@ -161,7 +161,7 @@ final class JobTranscriptExportTests: XCTestCase {
                                                     timeZone: Self.utc)
         let lines = document.body.components(separatedBy: "\n")
 
-        XCTAssertEqual(lines.first, "OpenGlasses — Job 1005 transcript — 2026-09-26")
+        XCTAssertEqual(lines.first, "Avenkin — Job 1005 transcript — 2026-09-26")
         XCTAssertTrue(lines.contains("Exported 2026-09-26 14:03 (UTC+00:00)"))
         XCTAssertTrue(document.body.contains(JobTranscriptExport.preamble))
         XCTAssertTrue(lines.contains("Job 1005 · Resolved"))

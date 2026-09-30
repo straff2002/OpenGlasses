@@ -1,13 +1,14 @@
 # Plan FY — Rename to Avenkin (a private assistant; glasses become one device among several)
 
-**Status:** 📝 Drafted 2026-09-26, revised 2026-09-28 and 2026-09-29 — for review before any code
-changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
+**Status:** 🚧 P1 + P3 shipped 2026-09-30 (branch `feat/fy-rename`); P2 next; owed on device: pronunciation in
+each voice tier, the tinted icon, the App Store listing text (owner). Drafted 2026-09-26, revised
+2026-09-28 and 2026-09-29. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
 coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1 shipped
 ([#580](https://github.com/straff2002/OpenGlasses/pull/580)): the storage and signing constants renamed to read as keys, values unchanged,
 and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and the base-URL PR built
-2026-09-30; rename PR next. P1's rename itself and P2–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
+2026-09-30; rename PR next. P1's rename itself and P3 built 2026-09-30 (*The rename itself → Built*, *P3 → Built*); P2, P4 and P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
 questions answered*), so P1 and P2 are unblocked. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
@@ -56,7 +57,7 @@ in the private desktop repository (P5).
 
 **D1 — The name is Avenkin.** Display name `Avenkin`. Owner's decision, 2026-09-26, after comparing
 OhGee, TaskRook and Ogee: Avenkin is a coined word, reads as credible behind "Field Assist, powered
-by Avenkin", and is distinctive enough to be a wake word on its own. Pronounced **AV-en-kin**
+by Avenkin", and is distinctive enough to be a wake word on its own. Pronounced **a-VEN-kin** (the owner's stress, 2026-09-30)
 ("haven" without the h, plus "kin"); the in-app voices must say it that way (P1 item 9). The desktop
 app is **Avenkin Office** (2026-09-28, D9). This supersedes Plan FX's 2026-09-27 note that named the
 desktop app plain "Avenkin".
@@ -592,7 +593,7 @@ complete:
    `OnboardingAccessibilityTests` finds the welcome screen by the text "OpenGlasses", and
    `SettingsAccessibilityTests` looks for "Open iOS Settings for OpenGlasses".
 9. **Pronunciation.** The assistant says its own name in its identity line and in replies. Check
-   "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **AV-en-kin**;
+   "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **a-VEN-kin** (the owner's stress; it is how the app's voices say the name, not how people must);
    where a voice gets it wrong, substitute a spelling it reads correctly at the TTS boundary only,
    never in displayed text or stored data.
 10. **The watch wordmark.** `WatchMainView.swift:147–154` draws "OpenGlasses" from four separate
@@ -614,6 +615,29 @@ assistant introduces itself as Avenkin on an existing install; `rg -i openglasse
 identifiers (now pinned by F1), target, module and file names, historical plans, and the legacy-name
 checks this plan adds; `BrandNameGuardTests` passes, and a second run of the rename script changes
 nothing.
+
+**Built 2026-09-30** (branch `feat/fy-rename`). `Scripts/rename-to-avenkin.swift` holds the rule list
+and `BrandNameGuardTests` the allowlist, each entry with its reason; the script's output is its own
+commit, and a second run changes nothing (asserted on fixtures and on the tree). Items 1–8 and 10–12
+are done; item 9 is owed on device. Deviations and additions:
+- The script renames Swift **string literals only**. Comments are history and keep the old name, so
+  the exit's `rg -i openglasses` also finds comments; `BrandNameGuardTests` scans every Swift literal
+  (not only `Text`/`Label`), so nothing user-visible is missed.
+- Kept, and allowlisted with reasons beyond the plan's list: the HealthKit workout metadata key and
+  the HL7 `MSH` sending-application field (both keys other systems read), and the catalog and
+  translation entries for the old wake phrase's picker label (P3.2).
+- The two wake-phrase hints (onboarding and the agent setup) became `Say "%@"…` keys; the script
+  carries their translations across with the placeholder. Finnish's inflected form (`…iin`) has its
+  own rule.
+- Also renamed: `docs/support-reports-guide.md` and the bundled refrigeration vault's prose, which
+  the app shows. The README notice now says the rename has happened.
+- Item 11: `#E77F47` is written once, in `AccentColors`, and `OGTheme.Token.accent` reads it; the
+  light derivative `#B05426` is unchanged (≈ 5.1:1 on white, 4.6:1 on the canvas). The preset keeps
+  id `"violet"` and is labelled **Orange**; the old Orange swatch (id `"orange"`) is labelled **Amber**
+  so two presets never share a name.
+- Item 3: the desktop-naming strings (setup-file import, pairing, the vault receipt's source) say
+  Avenkin Office. `INAlternativeAppNames` carries the old name with the hint "open glasses".
+- The UI-test assertions follow the new copy; the UI target is compiled, not run, headless.
 
 ## P2 — Repositioning the copy (one PR; can merge with P1; waits for the desktop thread's phone-side PR, as P1 does)
 
@@ -672,6 +696,20 @@ the assistant does not describe itself as a glasses product during a phone-only 
 3. **Later, in a following release:** generate `avenkin://` links (enrolment links, widget and quick
    action URLs) once the P3 build is what users have. `openglasses://` stays accepted for good. Meta's
    `AppLinkURLScheme` changes only after the portal does (D3).
+
+**Built 2026-09-30** (branch `feat/fy-rename`, with P1). `DeepLinkScheme` sits in
+`Shared/DeepLinkTrust.swift`, so the widget compiles it too; `isApp(_:)` is case-insensitive and
+replaced fourteen hand-written comparisons (eleven routes in `onOpenURL`, enrolment, skill-pack
+sideload, vault links). Generated links read `DeepLinkScheme.generated`, still `openglasses`, until
+P3.3. The routing stays inline in `onOpenURL`, so `DeepLinkSchemeTests` asserts "same result" on
+what each route consults — the scheme helper, the trust policy, the privacy route and the three
+parsers — and fails on any hand-written scheme comparison in the sources.
+`Config.defaultWakePhrase`, `legacyDefaultWakePhrases`, `wakePhrasePresets` and
+`isCustomWakePhrase(_:presets:)` are the one source for the five default sites and both pickers.
+`migrateWakePhraseToAvenkinIfNeeded()` (flag `wakePhraseMigratedToAvenkin_v1`) runs at launch after
+F2's; it moves the alternatives with the phrase only while they are still the old phrase's
+suggestions (or empty on a persona). Added beyond the plan: a `hey avenkin` alternates case, and the
+persona picker shares the settings presets (plus its two extra phrases).
 
 ## P4 — Internal rename (not being done; unscheduled)
 

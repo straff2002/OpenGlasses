@@ -170,7 +170,7 @@ final class AssistantDisplayNameTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix("You are Aria, a voice assistant running on the user's phone."),
                       "the identity opening must carry the chosen name")
         XCTAssertFalse(prompt.contains("You are OpenGlasses"))
-        XCTAssertTrue(prompt.contains("the user activates you by saying \"openglasses\""),
+        XCTAssertTrue(prompt.contains("the user activates you by saying \"\(Config.wakePhrase)\""),
                       "activation still quotes the wake phrase, which naming does not change")
     }
 

@@ -114,11 +114,11 @@ enum BlindAssistantLaunchPolicy {
             case .silentMode:
                 return "Silent Mode is on, so nothing starts on its own."
             case .microphonePermissionOff:
-                return "Microphone permission is off. Turn it on in iOS Settings, under OpenGlasses."
+                return "Microphone permission is off. Turn it on in iOS Settings, under Avenkin."
             case .speechPermissionOff:
-                return "Speech recognition permission is off. Turn it on in iOS Settings, under OpenGlasses."
+                return "Speech recognition permission is off. Turn it on in iOS Settings, under Avenkin."
             case .providerNotConfigured(let provider):
-                return "There's no \(provider.displayName) API key yet. Add one in OpenGlasses settings."
+                return "There's no \(provider.displayName) API key yet. Add one in Avenkin settings."
             }
         }
 
@@ -141,11 +141,11 @@ enum BlindAssistantLaunchPolicy {
             case .differentAssistantSelected:
                 return "Blind Assistant isn't the selected live mode."
             case .microphonePermissionOff:
-                return "microphone permission is off. Turn it on in iOS Settings, under OpenGlasses."
+                return "microphone permission is off. Turn it on in iOS Settings, under Avenkin."
             case .speechPermissionOff:
-                return "speech recognition permission is off. Turn it on in iOS Settings, under OpenGlasses."
+                return "speech recognition permission is off. Turn it on in iOS Settings, under Avenkin."
             case .providerNotConfigured(let provider):
-                return "there's no \(provider.displayName) API key yet. Add one in OpenGlasses settings."
+                return "there's no \(provider.displayName) API key yet. Add one in Avenkin settings."
             }
         }
 

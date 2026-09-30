@@ -39,11 +39,11 @@ class AgentDataExporter {
             .replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "T", with: "_")
             .prefix(19)
-        let exportName = "openglasses-export-\(timestamp)"
+        let exportName = "avenkin-export-\(timestamp)"
 
         let lease = try coordinator.makeLease(fileExtension: "zip",
                                               displayName: "\(exportName).zip",
-                                              fallbackName: "openglasses-export.zip") { zipURL in
+                                              fallbackName: "avenkin-export.zip") { zipURL in
             let fm = FileManager.default
             // Staged inside the already-protected session directory, and named for the archive so
             // the ZIP's entries keep the folder the previous format documented.

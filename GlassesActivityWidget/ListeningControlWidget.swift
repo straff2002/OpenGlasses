@@ -9,7 +9,7 @@ struct ListeningControlWidget: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.openglasses.app.ListeningControl") {
             ControlWidgetToggle(
-                "OpenGlasses Listen",
+                "Avenkin Listen",
                 isOn: SharedAppState.isListening,
                 action: SetListeningIntent()
             ) { isOn in
@@ -20,7 +20,7 @@ struct ListeningControlWidget: ControlWidget {
                 }
             }
         }
-        .displayName("OpenGlasses Listen")
-        .description("Toggle wake-word listening in OpenGlasses.")
+        .displayName("Avenkin Listen")
+        .description("Toggle wake-word listening in Avenkin.")
     }
 }

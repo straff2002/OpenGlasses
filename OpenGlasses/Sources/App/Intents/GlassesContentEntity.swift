@@ -6,7 +6,7 @@ import Foundation
 /// One piece of user-exposed OpenGlasses content (note, meeting summary, saved location,
 /// …), donated to Spotlight via `IndexedEntity` so Siri and search can find it — Plan BQ P2.
 struct GlassesContentEntity: AppEntity, IndexedEntity, Identifiable, Transferable {
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "OpenGlasses Content"
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Avenkin Content"
     static var defaultQuery = GlassesContentQuery()
 
     /// Composite "type:itemId" — stable across re-donations (`IndexableRecord.id`).
@@ -86,7 +86,7 @@ struct GlassesContentQuery: EntityStringQuery {
 /// Opens a Spotlight/Shortcuts content result in the app (read-only detail sheet; the
 /// full record stays in its owning store — field-session bodies behind the vault).
 struct OpenGlassesContentIntent: OpenIntent {
-    static var title: LocalizedStringResource = "Open OpenGlasses Content"
+    static var title: LocalizedStringResource = "Open Avenkin Content"
     static var description = IntentDescription("Open a note, summary, or other saved content")
 
     static var isDiscoverable: Bool { true }

@@ -1,4 +1,4 @@
-# OpenGlasses
+# Avenkin
 
 ### 抬头看世界，开口就有帮手。
 
@@ -8,7 +8,7 @@
 
 [开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [无障碍功能](docs/CAPABILITIES.md#accessibility) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
 
-> **OpenGlasses 即将更名为 Avenkin。** 它正在成为你的私人 AI 助手：在手机上、在手腕上，或戴上眼镜免手操作。Field Assist 将更名为 *Field Assist, powered by Avenkin*。应用本身不变：你的设置、API 密钥、对话记录和订阅都会保留。[查看计划](docs/plans/FY-rename-to-avenkin.md)。
+> **OpenGlasses 已更名为 Avenkin。** 它正在成为你的私人 AI 助手：在手机上、在手腕上，或戴上眼镜免手操作。Field Assist 更名为 *Field Assist, powered by Avenkin*。应用本身不变：你的设置、API 密钥、对话记录和订阅都会保留，通过 Siri 说“OpenGlasses”也仍能打开它。[查看计划](docs/plans/FY-rename-to-avenkin.md)。
 
 ---
 
@@ -16,7 +16,7 @@
 
 ### 看见，理解，然后行动
 
-读懂一块标牌，了解眼前的设备，或提取名片上的信息。OpenGlasses 让相机参与对话，提供场景描述、文字识别、智能采集与实时视觉指导。
+读懂一块标牌，了解眼前的设备，或提取名片上的信息。Avenkin 让相机参与对话，提供场景描述、文字识别、智能采集与实时视觉指导。
 
 *“我面前是什么？” · “保存这张名片。” · “记下这张收据。”*
 
@@ -62,7 +62,7 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 ## 你的助手，由你选择
 
-使用云端模型，在自己的服务器上运行 AI，或让整套语音交互都在 iPhone 上完成。OpenGlasses 允许你分别选择 AI 模型、语音识别和朗读引擎，也能为不同请求分配不同模型。
+使用云端模型，在自己的服务器上运行 AI，或让整套语音交互都在 iPhone 上完成。Avenkin 允许你分别选择 AI 模型、语音识别和朗读引擎，也能为不同请求分配不同模型。
 
 ### 没有网络，iPhone 上的 AI 也能陪你聊
 
@@ -92,8 +92,8 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 1. **构建应用。** 按照[源码构建指南](docs/BUILDING.md)准备 Xcode 26+、依赖项、签名及 Meta 开发者配置。
 2. **选择 AI。** 在 **设置 → AI 模型** 中连接服务商，或下载兼容的本地模型。
-3. **连接眼镜。** 在 Meta AI 应用中配对，完成开发者设置，然后在 OpenGlasses 中连接并授予相机权限。
-4. **开口试试。** 启用监听，说出 **“OpenGlasses”**，或轻点麦克风。先问问眼前的东西是什么。
+3. **连接眼镜。** 在 Meta AI 应用中配对，完成开发者设置，然后在 Avenkin 中连接并授予相机权限。
+4. **开口试试。** 启用监听，说出 **“Avenkin”**，或轻点麦克风。先问问眼前的东西是什么。
 
 相机与显示功能取决于设备及 SDK 支持。Ray-Ban Display 提供镜内显示接入；**EVEN G2 支持仍处于实验阶段**。选择设备组合前，请查看[设备说明](docs/CAPABILITIES.md#devices-and-displays)。
 
@@ -114,6 +114,6 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 欢迎贡献新的工具与集成，改进本地推理、翻译和日常使用体验。Fork 项目，提交 Pull Request 即可参与。
 
-OpenGlasses 采用 **[BSL 1.1](LICENSE)，源代码可用**，允许非商业用途，注明于 2030 年 3 月 24 日转为 Apache 2.0。商业用途需要另行授权，请联系 [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi)。
+Avenkin 采用 **[BSL 1.1](LICENSE)，源代码可用**，允许非商业用途，注明于 2030 年 3 月 24 日转为 Apache 2.0。商业用途需要另行授权，请联系 [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi)。
 
 由 **Skunkworks NZ Ltd** 的 [Skunk0](https://github.com/straff2002) 开发。本项目独立于 Meta 和 Anthropic。

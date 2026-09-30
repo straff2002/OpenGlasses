@@ -165,7 +165,7 @@ enum JobFileValidator {
             case .tooLarge:
                 return "This file is too large to be a job. Job files are a few kilobytes."
             case .notAJobFile:
-                return "This isn't an OpenGlasses job file."
+                return "This isn't an Avenkin job file."
             case .unsupportedVersion(let version):
                 return "This job file uses format version \(version), which this version of the app can't read. Update the app, or ask the office for a version 1 file."
             case .unexpectedField(let name):

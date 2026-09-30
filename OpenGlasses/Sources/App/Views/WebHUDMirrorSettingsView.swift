@@ -96,7 +96,7 @@ struct WebHUDMirrorSettingsView: View {
 
     private func exportPreview() {
         let screen = appState.glassesDisplay.mirrorScreen ?? HUDScreen(
-            title: "OpenGlasses",
+            title: "Avenkin",
             lines: [HUDLine("Web HUD mirror preview", icon: .info),
                     HUDLine("Black is transparent on glasses", emphasis: .secondary)],
             items: [HUDItem(id: "a", label: "Sample item", style: .primary) {},

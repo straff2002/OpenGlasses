@@ -1,6 +1,6 @@
 # Building a Field Assist vault from your own manuals
 
-*OpenGlasses Field Assist · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
+*Avenkin Field Assist · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
 
 A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 
@@ -330,7 +330,7 @@ A composer you dismiss sends nothing, and nothing pretends otherwise: the record
 
 ## Sending the technician their next job
 
-An office can send a job before the visit as a small file — `.ogjob` — attached to an email. On the phone the technician taps the attachment, chooses **Open with OpenGlasses**, reads what it says on a review sheet, and taps **Add to upcoming jobs**. Nothing is added without that tap, and a job file cannot start a job, change equipment, create a task or send anything: it only proposes a job ahead, which then appears under **Upcoming** on the Job tab and on the car screen, where it can be briefed, navigated to, and started on site.
+An office can send a job before the visit as a small file — `.ogjob` — attached to an email. On the phone the technician taps the attachment, chooses **Open with Avenkin**, reads what it says on a review sheet, and taps **Add to upcoming jobs**. Nothing is added without that tap, and a job file cannot start a job, change equipment, create a task or send anything: it only proposes a job ahead, which then appears under **Upcoming** on the Job tab and on the car screen, where it can be briefed, navigated to, and started on site.
 
 **The format, in one line:** a JSON object with `"format": "openglasses.job"`, `"format_version": 1`, and any of `job_reference`, `site` {`customer`, `address`, `contact`}, `fault_report` (the words the customer gave, verbatim), `equipment` [{`model`, `serial`}], `scheduled_for` (ISO 8601), `notes`, `attachments` [{`name`, `reference`}] (named, never embedded) and `issued_by`, plus an optional `signature`. Plain text only, 64 KB at most; a field the app does not know is refused rather than ignored.
 

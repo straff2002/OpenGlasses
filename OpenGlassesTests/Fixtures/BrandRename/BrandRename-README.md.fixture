@@ -1,0 +1,11 @@
+# OpenGlasses
+
+> **OpenGlasses is now Avenkin.** Same app.
+
+Say **“OpenGlasses”** to start. Files live in `OpenGlasses/Sources`.
+See [the repository](https://github.com/straff2002/OpenGlasses).
+
+```sh
+cd OpenGlasses
+open OpenGlasses.xcodeproj
+```

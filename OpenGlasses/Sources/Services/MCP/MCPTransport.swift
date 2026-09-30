@@ -168,7 +168,7 @@ struct HTTPTransport: MCPTransport {
             "params": [
                 "protocolVersion": "2024-11-05",
                 "capabilities": [:] as [String: Any],
-                "clientInfo": ["name": "OpenGlasses", "version": "1.0"] as [String: Any],
+                "clientInfo": ["name": "Avenkin", "version": "1.0"] as [String: Any],
             ] as [String: Any],
         ]
         do {

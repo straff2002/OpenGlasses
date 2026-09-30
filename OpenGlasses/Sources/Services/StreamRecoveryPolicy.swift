@@ -177,7 +177,7 @@ enum DATCompatibilityMessage {
     /// Shared by the two "this build is too old" signals — `Compatibility.sdkUpdateRequired` and
     /// DAT 1.0's `DeviceSessionError.insufficientSDKVersion` — so they read the same.
     static let appUpdateRequired =
-        "This version of OpenGlasses is too old for your glasses — update OpenGlasses from the App Store."
+        "This version of Avenkin is too old for your glasses — update Avenkin from the App Store."
 
     static func message(for error: DeviceSessionError) -> String? {
         switch error {
@@ -211,7 +211,7 @@ enum DATCompatibilityMessage {
     /// works, so this is a suggestion to update when convenient, never an announcement.
     static func advisory(for error: DeviceSessionError) -> String? {
         guard isAdvisory(error) else { return nil }
-        return "A newer OpenGlasses may work better with these glasses — update from the App Store when convenient."
+        return "A newer Avenkin may work better with these glasses — update from the App Store when convenient."
     }
 
     static func message(for compatibility: Compatibility) -> String? {

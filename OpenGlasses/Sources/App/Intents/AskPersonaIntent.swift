@@ -17,7 +17,7 @@ import AppIntents
 struct AskPersonaIntent: AppIntent, AudioRecordingIntent {
     static var title: LocalizedStringResource = "Ask a Persona"
     static var description = IntentDescription(
-        "Ask a specific OpenGlasses persona by voice and hear the answer"
+        "Ask a specific Avenkin persona by voice and hear the answer"
     )
 
     static var openAppWhenRun: Bool { Config.siriAskOpensApp }
@@ -99,7 +99,7 @@ struct AskPersonaIntent: AppIntent, AudioRecordingIntent {
         var localizedStringResource: LocalizedStringResource {
             switch self {
             case .busy:
-                return "OpenGlasses is still working on something. Try again in a moment."
+                return "Avenkin is still working on something. Try again in a moment."
             case .emptyQuestion:
                 return "I didn't catch a question."
             case .noResponse:

@@ -282,7 +282,9 @@ enum LocalOutputPolicy {
     /// whatever the wearer named their assistant (Plan FE P6), regex-escaped so a name containing
     /// `.` or `(` is matched literally rather than compiled as a pattern.
     private static var speakerLabelPattern: String {
-        var labels = ["OpenGlasses", "Assistant", "AI", "Model"]
+        // The product name, and the old one: conversation history from before the rename to
+        // Avenkin (Plan FY P1 item 6) still carries it as a speaker label a model can echo.
+        var labels = ["Avenkin", "OpenGlasses", "Assistant", "AI", "Model"]
         let name = Config.assistantName
         if !labels.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
             labels.append(NSRegularExpression.escapedPattern(for: name))

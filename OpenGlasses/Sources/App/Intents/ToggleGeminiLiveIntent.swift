@@ -31,7 +31,7 @@ struct ToggleGeminiLiveIntent: AppIntent {
         case appNotRunning
 
         var localizedStringResource: LocalizedStringResource {
-            "OpenGlasses is not running. Open the app first."
+            "Avenkin is not running. Open the app first."
         }
     }
 }

@@ -535,7 +535,7 @@ enum BroadcastStallPolicy {
                  + "stream key and that the server is accepting a publish."
         }
         return "Connected to the streaming server, but nothing is reaching it. If that server is "
-             + "on your own network, allow OpenGlasses to use it in Settings, under Privacy & "
+             + "on your own network, allow Avenkin to use it in Settings, under Privacy & "
              + "Security, Local Network."
     }
 }

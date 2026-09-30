@@ -3,7 +3,7 @@ import AppIntents
 /// Siri Intent: Connect to glasses and start listening.
 /// "Hey Siri, connect OpenGlasses" — works from HomePod, Watch, Lock Screen.
 struct ConnectGlassesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Connect OpenGlasses"
+    static var title: LocalizedStringResource = "Connect Avenkin"
     static var description = IntentDescription("Connect to your smart glasses and start listening")
 
     static var isDiscoverable: Bool { true }
@@ -27,14 +27,14 @@ struct ConnectGlassesIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running. Open the app first." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running. Open the app first." }
     }
 }
 
 /// Siri Intent: Disconnect / sleep glasses.
 /// "Hey Siri, disconnect OpenGlasses" — works from HomePod, Watch, Lock Screen.
 struct DisconnectGlassesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Disconnect OpenGlasses"
+    static var title: LocalizedStringResource = "Disconnect Avenkin"
     static var description = IntentDescription("Disconnect from your smart glasses to save battery")
 
     static var isDiscoverable: Bool { true }
@@ -57,14 +57,14 @@ struct DisconnectGlassesIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }
 
 /// Siri Intent: Toggle glasses connection.
 /// "Hey Siri, toggle OpenGlasses" — connects if off, disconnects if on.
 struct ToggleGlassesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle OpenGlasses"
+    static var title: LocalizedStringResource = "Toggle Avenkin"
     static var description = IntentDescription("Connect or disconnect your smart glasses")
 
     static var isDiscoverable: Bool { true }
@@ -88,6 +88,6 @@ struct ToggleGlassesIntent: AppIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
-        var localizedStringResource: LocalizedStringResource { "OpenGlasses is not running." }
+        var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }

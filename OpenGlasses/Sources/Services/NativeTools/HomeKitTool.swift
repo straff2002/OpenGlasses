@@ -66,7 +66,7 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
                               count: homeManager.homes.count)
         // Accept if authorized OR if we have homes (auth may lag behind on some iOS versions)
         if !authStatus.contains(.authorized) && homeManager.homes.isEmpty {
-            return "HomeKit access not authorized. Please enable Home Data for OpenGlasses in Settings → Privacy & Security → HomeKit. (Auth status: \(authStatus.rawValue))"
+            return "HomeKit access not authorized. Please enable Home Data for Avenkin in Settings → Privacy & Security → HomeKit. (Auth status: \(authStatus.rawValue))"
         }
 
         // Homes may not have loaded yet — retry a few times

@@ -480,4 +480,26 @@ final class JobChipContrastTests: XCTestCase {
                                         "the role chip is \(ratio) in \(appearance.name)")
         }
     }
+
+    // MARK: - The brand orange (Plan FY P1 item 11)
+
+    /// The AI accent is the brand orange, written once in `AccentColors` and read by both the
+    /// rendered colour and the palette the contrast audit measures, so the two cannot drift.
+    func testTheDefaultAccentIsTheBrandOrangeFromOneSource() {
+        XCTAssertEqual(AccentColors.aiAccentDarkHex, 0xE77F47)
+        XCTAssertEqual(OGTheme.Token.accent.dark.hex, AccentColors.aiAccentDarkHex)
+        XCTAssertEqual(OGTheme.Token.accent.light.hex, AccentColors.aiAccentLightHex)
+        // Never violet or cyan: the hue sits in the orange band.
+        let orange = SRGBColor(hex: AccentColors.aiAccentDarkHex)
+        XCTAssertGreaterThan(orange.red, orange.green)
+        XCTAssertGreaterThan(orange.green, orange.blue)
+    }
+
+    func testTheDefaultPresetKeepsItsStoredIdAndIsCalledOrange() {
+        XCTAssertEqual(AppAccent.defaultPresetID, "violet", "the id is a stored value and never changes")
+        let preset = AppAccent.presets.first { $0.id == AppAccent.defaultPresetID }
+        XCTAssertEqual(preset?.name, "Orange")
+        let names = AppAccent.presets.map(\.name)
+        XCTAssertEqual(names.count, Set(names).count, "two presets share a display name")
+    }
 }

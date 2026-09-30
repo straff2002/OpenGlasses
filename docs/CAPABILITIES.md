@@ -1,4 +1,4 @@
-# OpenGlasses capability guide
+# Avenkin capability guide
 
 Practical examples, setup notes, and device requirements for the capabilities introduced in the [English README](../README.md) and [中文 README](../README.zh-CN.md).
 
@@ -16,7 +16,7 @@ Prompt presets adjust the response style. Model routing can assign requests to y
 
 ### Siri and shortcuts
 
-Try “Hey Siri, ask OpenGlasses a question.” Siri prompts for the question, then returns the answer. Configure built-in actions and opt your own capabilities into **Settings → Siri & Search**. Photo and video actions are also available in Shortcuts, including for the Action button.
+Try “Hey Siri, ask Avenkin a question.” Siri prompts for the question, then returns the answer. Configure built-in actions and opt your own capabilities into **Settings → Siri & Search**. Photo and video actions are also available in Shortcuts, including for the Action button.
 
 If Siri reports that the app is not running, enable **Settings → Voice → Open App for Siri Questions**. Available Siri phrasing depends on iOS and your language settings.
 
@@ -76,7 +76,7 @@ and [the readiness plan](plans/FF-blind-assistant-readiness.md) for the remainin
 
 ## Remember and recall
 
-OpenGlasses combines explicit notes, saved locations, conversation records, and an on-device knowledge graph so you can return to useful context later.
+Avenkin combines explicit notes, saved locations, conversation records, and an on-device knowledge graph so you can return to useful context later.
 
 | Try saying | What it uses |
 |---|---|

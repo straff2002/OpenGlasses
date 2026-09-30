@@ -227,7 +227,7 @@ struct TeleprompterSettingsView: View {
         Section {
             Label("Import from Apple Notes", systemImage: "square.and.arrow.down")
                 .font(.subheadline)
-            Text("In the Shortcuts app, chain *Find Notes → OpenGlasses: Add Teleprompter Script* to send a note straight in.")
+            Text("In the Shortcuts app, chain *Find Notes → Avenkin: Add Teleprompter Script* to send a note straight in.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

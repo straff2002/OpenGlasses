@@ -131,6 +131,8 @@ final class LocalOutputPolicyTests: XCTestCase {
 
     func testSpeakerLabelIsStrippedAndSeamsAreTidied() {
         XCTAssertEqual(LocalOutputPolicy.classify("OpenGlasses: It's sunny.").text, "It's sunny.")
+        XCTAssertEqual(LocalOutputPolicy.classify("Avenkin: It's sunny.").text, "It's sunny.",
+                       "the product name is stripped as a speaker label, as the old one still is")
         XCTAssertEqual(LocalOutputPolicy.classify("Note: bring an umbrella").text,
                        "Note: bring an umbrella")
         XCTAssertEqual(LocalOutputPolicy.classify("It is \(validFrame) sunny.").text, "It is sunny.")

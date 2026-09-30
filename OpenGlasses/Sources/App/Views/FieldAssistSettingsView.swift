@@ -124,9 +124,9 @@ struct FieldAssistSettingsView: View {
             if !orgProfile.isManaged {
                 Section {
                     Button("Scan an Organisation Code") { showingOrgScanner = true }
-                    Button("Import Avenkin Setup File") { showingOfficeSetupImporter = true }
+                    Button("Import Avenkin Office Setup File") { showingOfficeSetupImporter = true }
                 } footer: {
-                    Text("Scan your organisation's code or import its signed Avenkin setup file. You'll review the settings before anything changes.")
+                    Text("Scan your organisation's code or import its signed Avenkin Office setup file. You'll review the settings before anything changes.")
                 }
             }
             #if AVENKIN_OFFICE_TRANSPORT
@@ -443,7 +443,7 @@ struct FieldAssistSettingsView: View {
         .fileImporter(isPresented: $showingOfficeSetupImporter, allowedContentTypes: [.json]) { result in
             switch result {
             case .failure:
-                officeImportError = "Couldn't open the Avenkin setup file. Try selecting it again."
+                officeImportError = "Couldn't open the Avenkin Office setup file. Try selecting it again."
             case .success(let url):
                 Task {
                     do {
@@ -456,7 +456,7 @@ struct FieldAssistSettingsView: View {
                         }.value
                         appState.orgEnrolment.openOfficePackageFile(bytes)
                     } catch {
-                        officeImportError = "Couldn't read the Avenkin setup file. Try selecting it again."
+                        officeImportError = "Couldn't read the Avenkin Office setup file. Try selecting it again."
                     }
                 }
             }

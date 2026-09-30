@@ -67,9 +67,10 @@ enum OGTheme {
         static let hairlineBase = OGColorToken(light: 0x3C3C43, dark: 0xF5F2EE)
         /// Stand-in for the system label, so text-on-surface pairs are measurable.
         static let label = OGColorToken(light: 0x000000, dark: 0xFFFFFF)
-        /// The shipped default accent (the Coral preset). Other presets are the
-        /// user's choice; `tintedAccentLabel` is what keeps *those* legible.
-        static let accent = OGColorToken(light: 0xB05426, dark: 0xF08A4B)
+        /// The shipped default accent (the Orange preset, the brand orange), read from
+        /// `AccentColors` so the palette and the rendered accent cannot drift apart. Other
+        /// presets are the user's choice; `tintedAccentLabel` is what keeps *those* legible.
+        static let accent = OGColorToken(light: AccentColors.aiAccentLightHex, dark: AccentColors.aiAccentDarkHex)
         /// Full-screen media ground — the camera preview, the HUD mirror, the
         /// scrim under captions. Not adaptive: a video frame looks the same in
         /// both schemes, so the chrome laid over it does too.

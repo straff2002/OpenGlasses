@@ -29,9 +29,9 @@ enum SkillPackSideload {
         case insecureSource
     }
 
-    /// Parse `openglasses://skillpack?url=…&sig=…`.
+    /// Parse `openglasses://skillpack?url=…&sig=…` (or `avenkin://skillpack?…`).
     static func parse(_ url: URL) -> Result<SkillPackSideloadRequest, ParseError> {
-        guard url.scheme == "openglasses", url.host == "skillpack" else {
+        guard DeepLinkScheme.isApp(url), url.host == "skillpack" else {
             return .failure(.notASideloadLink)
         }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []

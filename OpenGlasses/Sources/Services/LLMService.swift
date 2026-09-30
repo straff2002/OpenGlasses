@@ -2307,7 +2307,7 @@ class LLMService: ObservableObject {
                 // OpenRouter requires additional headers for tracking
                 if provider == .openrouter {
                     request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
-                    request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
+                    request.setValue("Avenkin", forHTTPHeaderField: "X-Title")
                 }
 
                 // OpenAI format: system prompt is a message in the array. Plan GB P5: with a split
@@ -2648,7 +2648,7 @@ class LLMService: ObservableObject {
                 }
                 if provider == .openrouter {
                     request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
-                    request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
+                    request.setValue("Avenkin", forHTTPHeaderField: "X-Title")
                 }
 
                 // GB's request copy, then its prompt parts (the omission note depends on the copy).

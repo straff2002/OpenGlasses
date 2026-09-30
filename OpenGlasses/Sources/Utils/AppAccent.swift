@@ -12,7 +12,7 @@ enum AppAccent {
     /// The one fresh-install default, shared by every `@AppStorage` site and
     /// `Config` — three views each carrying their own literal is how the app
     /// once rendered green while Look & Feel highlighted Coral.
-    static let defaultPresetID = "violet"   // the Coral preset (legacy id)
+    static let defaultPresetID = "violet"   // the Orange preset (legacy id, a stored value)
 
     /// Brand adaptive colour: #255E88 in light mode, #D9FDFD in dark mode.
     static let brandColor: Color = Color(UIColor { traits in
@@ -21,18 +21,22 @@ enum AppAccent {
             : UIColor(red: 0x25/255, green: 0x5E/255, blue: 0x88/255, alpha: 1)
     })
 
-    /// AI accent — Claude-adjacent coral. Adaptive so it passes WCAG AA in both modes.
+    /// AI accent — the brand orange `#E77F47`. Adaptive so it passes WCAG AA in both modes.
     /// Defined in `AccentColors.aiCoral` so the widget, control and watch targets share
     /// the same source of truth.
     static let aiCoral: Color = AccentColors.aiCoral
 
     static let presets: [Preset] = [
         Preset(id: "brand",   name: "Brand",   color: brandColor),
-        Preset(id: "violet",  name: "Coral",   color: AppAccent.aiCoral),
+        // The id is the stored value from when the default was violet; the preset is the
+        // brand orange now, so its display name says so.
+        Preset(id: "violet",  name: "Orange",  color: AppAccent.aiCoral),
         Preset(id: "blue",    name: "Blue",    color: Color(red: 0.25, green: 0.5, blue: 1.0)),
         Preset(id: "teal",    name: "Teal",    color: Color(red: 0.2, green: 0.7, blue: 0.7)),
         Preset(id: "green",   name: "Green",   color: Color(red: 0.3, green: 0.75, blue: 0.4)),
-        Preset(id: "orange",  name: "Orange",  color: Color(red: 1.0, green: 0.6, blue: 0.2)),
+        // Labelled Amber, not Orange, now that the default preset is the brand orange: two
+        // swatches called Orange side by side is a choice nobody can make. Id unchanged.
+        Preset(id: "orange",  name: "Amber",   color: Color(red: 1.0, green: 0.6, blue: 0.2)),
         Preset(id: "pink",    name: "Pink",    color: Color(red: 0.95, green: 0.35, blue: 0.55)),
         Preset(id: "red",     name: "Red",     color: Color(red: 0.9, green: 0.25, blue: 0.3)),
         Preset(id: "white",   name: "White",   color: .white),

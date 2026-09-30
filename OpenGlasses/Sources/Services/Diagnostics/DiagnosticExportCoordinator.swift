@@ -69,7 +69,7 @@ final class DiagnosticExportCoordinator {
             fileURL: session.fileURL,
             displayName: ProtectedExportFileStore.sanitizedDisplayName(
                 displayName ?? DiagnosticExportBuilder.displayName(now: now),
-                fallback: "openglasses-diagnostics.txt")
+                fallback: "avenkin-diagnostics.txt")
         )
         leases[lease.id] = lease
         PrivacyLog.transfer(.diagnosticsExport, .exported, count: document.eventCount)

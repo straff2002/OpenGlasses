@@ -320,7 +320,7 @@ final class RecordingFilerTests: XCTestCase {
 
         outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
-                       "OpenGlasses doesn't have permission to add to your photo library, so the "
+                       "Avenkin doesn't have permission to add to your photo library, so the "
                        + "recording isn't in Photos. You can turn that on in Settings. It is safe "
                        + "in the app's Recordings folder — nothing was lost.")
     }

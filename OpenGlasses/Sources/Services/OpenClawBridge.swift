@@ -402,7 +402,7 @@ class OpenClawBridge: ObservableObject {
             "id": connectId,
             "method": "connect",
             "params": OpenClawConnectParams.build(
-                displayName: "OpenGlasses",
+                displayName: "Avenkin",
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
                 token: token,
                 role: .operator,
