@@ -3471,6 +3471,40 @@ struct Config {
         ModelPricing.overrides = modelPricingOverrides
     }
 
+    // MARK: - Cost controls (Plan GB P5)
+
+    /// Estimated-token allowance for the history an API request carries (`APIHistoryBudget`).
+    /// 0 turns the budget off. The ChatGPT subscription keeps FM's own budget.
+    static var apiHistoryTokenBudget: Int {
+        get { UserDefaults.standard.object(forKey: "apiHistoryTokenBudget") as? Int ?? APIHistoryBudget.defaultAllowance }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: "apiHistoryTokenBudget") }
+    }
+
+    /// Daily and monthly spend caps in USD for priced API usage. 0 = no cap.
+    static var dailySpendCapUSD: Double {
+        get { UserDefaults.standard.double(forKey: "dailySpendCapUSD") }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: "dailySpendCapUSD") }
+    }
+
+    static var monthlySpendCapUSD: Double {
+        get { UserDefaults.standard.double(forKey: "monthlySpendCapUSD") }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: "monthlySpendCapUSD") }
+    }
+
+    /// Opt-in: at a cap, switch to the next cheaper saved model instead of asking. Off by default —
+    /// an unannounced model change undermines reliable answers (decided 2026-09-30).
+    static var spendCapFallbackToCheaperModel: Bool {
+        get { UserDefaults.standard.bool(forKey: "spendCapFallbackToCheaperModel") }
+        set { UserDefaults.standard.set(newValue, forKey: "spendCapFallbackToCheaperModel") }
+    }
+
+    /// The cap window the wearer last agreed to go past (`SpendCapPolicy.Window.key`), so one
+    /// confirmation covers the rest of that day or month.
+    static var spendCapOverrideWindow: String? {
+        get { UserDefaults.standard.string(forKey: "spendCapOverrideWindow") }
+        set { UserDefaults.standard.set(newValue, forKey: "spendCapOverrideWindow") }
+    }
+
     // MARK: - Content-Aware Frame Gate (Plan AT)
 
     /// When `true`, `FrameThrottler` consults a perceptual-hash `FrameGate` after

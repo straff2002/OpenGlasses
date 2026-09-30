@@ -40,11 +40,13 @@ struct StreamingUsageAccumulator {
     /// `choices`) carries `usage`; earlier content chunks are ignored here.
     mutating func consumeOpenAI(_ chunk: [String: Any]) {
         guard let usage = chunk["usage"] as? [String: Any] else { return }
-        tokensIn = max(tokensIn, Self.int(usage["prompt_tokens"]))
         tokensOut = max(tokensOut, Self.int(usage["completion_tokens"]))
         if let details = usage["prompt_tokens_details"] as? [String: Any] {
             cacheReadTokens = max(cacheReadTokens, Self.int(details["cached_tokens"]))
         }
+        // `prompt_tokens` includes the cached share; keep only the uncached rest as input so
+        // `ModelPricing` doesn't bill cached tokens twice (Plan GB P0).
+        tokensIn = max(tokensIn, max(0, Self.int(usage["prompt_tokens"]) - cacheReadTokens))
     }
 
     private static func int(_ value: Any?) -> Int {

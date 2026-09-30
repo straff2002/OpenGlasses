@@ -33,6 +33,8 @@ class WebRTCStreamingService: ObservableObject {
     /// on every reconnect.
     private var urlSession: URLSession?
     private var frameSubscription: AnyCancellable?
+    /// Serial delivery for outgoing frames (Plan GB P4).
+    private let frameQueue = DispatchQueue(label: "com.openglasses.webrtc.frames", qos: .userInitiated)
     private var heartbeatTask: Task<Void, Never>?
     private var roomId: String = ""
     /// Read/written only from the throttle sink's serial queue (see `startStreaming`).
@@ -77,8 +79,10 @@ class WebRTCStreamingService: ObservableObject {
 
         // Subscribe to frame publisher
         let interval = 1.0 / targetFPS
+        // Plan GB P4: one serial queue, not the concurrent global one — `lastFrameTime` and the
+        // throttle below are unsynchronised, and frames must go out in order.
         frameSubscription = framePublisher
-            .receive(on: DispatchQueue.global(qos: .userInitiated))
+            .receive(on: frameQueue)
             .sink { [weak self] image in
                 guard let self = self else { return }
                 let now = Date()

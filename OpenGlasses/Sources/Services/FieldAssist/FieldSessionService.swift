@@ -1132,13 +1132,30 @@ final class FieldSessionService: ObservableObject {
     /// Hooked into `LLMService.buildSystemPrompt`. When the vault declares a reference tier and
     /// `turn` is given, the passages retrieved for that turn ride along — or an explicit statement
     /// that nothing did, so the model cannot fall back to general knowledge silently.
+    /// The request context FM resolves for the active ChatGPT model, or nil off that route. The
+    /// same resolution the send path uses, so the vault bound and the request budget agree.
+    static func chatGPTRequestContext(for model: ModelConfig?) -> Int? {
+        guard let model, model.llmProvider == .chatgpt else { return nil }
+        let endpoint = model.baseURL.isEmpty ? ChatGPTOAuth.backendResponsesURL : model.baseURL
+        return RequestContextBudget.resolve(
+            model: model.model, endpoint: endpoint,
+            catalogContext: ChatGPTContextCatalog.context(model: model.model,
+                                                          accountID: ChatGPTOAuthService.shared.accountID)).context
+    }
+
     func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
         // What this turn is, for the page rules below and for `manual_figure` later in the turn.
         // Set on every turn, so a kind never outlives the turn it was read from (Plan GB P1).
         lastTurnKind = turn.map(ManualTurnClassifier.classify)
+        // Plan GB P5: the vault core is bounded on every provider, not just ChatGPT — an
+        // unbounded core rode along on every API request and every tool round-trip. The bound is
+        // the validator's budget wherever the request context allows it (Decision 6).
+        let model = Config.activeModel
         var context = VaultPromptBuilder.promptContext(for: store,
-            referenceByteLimit: Config.activeModel?.llmProvider == .chatgpt ? 24_000 : nil, turn: turn)
+            referenceByteLimit: VaultPromptBuilder.referenceByteLimit(
+                for: model?.llmProvider, requestContext: Self.chatGPTRequestContext(for: model)),
+            turn: turn)
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }

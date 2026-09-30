@@ -68,6 +68,17 @@ enum TurnAdmissionPolicy {
     static func heldUtteranceIsStillFresh(heldAt: Date, now: Date = Date()) -> Bool {
         now.timeIntervalSince(heldAt) < maxHoldAge
     }
+
+    /// Plan GB P4: whether to replay a held utterance when the turn it waited behind completes.
+    /// Fresh ones always. A stale one too when the speech engine failed after it was parked — the
+    /// wait was the app's fault (a wedged synthesizer the watchdog had to recover), so the wearer's
+    /// words are owed, not dropped. Bounded: the failure itself must be recent.
+    static func shouldReplayHeldUtterance(heldAt: Date, now: Date = Date(),
+                                          speechEngineFailedAt: Date?) -> Bool {
+        if heldUtteranceIsStillFresh(heldAt: heldAt, now: now) { return true }
+        guard let failedAt = speechEngineFailedAt, failedAt >= heldAt else { return false }
+        return now.timeIntervalSince(failedAt) < maxHoldAge
+    }
 }
 
 /// Plan CO Item 4 — how long to wait for a reply before ending the conversation.

@@ -90,14 +90,21 @@ enum RequestContextBudget {
             if estimate.total <= allowance { return Selection(body: body, estimate: estimate, omittedMessages: removed) }
             let remainingOld = boundary - removed
             guard remainingOld > 0 else { throw CapacityError() }
-            // Find the next real user exchange; a synthetic photo inside an older tool
-            // exchange must not become a boundary and orphan its pending results.
-            let next = (1..<remainingOld).first { index in
-                selected[index]["role"] as? String == "user" && selected[index]["content"] is String
-            } ?? remainingOld
+            let next = nextExchangeBoundary(in: selected, remainingOld: remainingOld)
             selected.removeFirst(next)
             removed += next
         }
+    }
+
+    /// How many leading messages make up the oldest complete user exchange: up to the next real
+    /// user turn (a user message whose content is plain text). A synthetic photo inside an older
+    /// tool exchange must not become a boundary and orphan its pending results. Shared with
+    /// `APIHistoryBudget` (Plan GB P5), so both budgets cut history at the same seams.
+    static func nextExchangeBoundary(in history: [[String: Any]], remainingOld: Int) -> Int {
+        guard remainingOld > 1 else { return max(0, remainingOld) }
+        return (1..<remainingOld).first { index in
+            history[index]["role"] as? String == "user" && history[index]["content"] is String
+        } ?? remainingOld
     }
 
     static func isOverflow(code: String?, message: String?) -> Bool {

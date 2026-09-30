@@ -136,16 +136,38 @@ enum ToolDeclarations {
     // MARK: - Provider-Specific Formats
 
     /// Build native tool declarations from the registry.
+    ///
+    /// Plan GB: the same filter the registry applies before it will *execute* a tool — enabled,
+    /// and not HIPAA-disabled — so a tool the app will refuse is never *declared* to the model
+    /// either. Sorted by name (P5) so the declaration list is byte-stable turn to turn and the
+    /// provider's prompt cache can reuse it; `allTools` iterates a dictionary.
     @MainActor
     private static func nativeToolDeclarations(registry: NativeToolRegistry?) -> [[String: Any]] {
         guard let registry else { return [] }
-        return registry.allTools.filter { Config.isToolEnabled($0.name) }.map { tool in
-            [
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parametersSchema,
-            ] as [String: Any]
-        }
+        let declarable = Set(declarableNames(registry.allTools.map(\.name),
+                                             isEnabled: Config.isToolEnabled,
+                                             hipaaMode: Config.hipaaMode,
+                                             hipaaDisabled: Config.hipaaDisabledTools))
+        return registry.allTools
+            .filter { declarable.contains($0.name) }
+            .sorted { $0.name < $1.name }
+            .map { tool in
+                [
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parametersSchema,
+                ] as [String: Any]
+            }
+    }
+
+    /// The tool names that may be declared to a model, sorted: enabled, and not disabled by
+    /// HIPAA mode. Pure — the headless test drives it without a registry.
+    static func declarableNames(_ names: [String], isEnabled: (String) -> Bool,
+                                hipaaMode: Bool, hipaaDisabled: Set<String>) -> [String] {
+        names.filter { name in
+            guard isEnabled(name) else { return false }
+            return !(hipaaMode && hipaaDisabled.contains(name))
+        }.sorted()
     }
 
     /// Declarations for tools discovered on connected MCP servers, so the model can call them
@@ -157,7 +179,9 @@ enum ToolDeclarations {
         // Blocked (tool-poisoned) definitions are never offered to the model. Offered tools are
         // exposed ONLY under their fully-qualified name, so a server can't shadow a native tool
         // and the router routes the call back unambiguously (Plan R).
-        return mcpClient.discoveredTools.filter { $0.trust.isOffered }.map { tool in
+        return mcpClient.discoveredTools.filter { $0.trust.isOffered }
+            .sorted { $0.qualifiedName < $1.qualifiedName }   // byte-stable for prompt caching (GB P5)
+            .map { tool in
             let schema = tool.inputSchema.isEmpty
                 ? ["type": "object", "properties": [:] as [String: Any]] as [String: Any]
                 : tool.inputSchema

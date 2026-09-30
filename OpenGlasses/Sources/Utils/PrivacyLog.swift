@@ -633,6 +633,8 @@ enum PrivacyLog {
     enum RecordingEvent: String {
         case started, autoStopped, finished, filed, nothingOnDisk, fileFailed
         case writerFailed, noWriter
+        // Plan GB P4 — Photos was not offered a file whose encode failed or that doesn't play.
+        case photosSkipped
         case audioFormatChanged, audioBuffersDropped, audioAppendRejected
         case autoTranscriptionEnabled, transcriptCaptured, transcriptSaved, transcriptSaveFailed
     }
@@ -1331,6 +1333,10 @@ enum PrivacyLog {
         // Plan FE P4 — the terminal delivery outcome handed back to the caller, as a fixed token
         // (`completed`, `interrupted-bargeIn`, `suppressed-noRoute`, `failed`). Never the words.
         case playbackReported
+        // Plan GB P4 — the system voice's own "I have begun", a wedge the watchdog caught, and the
+        // synthesizer being replaced. Reasons are case names (`neverStarted`, `stalled`,
+        // `mediaServicesReset`).
+        case started, engineUnresponsive, synthesizerRebuilt
     }
 
     /// The spoken text is the assistant answering the wearer — the other half of the transcript,
@@ -1426,7 +1432,8 @@ enum PrivacyLog {
         case planLoopEmpty, planLoopCompleted, cascadeSwitched
         case apiError, streamError, streamRetry, requestFailed
         case toolCallsParsed, toolCallDropped, toolsPayloadRejected, yieldedToHuman
-        case emptyCompletion, imageSkipped, reasoningProduced
+        case emptyCompletion, imageSkipped, reasoningProduced, reasoningResolved, reasoningRetried
+        case spendCap
         case agentSelected, catalogDiscovered, catalogUnavailable
         case classified, classificationFailed, analysisCompleted
     }

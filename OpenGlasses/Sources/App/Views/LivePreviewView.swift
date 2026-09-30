@@ -294,6 +294,12 @@ struct LivePreviewView: View {
                 }
             }
         }
+        // Plan GB P4: the record button lives in this full-screen cover, so the share sheet for a
+        // finished recording has to present from here — VoiceTab's sheet sits underneath the
+        // cover and could not come up while it was showing.
+        .sheet(item: $appState.pendingShareItem) { item in
+            ShareSheet(items: item.items, onComplete: item.onComplete)
+        }
         .onAppear {
             // Subscribe to camera frames via callback
             let previousCallback = appState.cameraService.onVideoFrame

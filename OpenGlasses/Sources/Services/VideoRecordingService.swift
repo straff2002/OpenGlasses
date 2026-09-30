@@ -37,6 +37,25 @@ class VideoRecordingService: ObservableObject {
     private var outputURL: URL?
     private var frameSubscription: AnyCancellable?
 
+    /// Plan GB P4: frames are appended on ONE serial queue. They used to arrive through
+    /// a receive on the global dispatch queue, which is concurrent, so two frames could run
+    /// `appendFrame` at once against the unsynchronised start time, pool and adaptor — the prime
+    /// suspect for the field tester's failed save (the writer's −11800). Order is the encoder's
+    /// contract; a serial queue keeps it.
+    private let appendQueue = DispatchQueue(label: "com.openglasses.recording.append", qos: .userInitiated)
+
+    /// Whether a filed recording actually plays — the `AVURLAsset` seam behind "nothing was lost"
+    /// (Plan GB P4). Injectable so a test can say no without a broken file.
+    var playabilityCheck: (URL) async -> Bool = { await RecordingPlayability.isPlayable($0) }
+
+    /// The writer could not begin (Plan GB P4: `startWriting()`'s result used to be ignored, so a
+    /// writer that never started took frames until stop and then failed).
+    struct WriterStartError: LocalizedError {
+        var errorDescription: String? {
+            "The recording couldn't be started — the video encoder didn't start."
+        }
+    }
+
     // Accessed from background audio callback — must be nonisolated(unsafe)
     private nonisolated(unsafe) var audioInput: AVAssetWriterInput?
 
@@ -271,7 +290,11 @@ class VideoRecordingService: ObservableObject {
         audioInput.expectsMediaDataInRealTime = true
         writer.add(audioInput)
 
-        writer.startWriting()
+        guard writer.startWriting() else {
+            Self.logWriterFailure(writer.error, stage: "start")
+            try? FileManager.default.removeItem(at: url)
+            throw WriterStartError()
+        }
         writer.startSession(atSourceTime: .zero)
 
         self.writer = writer
@@ -303,7 +326,7 @@ class VideoRecordingService: ObservableObject {
 
         // Subscribe to video frames on a background queue
         frameSubscription = publisher
-            .receive(on: DispatchQueue.global(qos: .userInitiated))
+            .receive(on: appendQueue)
             .sink { [weak self] image in
                 self?.appendFrame(image)
             }
@@ -412,8 +435,7 @@ class VideoRecordingService: ObservableObject {
                 writerFailure = writer.error?.localizedDescription ?? "the recording could not be finished"
                 // `writerFailure` is the writer's own description, kept for the wearer-facing
                 // save note; the log gets the bounded summary.
-                PrivacyLog.recording(.writerFailed,
-                                     error: writer.error.map(SafeErrorSummary.init))
+                Self.logWriterFailure(writer.error, stage: "finish")
             }
         } else {
             writerFailure = "the recording could not be finished"
@@ -431,7 +453,7 @@ class VideoRecordingService: ObservableObject {
         // Get the file out of tmp/ before anything else can go wrong with it. Everything below
         // — the transcript sidecar, file protection, the URL handed back for sharing — works
         // against the filed location, not the temporary one.
-        let url = await fileFinishedRecording(temporaryURL)
+        let url = await fileFinishedRecording(temporaryURL, encodeFailed: writerFailure != nil)
 
         // A broken encode is worth saying out loud even when the bytes were filed: a playable
         // prefix and an unplayable file look identical from the outside.
@@ -533,7 +555,7 @@ class VideoRecordingService: ObservableObject {
     /// The destination decisions and the moves themselves live in `RecordingFiler`; this is the
     /// thin edge that resolves the user's settings, holds the security scope on a chosen folder,
     /// and performs the one step the filer deliberately leaves out — the Photos save.
-    private func fileFinishedRecording(_ temporaryURL: URL?) async -> URL? {
+    private func fileFinishedRecording(_ temporaryURL: URL?, encodeFailed: Bool = false) async -> URL? {
         lastSaveNote = nil
         lastSaveSummary = nil
         guard let temporaryURL else { return nil }
@@ -547,11 +569,19 @@ class VideoRecordingService: ObservableObject {
         var outcome = filer.file(temporaryURL,
                                  date: recordingStartDate ?? Date(),
                                  saveToPhotos: wantsPhotos)
+        // Plan GB P4: honest outcomes. A failed encode is reported as one, and whether the filed
+        // file plays is checked rather than assumed — "nothing was lost" needs a playable file.
+        outcome.encodeFailed = encodeFailed
+        let fileIsThere = FileManager.default.fileExists(atPath: outcome.primaryURL.path)
+        outcome.playable = fileIsThere && !encodeFailed ? await playabilityCheck(outcome.primaryURL) : false
 
         // Only offer Photos a file that is actually there — a failed encode leaves nothing behind,
         // and asking the library to ingest a missing file reads as a save failure rather than as
-        // the encode failure it is.
-        if wantsPhotos, FileManager.default.fileExists(atPath: outcome.primaryURL.path) {
+        // the encode failure it is. Nor a file whose encode failed or that won't play: Photos
+        // would reject it, and the wearer would be told about the wrong failure.
+        if wantsPhotos, encodeFailed || outcome.playable == false {
+            PrivacyLog.recording(.photosSkipped, detail: PrivacyToken(encodeFailed ? "encodeFailed" : "unplayable"))
+        } else if wantsPhotos, fileIsThere {
             let result = await GlassesPhotoAlbum.saveVideo(at: outcome.primaryURL)
             outcome.savedToPhotos = result.didSave
             if case .notPermitted = result { outcome.photosNotPermitted = true }
@@ -575,6 +605,16 @@ class VideoRecordingService: ObservableObject {
                       + "photos: \(photosState), "
                       + "chosen folder: \(outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")")
         return outcome.primaryURL
+    }
+
+    /// The writer's failure, with the **underlying** error the framework wraps it in (Plan GB P4:
+    /// −11800 alone says nothing). Both are bounded `SafeErrorSummary`s — domain and code.
+    nonisolated static func logWriterFailure(_ error: Error?, stage: String) {
+        PrivacyLog.recording(.writerFailed, detail: PrivacyToken(stage), error: error.map(SafeErrorSummary.init))
+        if let underlying = (error as NSError?)?.userInfo[NSUnderlyingErrorKey] as? Error {
+            PrivacyLog.recording(.writerFailed, detail: PrivacyToken("\(stage)-underlying"),
+                                 error: SafeErrorSummary(underlying))
+        }
     }
 
     // MARK: - Transcript Persistence

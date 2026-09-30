@@ -109,6 +109,12 @@ struct SpeechDeliveryLedger {
         case noEngineAvailable
         /// The route said not to play it at all.
         case withheld(SpeechDeliveryOutcome.SuppressionReason)
+        /// Plan GB P4: the system synthesizer never produced `didStart`, even after a rebuild.
+        case engineNeverStarted
+        /// Plan GB P4: it started, then went silent past the utterance's expected length.
+        case engineStalled
+        /// Plan GB P4: media services were reset under it.
+        case engineReset
     }
 
     /// The generation the engine callbacks currently belong to. Distinct from the service's live
@@ -157,6 +163,12 @@ struct SpeechDeliveryLedger {
             return .failed(reason: "no speech engine was available")
         case .withheld(let reason):
             return .suppressed(reason: reason)
+        case .engineNeverStarted:
+            return .failed(reason: "engine never started")
+        case .engineStalled:
+            return .failed(reason: "engine unresponsive")
+        case .engineReset:
+            return .failed(reason: "audio services were reset")
         }
     }
 

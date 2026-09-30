@@ -57,11 +57,30 @@ final class DiagnosticRing: @unchecked Sendable {
 
     // MARK: - Recording
 
-    /// Record one already-encoded event. Oldest entries fall off the front once full.
+    /// Plan GB P4: how many camera `frameReceived` entries the ring keeps. The field tester's
+    /// export spent 222 of 500 slots on them, pushing out the model and speech events the report
+    /// was needed for. Capture noise keeps its own small window; everything else keeps the rest.
+    static let frameReceivedBudget = 40
+
+    /// Whether an event is per-frame capture noise that is held to `frameReceivedBudget`.
+    static func isFrameNoise(_ event: PrivacyEvent) -> Bool {
+        event.name == .camera && event.fields.contains {
+            $0.key == .event && $0.value == .token(PrivacyToken("frameReceived"))
+        }
+    }
+
+    /// Record one already-encoded event. Oldest entries fall off the front once full; a
+    /// `frameReceived` over its own budget replaces the oldest `frameReceived` instead.
     func record(_ event: PrivacyEvent, line: String, at time: Date? = nil) {
         let entry = Entry(timestamp: time ?? clock(), category: event.category,
                           name: event.name, line: line)
         lock.lock()
+        if Self.isFrameNoise(event) {
+            let noisy = buffer.indices.filter { buffer[$0].name == .camera && buffer[$0].line.contains("frameReceived") }
+            if noisy.count >= Self.frameReceivedBudget, let oldest = noisy.first {
+                buffer.remove(at: oldest)
+            }
+        }
         buffer.append(entry)
         if buffer.count > capacity {
             buffer.removeFirst(buffer.count - capacity)

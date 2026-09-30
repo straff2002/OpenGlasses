@@ -237,11 +237,12 @@ final class RecordingFilerTests: XCTestCase {
         ops.failCopy = true
         let filer = RecordingFiler(recordingsDirectory: recordings, folderURL: folder, ops: ops)
 
-        let outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: false)
+        var outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: false)
 
         XCTAssertTrue(outcome.savedToLibrary)
         XCTAssertNil(outcome.folderCopyURL)
         XCTAssertTrue(outcome.isPersisted)
+        outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
                        "Couldn't copy the recording to your chosen folder. The recording is safe "
                        + "in the app's Recordings folder — nothing was lost.")
@@ -259,6 +260,7 @@ final class RecordingFilerTests: XCTestCase {
         var outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: true)
         outcome.savedToPhotos = false
 
+        outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
                        "Couldn't save the recording to Photos. The recording is safe in "
                        + "your chosen folder — nothing was lost.")
@@ -300,6 +302,7 @@ final class RecordingFilerTests: XCTestCase {
         var outcome = filer.file(source, date: date("2026-08-24 14:30:12"), saveToPhotos: true)
         outcome.savedToPhotos = false   // permission denied, or the change request failed
 
+        outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
                        "Couldn't save the recording to Photos. The recording is safe in "
                        + "the app's Recordings folder — nothing was lost.")
@@ -315,6 +318,7 @@ final class RecordingFilerTests: XCTestCase {
         outcome.savedToPhotos = false
         outcome.photosNotPermitted = true
 
+        outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
                        "OpenGlasses doesn't have permission to add to your photo library, so the "
                        + "recording isn't in Photos. You can turn that on in Settings. It is safe "
@@ -329,6 +333,7 @@ final class RecordingFilerTests: XCTestCase {
         outcome.savedToPhotos = false
         outcome.photosNotPermitted = false
 
+        outcome.playable = true   // Plan GB P4: the reassurance needs a playable file
         XCTAssertEqual(outcome.message,
                        "Couldn't save the recording to Photos. The recording is safe in "
                        + "the app's Recordings folder — nothing was lost.")

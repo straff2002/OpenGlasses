@@ -16,6 +16,10 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     /// (Groq's 8k cap) and would cripple roomier ones. Optional so configs saved before the field
     /// existed decode as false. On-device providers ignore it — they always run the lean prompt.
     var smallContext: Bool? = nil
+    /// Per-model reasoning effort (Plan GB P0): a `ReasoningEffort` raw value, or nil for
+    /// **Automatic**. Saved with the model and reused on every job. Optional so configs saved before
+    /// the field existed decode as Automatic. `ReasoningPolicy` decides what is actually sent.
+    var reasoningEffort: String? = nil
 
     /// Convenience to get the LLMProvider enum
     var llmProvider: LLMProvider {
@@ -29,6 +33,17 @@ struct ModelConfig: Codable, Identifiable, Equatable {
 
     /// Whether turns to this model use the lean prompt. False for configs from before the field.
     var smallContextEnabled: Bool { smallContext ?? false }
+
+    /// The saved reasoning level, or nil for Automatic (including an unrecognised saved value).
+    var reasoningLevel: ReasoningEffort? { reasoningEffort.flatMap(ReasoningEffort.init(rawValue:)) }
+
+    /// What `ReasoningPolicy` resolves for this model on its own route.
+    func reasoningResolution(toolsAttached: Bool, learnedToolRejection: Bool = false) -> ReasoningPolicy.Resolution {
+        ReasoningPolicy.resolve(provider: llmProvider, model: model,
+                                route: ReasoningRoute.route(for: llmProvider),
+                                toolsAttached: toolsAttached, requested: reasoningEffort,
+                                learnedToolRejection: learnedToolRejection)
+    }
 
     static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {
         switch provider {
