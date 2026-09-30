@@ -1,7 +1,16 @@
 # Plan GB — Field Test Round 3: Job Record Fidelity, Manual Pages, Reasoning and Cost
 
-**Status:** 📋 Planned 2026-09-30. Nothing implemented. Root causes verified against code on
-`main` @ `641bb8ca`; the five decisions below were confirmed by the owner on 2026-09-30.
+**Status:** ✅ Core shipped 2026-09-30 — P0–P5 built in one PR (branch `feat/gb-field-test-round3`;
+Stream A = P0 job/report + P1–P3, Stream B = P0 reasoning/usage + P5 + P4, merged). Root causes
+verified against code on `main` @ `641bb8ca`; the six decisions below were confirmed by the owner
+on 2026-09-30. **Device checks owed:** the page rules against the device sentence embedder (the
+simulator's word embedder cannot see the auto-open failure); the billable-clock checkpoint on a real
+kill; the report after a voice close; the synthesizer wedge trigger and the recording writer's
+underlying error (both unreproduced); a real reasoning tool turn on the API; glasses cold-start time
+for `record_clip`'s stream claim. **Deferred:** the automatic unit split on first identification
+(`next_unit` and out-of-vault recording cover the tester's case); a "shown automatically" section in
+the PDF (JSON only); a field-mode tool profile; per-job cost on the Job tab (the usage store now
+carries the job id); OpenAI API reasoning with tools via `/v1/responses`.
 **Trigger:** The field tester ran build 2026.9 (421) with the Lennox SLP99 vault on two test jobs,
 1010 and 1011, using OpenAI models over the OpenAI API (job 1010's record names `gpt-5.6-sol`, job
 1011's names `gpt-5.5`). He sent both jobs' JSON and PDF, a diagnostics export covering both, 14
