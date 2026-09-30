@@ -2821,6 +2821,28 @@ struct Config {
         KeychainService.setString(token, for: "homeAssistantToken")
     }
 
+    // MARK: - Music (Plan GS)
+
+    /// Where "play", "pause" and play-by-name go when the wearer names no speaker. Apple Music for
+    /// new installs and for everyone upgrading — unchanged behaviour until the wearer picks a
+    /// Home Assistant speaker in Settings → Music.
+    static var musicDefaultProvider: MusicProviderID {
+        get {
+            UserDefaults.standard.string(forKey: "musicDefaultProvider")
+                .flatMap(MusicProviderID.init(rawValue:)) ?? .appleMusic
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "musicDefaultProvider") }
+    }
+
+    /// The Home Assistant media player used when none is named; empty means none chosen.
+    @UserDefaultsBacked("musicDefaultSpeaker", default: "") static var musicDefaultSpeaker: String
+
+    /// Media players the wearer has hidden from Avenkin. Every other `media_player.*` is available.
+    @UserDefaultsBacked("musicHiddenSpeakers", default: [String]()) static var musicHiddenSpeakers: [String]
+
+    /// Ask "which speaker?" rather than guess when several are available and none is the default.
+    @UserDefaultsBacked("musicAskWhichSpeaker", default: true) static var musicAskWhichSpeaker: Bool
+
     // MARK: - Live Broadcast
 
     static var broadcastPlatform: String {

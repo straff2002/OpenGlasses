@@ -18,6 +18,7 @@ struct HomeAssistantTool: NativeTool {
                 "service": ["type": "string", "description": "Service to call (e.g. turn_on, turn_off, toggle). For call_service action."],
                 "domain": ["type": "string", "description": "Entity domain filter for list_entities (e.g. light, switch, sensor, automation)"],
                 "text": ["type": "string", "description": "Natural language command for converse action (e.g. 'turn on the living room lights')"],
+                "data": ["type": "object", "description": "Optional service data for call_service. Only media_content_id, media_content_type, volume_level (0-1) and source are accepted."],
             ],
             "required": ["action"],
         ]
@@ -57,8 +58,16 @@ struct HomeAssistantTool: NativeTool {
             let service = args["service"] as? String ?? "toggle"
             guard !entityId.isEmpty else { return "Which entity?" }
             let domain = entityId.split(separator: ".").first.map(String.init) ?? "homeassistant"
+            // Service data is allowlisted (Plan GS): media keys only, typed and range-checked.
+            var data = HomeAssistantServiceData.empty
+            if let raw = args["data"] as? [String: Any], !raw.isEmpty {
+                switch HomeAssistantServiceData.validated(raw) {
+                case .success(let validated): data = validated
+                case .failure(let error): return HomeAssistantServiceData.refusal(for: error)
+                }
+            }
             return await callServiceWithFallback(
-                domain: domain, service: service, entityId: entityId,
+                domain: domain, service: service, entityId: entityId, data: data,
                 naturalLanguage: "\(service.replacingOccurrences(of: "_", with: " ")) \(friendlyDescription(entityId))")
 
         case "get_state":
@@ -147,8 +156,10 @@ struct HomeAssistantTool: NativeTool {
     // MARK: - API Calls with Fallback
 
     /// Try direct service call first; on failure, fall back to Conversation API.
-    private func callServiceWithFallback(domain: String, service: String, entityId: String, naturalLanguage: String) async -> String {
-        let result = await callService(domain: domain, service: service, entityId: entityId)
+    private func callServiceWithFallback(domain: String, service: String, entityId: String,
+                                         data: HomeAssistantServiceData = .empty,
+                                         naturalLanguage: String) async -> String {
+        let result = await callService(domain: domain, service: service, entityId: entityId, data: data)
 
         // If direct call failed, try Conversation API
         if result.contains("error") || result.contains("Error") {
@@ -163,9 +174,10 @@ struct HomeAssistantTool: NativeTool {
         return result
     }
 
-    private func callService(domain: String, service: String, entityId: String) async -> String {
+    private func callService(domain: String, service: String, entityId: String,
+                             data: HomeAssistantServiceData = .empty) async -> String {
         let url = "\(Config.homeAssistantURL)/api/services/\(domain)/\(service)"
-        let body: [String: Any] = ["entity_id": entityId]
+        let body = data.body(entityId: entityId)
 
         do {
             let _ = try await haRequest(url: url, method: "POST", body: body)

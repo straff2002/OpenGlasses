@@ -187,7 +187,7 @@
 </tr>
 <tr>
   <td>Home Assistant and HomeKit</td>
-  <td>Commands and device states. Home Assistant requests go to your own Home Assistant server. HomeKit is handled by Apple on your devices.</td>
+  <td>Commands and device states, including music commands for speakers and what a speaker is playing. Home Assistant requests go to your own Home Assistant server; a speaker Home Assistant links to a streaming service plays through Home Assistant's own link to that service, and Avenkin never signs in to it. HomeKit is handled by Apple on your devices.</td>
   <td>When you control your home by voice.</td>
 </tr>
 <tr>
@@ -207,8 +207,8 @@
 </tr>
 <tr>
   <td>Apple</td>
-  <td>In-app purchases go through the App Store. Apple's speech recognition may process your voice on the device or on Apple's servers, depending on your language and device. The wake-word listener asks for on-device recognition where it's available.</td>
-  <td>When you buy something, or use voice input with Apple's speech recognition.</td>
+  <td>In-app purchases go through the App Store. Apple's speech recognition may process your voice on the device or on Apple's servers, depending on your language and device. The wake-word listener asks for on-device recognition where it's available. If you have an Apple Music subscription and allow Apple Music access, the name of the song, artist, album, playlist or station you ask for is sent to Apple to find it in the Apple Music catalogue, and anything you ask to add goes into your Apple Music library.</td>
+  <td>When you buy something, use voice input with Apple's speech recognition, or ask to play or add music by name. With Medical Local Only on, Avenkin searches only the music library on your phone.</td>
 </tr>
 </tbody>
 </table>
@@ -260,7 +260,7 @@
   <li><strong>Photos</strong>: to save glasses photos and keep them in their own album.</li>
   <li><strong>Health and Motion</strong>: see <a href="#health">Health data</a>.</li>
   <li><strong>HomeKit</strong>: to control your smart home.</li>
-  <li><strong>Apple Music</strong>: to play and control music.</li>
+  <li><strong>Apple Music</strong>: to play and control music, from your library or, with a subscription, from the Apple Music catalogue, and to add music to your library when you ask.</li>
   <li><strong>Local network</strong>: to find AI servers on your own network and stream to a server on it.</li>
 </ul>
 <p>Information from these sources is only sent to an AI provider when it is part of answering your request.</p>

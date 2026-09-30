@@ -32,6 +32,11 @@
       in-app consent copy covers LLM transmission.
     - Contacts (ContactsTool returns name/phone/email) and Precise Location
       (weather/flight/maps tools) likewise enter LLM context.
+    - Apple Music catalogue search (MusicKit, music_control) sends the song /
+      artist / album / playlist / station name the wearer asked for to Apple.
+      No SDK is linked for it (MusicKit is a system framework; the developer
+      token comes from the App ID's MusicKit App Service). Declared under
+      SearchHistory, AppFunctionality, not linked, not tracking.
     - "Linked=false" assumes no account system is added later. If Avenkin ever
       gains sign-in or a first-party backend, revisit every Linked flag.
 -->
@@ -133,7 +138,9 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- Web search queries sent to Perplexity / Tavily / Brave / SearXNG (user-configured) / DuckDuckGo -->
+		<!-- Web search queries sent to Perplexity / Tavily / Brave / SearXNG (user-configured) / DuckDuckGo;
+		     music names the wearer asks to play or add, sent to Apple's catalogue through MusicKit
+		     (subscribers only; library-only under Medical Local Only) -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeSearchHistory</string>

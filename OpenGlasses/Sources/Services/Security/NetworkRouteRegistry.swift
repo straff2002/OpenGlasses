@@ -392,7 +392,7 @@ extension NetworkRoute {
         case .currencyRates: return ["CurrencyTool"]
         case .aircraftOverhead: return ["AircraftOverheadTool"]
         case .aedDirectory: return ["AEDFinder"]
-        case .homeAssistantCommand: return ["HomeAssistantTool"]
+        case .homeAssistantCommand: return ["HomeAssistantTool", "HomeAssistantRESTClient"]
         case .homeAssistantEntityCache: return ["HomeAssistantEntityCache"]
         case .openClawSkillCatalog: return ["OpenClawSkillsTool"]
         case .openClawGatewaySocket: return ["URLSessionGatewaySocket"]

@@ -211,7 +211,9 @@ extension FlashlightTool {
 extension BrightnessTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(idempotency: .intrinsic) }
 }
-extension MusicControlTool { var executionSemantics: ToolExecutionSemantics { .actuation() } }
+// Play-by-name may ask for Apple Music access (a system prompt the wearer answers) and then search
+// the catalogue, and a speaker command waits on Home Assistant, so it gets more than the default.
+extension MusicControlTool { var executionSemantics: ToolExecutionSemantics { .actuation(timeout: .seconds(45)) } }
 extension AudioRecordingTool { var executionSemantics: ToolExecutionSemantics { .actuation() } }
 extension PhotoLogTool { var executionSemantics: ToolExecutionSemantics { .actuation() } }
 extension SafetyAssessmentTool { var executionSemantics: ToolExecutionSemantics { .actuation() } }
