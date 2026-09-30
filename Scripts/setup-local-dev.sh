@@ -135,6 +135,23 @@ restore_from_commit() {
   echo "  Config/Entitlements/Personal/*.entitlements"
 }
 
+# Capabilities added to the committed entitlements after a personal copy was made. A personal
+# file is never overwritten, so without this an existing checkout keeps signing without them —
+# HealthKit was the case that bit: every HKHealthStore authorisation request failed in a signed
+# build because the personal copy predated the key. Idempotent; adds only what is missing.
+ensure_personal_capabilities() {
+  local file=Config/Entitlements/Personal/OpenGlasses.entitlements
+  [[ -f "$file" ]] || return 0
+  local buddy=/usr/libexec/PlistBuddy
+  if ! "$buddy" -c "Print :com.apple.developer.healthkit" "$file" >/dev/null 2>&1; then
+    "$buddy" -c "Add :com.apple.developer.healthkit bool true" "$file"
+    echo "  Added com.apple.developer.healthkit to $file"
+  fi
+  if ! "$buddy" -c "Print :com.apple.developer.healthkit.access" "$file" >/dev/null 2>&1; then
+    "$buddy" -c "Add :com.apple.developer.healthkit.access array" "$file"
+  fi
+}
+
 if [[ "${1:-}" == "--from-commit" ]]; then
   restore_from_commit "${2:-$DEFAULT_COMMIT}"
 else
@@ -153,5 +170,7 @@ else
     fi
   done
 fi
+
+ensure_personal_capabilities
 
 ./Scripts/generate-xcodeproj.sh
