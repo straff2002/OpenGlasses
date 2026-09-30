@@ -27,7 +27,7 @@ final class SpendCapPolicyTests: XCTestCase {
         XCTAssertEqual(decide(1, 100), .confirmToContinue(.month), "the month outranks the day")
         XCTAssertEqual(decide(13.38, 13.38, pricing: .unpriced), .notEnforceable)
         XCTAssertEqual(decide(13.38, 13.38, pricing: .free), .ok)
-        XCTAssertEqual(decide(50, 500, caps: .none), .ok)
+        XCTAssertEqual(decide(50, 500, caps: .off), .ok)
         var fallback = caps
         fallback.fallBackToCheaperModel = true
         XCTAssertEqual(decide(12, 12, caps: fallback), .fallBackToCheaperModel(.day))

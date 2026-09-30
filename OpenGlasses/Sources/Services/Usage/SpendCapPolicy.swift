@@ -19,7 +19,7 @@ enum SpendCapPolicy {
 
         var isEmpty: Bool { dailyUSD <= 0 && monthlyUSD <= 0 }
 
-        static let none = Caps(dailyUSD: 0, monthlyUSD: 0, fallBackToCheaperModel: false)
+        static let off = Caps(dailyUSD: 0, monthlyUSD: 0, fallBackToCheaperModel: false)
     }
 
     /// Whether the model serving the turn costs money the app can count.
