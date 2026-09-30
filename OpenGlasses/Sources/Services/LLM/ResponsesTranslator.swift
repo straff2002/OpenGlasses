@@ -222,6 +222,14 @@ enum ResponsesTranslator {
         /// `response.completed` envelope has slimmed to metadata/usage — the upstream client never
         /// reads `output` from it, and neither can we: the items arrive one event each, done-side.
         private(set) var doneItems: [[String: Any]] = []
+        /// Take a `response.incomplete` envelope (`status: "incomplete"`, e.g. the output cap was
+        /// reached) as the result, so the caller can name it (Plan GC Decision 9). Off by default:
+        /// the subscription path keeps treating a stream without `response.completed` as failed.
+        let acceptIncomplete: Bool
+
+        init(acceptIncomplete: Bool = false) {
+            self.acceptIncomplete = acceptIncomplete
+        }
 
         /// The response to hand `parseOutput`: the completed payload with the streamed items
         /// substituted in whenever the envelope's own `output` is missing or empty. A fat
@@ -252,6 +260,9 @@ enum ResponsesTranslator {
                 return nil
             case "response.completed":
                 completedResponse = json["response"] as? [String: Any] ?? [:]
+                return nil
+            case "response.incomplete" where acceptIncomplete:
+                completedResponse = json["response"] as? [String: Any] ?? ["status": "incomplete"]
                 return nil
             case "response.failed", "error":
                 let error = (json["response"] as? [String: Any])?["error"] as? [String: Any]

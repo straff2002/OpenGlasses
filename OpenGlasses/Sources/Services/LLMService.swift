@@ -282,6 +282,14 @@ class LLMService: ObservableObject {
     /// and exercise the stream parsing/error paths headlessly (BM P9); production uses `.shared`.
     var streamingSession: URLSession = .shared
 
+    /// Session the buffered (non-streaming) OpenAI-compatible request uses. Injectable for the same
+    /// reason as `streamingSession`, so one fake transport serves both of Plan GC's routes.
+    var dataSession: URLSession = .shared
+
+    /// Where recorded usage goes. nil → `UsageTracker.shared`; a test injects a tracker over a
+    /// scratch store so it can count what one turn recorded.
+    var usageTrackerOverride: UsageTracker?
+
 
     #if canImport(FoundationModels)
     private var _appleSession: Any?
@@ -1822,7 +1830,8 @@ class LLMService: ObservableObject {
         // A usage block that carried none of the expected keys is shape drift, not a
         // free turn — mark it so it isn't silently lost (Plan BM P3).
         guard usage.recognized else {
-            Task { @MainActor in UsageTracker.shared.noteUntrackedTurn() }
+            let tracker = usageTrackerOverride ?? UsageTracker.shared
+            Task { @MainActor in tracker.noteUntrackedTurn() }
             return
         }
         recordUsage(provider: provider, model: model, tokensIn: usage.tokensIn, tokensOut: usage.tokensOut,
@@ -1836,10 +1845,11 @@ class LLMService: ObservableObject {
         // Plan GB P5: tag the call with the job it served, read now rather than when the record
         // lands, so a turn that closes the job still counts toward it.
         let fieldSessionId = FieldSessionService.shared.activeSession?.id
+        let tracker = usageTrackerOverride ?? UsageTracker.shared
         Task { @MainActor in
-            UsageTracker.shared.record(provider: provider, model: model, tokensIn: tokensIn, tokensOut: tokensOut,
-                                       cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens,
-                                       fieldSessionId: fieldSessionId)
+            tracker.record(provider: provider, model: model, tokensIn: tokensIn, tokensOut: tokensOut,
+                           cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens,
+                           fieldSessionId: fieldSessionId)
         }
     }
 
@@ -2076,6 +2086,48 @@ class LLMService: ObservableObject {
     /// `ReasoningRejectionClassifier`). Same isolation rationale as `customEndpointRejectsTools`.
     nonisolated(unsafe) private static var reasoningToolRejections = Set<String>()
 
+    /// Models the Responses API refused this run (Plan GC Decision 6): later turns on them route
+    /// straight to Chat Completions until the app restarts. Same isolation rationale as
+    /// `customEndpointRejectsTools`.
+    nonisolated(unsafe) private static var responsesRouteRejections = Set<String>()
+
+    /// Record the route of one turn (Plan GC): the endpoint token and the reason case in the
+    /// privacy log, the endpoint token in the turn trace. Never text.
+    static func noteRoute(_ selection: OpenAIRouteSelector.Selection,
+                          provider: LLMProvider, model: String) {
+        PrivacyLog.model(.routeSelected, provider: PrivacyToken(provider.rawValue),
+                         model: PrivacyToken(model), detail: PrivacyToken(selection.token))
+        PrivacyLog.model(.routeSelected, detail: PrivacyToken(selection.reason.rawValue))
+        TurnRecorder.noteRoute(selection.token)
+    }
+
+    /// Whether a Responses failure retries the turn once on Chat Completions (Plan GC Decision 6):
+    /// a 4xx that is not authentication or rate limiting — a model the endpoint does not accept,
+    /// a rejected shape. 401/403/429 and 5xx behave exactly as on Chat Completions.
+    nonisolated static func responsesRouteShouldFallBack(status: Int) -> Bool {
+        (400...499).contains(status) && ![401, 403, 429].contains(status)
+    }
+
+    /// The Chat Completions URL for a saved base URL, through the route selector's derivation
+    /// (`…/v1`, `…/v1/`, `…/chat/completions` and `…/responses` all land on `…/chat/completions`).
+    /// An empty base is the API default only for the OpenAI provider: any other provider's empty
+    /// base keeps the old relative path, which fails as before rather than sending that provider's
+    /// key to `api.openai.com`.
+    nonisolated static func chatCompletionsURLString(baseURL: String, provider: LLMProvider) -> String {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || provider == .openai else {
+            return OpenAIRouteSelector.Endpoint.chatCompletions.path
+        }
+        return OpenAIRouteSelector.endpointURL(baseURL: trimmed, endpoint: .chatCompletions)
+    }
+
+    /// Forget what this run learned about refusals (tests only; production forgets on relaunch).
+    static func resetLearnedRouteStateForTesting() {
+        reasoningToolRejections.removeAll()
+        responsesRouteRejections.removeAll()
+        customEndpointRejectsTools = false
+    }
+
     /// Record the effective reasoning setting of one request: a token in the turn trace (Turn
     /// details) and in the privacy log. Never text — the reason is a case name.
     static func noteReasoning(_ resolution: ReasoningPolicy.Resolution,
@@ -2127,21 +2179,53 @@ class LLMService: ObservableObject {
         }
     }
 
+    /// Every OpenAI API request funnels through here — voice, Chat tab, photos, quick actions,
+    /// Field Assist, the cloud agent, notification triage, stateless completions — so Plan GC's
+    /// route selector is consulted here, before any URL is built, and not at a caller.
     private func sendOpenAICompatible(_ text: String, systemPrompt: String, volatileTail: String? = nil, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         try enforceMedicalRemoteBoundary(config)
         let provider = config.llmProvider
         let apiKey = config.apiKey
         let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: apiKey)
 
-        var baseURL = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !baseURL.hasSuffix("/chat/completions") {
-            if baseURL.hasSuffix("/") {
-                baseURL += "chat/completions"
-            } else {
-                baseURL += "/chat/completions"
+        // Plan GC: which endpoint this turn goes to, at what reasoning level, and why.
+        let routeToolsAttached = includeTools
+            && Self.providerSupportsTools(provider, customEndpointRejectsTools: Self.customEndpointRejectsTools)
+        var selection = config.routeSelection(
+            toolsAttached: routeToolsAttached,
+            learnedToolRejection: Self.reasoningToolRejections.contains(config.model),
+            learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model))
+        Self.noteRoute(selection, provider: provider, model: config.model)
+
+        if selection.endpoint == .responses {
+            do {
+                return try await sendOpenAIResponses(
+                    text, systemPrompt: systemPrompt, volatileTail: volatileTail, config: config,
+                    includeTools: includeTools, imageData: imageData, smallContext: smallContext,
+                    selection: selection, onToken: onToken, onStreamReset: onStreamReset)
+            } catch LLMError.apiError(_, let status, _) where Self.responsesRouteShouldFallBack(status: status) {
+                // Decision 6: a route decision, not a cascade hop. Remember the model for the run,
+                // rewind this turn's own appends (the user message included, so the retry does not
+                // add it twice — `turnHistoryStart` is its index even if `trimHistory` compacted
+                // older messages), and retry once on Chat Completions at `none` with tools. The
+                // retried request's own errors propagate unchanged: its 400 stays terminal.
+                Self.responsesRouteRejections.insert(config.model)
+                Self.reasoningToolRejections.insert(config.model)
+                let rewindTo = min(max(0, turnHistoryStart), conversationHistory.count)
+                conversationHistory.removeSubrange(rewindTo...)
+                PrivacyLog.model(.routeFallback, provider: PrivacyToken(provider.rawValue),
+                                 model: PrivacyToken(config.model), status: status,
+                                 detail: PrivacyToken(OpenAIRouteSelector.Endpoint.chatCompletions.rawValue))
+                TurnRecorder.noteRoute(OpenAIRouteSelector.Endpoint.chatCompletions.rawValue)
+                onStreamReset?()
+                selection = config.routeSelection(toolsAttached: routeToolsAttached,
+                                                  learnedToolRejection: true,
+                                                  learnedResponsesRejection: true)
             }
         }
-        
+        let chatSelection = selection
+
+        let baseURL = Self.chatCompletionsURLString(baseURL: config.baseURL, provider: provider)
         guard let url = URL(string: baseURL) else {
             throw LLMError.invalidConfiguration("Invalid base URL: \(baseURL)")
         }
@@ -2208,7 +2292,10 @@ class LLMService: ObservableObject {
                 // OpenAI format: system prompt is a message in the array. Plan GB P5: with a split
                 // prompt the volatile tail follows the history, so the head and the conversation
                 // stay a byte-identical, cacheable prefix from turn to turn.
-                let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
+                // Plan GC Decision 4: a Responses turn's raw output items (encrypted reasoning)
+                // never reach a Chat Completions body — including a fallback retry's.
+                let historySlice = HistoryHygiene.stripResponsesItems(
+                    self.requestHistory(for: provider, smallContext: smallContext))
                 let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
                 let messages = PromptLayout.chatMessages(stable: system.stable, history: historySlice,
                                                          volatile: system.volatile)
@@ -2218,11 +2305,17 @@ class LLMService: ObservableObject {
                     provider,
                     customEndpointRejectsTools: Self.customEndpointRejectsTools
                 )
-                // Plan GB P0: the saved model's reasoning setting, resolved for this route and for
-                // whether tools ride along — the pair the `gpt-6-sol` 400 depends on.
-                let reasoning = config.reasoningResolution(
-                    toolsAttached: includeTools && providerSupportsTools,
-                    learnedToolRejection: Self.reasoningToolRejections.contains(config.model))
+                // Plan GB P0 / GC: the saved model's reasoning setting as the route selector resolved
+                // it for Chat Completions and for whether tools ride along — the pair the
+                // `gpt-6-sol` 400 depends on. Re-selected only when an earlier iteration of this
+                // turn just learned a rejection (GB's one retry at `none`).
+                let learnedToolRejection = Self.reasoningToolRejections.contains(config.model)
+                let reasoning = learnedToolRejection
+                    ? config.routeSelection(
+                        toolsAttached: includeTools && providerSupportsTools,
+                        learnedToolRejection: true,
+                        learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model)).reasoning
+                    : chatSelection.reasoning
                 let baseOutputCap = smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens)
 
                 var body: [String: Any] = [
@@ -2311,10 +2404,10 @@ class LLMService: ObservableObject {
                         return try await streamTurn(try retryRequestWithoutTools())
                     }
                 } else {
-                    var (data, response) = try await URLSession.shared.data(for: request)
+                    var (data, response) = try await self.dataSession.data(for: request)
                     if provider == .custom, toolsAttached,
                        (response as? HTTPURLResponse)?.statusCode == 400 {
-                        (data, response) = try await URLSession.shared.data(for: try retryRequestWithoutTools())
+                        (data, response) = try await self.dataSession.data(for: try retryRequestWithoutTools())
                     }
 
                     guard let httpResponse = response as? HTTPURLResponse,
@@ -2449,6 +2542,178 @@ class LLMService: ObservableObject {
             }
         )
 
+        return try await runToolLoop(maxIterations: maxToolCallIterations, adapter: adapter,
+                                     setStatus: { [weak self] in self?.toolCallStatus = $0 })
+    }
+
+    // MARK: - OpenAI API over the Responses endpoint (Plan GC P2)
+
+    /// One turn on `POST <base>/responses` with the API key: the route `OpenAIRouteSelector`
+    /// picks for an explicit reasoning level with tools. Mirrors `sendChatGPT` (translator,
+    /// capacity budget, streamed turn), but with the API-key path's history rules: GB's job floor,
+    /// `APIHistoryBudget` and images-only-after-last-assistant choose what is sent.
+    ///
+    /// Reasoning is replayed across the tool round-trips of the turn: the assistant history message
+    /// keeps the response's raw output items (encrypted reasoning first), `inputItems` sends them
+    /// back verbatim ahead of the tool results, and they are stripped when the turn ends however it
+    /// ends (Decision 4). Errors propagate; `sendOpenAICompatible` owns the Chat Completions fallback.
+    private func sendOpenAIResponses(_ text: String, systemPrompt: String, volatileTail: String?,
+                                     config: ModelConfig, includeTools: Bool, imageData: Data?,
+                                     smallContext: Bool, selection: OpenAIRouteSelector.Selection,
+                                     onToken: ((String) -> Void)?,
+                                     onStreamReset: (() -> Void)?) async throws -> String {
+        try enforceMedicalRemoteBoundary(config)
+        let provider = config.llmProvider
+        let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: config.apiKey)
+        let endpoint = OpenAIRouteSelector.endpointURL(baseURL: config.baseURL, endpoint: .responses)
+        guard let url = URL(string: endpoint) else {
+            throw LLMError.invalidConfiguration("Invalid base URL: \(endpoint)")
+        }
+
+        // The user turn, exactly as the Chat Completions path appends it (image as `image_url`,
+        // the shape pruning and the translator both recognise).
+        let supportsVision = config.visionEnabled
+        if let imageData, supportsVision {
+            let base64 = LLMImagePreparer.prepared(imageData).base64EncodedString()
+            conversationHistory.append(["role": "user", "content": [
+                ["type": "text", "text": text],
+                ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
+            ]])
+        } else if imageData != nil {
+            PrivacyLog.model(.imageSkipped, model: PrivacyToken(config.model))
+            conversationHistory.append(["role": "user", "content": text + "\n[System note: The user attempted to send an image, but the current model (\(config.model)) does not support image analysis.]"])
+        } else {
+            conversationHistory.append(["role": "user", "content": text])
+        }
+        trimHistory()
+        turnHistoryStart = max(0, conversationHistory.count - 1)
+        // However the turn ends — answer, yield to the wearer, loop limit, error — the opaque
+        // reasoning ciphertext leaves the transcript with it.
+        defer { conversationHistory = HistoryHygiene.stripResponsesItems(conversationHistory) }
+
+        let sourceID = fieldConversationSourceID
+        let recovery = ResponsesContextRecovery()
+        let toolsAttached = includeTools
+            && Self.providerSupportsTools(provider, customEndpointRejectsTools: Self.customEndpointRejectsTools)
+        // Sorted keys, as on Chat Completions: the same bytes feed the cache key.
+        var toolsData = Data()
+        var chatTools: [[String: Any]]?
+        if toolsAttached {
+            let includeOpenClaw = Config.isOpenClawAgentActive && openClawBridge != nil
+            let tools = ToolDeclarations.openAITools(registry: nativeToolRouter?.registry,
+                                                     includeOpenClaw: includeOpenClaw,
+                                                     mcpClient: nativeToolRouter?.mcpClient)
+            toolsData = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+            chatTools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+        }
+        let tools = chatTools
+        let baseOutputCap = smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens)
+        let limit = RequestContextBudget.resolve(model: config.model, endpoint: endpoint)
+        let label = provider.displayName
+
+        let adapter = ProviderLoopAdapter(
+            label: label,
+            dispatcher: makeToolDispatcher(),
+            performTurn: { [weak self] in
+                guard let self else { throw LLMError.invalidResponse(label) }
+                // A field_session start tool may have created the session during this turn.
+                if let sourceID { FieldSessionService.shared.recordConversationTurn(text, sourceID: sourceID) }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                // Bearer only, as on Chat Completions (Azure included).
+                if let authorization {
+                    request.setValue(authorization, forHTTPHeaderField: "Authorization")
+                }
+                if provider == .openrouter {
+                    request.setValue("https://github.com/straff2002/OpenGlasses", forHTTPHeaderField: "HTTP-Referer")
+                    request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
+                }
+
+                // GB's request copy, then its prompt parts (the omission note depends on the copy).
+                let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
+                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                // The current user message's index within the copy: every message since it is
+                // this turn's own and is protected from the capacity guard.
+                let turnTail = max(0, self.conversationHistory.count - self.turnHistoryStart)
+                let protectedStart = min(max(0, historySlice.count - turnTail), historySlice.count)
+                let options = ResponsesTranslator.RequestOptions(
+                    includeEncryptedReasoning: true,
+                    maxOutputTokens: selection.reasoning.outputCap(base: baseOutputCap),
+                    promptCacheKey: toolsAttached
+                        ? PromptPrefixDigest.cacheKey(model: config.model, stable: system.stable, tools: toolsData)
+                        : nil,
+                    reasoning: selection.reasoning,
+                    trailingDeveloperMessage: system.volatile.flatMap { $0.isEmpty ? nil : $0 })
+                Self.noteReasoning(selection.reasoning, provider: provider, model: config.model)
+
+                let responseJSON = try await self.budgetedResponsesTurn(
+                    request: request, model: config.model, history: historySlice,
+                    tools: tools, protectedStart: protectedStart, limit: limit, recovery: recovery,
+                    instructions: { self.refreshedFieldInstructions(system.stable, turn: text) },
+                    options: options, providerToken: provider.rawValue, providerLabel: label,
+                    acceptIncomplete: true,
+                    onToken: onToken, onStreamReset: onStreamReset)
+
+                let parsed = ResponsesTranslator.parseOutput(responseJSON)
+                // Decision 9: a reply the output cap cut off before any text or tool call is named,
+                // then takes the ordinary empty-completion path.
+                if ResponsesTranslator.incompleteReason(responseJSON) == "max_output_tokens",
+                   parsed.text.isEmpty, parsed.toolCalls.isEmpty {
+                    PrivacyLog.model(.emptyCompletion, provider: PrivacyToken(provider.rawValue),
+                                     model: PrivacyToken(config.model),
+                                     detail: PrivacyToken("maxOutputTokens"))
+                }
+                PrivacyLog.model(.toolCallsParsed, provider: PrivacyToken(provider.rawValue),
+                                 count: parsed.toolCalls.count)
+                self.recordUsage(provider: provider, model: config.model, json: responseJSON)
+                return AssistantTurn(text: parsed.text, toolCalls: parsed.toolCalls,
+                                     payload: parsed.rawOutputItems)
+            },
+            appendAssistantToolCall: { [weak self] turn in
+                guard let self else { return }
+                self.conversationHistory.append(ResponsesTranslator.assistantHistoryMessage(
+                    text: turn.text, toolCalls: turn.toolCalls,
+                    rawOutputItems: turn.payload as? [[String: Any]] ?? []))
+            },
+            appendToolResults: { [weak self] outcomes in
+                guard let self else { return }
+                for outcome in outcomes {
+                    guard let callId = outcome.invocation.id else { continue }
+                    let resultContent: String
+                    switch outcome.result {
+                    case .success(let text): resultContent = text
+                    case .failure(let error): resultContent = "Error: \(error)"
+                    }
+                    // Same split as the other paths: a capture tool's photo rides as its own user
+                    // turn, never as base64 inside the tool message (issue 427).
+                    let split = ToolResultImage.extract(from: resultContent)
+                    let canSeeIt = split.image != nil && config.visionEnabled
+                    // Frame untrusted external content as data, not instructions.
+                    let framed = self.wrapToolResultForModel(
+                        toolName: outcome.invocation.name,
+                        content: split.image != nil && !canSeeIt
+                            ? ToolResultImage.textWithImageOmitted(split.text)
+                            : split.text)
+                    self.conversationHistory.append(["role": "tool", "tool_call_id": callId, "content": framed])
+                    if canSeeIt, let image = split.image {
+                        self.conversationHistory.append(["role": "user", "content": [
+                            ["type": "text",
+                             "text": ToolResultImage.attachmentCaption(toolName: outcome.invocation.name)],
+                            ["type": "image_url",
+                             "image_url": ["url": "data:image/jpeg;base64,\(image.base64EncodedString())"]],
+                        ]])
+                    }
+                }
+            },
+            finalize: { [weak self] turn in
+                guard let self else { throw LLMError.invalidResponse(label) }
+                // Lenient like the other paths — an empty final text is appended, not thrown.
+                self.conversationHistory.append(["role": "assistant", "content": turn.text])
+                self.conversationHistory = HistoryHygiene.stripResponsesItems(self.conversationHistory)
+                return turn.text
+            }
+        )
         return try await runToolLoop(maxIterations: maxToolCallIterations, adapter: adapter,
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
@@ -2604,20 +2869,26 @@ class LLMService: ObservableObject {
                                limit: RequestContextBudget.Limit, recovery: ResponsesContextRecovery,
                                instructions: () -> String,
                                reasoning: ReasoningPolicy.Resolution? = nil,
+                               options: ResponsesTranslator.RequestOptions = ResponsesTranslator.RequestOptions(),
+                               providerToken: String = "chatgpt", providerLabel: String = "ChatGPT",
+                               acceptIncomplete: Bool = false,
                                onToken: ((String) -> Void)?, onStreamReset: (() -> Void)?) async throws -> [String: Any] {
         while true {
             try Task.checkCancellation()
             let allowance = min(limit.inputAllowance, recovery.allowance ?? limit.inputAllowance)
+            // Plan GC: `options` (the API route's extra fields and trailing developer message) are
+            // inside the estimate; the default is the subscription body, byte for byte.
             let selected = try RequestContextBudget.build(model: model, instructions: instructions(),
-                history: history, tools: tools, protectedStart: protectedStart, allowance: allowance)
-            PrivacyLog.model(.contextBudget, provider: PrivacyToken("chatgpt"), model: PrivacyToken(model),
+                history: history, tools: tools, protectedStart: protectedStart, allowance: allowance,
+                options: options)
+            PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(model),
                              count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
                              detail: PrivacyToken(limit.provenance))
             for (component, count) in [("instructions", selected.estimate.instructions),
                                        ("input", selected.estimate.input),
                                        ("tools", selected.estimate.tools),
                                        ("framing", selected.estimate.framing)] {
-                PrivacyLog.model(.contextBudget, provider: PrivacyToken("chatgpt"),
+                PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken),
                                  tokens: count, detail: PrivacyToken(component))
             }
             var request = template
@@ -2629,9 +2900,12 @@ class LLMService: ObservableObject {
             request.timeoutInterval = 120
             onStreamReset?()
             do {
-                let response = try await streamResponsesTurn(request: request, onToken: onToken)
+                let response = try await streamResponsesTurn(request: request, onToken: onToken,
+                                                             providerLabel: providerLabel,
+                                                             providerToken: providerToken,
+                                                             acceptIncomplete: acceptIncomplete)
                 if recovery.attempted {
-                    PrivacyLog.model(.contextRecovery, provider: PrivacyToken("chatgpt"), success: true)
+                    PrivacyLog.model(.contextRecovery, provider: PrivacyToken(providerToken), success: true)
                 }
                 return response
             } catch {
@@ -2643,7 +2917,7 @@ class LLMService: ObservableObject {
                 // Reduce relative to BOTH the model allowance and the rejected actual request.
                 // Otherwise a short rejected request would be retried unchanged.
                 recovery.allowance = min(allowance / 2, selected.estimate.total * 3 / 4)
-                PrivacyLog.model(.contextRecovery, provider: PrivacyToken("chatgpt"), attempt: 1,
+                PrivacyLog.model(.contextRecovery, provider: PrivacyToken(providerToken), attempt: 1,
                                  total: recovery.allowance, success: false)
                 onStreamReset?()
             }
@@ -2657,7 +2931,14 @@ class LLMService: ObservableObject {
     /// payload.
     // Internal (not private) so the streaming fixture tests can drive it through a stubbed
     // `streamingSession`.
-    func streamResponsesTurn(request: URLRequest, onToken: ((String) -> Void)?) async throws -> [String: Any] {
+    //
+    // `providerLabel`/`providerToken` name the backend in errors and the log (Plan GC: the OpenAI
+    // API route shares this). `acceptIncomplete` takes a `response.incomplete` envelope as the
+    // result, so a reply the output cap cut short is named rather than lost; the subscription path
+    // keeps today's behaviour (no completion → error).
+    func streamResponsesTurn(request: URLRequest, onToken: ((String) -> Void)?,
+                             providerLabel: String = "ChatGPT", providerToken: String = "chatgpt",
+                             acceptIncomplete: Bool = false) async throws -> [String: Any] {
         let (bytes, response) = try await streamingSession.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
@@ -2667,13 +2948,13 @@ class LLMService: ObservableObject {
                 if errorBody.count > 2048 { break }
             }
             let text = String(data: errorBody, encoding: .utf8) ?? ""
-            PrivacyLog.model(.apiError, provider: PrivacyToken("chatgpt"),
+            PrivacyLog.model(.apiError, provider: PrivacyToken(providerToken),
                              status: status, bytes: errorBody.count)
-            throw LLMError.apiError(provider: "ChatGPT", statusCode: status, message: text)
+            throw LLMError.apiError(provider: providerLabel, statusCode: status, message: text)
         }
 
         var parser = SSEEventParser()
-        var accumulator = ResponsesTranslator.StreamAccumulator()
+        var accumulator = ResponsesTranslator.StreamAccumulator(acceptIncomplete: acceptIncomplete)
         var buffer = Data()
 
         func feed(_ chunk: String, flush: Bool = false) {
@@ -2699,11 +2980,11 @@ class LLMService: ObservableObject {
         if let failure = accumulator.failureMessage {
             let error: [String: Any] = ["code": accumulator.failureCode ?? "", "message": failure]
             let encoded = try JSONSerialization.data(withJSONObject: error)
-            throw LLMError.apiError(provider: "ChatGPT", statusCode: 200,
+            throw LLMError.apiError(provider: providerLabel, statusCode: 200,
                                     message: String(decoding: encoded, as: UTF8.self))
         }
         guard let completed = accumulator.effectiveResponse else {
-            throw LLMError.invalidResponse("ChatGPT (stream ended without completion)")
+            throw LLMError.invalidResponse("\(providerLabel) (stream ended without completion)")
         }
         return completed
     }
@@ -3957,6 +4238,32 @@ class LLMService: ObservableObject {
                              onToken: ((String) -> Void)? = nil) async throws -> String {
         try await sendLocal(text, systemPrompt: systemPrompt, config: config,
                             includeTools: includeTools, imageData: imageData, onToken: onToken)
+    }
+
+    /// Plan GC's fake-transport tests drive the real OpenAI-compatible turn — route selection, the
+    /// Responses path, the fallback, history — through this wrapper, for the same reason as
+    /// `sendLocalForTesting`: nothing in the app may bypass `sendMessage` to reach it. No
+    /// production caller.
+    func sendOpenAICompatibleForTesting(_ text: String, systemPrompt: String = "You are a test.",
+                                        volatileTail: String? = nil, config: ModelConfig,
+                                        includeTools: Bool = true, imageData: Data? = nil,
+                                        onToken: ((String) -> Void)? = nil,
+                                        onStreamReset: (() -> Void)? = nil) async throws -> String {
+        try await sendOpenAICompatible(text, systemPrompt: systemPrompt, volatileTail: volatileTail,
+                                       config: config, includeTools: includeTools, imageData: imageData,
+                                       onToken: onToken, onStreamReset: onStreamReset)
+    }
+
+    /// The agentic fast tier's cloud entry (`sendCloud`), for Plan GC's coverage test. Test-only.
+    func sendCloudForTesting(_ text: String, systemPrompt: String = "You are a test.",
+                             config: ModelConfig, includeTools: Bool = true) async throws -> String {
+        try await sendCloud(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools)
+    }
+
+    /// The raw history dictionaries, for asserting on keys a (role, text) view cannot show — the
+    /// Responses raw-items key in particular. Test-only.
+    func rawConversationHistoryForTesting() -> [[String: Any]] {
+        conversationHistory
     }
 
     /// The durable turn history as plain (role, text) pairs — what a regression asserts was, and

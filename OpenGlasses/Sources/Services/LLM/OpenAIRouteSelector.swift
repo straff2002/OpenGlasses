@@ -15,7 +15,8 @@ import Foundation
 /// 2. OpenAI provider on a host other than `api.openai.com` (Azure, a proxy) → Chat Completions,
 ///    unless the base URL names a Responses endpoint (Decision 3: opt in by URL, no toggle).
 /// 3. A model with no reasoning setting never moves.
-/// 4. Responses refused this model earlier in the run → Chat Completions at `none` with tools.
+/// 4. Responses refused this model earlier in the run → Chat Completions at `none` with tools
+///    (this also overrides the URL opt-in of rules 1 and 2).
 /// 5. No tools → Chat Completions, which carries `reasoning_effort` itself (Decision 2).
 /// 6. A model that takes no tools on Chat Completions → Responses, even at Automatic.
 /// 7. An explicit level above `none` with tools → Responses at that level (Decision 1).
@@ -141,11 +142,14 @@ enum OpenAIRouteSelector {
             Selection(endpoint: .responses, reasoning: resolve(.responses), reason: reason)
         }
 
-        // 1. Other providers keep their own shape; an OpenAI-compatible one may opt in by URL.
+        // 1. Other providers keep their own shape; an OpenAI-compatible one may opt in by URL —
+        //    unless that endpoint refused this model earlier in the run (4).
         guard provider == .openai else {
             let ownRoute = ReasoningRoute.route(for: provider)
             if ownRoute == .chatCompletions, baseURLNamesResponses(baseURL) {
-                return responses(.customHostResponsesURL)
+                return learnedResponsesRejection
+                    ? chat(.responsesRefusedEarlier, learned: true)
+                    : responses(.customHostResponsesURL)
             }
             switch ownRoute {
             case .chatCompletions:
@@ -159,7 +163,10 @@ enum OpenAIRouteSelector {
         }
         // 2. Azure and other hosts: Decision 3, opt in through the base URL.
         guard isOpenAIAPIHost(baseURL) else {
-            return baseURLNamesResponses(baseURL) ? responses(.customHostResponsesURL) : chat(.customHostChat)
+            guard baseURLNamesResponses(baseURL) else { return chat(.customHostChat) }
+            return learnedResponsesRejection
+                ? chat(.responsesRefusedEarlier, learned: true)
+                : responses(.customHostResponsesURL)
         }
         // 3. Non-reasoning models (gpt-4o, gpt-4.1, gpt-5-chat-latest) never move.
         guard let family = ReasoningPolicy.openAIFamily(model: model) else {

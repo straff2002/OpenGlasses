@@ -166,6 +166,9 @@ struct TurnTimeline: Identifiable, Equatable {
     /// The effective reasoning setting the request carried (Plan GB P0), as `ReasoningPolicy`'s
     /// content-free token: `none`, `medium`, `default-medium`, `unsupported`, `na`.
     var reasoning: String?
+    /// The OpenAI endpoint the request went to (Plan GC): `responses` or `chatCompletions`. nil
+    /// for providers that never consult the route selector.
+    var route: String?
     /// The system prompt, block by block, as it was assembled for this turn.
     var promptBlocks: [PromptBlock] = []
     /// The manual passages retrieved for this turn, by citation ("<manual>, page 12").

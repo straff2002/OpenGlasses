@@ -165,6 +165,22 @@ final class OpenAIRouteSelectorTests: XCTestCase {
         XCTAssertEqual(plain.reasoning.wire, .reasoningEffort(.low))
     }
 
+    func testLearnedResponsesRefusalOverridesTheURLOptIn() {
+        // Plan GC Decision 6 for URL opt-ins: once a custom or Azure `/responses` endpoint refused
+        // the model, later turns go to Chat Completions (at `none` with tools) instead of paying
+        // for a refused request every turn.
+        let azure = select("gpt-6-sol", base: "https://r.openai.azure.com/openai/v1/responses", .medium,
+                           learnedResponses: true)
+        XCTAssertEqual(azure.endpoint, .chatCompletions)
+        XCTAssertEqual(azure.reason, .responsesRefusedEarlier)
+        XCTAssertEqual(azure.reasoning.effective, .level(.none))
+        let custom = select("gpt-5.5", provider: .custom, base: "https://proxy.test/v1/responses", .medium,
+                            learnedResponses: true)
+        XCTAssertEqual(custom.endpoint, .chatCompletions)
+        XCTAssertEqual(custom.reason, .responsesRefusedEarlier)
+        XCTAssertEqual(custom.reasoning.wire, .reasoningEffort(.none))
+    }
+
     func testAPIHostClassification() {
         XCTAssertTrue(OpenAIRouteSelector.isOpenAIAPIHost(""))
         XCTAssertTrue(OpenAIRouteSelector.isOpenAIAPIHost("  "))
