@@ -37,6 +37,9 @@ final class UsageStore {
         // enough here — it errors on an existing column, which we ignore.
         exec("ALTER TABLE usage ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0")
         exec("ALTER TABLE usage ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0")
+        // Plan GB P5: the Field Assist job a call served, so cost splits per job. Nullable — rows
+        // from before the column, and calls outside a job, read back as nil.
+        exec("ALTER TABLE usage ADD COLUMN field_session_id TEXT")
         // W03.3: first-unlock protection and backup exclusion, siblings included. Idempotent, so
         // a database already on a device is migrated by being opened.
         StoreProtection.applyDatabase(at: url)
@@ -50,8 +53,8 @@ final class UsageStore {
 
     /// Persist a usage record. `cost_usd` is stored NULL when the model was unpriced.
     func insert(_ record: UsageRecord) {
-        let sql = "INSERT OR REPLACE INTO usage (id, session_id, provider, model, tokens_in, tokens_out, cache_write_tokens, cache_read_tokens, cost_usd, at) " +
-                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        let sql = "INSERT OR REPLACE INTO usage (id, session_id, provider, model, tokens_in, tokens_out, cache_write_tokens, cache_read_tokens, cost_usd, at, field_session_id) " +
+                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -69,6 +72,11 @@ final class UsageStore {
             sqlite3_bind_null(stmt, 9)
         }
         sqlite3_bind_double(stmt, 10, record.at.timeIntervalSince1970)
+        if let job = record.fieldSessionId {
+            bindText(stmt, 11, job)
+        } else {
+            sqlite3_bind_null(stmt, 11)
+        }
         _ = sqlite3_step(stmt)
     }
 
@@ -81,8 +89,20 @@ final class UsageStore {
 
     /// All records with `at >= since`, newest first.
     func records(since: Date) -> [UsageRecord] {
-        query("SELECT id, session_id, provider, model, tokens_in, tokens_out, cache_write_tokens, cache_read_tokens, cost_usd, at FROM usage " +
+        query("SELECT id, session_id, provider, model, tokens_in, tokens_out, cache_write_tokens, cache_read_tokens, cost_usd, at, field_session_id FROM usage " +
               "WHERE at >= \(since.timeIntervalSince1970) ORDER BY at DESC")
+    }
+
+    /// Every record tagged with one Field Assist job (Plan GB P5), newest first.
+    func records(fieldSessionId: String) -> [UsageRecord] {
+        let escaped = fieldSessionId.replacingOccurrences(of: "'", with: "''")
+        return query("SELECT id, session_id, provider, model, tokens_in, tokens_out, cache_write_tokens, cache_read_tokens, cost_usd, at, field_session_id FROM usage " +
+                     "WHERE field_session_id = '\(escaped)' ORDER BY at DESC")
+    }
+
+    /// Estimated USD spent since `since` — priced rows only (Plan GB P5, spend caps).
+    func spend(since: Date) -> Double {
+        records(since: since).compactMap(\.costUSD).reduce(0, +)
     }
 
     /// Convenience: rolled-up totals over the last `days`, computed by `UsageRollup`.
@@ -111,10 +131,12 @@ final class UsageStore {
             let cacheRead = Int(sqlite3_column_int(stmt, 7))
             let cost: Double? = sqlite3_column_type(stmt, 8) == SQLITE_NULL ? nil : sqlite3_column_double(stmt, 8)
             let at = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 9))
+            let job: String? = sqlite3_column_type(stmt, 10) == SQLITE_NULL
+                ? nil : String(cString: sqlite3_column_text(stmt, 10))
             out.append(UsageRecord(id: id, sessionId: sessionId, provider: provider, model: model,
                                    tokensIn: tokensIn, tokensOut: tokensOut,
                                    cacheWriteTokens: cacheWrite, cacheReadTokens: cacheRead,
-                                   costUSD: cost, at: at))
+                                   costUSD: cost, at: at, fieldSessionId: job))
         }
         return out
     }

@@ -82,6 +82,15 @@ struct InsightsView: View {
                     Text("Estimated from each provider's reported token usage at list prices. Local-only — never leaves your device. Realtime voice sessions and streamed Chat replies aren't counted yet.")
                 }
             }
+
+            // Plan GB P5: reachable before any usage exists, so a limit can be set up front.
+            Section {
+                NavigationLink {
+                    SpendCapSettingsView()
+                } label: {
+                    Label("Spending limits", systemImage: "gauge.with.dots.needle.67percent")
+                }
+            }
         }
         .ogFormStyle()
         .navigationTitle("Insights")

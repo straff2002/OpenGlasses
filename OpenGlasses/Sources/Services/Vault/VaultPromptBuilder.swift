@@ -7,6 +7,9 @@ import Foundation
 enum VaultPromptBuilder {
 
     /// Build the prompt addendum for a vault. Returns nil when the vault is empty.
+    /// The vault-core byte bound every provider gets (Plan GB P5; was ChatGPT-only).
+    static let defaultReferenceByteLimit = 24_000
+
     static func promptContext(for store: VaultStore, referenceByteLimit: Int? = nil, turn: String? = nil) -> String? {
         let files = store.readAll()
         guard !files.isEmpty else { return nil }

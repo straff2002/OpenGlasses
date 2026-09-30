@@ -32,10 +32,14 @@ final class UsageTracker: ObservableObject {
     /// Price and persist one API call's usage, including Anthropic prompt-cache tokens.
     /// No-op when every count is 0.
     func record(provider: LLMProvider, model: String, tokensIn: Int, tokensOut: Int,
-                cacheWriteTokens: Int = 0, cacheReadTokens: Int = 0, at: Date = Date()) {
+                cacheWriteTokens: Int = 0, cacheReadTokens: Int = 0, at: Date = Date(),
+                fieldSessionId: String? = nil) {
         guard tokensIn + tokensOut + cacheWriteTokens + cacheReadTokens > 0 else { return }
-        let cost = ModelPricing.estimate(model: model, tokensIn: tokensIn, tokensOut: tokensOut,
-                                          cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens)
+        // The ChatGPT subscription is not billed per token, so its turns record tokens only —
+        // pricing them at the API's list rate would invent a spend (and trip a spend cap).
+        let cost = provider == .chatgpt ? nil : ModelPricing.estimate(
+            model: model, tokensIn: tokensIn, tokensOut: tokensOut,
+            cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens)
         store.insert(UsageRecord(sessionId: sessionId,
                                  provider: provider.rawValue,
                                  model: model,
@@ -44,7 +48,19 @@ final class UsageTracker: ObservableObject {
                                  cacheWriteTokens: cacheWriteTokens,
                                  cacheReadTokens: cacheReadTokens,
                                  costUSD: cost,
-                                 at: at))
+                                 at: at,
+                                 fieldSessionId: fieldSessionId))
+    }
+
+    /// What one Field Assist job has cost so far (Plan GB P5).
+    func jobUsage(fieldSessionId: String) -> JobUsageSummary {
+        JobUsageSummary.summarise(store.records(fieldSessionId: fieldSessionId), fieldSessionId: fieldSessionId)
+    }
+
+    /// Priced spend so far in the day and month containing `now` (spend caps).
+    func spend(now: Date = Date(), calendar: Calendar = .current) -> (today: Double, month: Double) {
+        (store.spend(since: SpendCapPolicy.Window.day.start(of: now, calendar: calendar)),
+         store.spend(since: SpendCapPolicy.Window.month.start(of: now, calendar: calendar)))
     }
 
     /// Record a usage block whose shape wasn't recognized — nothing to price, but we
@@ -71,7 +87,19 @@ final class UsageTracker: ObservableObject {
     /// it on its own async context (the non-Sendable JSON never crosses an actor hop).
     nonisolated static func parseUsage(provider: LLMProvider, json: [String: Any]) -> ParsedUsage? {
         switch provider {
-        case .anthropic, .chatgpt:   // the Responses backend uses the same input/output_tokens keys
+        case .chatgpt:
+            // The Responses backend: `input_tokens` **includes** the cached share, which it reports
+            // under `input_tokens_details.cached_tokens` (Plan GB P0 — previously ignored).
+            guard let u = json["usage"] as? [String: Any] else { return nil }
+            let recognized = u["input_tokens"] != nil || u["output_tokens"] != nil
+            let cached = (u["input_tokens_details"] as? [String: Any]).map { intValue($0["cached_tokens"]) } ?? 0
+            return ParsedUsage(tokensIn: max(0, intValue(u["input_tokens"]) - cached),
+                               tokensOut: intValue(u["output_tokens"]),
+                               cacheWriteTokens: 0,
+                               cacheReadTokens: cached,
+                               recognized: recognized)
+        case .anthropic:
+            // Anthropic's `input_tokens` already excludes both cache counts.
             guard let u = json["usage"] as? [String: Any] else { return nil }
             let recognized = u["input_tokens"] != nil || u["output_tokens"] != nil
                 || u["cache_creation_input_tokens"] != nil || u["cache_read_input_tokens"] != nil
@@ -83,16 +111,20 @@ final class UsageTracker: ObservableObject {
         case .gemini, .geminiVertex:   // Vertex returns the same usageMetadata shape
             guard let u = json["usageMetadata"] as? [String: Any] else { return nil }
             let recognized = u["promptTokenCount"] != nil || u["candidatesTokenCount"] != nil
-            return ParsedUsage(tokensIn: intValue(u["promptTokenCount"]),
+            // `promptTokenCount` includes `cachedContentTokenCount`; record only the uncached rest
+            // as input so the cached share is not billed twice (Plan GB P0).
+            let cached = intValue(u["cachedContentTokenCount"])
+            return ParsedUsage(tokensIn: max(0, intValue(u["promptTokenCount"]) - cached),
                                tokensOut: intValue(u["candidatesTokenCount"]),
                                cacheWriteTokens: 0,
-                               cacheReadTokens: intValue(u["cachedContentTokenCount"]),
+                               cacheReadTokens: cached,
                                recognized: recognized)
         case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom, .local, .appleOnDevice:
             guard let u = json["usage"] as? [String: Any] else { return nil }
             let recognized = u["prompt_tokens"] != nil || u["completion_tokens"] != nil
+            // `prompt_tokens` includes `prompt_tokens_details.cached_tokens` (Plan GB P0).
             let cachedRead = (u["prompt_tokens_details"] as? [String: Any]).map { intValue($0["cached_tokens"]) } ?? 0
-            return ParsedUsage(tokensIn: intValue(u["prompt_tokens"]),
+            return ParsedUsage(tokensIn: max(0, intValue(u["prompt_tokens"]) - cachedRead),
                                tokensOut: intValue(u["completion_tokens"]),
                                cacheWriteTokens: 0,
                                cacheReadTokens: cachedRead,
