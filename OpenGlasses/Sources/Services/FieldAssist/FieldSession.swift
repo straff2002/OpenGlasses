@@ -92,6 +92,20 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var appClosedPause: AppClosedPause?
     /// Values the technician read out, with their corrections (Plan GB P3).
     var spokenReadings: [SpokenReading] = []
+    /// When the job's first identification landed on a unit that already had work recorded under
+    /// it (Plan GD2). The work stays where it is — the machine just identified is usually the one it
+    /// was done on — and the technician is told so, with a way back: `separate_earlier_work`. Cleared
+    /// by that, by `next_unit`, and whenever the job moves off the unit. Nil on every older session.
+    var earlierWorkAttachedAt: Date?
+
+    /// Whether anything is already recorded against the current unit: a task under its scope (a
+    /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
+    /// recorded against a task travel with that task; the job-level evidence list carries no unit
+    /// scope at all, so tasks and scoped readings are what can be counted — and are enough.
+    var hasWorkInCurrentScope: Bool {
+        tasks.contains(where: belongsToCurrentEquipment)
+            || spokenReadings.contains { $0.unitScope == continuityScope }
+    }
 
     func belongsToCurrentEquipment(_ task: Task) -> Bool {
         (taskEquipmentScopes[task.id] ?? "initial") == continuityScope
@@ -190,6 +204,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
         case billableCheckpointAt, appClosedPause, spokenReadings
+        case earlierWorkAttachedAt
     }
 }
 
@@ -255,6 +270,7 @@ extension FieldSession {
         billableCheckpointAt = try c.decodeIfPresent(Date.self, forKey: .billableCheckpointAt)
         appClosedPause = try c.decodeIfPresent(AppClosedPause.self, forKey: .appClosedPause)
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings) ?? []
+        earlierWorkAttachedAt = try c.decodeIfPresent(Date.self, forKey: .earlierWorkAttachedAt)
     }
 }
 

@@ -265,6 +265,14 @@ final class FieldSessionService: ObservableObject {
             session.continuityScope = UUID().uuidString
             runner = nil
             activeProcedureId = nil
+            // The job has moved off the unit the earlier work was attached to (Plan GD2).
+            session.earlierWorkAttachedAt = nil
+        }
+        // The job's first identification, arriving after work was already recorded (Plan GD2): the
+        // work stays on this unit — usually right — and the marker lets the tool say so and offer
+        // `separate_earlier_work` when it was another machine. Nothing is guessed either way.
+        if session.equipment == nil, session.hasWorkInCurrentScope {
+            session.earlierWorkAttachedAt = Date()
         }
         session.equipment = identity
         // Every unit the job has been on, in the order they were first seen (Plan FO P1). Recorded
@@ -334,6 +342,7 @@ final class FieldSessionService: ObservableObject {
         session.continuityScope = UUID().uuidString
         runner = nil
         activeProcedureId = nil
+        session.earlierWorkAttachedAt = nil
         session.equipment = identity
         if let identity {
             session.visitedUnits.append(VisitedUnit(identity: identity, continuityScope: session.continuityScope))
@@ -346,6 +355,62 @@ final class FieldSessionService: ObservableObject {
                              payload: ["scope": AnyCodable(session.continuityScope),
                                        "stated_model": AnyCodable(identity?.stated ?? ""),
                                        "vault_match": AnyCodable(identity?.vaultMatch?.kind.rawValue ?? "none")]))
+    }
+
+    /// Whether the job's first identification landed on work already recorded (Plan GD2) — what
+    /// the identification reply adds its sentence for, and what `separateEarlierWork` needs.
+    var earlierWorkAttached: Bool { activeSession?.earlierWorkAttachedAt != nil }
+
+    /// "That was a different unit" (Plan GD2): the work recorded before the first identification
+    /// belongs to another machine. The earlier work keeps its scope — `UnitLedger` then prints it as
+    /// an unidentified unit — and the identified machine moves to a scope of its own, keeping when
+    /// it was first seen. Nothing is inferred: this runs only because the technician said so, and
+    /// only when the first identification attached earlier work. Returns false otherwise.
+    @discardableResult
+    func separateEarlierWork() -> Bool {
+        guard var session = activeSession, session.earlierWorkAttachedAt != nil else { return false }
+        let earlierScope = session.continuityScope
+        let unitScope = UUID().uuidString
+        session.continuityScope = unitScope
+        runner = nil
+        activeProcedureId = nil
+        if let index = session.visitedUnits.lastIndex(where: { $0.continuityScope == earlierScope }) {
+            session.visitedUnits[index] = session.visitedUnits[index].rescoped(to: unitScope)
+        } else if let equipment = session.equipment {
+            session.visitedUnits.append(VisitedUnit(identity: equipment, continuityScope: unitScope,
+                                                    firstSeenAt: equipment.recognisedAt))
+        }
+        // Only the earlier work stays behind. Anything recorded since the identification — a
+        // nameplate field, a task, a reading — was recorded on the machine just identified and moves
+        // with it; what was recorded before it is the earlier work, and keeps its scope untouched.
+        if let identifiedAt = session.equipment?.recognisedAt {
+            for field in session.identityFields where field.recordedAt >= identifiedAt {
+                let key = field.name.lowercased()
+                if (session.identityEquipmentScopes[key] ?? "initial") == earlierScope {
+                    session.identityEquipmentScopes[key] = unitScope
+                }
+            }
+            for task in session.tasks where task.createdAt >= identifiedAt
+                && (session.taskEquipmentScopes[task.id] ?? "initial") == earlierScope {
+                session.taskEquipmentScopes[task.id] = unitScope
+            }
+            session.spokenReadings = session.spokenReadings.map { reading in
+                guard reading.at >= identifiedAt, reading.unitScope == earlierScope else { return reading }
+                return SpokenReading(id: reading.id, quantity: reading.quantity, value: reading.value,
+                                     unit: reading.unit, unitScope: unitScope, taskId: reading.taskId,
+                                     at: reading.at, supersedes: reading.supersedes,
+                                     citation: reading.citation)
+            }
+        }
+        session.earlierWorkAttachedAt = nil
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger?.updateSession { $0 = session }
+        logger?.append(.init(timestamp: Date(), kind: .unitSplit, text: session.equipment?.stated,
+                             payload: ["earlier_scope": AnyCodable(earlierScope),
+                                       "unit_scope": AnyCodable(unitScope),
+                                       "stated_model": AnyCodable(session.equipment?.stated ?? "")]))
+        return true
     }
 
     /// The machines this job covered and the work done on each (Plan GB P2).
@@ -372,6 +437,7 @@ final class FieldSessionService: ObservableObject {
         runner = nil
         activeProcedureId = nil
         session.equipment = nil
+        session.earlierWorkAttachedAt = nil
         activeSession = session
         activeEquipment = nil
         history = history.replacingFirst(matching: session.id, with: session)

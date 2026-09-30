@@ -166,6 +166,95 @@ final class EquipmentUnitsTests: XCTestCase {
         XCTAssertEqual(service.activeSession?.identityFields.map(\.value), ["5820A12345"])
     }
 
+    // MARK: - Earlier work and the first identification (Plan GD2)
+
+    /// Job 1011's shape: two tasks recorded before anyone read the nameplate, then the first
+    /// identification. The work is attached to that unit and the reply says so; "that was a
+    /// different unit" then puts it on an unidentified unit of its own.
+    func testAFirstIdentificationAfterWorkSaysSoAndSeparatingKeepsTheWorkApart() async throws {
+        let service = try startLennoxSession()
+        let lookup = EquipmentLookupTool(sessionService: service)
+        let tasks = TaskTool(sessionService: service)
+        _ = try await tasks.execute(args: ["verb": "add", "title": "Checked the filter"])
+        _ = try await tasks.execute(args: ["verb": "done"])
+        _ = try await tasks.execute(args: ["verb": "add", "title": "Checked the flue"])
+        _ = try await tasks.execute(args: ["verb": "done"])
+
+        let identified = try await lookup.execute(args: ["set_equipment": "SLP99UH090XV48C"])
+        XCTAssertTrue(identified.contains(FieldSessionTool.earlierWorkSentence), identified)
+        XCTAssertTrue(service.earlierWorkAttached)
+        XCTAssertEqual(service.unitLedger.units.count, 1, "attached, not guessed apart")
+
+        // Said again, it is not a first identification: no second sentence.
+        let restated = try await lookup.execute(args: ["set_equipment": "SLP99UH090XV48C"])
+        XCTAssertFalse(restated.contains(FieldSessionTool.earlierWorkSentence), restated)
+
+        // Work recorded on the identified machine before the technician speaks up moves with it.
+        _ = try await tasks.execute(args: ["verb": "add", "title": "Adjusted blower speed"])
+
+        let reply = try await FieldSessionTool(service: service).execute(args: ["action": "separate_earlier_work"])
+        XCTAssertTrue(reply.contains("Separated the earlier work"), reply)
+        XCTAssertFalse(service.earlierWorkAttached)
+        XCTAssertEqual(service.activeEquipment?.stated, "SLP99UH090XV48C", "the identity stays")
+
+        let ledger = service.unitLedger
+        XCTAssertEqual(ledger.units.map(\.label), ["Unidentified unit",
+                                                   "SLP99UH090XV48C (vault section SLP99UH090XV48CK)"])
+        let record = try XCTUnwrap(service.workRecord())
+        let titles = { (unit: UnitLedger.Unit) in
+            record.tasks.filter { unit.taskIds.contains($0.id) }.map(\.title)
+        }
+        XCTAssertEqual(titles(ledger.units[0]), ["Checked the filter", "Checked the flue"])
+        XCTAssertEqual(titles(ledger.units[1]), ["Adjusted blower speed"])
+        XCTAssertTrue(record.summaryLines.contains("Unit 1: Unidentified unit."), record.summaryLines.description)
+        XCTAssertTrue(record.summaryLines.contains("Unit 2: SLP99UH090XV48C (vault section SLP99UH090XV48CK)."),
+                      record.summaryLines.description)
+
+        let log = try String(contentsOf: tempRoot.appendingPathComponent("sessions")
+            .appendingPathComponent(try XCTUnwrap(service.activeSession?.id))
+            .appendingPathComponent("log.jsonl"), encoding: .utf8)
+        XCTAssertTrue(log.contains("unit_split"), log)
+
+        // Once is all: there is nothing left to separate.
+        let again = try await FieldSessionTool(service: service).execute(args: ["action": "separate_earlier_work"])
+        XCTAssertTrue(again.contains("nothing was separated"), again)
+    }
+
+    func testAFirstIdentificationWithNoEarlierWorkSetsNothing() async throws {
+        let service = try startLennoxSession()
+        let reply = try await EquipmentLookupTool(sessionService: service)
+            .execute(args: ["set_equipment": "SLP99UH090XV48CK"])
+        XCTAssertFalse(reply.contains(FieldSessionTool.earlierWorkSentence), reply)
+        XCTAssertFalse(service.earlierWorkAttached)
+        XCTAssertNil(service.activeSession?.earlierWorkAttachedAt)
+        XCTAssertFalse(service.separateEarlierWork())
+    }
+
+    func testNextUnitClearsTheEarlierWorkMarker() async throws {
+        let service = try startLennoxSession()
+        _ = try await TaskTool(sessionService: service).execute(args: ["verb": "add", "title": "Checked the filter"])
+        _ = try await EquipmentLookupTool(sessionService: service).execute(args: ["set_equipment": "SLP99UH090XV48CK"])
+        XCTAssertTrue(service.earlierWorkAttached)
+        _ = try await FieldSessionTool(service: service).execute(args: ["action": "next_unit"])
+        XCTAssertFalse(service.earlierWorkAttached)
+        XCTAssertFalse(service.separateEarlierWork(), "next_unit answered the question")
+    }
+
+    func testTheEarlierWorkMarkerRoundTripsAndALegacySessionDecodesWithoutIt() throws {
+        let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let legacy = singleUnitSession()
+        let legacyJSON = try encoder.encode(legacy)
+        XCTAssertFalse(String(decoding: legacyJSON, as: UTF8.self).contains("earlierWorkAttachedAt"),
+                       "an unset marker writes no key, so a session reads as it did")
+        XCTAssertNil(try decoder.decode(FieldSession.self, from: legacyJSON).earlierWorkAttachedAt)
+
+        var marked = legacy
+        marked.earlierWorkAttachedAt = Date(timeIntervalSince1970: 1_790_000_100)
+        let reloaded = try decoder.decode(FieldSession.self, from: encoder.encode(marked))
+        XCTAssertEqual(reloaded.earlierWorkAttachedAt, marked.earlierWorkAttachedAt)
+    }
+
     // MARK: - One unit prints as it always did
 
     private func singleUnitSession(statedModel: String? = nil) -> FieldSession {
