@@ -497,6 +497,28 @@ The shipped prompts give the assistant a glasses identity whatever the device:
 3. Tests: a phone-only prompt contains no "glasses"; a Meta glasses session says smart glasses; a G2
    session never says "Ray-Ban Meta"; a user's own prompt is unchanged.
 
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.Device` (`glasses`, `watch`, `phone`) with
+`devicePhrase(glassesConnected:watchOnly:)` — "on smart glasses", "on the user's watch", "on the
+user's phone" — and a Chinese counterpart ("智能眼镜上", "用户的手表上", "用户的手机上"). The default
+prompt's opening and context line, the four English identity role lines, the navigation and
+ultra-concise presets, the fourteen mode presets, the five Chinese openings and the lean cloud prompt
+are composed with it; no prompt names a vendor, and the two realtime vision notes lose "Ray-Ban Meta"
+too. The default prompt's camera sentence is now device-neutral ("You have a camera."). The device is
+read once per turn where the prompt is assembled, through `LLMService.deviceInUse` (set by the app
+from its existing glasses link, the same closure pattern as the debrief context), and passed down;
+`AssistantIdentity` and `Config` never read it. **Stored prompts stay untouched:** nothing is written
+back. Shipped presets were already recomposed on read when their body matched the shipped body
+(Plan FE P6), and a built-in the wearer edits stops being built-in; the comparison now folds the
+device-dependent sentences and their pre-F3 wording into one form, so a Default preset stored by an
+earlier build is recognised as shipped text and follows the device, while a user-owned prompt is
+returned byte for byte on every device. **No watch-turn signal exists yet**: the watch's "ask"
+starts the phone's own listening and nothing marks a turn as the watch's, so the app passes
+`watchOnly: false` and a watch turn reads as the phone until such a signal exists. The EVEN
+Realities link is not part of "glasses connected" yet either; its wearers read as the phone, which
+is honest if not complete, and never as Ray-Ban Meta. Left for the copy PR (P2): the "glasses camera"
+lines in the preset bodies, the Chinese default body's camera line, and the agent-mode document
+template.
+
 ### The rename itself
 
 **How it is done (D10).** The name change is mechanical, so it is a script, and a test proves it

@@ -167,7 +167,7 @@ final class AssistantDisplayNameTests: XCTestCase {
     func testTheDefaultPromptOpensWithTheChosenName() {
         Config.setAssistantDisplayName("Aria")
         let prompt = Config.defaultSystemPrompt
-        XCTAssertTrue(prompt.hasPrefix("You are Aria, a voice assistant running on Ray-Ban Meta"),
+        XCTAssertTrue(prompt.hasPrefix("You are Aria, a voice assistant running on the user's phone."),
                       "the identity opening must carry the chosen name")
         XCTAssertFalse(prompt.contains("You are OpenGlasses"))
         XCTAssertTrue(prompt.contains("the user activates you by saying \"openglasses\""),
@@ -177,7 +177,7 @@ final class AssistantDisplayNameTests: XCTestCase {
     @MainActor
     func testTheLeanCloudAndOnDevicePromptsCarryTheName() async {
         Config.setAssistantDisplayName("Aria")
-        let cloud = LLMService.leanCloudPrompt(hasImage: false)
+        let cloud = LLMService.leanCloudPrompt(hasImage: false, device: .glasses)
         XCTAssertTrue(cloud.hasPrefix("You are Aria, a voice assistant on smart glasses."))
         XCTAssertFalse(cloud.contains("OpenGlasses"))
 
@@ -207,7 +207,7 @@ final class AssistantDisplayNameTests: XCTestCase {
         XCTAssertNotNil(UserDefaults.standard.data(forKey: presetsKey))
         Config.setActivePresetId("preset-concise")
         Config.setAssistantDisplayName("Aria")
-        XCTAssertTrue(Config.systemPrompt.hasPrefix("You are Aria, a voice assistant on Ray-Ban Meta"))
+        XCTAssertTrue(Config.systemPrompt.hasPrefix("You are Aria, a voice assistant on the user's phone."))
     }
 
     /// The recompose is for shipped text alone, and only where the identity is the single
@@ -327,7 +327,7 @@ final class AssistantDisplayNameTests: XCTestCase {
 
         let cloud = LLMService.leanCloudPrompt(hasImage: false)
         XCTAssertEqual(cloud.split(separator: "\n").filter { $0.contains(hostile) }.count, 1)
-        XCTAssertTrue(cloud.hasPrefix("You are \(hostile), a voice assistant on smart glasses."))
+        XCTAssertTrue(cloud.hasPrefix("You are \(hostile), a voice assistant on the user's phone."))
 
         // The assembled on-device prompt already quotes this phrase in its prompt-injection rule,
         // independently of any name — which is the point: the rule is about untrusted *content*,
@@ -353,8 +353,8 @@ final class AssistantDisplayNameTests: XCTestCase {
         XCTAssertEqual(AssistantIdentity.lineZH(name: "Aria", role: "语音助手。"),
                        "你是 Aria，语音助手。")
         XCTAssertEqual(
-            AssistantIdentity.defaultPromptOpening(name: "Aria", wakePhrase: "openglasses"),
-            "You are Aria, a voice assistant running on Ray-Ban Meta smart glasses. Your responses "
+            AssistantIdentity.defaultPromptOpening(name: "Aria", wakePhrase: "openglasses", device: .glasses),
+            "You are Aria, a voice assistant running on smart glasses. Your responses "
             + "will be spoken aloud via text-to-speech. Your name is Aria and the user activates "
             + "you by saying \"openglasses\".")
     }

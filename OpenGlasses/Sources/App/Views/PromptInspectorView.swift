@@ -87,7 +87,8 @@ struct PromptInspectorView: View {
     }
 
     private func buildSections() {
-        let basePrompt = Config.systemPrompt
+        // The same device a turn would be composed for right now (Plan FY F3).
+        let basePrompt = Config.systemPrompt(device: LLMService.deviceInUse())
         let toolNames = appState.nativeToolRouter.registry.toolNames
         // BK P0: the prompt preview must match the real gated prompt — the OpenClaw block is only
         // present when the gateway is an active agentic capability.

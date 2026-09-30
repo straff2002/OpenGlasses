@@ -1043,6 +1043,12 @@ class AppState: ObservableObject, AppStateProtocol {
             provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
         // Plan FO P3b — Direct mode's system prompt carries the debrief block while one runs.
         LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }
+        // Plan FY F3 — the device the identity line names. `isConnected` is the glasses link this
+        // state already tracks. No turn is marked as coming from the watch (its "ask" starts the
+        // phone's own listening), so there is no watch-only signal to pass yet.
+        LLMService.deviceInUse = { [weak self] in
+            AssistantIdentity.Device(glassesConnected: self?.isConnected ?? false, watchOnly: false)
+        }
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
         guidedJobFlow.connectUpcoming(upcomingJobs)

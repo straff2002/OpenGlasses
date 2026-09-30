@@ -617,7 +617,9 @@ class GeminiLiveSessionManager: ObservableObject {
         // note when that preset is the selected one (Plan FF P0).
         let mode = Config.activeLiveAIMode
         var prompt = BlindAssistanceContract.composeLiveInstruction(
-            modePrefix: mode.promptPrefix, basePrompt: Config.systemPrompt, modeID: mode.id)
+            modePrefix: mode.promptPrefix,
+            basePrompt: Config.systemPrompt(device: LLMService.deviceInUse()),   // Plan FY F3: read once per session
+            modeID: mode.id)
 
         // Vision prompt depends on whether camera frames are actually flowing.
         // When streaming: full vision instructions.
@@ -628,7 +630,7 @@ class GeminiLiveSessionManager: ObservableObject {
 
 
             VISION:
-            You are connected to the camera on the user's Ray-Ban Meta smart glasses. You can see through their \
+            You are connected to the camera on the user's smart glasses. You can see through their \
             camera and have a voice conversation. You receive live video frames from the glasses camera approximately \
             once per second. When the user asks you to look at something or asks "what do you see?", analyze the \
             most recent video frames and describe what you observe. You have full visual awareness of the user's \
@@ -639,7 +641,7 @@ class GeminiLiveSessionManager: ObservableObject {
 
 
             VISION:
-            You are running on the user's Ray-Ban Meta smart glasses. The camera is still connecting and you have \
+            You are running on the user's smart glasses. The camera is still connecting and you have \
             NOT received any video frames yet. If the user asks you to look at something or describe what you see, \
             tell them the camera is still connecting and to try again in a moment. Do NOT describe or guess what \
             the user might be looking at — only describe things from actual video frames you have received.
