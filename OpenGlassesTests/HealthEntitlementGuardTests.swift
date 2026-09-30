@@ -47,6 +47,20 @@ final class HealthEntitlementGuardTests: XCTestCase {
         XCTAssertEqual(example["com.apple.developer.healthkit"] as? Bool, true)
     }
 
+    /// The permission sheet shows this string; it must name every kind of data the app asks to
+    /// read — the health-summary types and the fitness coach's workouts.
+    func testTheUsageStringNamesEveryRequestedReadType() throws {
+        let info = try plist("OpenGlasses/Info.plist")
+        let usage = try XCTUnwrap(info["NSHealthShareUsageDescription"] as? String).lowercased()
+        for type in HealthSummaryReadType.allCases {
+            XCTAssertTrue(usage.contains(type.displayName.lowercased()),
+                          "NSHealthShareUsageDescription does not mention \(type.displayName)")
+        }
+        XCTAssertTrue(usage.contains("workouts"))
+        XCTAssertTrue(usage.contains("share health data with ai"),
+                      "the string must say how the numbers could reach an AI provider")
+    }
+
     /// An existing personal copy is never overwritten, so the setup script patches the key in.
     func testTheSetupScriptAddsHealthKitToAnExistingPersonalCopy() throws {
         let script = try text("Scripts/setup-local-dev.sh")

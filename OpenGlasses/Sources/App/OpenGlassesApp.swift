@@ -345,6 +345,8 @@ struct OpenGlassesApp: App {
                     // Retry a migration that deferred while locked, then sweep abandoned exports.
                     FHIRConfigurationStore.shared.migrateIfNeeded()
                     appState.medicalExportService.leases.scavenge()
+                    // Plan GI: Health just became readable — refresh the locked-phone summary.
+                    Task { await appState.refreshHealthSummaryCache() }
                 }
                 .onOpenURL { url in
                     // A job file (Plan FO P3c). Files only — there is deliberately no
@@ -549,6 +551,8 @@ struct OpenGlassesApp: App {
                 Task { await ShortcutsCatalog.shared.refresh() }
                 // Plan BQ P2: re-donate user-exposed content to Spotlight (diff-only).
                 SpotlightIndexService.shared.requestRefresh()
+                // Plan GI: keep the locked-phone health summary current while Health is readable.
+                Task { await appState.refreshHealthSummaryCache() }
                 if appState.conversationStore.isLocked {
                     Task { await appState.conversationStore.unlock() }
                 }
@@ -4539,6 +4543,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Log the optimization for diagnostics
         addDebugEvent("Background optimization: streaming priority mode enabled")
+    }
+
+    /// Recompute the health summary numbers kept for locked-phone answers (Plan GI). A no-op until
+    /// the wearer has been asked for Health access, or with the feature or the tool switched off.
+    func refreshHealthSummaryCache() async {
+        guard let tool = nativeToolRegistry.tool(named: "health_summary") as? HealthSummaryTool else { return }
+        await tool.refreshCache()
     }
 
     /// Restore normal resource allocation when the app returns to foreground.

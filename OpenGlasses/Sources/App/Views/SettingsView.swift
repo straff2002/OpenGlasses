@@ -1012,14 +1012,13 @@ struct HardwarePrivacyView: View {
                 )
                 .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
                 ManagedSettingNote(key: .privacyFilterEnabled)
-                InfoToggle(
-                    title: "Share Health Data with AI",
-                    isOn: Binding(
-                        get: { Config.shareHealthDataWithAI },
-                        set: { Config.setShareHealthDataWithAI($0) }
-                    ),
-                    info: "Off by default. When on, the fitness coach may read your Apple Health workout history and send it to your configured AI provider (Anthropic, OpenAI, Google, etc.) so it can discuss your progress. Your Health data leaves the device only while this is enabled. On-device workout tracking, form analysis, and saving workouts to Apple Health work either way."
-                )
+                // Apple Health: what is read, whether the AI may see it (the share toggle lives
+                // there now), and the summary kept for locked-phone answers.
+                NavigationLink {
+                    HealthSettingsView()
+                } label: {
+                    Label("Health", systemImage: "heart.text.square")
+                }
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
@@ -1028,7 +1027,7 @@ struct HardwarePrivacyView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Health) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {

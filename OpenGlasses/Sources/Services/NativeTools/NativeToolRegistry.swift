@@ -76,6 +76,9 @@ final class NativeToolRegistry {
         register(SaveLocationTool(locationService: locationService))
         register(ListSavedLocationsTool(locationService: locationService))
         register(PedometerTool())
+        // Plan GI: heart rate, sleep and steps from Apple Health. Read-only; speaks the answer
+        // itself when the wearer has not allowed Health data to reach the model.
+        register(HealthSummaryTool())
         register(EmergencyInfoTool(locationService: locationService))
         register(CalendarTool(eventStore: eventKitStore))
         register(ContactsTool())

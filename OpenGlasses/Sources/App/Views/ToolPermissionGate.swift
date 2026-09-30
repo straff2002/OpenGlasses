@@ -18,6 +18,7 @@ enum ToolPermissionGate {
         "lookup_contact": "Contacts access",
         "set_alarm": "Notification permission",
         "fitness_coach": "HealthKit access",
+        "health_summary": "Apple Health access",
     ]
 
     static func permissionName(for toolName: String) -> String? {
@@ -66,6 +67,17 @@ enum ToolPermissionGate {
             ]
             do {
                 try await healthStore.requestAuthorization(toShare: [], read: readTypes)
+                return true
+            } catch {
+                return false
+            }
+        case "health_summary":
+            // Read-only: heart rate, resting heart rate, sleep and steps. HealthKit never says
+            // whether read access was granted, so "asked" is the most this can report.
+            guard HKHealthStore.isHealthDataAvailable() else { return false }
+            do {
+                try await HKHealthStore().requestAuthorization(toShare: [],
+                                                               read: HealthKitSampleReader.readTypes)
                 return true
             } catch {
                 return false

@@ -337,9 +337,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// short, been withheld, or broken. `completed` means the audio ran to its end — never that
     /// the wearer heard or understood it, and callers that forward it to a backend must say so
     /// (see `AgentDeliveryAck`).
+    ///
+    /// `onDeviceOnly` takes the cloud voice out of the engine chain for this utterance, for text
+    /// the app has promised not to send off the phone — a health summary spoken while sharing
+    /// Health data is off. Kokoro and the iOS voice still speak it.
     @discardableResult
     func speakReporting(_ text: String, urgency: SpeechUrgency = .low,
-                        mirrorToHUD: Bool = true) async -> SpeechDeliveryOutcome {
+                        mirrorToHUD: Bool = true,
+                        onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
         guard !text.isEmpty else { return .failed(reason: "nothing to say") }
         lastSpokenText = text
         activeRateMultiplier = urgency.rateMultiplier
@@ -410,7 +415,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 PrivacyLog.tts(.staleGeneration, detail: PrivacyToken("beforeTask"))
                 return
             }
-            await self.speakThroughEngineChain(text: text, urgency: urgency, generation: gen)
+            await self.speakThroughEngineChain(text: text, urgency: urgency, generation: gen,
+                                               onDeviceOnly: onDeviceOnly)
         }
         currentSpeechTask = task
 
@@ -460,7 +466,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Speak `text` by walking the `TTSEngineSelector` fallback chain (ElevenLabs → Kokoro →
     /// AVSpeech): try each engine in turn, advancing to the next on failure. `.system` is the
     /// guaranteed terminal — it never throws, so the chain always produces audio (or is cancelled).
-    private func speakThroughEngineChain(text: String, urgency: SpeechUrgency, generation gen: Int) async {
+    private func speakThroughEngineChain(text: String, urgency: SpeechUrgency, generation gen: Int,
+                                         onDeviceOnly: Bool = false) async {
         // Any engine callback from here on belongs to this generation (Plan FE P4).
         deliveryLedger.beginUtterance(generation: gen)
         let elevenLabsKey = Config.elevenLabsAPIKey
@@ -471,7 +478,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             // Medical local-only removes the cloud voice from the chain rather than failing the
             // utterance: Kokoro and the iOS voice are already the fallback, and a wearer in a
             // clinical setting still needs to be spoken to.
-            elevenLabsReady: !elevenLabsKey.isEmpty
+            elevenLabsReady: !onDeviceOnly
+                && !elevenLabsKey.isEmpty
                 && !elevenLabsQuotaExhausted
                 && MedicalEgressGuard.allows(.elevenLabsSpeechSynthesis)
                 && (reachability?.isOnline ?? true),

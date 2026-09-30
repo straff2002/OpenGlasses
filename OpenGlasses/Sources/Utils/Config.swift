@@ -4046,6 +4046,11 @@ struct Config {
     /// Workout coaching, form checking and HealthKit writes. Health data.
     @UserDefaultsBacked("fitnessCoachingEnabled", default: true) static var fitnessCoachingEnabled: Bool
 
+    /// Spoken heart-rate, sleep and step summaries read from Apple Health. Health data. Free for
+    /// everyone and on by default: it only reads, and nothing leaves the phone unless the wearer
+    /// turns on `shareHealthDataWithAI`.
+    @UserDefaultsBacked("healthSummariesEnabled", default: true) static var healthSummariesEnabled: Bool
+
     /// The high-energy control assessment. Worker safety.
     @UserDefaultsBacked("safetyAssessmentEnabled", default: true) static var safetyAssessmentEnabled: Bool
 

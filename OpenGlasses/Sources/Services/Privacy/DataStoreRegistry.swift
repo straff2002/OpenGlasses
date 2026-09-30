@@ -81,6 +81,7 @@ enum SensitiveStore: String, CaseIterable {
     case safetyAssessments
 
     // Clinical
+    case healthSummaryCache
     case clinicalTranscripts
     case clinicalAuditLog
     case clinicalConfiguration
@@ -597,6 +598,18 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "SafetyAssessmentStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/SafetyAssessment/SafetyAssessmentStore.swift"],
                           location: "Application Support/SafetyAssessments/history.json")
+
+        case .healthSummaryCache:
+            // Derived numbers from Apple Health, kept so a locked phone can still answer. Readable
+            // after first unlock on purpose; never backed up.
+            return Record(store: self, dataClass: .clinical, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("24-hour TTL per summary, checked on every read"),
+                          deleteAll: .api("HealthSummaryCache.clear()"),
+                          deleteSubject: .unavailable("holds only the wearer's own numbers; cleared as a whole"),
+                          owner: "HealthSummaryCache",
+                          ownerPaths: ["OpenGlasses/Sources/Services/HealthSummary/HealthSummaryCache.swift"],
+                          location: "Application Support/HealthSummary/summary.json")
 
         case .clinicalTranscripts:
             // Written at a recording's stop, which can happen while the phone is locked.
