@@ -247,7 +247,7 @@ Prior-plan invariants each phase must respect:
 | CO / CP | Every camera still, clip and frame that leaves the device passes the privacy chokepoint; `record_clip` claiming the stream keeps it a rostered `OutboundFrameConsumer` on the relay. | P4, P5 |
 | FV | Turn traces stay content-free; the effective reasoning setting is a token, not text. | P0 |
 
-## Phases (one PR each; P0 is the next build)
+## Phases (all six ship in one PR, decided 2026-09-30)
 
 ### P0 — Next-build quick fixes (small, low risk)
 
