@@ -389,15 +389,25 @@ struct Config {
         AlternativeTrigger.allCases.contains { alternativeTriggerEnabled($0) }
     }
 
-    /// Temple-tap media trigger (Plan CH): claim Now Playing so a glasses temple double-tap
-    /// (AVRCP next-track) starts the assistant. Off by default — experimental, and it holds the
-    /// Now Playing session whenever the user's own audio isn't playing.
+    /// Temple taps (Plans CH + GJ): claim Now Playing so the glasses' temple taps reach the app.
+    /// Off by default — experimental until the tap-to-command mapping is confirmed on glasses, and
+    /// it holds the Now Playing session whenever the user's own audio isn't playing. The key is
+    /// the original single-gesture switch's, so a wearer who had it on still has it on.
     static var mediaTriggerEnabled: Bool {
         UserDefaults.standard.bool(forKey: "mediaTriggerEnabled")
     }
 
     static func setMediaTriggerEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "mediaTriggerEnabled")
+    }
+
+    /// What one, two and three temple taps do (Plan GJ).
+    static var templeGestureMap: TempleGestureMap {
+        TempleGestureMapStore().load()
+    }
+
+    static func setTempleGestureMap(_ map: TempleGestureMap) {
+        TempleGestureMapStore().save(map)
     }
 
     // MARK: - LLM Provider (legacy — kept for migration)

@@ -10,6 +10,10 @@ import AVFoundation
 @MainActor
 class GeminiLiveSessionManager: ObservableObject {
     @Published var isActive: Bool = false
+    /// The wearer muted the mic without ending the session (a temple tap, Plan GJ P3). Capture
+    /// keeps running; nothing is sent while this is set. Cleared when a session starts or stops,
+    /// so a mute never outlives the session it was made in.
+    @Published var micMuted: Bool = false
     /// Plan FF P1/PR4 — which session this is. Bumped on every start, so work begun for one
     /// session (a sharp capture in flight) can tell that it came back to a different one.
     private(set) var sessionIdentity: Int = 0
@@ -154,6 +158,7 @@ class GeminiLiveSessionManager: ObservableObject {
         }
 
         isActive = true
+        micMuted = false
         sessionIdentity += 1
         errorMessage = nil
         // FF P1/PR5: a session's record belongs to that session and to nothing else.
@@ -202,10 +207,11 @@ class GeminiLiveSessionManager: ObservableObject {
         audioManager.onAudioCaptured = { [weak self] data in
             guard let self else { return }
             Task { @MainActor in
-                if EchoSuppressionPolicy.shouldDropCapturedBuffer(
+                guard EchoSuppressionPolicy.shouldForwardCapturedBuffer(
+                    wearerMuted: self.micMuted,
                     capability: self.audioManager.duplexCapability,
                     iPhoneMode: self.useIPhoneAudioMode,
-                    modelSpeaking: self.geminiService.isModelSpeaking) { return }
+                    modelSpeaking: self.geminiService.isModelSpeaking) else { return }
                 self.geminiService.sendAudio(data: data)
             }
         }
@@ -528,6 +534,7 @@ class GeminiLiveSessionManager: ObservableObject {
         stateObservation?.cancel()
         stateObservation = nil
         isActive = false
+        micMuted = false
         isCameraStreaming = false
         connectionState = .disconnected
         isModelSpeaking = false

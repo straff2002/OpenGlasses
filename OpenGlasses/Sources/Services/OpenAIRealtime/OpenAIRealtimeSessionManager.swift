@@ -9,6 +9,10 @@ import AVFoundation
 @MainActor
 class OpenAIRealtimeSessionManager: ObservableObject {
     @Published var isActive: Bool = false
+    /// The wearer muted the mic without ending the session (a temple tap, Plan GJ P3). Capture
+    /// keeps running; nothing is sent while this is set. Cleared when a session starts or stops,
+    /// so a mute never outlives the session it was made in.
+    @Published var micMuted: Bool = false
     @Published var connectionState: OpenAIRealtimeConnectionState = .disconnected
     @Published var isModelSpeaking: Bool = false
     @Published var userTranscript: String = ""
@@ -102,6 +106,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         }
 
         isActive = true
+        micMuted = false
         sessionIdentity += 1
         errorMessage = nil
 
@@ -146,10 +151,11 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         audioManager.onAudioCaptured = { [weak self] data in
             guard let self else { return }
             Task { @MainActor in
-                if EchoSuppressionPolicy.shouldDropCapturedBuffer(
+                guard EchoSuppressionPolicy.shouldForwardCapturedBuffer(
+                    wearerMuted: self.micMuted,
                     capability: self.audioManager.duplexCapability,
                     iPhoneMode: self.useIPhoneAudioMode,
-                    modelSpeaking: self.realtimeService.isModelSpeaking) { return }
+                    modelSpeaking: self.realtimeService.isModelSpeaking) else { return }
                 self.realtimeService.sendAudio(data: data)
             }
         }
@@ -394,6 +400,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         realtimeService.onToolCall = nil
         jobBridge.sessionEnded()
         isActive = false
+        micMuted = false
         isCameraStreaming = false
         connectionState = .disconnected
         isModelSpeaking = false

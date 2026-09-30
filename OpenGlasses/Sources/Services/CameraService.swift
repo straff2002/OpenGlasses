@@ -263,7 +263,12 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// framed photograph, their record to keep. The bystander blur applies to ambient and automatic
     /// captures, which go through `filteredStill(for:source:)`; a reader that wants the shutter
     /// image filtered asks for it with `source: .photoOnly` on that accessor instead of calling here.
-    func capturePhoto() async throws -> Data {
+    ///
+    /// - Parameter allowPhoneFallback: `false` for a capture the wearer triggered without looking
+    ///   at the phone (a temple tap, Plan GJ): the glasses camera or nothing. A phone in a pocket
+    ///   must never take a hidden shot of the pocket, so this throws `GlassesOnlyCaptureError`
+    ///   instead of swapping cameras.
+    func capturePhoto(allowPhoneFallback: Bool = true) async throws -> Data {
         // When the glasses camera is offline / not connected / not registered, capture from the
         // iPhone back camera instead so the vision tools keep working without glasses. This is
         // also what lets them work on a device (or simulator) where the glasses SDK never came up.
@@ -286,11 +291,18 @@ class CameraService: ObservableObject, FilteredStillProviding {
             }
         } else {
             PrivacyLog.camera(.glasses, .unavailable)
+            guard allowPhoneFallback else { throw GlassesOnlyCaptureError.glassesCameraUnavailable }
             data = try await phoneSource.capturePhoto()
             lastCaptureSource = .phone
         }
         saveToPhotoLibrary(data)
         return data
+    }
+
+    /// Why a glasses-only capture refused (Plan GJ).
+    enum GlassesOnlyCaptureError: LocalizedError {
+        case glassesCameraUnavailable
+        var errorDescription: String? { String(localized: "The glasses camera isn't available.") }
     }
 
     /// Which camera actually served the last successful `capturePhoto()`. Callers use this to

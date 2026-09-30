@@ -906,6 +906,16 @@ struct HardwarePrivacyView: View {
                     info: "Hold your gaze on an object for about two seconds and it's captured to Photos automatically — hands-free, no wake word. Uses on-device object detection while the camera streams; off by default because the detection loop uses extra battery."
                 )
                 NavigationLink {
+                    TempleTapSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Label("Temple Taps", systemImage: "hand.tap")
+                        Spacer()
+                        Text(Config.mediaTriggerEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                NavigationLink {
                     HUDMirrorView(router: appState.hudRouter)
                 } label: {
                     Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")

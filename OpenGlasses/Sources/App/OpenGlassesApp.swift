@@ -223,6 +223,9 @@ struct OpenGlassesApp: App {
         // And the default wake phrase (Plan FY P3.2): a stored former default becomes "avenkin",
         // in the setting and on the personas. Once, behind a flag; a phrase the wearer chose stays.
         Config.migrateWakePhraseToAvenkinIfNeeded()
+        // Temple taps became remappable (Plan GJ): a wearer who had the single-gesture switch on
+        // keeps double tap = start talking; everyone else gets the new defaults. Once, behind a flag.
+        TempleGestureSettingsMigration.run()
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,
@@ -874,6 +877,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// opt-in, each routing to the same entry point as the wake word.
     let alternativeTriggers = AlternativeTriggerService()
     let mediaTrigger = MediaTriggerService()
+    /// What each temple tap does, resolved against the conversation state (Plan GJ).
+    let templeTaps = TempleGestureDispatcher()
+    /// The next utterance goes to the wearer's agent rather than the model (a temple tap assigned
+    /// to "ask my agent"). One-shot; cleared when the conversation ends.
+    var pendingAgentTurn = false
 
     /// Pending item to show in the share sheet
     @Published var pendingShareItem: ShareItem?
@@ -2958,23 +2966,36 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         if Config.anyAlternativeTriggerEnabled { alternativeTriggers.start() }
 
-        // Temple-tap media trigger (Plan CH): a glasses temple double-tap arrives as an AVRCP
-        // next-track command while we hold Now Playing, and routes to the same entry as the wake
-        // word. The claim/release policy keeps the user's audio and realtime sessions first.
-        mediaTrigger.isSuppressed = { [weak self] in
-            guard let self else { return true }
-            return self.inConversation || self.isProcessing || AssistiveModeService.shared.isActive
-        }
+        // Temple taps (Plans CH + GJ): while we hold Now Playing, the glasses' temple taps arrive
+        // as AVRCP commands, decode to one / two / three taps, and are resolved against what the
+        // app is doing right now. The claim policy keeps the user's audio and other-party calls
+        // first; during our own conversations only the handlers stay (session control).
+        templeTaps.performer = self
         mediaTrigger.realtimeSessionActive = { [weak self] in
             (self?.geminiLiveSession.isActive ?? false) || (self?.openAIRealtimeSession.isActive ?? false)
         }
-        mediaTrigger.onTrigger = { [weak self] in
+        mediaTrigger.conversationActive = { [weak self] in
+            guard let self else { return false }
+            return self.inConversation || self.isProcessing
+        }
+        mediaTrigger.onGesture = { [weak self] gesture, command in
             Task { @MainActor in
                 guard let self else { return }
                 self.noteUserInteraction()
-                await self.handleWakeWordDetected(manual: true)
+                await self.templeTaps.handle(gesture, command: command)
             }
         }
+        // Conversation state is not an audio-session notification, so the claim mode is
+        // re-evaluated when it changes. Hopped to the next main-queue turn: `@Published` fires in
+        // willSet, before the new value (and its sibling flags) are stored.
+        let reevaluateTempleClaim: (Bool) -> Void = { [weak self] _ in
+            DispatchQueue.main.async { self?.mediaTrigger.evaluate() }
+        }
+        cancellables.append($isListening.sink(receiveValue: reevaluateTempleClaim))
+        cancellables.append($isProcessing.sink(receiveValue: reevaluateTempleClaim))
+        cancellables.append(wakeWordService.$isListening.sink(receiveValue: reevaluateTempleClaim))
+        cancellables.append(geminiLiveSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
+        cancellables.append(openAIRealtimeSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
         if Config.mediaTriggerEnabled { mediaTrigger.start() }
 
         wakeWordService.onStopCommand = { [weak self] in
@@ -3670,6 +3691,67 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { await returnToWakeWord() }
     }
 
+    /// End the Direct-mode conversation from wherever it is — listening, thinking or speaking —
+    /// the way a temple tap assigned to "hang up" means it (Plan GJ). The same teardown as
+    /// cancelling a response, plus the recorder, which otherwise only stops on silence.
+    func hangUpConversation() async {
+        PrivacyLog.app(.responseCancelled)
+        currentLLMTask?.cancel()
+        currentLLMTask = nil
+        transcriptionService.stopRecording()
+        speechService.stopSpeaking()
+        speechService.stopThinkingSound()
+        isProcessing = false
+        await returnToWakeWord()
+    }
+
+    /// Stop the reply being spoken and listen — a temple-tap barge-in (Plan GJ). Inside a
+    /// conversation this is exactly `stopSpeakingAndResume()`; outside one (a Quick Action's answer)
+    /// it opens a conversation instead of dropping back to the wake word.
+    func interruptSpeechAndListen() async {
+        if inConversation {
+            stopSpeakingAndResume()
+            return
+        }
+        PrivacyLog.app(.playbackStopped)
+        speechService.stopSpeaking()
+        speechService.stopThinkingSound()
+        isProcessing = false
+        await handleWakeWordDetected(manual: true)
+    }
+
+    /// Hand one utterance to the wearer's agent (a temple tap assigned to "ask my agent", Plan
+    /// GJ). Goes through the tool router as a user-origin `execute` call, so the gateway's Agent
+    /// Mode gate and the authorization policy apply exactly as they do to any other delegation.
+    func runAgentTurn(_ query: String) async {
+        guard Config.isOpenClawAgentActive, let router = llmService.nativeToolRouter else {
+            await speechService.speak(String(localized: "Your agent isn't set up."))
+            await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+            return
+        }
+        isProcessing = true
+        speechService.startThinkingSound()
+        TurnRecorder.beginTurn()
+        let outcome = await router.execute(.root(
+            name: "execute",
+            arguments: ToolArguments(["task": query]),
+            origin: .user))
+        speechService.stopThinkingSound()
+        let reply = outcome.text
+        lastResponse = reply
+        llmService.recordExternalExchange(user: query, assistant: reply)
+        if Config.conversationPersistenceEnabled {
+            conversationStore.appendMessage(role: "assistant", content: reply)
+        }
+        isProcessing = false
+        startStopListener()
+        TurnRecorder.handOffToSpeech()
+        await speechService.speak(reply)
+        stopStopListener()
+        TurnRecorder.endTurn()
+        await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+    }
+
     // MARK: - Manual figures (Plan EK)
 
     /// What the figure sheet is showing, or nil when it is closed. Identified by the citation, so
@@ -4295,7 +4377,13 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    func captureAndAnalyzePhoto() async {
+    /// - Parameter glassesOnly: a temple tap (Plan GJ) — the glasses camera or nothing: no
+    ///   reconnect wait, no phone-camera screen, no phone-camera capture.
+    func captureAndAnalyzePhoto(glassesOnly: Bool = false) async {
+        if glassesOnly && !isConnected {
+            errorMessage = String(localized: "The glasses camera isn't available.")
+            return
+        }
         if !isConnected {
             // Recheck before surrendering to the phone camera: the flag can be stale (auto-
             // sleep fired, a Disconnect tap, a dropped link) while the glasses sit on the
@@ -4317,7 +4405,7 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.mark(.commit)
         do {
             let grabStartedAt = Date()
-            let photoData = try await cameraService.capturePhoto()
+            let photoData = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
             TurnRecorder.addFrameGrabTime(since: grabStartedAt)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -4443,7 +4531,8 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    func capturePhotoFromGlasses() async {
+    /// - Parameter glassesOnly: a temple tap (Plan GJ) — never the phone-camera fallback.
+    func capturePhotoFromGlasses(glassesOnly: Bool = false) async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
             return
@@ -4451,7 +4540,7 @@ class AppState: ObservableObject, AppStateProtocol {
         do {
             // The data is discarded on purpose: `capturePhoto()` saves every capture to the
             // "Glasses" album itself, and this path only reports that it landed.
-            _ = try await cameraService.capturePhoto()
+            _ = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
             // Restore audio for wake word if in direct mode
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -5531,6 +5620,14 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
 
+        // A temple tap assigned to "ask my agent" opened this turn (Plan GJ): the utterance goes to
+        // the agent. After the stop/goodbye handlers, so those still end the conversation.
+        if pendingAgentTurn {
+            pendingAgentTurn = false
+            await runAgentTurn(query)
+            return
+        }
+
         // Classify the request before deciding how to handle it
         let turnCount = conversationStore.threads
             .first(where: { $0.id == conversationStore.activeThreadId })?
@@ -6564,6 +6661,7 @@ class AppState: ObservableObject, AppStateProtocol {
         inConversation = false
         activePersona = nil
         manuallyTriggered = false
+        pendingAgentTurn = false
         wakeWordService.listenForStop = false
         // Resume podcasts/music after active listening
         let resumedMedia = nowPlayingAtStart

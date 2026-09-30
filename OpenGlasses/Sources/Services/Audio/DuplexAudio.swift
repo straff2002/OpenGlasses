@@ -79,4 +79,18 @@ enum EchoSuppressionPolicy {
         guard capability == .halfDuplex else { return false }
         return modelSpeaking
     }
+
+    /// Whether a captured mic buffer goes to the model at all (Plan GJ P3). The wearer's own mute
+    /// (a temple tap mid-session) wins over everything: capture keeps running so unmuting is
+    /// instant, the session stays connected, and not one buffer is sent while muted.
+    static func shouldForwardCapturedBuffer(
+        wearerMuted: Bool,
+        capability: DuplexAudioCapability,
+        iPhoneMode: Bool,
+        modelSpeaking: Bool
+    ) -> Bool {
+        guard !wearerMuted else { return false }
+        return !shouldDropCapturedBuffer(capability: capability, iPhoneMode: iPhoneMode,
+                                         modelSpeaking: modelSpeaking)
+    }
 }
