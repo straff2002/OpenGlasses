@@ -43,7 +43,7 @@ final class AircraftOverheadTool: NativeTool {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
-        request.setValue("OpenGlasses", forHTTPHeaderField: "User-Agent")
+        request.setValue("Avenkin", forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

@@ -261,7 +261,7 @@ final class AgentArchiveExportLifecycleTests: XCTestCase {
         // implementation put it: nothing outside the export root mentions the canary.
         let temp = FileManager.default.temporaryDirectory
         let strays = (try? FileManager.default.contentsOfDirectory(atPath: temp.path)) ?? []
-        XCTAssertFalse(strays.contains { $0.hasPrefix("openglasses-export-") },
+        XCTAssertFalse(strays.contains { $0.hasPrefix("avenkin-export-") },
                        "staging must not be built in the shared temporary directory")
     }
 

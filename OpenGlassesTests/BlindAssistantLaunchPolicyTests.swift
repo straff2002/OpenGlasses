@@ -75,7 +75,7 @@ final class BlindAssistantLaunchPolicyTests: XCTestCase {
         let decision = Policy.decide(ready { $0.microphoneGranted = false })
         XCTAssertEqual(decision, .skip(.microphonePermissionOff))
         XCTAssertEqual(decision.announcement,
-                       "Not starting the assistant: microphone permission is off. Turn it on in iOS Settings, under OpenGlasses.")
+                       "Not starting the assistant: microphone permission is off. Turn it on in iOS Settings, under Avenkin.")
     }
 
     func testSpeechPermissionOff() {
@@ -88,7 +88,7 @@ final class BlindAssistantLaunchPolicyTests: XCTestCase {
         let gemini = Policy.decide(ready { $0.providerConfigured = false })
         XCTAssertEqual(gemini, .skip(.providerNotConfigured(.gemini)))
         XCTAssertEqual(gemini.announcement,
-                       "Not starting the assistant: there's no Gemini API key yet. Add one in OpenGlasses settings.")
+                       "Not starting the assistant: there's no Gemini API key yet. Add one in Avenkin settings.")
 
         let openAI = Policy.decide(ready {
             $0.providerConfigured = false
@@ -96,7 +96,7 @@ final class BlindAssistantLaunchPolicyTests: XCTestCase {
         })
         XCTAssertEqual(openAI, .skip(.providerNotConfigured(.openAIRealtime)))
         XCTAssertEqual(openAI.announcement,
-                       "Not starting the assistant: there's no OpenAI API key yet. Add one in OpenGlasses settings.")
+                       "Not starting the assistant: there's no OpenAI API key yet. Add one in Avenkin settings.")
     }
 
     // MARK: - Audio-only starts

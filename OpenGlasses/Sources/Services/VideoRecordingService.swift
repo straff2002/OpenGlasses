@@ -479,7 +479,7 @@ class VideoRecordingService: ObservableObject {
                 ====================
                 Date: \(dateFormatter.string(from: recordingStartDate ?? Date()))
                 Duration: \(formattedDuration)
-                Source: OpenGlasses Smart Glasses Recording
+                Source: Avenkin Smart Glasses Recording
 
                 ---
 

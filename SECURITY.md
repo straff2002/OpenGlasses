@@ -1,6 +1,6 @@
 # Security policy
 
-OpenGlasses runs on a camera and a microphone you wear on your face. A defect here does not leak
+Avenkin runs on a camera and a microphone you wear on your face. A defect here does not leak
 a database row; it leaks a room. Reports are welcome and taken seriously.
 
 ## Reporting a vulnerability

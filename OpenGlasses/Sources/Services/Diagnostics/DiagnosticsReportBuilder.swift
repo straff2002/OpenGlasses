@@ -116,7 +116,7 @@ enum DiagnosticsReportBuilder {
         let selfTest = snapshot.selfTestSummary.map(clean)
         let context = contextTable(snapshot, clean: clean)
 
-        let title = "Bug report — OpenGlasses \(snapshot.appVersion) (\(snapshot.buildNumber))"
+        let title = "Bug report — Avenkin \(snapshot.appVersion) (\(snapshot.buildNumber))"
         let fullBody = markdown(context: context, selfTest: selfTest, logLines: logLines, omitted: 0)
 
         let (urlBody, included, omitted) = fitted(

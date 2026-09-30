@@ -71,7 +71,7 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         let app = launch([.freshInstall])
         awaitScreen(app.buttons["Get Started"], named: "The welcome page")
 
-        let welcomeTitle = app.staticTexts["OpenGlasses"].firstMatch
+        let welcomeTitle = app.staticTexts["Avenkin"].firstMatch
         XCTAssertEqual(welcomeTitle.value as? String, "Page 1 of 8",
                        "The welcome page's title does not say where in the flow it sits")
         XCTAssertFalse(app.buttons["Back"].exists,

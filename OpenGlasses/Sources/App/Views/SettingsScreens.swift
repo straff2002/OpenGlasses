@@ -137,7 +137,7 @@ struct VoiceTriggersSettingsScreen: View {
                         get: { Config.silentMode },
                         set: { appState.setPushToTalk($0) }
                     ),
-                    info: "Turns off the always-on wake-word listener so the mic isn't held in the background — fixes conflicts with music/podcasts playing at the same time. Start a conversation on demand instead: the iPhone Action Button (\"Ask OpenGlasses\"), Siri, the home screen widget, the Apple Watch, or a manual mic tap."
+                    info: "Turns off the always-on wake-word listener so the mic isn't held in the background — fixes conflicts with music/podcasts playing at the same time. Start a conversation on demand instead: the iPhone Action Button (\"Ask Avenkin\"), Siri, the home screen widget, the Apple Watch, or a manual mic tap."
                 )
 
                 InfoToggle(
@@ -146,7 +146,7 @@ struct VoiceTriggersSettingsScreen: View {
                         get: { Config.siriAskOpensApp },
                         set: { Config.setSiriAskOpensApp($0) }
                     ),
-                    info: "When you say \"Hey Siri, ask OpenGlasses…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says OpenGlasses isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
+                    info: "When you say \"Hey Siri, ask Avenkin…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says Avenkin isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
                 )
             } header: {
                 Text("Voice")

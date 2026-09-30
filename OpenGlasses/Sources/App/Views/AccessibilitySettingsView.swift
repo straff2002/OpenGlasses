@@ -139,7 +139,7 @@ struct AccessibilitySettingsView: View {
                             SessionAnnouncer.say("Blind Assistant is now the selected live mode.")
                         }
                     }
-                    Button("Open iOS Settings for OpenGlasses") {
+                    Button("Open iOS Settings for Avenkin") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
@@ -149,7 +149,7 @@ struct AccessibilitySettingsView: View {
             } header: {
                 Text("Opening the App")
             } footer: {
-                Text("Starts a Blind Assistant session as soon as you open OpenGlasses, so the first thing you hear is the assistant becoming ready rather than a screen you have to find. It only starts when Blind Assistant is the selected live mode — turning this on never changes that choice for you.\n\nIf something is missing, it says so out loud instead of starting quietly: which permission is off, or that there is no API key yet. Without the camera it still starts, and says it can hear but not see. Stopping a session stops it for good until you ask again — coming back to the app won't restart it.")
+                Text("Starts a Blind Assistant session as soon as you open Avenkin, so the first thing you hear is the assistant becoming ready rather than a screen you have to find. It only starts when Blind Assistant is the selected live mode — turning this on never changes that choice for you.\n\nIf something is missing, it says so out loud instead of starting quietly: which permission is off, or that there is no API key yet. Without the camera it still starts, and says it can hear but not see. Stopping a session stops it for good until you ask again — coming back to the app won't restart it.")
             }
             .onAppear { refreshLaunchStatus() }
 

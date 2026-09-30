@@ -188,7 +188,7 @@ final class TurnLedger: ObservableObject {
     func debugExport(now: Date = Date(),
                      liveMemory: [MemoryContextSnapshot.Route: MemoryContextSnapshot] = [:]) -> String {
         var lines = [
-            "OpenGlasses turn ledger — \(sealed.count) turns sealed, \(inFlightCount) in flight " +
+            "Avenkin turn ledger — \(sealed.count) turns sealed, \(inFlightCount) in flight " +
             "(cap \(maxCount) turns / \(maxBytes) bytes)",
             "Exported \(ISO8601DateFormatter().string(from: now))",
             "",

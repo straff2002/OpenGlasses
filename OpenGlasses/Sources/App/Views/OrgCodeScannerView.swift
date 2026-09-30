@@ -37,7 +37,7 @@ struct OrgCodeScannerView: View {
                         Image(systemName: "camera.fill")
                             .font(.largeTitle)
                             .accessibilityHidden(true)
-                        Text("Camera access is off for OpenGlasses. Turn it on in Settings to scan a code, or open the code with the iPhone Camera app instead.")
+                        Text("Camera access is off for Avenkin. Turn it on in Settings to scan a code, or open the code with the iPhone Camera app instead.")
                             .multilineTextAlignment(.center)
                         Button("Open Settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) {

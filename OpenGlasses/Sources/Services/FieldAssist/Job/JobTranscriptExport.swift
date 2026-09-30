@@ -284,7 +284,7 @@ enum JobTranscriptExport {
         }
 
         var out: [String] = [
-            "OpenGlasses — \(title)",
+            "Avenkin — \(title)",
             "Exported \(format.dateTime(exportedAt)) (\(format.offset(exportedAt)))",
             "",
             preamble,

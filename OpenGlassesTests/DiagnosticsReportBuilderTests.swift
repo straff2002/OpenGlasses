@@ -43,7 +43,7 @@ final class DiagnosticsReportBuilderTests: XCTestCase {
         XCTAssertTrue(report.body.contains("en_NZ"))
         XCTAssertTrue(report.body.contains("Connected — Ray-Ban Meta · 82%"))
         XCTAssertTrue(report.body.contains("Test Model"))
-        XCTAssertEqual(report.title, "Bug report — OpenGlasses 2026.7 (306)")
+        XCTAssertEqual(report.title, "Bug report — Avenkin 2026.7 (306)")
     }
 
     func testDisconnectedGlassesReportedAsSuch() {

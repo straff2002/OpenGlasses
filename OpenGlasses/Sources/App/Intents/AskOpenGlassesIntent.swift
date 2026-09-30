@@ -9,7 +9,7 @@ import AppIntents
 // "listening" showed but zero audio was captured, and the Live Activity was denied with
 // "Target is not foreground").
 struct AskOpenGlassesIntent: AppIntent, AudioRecordingIntent {
-    static var title: LocalizedStringResource = "Ask OpenGlasses"
+    static var title: LocalizedStringResource = "Ask Avenkin"
     static var description = IntentDescription("Start listening for a voice command without the wake word")
 
     static var isDiscoverable: Bool { true }
@@ -42,14 +42,14 @@ struct AskOpenGlassesIntent: AppIntent, AudioRecordingIntent {
         case appNotRunning
 
         var localizedStringResource: LocalizedStringResource {
-            "OpenGlasses is not running. Open the app first."
+            "Avenkin is not running. Open the app first."
         }
     }
 }
 
 /// AppIntent to take a photo and analyze it.
 struct TakePhotoIntent: AppIntent {
-    static var title: LocalizedStringResource = "OpenGlasses Photo"
+    static var title: LocalizedStringResource = "Avenkin Photo"
     static var description = IntentDescription("Take a photo with the glasses and describe what you see")
 
     static var isDiscoverable: Bool { true }
@@ -70,7 +70,7 @@ struct TakePhotoIntent: AppIntent {
         case appNotRunning
 
         var localizedStringResource: LocalizedStringResource {
-            "OpenGlasses is not running. Open the app first."
+            "Avenkin is not running. Open the app first."
         }
     }
 }
@@ -104,7 +104,7 @@ struct OpenGlassesShortcuts: AppShortcutsProvider {
                 "Hey \(.applicationName)",
                 "\(.applicationName) listen"
             ],
-            shortTitle: "Ask OpenGlasses",
+            shortTitle: "Ask Avenkin",
             // The app logo as a custom SF Symbol (Assets: OpenGlassesSymbol.symbolset). The
             // metadata processor embeds referenced custom symbols so system surfaces (Action
             // button pane, Shortcuts) can render them. A "?" on those surfaces is iOS's stale

@@ -194,7 +194,7 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
 
     /// Title we publish while holding the claim — recognisable so `NowPlayingSnapshot` (the
     /// "what's playing?" reader) can filter *us* out instead of reporting our own silence.
-    nonisolated static let sentinelTitle = "OpenGlasses Temple Trigger"
+    nonisolated static let sentinelTitle = "Avenkin Temple Trigger"
 
     /// Whether a Now Playing info dictionary is our own claim rather than real user media.
     nonisolated static func isOwnInfo(_ info: [String: Any]) -> Bool {

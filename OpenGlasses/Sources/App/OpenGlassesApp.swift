@@ -555,7 +555,7 @@ struct OpenGlassesApp: App {
                     appState.setListeningEnabled(storedEnabled)
                 }
                 if appState.listeningEnabled {
-                    appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "OpenGlasses")
+                    appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "Avenkin")
                     appState.updateLiveActivity()
                 }
                 if Config.isPastOnboarding {
@@ -3579,7 +3579,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         if enabled {
             // Restart wake word detection and Live Activity
-            liveActivityManager.start(glassesName: glassesService.deviceName ?? "OpenGlasses")
+            liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
             if glassesConnectionIsLive() {
                 Task { try? await wakeWordService.startListening() }
             }

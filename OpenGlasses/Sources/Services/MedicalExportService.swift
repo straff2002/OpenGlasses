@@ -249,7 +249,7 @@ class MedicalExportService: ObservableObject {
                     .font: UIFont.systemFont(ofSize: 11),
                     .foregroundColor: UIColor.darkGray
                 ]
-                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: OpenGlasses Smart Glasses"
+                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: Avenkin Smart Glasses"
                 meta.draw(at: CGPoint(x: margin, y: margin + 24), withAttributes: metaAttrs)
 
                 // Separator

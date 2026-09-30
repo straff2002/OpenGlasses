@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Privacy manifest for OpenGlasses.
+  Privacy manifest for Avenkin.
 
   Required by Apple for App Store submission alongside the MFi / ExternalAccessory
   integration (the Wearables DAT SDK). The App Store is the app's distribution
@@ -15,7 +15,7 @@
     - Disk space (DeviceInfoTool, .systemFreeSize) -> E174.1
 
   NSPrivacyCollectedDataTypes reflect a source audit of what actually leaves the
-  device. OpenGlasses has no developer-operated backend or user account: every
+  device. Avenkin has no developer-operated backend or user account: every
   transmission is user-directed app functionality sent under the user's own API
   keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
   / etc. for LLM + vision, ElevenLabs for TTS, Perplexity / Tavily / Brave /
@@ -32,7 +32,7 @@
       in-app consent copy covers LLM transmission.
     - Contacts (ContactsTool returns name/phone/email) and Precise Location
       (weather/flight/maps tools) likewise enter LLM context.
-    - "Linked=false" assumes no account system is added later. If OpenGlasses ever
+    - "Linked=false" assumes no account system is added later. If Avenkin ever
       gains sign-in or a first-party backend, revisit every Linked flag.
 -->
 <plist version="1.0">

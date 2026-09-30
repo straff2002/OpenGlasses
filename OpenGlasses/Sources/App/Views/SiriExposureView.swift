@@ -15,7 +15,7 @@ struct SiriExposureView: View {
     var body: some View {
         List {
             Section {
-                Text("Choose what Siri can run. Say \"Run <action> on OpenGlasses\" — or create your own actions below.")
+                Text("Choose what Siri can run. Say \"Run <action> on Avenkin\" — or create your own actions below.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

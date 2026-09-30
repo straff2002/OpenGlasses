@@ -286,7 +286,7 @@ struct OnboardingView: View {
                         .foregroundStyle(accent)
                         .accessibilityHidden(true)
 
-                    Text("OpenGlasses")
+                    Text("Avenkin")
                         .font(.largeTitle.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityValue(pagePosition)
@@ -1142,7 +1142,7 @@ struct OnboardingView: View {
 
     private var permissionsPage: some View {
         VStack(spacing: 0) {
-            pageTitle("Permissions", "OpenGlasses needs a few permissions to work.", page: 4)
+            pageTitle("Permissions", "Avenkin needs a few permissions to work.", page: 4)
 
             List {
                 Section {
@@ -1374,7 +1374,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             pageTitle(
                 "Connect Your Glasses",
-                "Authorize camera access and link OpenGlasses to the Meta AI app.",
+                "Authorize camera access and link Avenkin to the Meta AI app.",
                 page: 5
             )
 
@@ -1394,7 +1394,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "OpenGlassesLogo",
                         title: "Meta AI Integration",
-                        detail: "Links OpenGlasses to your glasses via the Meta AI app",
+                        detail: "Links Avenkin to your glasses via the Meta AI app",
                         granted: metaRegistered
                     ) {
                         await connectToMetaAI()
@@ -1528,7 +1528,7 @@ struct OnboardingView: View {
                         .accessibilityValue(pagePosition)
                         .accessibilityFocused($focusedPage, equals: 7)
 
-                    Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")
+                    Text("Say \"Avenkin\" or tap the mic to start a conversation.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1559,7 +1559,7 @@ struct OnboardingView: View {
             }
 
             pageFooter {
-                primaryButton("Start Using OpenGlasses") {
+                primaryButton("Start Using Avenkin") {
                     completeOnboarding()
                 }
             }

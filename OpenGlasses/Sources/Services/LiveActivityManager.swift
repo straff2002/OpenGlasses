@@ -25,7 +25,7 @@ class LiveActivityManager {
     }
 
     /// Start a new Live Activity. No-op if one is already running or Live Activities are disabled.
-    func start(glassesName: String = "OpenGlasses") {
+    func start(glassesName: String = "Avenkin") {
         // Clean up any stale activities from previous launches
         for activity in Activity<GlassesActivityAttributes>.activities where activity.id != currentActivity?.id {
             Task {

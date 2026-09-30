@@ -14,13 +14,13 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<!-- A job the office sends as an .ogjob attachment (Plan FO P3c). Receive only: the app
 	     opens one, shows it for review and adds it to upcoming jobs on a tap; it never writes
-	     one out. Owner rank, so Mail and Files offer "Open with OpenGlasses". Opened as a copy
+	     one out. Owner rank, so Mail and Files offer "Open with Avenkin". Opened as a copy
 	     (LSSupportsOpeningDocumentsInPlace NO) so the app reads it once and deletes the copy. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>OpenGlasses Job</string>
+			<string>Avenkin Job</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -39,7 +39,7 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.openglasses.app.job</string>
 			<key>UTTypeDescription</key>
-			<string>OpenGlasses Job</string>
+			<string>Avenkin Job</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.json</string>
@@ -181,50 +181,50 @@
 		</dict>
 	</dict>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>OpenGlasses plays music and controls playback hands-free through your glasses.</string>
+	<string>Avenkin plays music and controls playback hands-free through your glasses.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>OpenGlasses uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
+	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>OpenGlasses uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
+	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>OpenGlasses accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
+	<string>Avenkin accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>OpenGlasses accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
+	<string>Avenkin accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>OpenGlasses needs camera access to capture photos and video for the AI to analyze.</string>
+	<string>Avenkin needs camera access to capture photos and video for the AI to analyze.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>OpenGlasses looks up contacts so you can make calls, send messages and address email by name through your glasses.</string>
+	<string>Avenkin looks up contacts so you can make calls, send messages and address email by name through your glasses.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>OpenGlasses reads your health data (steps, workouts) to report fitness activity through your glasses. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
+	<string>Avenkin reads your health data (steps, workouts) to report fitness activity through your glasses. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>OpenGlasses saves workout data from fitness coaching sessions to Apple Health.</string>
+	<string>Avenkin saves workout data from fitness coaching sessions to Apple Health.</string>
 	<key>NSHomeKitUsageDescription</key>
-	<string>OpenGlasses controls your smart home devices hands-free through your glasses.</string>
+	<string>Avenkin controls your smart home devices hands-free through your glasses.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-		<string>OpenGlasses uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
+		<string>Avenkin uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_http._tcp</string>
 			<string>_bonjour._tcp</string>
 		</array>
 		<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OpenGlasses uses your location to provide contextually relevant answers based on where you are.</string>
+	<string>Avenkin uses your location to provide contextually relevant answers based on where you are.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>OpenGlasses uses your location in the background to alert you when you arrive at or leave a place you set a location reminder for.</string>
+	<string>Avenkin uses your location in the background to alert you when you arrive at or leave a place you set a location reminder for.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenGlasses needs microphone access to listen for wake words and transcribe your voice commands.</string>
+	<string>Avenkin needs microphone access to listen for wake words and transcribe your voice commands.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>OpenGlasses reads your step count and walking distance to report daily activity.</string>
+	<string>Avenkin reads your step count and walking distance to report daily activity.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>OpenGlasses saves photos taken with your Ray-Ban Meta glasses to your photo library.</string>
+	<string>Avenkin saves photos taken with your Ray-Ban Meta glasses to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>OpenGlasses accesses your photo library to organize glasses photos into a dedicated album.</string>
+	<string>Avenkin accesses your photo library to organize glasses photos into a dedicated album.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>OpenGlasses creates and manages reminders so you can set them hands-free through your glasses.</string>
+	<string>Avenkin creates and manages reminders so you can set them hands-free through your glasses.</string>
 	<key>NSRemindersUsageDescription</key>
-	<string>OpenGlasses creates and manages reminders so you can set them hands-free through your glasses.</string>
+	<string>Avenkin creates and manages reminders so you can set them hands-free through your glasses.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OpenGlasses uses speech recognition to detect the wake word and transcribe your voice questions for the AI assistant.</string>
+	<string>Avenkin uses speech recognition to detect the wake word and transcribe your voice questions for the AI assistant.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

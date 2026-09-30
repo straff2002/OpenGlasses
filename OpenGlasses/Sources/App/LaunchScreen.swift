@@ -55,7 +55,7 @@ struct LaunchScreen: View {
                 Spacer()
                     .frame(height: 32)
 
-                Text("OpenGlasses")
+                Text("Avenkin")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .foregroundStyle(.primary)
                     .opacity(isAnimating ? 1.0 : 0)

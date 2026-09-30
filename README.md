@@ -1,4 +1,4 @@
-# OpenGlasses
+# Avenkin
 
 ### Look up. Ask anything. Keep going.
 
@@ -16,7 +16,7 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 ### See it. Understand it. Act on it.
 
-Read a sign, ask about a piece of equipment, or extract the details from a business card. OpenGlasses brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
+Read a sign, ask about a piece of equipment, or extract the details from a business card. Avenkin brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
 
 *“What am I looking at?” · “Save this card.” · “Log this receipt.”*
 
@@ -62,7 +62,7 @@ Capture photos and video by voice, broadcast over RTMP, or share a live view in 
 
 ## Your assistant. Your choice.
 
-Use a cloud model, run a model on your own server, or keep the voice loop on your iPhone. OpenGlasses lets you choose the AI, speech recognition, and spoken voice separately—and route different requests to different models.
+Use a cloud model, run a model on your own server, or keep the voice loop on your iPhone. Avenkin lets you choose the AI, speech recognition, and spoken voice separately—and route different requests to different models.
 
 ### Offline AI, right on your iPhone
 
@@ -94,8 +94,8 @@ The documented installation route is a source build on a Mac with Xcode. See [av
 
 1. **Build the app.** Follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
 2. **Choose your AI.** Open **Settings → AI Models** and connect a provider or download a compatible local model.
-3. **Connect your glasses.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in OpenGlasses.
-4. **Start talking.** Enable listening and say **“OpenGlasses”**, or tap the microphone. Try asking about something in front of you.
+3. **Connect your glasses.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in Avenkin.
+4. **Start talking.** Enable listening and say **“Avenkin”**, or tap the microphone. Try asking about something in front of you.
 
 Camera and display features depend on the device and SDK support. Ray-Ban Display has an in-lens display path; **EVEN G2 support is experimental**. See [device notes](docs/CAPABILITIES.md#devices-and-displays) before choosing a setup.
 
@@ -116,6 +116,6 @@ Contributions are welcome—from new tools and integrations to better local infe
 
 Found a security defect? Please report it privately—see [SECURITY.md](SECURITY.md) for the channels, the response targets and the safe-harbour terms.
 
-OpenGlasses is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
+Avenkin is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
 
 Built by [Skunk0](https://github.com/straff2002) at **Skunkworks NZ Ltd**. Independent of Meta and Anthropic.
