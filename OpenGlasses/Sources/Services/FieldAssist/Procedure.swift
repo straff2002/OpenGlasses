@@ -67,9 +67,17 @@ struct Procedure: Codable, Equatable, Identifiable {
         let terminal: Bool
         /// Outcome recorded when a terminal step is reached.
         let outcome: String?
+        /// A terminal step whose outcome only stands once the technician confirms a check — "run a
+        /// full heat cycle … only after the retest passes" (Plan GB P3). Optional in the schema;
+        /// absent means false, and is left out when encoding.
+        let requiresConfirmation: Bool?
+
+        /// Whether completing here needs the technician's confirmation.
+        var needsConfirmation: Bool { terminal && requiresConfirmation == true }
 
         enum CodingKeys: String, CodingKey {
             case id, title, instruction, branches, terminal, outcome, citations
+            case requiresConfirmation = "requires_confirmation"
             case expectedInput = "expected_input"
             case safetyNote = "safety_note"
             case calcRef = "calc_ref"
@@ -87,7 +95,8 @@ struct Procedure: Codable, Equatable, Identifiable {
             branches: [Branch] = [],
             defaultNext: String? = nil,
             terminal: Bool = false,
-            outcome: String? = nil
+            outcome: String? = nil,
+            requiresConfirmation: Bool? = nil
         ) {
             self.id = id
             self.title = title
@@ -100,6 +109,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             self.defaultNext = defaultNext
             self.terminal = terminal
             self.outcome = outcome
+            self.requiresConfirmation = requiresConfirmation
         }
 
         init(from decoder: Decoder) throws {
@@ -115,6 +125,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             defaultNext = try c.decodeIfPresent(String.self, forKey: .defaultNext)
             terminal = try c.decodeIfPresent(Bool.self, forKey: .terminal) ?? false
             outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
+            requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation)
         }
     }
 

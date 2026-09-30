@@ -211,6 +211,9 @@ final class NativeToolRegistry {
             // and a part number is only written down once it has been looked up.
             register(ProposeTaskTool())
             register(TaskTool())
+            // Readings and evidence choices said out loud (Plan GB P3).
+            register(ReadingTool())
+            register(EvidenceTool())
             register(PartsRequestTool())
             // deliver_report stages the finished record for the composer; iOS makes the technician
             // tap Send, which is the human-in-the-loop step rather than an obstacle.

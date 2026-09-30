@@ -83,6 +83,15 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var taskEquipmentScopes: [String: String] = [:]
     var identityEquipmentScopes: [String: String] = [:]
     var procedureEquipmentScope: String?
+    /// The last moment billable time was folded into `billableSeconds` while the job ran — written
+    /// when the app goes to the background, so a relaunch knows what is already counted (Plan GB
+    /// P3). Nil on every session before that existed.
+    var billableCheckpointAt: Date?
+    /// Set when a relaunch found the job running and paused it at the app's last sign of life;
+    /// cleared on resume. What the Job tab says about the time that was not counted.
+    var appClosedPause: AppClosedPause?
+    /// Values the technician read out, with their corrections (Plan GB P3).
+    var spokenReadings: [SpokenReading] = []
 
     func belongsToCurrentEquipment(_ task: Task) -> Bool {
         (taskEquipmentScopes[task.id] ?? "initial") == continuityScope
@@ -180,6 +189,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
+        case billableCheckpointAt, appClosedPause, spokenReadings
     }
 }
 
@@ -242,6 +252,9 @@ extension FieldSession {
         }
         pendingUnitChange = try c.decodeIfPresent(PendingUnitChange.self, forKey: .pendingUnitChange)
         visitedUnits = try c.decodeIfPresent([VisitedUnit].self, forKey: .visitedUnits) ?? []
+        billableCheckpointAt = try c.decodeIfPresent(Date.self, forKey: .billableCheckpointAt)
+        appClosedPause = try c.decodeIfPresent(AppClosedPause.self, forKey: .appClosedPause)
+        spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings) ?? []
     }
 }
 

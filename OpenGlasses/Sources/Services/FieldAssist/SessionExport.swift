@@ -60,7 +60,8 @@ struct SessionExport: Codable, Equatable {
         let recognisedAt: Date
 
         init(_ identity: EquipmentIdentity) {
-            self.model = identity.modelToken
+            // What was said (Plan GB P2); an identity from before that was kept prints as it did.
+            self.model = identity.stated
             self.heading = identity.heading
             self.source = identity.source.rawValue
             self.recognisedAt = identity.recognisedAt

@@ -82,6 +82,7 @@
       "title": "Correct, clear and retest",
       "instruction": "Correct what you found, restore power, and run a full heat cycle on low and high fire. Clear the error history with c in Error Code Recall only after the retest passes, so the record stays for the report.",
       "terminal": true,
+      "requires_confirmation": true,
       "outcome": "resolved",
       "citations": ["error_codes.md"]
     },

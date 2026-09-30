@@ -61,7 +61,15 @@ struct ActiveJobView: View {
                                  clips: clips,
                                  onRecordClip: onRecordClip,
                                  onStopClip: onStopClip,
-                                 onShare: onSharePhotos)
+                                 onShare: onSharePhotos,
+                                 onToggle: { itemId, include in
+                                     // Through the binding's setter — the model's
+                                     // `applyEvidenceSelection` — so the choice is saved on the
+                                     // job, not just drawn (Plan GB P3).
+                                     var chosen = evidenceSelection
+                                     chosen.decide(itemId, included: include)
+                                     evidenceSelection = chosen
+                                 })
             }
             actionsSection
         }

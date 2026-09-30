@@ -2619,6 +2619,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // model seeing it does not help the technician see it (Plan EK P2).
         let figureToken = FieldSessionService.shared.$stagedFigure
             .compactMap { $0 }
+            // A page staged for the model only is not put on the phone (Plan GB P1).
+            .filter(\.presentOnPhone)
             .sink { [weak self] staged in
                 self?.presentManualFigure(staged)
             }

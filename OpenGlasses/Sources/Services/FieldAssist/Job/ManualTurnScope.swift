@@ -102,9 +102,10 @@ enum ManualTurnScope {
     /// Words a job number follows. "work order" is matched as its second word.
     private static let referenceNouns: Set<String> = ["job", "workorder", "wo", "ticket"]
 
-    /// Words that may sit between the job word and its number: "job number 108", "ticket no. 12".
+    /// Words that may sit between the job word and its number: "job number 108", "ticket no. 12",
+    /// "correct the job number to 1011" (Plan GB P1).
     private static let qualifiers: Set<String> = [
-        "number", "no", "num", "nr", "ref", "reference", "id", "is"
+        "number", "no", "num", "nr", "ref", "reference", "id", "is", "to"
     ]
 
     /// In the normalised, apostrophe-free form `JobReferenceClassifier.normalise` produces.
@@ -113,10 +114,12 @@ enum ManualTurnScope {
     /// Adjectives that make a turn about a job when they come right before its noun.
     private static let jobAdjectives: Set<String> = ["new", "next", "another", "different"]
 
-    /// Verbs and states that make a turn naming a job a turn about running it.
+    /// Verbs and states that make a turn naming a job a turn about running it. "Correct",
+    /// "change" and "set" are bookkeeping on the job's own details — "correct the job number to
+    /// 1011" retrieved pages in the field test (Plan GB P1).
     private static let jobActions: Set<String> = [
         "open", "opening", "reopen", "start", "starting", "begin", "create", "close", "closing",
         "end", "ending", "finish", "finishing", "finished", "done", "complete", "completed",
-        "switch", "resume", "wrap"
+        "switch", "resume", "wrap", "correct", "change", "set"
     ]
 }

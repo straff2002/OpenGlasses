@@ -20,7 +20,8 @@ struct ManualFigureSheet: View {
     init(request: AppState.ManualFigureRequest) {
         self.request = request
         _controller = StateObject(wrappedValue: ManualPageController(model: request.sheet,
-                                                                     session: FieldSessionService.shared))
+                                                                     session: FieldSessionService.shared,
+                                                                     origin: request.presenter.figure.origin))
     }
 
     private var model: ManualPageSheetModel { controller.model }
@@ -41,6 +42,7 @@ struct ManualFigureSheet: View {
                 ToolbarItem(placement: .bottomBar) { bottomControls }
             }
             .task { await controller.open() }
+            .onDisappear { controller.close() }
         }
     }
 
@@ -147,6 +149,17 @@ struct ManualFigureSheet: View {
                 }
             }
             Spacer(minLength: 0)
+            // The only way a page becomes "verified" on the record by touch: the technician says
+            // it checked out. The sheet appearing verifies nothing (Plan GB P1).
+            if model.hasContent {
+                Button { controller.confirmChecked() } label: {
+                    Label(controller.currentPageConfirmed ? "Checked" : "Checked against manual",
+                          systemImage: controller.currentPageConfirmed
+                              ? "checkmark.seal.fill" : "checkmark.seal")
+                        .font(.footnote)
+                }
+                .disabled(controller.currentPageConfirmed)
+            }
             if model.canOpenOriginal {
                 Button { Task { await controller.openOriginal() } } label: {
                     Label("Open manufacturer's page", systemImage: "doc.richtext")

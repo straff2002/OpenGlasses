@@ -75,9 +75,15 @@ final class ProcedureRunnerTests: XCTestCase {
         XCTAssertEqual(step.id, "b")
     }
 
-    func testAdvanceIntoTerminalStepCompletes() throws {
+    /// Entering the last step shows it; the next "next" finishes it (Plan GB P3 — completing on
+    /// entry is how a retest step was recorded as resolved before anyone did the retest).
+    func testAdvanceIntoTerminalStepArrivesThenCompletes() throws {
         let runner = try ProcedureRunner(starting: makeProcedure(), logger: makeLogger())
-        guard case .completed(let outcome) = try runner.advance(choice: "y") else {
+        guard case .arrivedAtTerminal(let step) = try runner.advance(choice: "y") else {
+            return XCTFail("Expected to arrive at terminal step c")
+        }
+        XCTAssertEqual(step.id, "c")
+        guard case .completed(let outcome) = try runner.advance(choice: nil) else {
             return XCTFail("Expected completion at terminal step c")
         }
         XCTAssertEqual(outcome, "escalated")
@@ -86,6 +92,9 @@ final class ProcedureRunnerTests: XCTestCase {
     func testReachingResolvedTerminalAfterDefaultPath() throws {
         let runner = try ProcedureRunner(starting: makeProcedure(), logger: makeLogger())
         _ = try runner.advance(choice: "x") // a -> b
+        guard case .arrivedAtTerminal = try runner.advance(choice: nil) else {
+            return XCTFail("Expected to arrive at terminal step d")
+        }
         guard case .completed(let outcome) = try runner.advance(choice: nil) else {
             return XCTFail("Expected completion at terminal step d")
         }

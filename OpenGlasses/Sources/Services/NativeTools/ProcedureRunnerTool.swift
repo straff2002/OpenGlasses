@@ -13,7 +13,12 @@ final class ProcedureRunnerTool: NativeTool {
     session. Actions: 'list' to see available procedures, 'start' to begin one, 'next' to advance \
     (pass 'choice' to pick a branch when the active step offers choices), 'previous' to step back, \
     'repeat' to re-read the current step, 'status' for the current step, 'complete' to finish. \
-    The current step and its branch choices are provided in the system prompt — use those choice ids.
+    Reaching the last step does not finish anything: give the technician its instruction. When the \
+    last step asks for a check (a retest), pass 'confirmed' true on 'complete' only after the \
+    technician says it passed; without it the fix is recorded and a 'Verify: …' task stays open — \
+    never tell them it is resolved before then. Starting a procedure opens a task for it on the \
+    current unit. The current step and its branch choices are provided in the system prompt — use \
+    those choice ids.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -33,10 +38,21 @@ final class ProcedureRunnerTool: NativeTool {
             "outcome": [
                 "type": "string",
                 "description": "On 'complete': 'resolved' (default), 'escalated', or 'deferred'."
+            ],
+            "confirmed": [
+                "type": "boolean",
+                "description": "On 'complete' at a last step that asks for a check: true only when the technician has said the check passed."
             ]
         ],
         "required": ["action"]
     ]
+
+    /// Session to run against; nil means the shared service. Injectable for tests.
+    private let injectedSession: FieldSessionService?
+
+    init(sessionService: FieldSessionService? = nil) {
+        self.injectedSession = sessionService
+    }
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.fieldAssistActive else {
@@ -46,7 +62,7 @@ final class ProcedureRunnerTool: NativeTool {
             return "No action specified. Use 'list', 'start', 'next', 'previous', 'repeat', 'status', or 'complete'."
         }
 
-        let service = FieldSessionService.shared
+        let service = injectedSession ?? FieldSessionService.shared
         guard service.activeSession != nil || action == "list" else {
             return "No active Field Assist session. Start a session before running a procedure."
         }
@@ -90,6 +106,10 @@ final class ProcedureRunnerTool: NativeTool {
             switch try service.advanceProcedure(choice: choice) {
             case .moved(let step):
                 return present(step)
+            case .arrivedAtTerminal(let step):
+                // The last step's instruction is the next thing the technician does; nothing is
+                // complete yet (Plan GB P3).
+                return "Last step.\n\n" + present(step)
             case .completed(let outcome):
                 return "Procedure complete. Outcome: \(outcome)."
             }
@@ -117,9 +137,14 @@ final class ProcedureRunnerTool: NativeTool {
 
     private func complete(args: [String: Any], service: FieldSessionService) -> String {
         let outcome = (args["outcome"] as? String) ?? "resolved"
+        let confirmed = (args["confirmed"] as? Bool) ?? false
         do {
-            try service.completeProcedure(outcome: outcome)
-            return "Procedure marked '\(outcome)'."
+            let result = try service.completeProcedure(outcome: outcome, confirmed: confirmed)
+            if let open = result.openVerification {
+                return "The fix is recorded, and '\(open)' stays open on the job until the technician "
+                    + "confirms it. \(VerificationRequirement.notYetVerified)"
+            }
+            return "Procedure marked '\(result.outcome)'."
         } catch {
             return "Could not complete: \(error.localizedDescription)"
         }
@@ -134,7 +159,10 @@ final class ProcedureRunnerTool: NativeTool {
         if let note = step.safetyNote { lines.append("⚠️ SAFETY: \(note)") }
         lines.append("Step — \(step.title)")
         lines.append(step.instruction)
-        if step.terminal {
+        if step.needsConfirmation {
+            lines.append("(Last step. It needs the technician's confirmation that the check passed: call "
+                         + "'complete' with confirmed true once they say so. \(VerificationRequirement.notYetVerified))")
+        } else if step.terminal {
             lines.append("(Terminal step — call 'complete' with outcome '\(step.outcome ?? "resolved")'.)")
         } else if step.branches.isEmpty {
             lines.append("(Call 'next' to continue.)")

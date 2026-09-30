@@ -150,12 +150,16 @@ struct JobTabModel {
         /// How many photos the job has collected so far (Plan FO P2a). Shown on the page, and
         /// what decides whether closing puts the evidence review in front of the technician.
         let photoCount: Int
+        /// "Paused when the app closed at 5:18 PM; 2 minutes not counted." — set when a relaunch
+        /// found the job running and paused it at the app's last sign of life (Plan GB P3).
+        var appClosedNote: String? = nil
 
         var pauseButtonTitle: String { isPaused ? "Resume job" : "Pause job" }
 
         /// What pausing means, said plainly: this is the billing clock, not the microphone.
         var pauseFootnote: String {
-            isPaused
+            if isPaused, let appClosedNote { return appClosedNote }
+            return isPaused
                 ? "Paused — time on the job has stopped counting."
                 : "Time on the job is counting."
         }
@@ -398,11 +402,14 @@ struct JobTabModel {
             startedLine: "Started \(session.startedAt.formatted(date: .omitted, time: .shortened))",
             elapsedLine: Self.elapsed(record: record, session: session),
             elapsedSpoken: "Time on the job, \(Self.elapsed(record: record, session: session))",
-            currentUnit: session.equipment?.modelToken,
+            currentUnit: Self.currentUnitLabel(of: session),
             visitedUnits: units,
             hasConversation: flow.boundThreadId != nil,
             hasRecord: record != nil,
-            photoCount: host.jobMedia.count)
+            photoCount: host.jobMedia.count,
+            appClosedNote: session.appClosedPause.map {
+                BillableClock.note(pausedAt: $0.pausedAt, uncountedSeconds: $0.uncountedSeconds)
+            })
     }
 
     /// Time on the job, from the record's own arithmetic and nothing else.
@@ -418,15 +425,28 @@ struct JobTabModel {
         return WorkRecord.minutesPhrase(minutes: record.billableMinutes)
     }
 
-    /// The current machine first, then every other unit the job has been on, without repeats.
+    /// The current machine first, then every other unit the job has been on, without repeats —
+    /// read off the unit ledger, the same one the report groups its work by (Plan GB P2), so the
+    /// tab and the record name the same machines the same way.
     private func visitedUnitNames(of session: FieldSession) -> [String] {
+        let ledger = UnitLedger(session: session)
         var seen = Set<String>()
         var names: [String] = []
-        for token in [session.equipment?.modelToken].compactMap({ $0 })
-            + session.visitedUnits.map(\.modelToken) where seen.insert(token).inserted {
-            names.append(token)
+        let current = Self.currentUnitLabel(of: session)
+        for label in [current].compactMap({ $0 })
+            + ledger.units.filter({ $0.scope != session.continuityScope }).map(\.label)
+        where seen.insert(label).inserted {
+            names.append(label)
         }
         return names
+    }
+
+    /// The machine the job is on now, as the ledger names it: what the technician said, and the
+    /// vault section beside it when that differs.
+    private static func currentUnitLabel(of session: FieldSession) -> String? {
+        guard session.equipment != nil else { return nil }
+        return UnitLedger(session: session).units.first { $0.scope == session.continuityScope }?.label
+            ?? session.equipment?.stated
     }
 
     // MARK: - Questions
@@ -492,9 +512,9 @@ struct JobTabModel {
     func closeJob(outcome: FieldSession.Outcome = .resolved,
                   evidence: EvidenceSelection? = nil) throws -> (session: FieldSession, record: WorkRecord?) {
         if let evidence { host.setEvidenceSelection(evidence) }
-        // The organisation's rule, checked here rather than in the sheet: every route that closes
-        // a job comes through this one method, so a screen that forgot to ask cannot close past it
-        // (Plan FO P2c).
+        // The organisation's rule, checked here as well as in the flow's close sequence, so the
+        // record is not taken for a close that is about to be refused (Plan FO P2c). The flow is
+        // the chokepoint every route shares — voice included (Plan GB P3).
         if case .blocked(let reason) = SignOffPolicy.decide(signOff: host.activeSession?.signOff,
                                                             required: host.customerSignOffRequired) {
             throw FieldSessionError.customerSignOffRequired(reason)

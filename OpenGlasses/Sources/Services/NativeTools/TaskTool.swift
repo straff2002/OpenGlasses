@@ -45,6 +45,10 @@ final class TaskTool: NativeTool {
                 "type": "string",
                 "description": "For 'done' / 'abandon': what the technician said they did, in their words."
             ],
+            "verified": [
+                "type": "boolean",
+                "description": "For 'done': true only when the technician says the check the fix waits on passed (a retest). Closing a 'Verify: …' task needs it."
+            ],
             "read_back": [
                 "type": "boolean",
                 "description": "Read the whole job back: equipment, tasks by status with their evidence, parts, pages verified and time."
@@ -166,11 +170,18 @@ final class TaskTool: NativeTool {
                 + "Say \"add a task: …\" to record what you did."
         }
         let note = (args["completion_note"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let verified = (args["verified"] as? Bool) ?? false
         do {
             let closed = verb == "done"
-                ? try session.completeTask(id: task.id, note: note)
+                ? try session.completeTask(id: task.id, note: note, confirmed: verified)
                 : try session.abandonTask(id: task.id, note: note)
             var line = verb == "done" ? "Closed \(closed.title) as done." : "Marked \(closed.title) abandoned."
+            // A fix whose check is still owed is done, not resolved (Plan GB P3).
+            if verb == "done", let owed = session.activeSession?.openVerifications
+                .first(where: { $0.verification == closed.verification && $0.id != closed.id }) {
+                line += " '\(owed.title)' stays open until the technician confirms it. "
+                    + VerificationRequirement.notYetVerified
+            }
             if let note, !note.isEmpty { line += " Noted: \(note)." }
             if !closed.parts.isEmpty {
                 line += " Parts on it: " + closed.parts.map(\.number).joined(separator: ", ") + "."
@@ -198,6 +209,10 @@ final class TaskTool: NativeTool {
             return session.task(id: id) ?? session.activeSession?.tasks.first {
                 $0.title.lowercased() == id.lowercased()
             }
+        }
+        // "The retest passed": the check still owed, when nothing else is named (Plan GB P3).
+        if (args["verified"] as? Bool) == true, let owed = session.activeSession?.openVerifications.last {
+            return owed
         }
         if preferringActive {
             return session.activeTask ?? session.latestRecommendation

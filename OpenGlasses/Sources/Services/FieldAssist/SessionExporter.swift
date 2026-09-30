@@ -205,7 +205,7 @@ enum SessionExporter {
         // What the technician chose at close (Plan FO P2a). Applied to the reconstructed list
         // rather than replacing it: every photo the job took stays in the audit JSON, and what the
         // selection adds is whether each one travelled and how it was marked.
-        if let selection = session.evidenceSelection, selection.reviewed {
+        if let selection = EvidenceSelectionPolicy.effective(session.evidenceSelection) {
             photos = photos.map { photo in
                 let entry = selection.entry(for: photo.path)
                 return .init(timestamp: photo.timestamp, path: photo.path,
@@ -265,7 +265,7 @@ enum SessionExporter {
     /// work record is: the catalogue is what the review edited and what the selection refers to,
     /// so a reconstruction from events could disagree with the decision the technician made.
     static func clipRefs(session: FieldSession, plan: ClipDeliveryPlan) -> [SessionExport.ClipRef] {
-        let selection = session.evidenceSelection
+        let selection = EvidenceSelectionPolicy.effective(session.evidenceSelection)
         let reviewed = selection?.reviewed == true
         return session.media.filter { $0.kind == .clip }.map { clip in
             let entry = reviewed ? selection?.entry(for: clip.id) : nil
@@ -374,7 +374,7 @@ enum SessionExporter {
             // record written before any of this existed — gets the bullet list it has always got,
             // unchanged. A job that *was* reviewed gets what was chosen and nothing else: a
             // technician who deliberately left every picture out has not asked for a list of them.
-            let reviewed = document.workRecord?.evidenceSelection?.reviewed == true
+            let reviewed = EvidenceSelectionPolicy.effective(document.workRecord?.evidenceSelection) != nil
             let plan = document.workRecord?.evidencePlan ?? EvidenceRenderPlan(groups: [])
             if reviewed {
                 if let photosDirectory, !plan.isEmpty {
@@ -781,7 +781,9 @@ struct CitationChecks {
                 if origins[key] == nil {
                     origins[key] = event.payload?["origin"]?.value as? String ?? "chip"
                 }
-            case .pageVerified:
+            case .pageVerified, .pageOpened:
+                // Which route the technician read the page in — opened on request or confirmed
+                // (Plan GB P1). A page the app put up by itself (`pageShown`) is neither.
                 let source = event.payload?["source"]?.value as? String ?? ManualPageRoute.extractedText.rawValue
                 if verifications[key]?.contains(source) != true {
                     verifications[key, default: []].append(source)

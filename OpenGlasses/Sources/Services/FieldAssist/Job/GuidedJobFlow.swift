@@ -119,13 +119,41 @@ final class GuidedJobFlow: ObservableObject {
     }
 
     /// Finish the job, and let its thread go with it.
+    ///
+    /// **The single chokepoint for closing a job** (Plan GB P3): the Job tab and `field_session
+    /// end` both come through here and run `JobCloseSequence` — checks still owed, the evidence
+    /// decision, the organisation's sign-off rule — before the session ends. By voice a question
+    /// comes back as `FieldSessionError.jobCloseHeld` for the model to ask; on the screen a check
+    /// still owed closes the job as deferred, never as resolved.
     @discardableResult
     func closeJob(outcome: FieldSession.Outcome = .resolved) throws -> FieldSession {
+        try closeJob(outcome: outcome, route: .screen)
+    }
+
+    @discardableResult
+    func closeJob(outcome: FieldSession.Outcome, route: JobCloseSequence.Route,
+                  evidence: EvidenceSelection? = nil) throws -> FieldSession {
+        if let evidence { sessions.setEvidenceSelection(evidence) }
+        let session = sessions.activeSession
+        let closeInputs = JobCloseSequence.Inputs(
+            requestedOutcome: outcome,
+            openVerifications: session?.openVerifications.map(\.title) ?? [],
+            evidenceCount: session?.media.count ?? 0,
+            evidenceDecided: EvidenceSelectionPolicy.isDecided(session?.evidenceSelection),
+            signOff: SignOffPolicy.decide(signOff: session?.signOff,
+                                          required: sessions.customerSignOffRequired),
+            route: route)
+        let finalOutcome: FieldSession.Outcome
+        switch JobCloseSequence.decide(closeInputs) {
+        case .proceed(let decided): finalOutcome = decided
+        case .ask(let question): throw FieldSessionError.jobCloseHeld(question)
+        case .refuse(let reason): throw FieldSessionError.customerSignOffRequired(reason)
+        }
         let resolution = JobThreadPolicy.resolve(.jobClosed, inputs())
-        let session = try sessions.endSession(outcome: outcome)
+        let ended = try sessions.endSession(outcome: finalOutcome)
         apply(resolution)
         pendingUnitQuestion = nil
-        return session
+        return ended
     }
 
     /// A number arriving by a route that needs no read-back: typed on the Job tab, or handed to
@@ -190,6 +218,13 @@ final class GuidedJobFlow: ObservableObject {
         // (Plan FO P3b).
         if debrief != nil, await handleDebriefUtterance(text) { return true }
         guard sessions.activeSession != nil else { return false }
+
+        // "Checked" / "that matches the manual" while a page the technician asked for is on
+        // screen verifies that page (Plan GB P1). Recorded, not consumed: the model still hears
+        // the sentence and can acknowledge it.
+        if sessions.openPage != nil, SpokenPageConfirmation.isConfirmation(text) {
+            sessions.confirmOpenPage(.spoken)
+        }
 
         // The evidence review first, and only while it is actually open: "yes" is an answer to a
         // question that is being put right now, and nothing else in this app may claim it.

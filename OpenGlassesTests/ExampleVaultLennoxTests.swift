@@ -193,8 +193,9 @@ final class ExampleVaultLennoxTests: XCTestCase {
         _ = try service.advanceProcedure(choice: nil)
         guard case .moved(let verify2) = try service.advanceProcedure(choice: "stored") else { return XCTFail("expected a move") }
         XCTAssertEqual(verify2.id, "verify_letter")
-        // Reaching the terminal step completes the procedure with its outcome.
-        guard case .completed(let outcome) = try service.advanceProcedure(choice: "match") else { return XCTFail("expected completion") }
+        // Reaching the terminal step shows it; finishing it completes the procedure (Plan GB P3).
+        guard case .arrivedAtTerminal = try service.advanceProcedure(choice: "match") else { return XCTFail("expected the last step") }
+        guard case .completed(let outcome) = try service.advanceProcedure(choice: nil) else { return XCTFail("expected completion") }
         XCTAssertEqual(outcome, "resolved")
         XCTAssertNil(service.activeProcedureTitle)
     }
@@ -206,7 +207,8 @@ final class ExampleVaultLennoxTests: XCTestCase {
         _ = try service.advanceProcedure(choice: "low_switch")     // → check_vent
         _ = try service.advanceProcedure(choice: "clear")          // → check_tubing
         _ = try service.advanceProcedure(choice: "tubing_ok")      // → measure_delta_p
-        guard case .completed(let outcome) = try service.advanceProcedure(choice: "in_range") else { return XCTFail("expected completion") }
+        guard case .arrivedAtTerminal = try service.advanceProcedure(choice: "in_range") else { return XCTFail("expected the last step") }
+        guard case .completed(let outcome) = try service.advanceProcedure(choice: nil) else { return XCTFail("expected completion") }
         XCTAssertEqual(outcome, "switch_or_calibration", "an in-range Delta P ends on the switch/calibration terminal")
 
         // The other branch keeps working the inducer, and "go back" returns to the measurement.
@@ -251,6 +253,9 @@ final class ExampleVaultLennoxTests: XCTestCase {
         XCTAssertTrue(accepted.contains("Starting slp99_pressure_switch_lockout"), accepted)
         _ = try service.advanceProcedure(choice: "low_switch")
         _ = try service.advanceProcedure(choice: "blocked")
+        // The retest step waits for the technician to say it passed (Plan GB P3).
+        XCTAssertEqual(service.activeSession?.tasks.first?.status, .inProgress)
+        _ = try service.completeProcedure(outcome: "resolved", confirmed: true)
         XCTAssertEqual(service.activeSession?.tasks.first?.status, .done)
         XCTAssertEqual(service.activeSession?.tasks.first?.procedureOutcome, "resolved")
 
