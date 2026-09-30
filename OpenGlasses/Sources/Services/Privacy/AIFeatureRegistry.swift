@@ -26,6 +26,7 @@ enum AIFeature: String, CaseIterable {
     case healthSafetyAdvisor
     case firstAidAssist
     case fitnessCoaching
+    case healthSummaries
 
     // Worker safety
     case safetyAssessment
@@ -172,6 +173,18 @@ enum AIFeature: String, CaseIterable {
                           stores: [],
                           dataRetainedWhenDisabled: "Workouts already written to Apple Health stay there — they are the wearer's health record, held by the operating system, and this app cannot and should not silently remove them.",
                           erasure: .unavailable("workouts belong to Apple Health; the wearer deletes them there"))
+
+        case .healthSummaries:
+            return Record(feature: self, title: "Health summaries",
+                          sensitiveCategories: [.health],
+                          disableSwitch: Switch(key: "healthSummariesEnabled",
+                                                isEnabled: { Config.healthSummariesEnabled },
+                                                setEnabled: { Config.healthSummariesEnabled = $0 },
+                                                preexisting: false),
+                          toolNames: ["health_summary"],
+                          stores: [.healthSummaryCache],
+                          dataRetainedWhenDisabled: "The last summary numbers kept for locked-phone answers stay until they expire after 24 hours or are cleared in Settings → Privacy → Health. Apple Health's own data is never touched.",
+                          erasure: .api("HealthSummaryCache.clear()"))
 
         case .safetyAssessment:
             return Record(feature: self, title: "Safety assessment",

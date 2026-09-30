@@ -207,7 +207,7 @@
 	<key>NSContactsUsageDescription</key>
 	<string>Avenkin looks up contacts so you can make calls, send messages and address email by name, hands-free.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Avenkin reads your health data (steps, workouts) to tell you about your fitness activity. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
+	<string>Avenkin reads your heart rate, resting heart rate, sleep, steps and workouts from Apple Health to answer questions like "how did I sleep?" and to tell you about your fitness activity. Only if you turn on "Share Health Data with AI" in Settings are these numbers sent to your chosen AI provider; otherwise Avenkin speaks them to you itself and they stay on your phone.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Avenkin saves workout data from fitness coaching sessions to Apple Health.</string>
 	<key>NSHomeKitUsageDescription</key>

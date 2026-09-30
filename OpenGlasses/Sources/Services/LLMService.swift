@@ -3579,7 +3579,7 @@ class LLMService: ObservableObject {
         "get_weather", "get_datetime", "calculate", "set_timer",
         "flashlight", "brightness", "calendar", "reminder",
         "set_alarm", "step_count", "device_info", "music_control",
-        "where_am_i"
+        "where_am_i", "health_summary"
     ]
 
     /// Record an exchange the LLM didn't produce — tier-0 direct tool answers — so

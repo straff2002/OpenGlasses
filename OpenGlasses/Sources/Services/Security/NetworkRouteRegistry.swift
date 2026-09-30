@@ -446,7 +446,7 @@ enum NetworkRouteRegistry {
     /// a manifest that has stopped describing the app.
     static let manifestDeclarationsWithoutADedicatedRoute: [String: String] = [
         "NSPrivacyCollectedDataTypeFitness":
-            "HealthKit workout and step figures reach a provider inside llmCompletion's tool results rather than on a transport of their own; the route records the clinical half of that payload as healthFact."
+            "HealthKit workout, step, heart-rate and sleep figures reach a provider inside llmCompletion's tool results rather than on a transport of their own, and only while Share Health Data with AI is on; the route records the clinical half of that payload as healthFact."
     ]
 
     /// Every `NSPrivacyCollectedDataType` the registry says the app must declare.

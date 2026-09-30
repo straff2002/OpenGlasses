@@ -41,6 +41,11 @@ extension AircraftOverheadTool { var executionSemantics: ToolExecutionSemantics 
 extension VehicleTool { var executionSemantics: ToolExecutionSemantics { .read() } }
 extension DeviceInfoTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension PedometerTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
+// Reads Health (up to 30 small statistics queries for "usual by now") and may speak the answer
+// itself before returning, so it gets a longer budget than the router default.
+extension HealthSummaryTool {
+    var executionSemantics: ToolExecutionSemantics { .read(.bestEffort, timeout: .seconds(45)) }
+}
 extension ContactsTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension ListNotesTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }
 extension ListSavedLocationsTool { var executionSemantics: ToolExecutionSemantics { .read(.notCancellable) } }

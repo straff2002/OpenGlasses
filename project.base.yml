@@ -141,6 +141,11 @@ targets:
       path: OpenGlasses/OpenGlasses.entitlements
       properties:
         com.apple.developer.homekit: true
+        # Read access for health summaries and the fitness coach's workout history, write access
+        # for its saved workouts. Without it every HKHealthStore authorisation request fails in a
+        # signed build. The App ID must carry the HealthKit capability before an archive signs.
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
         com.apple.developer.carplay-voice-based-conversation: true
         com.apple.developer.kernel.increased-memory-limit: true
         com.apple.security.application-groups:
@@ -148,8 +153,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
-        MARKETING_VERSION: "2026.9"
-        CURRENT_PROJECT_VERSION: "430"
+        MARKETING_VERSION: "2026.10"
+        CURRENT_PROJECT_VERSION: "431"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -251,8 +256,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
-        MARKETING_VERSION: "2026.9"
-        CURRENT_PROJECT_VERSION: "430"
+        MARKETING_VERSION: "2026.10"
+        CURRENT_PROJECT_VERSION: "431"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -289,8 +294,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
-        MARKETING_VERSION: "2026.9"
-        CURRENT_PROJECT_VERSION: "430"
+        MARKETING_VERSION: "2026.10"
+        CURRENT_PROJECT_VERSION: "431"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic

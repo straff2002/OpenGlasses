@@ -45,6 +45,7 @@ struct ToolsSettingsView: View {
             "save_location": "Save Location",
             "list_saved_locations": "Saved Locations",
             "step_count": "Step Counter",
+            "health_summary": "Health Summary",
             "emergency_info": "Emergency Info",
             "calendar": "Calendar",
             "lookup_contact": "Contacts",

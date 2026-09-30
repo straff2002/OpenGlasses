@@ -189,7 +189,7 @@ struct FitnessCoachingTool: NativeTool {
         // user's explicit consent. Gate the read behind an opt-in toggle that
         // defaults off, rather than silently transmitting Health records.
         guard Config.shareHealthDataWithAI else {
-            return "Sharing Apple Health data with the AI is turned off. The user can enable \"Share Health data with AI\" in Settings → Privacy to let me read and discuss their workout history."
+            return "Sharing Apple Health data with the AI is turned off. The user can enable \"Share Health data with AI\" in Settings → Privacy → Health to let me read and discuss their workout history."
         }
 
         guard HKHealthStore.isHealthDataAvailable() else {
