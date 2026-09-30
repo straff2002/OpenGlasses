@@ -6,7 +6,7 @@ extension OfficeManualImport.Prepared {
     /// be in place before a production caller invokes installation. Preparation is not Ready.
     @MainActor
     var vaultImportRequest: VaultLinkInstaller.Request {
-        let receipt = VaultReceipt.make(verification: verification, host: "Avenkin desktop",
+        let receipt = VaultReceipt.make(verification: verification, host: "Avenkin Office",
                                        now: receivedAt, archiveSHA256: archiveSHA256)
         return .init(files: files, receipt: receipt)
     }

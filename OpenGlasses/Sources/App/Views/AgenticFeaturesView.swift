@@ -309,7 +309,7 @@ struct AgenticFeaturesView: View {
                             Label("Start Onboarding", systemImage: "person.crop.circle.badge.questionmark")
                         }
                     } footer: {
-                        Text("The agent will ask you questions to learn about you and customize its personality. Say \"Avenkin\" to begin.")
+                        Text("The agent will ask you questions to learn about you and customize its personality. Say \"\(Config.wakePhraseDisplayName)\" to begin.")
                     }
                 }
 

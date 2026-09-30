@@ -84,6 +84,17 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- The name people learned the app by (Plan FY P1 item 3), so asking Siri for the app by its
+	     old name keeps reaching it after the rename; the phrases themselves follow the display name. -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>OpenGlasses</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>open glasses</string>
+		</dict>
+	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fb-viewapp</string>
@@ -181,7 +192,7 @@
 		</dict>
 	</dict>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Avenkin plays music and controls playback hands-free through your glasses.</string>
+	<string>Avenkin plays music and controls playback hands-free, by voice.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
@@ -193,13 +204,13 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Avenkin needs camera access to capture photos and video for the AI to analyze.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Avenkin looks up contacts so you can make calls, send messages and address email by name through your glasses.</string>
+	<string>Avenkin looks up contacts so you can make calls, send messages and address email by name, hands-free.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Avenkin reads your health data (steps, workouts) to report fitness activity through your glasses. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
+	<string>Avenkin reads your health data (steps, workouts) to tell you about your fitness activity. If you turn on "Share Health Data with AI" in Settings, your workout history may also be sent to your chosen AI provider so the fitness coach can discuss it; it stays on-device otherwise.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Avenkin saves workout data from fitness coaching sessions to Apple Health.</string>
 	<key>NSHomeKitUsageDescription</key>
-	<string>Avenkin controls your smart home devices hands-free through your glasses.</string>
+	<string>Avenkin controls your smart home devices hands-free, by voice.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 		<string>Avenkin uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
 		<key>NSBonjourServices</key>
@@ -216,13 +227,13 @@
 	<key>NSMotionUsageDescription</key>
 	<string>Avenkin reads your step count and walking distance to report daily activity.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Avenkin saves photos taken with your Ray-Ban Meta glasses to your photo library.</string>
+	<string>Avenkin saves the photos and videos you capture to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Avenkin accesses your photo library to organize glasses photos into a dedicated album.</string>
+	<string>Avenkin accesses your photo library to organize the photos you capture into a dedicated album.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Avenkin creates and manages reminders so you can set them hands-free through your glasses.</string>
+	<string>Avenkin creates and manages reminders so you can set them hands-free.</string>
 	<key>NSRemindersUsageDescription</key>
-	<string>Avenkin creates and manages reminders so you can set them hands-free through your glasses.</string>
+	<string>Avenkin creates and manages reminders so you can set them hands-free.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Avenkin uses speech recognition to detect the wake word and transcribe your voice questions for the AI assistant.</string>
 	<key>NSSupportsLiveActivities</key>

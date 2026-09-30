@@ -237,7 +237,7 @@ final class OrgEnrolmentService: ObservableObject {
         } catch {
             reset()
             source = .office
-            stage = .failed("This Avenkin setup file is invalid. Ask your organisation for a new file.")
+            stage = .failed("This Avenkin Office setup file is invalid. Ask your organisation for a new file.")
         }
     }
 

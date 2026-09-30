@@ -281,6 +281,10 @@ struct Config {
         return "openglasses"
     }
 
+    /// The wake phrase as copy shows it ("Say “Avenkin” …"): the configured phrase, never a
+    /// literal, so a hint can never disagree with the setting (Plan FY P1 item 12).
+    static var wakePhraseDisplayName: String { wakePhrase.capitalized }
+
     static func setWakePhrase(_ phrase: String) {
         UserDefaults.standard.set(phrase.lowercased(), forKey: "wakePhrase")
     }

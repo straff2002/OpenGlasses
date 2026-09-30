@@ -67,7 +67,7 @@ final class OfficeManualImportTests: XCTestCase {
         XCTAssertEqual(request.receipt.verification, .signed)
         XCTAssertEqual(request.receipt.publisherId, "fixture-publisher")
         XCTAssertEqual(request.receipt.archiveSHA256, prepared.archiveSHA256)
-        XCTAssertEqual(request.receipt.sourceHost, "Avenkin desktop")
+        XCTAssertEqual(request.receipt.sourceHost, "Avenkin Office")
         XCTAssertFalse(request.receipt.sourceHost.contains("://"))
     }
     #endif

@@ -47,7 +47,7 @@ struct OfficePairingSheet: View {
                 } header: {
                     Text("This phone")
                 } footer: {
-                    Text("Share these public details with your Avenkin office. The phone's private keys stay here.")
+                    Text("Share these public details with Avenkin Office. The phone's private keys stay here.")
                 }
 
                 Section {
@@ -64,7 +64,7 @@ struct OfficePairingSheet: View {
                 } header: {
                     Text("Office to approve")
                 } footer: {
-                    Text("Compare these values with Avenkin on the office computer. The imported file must be signed by the administrator named in your vendor-verified organisation profile.")
+                    Text("Compare these values with Avenkin Office on the office computer. The imported file must be signed by the administrator named in your vendor-verified organisation profile.")
                 }
 
                 Section {
@@ -238,7 +238,7 @@ struct OfficePairingSheet: View {
     private func explanation(for error: Error) -> String {
         if let refusal = error as? OfficePairingService.Refusal {
             switch refusal {
-            case .noDesktopEnrolment: return "Import your organisation's signed Avenkin setup file first."
+            case .noDesktopEnrolment: return "Import your organisation's signed Avenkin Office setup file first."
             case .inactiveLease: return "This organisation's management period is not active. Ask for a renewed setup file."
             case .missingLicence: return "This phone has no matching active organisation licence."
             case .noApprovedOffice: return "Approve a signed office binding on this phone first."

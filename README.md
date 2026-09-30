@@ -8,7 +8,7 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 [Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 
-> **OpenGlasses is becoming Avenkin.** The app is growing into a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Field Assist becomes *Field Assist, powered by Avenkin*. It stays the same app: your settings, API keys, conversations and subscription carry over. [Read the plan](docs/plans/FY-rename-to-avenkin.md).
+> **OpenGlasses is now Avenkin.** The app is growing into a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Field Assist becomes *Field Assist, powered by Avenkin*. It is the same app: your settings, API keys, conversations and subscription carry over, and "OpenGlasses" still reaches it through Siri. [Read the plan](docs/plans/FY-rename-to-avenkin.md).
 
 ---
 

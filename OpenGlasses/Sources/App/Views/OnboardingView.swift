@@ -1528,7 +1528,9 @@ struct OnboardingView: View {
                         .accessibilityValue(pagePosition)
                         .accessibilityFocused($focusedPage, equals: 7)
 
-                    Text("Say \"Avenkin\" or tap the mic to start a conversation.")
+                    // The configured phrase, never a literal, so the hint cannot disagree with
+                    // the setting (Plan FY P1 item 12).
+                    Text("Say \"\(Config.wakePhraseDisplayName)\" or tap the mic to start a conversation.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
