@@ -100,6 +100,35 @@ one on `gpt-5.5` at Medium, each with at least one tool call; the Turn details r
 tokens; the tracker's cost for those turns against the provider's dashboard; and time-to-first-word
 compared with the same models at Automatic.
 
+## Coverage across features (where the route must apply)
+
+Every OpenAI API request in the app funnels through `LLMService.sendOpenAICompatible`
+(`Services/LLMService.swift:2130`), so the route selector is consulted **inside that function**,
+before the URL is built — not at the voice dispatch — and the Responses path is entered from there.
+That one seam covers all of the following; the table records what each surface gets and the tests
+that pin it.
+
+| Surface | Entry | Tools | Route with an explicit level above None | Notes |
+|---|---|---|---|---|
+| Voice turn (wake word, glasses, CarPlay, Siri/App Intents, watch relays) | `sendMessage` → `.openai` case (`:940`) | yes | Responses | The field tester's main path. Cascade (`sendMessageCascading`) wraps it; a Responses 4xx is handled by the route fallback first, a 5xx/429 by the cascade as today |
+| Chat tab, typed or dictated, streaming | `sendTextMessage` → `sendMessageCascading(onToken:)` | yes | Responses, streamed | `streamResponsesTurn` already delivers deltas; `onStreamReset` clears the bubble before the fallback's retry |
+| Photo turns (`capturePhotoAndSend`, `sendPhotoToLLM`, `captureAndAnalyzePhoto`) | `sendMessage(imageData:)` | yes | Responses with `input_image` when `visionEnabled` | Same picture pipeline; with vision off the image is dropped with the existing note |
+| Quick actions and HUD launcher actions | `executeQuickAction` → `sendMessage` | yes | Responses | |
+| Field Assist guided job turns (`field_session`, `manual_lookup`, `vision_assess` tool calls) | the voice/chat turn above | yes | Responses, reasoning replayed across each tool round-trip | GB's job history floor and `APIHistoryBudget` (`:3878`) still select the request history; `RequestContextBudget` adds the capacity guard |
+| Agentic fast tier, cloud agent | `sendCloud(includeTools: hasNativeTools)` (`:1787`, `:3822`) | yes | Responses | Would be silently left on Chat Completions if the hook sat at the voice dispatch — the reason the hook is inside `sendOpenAICompatible` |
+| OpenClaw notification triage and clarification | `sendMessage` | yes | Responses | |
+| Agent notification queue (background) | `sendMessage` | yes | Responses | 120 s request timeout as on the subscription path |
+| Stateless completions (recall summaries, study, memory loop) | `completeStateless` (`:1120`) | no | Chat Completions (Decision 2) | `reasoning_effort` rides there when set |
+| Side calls: `analyzeFrame`, `analyzeFrameStructured`, `completeStructured`, summarisation | their own builders (`:1455-1764`) | no | Chat Completions | Unchanged |
+| Small-context (lean) models | `smallContext` in `sendOpenAICompatible` | as configured | Same selector | The lean prompt is the `instructions`; nothing else differs |
+| HIPAA / medical local-only | `enforceMedicalRemoteBoundary` (`:2131`) | — | Refused before any route | The Responses path keeps the same first line |
+| ChatGPT subscription | `sendChatGPT` | yes | Untouched | Shared translator additions default to today's behaviour |
+| Gemini, Anthropic, Groq, Mistral, xAI, OpenRouter, custom without `/responses` | their paths / `sendOpenAICompatible` | — | Unchanged | Selector returns `otherProvider` / `customHostChat` |
+
+The fake-transport tests exercise three of these through the real `sendOpenAICompatible`: a
+streamed Chat-tab-style turn, a non-streamed voice-style turn with one tool call and reasoning
+replay, and the cloud-agent entry.
+
 ## Verified starting point (`main` @ `2bab2c11`)
 
 - `LLMService.sendOpenAICompatible` (`Services/LLMService.swift:2130`) is the only API-key path for
