@@ -687,12 +687,17 @@ struct Config {
     private static let assistantDisplayNameKey = "assistantDisplayName"
 
     /// The name the wearer chose for their assistant, or `AssistantIdentity.defaultName` when they
-    /// never chose one. Existing installs have no stored key and so keep OpenGlasses with nothing
-    /// written and no onboarding re-run. Re-validated on read, so a hand-edited preference file
-    /// cannot put a control character or a 900-character "name" into a prompt.
+    /// never chose one. Existing installs have no stored key and so follow the default with
+    /// nothing written and no onboarding re-run. Re-validated on read, so a hand-edited preference
+    /// file cannot put a control character or a 900-character "name" into a prompt. A stored former
+    /// default (`AssistantIdentity.legacyDefaultNames`) reads as today's default.
     static var assistantDisplayName: String {
-        AssistantIdentity.sanitized(UserDefaults.standard.string(forKey: assistantDisplayNameKey))
-            ?? AssistantIdentity.defaultName
+        guard let stored = AssistantIdentity.sanitized(
+                UserDefaults.standard.string(forKey: assistantDisplayNameKey)),
+              !AssistantIdentity.isDefaultName(stored) else {
+            return AssistantIdentity.defaultName
+        }
+        return stored
     }
 
     /// Store a typed name. Blank (or whitespace-only) **resets** to the default; a name that is
@@ -704,8 +709,8 @@ struct Config {
         case .success(let name?):
             // Choosing the default name back is the same state as never having chosen one, so it
             // clears the key rather than writing it — "no stored preference" stays the default's
-            // only representation.
-            if name == AssistantIdentity.defaultName {
+            // only representation. A former default is the default too (Plan FY F2).
+            if AssistantIdentity.isDefaultName(name) {
                 resetAssistantDisplayName()
             } else {
                 UserDefaults.standard.set(name, forKey: assistantDisplayNameKey)
@@ -1568,10 +1573,11 @@ struct Config {
            !personas.isEmpty {
             return personas
         }
-        // Migration: create a persona from current config
+        // Migration: create a persona from current config. It carries the product default, which
+        // `AssistantIdentity.resolve` recognises as "not a name anybody picked".
         let migrated = Persona(
             id: UUID().uuidString,
-            name: "OpenGlasses",
+            name: AssistantIdentity.defaultName,
             wakePhrase: wakePhrase,
             alternativeWakePhrases: alternativeWakePhrases,
             modelId: activeModelId,
@@ -1581,6 +1587,42 @@ struct Config {
         let personas = [migrated]
         setSavedPersonas(personas)
         return personas
+    }
+
+    /// UserDefaults flag recording that the one-time assistant-name migration has run.
+    private static let assistantNameMigratedKey = "assistantNameMigratedToAvenkin_v1"
+
+    /// Carry the product default's rename onto what earlier builds stored (Plan FY F2).
+    ///
+    /// Earlier builds created the first-run persona with the literal `"OpenGlasses"`. A saved
+    /// persona still named exactly that is renamed to `AssistantIdentity.defaultName`, so the
+    /// Personas list shows the new name as well as the assistant speaking it; a stored
+    /// `assistantDisplayName` equal to a former default is cleared, which is the default's only
+    /// representation. Every other name — any persona or preference the wearer typed — is left
+    /// exactly as it is. Runs once, behind a stored flag: someone who renames a persona back to
+    /// "OpenGlasses" afterwards keeps it (the plan's accepted edge).
+    ///
+    /// Reads the raw stored personas rather than `savedPersonas`, which would seed a first-run
+    /// persona on a fresh install before onboarding has set anything up.
+    static func migrateAssistantNameToAvenkinIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: assistantNameMigratedKey) else { return }
+
+        if let data = defaults.data(forKey: "savedPersonas"),
+           var personas = try? JSONDecoder().decode([Persona].self, from: data) {
+            var renamed = false
+            for index in personas.indices
+            where AssistantIdentity.legacyDefaultNames.contains(personas[index].name) {
+                personas[index].name = AssistantIdentity.defaultName
+                renamed = true
+            }
+            if renamed { setSavedPersonas(personas) }
+        }
+        if let stored = defaults.string(forKey: assistantDisplayNameKey),
+           AssistantIdentity.legacyDefaultNames.contains(stored) {
+            resetAssistantDisplayName()
+        }
+        defaults.set(true, forKey: assistantNameMigratedKey)
     }
 
     static func setSavedPersonas(_ personas: [Persona]) {

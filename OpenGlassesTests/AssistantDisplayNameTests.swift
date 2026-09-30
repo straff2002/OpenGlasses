@@ -40,12 +40,12 @@ final class AssistantDisplayNameTests: XCTestCase {
 
     // MARK: - Defaults, blank, reset, persistence
 
-    /// An install that predates the preference has no stored key at all, and must read as
-    /// OpenGlasses without anything being written on its behalf — no migration, no re-onboarding.
-    func testAnInstallWithNoStoredNameIsOpenGlassesAndWritesNothing() {
+    /// An install that predates the preference has no stored key at all, and must read as the
+    /// default without anything being written on its behalf — no migration, no re-onboarding.
+    func testAnInstallWithNoStoredNameIsTheDefaultAndWritesNothing() {
         XCTAssertNil(UserDefaults.standard.object(forKey: nameKey))
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
-        XCTAssertEqual(Config.assistantName, "OpenGlasses")
+        XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
+        XCTAssertEqual(Config.assistantName, "Avenkin")
         XCTAssertNil(UserDefaults.standard.object(forKey: nameKey),
                      "reading the name must not create the key")
     }
@@ -53,7 +53,7 @@ final class AssistantDisplayNameTests: XCTestCase {
     /// Skipping the onboarding question is the same code path as never answering it.
     func testSkippedOnboardingKeepsTheDefault() {
         Config.resetAssistantDisplayName()
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+        XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
         XCTAssertNil(UserDefaults.standard.object(forKey: nameKey))
     }
 
@@ -71,36 +71,39 @@ final class AssistantDisplayNameTests: XCTestCase {
         Config.setAssistantDisplayName("Aria")
         for blank in ["", " ", "\t", "   \t "] {
             XCTAssertTrue(Config.setAssistantDisplayName(blank), "blank means default, not an error")
-            XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+            XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
             XCTAssertNil(UserDefaults.standard.object(forKey: nameKey),
                          "a blank name clears the preference rather than storing emptiness")
             Config.setAssistantDisplayName("Aria")
         }
     }
 
-    func testResetReturnsToOpenGlasses() {
+    func testResetReturnsToTheDefault() {
         Config.setAssistantDisplayName("Aria")
         Config.resetAssistantDisplayName()
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+        XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
         XCTAssertNil(UserDefaults.standard.object(forKey: nameKey))
     }
 
     /// Choosing the default name back is indistinguishable from never choosing one, so it must
-    /// leave storage in that same state rather than writing "OpenGlasses" into the key.
+    /// leave storage in that same state rather than writing the default into the key. The former
+    /// default is the default too (Plan FY F2), so typing it is the same choice.
     func testTypingTheDefaultNameClearsTheKey() {
-        Config.setAssistantDisplayName("Aria")
-        XCTAssertTrue(Config.setAssistantDisplayName("OpenGlasses"))
-        XCTAssertNil(UserDefaults.standard.object(forKey: nameKey))
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+        for typed in ["Avenkin", "Open" + "Glasses"] {
+            Config.setAssistantDisplayName("Aria")
+            XCTAssertTrue(Config.setAssistantDisplayName(typed))
+            XCTAssertNil(UserDefaults.standard.object(forKey: nameKey), "\(typed) is a default")
+            XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
+        }
     }
 
     /// A value that could only come from a hand-edited preference file is refused on the way out
     /// too — nothing downstream should ever have to defend against it.
     func testAnUnusableStoredValueReadsAsTheDefault() {
         UserDefaults.standard.set("Ar\nia", forKey: nameKey)
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+        XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
         UserDefaults.standard.set(String(repeating: "a", count: 41), forKey: nameKey)
-        XCTAssertEqual(Config.assistantDisplayName, "OpenGlasses")
+        XCTAssertEqual(Config.assistantDisplayName, "Avenkin")
     }
 
     // MARK: - Bounds and character rules
@@ -262,15 +265,21 @@ final class AssistantDisplayNameTests: XCTestCase {
     }
 
     /// The persona `savedPersonas` migrates into existence carries the product default as its
-    /// name. Nobody chose that, so it must not out-rank a name the wearer did choose.
+    /// name. Nobody chose that, so it must not out-rank a name the wearer did choose — whether it
+    /// carries today's default or the one an earlier build stored (Plan FY F2).
     func testTheMigrationPersonaDoesNotOutrankAChosenName() {
-        let migrated = Persona(id: "p-migrated", name: "OpenGlasses", wakePhrase: "openglasses",
-                               alternativeWakePhrases: [], modelId: "", presetId: "preset-default",
-                               enabled: true)
-        Config.setSavedPersonas([migrated])
-        Config.setActivePersonaId("p-migrated")
-        Config.setAssistantDisplayName("Aria")
-        XCTAssertEqual(Config.assistantName, "Aria")
+        for defaultName in ["Avenkin", "Open" + "Glasses"] {
+            let migrated = Persona(id: "p-migrated", name: defaultName, wakePhrase: "openglasses",
+                                   alternativeWakePhrases: [], modelId: "", presetId: "preset-default",
+                                   enabled: true)
+            Config.setSavedPersonas([migrated])
+            Config.setActivePersonaId("p-migrated")
+            Config.setAssistantDisplayName("Aria")
+            XCTAssertEqual(Config.assistantName, "Aria", "\(defaultName) is a default, not a choice")
+            Config.resetAssistantDisplayName()
+            XCTAssertEqual(Config.assistantName, "Avenkin",
+                           "with no preference the default speaks — never the former one")
+        }
     }
 
     func testRenamingLeavesTheWakePhraseAndItsAlternativesAlone() {

@@ -269,9 +269,11 @@ struct StatusIndicator: View {
         let persona = appState.activePersona
         // No persona selected: the assistant's own name, which the wearer may have chosen. Read
         // through `@AppStorage` so the badge redraws when Settings changes it, and through the
-        // same validator `Config` uses so an unusable stored value still reads as OpenGlasses.
+        // same validator `Config` uses so an unusable stored value, or a former default, still
+        // reads as the default name.
         let name = persona?.name
             ?? AssistantIdentity.sanitized(storedAssistantName)
+                .flatMap { AssistantIdentity.isDefaultName($0) ? nil : $0 }
             ?? AssistantIdentity.defaultName
         let icon = persona?.icon ?? "sparkles"
         let connected = appState.isConnected

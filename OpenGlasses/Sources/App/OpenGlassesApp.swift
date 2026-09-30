@@ -216,6 +216,10 @@ struct OpenGlassesApp: App {
         FieldAssistEntitlement.removeLegacyPreferenceKeys()
         // Carry the retired global small-context switch onto the saved cloud models it applied to.
         Config.migrateSmallContextToPerModelIfNeeded()
+        // Carry the assistant's default name across the rename to Avenkin (Plan FY F2): a persona or
+        // preference still holding the old default takes the new one. Once, behind a flag; a name
+        // the wearer chose is never touched.
+        Config.migrateAssistantNameToAvenkinIfNeeded()
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,

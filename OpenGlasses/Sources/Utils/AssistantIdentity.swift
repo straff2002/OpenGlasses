@@ -17,12 +17,30 @@ import Foundation
 /// **Precedence** (audited 2026-09-16, encoded in `Config.assistantName`):
 /// a selected persona's own name wins over the preference, because a persona is an explicit
 /// identity the wearer chose for that conversation. The one exception is the migration persona
-/// `Config.savedPersonas` creates on first run, which carries the product default `"OpenGlasses"`
-/// — that is not a name anybody picked, so it yields to the preference.
+/// `Config.savedPersonas` creates on first run, which carries the product default — that is not a
+/// name anybody picked, so it yields to the preference. Installs from before the rename to Avenkin
+/// (Plan FY F2) stored the old default, `"OpenGlasses"`, in that persona; `isDefaultName(_:)`
+/// recognises it as a default too, so those installs do not keep speaking under the old name.
 enum AssistantIdentity {
 
     /// The name every install starts with, and the one Reset returns to.
-    static let defaultName = "OpenGlasses"
+    static let defaultName = "Avenkin"
+
+    /// Names earlier builds used as `defaultName`. Stored values equal to one of these were never
+    /// chosen by anybody — they are the product default of their day — so they are treated as the
+    /// default and not as a name the wearer picked. `Config.migrateAssistantNameToAvenkinIfNeeded()`
+    /// rewrites them once; this set keeps the rule true for anything that migration did not reach.
+    ///
+    /// Spelled in pieces on purpose, like `StorageIdentifierGuardTests`: the product rename is a
+    /// find-and-replace of the old name, and written out whole this value would be rewritten to
+    /// the new one, silently turning the migration into a no-op. `AssistantNameMigrationTests` pins it.
+    static let legacyDefaultNames: Set<String> = ["Open" + "Glasses"]
+
+    /// Whether `name` is the default, today's or a former one. Exact match: the default is a
+    /// specific string, and "openglasses" typed in lower case is a name like any other.
+    static func isDefaultName(_ name: String) -> Bool {
+        name == defaultName || legacyDefaultNames.contains(name)
+    }
 
     /// Bound in *user-perceived characters* (grapheme clusters), so an emoji or a combining
     /// sequence counts once. Long enough for a real name in any script, short enough that the
@@ -81,8 +99,9 @@ enum AssistantIdentity {
     /// The name to speak as, given the stored preference and the selected persona's name.
     /// See the precedence note on this type.
     static func resolve(preference: String?, personaName: String?) -> String {
-        if let persona = sanitized(personaName), persona != defaultName { return persona }
-        return sanitized(preference) ?? defaultName
+        if let persona = sanitized(personaName), !isDefaultName(persona) { return persona }
+        guard let preferred = sanitized(preference), !isDefaultName(preferred) else { return defaultName }
+        return preferred
     }
 
     // MARK: - Composition

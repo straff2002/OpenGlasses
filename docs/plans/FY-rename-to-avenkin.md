@@ -467,6 +467,19 @@ OpenGlasses.
    runs once. Known edge: someone who deliberately named a persona "OpenGlasses" is renamed too. That
    is accepted, and they can rename it back.
 
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.defaultName` is `"Avenkin"`, with
+`legacyDefaultNames` and `isDefaultName(_:)`; `resolve`, `Config.assistantDisplayName`, the setter,
+Settings' Reset button and the status badge all use the check, so the old default counts as the
+default wherever a name is compared (typing it is the same as choosing the default). The first-run
+persona, onboarding's placeholder and its "Skip — call it …" button, and Settings' placeholder and
+"Reset to …" button read `defaultName`. `Config.migrateAssistantNameToAvenkinIfNeeded()` runs at
+launch beside the other Config migrations, behind `assistantNameMigratedToAvenkin_v1`: a persona named
+exactly "OpenGlasses" becomes "Avenkin" and a stored display name equal to it is cleared; it reads the
+raw stored personas, so a fresh install is not seeded early. The legacy name is spelled in pieces in
+the source and in `AssistantNameMigrationTests`, so the rename's find-and-replace cannot turn the
+migration into a no-op. Two button titles become format keys ("Skip — call it %@", "Reset to %@"), so
+their translations return with the next catalog sync.
+
 ### F3 — Stop the assistant calling itself a glasses product when there are no glasses
 
 The shipped prompts give the assistant a glasses identity whatever the device:
