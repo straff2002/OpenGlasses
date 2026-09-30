@@ -25,7 +25,7 @@ enum FieldSessionContextSnapshot {
             let at = formatter.string(from: event.timestamp)
             switch event.kind {
             case .userMessage:
-                if let text = event.text {
+                if let text = event.text, TranscriptOriginClassifier.isTechnicianLine(event) {
                     result.append(Entry(id: id, text: "Technician report \(id) at \(at) (unverified transcript): \(text)"))
                 }
             case .captureRecordSaved:

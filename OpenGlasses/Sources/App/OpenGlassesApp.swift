@@ -4157,6 +4157,11 @@ class AppState: ObservableObject, AppStateProtocol {
         switch action.type {
         case .prompt:
             guard let text = action.promptText, !text.isEmpty else { return }
+            // The Field Assist introduction is the app talking to the model, not the technician
+            // talking: the job's log records it as an app instruction (Plan GB P0).
+            if action.id == QuickAction.fieldAssist.id {
+                FieldSessionService.shared.expectAppInstruction(text)
+            }
             speechService.startThinkingSound()
             do {
                 let response = try await llmService.sendMessage(

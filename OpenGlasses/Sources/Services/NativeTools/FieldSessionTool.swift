@@ -321,7 +321,11 @@ final class FieldSessionTool: NativeTool {
             let billing = WorkRecord.billingSummary(
                 seconds: session.billableSeconds, basis: session.billingBasis,
                 minutesPerUnit: session.minutesPerBillingUnit)
-            return "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved."
+            // The job is closed, not its report: `deliver_report` still reaches it from this
+            // conversation (Plan GB P0), and the model is told so rather than left to guess.
+            return "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved. "
+                + "If the technician wants the report sent, call deliver_report now — it sends this "
+                + "closed job's report; do not start or reopen a job to send it."
         } catch {
             return "Could not end session: \(error.localizedDescription)"
         }

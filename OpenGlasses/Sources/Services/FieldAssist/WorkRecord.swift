@@ -216,12 +216,11 @@ struct WorkRecord: Codable, Equatable {
         return tasks(status: .done).flatMap(\.parts).filter { seen.insert($0.number).inserted }
     }
 
-    /// Every page anyone actually put on screen during the visit, task-attached or not.
-    var pagesVerified: [String] {
-        var seen = Set<String>()
-        let all = tasks.flatMap(\.evidence.pagesVerified) + jobEvidence.pagesVerified
-        return all.filter { seen.insert($0).inserted }
-    }
+    /// The visit's manual pages, counted and listed from one set (Plan GB P0).
+    var evidenceRollup: EvidenceRollup { EvidenceRollup(tasks: tasks, jobEvidence: jobEvidence) }
+
+    /// Every page verified during the visit, task-attached or not.
+    var pagesVerified: [String] { evidenceRollup.verifiedPages }
 
     /// Every capture record taken during the visit.
     var readings: [String] {
@@ -267,7 +266,10 @@ struct WorkRecord: Codable, Equatable {
             lines.append(contentsOf: used.map { "  \($0.summary)" })
         }
 
-        if !jobEvidence.isEmpty, let phrase = Self.evidencePhrase(jobEvidence) {
+        // The job's own pages are not counted here: they are listed below with every task's
+        // pages, and a count beside a list drawn from a different set is how job 1011's report
+        // said "5 pages verified" above a list of six (Plan GB P0).
+        if let phrase = evidenceRollup.jobPhrase {
             lines.append("Against the job itself: \(phrase).")
         }
         if !partsRequests.isEmpty {
@@ -372,15 +374,15 @@ struct WorkRecord: Codable, Equatable {
         if let elapsed = task.elapsed {
             parts.append(minutesPhrase(minutes: Int((elapsed / 60.0).rounded())))
         }
-        // The full stop is added only when the last piece does not already end a sentence. A
-        // completion note is the technician's own words and routinely arrives punctuated ("New
-        // trap fitted and tested."), which used to print as "…tested..".
-        let line = parts.joined(separator: ". ")
-        return Self.terminated(line)
+        // Every piece ends its own sentence before the pieces are joined. A completion note is
+        // the technician's own words and routinely arrives punctuated ("New trap fitted and
+        // tested."), and a joiner that added ". " after it printed "airflow.. Note:" in the middle
+        // of a line as well as "…tested.." at its end (Plan GB P0).
+        return parts.map(Self.terminated).joined(separator: " ")
     }
 
     /// End the line with exactly one sentence-ending mark.
-    private static func terminated(_ line: String) -> String {
+    static func terminated(_ line: String) -> String {
         guard let last = line.last else { return line }
         return ".!?".contains(last) ? line : line + "."
     }

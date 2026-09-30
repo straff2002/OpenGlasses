@@ -133,7 +133,9 @@ enum SessionExporter {
         for event in events {
             switch event.kind {
             case .userMessage:
-                if let text = event.text {
+                // The app's own instructions are not the technician's words, including in a
+                // record saved before they were tagged (Plan GB P0).
+                if let text = event.text, TranscriptOriginClassifier.isTechnicianLine(event) {
                     transcript.append(.init(timestamp: event.timestamp, role: "technician", text: text))
                 }
             case .assistantMessage:

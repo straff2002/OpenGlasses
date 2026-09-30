@@ -770,6 +770,31 @@ final class FieldSessionService: ObservableObject {
                               .recordLine(vaultName: name))
     }
 
+    /// A finished job's record, built from the session as it was saved. Nil for an id this phone
+    /// does not hold. The open job's record is `workRecord()`, which counts its running clock.
+    func workRecord(sessionId: String) -> WorkRecord? {
+        guard let session = history.first(where: { $0.id == sessionId }) else { return nil }
+        let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+        return WorkRecord(session: session, vaultName: name,
+                          vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                              .recordLine(vaultName: name))
+    }
+
+    /// Jobs that ended within `window` of `now`, as `ReportTargetResolver` needs them (Plan GB P0).
+    /// Only recent ones are read, because whether a report went is read off each job's own log.
+    /// A cancelled job has no report to send.
+    func recentlyEndedJobs(now: Date = Date(),
+                           window: TimeInterval = ReportTargetResolver.recentWindow)
+        -> [ReportTargetResolver.EndedJob] {
+        history.compactMap { session in
+            guard let endedAt = session.endedAt, session.outcome != .cancelled,
+                  now.timeIntervalSince(endedAt) <= window else { return nil }
+            return ReportTargetResolver.EndedJob(
+                sessionId: session.id, threadId: session.conversationThreadId,
+                endedAt: endedAt, reportSent: reportWasSent(sessionId: session.id))
+        }
+    }
+
     // MARK: Delivery (Plan EM P2)
 
     /// The report waiting for the operator's thumb, or nil when none is.
@@ -817,11 +842,8 @@ final class FieldSessionService: ObservableObject {
                         canSendAttachments: Bool = true,
                         sessionId: String? = nil) -> ReportDelivery {
         let record: WorkRecord?
-        if let sessionId, let session = history.first(where: { $0.id == sessionId }) {
-            let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
-            record = WorkRecord(session: session, vaultName: name,
-                                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: name))
+        if let sessionId, activeSession?.id != sessionId {
+            record = workRecord(sessionId: sessionId)
         } else {
             record = workRecord()
         }
@@ -891,14 +913,37 @@ final class FieldSessionService: ObservableObject {
         if stagedDelivery?.id == request.id { stagedDelivery = nil }
         lastDeliveryCancelled = !outcome.isSent
 
+        // A report sent after its job closed belongs to a finished session (Plan GB P0): its log is
+        // opened on its own directory — the route `recordSignOff` takes — so the send is recorded
+        // where `reportWasSent` reads it, and a second "send the report" knows it went.
+        let finishedLogger: SessionLogger?
+        if activeSession?.id == request.sessionId || deliveryLogger?.session.id == request.sessionId {
+            finishedLogger = nil
+        } else if let stored = history.first(where: { $0.id == request.sessionId }) {
+            finishedLogger = SessionLogger(session: stored,
+                                           root: sessionsRoot.appendingPathComponent(stored.id,
+                                                                                     isDirectory: true))
+        } else {
+            finishedLogger = nil
+        }
+
         if outcome.isSent, !request.partsRequestIds.isEmpty {
             let ids = Set(request.partsRequestIds)
-            mutateSession { session in
+            let markSent: (inout FieldSession) -> Void = { session in
                 for idx in session.partsRequests.indices
                 where ids.contains(session.partsRequests[idx].id)
                     && session.partsRequests[idx].status == .requested {
                     session.partsRequests[idx].status = .sent
                 }
+            }
+            if activeSession?.id == request.sessionId {
+                mutateSession(markSent)
+            } else if let stored = history.first(where: { $0.id == request.sessionId }) {
+                let owner = finishedLogger ?? deliveryLogger
+                    ?? SessionLogger(session: stored,
+                                     root: sessionsRoot.appendingPathComponent(stored.id, isDirectory: true))
+                let updated = owner.updateSession(markSent)
+                history = history.replacingFirst(matching: stored.id, with: updated)
             }
         }
 
@@ -921,7 +966,7 @@ final class FieldSessionService: ObservableObject {
         // The active session's log when this report belongs to it; the log of the session that
         // just ended when a composer outlived it. Never somebody else's log.
         let target = activeSession?.id == request.sessionId ? logger
-            : (deliveryLogger?.session.id == request.sessionId ? deliveryLogger : nil)
+            : (deliveryLogger?.session.id == request.sessionId ? deliveryLogger : finishedLogger)
         target?.append(.init(timestamp: Date(), kind: kind, text: request.subject, payload: payload))
     }
 
@@ -1397,18 +1442,60 @@ final class FieldSessionService: ObservableObject {
         recordConversationTurn(text, sourceID: UUID().uuidString)
     }
 
+    /// The next user-role turn is the app's own instruction, not the technician's words
+    /// (Plan GB P0). Set by the caller that sends it — the Field Assist quick action — immediately
+    /// before the message goes, and consumed by the turn that carries exactly this text.
+    func expectAppInstruction(_ text: String) {
+        pendingAppInstruction = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var pendingAppInstruction: String?
+
     /// Preserve exact reports without interpreting questions as performed work.
+    ///
+    /// An app instruction is logged as what it is — `appInstruction`, never `userMessage` — so no
+    /// transcript can quote the app under the technician's name (Plan GB P0).
     func recordConversationTurn(_ text: String, sourceID: String) {
-        guard let session = activeSession, let logger, !text.isEmpty else { return }
-        if conversationSourceIDs == nil {
-            conversationSourceIDs = Set(logger.readEvents().compactMap { $0.payload?["source_id"]?.value as? String })
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var origin = TranscriptOriginClassifier.origin(of: trimmed)
+        if let pending = pendingAppInstruction, pending == trimmed {
+            origin = .appInstruction
+            pendingAppInstruction = nil
         }
-        guard conversationSourceIDs?.insert(sourceID).inserted == true else { return }
-        logger.append(.init(timestamp: Date(), kind: .userMessage, text: text, payload: [
+        guard let session = activeSession, let logger, !text.isEmpty else { return }
+        guard claimConversationSource(sourceID, logger: logger) else { return }
+        logger.append(.init(timestamp: Date(),
+                            kind: origin == .appInstruction ? .appInstruction : .userMessage,
+                            text: text, payload: [
             "source_id": AnyCodable(sourceID),
             "equipment_scope": AnyCodable(session.continuityScope),
             "task_id": AnyCodable(session.activeTask?.id ?? "")
         ]))
+    }
+
+    /// Log the assistant's final reply to a Direct-mode turn (Plan GB P0), so the job's transcript
+    /// carries both sides and the export's citations — which are read off assistant turns — are
+    /// not empty. Called once per turn with the text that was spoken; the turn's source id keeps a
+    /// retried or re-entered turn from logging its answer twice. The `Source:` lines are passed as
+    /// the answer's citations. Live modes (Gemini Live, OpenAI Realtime) keep what Plan FW says.
+    func recordAssistantReply(_ text: String, sourceID: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard activeSession != nil, let logger, !trimmed.isEmpty else { return }
+        guard claimConversationSource("assistant:" + sourceID, logger: logger) else { return }
+        var payload: [String: AnyCodable] = ["source_id": AnyCodable("assistant:" + sourceID)]
+        let citations = CitationLineParser.parse(trimmed).map(\.label)
+        if !citations.isEmpty { payload["citations"] = AnyCodable(citations) }
+        logger.append(.init(timestamp: Date(), kind: .assistantMessage, text: trimmed, payload: payload))
+    }
+
+    /// Whether a turn's source id is new to this session's log. The first sight claims it.
+    private func claimConversationSource(_ sourceID: String, logger: SessionLogger) -> Bool {
+        if conversationSourceIDs == nil {
+            conversationSourceIDs = Set(logger.readEvents().compactMap {
+                $0.payload?["source_id"]?.value as? String
+            })
+        }
+        return conversationSourceIDs?.insert(sourceID).inserted == true
     }
 
     func continuityContext(turn: String? = nil) -> String? {

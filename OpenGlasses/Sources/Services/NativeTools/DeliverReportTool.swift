@@ -23,8 +23,10 @@ final class DeliverReportTool: NativeTool {
     requests included in the report are marked sent once it goes. Clips chosen at close travel as \
     files of their own where the channel can take them; one that is over that channel's size limit \
     is named in the report and offered through the share sheet instead of being dropped. If the \
-    channel is not allowed for this job, the tool says so and names the ones that are. Requires an \
-    active session.
+    channel is not allowed for this job, the tool says so and names the ones that are. Works on \
+    the open job, or — when none is open — on the job just closed in this conversation, as long as \
+    its report has not gone yet, so "close the job and send the report" works in either order. It \
+    never reopens a closed job.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -50,8 +52,14 @@ final class DeliverReportTool: NativeTool {
     private let resolveContact: (String) -> [String]
     /// Contact-name → email resolution. Injected for the same reason.
     private let resolveEmail: (String) -> [ContactLookupHelper.ResolvedEmail]
+    /// The conversation the request arrived in, for deciding which finished job is meant
+    /// (Plan GB P0). Injected so a test does not need a conversation store.
+    private let thread: () -> ReportTargetResolver.Thread
+    private let now: () -> Date
 
     init(sessionService: FieldSessionService? = nil,
+         thread: @escaping () -> ReportTargetResolver.Thread = { .none },
+         now: @escaping () -> Date = Date.init,
          settings: @escaping () -> DeliverySettings = { DeliverySettings.load() },
          resolveContact: @escaping (String) -> [String] = { name in
              ContactLookupHelper.resolve(name: name).map(\.phoneNumber)
@@ -60,6 +68,8 @@ final class DeliverReportTool: NativeTool {
              ContactLookupHelper.resolveEmails(name: name)
          }) {
         self.injectedSession = sessionService
+        self.thread = thread
+        self.now = now
         self.settings = settings
         self.resolveContact = resolveContact
         self.resolveEmail = resolveEmail
@@ -71,7 +81,18 @@ final class DeliverReportTool: NativeTool {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
-        guard let record = session.workRecord() else {
+        // The open job, or the one just closed in this conversation (Plan GB P0). A finished job's
+        // report is built from the finished session through the same path its page uses.
+        let endedSessionId: String?
+        switch ReportTargetResolver.resolve(active: session.activeSession != nil,
+                                            recentEnded: session.recentlyEndedJobs(now: now()),
+                                            thread: thread(), now: now()) {
+        case .active: endedSessionId = nil
+        case .ended(let sessionId): endedSessionId = sessionId
+        case .refuse(let reason): return reason
+        }
+        let found = endedSessionId.map { session.workRecord(sessionId: $0) } ?? session.workRecord()
+        guard let record = found else {
             return "No active Field Assist session. Start a session — the report is the record of one visit."
         }
 
@@ -98,7 +119,8 @@ final class DeliverReportTool: NativeTool {
                 let delivery = session.reportDelivery(
                     for: channel,
                     canSendAttachments: channel == .messages
-                        ? ReportComposerAvailability.messagesCanAttach : true)
+                        ? ReportComposerAvailability.messagesCanAttach : true,
+                    sessionId: endedSessionId)
                 let request = DeliveryRequest.make(
                     record: record, channel: channel, recipients: recipients,
                     attachments: delivery.attachments,

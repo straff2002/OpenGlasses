@@ -883,6 +883,7 @@ class LLMService: ObservableObject {
         // chain-of-thought for the prompt inspector and return the (already clean) text.
         if provider == .local, let localThink = localLLMService?.lastReasoning {
             lastReasoning = localThink
+            recordFieldAssistantReply(rawResponse)
             return rawResponse
         }
 
@@ -894,7 +895,15 @@ class LLMService: ObservableObject {
             // pass is a length problem), and the only part kept.
             PrivacyLog.model(.reasoningProduced, characters: reasoning.count)
         }
+        recordFieldAssistantReply(spoken)
         return spoken
+    }
+
+    /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a
+    /// job's transcript has both sides. Direct mode only; no-op with no job open.
+    private func recordFieldAssistantReply(_ reply: String) {
+        FieldSessionService.shared.recordAssistantReply(
+            reply, sourceID: fieldConversationSourceID ?? UUID().uuidString)
     }
 
     // MARK: - Model Cascade (BK P2b)

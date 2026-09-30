@@ -398,7 +398,8 @@ final class DeliveryTests: XCTestCase {
         let service = FieldSessionService(sessionsRoot: tempRoot.appendingPathComponent("empty"))
         let tool = DeliverReportTool(sessionService: service, settings: { self.settings() })
         let reply = try await tool.execute(args: [:])
-        XCTAssertTrue(reply.contains("No active Field Assist session"), reply)
+        // No open job and none just closed here (Plan GB P0: a job closed moments ago would do).
+        XCTAssertEqual(reply, ReportTargetResolver.noJobReason)
         XCTAssertNil(service.stagedDelivery)
     }
 

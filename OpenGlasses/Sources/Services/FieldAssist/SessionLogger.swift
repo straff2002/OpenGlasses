@@ -46,6 +46,10 @@ final class SessionLogger {
             case sessionEnded = "session_ended"
             case userMessage = "user_message"
             case assistantMessage = "assistant_message"
+            /// An instruction the app sent to the model on the technician's behalf — the Field
+            /// Assist quick action's introduction (Plan GB P0). Kept in the log, because it
+            /// happened, and out of the transcript, because nobody said it.
+            case appInstruction = "app_instruction"
             case toolCall = "tool_call"
             case photoAttached = "photo_attached"
             /// A length-capped clip was recorded against the job (Plan FO P2b). Separate from
