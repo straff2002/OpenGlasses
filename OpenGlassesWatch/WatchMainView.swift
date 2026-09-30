@@ -107,7 +107,7 @@ struct WatchMainView: View {
                     if connectivity.isConnected {
                         compactActionButton(label: "Sleep", icon: "moon.fill", command: "sleep")
                     } else {
-                        compactActionButton(label: "Connect", icon: "OpenGlassesLogo", command: "connect")
+                        compactActionButton(label: "Connect", icon: "AvenkinMark", command: "connect")
                     }
 
                     // Recent conversations
@@ -437,7 +437,7 @@ struct WatchMainView: View {
             Label {
                 Text(label)
             } icon: {
-                if icon == "OpenGlassesLogo" {
+                if icon == "AvenkinMark" {
                     LogoIcon(size: 14)
                 } else {
                     Image(systemName: icon)

@@ -7,12 +7,12 @@ import UIKit
 /// Shared accent colours used across app, widget, control and watch targets.
 /// Kept here (in the widget folder) so it can be added to every target's Sources
 /// phase without pulling in app-only dependencies like `Config`.
-/// Reusable logo view — uses the `OpenGlassesLogo` template image bundled in each
+/// Reusable logo view — uses the `AvenkinMark` template image bundled in each
 /// target's asset catalog. Tint it with `.foregroundStyle(...)` at the call site.
 struct LogoIcon: View {
     var size: CGFloat = 24
     var body: some View {
-        Image("OpenGlassesLogo")
+        Image("AvenkinMark")
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
