@@ -347,13 +347,17 @@ private struct DiagnosticsReportSheet: View {
                     }
                 }
 
-                OGSection(footer: linkFooter) {
+                OGSection(footer: "Copy or share the report if you'd rather send it another way.") {
+                    // The support page (Plan FY P0 item 7), not an issue tracker: no account needed.
+                    // It opens without the report attached — a static page cannot read one, so
+                    // sending it in the address would only put it in a server log. Email, copy and
+                    // share carry the report.
                     Button {
-                        UIApplication.shared.open(report.issueURL)
+                        UIApplication.shared.open(PublicSite.support)
                     } label: {
                         OGRow(
-                            "Open a GitHub Issue", icon: "arrow.up.right.square", mutedIcon: true,
-                            subtitle: "Needs a GitHub account", showsChevron: false
+                            "Open the Support Page", icon: "arrow.up.right.square", mutedIcon: true,
+                            subtitle: "Other ways to reach us, no account needed", showsChevron: false
                         ) {
                             Image(systemName: "arrow.up.right")
                                 .font(.caption)
@@ -441,10 +445,4 @@ private struct DiagnosticsReportSheet: View {
             : "Masked before you saw it: \(report.redactionHits.joined(separator: ", "))."
     }
 
-    private var linkFooter: LocalizedStringKey {
-        if report.omittedLogLines > 0 {
-            return "A link can't hold the whole log, so \(report.omittedLogLines) older \(report.omittedLogLines == 1 ? "line is" : "lines are") left out of the GitHub issue link. Email, copy or share to send the complete report."
-        }
-        return "Copy or share the report if you'd rather send it another way."
-    }
 }

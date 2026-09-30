@@ -2297,7 +2297,7 @@ class LLMService: ObservableObject {
 
                 // OpenRouter requires additional headers for tracking
                 if provider == .openrouter {
-                    request.setValue("https://github.com/straff2002/OpenGlasses", forHTTPHeaderField: "HTTP-Referer")
+                    request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
                     request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
                 }
 
@@ -2638,7 +2638,7 @@ class LLMService: ObservableObject {
                     request.setValue(authorization, forHTTPHeaderField: "Authorization")
                 }
                 if provider == .openrouter {
-                    request.setValue("https://github.com/straff2002/OpenGlasses", forHTTPHeaderField: "HTTP-Referer")
+                    request.setValue(PublicSite.baseURL.absoluteString, forHTTPHeaderField: "HTTP-Referer")
                     request.setValue("OpenGlasses", forHTTPHeaderField: "X-Title")
                 }
 

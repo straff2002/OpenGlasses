@@ -4,9 +4,10 @@
 changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
-coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). **F1 built
-2026-09-29 (PR pending):** the storage and signing constants renamed to read as keys, values unchanged,
-and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
+coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1 shipped
+([#580](https://github.com/straff2002/OpenGlasses/pull/580)): the storage and signing constants renamed to read as keys, values unchanged,
+and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and the base-URL PR built
+2026-09-30; rename PR next. P1's rename itself and P2–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
 questions answered*), so P1 and P2 are unblocked. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
@@ -393,6 +394,17 @@ or breaks signatures.
    | `github.com/straff2002/OpenGlasses` as OpenRouter `HTTP-Referer` | `LLMService.swift:2056` | A label OpenRouter displays | Point at avenkin.com (with P1 item 5's display labels) |
    | Clone and download URLs | `docs/BUILDING.md:45`, `docs/field-assist-vault-guide.md:61` | Build-from-source and the manual extractor download | Still correct: the repository stays public under its name. Update them only if it is renamed (P4); GitHub redirects them after a rename |
    | PR and commit links | 57 files in `docs/plans/` | History | Leave as they are; they keep resolving, and GitHub redirects them if the repository is ever renamed |
+
+   **Redirects verified 2026-09-30:** each old `straff2002.github.io/OpenGlasses/…` address answers 301
+   to the same path on avenkin.com, and `avenkin.com/skillpacks/catalog.json` answers 200. The base-URL
+   PR shipped (branch `feat/fy-prereqs`): `PublicSite` (`Utils/PublicSite.swift`) derives the privacy,
+   support and about pages, both pack catalogs and the activation directory from `https://avenkin.com`,
+   keeping the paths the redirect preserves; the pack catalogs' `UserDefaults` overrides still work. The
+   OpenRouter `HTTP-Referer` is the base. The report link in Diagnostics & Support opens the support page
+   (no account needed) instead of a GitHub issue, and no longer carries the report in its address.
+   The translations address stays on the repository (it is not served by the site).
+   `PublicSiteGuardTests` pins every derived address under the base at its old path, and fails on any
+   `github.io` or repository address in `OpenGlasses/Sources` outside comments and that one line.
 
 ## P1 — The visible name (one PR)
 

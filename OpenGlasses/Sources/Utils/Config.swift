@@ -2268,12 +2268,12 @@ struct Config {
 
     // MARK: - Skill packs (Plan BX)
 
-    /// Signed catalog index URL. Default is the repo's GitHub Pages deployment (the catalog is a
+    /// Signed catalog index URL. Default is the public site (`PublicSite`; the catalog is a
     /// committed file; publishing is a git push). Enterprises can point at their own index —
     /// whatever serves it must serve the signed envelope shape `SkillPackCatalog.parse` expects.
     static var skillPackCatalogURL: String {
         UserDefaults.standard.string(forKey: "skillPackCatalogURL")
-            ?? "https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json"
+            ?? PublicSite.skillPackCatalog.absoluteString
     }
 
     static func setSkillPackCatalogURL(_ url: String) {
@@ -2283,7 +2283,7 @@ struct Config {
     /// Signed vault-pack catalog URL (Plan EG). Same envelope, same key, a second index file.
     static var vaultPackCatalogURL: String {
         UserDefaults.standard.string(forKey: "vaultPackCatalogURL")
-            ?? "https://straff2002.github.io/OpenGlasses/vaultpacks/catalog.json"
+            ?? PublicSite.vaultPackCatalog.absoluteString
     }
 
     static func setVaultPackCatalogURL(_ url: String) {
