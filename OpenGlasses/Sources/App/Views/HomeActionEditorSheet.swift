@@ -64,7 +64,7 @@ struct HomeActionEditorSheet: View {
                     Text("Kind")
                 } footer: {
                     Text(draft.kind == .photoPrompt
-                         ? "Captures a still through the glasses (or the phone) and sends it with the prompt."
+                         ? "Captures a still from the camera and sends it with the prompt."
                          : "Sends the prompt on its own, exactly as if you had typed it.")
                 }
 

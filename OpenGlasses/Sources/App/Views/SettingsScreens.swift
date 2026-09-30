@@ -753,7 +753,7 @@ struct ConnectionsSettingsScreen: View {
     }
 }
 
-// MARK: - Glasses & Privacy
+// MARK: - Devices & Privacy
 
 /// Hardware, privacy, and medical compliance (always visible, including Simple Mode).
 struct GlassesPrivacySettingsScreen: View {
@@ -802,7 +802,7 @@ struct GlassesPrivacySettingsScreen: View {
                     }
                 }
             } header: {
-                Text("Glasses & Privacy")
+                Text("Devices & Privacy")
             } footer: {
                 Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
             }
@@ -820,7 +820,7 @@ struct GlassesPrivacySettingsScreen: View {
                 Text("One page for the camera picture, what you say, the answer, the voice you hear and any tools running on other machines — each with the destination your settings send it to. It names a mixed setup as mixed, and lists anything that still has to be downloaded before the app could work offline. It describes intended routing; Network Activity, under Advanced, is the separate record of requests the app actually observed.")
             }
         }
-        .navigationTitle("Glasses & Privacy")
+        .navigationTitle("Devices & Privacy")
         .ogFormStyle()
         .onDisappear {
             saveSettings()

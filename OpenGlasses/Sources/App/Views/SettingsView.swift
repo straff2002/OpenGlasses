@@ -1007,7 +1007,7 @@ struct HardwarePrivacyView: View {
                 InfoToggle(
                     title: "Blur Bystander Faces",
                     isOn: $privacyFilterEnabled,
-                    info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
+                    info: "Uses Apple's on-device Vision framework to detect faces in the camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
                 .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
                 ManagedSettingNote(key: .privacyFilterEnabled)

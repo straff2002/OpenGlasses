@@ -117,8 +117,8 @@ struct PromptInspectorView: View {
             name: "Vision & Camera",
             icon: "eye.fill",
             content: visionAutoInjected
-                ? "Auto-injected: tells the AI it can see images from the glasses camera, handle OCR, translation, and object identification."
-                : "Included in your system prompt. A camera frame is attached when a question needs one and the glasses camera is available.",
+                ? "Auto-injected: tells the AI it can see images from the camera, handle OCR, translation, and object identification."
+                : "Included in your system prompt. A camera frame is attached when a question needs one and a camera is available.",
             isPresent: true
         ))
 

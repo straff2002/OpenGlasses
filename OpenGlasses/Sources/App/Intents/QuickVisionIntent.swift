@@ -63,7 +63,7 @@ enum QuickVisionMode: String, AppEnum {
 /// Siri Intent: capture a photo with the glasses and analyze it in a specific mode.
 struct QuickVisionIntent: AppIntent {
     static var title: LocalizedStringResource = "Quick Vision"
-    static var description = IntentDescription("Take a photo with the glasses and analyze it")
+    static var description = IntentDescription("Take a photo and analyze it")
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true
@@ -94,7 +94,7 @@ struct QuickVisionIntent: AppIntent {
 /// Shortcut: "Read this" — OCR + read aloud
 struct ReadTextIntent: AppIntent {
     static var title: LocalizedStringResource = "Read Text"
-    static var description = IntentDescription("Read text visible through the glasses")
+    static var description = IntentDescription("Read text the camera can see")
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true
@@ -118,7 +118,7 @@ struct ReadTextIntent: AppIntent {
 /// Shortcut: "Is this healthy?" — food nutrition analysis
 struct AnalyzeFoodIntent: AppIntent {
     static var title: LocalizedStringResource = "Analyze Food"
-    static var description = IntentDescription("Analyze food nutrition from what the glasses see")
+    static var description = IntentDescription("Analyze food nutrition from what the camera sees")
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true

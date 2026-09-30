@@ -210,6 +210,156 @@ final class BrandNameGuardTests: XCTestCase {
         }
     }
 
+    // MARK: - Glasses copy (Plan FY P2)
+
+    /// D6: the word "glasses" stays only where a feature needs glasses. These are the surfaces a
+    /// phone-only user lives in — onboarding, the Settings hub and its general screens, the Chat
+    /// tab and the conversation list, the model and prompt settings — so a string there that says
+    /// "glasses" fails unless it is listed in `allowed` with the reason the feature needs them.
+    /// The whole sweep, string by string, is the "Sweep 2026-09-30" table under P2 in
+    /// `docs/plans/FY-rename-to-avenkin.md`.
+    enum GlassesCopyGuard {
+        /// A guarded file, or the part of one between two marker lines (the Settings hub shares
+        /// its file with the glasses' own Hardware & Privacy screen, which is not phone-only).
+        struct Surface {
+            let path: String
+            var from: String? = nil
+            var upTo: String? = nil
+        }
+
+        static let surfaces: [Surface] = [
+            Surface(path: "OpenGlasses/Sources/App/Views/OnboardingView.swift"),
+            Surface(path: "OpenGlasses/Sources/App/Views/Chat/"),
+            Surface(path: "OpenGlasses/Sources/App/Views/ConversationPageHeader.swift"),
+            Surface(path: "OpenGlasses/Sources/App/Views/SettingsView.swift",
+                    from: "struct SettingsView: View {", upTo: "// MARK: - Tier Model Picker"),
+            Surface(path: "OpenGlasses/Sources/App/Views/SettingsScreens.swift"),
+            Surface(path: "OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift"),
+            Surface(path: "OpenGlasses/Sources/App/Views/ModelFormView.swift"),
+            Surface(path: "OpenGlasses/Sources/App/Views/PromptInspectorView.swift"),
+        ]
+
+        private static let onboarding = "OpenGlasses/Sources/App/Views/OnboardingView.swift"
+        private static let deviceStep = "The \"Add a device\" step, where glasses are one choice beside this "
+            + "phone and one tap away (P2.2); this phone needs none of it."
+
+        static let allowed: [Allowed] = [
+            Allowed(path: onboarding, snippet: "on your phone, your watch or your glasses.",
+                    reason: "The owner's positioning sentence (P2.1), verbatim: glasses named last, as "
+                        + "one device among three."),
+            Allowed(path: onboarding, snippet: "\"To connect smart glasses, if you use them\"",
+                    reason: "The Bluetooth permission row. Bluetooth is only for glasses, and the row "
+                        + "says so rather than implying the phone needs it."),
+            Allowed(path: onboarding, snippet: "Add glasses now, or whenever you like in Settings.", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "\"Required to stream video from your Meta glasses\"", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "\"Links Avenkin to your glasses via the Meta AI app\"", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "Text(\"Smart glasses\")", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "Text(\"Add smart glasses\")", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "Text(\"Meta glasses, linked through the Meta AI app\")", reason: deviceStep),
+            Allowed(path: onboarding, snippet: "steps for connecting glasses.", reason: deviceStep),
+            Allowed(path: "OpenGlasses/Sources/App/Views/SettingsView.swift", snippet: "?? \"Meta Glasses\"",
+                    reason: "The hub's device card once glasses are added: it names the glasses in "
+                        + "use. A phone-only hub shows This iPhone instead."),
+            Allowed(path: "OpenGlasses/Sources/App/Views/SettingsView.swift",
+                    snippet: "or hands-free with glasses.\\n\\nAvenkin ©",
+                    reason: "The owner's device line (P2.1), verbatim, in the About footer."),
+            Allowed(path: "OpenGlasses/Sources/App/Views/SettingsScreens.swift",
+                    snippet: "Double-tap the glasses temple",
+                    reason: "The temple-tap trigger is a gesture on the glasses themselves."),
+            Allowed(path: "OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift",
+                    snippet: "static let glasses = \"glasses\"",
+                    reason: "A category id the hub routes on, never shown."),
+        ]
+
+        /// Offsets of "glasses" standing as a word (any case) inside `range`. Glued to an
+        /// identifier — `OpenGlassesLogo`, `eyeglasses`, `connect_glasses` — it is a name or a key,
+        /// not copy.
+        static func wordOffsets(in bytes: [UInt8], range: Range<Int>) -> [Int] {
+            let word = Array("glasses".utf8)
+            func isIdentifier(_ byte: UInt8) -> Bool {
+                (byte >= 0x30 && byte <= 0x39) || (byte >= 0x41 && byte <= 0x5A)
+                    || (byte >= 0x61 && byte <= 0x7A) || byte == 0x5F
+            }
+            var found: [Int] = []
+            var index = range.lowerBound
+            while index + word.count <= range.upperBound {
+                let matches = word.indices.allSatisfy { offset in
+                    let byte = bytes[index + offset]
+                    return ((byte >= 0x41 && byte <= 0x5A) ? byte + 0x20 : byte) == word[offset]
+                }
+                if matches {
+                    let before = index > range.lowerBound ? bytes[index - 1] : 0x20
+                    let after = index + word.count < range.upperBound ? bytes[index + word.count] : 0x20
+                    if !isIdentifier(before) && !isIdentifier(after) { found.append(index) }
+                    index += word.count
+                } else {
+                    index += 1
+                }
+            }
+            return found
+        }
+    }
+
+    private func glassesCopyHits() throws -> [Hit] {
+        var found: [Hit] = []
+        for surface in GlassesCopyGuard.surfaces {
+            let paths = surface.path.hasSuffix("/")
+                ? files(under: String(surface.path.dropLast()), extensions: ["swift"])
+                : [surface.path]
+            XCTAssertFalse(paths.isEmpty, "the guarded surface \(surface.path) is gone; update GlassesCopyGuard")
+            for path in paths {
+                let source = try text(path)
+                let bytes = Array(source.utf8)
+                let lines = source.components(separatedBy: "\n")
+                var first = 1, last = lines.count
+                if let from = surface.from {
+                    first = try XCTUnwrap(lines.firstIndex { $0.contains(from) }, "\(path) lost \(from)") + 1
+                }
+                if let upTo = surface.upTo {
+                    last = try XCTUnwrap(lines.firstIndex { $0.contains(upTo) }, "\(path) lost \(upTo)")
+                }
+                for range in BrandRename.swiftLiteralRanges(bytes) {
+                    for offset in GlassesCopyGuard.wordOffsets(in: bytes, range: range) {
+                        let lineNumber = bytes[..<offset].reduce(1) { $1 == 0x0A ? $0 + 1 : $0 }
+                        guard lineNumber >= first, lineNumber <= last else { continue }
+                        found.append(Hit(path: path, lineNumber: lineNumber, line: lines[lineNumber - 1]))
+                    }
+                }
+            }
+        }
+        return found
+    }
+
+    func testPhoneOnlySurfacesSayGlassesOnlyWhereAFeatureNeedsThem() throws {
+        let unexplained = try glassesCopyHits().filter { hit in
+            !GlassesCopyGuard.allowed.contains { $0.matches(hit) }
+        }
+        XCTAssertTrue(unexplained.isEmpty,
+                      "\(unexplained.count) string(s) on a phone-only surface say \"glasses\" (Plan FY "
+                          + "D6). Say the device the feature runs on, or nothing; if the feature needs "
+                          + "glasses, add it to GlassesCopyGuard.allowed with the reason:\n"
+                          + unexplained.map(\.description).joined(separator: "\n"))
+    }
+
+    func testEveryGlassesCopyExceptionIsStillNeeded() throws {
+        let found = try glassesCopyHits()
+        for entry in GlassesCopyGuard.allowed {
+            XCTAssertTrue(found.contains { entry.matches($0) },
+                          "GlassesCopyGuard entry for \(entry.path) (\"\(entry.snippet)\") matches nothing. "
+                              + "Remove it, so the list stays a list of reasons.")
+        }
+    }
+
+    /// P2.2's exit: nothing a first run shows treats a phone-only user as unfinished.
+    func testOnboardingNoLongerTreatsAPhoneOnlyUserAsUnfinished() throws {
+        let onboarding = try text("OpenGlasses/Sources/App/Views/OnboardingView.swift")
+        for phrase in ["no glasses yet", "Connect Your Glasses", "AI assistant for your smart glasses"] {
+            XCTAssertFalse(onboarding.contains(phrase), "onboarding still says \"\(phrase)\"")
+        }
+        XCTAssertTrue(onboarding.contains("primaryButton(\"Use this phone\")"),
+                      "the device step's first answer is this phone")
+    }
+
     // MARK: - The script
 
     /// The repository is what a run of the script produces: running it now would change nothing.

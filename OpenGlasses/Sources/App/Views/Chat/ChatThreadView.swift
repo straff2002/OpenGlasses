@@ -139,7 +139,7 @@ struct ChatThreadView: View {
                 .foregroundStyle(accent)
             Text("Ask anything")
                 .font(.headline)
-            Text("Type below — works with or without your glasses.")
+            Text("Type a message below to start.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -153,10 +153,10 @@ struct EvidenceReviewModel: Equatable {
         switch faceBlur {
         case .live(true):
             return "Faces of anyone else in these \(noun) are blurred before they are saved, so "
-                + "the blur cannot be undone here. Change it under Settings → Glasses & Privacy → "
+                + "the blur cannot be undone here. Change it under Settings → Devices & Privacy → "
                 + "Hardware & Privacy."
         case .live(false):
-            return "Faces in these \(noun) are not blurred. Turn it on under Settings → Glasses & "
+            return "Faces in these \(noun) are not blurred. Turn it on under Settings → Devices & "
                 + "Privacy → Hardware & Privacy — it applies to anything captured from then on."
         case .asRecorded(let blurred, let total):
             if total == 0 || blurred == 0 {

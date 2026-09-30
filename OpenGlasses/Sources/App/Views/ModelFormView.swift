@@ -214,9 +214,9 @@ struct ModelFormView: View {
                 Text("Model")
             } footer: {
                 if !availableModels.isEmpty {
-                    Text("Pick from the list or type a model ID. Turn on Vision to send photos from your glasses to the AI.")
+                    Text("Pick from the list or type a model ID. Turn on Vision to send photos to the AI.")
                 } else {
-                    Text("Turn on Vision to send photos from your glasses to the AI. Leave it off for text-only models.")
+                    Text("Turn on Vision to send photos to the AI. Leave it off for text-only models.")
                 }
             }
 

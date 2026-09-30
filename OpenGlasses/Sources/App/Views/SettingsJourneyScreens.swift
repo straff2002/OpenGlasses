@@ -374,7 +374,7 @@ struct DisplayHUDSettingsScreen: View {
             } header: {
                 Text("In-Lens Display")
             } footer: {
-                Text("These are the same switches as under Glasses & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
+                Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
             }
 
             Section {

@@ -103,7 +103,7 @@ struct ChatListView: View {
         ContentUnavailableView {
             Label("No conversations yet", systemImage: "bubble.left.and.bubble.right")
         } description: {
-            Text("Start a chat — works with or without your glasses.")
+            Text("Start a chat by typing a message.")
         } actions: {
             Button { Task { await startNewChat() } } label: {
                 Label("New Chat", systemImage: "square.and.pencil")
