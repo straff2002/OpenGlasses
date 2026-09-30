@@ -56,17 +56,31 @@ struct SettingsView: View {
         // grouped card of category rows, each with a live value summary, then the
         // Discover section for everything still folded.
         OGScrollPage {
-            OGHeroDeviceCard(
-                title: appState.glassesService.deviceName ?? "Meta Glasses",
-                status: appState.isConnected ? "Connected" : "Not connected",
-                dot: appState.isConnected ? OGTheme.ok : Color.secondary,
-                batteryPercent: appState.glassesService.batteryLevel,
-                chips: [
-                    ("Camera", appState.isConnected),
-                    ("Display", appState.glassesDisplay.hasDisplayCapability),
-                    ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
-                ]
-            )
+            // The device in use (Plan FY P2): the glasses once they are added, and this phone
+            // until then — a phone-only hub never opens on a pair of glasses that are "Not
+            // connected". Glasses are added under Devices & Privacy → Hardware & Privacy.
+            if OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
+                                               glassesAdded: Config.glassesAdded) {
+                OGHeroDeviceCard(
+                    title: "This iPhone",
+                    status: "In use",
+                    dot: OGTheme.ok,
+                    chips: [("Voice", true), ("Chat", true), ("Camera", true)],
+                    symbol: "iphone"
+                )
+            } else {
+                OGHeroDeviceCard(
+                    title: appState.glassesService.deviceName ?? "Meta Glasses",
+                    status: appState.isConnected ? "Connected" : "Not connected",
+                    dot: appState.isConnected ? OGTheme.ok : Color.secondary,
+                    batteryPercent: appState.glassesService.batteryLevel,
+                    chips: [
+                        ("Camera", appState.isConnected),
+                        ("Display", appState.glassesDisplay.hasDisplayCapability),
+                        ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
+                    ]
+                )
+            }
 
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
             ManagedByOrganisationSection(manager: OrgProfileManager.shared)

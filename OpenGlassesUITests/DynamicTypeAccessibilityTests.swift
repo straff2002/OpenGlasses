@@ -20,7 +20,7 @@ final class DynamicTypeAccessibilityTests: AccessibilityAuditCase {
         let getStarted = app.buttons["Get Started"]
         awaitScreen(getStarted, named: "The welcome page at AX5")
 
-        let subtitle = app.staticTexts["AI assistant for your smart glasses"]
+        let subtitle = app.staticTexts["Your AI. Your terms."]
         XCTAssertTrue(subtitle.waitForExistence(timeout: 60),
                       "The welcome subtitle is not in the accessibility tree at AX5 — it has "
                       + "been truncated away entirely")

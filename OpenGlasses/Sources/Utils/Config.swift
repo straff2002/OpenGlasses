@@ -115,6 +115,12 @@ struct Config {
 
     static func setHasCompletedOnboarding(_ completed: Bool) { hasCompletedOnboarding = completed }
 
+    /// Whether this person uses glasses (Plan FY P2): set when they choose glasses on the
+    /// onboarding "Add a device" step, and whenever glasses connect. Until then the phone is the
+    /// device, and the session card reports the session rather than a missing pair of glasses
+    /// (`OnboardingFlow.phoneIsTheDevice`). Never cleared by the app.
+    @UserDefaultsBacked("glassesAdded", default: false) static var glassesAdded: Bool
+
     /// Pure form of the onboarding gate, so the flag interaction below is testable without touching
     /// the Keychain that backs `savedModels`.
     ///

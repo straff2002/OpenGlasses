@@ -166,8 +166,12 @@ struct StatusIndicator: View {
 
     private var glassesPill: some View {
         let connected = appState.isConnected
-        let color: Color = connected ? OGTheme.okLabel : OGTheme.errorLabel
-        let label = connected ? (appState.glassesService.deviceName ?? "Glasses") : "Disconnected"
+        // Glasses nobody has added are not an error (Plan FY P2): the pill stays, one tap from
+        // connecting a pair, but in the quiet colour and without the word "Disconnected".
+        let color: Color = connected ? OGTheme.okLabel
+            : (phoneIsTheDevice ? OGTheme.secondaryLabel : OGTheme.errorLabel)
+        let label = connected ? (appState.glassesService.deviceName ?? "Glasses")
+            : (phoneIsTheDevice ? "Not added" : "Disconnected")
 
         return Button {
             if connected {
@@ -320,8 +324,15 @@ struct StatusIndicator: View {
 
     // MARK: - Computed Properties
 
+    /// No glasses connected and none added: this phone is the device, so the card reports the
+    /// session rather than a missing pair of glasses (Plan FY P2, `OnboardingFlow`).
+    private var phoneIsTheDevice: Bool {
+        OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
+                                        glassesAdded: Config.glassesAdded)
+    }
+
     private var iconName: String {
-        if !appState.isConnected {
+        if !appState.isConnected && !phoneIsTheDevice {
             return "OpenGlassesLogo"
         }
 
@@ -356,7 +367,7 @@ struct StatusIndicator: View {
     /// opacity and the glyph is this corrected to read on that wash. Every value
     /// is a palette token so both halves are measurable.
     private var ringColor: Color {
-        if !appState.isConnected { return OGTheme.inactive }
+        if !appState.isConnected && !phoneIsTheDevice { return OGTheme.inactive }
         if appState.glassesIdle { return OGTheme.inactive }
 
         if isGemini {
@@ -383,7 +394,7 @@ struct StatusIndicator: View {
     }
 
     private var statusLabel: String {
-        if !appState.isConnected {
+        if !appState.isConnected && !phoneIsTheDevice {
             let status = appState.glassesService.connectionStatus
             if status == "Not connected" { return "Glasses Not Connected" }
             return status
