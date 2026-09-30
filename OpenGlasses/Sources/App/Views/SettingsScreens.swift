@@ -217,7 +217,7 @@ struct VoiceTriggersSettingsScreen: View {
             } header: {
                 Text("Hands-Free Triggers")
             } footer: {
-                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control. Temple taps are set up with your glasses, under Hardware & Privacy.")
+                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control. Temple taps are set up under Hardware & Privacy.")
             }
         }
         .navigationTitle("Voice & Triggers")
