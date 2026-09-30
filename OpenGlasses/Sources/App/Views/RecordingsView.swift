@@ -7,10 +7,13 @@ struct RecordingsView: View {
     @ObservedObject var controller: SessionRecorderController
     @ObservedObject var audioRecorder: AudioRecordingService
     @State private var recordingError: String?
+    /// Plan GB P4 (decision 4): the glasses videos filed in the app's Recordings folder. Listed here
+    /// rather than exposing Documents to the Files app, which would expose transcripts too.
+    @State private var videos: [RecordedVideo] = []
 
     var body: some View {
         Group {
-            if store.sessions.isEmpty {
+            if store.sessions.isEmpty && videos.isEmpty {
                 ContentUnavailableView(
                     "No recordings yet",
                     systemImage: "waveform",
@@ -18,21 +21,37 @@ struct RecordingsView: View {
                 )
             } else {
                 List {
-                    ForEach(store.sessions) { session in
-                        NavigationLink {
-                            RecordedSessionDetailView(
-                                session: session,
-                                store: store,
-                                controller: controller
-                            )
-                        } label: {
-                            RecordedSessionRow(session: session)
+                    if !store.sessions.isEmpty {
+                        Section {
+                            ForEach(store.sessions) { session in
+                                NavigationLink {
+                                    RecordedSessionDetailView(
+                                        session: session,
+                                        store: store,
+                                        controller: controller
+                                    )
+                                } label: {
+                                    RecordedSessionRow(session: session)
+                                }
+                            }
+                            .onDelete(perform: deleteSessions)
                         }
                     }
-                    .onDelete(perform: deleteSessions)
+                    if !videos.isEmpty {
+                        Section("Videos") {
+                            ForEach(videos) { video in
+                                NavigationLink {
+                                    RecordedVideoDetailView(video: video)
+                                } label: {
+                                    RecordedVideoRow(video: video)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+        .onAppear { videos = RecordedVideo.list(in: RecordingFiler.defaultRecordingsDirectory) }
         .navigationTitle("Recordings")
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()

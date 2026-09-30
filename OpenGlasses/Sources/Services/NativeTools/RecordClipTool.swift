@@ -21,8 +21,9 @@ struct RecordClipTool: NativeTool {
     'caption' saying what the clip shows, and optional 'seconds' when the technician asks for a \
     particular length — otherwise it runs to the standard limit and stops itself. The clip is \
     silent, is capped in length, and stays on the phone with the job until the technician chooses \
-    at close whether it goes to the customer. Requires a job to be open and the glasses camera to \
-    be streaming; if either is missing the tool says so instead of recording nothing.
+    at close whether it goes to the customer. Requires a job to be open; if the glasses camera is \
+    not streaming it is started and given up to about twenty seconds to produce pictures, and if \
+    it still can't, the tool says so instead of recording nothing.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -47,7 +48,8 @@ struct RecordClipTool: NativeTool {
     /// How the tool reaches the recorder. Injected so a headless test drives the whole tool
     /// without an `AppState`, a camera or a relay.
     struct Seams {
-        var start: (String?, TimeInterval?) -> Result<TimeInterval, JobClipRecorder.StartRefusal>
+        /// Async since Plan GB P4: a start may first claim the glasses stream and wait for it.
+        var start: (String?, TimeInterval?) async -> Result<TimeInterval, JobClipRecorder.StartRefusal>
         var stop: () async -> JobClipRecorder.Finished?
         var isRecording: () -> Bool
         var elapsed: () -> TimeInterval
@@ -67,7 +69,7 @@ struct RecordClipTool: NativeTool {
                 guard let app = AppStateProvider.shared else {
                     return .failure(.couldNotWrite)
                 }
-                return app.startJobClip(caption: caption, seconds: seconds)
+                return await app.startJobClipClaimingStream(caption: caption, seconds: seconds)
             },
             stop: { await AppStateProvider.shared?.stopJobClip() },
             isRecording: { AppStateProvider.shared?.jobClips.isRecording ?? false },
@@ -96,7 +98,7 @@ struct RecordClipTool: NativeTool {
             let caption = (args["caption"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let seconds = (args["seconds"] as? NSNumber)?.doubleValue ?? args["seconds"] as? Double
-            switch seams.start(caption?.isEmpty == false ? caption : nil, seconds) {
+            switch await seams.start(caption?.isEmpty == false ? caption : nil, seconds) {
             case .failure(let refusal):
                 return refusal.spoken
             case .success(let cap):

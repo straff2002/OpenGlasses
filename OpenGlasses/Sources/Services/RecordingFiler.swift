@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// The filesystem work filing a finished recording needs, behind a seam so tests can run in a
@@ -70,6 +71,16 @@ struct RecordingFiler {
         /// and telling them "couldn't save" when the answer is one switch in Settings is not
         /// honest reporting — it is a dead end.
         var photosNotPermitted: Bool = false
+        /// Plan GB P4: the encoder failed, so the filed bytes may not play. Photos is not offered
+        /// such a file, and the copy says so instead of implying a clean save.
+        var encodeFailed: Bool = false
+        /// Whether the filed file was checked and plays (`RecordingPlayability`); nil when it was
+        /// not checked. "Nothing was lost" is said only when this is true (Plan GB P4) — a file
+        /// that is on disk but won't open *is* a loss, whatever else landed.
+        var playable: Bool? = nil
+
+        /// The end of a "safe in …" sentence: the reassurance only for a file known to play.
+        private var lossClause: String { playable == true ? " — nothing was lost." : "." }
 
         /// True when at least one copy survives outside the temporary directory.
         var isPersisted: Bool {
@@ -97,18 +108,23 @@ struct RecordingFiler {
                 return "The recording could not be saved anywhere — it is still in temporary "
                      + "storage and may not survive. Free up some space and try again."
             }
+            if encodeFailed || playable == false {
+                return "The recording couldn't be finished properly and may not play. What was "
+                     + "captured is kept in \(location)"
+                     + (photosRequested && !savedToPhotos ? " and wasn't added to Photos." : ".")
+            }
             if photosRequested && !savedToPhotos {
                 if photosNotPermitted {
                     return "OpenGlasses doesn't have permission to add to your photo library, so "
                          + "the recording isn't in Photos. You can turn that on in Settings. It is "
-                         + "safe in \(location) — nothing was lost."
+                         + "safe in \(location)\(lossClause)"
                 }
                 return "Couldn't save the recording to Photos. The recording is safe in "
-                     + "\(location) — nothing was lost."
+                     + "\(location)\(lossClause)"
             }
             if folderRequested && folderCopyURL == nil {
                 return "Couldn't copy the recording to your chosen folder. The recording is safe "
-                     + "in \(location) — nothing was lost."
+                     + "in \(location)\(lossClause)"
             }
             return nil
         }
@@ -141,7 +157,8 @@ struct RecordingFiler {
 
     /// `Documents/Recordings` — backed up, not evictable, and shared with the audio recorder so
     /// everything the app has captured sits in one place. (The container is not exposed to the
-    /// Files app; a user who wants to browse their recordings picks a folder in Settings.)
+    /// Files app, deliberately — that would expose transcripts too. Videos are listed in the app's
+    /// own Recordings screen, `RecordedVideoList`, Plan GB P4 decision 4.)
     static var defaultRecordingsDirectory: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documents.appendingPathComponent("Recordings")
@@ -244,5 +261,16 @@ struct RecordingFiler {
         // Photos is the caller's job from here — by now the file is already safe on disk, which
         // is the point: the destination most likely to be declined is also the last one tried.
         return outcome
+    }
+}
+
+/// Plan GB P4 — does a filed recording open and play? `AVURLAsset`'s own answer plus a video
+/// track, so a file with a header and nothing behind it is not reported as safe.
+enum RecordingPlayability {
+    static func isPlayable(_ url: URL) async -> Bool {
+        let asset = AVURLAsset(url: url)
+        guard let playable = try? await asset.load(.isPlayable), playable else { return false }
+        let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
+        return !tracks.isEmpty
     }
 }

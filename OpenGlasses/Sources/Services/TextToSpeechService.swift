@@ -14,7 +14,31 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Checked before speaking — set by AppState when glasses connect/disconnect.
     var glassesConnected: Bool = false
 
-    private let synthesizer = AVSpeechSynthesizer()
+    /// The system voice. A `var` behind a factory (Plan GB P4): a wedged synthesizer is replaced,
+    /// not waited on, and a media-services reset leaves the old one unusable anyway.
+    private var synthesizer: any SpeechSynthesizing
+    private let synthesizerFactory: @MainActor () -> any SpeechSynthesizing
+
+    /// Plan GB P4 — the system-voice utterance being watched, and when it last showed signs of life.
+    private struct SystemUtteranceWatch {
+        let utterance: ObjectIdentifier
+        let speakAt: Date
+        var didStartAt: Date?
+        var lastBoundaryAt: Date?
+        let characters: Int
+        let rate: Float
+    }
+    private var systemWatch: SystemUtteranceWatch?
+    /// Set by the watchdog when it released a wedged utterance; read by the retry loop.
+    private var systemWatchVerdict: SynthesizerHealthPolicy.Verdict?
+    /// Watchdog timings; injectable so a test can run a wedge in a fraction of a second.
+    var synthesizerHealthTiming = SynthesizerHealthPolicy.Timing.default
+    /// When the system engine last failed (wedged, or lost to a media-services reset). The app reads
+    /// it to replay an utterance held behind the failure rather than dropping it as stale.
+    private(set) var lastEngineFailureAt: Date?
+    /// How many times the synthesizer has been rebuilt — diagnostics and tests.
+    private(set) var synthesizerRebuilds = 0
+    private var mediaResetObserver: NSObjectProtocol?
     private var audioPlayer: AVAudioPlayer?
     private var tonePlayer: AVAudioPlayer?  // Separate ref so tone isn't killed by speech
     private var speechContinuation: CheckedContinuation<Void, Never>?
@@ -152,9 +176,51 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         return try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data).voices
     }
 
-    override init() {
+    init(synthesizerFactory: @escaping @MainActor () -> any SpeechSynthesizing = { AVSpeechSynthesizer() }) {
+        self.synthesizerFactory = synthesizerFactory
+        self.synthesizer = synthesizerFactory()
         super.init()
         synthesizer.delegate = self
+        // Plan GB P4: after a media-services reset every AVFoundation speech object is dead. The
+        // old synthesizer would never call back again, so the waiting turn would wait for ever.
+        mediaResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.handleMediaServicesReset() }
+        }
+    }
+
+    deinit {
+        if let mediaResetObserver { NotificationCenter.default.removeObserver(mediaResetObserver) }
+    }
+
+    // MARK: - Synthesizer health (Plan GB P4)
+
+    /// Replace the system synthesizer. Never touches the audio session or its lease (plan AS):
+    /// the new synthesizer is inert until something speaks through the normal path, which takes
+    /// the session exactly as before. The old one's delegate is detached first, so a late
+    /// callback from it cannot record a second outcome for an utterance (FE P4).
+    private func rebuildSynthesizer(reason: String) {
+        let old = synthesizer
+        old.delegate = nil
+        old.stopSpeaking(at: .immediate)
+        synthesizer = synthesizerFactory()
+        synthesizer.delegate = self
+        synthesizerRebuilds += 1
+        PrivacyLog.tts(.synthesizerRebuilt, engine: PrivacyToken("system"), detail: PrivacyToken(reason))
+    }
+
+    /// Media services were reset: rebuild, and release a system-voice utterance that was waiting
+    /// on the dead engine as a failure (first terminal outcome wins, so a teardown already recorded
+    /// for it stands).
+    func handleMediaServicesReset() {
+        rebuildSynthesizer(reason: "mediaServicesReset")
+        guard systemWatch != nil else { return }
+        lastEngineFailureAt = Date()
+        systemWatch = nil
+        record(.engineReset)
+        speechContinuation?.resume()
+        speechContinuation = nil
     }
 
     // MARK: - Audio pause hold
@@ -896,6 +962,26 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     // MARK: - iOS Fallback TTS
 
     private func speakWithiOS(text: String) async {
+        // Plan GB P4: one retry on a fresh synthesizer when the engine never started or stalled.
+        for attempt in 1...2 {
+            let verdict = await speakOnceWithiOS(text: text)
+            guard verdict != .healthy else { return }
+            lastEngineFailureAt = Date()
+            PrivacyLog.tts(.engineUnresponsive, engine: PrivacyToken("system"),
+                           detail: PrivacyToken(verdict.rawValue))
+            rebuildSynthesizer(reason: verdict.rawValue)
+            // A newer utterance or a stop took the floor while this one hung: nothing to retry.
+            guard !Task.isCancelled else { return }
+            if attempt == 2 {
+                record(verdict == .neverStarted ? .engineNeverStarted : .engineStalled)
+            }
+        }
+    }
+
+    /// Speak one utterance through the current synthesizer and report whether the engine stayed
+    /// alive. The continuation is resumed by `didFinish`/`didCancel` as before — or by the
+    /// watchdog, which is what stops a wedged engine holding the turn for ever.
+    private func speakOnceWithiOS(text: String) async -> SynthesizerHealthPolicy.Verdict {
         let utterance = AVSpeechUtterance(string: text)
 
         // Respect the saved voice and device language order before voice quality.
@@ -912,6 +998,28 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
 
+        let id = ObjectIdentifier(utterance)
+        systemWatch = SystemUtteranceWatch(utterance: id, speakAt: Date(), didStartAt: nil,
+                                           lastBoundaryAt: nil, characters: text.count, rate: utterance.rate)
+        systemWatchVerdict = nil
+        let timing = synthesizerHealthTiming
+        let watchdog = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(timing.pollInterval * 1_000_000_000))
+                guard let self, let watch = self.systemWatch, watch.utterance == id else { return }
+                let verdict = SynthesizerHealthPolicy.assess(
+                    speakAt: watch.speakAt, didStartAt: watch.didStartAt, lastBoundaryAt: watch.lastBoundaryAt,
+                    characters: watch.characters, rate: watch.rate, now: Date(), timing: timing)
+                guard verdict != .healthy else { continue }
+                self.systemWatchVerdict = verdict
+                self.systemWatch = nil
+                self.endPlaybackActivity(utterance: nil)
+                self.speechContinuation?.resume()
+                self.speechContinuation = nil
+                return
+            }
+        }
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             self.speechContinuation = continuation
             // Plan FE P5: held so the word-boundary and finish/cancel callbacks can prove which
@@ -919,6 +1027,19 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             self.activityUtterance = utterance
             synthesizer.speak(utterance)
         }
+        watchdog.cancel()
+        if systemWatch?.utterance == id { systemWatch = nil }
+        return systemWatchVerdict ?? .healthy
+    }
+
+    /// Test seam (Plan GB P4): drive the system-voice path directly — the simulator's real
+    /// synthesizer cannot be made to wedge on demand. Returns the recorded outcome.
+    func speakWithSystemVoiceForTesting(_ text: String) async -> SpeechDeliveryOutcome {
+        speechGeneration += 1
+        let gen = speechGeneration
+        deliveryLedger.beginUtterance(generation: gen)
+        await speakWithiOS(text: text)
+        return finishOutcome(for: gen, fallback: .failed(reason: "no engine spoke it"))
     }
 
     /// Resolve the iOS TTS voice — uses saved preference or auto-selects best available.
@@ -966,7 +1087,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Plan CU P1: stamped before the main-actor hop, so the measurement is the callback rather
         // than the callback plus however long the main actor took to get to us.
         let startedAt = Date()
+        let source = ObjectIdentifier(synthesizer)
+        let id = ObjectIdentifier(utterance)
         Task { @MainActor in
+            // Plan GB P4: a callback from a synthesizer that has since been replaced is ignored.
+            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            if self.systemWatch?.utterance == id { self.systemWatch?.didStartAt = startedAt }
+            PrivacyLog.tts(.started, engine: PrivacyToken("system"))
             self.isSpeaking = true
             TurnRecorder.markPlaybackStart(at: startedAt)
             // Plan FE P5: the system voice exposes no audio to meter, so its animation is the
@@ -986,7 +1113,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
                                        willSpeakRangeOfSpeechString characterRange: NSRange,
                                        utterance: AVSpeechUtterance) {
+        let at = Date()
+        let id = ObjectIdentifier(utterance)
         Task { @MainActor in
+            // Plan GB P4: a word boundary is the watchdog's proof of life.
+            if self.systemWatch?.utterance == id { self.systemWatch?.lastBoundaryAt = at }
             guard utterance === self.activityUtterance,
                   let generation = self.activityGeneration else { return }
             self.playbackActivity.wordBoundary(generation: generation)
@@ -995,7 +1126,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         let finishedAt = Date()
+        let source = ObjectIdentifier(synthesizer)
         Task { @MainActor in
+            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            self.systemWatch = nil
             PrivacyLog.tts(.playbackFinished, engine: PrivacyToken("system"), success: true)
             TurnRecorder.markPlaybackEnd(at: finishedAt)
             // The iOS voice reached the end of the utterance. Plan FE P4's `completed`, and only
@@ -1008,7 +1142,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let source = ObjectIdentifier(synthesizer)
         Task { @MainActor in
+            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            self.systemWatch = nil
             PrivacyLog.tts(.cancelled, engine: PrivacyToken("system"))
             // `didCancel` is the engine noticing a teardown somebody else started, so the reason
             // was recorded there and wins. `.newUtterance` is the fallback because a cancel with

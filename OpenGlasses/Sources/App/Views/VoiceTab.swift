@@ -129,7 +129,9 @@ struct VoiceTab: View {
         .sheet(isPresented: $showPersonaPicker) {
             PersonaPickerSheet(appState: appState)
         }
-        .sheet(item: $appState.pendingShareItem) { item in
+        // Plan GB P4: while the live preview is up, its own sheet presents the share item.
+        .sheet(item: Binding(get: { showPreview ? nil : appState.pendingShareItem },
+                             set: { appState.pendingShareItem = $0 })) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
     }
