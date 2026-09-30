@@ -31,6 +31,75 @@ Paths are under `OpenGlasses/Sources/` unless noted. Line numbers are `main` @ `
   distinct log marker; the model is remembered for the rest of the run so later turns route straight
   to Chat Completions. The retried request keeps GB's rule that a 400 is terminal in the cascade.
 
+## How the field tester uses it (end to end)
+
+**Setting it, once per model.** Settings → Models → edit the OpenAI API model (for example `gpt-6-sol`
+or `gpt-5.5`) → **Reasoning**. The picker is unchanged from GB: Automatic, None, Minimal, Low,
+Medium, High, Extra high. The setting is saved with the model and reused on every job; nothing is
+set per job. Two saved models can carry different levels (a cheap Automatic `gpt-5.5` for routine
+jobs and a Medium `gpt-6-sol` for hard diagnostics), and switching between them is the normal model
+switch.
+
+**What the two read-only lines now say.**
+- Automatic → "Effective with tools: None · Chat Completions — Automatic keeps tool turns on Chat
+  Completions without reasoning, to stay quick and cheap." This is GB's behaviour, unchanged, and
+  it is the default for every saved model that never touched the picker.
+- Medium (or any level above None) → "Effective with tools: Medium · Responses API — this level
+  needs the Responses API when tools are attached." and "Effective without tools: Medium · Chat
+  Completions — as set for this model."
+- None → "Effective with tools: None · Chat Completions — as set for this model."
+- A non-reasoning model (`gpt-4.1`, `gpt-4o`) → "Not applicable — this model has no reasoning
+  setting." on both lines; the picker still shows but changes nothing.
+- A custom or Azure host → "… · Chat Completions — custom hosts stay on Chat Completions unless the
+  base URL names a Responses endpoint." When the base URL ends in `/responses` the line reads
+  "… · Responses API — the base URL names a Responses endpoint."
+The footer still says reasoning tokens are billed as output.
+
+**What happens on a turn, with a level above None set.**
+1. He speaks; the wake word, transcription and prompt build are unchanged.
+2. The route selector sees OpenAI API + reasoning family + explicit level + tools attached and picks
+   Responses at his level. The request goes to `api.openai.com/v1/responses` with the same system
+   prompt (stable head as `instructions`, the volatile tail last), the same tools, `store: false`,
+   `include: ["reasoning.encrypted_content"]`, `prompt_cache_key`, and an output cap of at least
+   4096 so reasoning cannot starve the answer.
+3. If the model calls a tool (`field_session`, `manual_lookup`, `vision_assess`…), the tool runs as
+   today. The next request in the same turn replays the model's encrypted reasoning item ahead of
+   the tool result, so the model continues from where it was instead of re-thinking the whole
+   problem after every tool. Reasoning is never shown or stored in the transcript.
+4. The final answer is spoken and shown exactly as before. Turn details (long-press a turn, or the
+   Developer panel's turn timeline) shows `reasoning: medium` and `route: responses`.
+5. The usage tracker records the request's input, cached and output tokens from the Responses usage
+   block, priced at the model's row; the cost per job on the Job tab and the spend caps (GB P5)
+   include these turns. Reasoning tokens are inside the output count, which is why a Medium turn
+   costs more than a None turn on the same model.
+
+**What he should expect in cost and latency.** Reasoning tokens bill as output, and output is the
+expensive side of every OpenAI price row; a Medium tool turn will typically emit several hundred to
+a few thousand reasoning tokens before its answer, so per-turn cost and time-to-first-word both
+rise. The GB spend-cap warning and the per-job cost line are the way to watch it. Automatic is the
+way back to GB's cheap behaviour for a model; None keeps Chat Completions and sends an explicit
+`none`.
+
+**When something refuses.** If Responses answers a 4xx that is not authentication or rate limiting
+(a model the API does not accept on that endpoint, a rejected shape), the same turn is retried once
+on Chat Completions at `none`: he hears an answer, later turns on that model go straight to Chat
+Completions for the rest of the run, and the turn's details show `route: chatCompletions` with a
+`routeFallback` marker in the diagnostics export. The editor line does not change, because the
+refusal is per run; a relaunch tries Responses again. Authentication, rate-limit and 5xx failures
+behave exactly as today (cascade rules, retry rules).
+
+**Photos.** A photo turn on a model with `Supports vision` on (the default for OpenAI API models)
+goes to Responses as an `input_image`, the same picture pipeline as today. With vision switched off
+for the model, the photo is dropped with the existing note, as on Chat Completions.
+
+**What he does not have to do.** Nothing per job; no new toggle; no change to the base URL for
+api.openai.com; no re-entry of the API key. The ChatGPT subscription model is untouched.
+
+**What we ask him to confirm on the device (owed):** one tool turn on `gpt-6-sol` at Medium and
+one on `gpt-5.5` at Medium, each with at least one tool call; the Turn details route and reasoning
+tokens; the tracker's cost for those turns against the provider's dashboard; and time-to-first-word
+compared with the same models at Automatic.
+
 ## Verified starting point (`main` @ `2bab2c11`)
 
 - `LLMService.sendOpenAICompatible` (`Services/LLMService.swift:2130`) is the only API-key path for
