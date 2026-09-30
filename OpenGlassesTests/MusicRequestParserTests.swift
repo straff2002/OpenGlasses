@@ -68,6 +68,13 @@ final class MusicRequestParserTests: XCTestCase {
         XCTAssertEqual(onTarget, MusicRequestParser.Target())
     }
 
+    func testDeviceArgumentAsTheModelPassesIt() {
+        XCTAssertEqual(MusicRequestParser.deviceTarget("the Kitchen speaker"), .init(device: "kitchen"))
+        XCTAssertEqual(MusicRequestParser.deviceTarget("Lounge"), .init(device: "lounge"))
+        XCTAssertEqual(MusicRequestParser.deviceTarget("Spotify"), .init(service: .unsupported("Spotify")))
+        XCTAssertEqual(MusicRequestParser.deviceTarget("my phone"), .init(service: .appleMusic))
+    }
+
     func testServiceArgumentNames() {
         XCTAssertEqual(MusicRequestParser.service(named: "apple_music"), .appleMusic)
         XCTAssertEqual(MusicRequestParser.service(named: "Home Assistant"), .homeAssistant)

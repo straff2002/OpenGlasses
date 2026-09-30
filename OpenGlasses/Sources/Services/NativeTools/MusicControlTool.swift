@@ -96,13 +96,9 @@ struct MusicToolRequest: Equatable {
             target.service = service
         }
         if let device = (args["device"] as? String)?.trimmingCharacters(in: .whitespaces), !device.isEmpty {
-            if let service = MusicRequestParser.service(named: device), case .unsupported = service {
-                target.service = service
-            } else if MusicRequestParser.service(named: device) == .appleMusic {
-                target.service = .appleMusic
-            } else {
-                target.device = device
-            }
+            let named = MusicRequestParser.deviceTarget(device)
+            if let service = named.service { target.service = service }
+            if let speaker = named.device { target.device = speaker }
         }
 
         func byName(_ kind: MusicItemKind, missing: String, shuffle: Bool = false) -> Parsed {

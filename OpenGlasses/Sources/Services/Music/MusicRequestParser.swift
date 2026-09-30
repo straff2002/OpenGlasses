@@ -74,6 +74,18 @@ enum MusicRequestParser {
         return (lower, Target())
     }
 
+    /// Read a `device` argument as the model passed it: "the kitchen speaker" → device "kitchen",
+    /// "spotify" → the service, "my phone" → Apple Music, anything else → that speaker name.
+    static func deviceTarget(_ raw: String) -> Target {
+        let spoken = spokenForm(raw)
+        if let target = parseTargetTail(spoken) { return target }
+        var name = spoken
+        for article in ["the ", "my "] where name.hasPrefix(article) {
+            name = String(name.dropFirst(article.count))
+        }
+        return Target(service: nil, device: name.isEmpty ? nil : name)
+    }
+
     private static func parseTargetTail(_ tail: String) -> Target? {
         var words = tail
         for article in ["the ", "my "] where words.hasPrefix(article) {
