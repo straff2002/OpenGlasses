@@ -1,6 +1,13 @@
 # Plan GJ — Remappable Temple Taps (one, two, three taps)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** 🚧 P0 + P1 + P3 built 2026-10-01 (one PR) — pure core, wiring, settings and in-session
+mute are in and headlessly tested; **P2, the device run, is owed**, and with it every tap→AVRCP
+mapping: the calibration table (1 = play/pause, play or pause; 2 = next track; 3 = previous track)
+is still the conventional assumption, never observed on glasses, and "session control" (taps
+reaching the app during its own Direct, Gemini Live or OpenAI Realtime conversation) is equally
+unverified. Also owed on device: single-tap latency, locked-phone behaviour, taps with music
+playing, glasses-camera capture from a locked phone, and how each live provider treats a muted
+(silent) mic. "Experimental" stays on the setting until P2 confirms at least one model.
 **Continues:** Plan [CH](CH-media-button-trigger.md) (media-button trigger). CH's P1 policy and P2
 wiring shipped 2026-08-02; its P3 device smoke — *which temple gestures arrive as which AVRCP
 commands* — was never run, and this plan cannot be finished without it.
@@ -137,6 +144,42 @@ calibration table and this plan's status.
 2. Move the setting to the glasses section (recommended, per the settings rule).
 3. Drop "Experimental" once P2 confirms the mapping on at least one glasses model.
 4. Offer "ask my agent" on a tap at all (Agent Mode only)? *Recommend yes, hidden when off.*
+
+## As built (2026-10-01)
+
+Decisions taken (Greig: proceed with the recommendations): briefed defaults for new wearers, and
+double tap = start talking (one and three taps unassigned, exactly as before) for anyone who had the
+old switch on — `TempleGestureSettingsMigration`, once, behind a flag, never over a saved map; the
+setting lives under Hardware & Privacy (the plan's "Glasses & Privacy" is that screen) with a link
+from Voice & Triggers; "Experimental" kept; "ask my agent" offered only under Agent Mode.
+
+- **P0.** `TempleGesture`, `TempleCalibration` (table + `deviceConfirmed` /
+  `sessionControlAvailable` / `sessionControlConfirmed` flags, all honest-false except the
+  assumed availability), `TempleGestureDecoder` (150 ms coalescing from the most recent command),
+  `TempleAction` (unknown raw value → nothing), `TempleGestureMap` + store,
+  `TempleActionResolver` → `TempleOutcome`, `TempleEarcon`. `MediaTriggerPolicy` now returns
+  `.claim(.standby | .sessionControl)`: the app's own conversation (transcription / Gemini Live /
+  OpenAI Realtime lease, or the app's conversation flags) keeps the handlers without the silent
+  player; live translation and expert calls still block; the wearer's music still wins.
+- **P1.** `play`/`pause` registered alongside toggle/next/previous; `MediaTriggerService` emits
+  decoded taps (1 s repeat guard) instead of a single trigger; `TempleGestureDispatcher` resolves
+  against `AppState` (`AppState+TempleTaps.swift`), plays the earcon, then acts; claim mode is
+  re-evaluated when conversation state changes, not only on audio notifications. The
+  session-control claimer touches no audio session (no player, no activation, no ledger entry), so
+  AO/AP interruption and resume handling is untouched. Test mode announces each tap with its raw
+  command. Tap photos use `capturePhoto(allowPhoneFallback: false)`: glasses camera or a spoken
+  refusal, never a hidden phone shot. "Ask my agent" opens a turn whose utterance goes to the tool
+  router as a user-origin `execute` call, so the Agent Mode gate and authorization policy apply.
+- **P3.** `micMuted` on both live session managers, enforced in the shared captured-buffer gate
+  (`EchoSuppressionPolicy.shouldForwardCapturedBuffer`), cleared on start/stop. In a Direct-mode
+  conversation, mute ends the conversation and leaves the wake-word mic muted.
+
+Where the plan was wrong: `CameraService.capturePhoto()` itself swaps to the phone camera whenever
+the glasses backend is not ready (not only `captureAndAnalyzePhoto`'s explicit screen), so a
+glasses-only flag was needed; the camera-roll action is `capturePhotoFromGlasses()` because every
+capture already lands in the Glasses album (`GlassesPhotoAlbum.saveImage` is not called directly);
+and there was no existing "ask my agent" route to reuse. Found on the way: the standby claimer's
+deferred `play()` could start silence after its claim had been released — now guarded.
 
 ## Out of scope
 

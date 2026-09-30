@@ -12,12 +12,14 @@ enum LiveActivationSource: String, Equatable, CaseIterable {
     case siriShortcut
     case wakeWord
     case appUI
+    /// A glasses temple tap (Plan GJ).
+    case templeTap
 
     /// Whether this is the wearer asking, rather than the app assuming.
     var isExplicit: Bool {
         switch self {
         case .launch, .foreground: return false
-        case .actionButton, .siriShortcut, .wakeWord, .appUI: return true
+        case .actionButton, .siriShortcut, .wakeWord, .appUI, .templeTap: return true
         }
     }
 }

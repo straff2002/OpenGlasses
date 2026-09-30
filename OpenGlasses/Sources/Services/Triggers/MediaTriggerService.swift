@@ -10,37 +10,38 @@ import UIKit
 /// `AVAudioPlayer` + `MPRemoteCommandCenter`, which have no headless seam.
 @MainActor
 protocol NowPlayingClaiming: AnyObject {
-    /// Begin holding Now Playing: start silent playback and register remote-command handlers.
-    /// Temple-gesture commands are delivered to `onCommand` until `release()`.
-    func claim(onCommand: @escaping (MediaRemoteCommand) -> Void)
+    /// Begin holding Now Playing in `mode`: register remote-command handlers and, for `.standby`
+    /// only, start silent playback. Temple-gesture commands are delivered to `onCommand` until
+    /// `release()`.
+    func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void)
     /// Drop the claim: stop playback, unregister handlers, clear our Now Playing info.
     func release()
 }
 
-/// Temple-tap hands-free trigger (Plan CH): claims Now Playing so the glasses' temple gestures
-/// (standard AVRCP media commands) reach us, and a double-tap (next-track) starts listening —
-/// no wake word, no phone touch.
+/// Temple taps (Plans CH + GJ): claims Now Playing so the glasses' temple gestures (standard AVRCP
+/// media commands) reach us, decodes them into one, two or three taps, and hands each tap to
+/// `onGesture` — no wake word, no phone touch.
 ///
-/// The claim is governed entirely by the pure `MediaTriggerPolicy`: claim only when the user
-/// isn't playing anything and no realtime session holds the audio lease; release the moment
-/// external audio starts. Fired triggers route through a `TriggerGate` (debounce + suppression,
-/// same as the alternative triggers) to `onTrigger`, which `AppState` wires to the same entry
-/// point as the wake word.
+/// The claim is governed entirely by the pure `MediaTriggerPolicy`: a silent-player standby claim
+/// when nothing else is going on, handlers-only session control while our own conversation holds
+/// the audio session, and nothing while the user's audio plays or another person is on the line.
+/// What a tap *does* is not decided here — `TempleActionResolver` does that with the conversation
+/// state in hand, which is why there is no suppression flag any more: "already listening" is an
+/// answer the resolver gives, not a reason to drop the tap.
 ///
 /// All inputs are injected closures and the claimer is a protocol, so every state transition is
-/// drivable headlessly; only `SilentNowPlayingClaimer` needs a device (P3).
+/// drivable headlessly; only `SilentNowPlayingClaimer` needs a device (GJ P2).
 @MainActor
 final class MediaTriggerService {
 
-    /// Fired when a gated temple-tap trigger passes. `AppState` routes this to the wake path.
-    var onTrigger: (() -> Void)?
-
-    /// Whether triggers are currently suppressed (conversation in progress etc.). Mirrors the
-    /// wake-word guard; `AppState` supplies it.
-    var isSuppressed: () -> Bool = { false }
+    /// Fired for each decoded tap, with the command it arrived as (test mode announces both).
+    var onGesture: ((TempleGesture, MediaRemoteCommand) -> Void)?
 
     /// Whether a realtime voice session (Gemini Live / OpenAI Realtime) is running.
     var realtimeSessionActive: () -> Bool = { false }
+
+    /// Whether a Direct-mode conversation is under way.
+    var conversationActive: () -> Bool = { false }
 
     /// Posted (by `MusicControlTool`) just before a command is issued to the *user's* player,
     /// so we stand down pre-emptively instead of racing their playback for Now Playing.
@@ -49,27 +50,35 @@ final class MediaTriggerService {
     private let isEnabled: () -> Bool
     private let isOtherAudioPlaying: () -> Bool
     private let leaseOwner: () -> AudioSessionOwner?
+    private let calibration: () -> TempleCalibration
     private let claimer: NowPlayingClaiming
     private let clock: () -> TimeInterval
     private var gate: TriggerGate
+    private var decoder: TempleGestureDecoder
 
-    private(set) var isClaimed = false
+    private(set) var claimedMode: NowPlayingClaimMode?
+    var isClaimed: Bool { claimedMode != nil }
     private(set) var isRunning = false
     private var observers: [NSObjectProtocol] = []
     private var standDownReevaluation: Task<Void, Never>?
 
+    /// - Parameter debounceInterval: a second tap inside this window of the last one that fired is
+    ///   dropped — a fumble while adjusting the glasses, not a new instruction.
     init(claimer: NowPlayingClaiming? = nil,
          isEnabled: @escaping () -> Bool = { Config.mediaTriggerEnabled },
          isOtherAudioPlaying: @escaping () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying },
          leaseOwner: @escaping () -> AudioSessionOwner? = { AudioSessionCoordinator.shared.currentOwner },
+         calibration: @escaping () -> TempleCalibration = { TempleCalibration.current },
          clock: @escaping () -> TimeInterval = { Date().timeIntervalSinceReferenceDate },
-         debounceInterval: TimeInterval = 2.0) {
+         debounceInterval: TimeInterval = 1.0) {
         self.claimer = claimer ?? SilentNowPlayingClaimer()
         self.isEnabled = isEnabled
         self.isOtherAudioPlaying = isOtherAudioPlaying
         self.leaseOwner = leaseOwner
+        self.calibration = calibration
         self.clock = clock
         self.gate = TriggerGate(debounceInterval: debounceInterval, minimumConfidence: 1.0)
+        self.decoder = TempleGestureDecoder(calibration: calibration())
     }
 
     // MARK: - Policy application (tested)
@@ -81,14 +90,19 @@ final class MediaTriggerService {
             userAudioPlaying: isOtherAudioPlaying(),
             realtimeSessionActive: realtimeSessionActive(),
             leaseOwner: leaseOwner(),
-            isClaimed: isClaimed)
+            claimedMode: claimedMode,
+            conversationActive: conversationActive(),
+            sessionControlEnabled: calibration().sessionControlAvailable)
         switch MediaTriggerPolicy.decide(conditions) {
-        case .claim:
-            isClaimed = true
-            claimer.claim { [weak self] command in
+        case .claim(let mode):
+            // A mode switch is a release and a fresh claim: the standby player must stop before a
+            // conversation's audio runs, and must only start again once the conversation is over.
+            if claimedMode != nil { claimer.release() }
+            claimedMode = mode
+            claimer.claim(mode: mode) { [weak self] command in
                 self?.handleRemoteCommand(command)
             }
-            PrivacyLog.device(.nowPlaying, .claimed)
+            PrivacyLog.device(.nowPlaying, .claimed, state: PrivacyToken(mode.rawValue))
         case .release:
             releaseClaim()
         case .defer:
@@ -96,18 +110,19 @@ final class MediaTriggerService {
         }
     }
 
-    /// Feed a temple-gesture command. Fires `onTrigger` iff the claim is live, the gesture is in
-    /// the v1 grammar (next-track only), and the gate passes (debounce, not suppressed). Returns
-    /// whether it fired.
+    /// Feed a temple-gesture command. Fires `onGesture` iff the claim is live, the command decodes
+    /// to a tap (not coalesced into the previous one, known to the calibration table) and the
+    /// debounce passes. Returns the gesture that fired, if any.
     @discardableResult
-    func handleRemoteCommand(_ command: MediaRemoteCommand) -> Bool {
-        guard isClaimed, isEnabled() else { return false }
-        guard MediaTriggerPolicy.firesTrigger(command) else { return false }
-        guard gate.shouldFire(at: clock(), confidence: 1.0, suppressed: isSuppressed()) else {
-            return false
-        }
-        onTrigger?()
-        return true
+    func handleRemoteCommand(_ command: MediaRemoteCommand) -> TempleGesture? {
+        guard isClaimed, isEnabled() else { return nil }
+        let now = clock()
+        guard let gesture = decoder.decode(command, at: now) else { return nil }
+        guard gate.shouldFire(at: now, confidence: 1.0, suppressed: false) else { return nil }
+        PrivacyLog.device(.nowPlaying, .commandReceived, state: PrivacyToken(gesture.rawValue),
+                          command: PrivacyToken(command.rawValue))
+        onGesture?(gesture, command)
+        return gesture
     }
 
     /// Stand down *before* the user's playback starts (a `MusicControlTool` command is on its
@@ -166,6 +181,7 @@ final class MediaTriggerService {
     func refresh() {
         stop()
         gate.reset()
+        decoder = TempleGestureDecoder(calibration: calibration())
         start()
     }
 
@@ -173,7 +189,7 @@ final class MediaTriggerService {
 
     private func releaseClaim() {
         guard isClaimed else { return }
-        isClaimed = false
+        claimedMode = nil
         claimer.release()
         PrivacyLog.device(.nowPlaying, .released)
     }
@@ -181,14 +197,18 @@ final class MediaTriggerService {
 
 // MARK: - Production claimer (device runtime)
 
-/// Holds Now Playing the standard way: a silent looping zero-volume `AVAudioPlayer` on the
-/// shared audio session plus `MPRemoteCommandCenter` handlers. Registered with the Plan AS
-/// coordinator as a *coexisting* rider — it lives under the wake-word listener's session and
-/// must never preempt or deactivate it.
+/// Holds Now Playing the standard way: `MPRemoteCommandCenter` handlers plus, in `.standby`, a
+/// silent looping zero-volume `AVAudioPlayer` on the shared audio session. The standby player is
+/// registered with the Plan AS coordinator as a *coexisting* rider — it lives under the wake-word
+/// listener's session and must never preempt or deactivate it.
 ///
-/// Device-pending (Plan CH P3): whether iOS grants Now Playing to a `mixWithOthers` session,
-/// and which temple gestures arrive as which AVRCP commands on the glasses firmware, can only
-/// be confirmed on hardware.
+/// `.sessionControl` touches the audio session not at all: no player, no activation, no ledger
+/// entry. The conversation that owns the session (and its interruption / resume handling, Plans
+/// AO/AP) is left exactly as it was; the handlers are just not taken away from under it.
+///
+/// Device-pending (Plan GJ P2, formerly CH P3): whether iOS grants Now Playing to a
+/// `mixWithOthers` session, whether it routes the commands to a record-and-play conversation, and
+/// which temple gestures arrive as which AVRCP commands can only be confirmed on hardware.
 @MainActor
 final class SilentNowPlayingClaimer: NowPlayingClaiming {
 
@@ -205,9 +225,8 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
     private var commandTargets: [(MPRemoteCommand, Any)] = []
     private var coexistToken: UUID?
 
-    func claim(onCommand: @escaping (MediaRemoteCommand) -> Void) {
-        guard player == nil else { return }
-        coexistToken = AudioSessionCoordinator.shared.beginCoexisting(.mediaTrigger)
+    func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void) {
+        guard commandTargets.isEmpty, player == nil else { return }
 
         let center = MPRemoteCommandCenter.shared()
         func register(_ command: MPRemoteCommand, as mapped: MediaRemoteCommand) {
@@ -218,8 +237,10 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
             }
             commandTargets.append((command, target))
         }
-        register(center.nextTrackCommand, as: .nextTrack)
         register(center.togglePlayPauseCommand, as: .togglePlayPause)
+        register(center.playCommand, as: .play)
+        register(center.pauseCommand, as: .pause)
+        register(center.nextTrackCommand, as: .nextTrack)
         register(center.previousTrackCommand, as: .previousTrack)
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
@@ -227,15 +248,20 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
             MPNowPlayingInfoPropertyPlaybackRate: 1.0,
         ]
 
+        guard mode == .standby else { return }
+        coexistToken = AudioSessionCoordinator.shared.beginCoexisting(.mediaTrigger)
         do {
             let silent = try AVAudioPlayer(data: Self.silentWAV())
             silent.volume = 0
             silent.numberOfLoops = -1
             player = silent
             // Activate off-main first (BJ PR2) so `play()` never implicitly activates the shared
-            // session on the main thread, then start the silent loop.
-            Task { @MainActor in
+            // session on the main thread, then start the silent loop — unless the claim was
+            // released or switched to session control while activation was in flight, in which
+            // case a late `play()` would start silence under the conversation that took over.
+            Task { @MainActor [weak self] in
                 await AudioSessionCoordinator.shared.ensureActiveOffMain()
+                guard let self, self.player === silent else { return }
                 silent.play()
             }
         } catch {

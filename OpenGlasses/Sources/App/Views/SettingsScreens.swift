@@ -203,21 +203,21 @@ struct VoiceTriggersSettingsScreen: View {
                         info: trigger.detail
                     )
                 }
-                InfoToggle(
-                    title: "Temple Tap (Experimental)",
-                    isOn: Binding(
-                        get: { Config.mediaTriggerEnabled },
-                        set: { newValue in
-                            Config.setMediaTriggerEnabled(newValue)
-                            appState.mediaTrigger.refresh()
-                        }
-                    ),
-                    info: "Double-tap the glasses temple (the next-track gesture) to start the assistant — no wake word needed. Works by holding the Now Playing session while nothing is playing, so it automatically steps aside whenever your own music or podcasts play."
-                )
+                // Temple taps live with the glasses now (Plan GJ); this row is a way there.
+                NavigationLink {
+                    TempleTapSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Text("Temple Taps")
+                        Spacer()
+                        Text(Config.mediaTriggerEnabled ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
                 Text("Hands-Free Triggers")
             } footer: {
-                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control; Temple Tap pauses while your own audio plays.")
+                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control. Temple taps are set up under Hardware & Privacy.")
             }
         }
         .navigationTitle("Voice & Triggers")

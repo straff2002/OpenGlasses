@@ -1,8 +1,9 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Tests for the temple-tap trigger service's state machine (Plan CH P2): policy application
-/// through the claimer seam, command → trigger gating, and the stand-down path. Fresh instances
+/// Tests for the temple-tap trigger service's state machine (Plan CH P2, Plan GJ P1): policy
+/// application through the claimer seam (both claim modes), command → tap decoding and gating, and
+/// the stand-down path. Fresh instances
 /// with injected inputs throughout (house rule: never `.shared` in tests); the production
 /// `SilentNowPlayingClaimer` is device runtime and not exercised here beyond its WAV generator.
 @MainActor
@@ -11,9 +12,11 @@ final class MediaTriggerServiceTests: XCTestCase {
     private final class SpyClaimer: NowPlayingClaiming {
         var claimCount = 0
         var releaseCount = 0
+        var modes: [NowPlayingClaimMode] = []
         var onCommand: ((MediaRemoteCommand) -> Void)?
-        func claim(onCommand: @escaping (MediaRemoteCommand) -> Void) {
+        func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void) {
             claimCount += 1
+            modes.append(mode)
             self.onCommand = onCommand
         }
         func release() {
@@ -28,7 +31,8 @@ final class MediaTriggerServiceTests: XCTestCase {
         var otherAudio = false
         var realtime = false
         var owner: AudioSessionOwner?
-        var suppressed = false
+        var conversation = false
+        var sessionControl = true
         var now: TimeInterval = 0
     }
 
@@ -47,10 +51,15 @@ final class MediaTriggerServiceTests: XCTestCase {
             isEnabled: { [world] in world.enabled },
             isOtherAudioPlaying: { [world] in world.otherAudio },
             leaseOwner: { [world] in world.owner },
+            calibration: { [world] in
+                var calibration = TempleCalibration.assumedDefault
+                calibration.sessionControlAvailable = world.sessionControl
+                return calibration
+            },
             clock: { [world] in world.now },
             debounceInterval: debounce)
-        service.isSuppressed = { [world] in world.suppressed }
         service.realtimeSessionActive = { [world] in world.realtime }
+        service.conversationActive = { [world] in world.conversation }
         return service
     }
 
@@ -97,19 +106,47 @@ final class MediaTriggerServiceTests: XCTestCase {
         service.stop()
     }
 
-    func testRealtimeSessionForcesRelease() {
+    func testRealtimeSessionSwitchesToSessionControl() {
         let service = makeService()
         service.start()
         world.realtime = true
+        service.evaluate()
+        // The standby claim (and its silent player) is dropped, and handlers-only control taken.
+        XCTAssertEqual(service.claimedMode, .sessionControl)
+        XCTAssertEqual(claimer.releaseCount, 1)
+        XCTAssertEqual(claimer.modes, [.standby, .sessionControl])
+        // Session over → back to the silent-player standby claim.
+        world.realtime = false
+        service.evaluate()
+        XCTAssertEqual(service.claimedMode, .standby)
+        XCTAssertEqual(claimer.modes, [.standby, .sessionControl, .standby])
+        service.stop()
+    }
+
+    func testDirectConversationSwitchesToSessionControl() {
+        let service = makeService()
+        service.start()
+        world.conversation = true
+        world.owner = .transcription
+        service.evaluate()
+        XCTAssertEqual(service.claimedMode, .sessionControl)
+        service.stop()
+    }
+
+    func testSessionControlUnavailableReleasesInConversation() {
+        world.sessionControl = false
+        let service = makeService()
+        service.start()
+        world.owner = .geminiLive
         service.evaluate()
         XCTAssertFalse(service.isClaimed)
         service.stop()
     }
 
-    func testExclusiveLeaseHolderForcesRelease() {
+    func testOtherPartyLeaseHolderForcesRelease() {
         let service = makeService()
         service.start()
-        world.owner = .geminiLive
+        world.owner = .expertCall
         service.evaluate()
         XCTAssertFalse(service.isClaimed)
         service.stop()
@@ -149,61 +186,80 @@ final class MediaTriggerServiceTests: XCTestCase {
         XCTAssertFalse(service.isRunning)
     }
 
-    // MARK: - Command → trigger
+    // MARK: - Command → tap
 
-    func testNextTrackCommandFiresTrigger() {
+    func testNextTrackCommandFiresTwoTaps() {
         let service = makeService()
-        var fired = 0
-        service.onTrigger = { fired += 1 }
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
         service.start()
-        XCTAssertTrue(service.handleRemoteCommand(.nextTrack))
-        XCTAssertEqual(fired, 1)
+        XCTAssertEqual(service.handleRemoteCommand(.nextTrack), .two)
+        XCTAssertEqual(fired, [.two])
         service.stop()
     }
 
     func testCommandArrivesThroughClaimerCallback() {
         let service = makeService()
-        var fired = 0
-        service.onTrigger = { fired += 1 }
+        var fired: [(TempleGesture, MediaRemoteCommand)] = []
+        service.onGesture = { fired.append(($0, $1)) }
         service.start()
-        claimer.onCommand?(.nextTrack)
-        XCTAssertEqual(fired, 1)
+        claimer.onCommand?(.previousTrack)
+        XCTAssertEqual(fired.map { $0.0 }, [.three])
+        XCTAssertEqual(fired.map { $0.1 }, [.previousTrack])
         service.stop()
     }
 
-    func testPlayPauseAndPreviousDoNotFire() {
-        let service = makeService()
-        var fired = 0
-        service.onTrigger = { fired += 1 }
+    func testEveryCommandDecodesToATap() {
+        // Play/pause and previous-track did nothing under the single-gesture grammar; every
+        // command now decodes to a tap through the calibration table.
+        let service = makeService(debounce: 0)
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
         service.start()
-        XCTAssertFalse(service.handleRemoteCommand(.togglePlayPause))
-        XCTAssertFalse(service.handleRemoteCommand(.previousTrack))
-        XCTAssertEqual(fired, 0)
+        for (index, command) in [MediaRemoteCommand.togglePlayPause, .play, .pause, .nextTrack, .previousTrack].enumerated() {
+            world.now = Double(index)
+            service.handleRemoteCommand(command)
+        }
+        XCTAssertEqual(fired, [.one, .one, .one, .two, .three])
+        service.stop()
+    }
+
+    func testPauseThenPlayInOneTapFiresOnce() {
+        let service = makeService(debounce: 0)
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
+        service.start()
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        world.now = 0.05
+        XCTAssertNil(service.handleRemoteCommand(.play))
+        XCTAssertEqual(fired, [.one])
         service.stop()
     }
 
     func testDebounceDropsRapidRepeats() {
         let service = makeService(debounce: 2.0)
         var fired = 0
-        service.onTrigger = { fired += 1 }
+        service.onGesture = { _, _ in fired += 1 }
         service.start()
-        XCTAssertTrue(service.handleRemoteCommand(.nextTrack))
+        XCTAssertNotNil(service.handleRemoteCommand(.nextTrack))
         world.now = 1.0
-        XCTAssertFalse(service.handleRemoteCommand(.nextTrack))   // inside the window
+        XCTAssertNil(service.handleRemoteCommand(.nextTrack))   // inside the window
         world.now = 3.0
-        XCTAssertTrue(service.handleRemoteCommand(.nextTrack))    // outside it
+        XCTAssertNotNil(service.handleRemoteCommand(.nextTrack))    // outside it
         XCTAssertEqual(fired, 2)
         service.stop()
     }
 
-    func testSuppressedCommandDoesNotFire() {
+    func testTapsFireDuringSessionControl() {
+        // The point of session control: a conversation no longer swallows the taps.
         let service = makeService()
-        var fired = 0
-        service.onTrigger = { fired += 1 }
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
         service.start()
-        world.suppressed = true
-        XCTAssertFalse(service.handleRemoteCommand(.nextTrack))
-        XCTAssertEqual(fired, 0)
+        world.owner = .geminiLive
+        service.evaluate()
+        XCTAssertEqual(service.handleRemoteCommand(.nextTrack), .two)
+        XCTAssertEqual(fired, [.two])
         service.stop()
     }
 
@@ -211,9 +267,9 @@ final class MediaTriggerServiceTests: XCTestCase {
         world.otherAudio = true   // never claimed
         let service = makeService()
         var fired = 0
-        service.onTrigger = { fired += 1 }
+        service.onGesture = { _, _ in fired += 1 }
         service.start()
-        XCTAssertFalse(service.handleRemoteCommand(.nextTrack))
+        XCTAssertNil(service.handleRemoteCommand(.nextTrack))
         XCTAssertEqual(fired, 0)
         service.stop()
     }
