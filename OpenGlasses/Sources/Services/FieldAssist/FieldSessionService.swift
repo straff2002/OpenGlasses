@@ -954,10 +954,11 @@ final class FieldSessionService: ObservableObject {
     /// that nothing did, so the model cannot fall back to general knowledge silently.
     func promptContext(turn: String? = nil) -> String? {
         guard let store = activeVault else { return nil }
-        // Plan GB P5: the 24k vault-core bound applies on every provider, not just ChatGPT —
-        // an unbounded core rode along on every API request and every tool round-trip.
+        // Plan GB P5: the vault core is bounded on every provider, not just ChatGPT — an
+        // unbounded core rode along on every API request and every tool round-trip.
         var context = VaultPromptBuilder.promptContext(for: store,
-            referenceByteLimit: VaultPromptBuilder.defaultReferenceByteLimit, turn: turn)
+            referenceByteLimit: VaultPromptBuilder.referenceByteLimit(for: Config.activeModel?.llmProvider),
+            turn: turn)
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }

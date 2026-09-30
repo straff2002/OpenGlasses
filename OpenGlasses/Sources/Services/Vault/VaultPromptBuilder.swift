@@ -7,8 +7,14 @@ import Foundation
 enum VaultPromptBuilder {
 
     /// Build the prompt addendum for a vault. Returns nil when the vault is empty.
-    /// The vault-core byte bound every provider gets (Plan GB P5; was ChatGPT-only).
-    static let defaultReferenceByteLimit = 24_000
+    /// The vault-core byte bound for a provider (Plan GB P5; was ChatGPT-only, unbounded
+    /// elsewhere). ChatGPT keeps FM's 24k as shipped. Every other provider is held to the
+    /// validator's own core budget (`VaultValidator.coreBudgetCharacters`, the size a vault is told
+    /// its core may be): tighter than that would drop a core file — service values, on the field
+    /// tester's vault — from a vault that validated clean, trading answer reliability for cost.
+    static func referenceByteLimit(for provider: LLMProvider?) -> Int {
+        provider == .chatgpt ? 24_000 : VaultValidator.coreBudgetCharacters
+    }
 
     static func promptContext(for store: VaultStore, referenceByteLimit: Int? = nil, turn: String? = nil) -> String? {
         let files = store.readAll()

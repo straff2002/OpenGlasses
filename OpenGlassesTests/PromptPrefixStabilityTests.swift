@@ -118,6 +118,14 @@ final class PromptPrefixStabilityTests: XCTestCase {
         XCTAssertFalse(LLMService.toolSchemasAttached(provider: .local, customEndpointRejectsTools: false))
     }
 
+    func testVaultCoreIsBoundedOnEveryProvider() {
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt), 24_000, "FM's bound, as shipped")
+        for provider in [LLMProvider.openai, .anthropic, .gemini, .custom] {
+            XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: provider), VaultValidator.coreBudgetCharacters)
+        }
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: nil), VaultValidator.coreBudgetCharacters)
+    }
+
     func testDeclaredToolNamesAreSorted() {
         XCTAssertEqual(ToolDeclarations.declarableNames(["web_search", "capture_photo", "get_weather"],
                                                         isEnabled: { _ in true }, hipaaMode: false, hipaaDisabled: []),

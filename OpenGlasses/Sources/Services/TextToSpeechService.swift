@@ -38,6 +38,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private(set) var lastEngineFailureAt: Date?
     /// How many times the synthesizer has been rebuilt — diagnostics and tests.
     private(set) var synthesizerRebuilds = 0
+    /// Synthesizers this service has replaced. A callback already in flight from one of them when
+    /// it was retired must not record an outcome for the utterance now being retried (FE P4).
+    /// Held strongly (and bounded) so a retired one's address cannot be reused by a new one while
+    /// it is still on this list.
+    private var retiredSynthesizers: [any SpeechSynthesizing] = []
+
+    private func isRetired(_ source: ObjectIdentifier) -> Bool {
+        retiredSynthesizers.contains { ObjectIdentifier($0) == source }
+    }
     private var mediaResetObserver: NSObjectProtocol?
     private var audioPlayer: AVAudioPlayer?
     private var tonePlayer: AVAudioPlayer?  // Separate ref so tone isn't killed by speech
@@ -204,6 +213,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let old = synthesizer
         old.delegate = nil
         old.stopSpeaking(at: .immediate)
+        retiredSynthesizers.append(old)
+        if retiredSynthesizers.count > 4 { retiredSynthesizers.removeFirst() }
         synthesizer = synthesizerFactory()
         synthesizer.delegate = self
         synthesizerRebuilds += 1
@@ -1091,7 +1102,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let id = ObjectIdentifier(utterance)
         Task { @MainActor in
             // Plan GB P4: a callback from a synthesizer that has since been replaced is ignored.
-            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            guard !self.isRetired(source) else { return }
             if self.systemWatch?.utterance == id { self.systemWatch?.didStartAt = startedAt }
             PrivacyLog.tts(.started, engine: PrivacyToken("system"))
             self.isSpeaking = true
@@ -1128,7 +1139,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let finishedAt = Date()
         let source = ObjectIdentifier(synthesizer)
         Task { @MainActor in
-            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            guard !self.isRetired(source) else { return }
             self.systemWatch = nil
             PrivacyLog.tts(.playbackFinished, engine: PrivacyToken("system"), success: true)
             TurnRecorder.markPlaybackEnd(at: finishedAt)
@@ -1144,7 +1155,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         let source = ObjectIdentifier(synthesizer)
         Task { @MainActor in
-            guard ObjectIdentifier(self.synthesizer) == source else { return }
+            guard !self.isRetired(source) else { return }
             self.systemWatch = nil
             PrivacyLog.tts(.cancelled, engine: PrivacyToken("system"))
             // `didCancel` is the engine noticing a teardown somebody else started, so the reason
