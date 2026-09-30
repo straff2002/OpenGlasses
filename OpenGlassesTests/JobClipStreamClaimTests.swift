@@ -94,6 +94,17 @@ final class JobClipStreamClaimTests: XCTestCase {
         XCTAssertEqual(ensureCalls, 0)
     }
 
+    func testASecondStartWhileTheFirstWaitsCannotReleaseItsClaim() async {
+        let clip = recorder()
+        async let first = clip.startClaimingStream(from: frames)
+        async let second = clip.startClaimingStream(from: frames)
+        let results = await [first, second]
+        XCTAssertEqual(results.filter { (try? $0.get()) != nil }.count, 1)
+        XCTAssertTrue(clip.isRecording)
+        XCTAssertTrue(clip.holdsStreamClaim)
+        XCTAssertEqual(releases, 0, "the refused start gave nothing back")
+    }
+
     // MARK: - The warm-up wait
 
     func testWarmupWaitsThroughConnectingToReady() async {

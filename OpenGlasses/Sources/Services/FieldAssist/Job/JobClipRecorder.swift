@@ -120,6 +120,8 @@ final class JobClipRecorder: ObservableObject {
 
     /// Whether this recorder holds a stream claim to give back.
     private(set) var holdsStreamClaim = false
+    /// A claiming start is waiting for the stream.
+    private var isStartingClip = false
 
     private var seams: Seams
 
@@ -249,8 +251,12 @@ final class JobClipRecorder: ObservableObject {
     func startClaimingStream(from publisher: PassthroughSubject<UIImage, Never>,
                              caption: String? = nil,
                              seconds: TimeInterval? = nil) async -> Result<TimeInterval, StartRefusal> {
-        guard !isRecording else { return .failure(.alreadyRecording(elapsed: elapsed)) }
+        guard !isRecording, !isStartingClip else { return .failure(.alreadyRecording(elapsed: elapsed)) }
         guard seams.sessions().isOpenForEvidence else { return .failure(.noOpenJob) }
+        // A second start (a double tap, or a tap during a spoken start) while the first waits for
+        // the stream is refused, so it can never release the claim the first one is holding.
+        isStartingClip = true
+        defer { isStartingClip = false }
         if seams.readiness()?.hasFreshVisualEvidence != true {
             switch await seams.ensureStream() {
             case .ready:
