@@ -91,6 +91,14 @@ final class EquipmentLookupTool: NativeTool {
     private var session: FieldSessionService { injectedSession ?? .shared }
 
     func execute(args: [String: Any]) async throws -> String {
+        // Plan GD2: an identification that attaches work already recorded says so, whichever of
+        // this tool's routes made it (a spoken model, a nameplate read, a correction).
+        let markerBefore = session.activeSession?.earlierWorkAttachedAt
+        let reply = try await lookUp(args: args)
+        return FieldSessionTool.withEarlierWorkNote(reply, markerBefore: markerBefore, service: session)
+    }
+
+    private func lookUp(args: [String: Any]) async throws -> String {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }

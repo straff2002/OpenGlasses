@@ -329,6 +329,7 @@ extension GuidedJobFlow {
     private func debriefRecord(_ sessionId: String) -> WorkRecord? {
         guard let session = sessions.history.first(where: { $0.id == sessionId }) else { return nil }
         let name = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
-        return WorkRecord(session: session, vaultName: name)
+        return WorkRecord(session: session, vaultName: name,
+                          usage: sessions.jobUsage(sessionId: session.id))
     }
 }

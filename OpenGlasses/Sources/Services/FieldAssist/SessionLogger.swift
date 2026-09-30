@@ -109,6 +109,10 @@ final class SessionLogger {
             case equipmentCorrected = "equipment_corrected"
             /// The technician moved to the next unit on the same job (Plan GB P2).
             case unitStarted = "unit_started"
+            /// Work recorded before the first identification was separated from the machine
+            /// identified after it (Plan GD2): the earlier work keeps its scope as an unidentified
+            /// unit, and the identified machine moves to a scope of its own. Both scopes logged.
+            case unitSplit = "unit_split"
             /// The assistant recommended something, with its citation (Plan EM).
             case taskProposed = "task_proposed"
             /// The technician accepted, declined or deferred it.

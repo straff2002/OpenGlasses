@@ -140,6 +140,47 @@ final class JobTabModelTests: XCTestCase {
         XCTAssertFalse(model.hasPastJobs)
     }
 
+    // MARK: - Model usage (Plan GD1)
+
+    func testTheUsageLineSaysWhatWasPricedAndNothingWhenEmpty() {
+        func summary(_ requests: Int, usd: Double?, unpriced: Int) -> JobUsageSummary {
+            JobUsageSummary(requests: requests, inputTokens: 1_000, cachedTokens: 0, outputTokens: 10,
+                            estimatedUSD: usd, unpricedRequests: unpriced)
+        }
+        XCTAssertEqual(JobTabModel.usageLine(summary(12, usd: 0.42, unpriced: 0)), "Model usage: $0.42 · 12 requests")
+        XCTAssertEqual(JobTabModel.usageLine(summary(12, usd: 0.30, unpriced: 3)), "Model usage: 12 requests (3 unpriced)")
+        XCTAssertEqual(JobTabModel.usageLine(summary(5, usd: nil, unpriced: 5)), "Model usage: 5 requests, not priced")
+        XCTAssertEqual(JobTabModel.usageLine(summary(1, usd: 0.05, unpriced: 0)), "Model usage: $0.05 · 1 request")
+        XCTAssertEqual(JobTabModel.usageLine(summary(1, usd: 0.001, unpriced: 0)), "Model usage: under $0.01 · 1 request")
+        XCTAssertNil(JobTabModel.usageLine(summary(0, usd: nil, unpriced: 0)))
+        XCTAssertNil(JobTabModel.usageLine(nil))
+    }
+
+    func testTheJobTabShowsWhatTheOpenJobHasCost() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("usage-\(UUID()).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let tracker = UsageTracker(store: UsageStore(path: url))
+        service.usageTracker = tracker
+        let model = makeModel()
+        try model.startJob(jobReference: "1005")
+        guard case .running(let before) = model.state else { return XCTFail("expected a running job") }
+        XCTAssertNil(before.usageLine, "no requests yet, no line")
+
+        let jobId = try XCTUnwrap(service.activeSession?.id)
+        tracker.record(provider: .openai, model: "gpt-5.5", tokensIn: 20_000, tokensOut: 100,
+                       cacheReadTokens: 10_000, fieldSessionId: jobId)
+        tracker.record(provider: .openai, model: "gpt-5.5", tokensIn: 1_000, tokensOut: 50,
+                       fieldSessionId: jobId)
+        tracker.record(provider: .openai, model: "gpt-5.5", tokensIn: 5_000, tokensOut: 5)   // not this job
+
+        guard case .running(let job) = model.state else { return XCTFail("expected a running job") }
+        let expected = try XCTUnwrap(JobTabModel.usageLine(tracker.jobUsage(fieldSessionId: jobId)))
+        XCTAssertEqual(job.usageLine, expected)
+        XCTAssertTrue(expected.hasPrefix("Model usage: $"), expected)
+        XCTAssertTrue(expected.hasSuffix(" · 2 requests"), expected)
+        XCTAssertEqual(service.workRecord()?.usage?.requests, 2, "the record carries the same figure")
+    }
+
     // MARK: - Starting
 
     func testStartingWithoutANumberLeavesTheIntakeOwingOne() throws {

@@ -806,7 +806,16 @@ class LLMService: ObservableObject {
         let hasNativeTools = nativeToolRouter != nil
         let includeOpenClaw = Config.isOpenClawAgentActive && openClawBridge != nil
         let includeTools = hasNativeTools || includeOpenClaw
-        let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []   // used by the agent-plan block too
+        // Plan GD3: the field-mode profile narrows the prompt's list exactly as it narrows the
+        // declared schemas, so a tool is listed only when it is declared. Used by the agent-plan
+        // block too, which then plans over the same names.
+        let allNativeToolNames = nativeToolRouter?.registry.toolNames ?? []
+        let nativeToolNames = FieldToolProfile.current(allNativeToolNames)
+        if nativeToolNames.count < allNativeToolNames.count {
+            PrivacyLog.model(.toolProfileApplied, count: nativeToolNames.count,
+                             total: allNativeToolNames.count,
+                             detail: PrivacyToken(FieldToolProfile.digest(nativeToolNames)))
+        }
 
         // On-device models get a LEAN prompt regardless of how they were reached (active model or
         // agent). The full ~100-tool prompt is ~8k tokens and OOM-kills a 2B model on a phone;
@@ -4085,7 +4094,8 @@ class LLMService: ObservableObject {
         // Cloud agent: build the full tool-laden system prompt — cloud models handle a large
         // context and tool-call natively.
         if let cloudConfig = Config.savedModels.first(where: { $0.id == agentModelId }) {
-            let nativeToolNames = nativeToolRouter?.registry.toolNames ?? []
+            // Plan GD3: the same list the declarations carry.
+            let nativeToolNames = FieldToolProfile.current(nativeToolRouter?.registry.toolNames ?? [])
             let nativeToolDescriptions = nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? []
             let fullPrompt = await Self.buildSystemPrompt(
                 locationContext: locationContext,

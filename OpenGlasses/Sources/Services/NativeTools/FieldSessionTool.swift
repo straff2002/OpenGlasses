@@ -35,6 +35,11 @@ final class FieldSessionTool: NativeTool {
     'next_unit' when the technician moves to another machine on the same job ("next unit", "now \
     the second furnace") — pass 'unit' with its model if they say it, as said; work from then on \
     is recorded against that unit. \
+    'separate_earlier_work' when the technician says work done before the first unit was \
+    identified was on a different machine ("that was a different unit", "the earlier work was on \
+    the other furnace"): the earlier work stays on an unidentified unit of its own and the \
+    identified machine becomes a separate unit. Only after an identification reply said earlier \
+    work was attached to it. \
     Jobs ahead: 'add_upcoming_job' records a job the technician describes before going there \
     ("next job: 1007, no heat, Smith Street") — pass only the fields they actually said, word for \
     word, and never fill one in; 'brief_next_job' has the app read the cited brief aloud; \
@@ -45,7 +50,7 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'next_unit' to move to another machine on the same job, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
+                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'next_unit' to move to another machine on the same job, 'separate_earlier_work' when work recorded before the first identification was on a different machine, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
             ],
             "format": [
                 "type": "string",
@@ -144,6 +149,8 @@ final class FieldSessionTool: NativeTool {
             return setJobReference(args: args, service: service)
         case "next_unit":
             return nextUnit(args: args, service: service)
+        case "separate_earlier_work":
+            return separateEarlierWork(service: service)
         case "pause":
             return await pauseSession(service: service)
         case "resume":
@@ -165,7 +172,7 @@ final class FieldSessionTool: NativeTool {
         case "brief_more":
             return await briefMore(args: args)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', 'export', 'add_upcoming_job', 'brief_next_job', or 'brief_more'."
+            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'next_unit', 'separate_earlier_work', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', 'export', 'add_upcoming_job', 'brief_next_job', or 'brief_more'."
         }
     }
 
@@ -328,6 +335,35 @@ final class FieldSessionTool: NativeTool {
             ? " It is not a model the loaded manuals cover; say so when you answer from them." : ""
         return "Started the next unit on this job\(unit). Work from now on is recorded against it; "
             + "the previous unit keeps its own.\(caveat)"
+    }
+
+    /// The sentence an identification reply carries when it attached earlier work to the unit
+    /// (Plan GD2) — said, not guessed, so the technician can put it right.
+    static let earlierWorkSentence = "Earlier work on this job is now recorded on this unit; say if it was a different machine."
+
+    /// `reply` with `earlierWorkSentence` appended when this call is the one that attached earlier
+    /// work — the marker was clear before it and is set after it. Otherwise `reply` unchanged.
+    static func withEarlierWorkNote(_ reply: String, markerBefore: Date?,
+                                    service: FieldSessionService) -> String {
+        guard markerBefore == nil, service.earlierWorkAttached else { return reply }
+        return reply + "\n\n" + earlierWorkSentence
+    }
+
+    /// "That was a different unit" (Plan GD2): the work before the first identification was on
+    /// another machine. Deterministic — the earlier work keeps its scope, the identified machine
+    /// takes a new one.
+    private func separateEarlierWork(service: FieldSessionService) -> String {
+        guard service.activeSession != nil else {
+            return "Could not separate earlier work: no Field Assist session is active."
+        }
+        let unit = service.activeEquipment?.stated
+        guard service.separateEarlierWork() else {
+            return "No earlier work is attached to the identified unit, so nothing was separated. "
+                + "If the technician has moved to another machine, use 'next_unit'."
+        }
+        let named = unit.map { " \($0) is now a unit of its own;" } ?? " The identified unit is now a unit of its own;"
+        return "Separated the earlier work: it stays on an unidentified unit.\(named) "
+            + "work from now on is recorded against it."
     }
 
     private func pauseSession(service: FieldSessionService) async -> String {

@@ -37,6 +37,10 @@ protocol JobTabHosting: WorkRecordHosting {
     // make about what the page asked for.
     func debriefs(sessionId: String) -> [JobDebrief]
     func reportWasSent(sessionId: String) -> Bool
+
+    // Per-job cost (Plan GD1). On the protocol so every record the tab builds carries what the job
+    // cost, from the one usage store, and a test can state the figures.
+    func jobUsage(sessionId: String) -> JobUsageSummary
 }
 
 extension FieldSessionService: JobTabHosting {}
@@ -153,6 +157,8 @@ struct JobTabModel {
         /// "Paused when the app closed at 5:18 PM; 2 minutes not counted." — set when a relaunch
         /// found the job running and paused it at the app's last sign of life (Plan GB P3).
         var appClosedNote: String? = nil
+        /// "Model usage: $0.42 · 12 requests" (Plan GD1) — nil until the job has made a request.
+        var usageLine: String? = nil
 
         var pauseButtonTitle: String { isPaused ? "Resume job" : "Pause job" }
 
@@ -325,6 +331,9 @@ struct JobTabModel {
         /// The record exactly as the export renders it — the same lines, in the same order.
         let summaryLines: [String]
         let billingLine: String
+        /// What the job cost in model usage (Plan GD1), beside the billing line and never among
+        /// `summaryLines`, which are the customer's work order.
+        let usageLine: String?
         /// The conversation the job owned, when it still exists. Read-only from here: opening it
         /// must never make it the thread the next turn lands in.
         let threadId: String?
@@ -409,7 +418,31 @@ struct JobTabModel {
             photoCount: host.jobMedia.count,
             appClosedNote: session.appClosedPause.map {
                 BillableClock.note(pausedAt: $0.pausedAt, uncountedSeconds: $0.uncountedSeconds)
-            })
+            },
+            usageLine: record?.usageLine)
+    }
+
+    /// The Job tab's model-usage line (Plan GD1), from the job's usage summary. Pure.
+    ///
+    /// A dollar figure only when every request was priced: a sum that leaves some requests out is
+    /// not what the job cost, so a mix says how many were unpriced instead of printing a smaller
+    /// number as if it were the total. Nil when nothing was recorded.
+    nonisolated static func usageLine(_ summary: JobUsageSummary?) -> String? {
+        guard let summary, !summary.isEmpty else { return nil }
+        let requests = "\(summary.requests) request\(summary.requests == 1 ? "" : "s")"
+        if summary.unpricedRequests >= summary.requests || summary.estimatedUSD == nil {
+            return "Model usage: \(requests), not priced"
+        }
+        if summary.unpricedRequests > 0 {
+            return "Model usage: \(requests) (\(summary.unpricedRequests) unpriced)"
+        }
+        return "Model usage: \(dollars(summary.estimatedUSD ?? 0)) · \(requests)"
+    }
+
+    /// "$0.42"; "under $0.01" for a figure that would otherwise round to nothing.
+    nonisolated static func dollars(_ amount: Double) -> String {
+        if amount > 0 && amount < 0.005 { return "under $0.01" }
+        return String(format: "$%.2f", amount)
     }
 
     /// Time on the job, from the record's own arithmetic and nothing else.
@@ -698,7 +731,8 @@ struct JobTabModel {
         let clipVaultName = defaults.vaultName(session.vaultId)
         let record = WorkRecord(session: session, vaultName: clipVaultName,
                                 vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: clipVaultName))
+                                    .recordLine(vaultName: clipVaultName),
+                                usage: host.jobUsage(sessionId: session.id))
         let clips = record.includedClips
         guard !clips.isEmpty else { return nil }
         guard let channel = DeliveryPolicy(settings: Config.deliverySettings).defaultChannel else {
@@ -836,7 +870,8 @@ struct JobTabModel {
         let vaultName = defaults.vaultName(session.vaultId)
         let record = WorkRecord(session: session, vaultName: vaultName,
                                 vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                                    .recordLine(vaultName: vaultName))
+                                    .recordLine(vaultName: vaultName),
+                                usage: host.jobUsage(sessionId: session.id))
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         return PastJob(
             sessionId: session.id,
@@ -848,6 +883,7 @@ struct JobTabModel {
             visitedUnits: visitedUnitNames(of: session),
             summaryLines: record.summaryLines,
             billingLine: record.billingSummary,
+            usageLine: record.usageLine,
             threadId: session.conversationThreadId,
             record: record)
     }
