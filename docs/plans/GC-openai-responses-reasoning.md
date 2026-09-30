@@ -71,7 +71,7 @@ Paths are under `OpenGlasses/Sources/` unless noted. Line numbers are `main` @ `
 
 PENDING-RESEARCH
 
-## Decisions
+## Decisions (1 and 3 confirmed by the owner 2026-09-30; the rest are house-style calls)
 
 1. **Explicit above `none` moves; Automatic does not.** The selector sends a turn to Responses only
    when the saved model's effort is explicit and above `none` *and* tools are attached *and* the
