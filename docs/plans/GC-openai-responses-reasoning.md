@@ -167,7 +167,74 @@ replay, and the cloud-agent entry.
 
 ## What the provider documents (verified 2026-09-30)
 
-PENDING-RESEARCH
+Read on 2026-09-30 from the provider's developer documentation (reasoning, function-calling,
+prompt-caching, migrate-to-responses, conversation-state, images-vision guides; the Responses
+create and streaming-events reference; the per-model pages and the pricing page; the reasoning-items
+cookbook) and the provider's Python SDK type files. Items marked *inferred* or *community* are not
+stated by the provider's docs.
+
+- **Effort vocabulary:** `none | minimal | low | medium | high | xhigh | max`, per model. `gpt-6-astra`
+  and `gpt-6.1-sol` accept `low`…`max` only (`none` is a 400); `gpt-6.1-sol` defaults to `medium`,
+  `gpt-6-astra`'s default is not stated. `gpt-6-sol`, `gpt-6-luna` and every `gpt-5.6-*` accept
+  `none` plus `low`…`max`, default `medium`. `gpt-5.5` accepts `none`…`xhigh`, default `medium`.
+  `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-5.1` **default to `none`**. `gpt-5` accepts
+  `minimal`…`high`, default `medium`. o3 / o4-mini accept `low|medium|high` (default not stated).
+  The app keeps `max` out of the picker (GB). There is no bare `gpt-6` id; `gpt-5.6` aliases
+  `gpt-5.6-sol`.
+- **Chat Completions and tools:** the migration guide states that from GPT-5.4 onwards Chat
+  Completions has no tool calling unless `reasoning_effort` is `none`. `gpt-6-sol`, `gpt-6-luna`
+  and `gpt-5.6-*` take tools on Chat Completions only at `none`; **`gpt-6-astra` and `gpt-6.1-sol`
+  take no tools on Chat Completions at all.** The exact 400 text the tester saw is published by a
+  cloud reseller's docs and the community forum, which also note that sending `tools` alone trips
+  it because the default effort is `medium`. No current model is Responses-only for tool-free use.
+  GB's `openAIFamily` table (only `gpt-6*` rejecting) is therefore wrong for 5.4, 5.5 and 5.6.
+- **Reasoning replay, `store: false`:** reasoning items carry `encrypted_content` by default now;
+  `include: ["reasoning.encrypted_content"]` is still accepted. Item shape:
+  `{type: "reasoning", id: "rs_…", summary: [{type: "summary_text", text}], encrypted_content?,
+  content?, status?}`. Read it from `response.output_item.done` (the `.added` copy may be partial).
+  **The reasoning item precedes its `function_call`**; replay the whole `output` array in order,
+  then the `function_call_output` items, and never split a chain since the last user message.
+  Reasoning from earlier turns may be sent (irrelevant items are ignored; `reasoning.context`
+  defaults to `all_turns` on 5.6+, `current_turn` before). Omitting reasoning is described as a
+  quality loss, not an error. The known 400 *"Item 'rs_…' of type 'reasoning' was provided without
+  its required following item"* (community) is the opposite mistake: a reasoning item without the
+  item that followed it. GPT-5.5/5.4 assistant messages carry a `phase` field that should be
+  replayed as received. Manual replay is the documented stateless path; `previous_response_id` is
+  shown only with stored responses (*inferred*: it cannot serve `store: false`).
+- **Caching:** `prompt_cache_key` is a top-level Responses field. `prompt_cache_retention` is
+  deprecated; 5.6+ uses `prompt_cache_options.ttl` (`30m` only). 5.6+ bills cache writes at 1.25×
+  input and reports `usage.input_tokens_details.cache_write_tokens`. `cached_tokens` is a subset of
+  `input_tokens` (ordinary input = input − cached − cache-write). Reasoning tokens are
+  `usage.output_tokens_details.reasoning_tokens`, inside `output_tokens`. Changing
+  `reasoning.effort` between requests breaks the cached prefix (per model here, so stable).
+- **Output cap:** `max_output_tokens` includes reasoning tokens; exceeding it returns
+  `status: "incomplete"` with `incomplete_details.reason: "max_output_tokens"`, possibly with no
+  visible text. The provider suggests generous headroom (25k); no hard minimum is documented.
+- **Streaming:** `response.created`, `response.output_item.added/done`, `response.output_text.
+  delta/done`, `response.function_call_arguments.delta/done`, `response.reasoning_summary_*`,
+  `response.reasoning_text.*`, `response.completed`, `response.incomplete`, `response.failed`,
+  `error`. `response.completed` carries a full `Response` (the example has `output`); no page
+  guarantees it, so the `.done`-based accumulator stays authoritative.
+- **Tools:** `{type: "function", name, description?, parameters, strict?}`; with `strict` omitted the
+  API strictens where it can. `tool_choice`: `none | auto | required | {type: "function", name} |
+  allowed_tools`; default `auto`. `parallel_tool_calls` default not stated (*inferred* true).
+- **Context / max output:** GPT-6, 5.6, 5.5, 5.4 → 1,050,000 context, 128k output (6 and 5.6 cap
+  input at 922k). 5.2, 5.1, 5 → 400k / 128k. `gpt-4.1` → 1,047,576 / 32,768. `gpt-4o` → 128k /
+  16,384. o3, o4-mini → 200k / 100k. Requests above 272k input bill at 2× input / 1.5× output
+  (irrelevant under GB's 14k history budget).
+- **Prices per 1M (input / cached / cache write / output):** `gpt-6-astra` 10 / 1 / 12.50 / 50;
+  `gpt-6.1-sol` 2 / 0.10 / 2.50 / 10; `gpt-6-sol` 2 / 0.20 / 2.50 / 10; `gpt-6-luna` 0.10 / 0.01 /
+  0.125 / 0.50; `gpt-5.6-sol` 4 / 0.40 / 5 / 20 (promotional); `gpt-5.5` 5 / 0.50 / – / 30;
+  `gpt-5.2` 1.75 / 0.175 / – / 14; `gpt-5.1` 1.25 / 0.125 / – / 10. GB's `ModelPricing` rows agree
+  on input/cached/output; cache-write is new.
+- **Prompt placement:** both top-level `instructions` and `developer` input messages are accepted.
+- **Azure:** Responses exists at `https://<resource>.openai.azure.com/openai/v1/responses` (no
+  `api-version`), `api-key` header or Entra bearer, `model` = deployment name; encrypted reasoning
+  with `store: false` is documented there. URL opt-in (Decision 3) is viable.
+- **Images:** every model above takes `{type: "input_image", image_url, detail}`; `detail` is
+  `low | high | auto | original` (default `auto`; `original` from 5.4 up).
+- **Not verified:** `gpt-6-astra`'s default effort, o3/o4-mini defaults, a `max_output_tokens`
+  minimum, whether 6.x rejects the deprecated retention field, the `parallel_tool_calls` default.
 
 ## Decisions (1 and 3 confirmed by the owner 2026-09-30; the rest are house-style calls)
 
@@ -175,7 +242,11 @@ PENDING-RESEARCH
    when the saved model's effort is explicit and above `none` *and* tools are attached *and* the
    model is a reasoning family on the OpenAI API host. Automatic keeps GB's behaviour (Chat
    Completions, `none` with tools) because the tester's default is cheap and fast, and reasoning is
-   opted into per model.
+   opted into per model. **Amendment from the docs (2026-09-30):** a model that takes no tools on
+   Chat Completions at all (`gpt-6-astra`, `gpt-6.1-sol`, which also refuse `none`) goes to
+   Responses with tools even at Automatic, at its lowest accepted level (`low`) — the cheapest
+   setting that can answer at all. The family table gains `chatToolsRequireNone` (5.4, 5.5, 5.6,
+   6-sol, 6-luna) and `chatToolsUnavailable` (6-astra, 6.1-sol) in place of GB's single flag.
 2. **No tools → no move.** Chat Completions accepts `reasoning_effort` without tools, so a
    tools-off turn (side calls, summarisation, the lean prompt) stays where it is. The one exception is
    a model the docs list as Responses-only, which moves regardless.
@@ -183,12 +254,14 @@ PENDING-RESEARCH
    path ends in `/responses` is sent Responses requests; any other custom host stays on Chat
    Completions (the existing behaviour, `/chat/completions` appended). This adds no user-facing
    string and matches how the base URL already selects the request shape.
-4. **Reasoning items live in the turn, not the transcript.** The encrypted reasoning item that
-   precedes a `function_call` is kept on the assistant history message (a non-chat key) for the
-   tool loop of the current turn and stripped when the turn finalises. It is opaque ciphertext of
-   several kilobytes; carrying it across turns would inflate the persisted history and the cache
-   prefix for no documented benefit. `PromptLayout.chatMessages` and the Chat Completions body never
-   see the key — a fallback mid-turn strips it before the retried request.
+4. **Reasoning items live in the turn, not the transcript.** The assistant history message for a
+   Responses turn keeps the response's raw `output` items (reasoning, message, function_call — in
+   the order received, `phase` and all) under one non-chat key, and `inputItems` replays them
+   verbatim ahead of the `function_call_output` items, so a reasoning item is never sent without the
+   item that followed it. The key is stripped when the turn finalises: the items are opaque
+   ciphertext of several kilobytes and cross-turn carry is a documented nicety, not a requirement.
+   `PromptLayout.chatMessages` and the Chat Completions body never see the key — a fallback mid-turn
+   strips it before the retried request.
 5. **Usage parsing detects the shape.** For the OpenAI-shaped providers, a usage block carrying
    `input_tokens` (and no `prompt_tokens`) is parsed as Responses usage; cached tokens are subtracted
    from input exactly as GB does for the chat shape, so nothing is counted twice.
@@ -197,8 +270,15 @@ PENDING-RESEARCH
    the turn's start so the user message is not appended twice, logs `routeFallback`, and remembers
    the model for the run. The retried request's own 400 stays terminal (`ModelFallbackChain`).
 7. **Context for the API host comes from a table, provenance-stamped**, like the ChatGPT catalog:
-   the model page's context window for every family the app knows, and a conservative default for an
-   unknown model on `api.openai.com` — never the 32k that fits the subscription backend.
+   the model page's context window for every family the app knows (table above), and 128k for an
+   unknown model on `api.openai.com` — never the 32k that fits the subscription backend. GB's 14k
+   history budget still decides what is sent; the context limit is the capacity guard.
+8. **Caching fields stay minimal.** `prompt_cache_key` only; no retention or TTL field (one is
+   deprecated, the other model-gated). `cache_write_tokens` is parsed and priced at 1.25× input
+   when a row has no explicit cache-write rate, subtracted from input so nothing is counted twice.
+9. **An incomplete response is named, not swallowed.** `status: "incomplete"` with
+   `max_output_tokens` and no text or tool call logs a distinct marker and surfaces as the existing
+   empty-completion path; the 4096 floor stays (GB) because the cap is a ceiling, not a spend.
 
 ## Scope and invariants
 
