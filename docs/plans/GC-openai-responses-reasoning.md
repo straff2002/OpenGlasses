@@ -1,11 +1,9 @@
 # Plan GC — OpenAI API reasoning with tools via `/v1/responses`
 
-**Status:** 📋 Planned 2026-09-30 — follows Plan [GB](GB-field-test-round-3.md) P0, which clamps
-reasoning to `none` whenever function tools ride on `/v1/chat/completions` for the OpenAI API
-provider. This plan routes those turns through `/v1/responses` so the technician's chosen effort
-actually applies during tool-calling turns. One PR. **Owed after merge (device, live key):** one
-real reasoning tool turn on `gpt-6-sol` and one on `gpt-5.5` over the API, with latency and cost per
-turn read from the tracker and compared with the provider's bill.
+**Status:** ✅ Core shipped 2026-09-30 — P0–P3 in one PR (branch `feat/gc-openai-responses-reasoning`).
+**Owed (device, live key):** one reasoning tool turn each on `gpt-6-sol` and `gpt-5.5` over the API —
+latency and cost per turn from the tracker against the provider's bill; a Responses refusal observed
+live, if one exists.
 
 **Trigger:** GB's field-test run: `gpt-6-sol` returned HTTP 400 *"Function tools with
 reasoning_effort are not supported … use /v1/responses or set reasoning_effort to 'none'"* on every
@@ -344,3 +342,23 @@ Completions retry at `none`, history not duplicated, marker logged; a Responses 
 - A per-model endpoint toggle in the editor, if URL opt-in proves too hidden for Azure users.
 - Carrying reasoning items across turns once a documented benefit exists.
 - The device pass named in Status.
+
+## Shipped (2026-09-30)
+
+One PR, P0–P3. **Core (P0/P1):** `LLM/OpenAIRouteSelector.swift` (the rule table, endpoint URL
+derivation; a learned Responses refusal also overrides the base-URL opt-in),
+`LLM/ReasoningPolicy.swift` (family table split into `chatToolsRequireNone` /
+`chatToolsUnavailable`), `LLM/ResponsesTranslator.swift` (request options, raw output-item replay,
+`incompleteReason`, and a stream accumulator that can take a `response.incomplete` envelope on the
+API route), `LLM/RequestContextBudget.swift` (API-host context table), `LLM/HistoryHygiene.swift`
+(`stripResponsesItems`), `Models/ModelConfig.swift` (`routeSelection`), `Usage/UsageTracker.swift`
+(Responses usage shape under `.openai`). **Route (P2):** `LLMService.sendOpenAICompatible` consults
+the selector before building any URL, hands Responses turns to the new `sendOpenAIResponses`, and
+owns the one-shot Chat Completions fallback; `budgetedResponsesTurn` / `streamResponsesTurn` take
+the request options and the provider's name. **Surfaces (P3):** `LLM/ModelReasoningReadout.swift` +
+`App/Views/ModelReasoningSection.swift` (endpoint and reason, with the model's base URL),
+`Diagnostics/TurnRecorder.noteRoute` → `TurnTimeline.route` → `TurnTrace.route`, the "route" chip in
+`TurnTimelineDebugView`, `PrivacyLog.ModelEvent.routeSelected/.routeFallback`. **Tests:**
+`OpenAIRouteSelectorTests`, `ResponsesTranslatorTests`, `RequestContextBudgetTests`,
+`UsageTrackerTests`, `OpenAIResponsesRouteTests` (fake transport through the real
+`sendOpenAICompatible` and the cloud-agent entry), `ModelReasoningReadoutTests`.
