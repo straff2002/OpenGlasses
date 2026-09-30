@@ -431,6 +431,8 @@ struct ConversationClassifier {
         "how far", "directions to", "navigate", "take me to",
         "where am i", "where is", "find a", "restaurants",
         "coffee", "pharmacy", "gas station", "parking",
+        // "Where did I park?" needs the parking tool and the current fix to say how far.
+        "where did i park", "i parked", "my car",
         // Weather is implicitly "here" — without USER LOCATION in the prompt the model
         // asks "what city are you in?" instead of answering (or calling get_weather).
         "weather", "forecast", "rain", "umbrella",
@@ -460,6 +462,7 @@ struct ConversationClassifier {
         "convert", "translate", "define", "news",
         "play", "pause", "skip", "music",
         "shortcut", "note", "save", "remember",
+        "where did i park", "i parked", "my car",
         // zh
         "天气", "提醒", "定时", "闹钟", "日历", "搜索",
         "翻译", "新闻", "播放", "计算", "笔记", "备忘"

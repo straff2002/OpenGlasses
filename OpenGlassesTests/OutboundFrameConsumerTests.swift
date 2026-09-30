@@ -362,4 +362,20 @@ final class OutboundFrameConsumerTests: XCTestCase {
                           "No call site asks for \(scope.rawValue) — the scope is dead policy")
         }
     }
+
+    /// Plan GH: the parking sign photo — glasses and phone — is on the roster, filtered at a
+    /// chokepoint, and the scraper actually finds its calls under the owning type.
+    func testParkingSignPhotosAreFilteredAtTheChokepoint() throws {
+        for consumer in [OutboundFrameConsumer.parkingSignCapture, .parkingPhonePhoto] {
+            XCTAssertEqual(consumer.owningType, "ParkingPhotoFlow")
+            XCTAssertEqual(consumer.mechanism, .chokepoint)
+            XCTAssertEqual(consumer.scope?.isFiltered, true)
+        }
+        XCTAssertEqual(OutboundFrameConsumer.parkingSignCapture.tap, .filteredStill)
+        XCTAssertEqual(OutboundFrameConsumer.parkingPhonePhoto.tap, .heldImage)
+        let parkingHits = try allHits().filter { $0.type == "ParkingPhotoFlow" }
+        XCTAssertTrue(parkingHits.contains { $0.text.contains("filteredStill(") })
+        XCTAssertTrue(parkingHits.contains { $0.text.contains("filteredOrUnavailable(") })
+        XCTAssertFalse(parkingHits.contains { $0.text.contains("latestFrame") })
+    }
 }

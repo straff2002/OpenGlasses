@@ -54,6 +54,7 @@ enum SensitiveStore: String, CaseIterable {
     case contextualNotes
     case objectMemory
     case savedLocations
+    case parkingSpots
     case geofenceReminders
     case voiceSkills
     case playbooks
@@ -369,6 +370,16 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "SaveLocationTool",
                           ownerPaths: ["OpenGlasses/Sources/Services/NativeTools/SaveLocationTool.swift"],
                           location: "preferences key `saved_locations`")
+
+        case .parkingSpots:
+            return Record(store: self, dataClass: .locationData, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("one active spot; the last 10 only while history is on (off by default)"),
+                          deleteAll: .api("ParkingStore.clearAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ParkingStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Parking/ParkingStore.swift"],
+                          location: "Application Support/Parking/{parking.json,photos}")
 
         case .geofenceReminders:
             return Record(store: self, dataClass: .locationData, subjectLinkage: .wearer,

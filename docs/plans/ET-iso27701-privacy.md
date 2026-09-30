@@ -98,6 +98,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | offlineQueue | `OfflineQueue` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | purgeDone plus a photo-evidence byte budget | `OfflineQueue.deleteAll()` | `OfflineQueue.delete(id:)` |
 | operationJournal | `ProtectedOperationJournal` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | OperationJournalRetention (age and count) | none — the journal is the at-most-once evidence; retention prunes it | n/a — no subject linkage |
 | orgEnrolment | `OrgProfileManager` | operationalAudit | wearer | platformDefault | no | none | `OrgProfileManager.remove()` | n/a — no subject linkage |
+| parkingSpots | `ParkingStore` | locationData | wearer | completeUntilFirstUserAuthentication | yes | one active spot; the last 10 only while history is on (off by default) | `ParkingStore.clearAll()` | n/a — no subject linkage |
 | playbooks | `PlaybookStore` | skillDefinition | wearer | platformDefault | no | none | none — playbooks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
 | ragDocuments | `DocumentStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |

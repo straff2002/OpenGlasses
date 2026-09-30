@@ -1,17 +1,18 @@
 import Foundation
 import CoreLocation
 
-/// Saves the user's current GPS location with a label, so they can find their way back later.
-/// Perfect for "remember where I parked", "bookmark this spot", "save this location".
+/// Saves the user's current GPS location with a label, so they can find their way back later —
+/// "bookmark this spot", "save this location". Parking has its own tool (`parking`, Plan GH), which
+/// knows about levels and spaces, so this one no longer claims it.
 final class SaveLocationTool: NativeTool, @unchecked Sendable {
     let name = "save_location"
-    let description = "Save the user's current location with a label. Great for remembering where they parked, marking a spot to return to, or bookmarking a place they're at."
+    let description = "Save the user's current location with a label — marking a spot to return to, or bookmarking a place they're at (a hotel, a meeting point, a great restaurant). For where the user parked their car, use the parking tool instead."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "label": [
                 "type": "string",
-                "description": "A label for this location, e.g. 'car', 'hotel', 'that great restaurant', 'meeting point'"
+                "description": "A label for this location, e.g. 'hotel', 'that great restaurant', 'meeting point'"
             ]
         ],
         "required": ["label"]
@@ -36,7 +37,7 @@ final class SaveLocationTool: NativeTool, @unchecked Sendable {
 
     func execute(args: [String: Any]) async throws -> String {
         guard let label = args["label"] as? String, !label.isEmpty else {
-            return "No label provided. Tell me what to call this spot, like 'my car' or 'hotel'."
+            return "No label provided. Tell me what to call this spot, like 'hotel' or 'meeting point'."
         }
 
         guard let location = await MainActor.run(body: { locationService.currentLocation }) else {
@@ -128,7 +129,7 @@ final class ListSavedLocationsTool: NativeTool, @unchecked Sendable {
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
               let allLocations = try? JSONDecoder().decode([SavedLocation].self, from: data),
               !allLocations.isEmpty else {
-            return "You don't have any saved locations. Say 'remember this spot' or 'save this location as my car' to save one."
+            return "You don't have any saved locations. Say 'remember this spot' or 'save this location as the hotel' to save one."
         }
 
         let locations: [SavedLocation]

@@ -14,7 +14,7 @@ struct ObjectMemoryTool: NativeTool {
             "type": "object",
             "properties": [
                 "action": ["type": "string", "description": "save, find, list, or forget"],
-                "object": ["type": "string", "description": "The object name (e.g. 'keys', 'wallet', 'car')"],
+                "object": ["type": "string", "description": "The object name (e.g. 'keys', 'wallet', 'passport'). Where the car is parked belongs to the parking tool."],
                 "location_description": ["type": "string", "description": "Where the object is (e.g. 'kitchen counter', 'left jacket pocket'). For save only."],
             ],
             "required": ["action"],
@@ -74,7 +74,7 @@ struct ObjectMemoryTool: NativeTool {
         case "list":
             let entries = ObjectMemoryStore.shared.all()
             if entries.isEmpty {
-                return "I'm not remembering any objects right now. Say something like: remember my car is in lot B."
+                return "I'm not remembering any objects right now. Say something like: remember my keys are on the hall table."
             }
             let list = entries.map { "\($0.objectName) at \($0.locationDescription) (\($0.timeAgoString) ago)" }.joined(separator: ". ")
             return "I'm remembering \(entries.count) objects: \(list)"

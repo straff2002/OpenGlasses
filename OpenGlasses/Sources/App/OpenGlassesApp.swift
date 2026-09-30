@@ -799,6 +799,11 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var myDayDelivery = MyDayScheduledDeliveryService(myDayService: myDayService)
     /// Turn-by-turn walking navigation (Plan CA).
     let walkingRoute = WalkingRouteService()
+    /// Parking memory (Plan GH): the one active spot, automatic capture when a drive ends, and the
+    /// sign-photo path through the privacy chokepoint.
+    let parkingStore = ParkingStore.shared
+    lazy var parkingCapture = ParkingCaptureService(store: parkingStore)
+    let parkingPhotoFlow = ParkingPhotoFlow()
     /// Web HUD mirror server (Plan BP) — entitlement-free Ray-Ban Display web-view path.
     let webHUDMirror = WebHUDMirrorServer()
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
@@ -2843,6 +2848,29 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { await self?.speechService.speak(text, urgency: urgency, mirrorToHUD: false) }
         }
         hudLauncher.recentDestinations = { Config.recentDestinations }
+
+        // Parking memory (Plan GH): sign photos pass the blur before OCR reads or the store keeps
+        // them; automatic capture listens to CarPlay, location and motion, and replays motion
+        // history when the app comes back so a drive that ended while suspended is still found.
+        parkingPhotoFlow.connect(.init(
+            camera: { [weak self] in self?.cameraService },
+            filter: { [weak self] in self?.privacyFilter }))
+        parkingCapture.speak = { [weak self] text in
+            Task { await self?.speechService.speak(text, mirrorToHUD: false) }
+        }
+        parkingCapture.motionHistory = { [weak self] start, end in
+            await self?.motionProvider.samples(from: start, to: end) ?? []
+        }
+        parkingCapture.attach(carPlay: $carPlayConnected, locations: locationService.$currentLocation)
+        motionProvider.onSample = { [weak self] sample in self?.parkingCapture.motion(sample) }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task { await self.parkingCapture.replayMotionHistory() }
+            }
+        }
         hudLauncher.startNavigation = { [weak self] destination in
             Task {
                 do { _ = try await self?.walkingRoute.start(destination: destination) }

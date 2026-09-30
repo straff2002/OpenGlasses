@@ -44,6 +44,7 @@ struct ToolsSettingsView: View {
             "device_info": "Device Info",
             "save_location": "Save Location",
             "list_saved_locations": "Saved Locations",
+            "parking": "Parking",
             "step_count": "Step Counter",
             "health_summary": "Health Summary",
             "emergency_info": "Emergency Info",
