@@ -613,6 +613,62 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertTrue(spoken.contains("No escalations."), spoken)
     }
 
+    // MARK: - Model usage (Plan GD1)
+
+    private static let twoRequests = JobUsageSummary(requests: 2, inputTokens: 21_000, cachedTokens: 10_000,
+                                                     outputTokens: 150, estimatedUSD: 0.42, unpricedRequests: 0)
+
+    func testUsageRoundTripsInTheJSONAndIsAbsentWhenThereWasNone() throws {
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+
+        let costed = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service",
+                                usage: Self.twoRequests)
+        XCTAssertEqual(costed.usage, Self.twoRequests)
+        XCTAssertTrue(costed.jsonString.contains("\"usage\""), costed.jsonString)
+        let reloaded = try decoder.decode(WorkRecord.self, from: costed.json)
+        XCTAssertEqual(reloaded, costed)
+        XCTAssertEqual(reloaded.usage, Self.twoRequests)
+
+        // No usage, and an empty summary, both leave the key out entirely.
+        let plain = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertNil(plain.usage)
+        XCTAssertFalse(plain.jsonString.contains("\"usage\""))
+        let empty = JobUsageSummary(requests: 0, inputTokens: 0, cachedTokens: 0, outputTokens: 0,
+                                    estimatedUSD: nil, unpricedRequests: 0)
+        let emptied = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service",
+                                 usage: empty)
+        XCTAssertNil(emptied.usage)
+        XCTAssertEqual(emptied.json, plain.json, "an empty summary encodes exactly as no summary")
+    }
+
+    func testALegacyRecordWithoutUsageDecodesWithNone() throws {
+        // A record written before GD1: the same JSON with no usage key.
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let legacy = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service").json
+        XCTAssertFalse(String(decoding: legacy, as: UTF8.self).contains("usage"))
+        let decoded = try decoder.decode(WorkRecord.self, from: legacy)
+        XCTAssertNil(decoded.usage)
+        XCTAssertNil(decoded.usageLine)
+    }
+
+    /// Decision 1: what the job cost in model usage is the technician's, never the customer's —
+    /// not in the sign-off summary, not in the lines the work order prints, not in the email body.
+    func testUsageNeverReachesTheCustomerSummaryOrTheWorkOrder() {
+        let plain = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service")
+        let costed = WorkRecord(session: Self.scriptedSession(), vaultName: "Lennox SLP99 Furnace Service",
+                                usage: Self.twoRequests)
+        XCTAssertEqual(costed.usageLine, "Model usage: $0.42 · 2 requests")
+        XCTAssertEqual(costed.customerSummaryLines, plain.customerSummaryLines)
+        XCTAssertEqual(costed.summaryLines, plain.summaryLines)
+        for line in costed.customerSummaryLines + costed.summaryLines {
+            XCTAssertFalse(line.contains("Model usage") || line.contains("$0.42"), line)
+        }
+        let body = ReportComposerModel(request: DeliveryRequest.make(
+            record: costed, channel: .email, recipients: ["service@example.com"], attachments: [])).filledBody
+        XCTAssertFalse(body.contains("Model usage"), body)
+        XCTAssertFalse(body.contains("$0.42"), body)
+    }
+
     // MARK: - Export and queue
 
     func testTheExportCarriesTheRecordInJSONAndInThePDF() async throws {

@@ -207,6 +207,15 @@ struct VisitedUnit: Codable, Equatable {
         self.vaultMatchKind = identity.vaultMatch?.kind.rawValue
     }
 
+    /// The same unit, first seen when it was, recorded under another continuity scope (Plan GD2):
+    /// what `separate_earlier_work` moves when the earlier work turns out to be another machine's.
+    func rescoped(to scope: String) -> VisitedUnit {
+        VisitedUnit(modelToken: modelToken, heading: heading, serial: serial,
+                    firstSeenAt: firstSeenAt, continuityScope: scope,
+                    statedModel: statedModel, vaultSection: vaultSection,
+                    vaultMatchKind: vaultMatchKind)
+    }
+
     /// The same unit with its serial written on. Everything else — including what was said and
     /// what it matched — is kept.
     func withSerial(_ serial: String) -> VisitedUnit {

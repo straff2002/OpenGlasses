@@ -76,7 +76,7 @@ final class OpenAIRealtimeJobToolsTests: XCTestCase {
         registry.register(tool)
         var sent: [[String: Any]] = []
         let router = OpenAIRealtimeToolRouter { sent.append($0) }
-        router.nativeToolRouter = NativeToolRouter(registry: registry)
+        router.nativeToolRouter = isolatedRouter(registry)
 
         router.handle(OpenAIRealtimeFunctionCall(callId: "call_1", name: "field_session",
                                                  argumentsJSON: "{\"action\":\"start\"}"))
@@ -115,13 +115,25 @@ final class OpenAIRealtimeJobToolsTests: XCTestCase {
         registry.register(tool)
         var sent: [[String: Any]] = []
         let router = OpenAIRealtimeToolRouter { sent.append($0) }
-        router.nativeToolRouter = NativeToolRouter(registry: registry)
+        router.nativeToolRouter = isolatedRouter(registry)
 
         router.handle(OpenAIRealtimeFunctionCall(callId: "call_3", name: "equipment_lookup",
                                                  argumentsJSON: "not json"))
         try await waitUntil { sent.count == 2 }
         XCTAssertEqual(tool.receivedArgs.count, 1)
         XCTAssertTrue(tool.receivedArgs[0].isEmpty)
+    }
+
+    /// A native router whose operation journal lives in a fresh directory. The shared journal is
+    /// durable across launches by design (at-most-once survives a restart), so with it these fixed
+    /// call ids were answered as already run on every later run on the same simulator.
+    private func isolatedRouter(_ registry: NativeToolRegistry) -> NativeToolRouter {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RealtimeJobTools-journal-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let router = NativeToolRouter(registry: registry)
+        router.operationJournal = ProtectedOperationJournal(directory: directory)
+        return router
     }
 
     func testTheWireShapeIsStatedAsAValue() throws {

@@ -196,6 +196,13 @@ struct ActiveJobView: View {
             Text(job.startedLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            // What the job has cost in model usage so far (Plan GD1). The technician's figure —
+            // it never reaches the customer's summary or the work order.
+            if let usageLine = job.usageLine {
+                Text(usageLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         } header: {
             Text("Time on the job")
         }

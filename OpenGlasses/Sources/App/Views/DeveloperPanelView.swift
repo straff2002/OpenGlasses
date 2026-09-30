@@ -8,6 +8,8 @@ struct DeveloperPanelView: View {
     @ObservedObject var appState: AppState
     @StateObject private var runner: SubsystemTestRunner
     @Environment(\.appAccent) private var accent
+    /// Plan GD3 — `Config.fieldToolProfileEnabled`, the same key and default.
+    @AppStorage("fieldToolProfileEnabled") private var fieldToolProfileEnabled = true
 
     init(appState: AppState) {
         self.appState = appState
@@ -69,6 +71,14 @@ struct DeveloperPanelView: View {
             }
             .buttonStyle(.plain)
             .disabled(runner.isRunning)
+
+            OGSection(
+                header: "Field Assist",
+                footer: "During a Field Assist job, only field tools are offered to the model, which cuts cost per request. Turn off to offer every tool."
+            ) {
+                OGRow("Field-mode tool profile", isOn: $fieldToolProfileEnabled,
+                      icon: "wrench.and.screwdriver")
+            }
 
             OGSection(header: "Turn Latency") {
                 NavigationLink {

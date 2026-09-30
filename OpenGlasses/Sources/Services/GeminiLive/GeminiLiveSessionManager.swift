@@ -660,7 +660,8 @@ class GeminiLiveSessionManager: ObservableObject {
             """
 
             if let router = nativeToolRouter {
-                let names = router.registry.toolNames
+                // Plan GD3: the list the declarations beside it carry (the field-mode profile).
+                let names = FieldToolProfile.current(router.registry.toolNames)
                 toolSection += "\nBuilt-in tools: \(names.joined(separator: ", "))."
                 // Plan BG P1: generated from each NativeTool's own `description` — the single source
                 // shared with Direct Mode and the tool schemas, so the three can no longer drift.

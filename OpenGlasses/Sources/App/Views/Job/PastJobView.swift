@@ -121,6 +121,13 @@ struct PastJobView: View {
                     Text("\(job.vaultName) · \(job.billingLine)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    // Plan GD1: what the job cost in model usage, beside the billing line and
+                    // outside the work record below, which is the customer's work order.
+                    if let usageLine = job.usageLine {
+                        Text(usageLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.vertical, 2)
                 .accessibilityElement(children: .combine)

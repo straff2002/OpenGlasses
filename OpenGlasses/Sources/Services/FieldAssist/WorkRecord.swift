@@ -96,6 +96,11 @@ struct WorkRecord: Codable, Equatable {
     /// Values the technician read out, with their corrections (Plan GB P3). Absent when there were
     /// none, so an older record encodes as it always did.
     let spokenReadings: [SpokenReading]?
+    /// What the job cost in model usage (Plan GD1): requests, tokens and the estimated dollars.
+    /// Internal — the JSON and the Job tab carry it; the customer summary and the work order's
+    /// printed lines never do. Nil, and absent from the JSON, when nothing was recorded against the
+    /// job, so an older record encodes exactly as it did.
+    let usage: JobUsageSummary?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -126,13 +131,15 @@ struct WorkRecord: Codable, Equatable {
         case billableUnits = "billable_units"
         case units
         case spokenReadings = "spoken_readings"
+        case usage
     }
 
     // MARK: - Assembly
 
     /// Build the record from a session. Pure: everything it needs is already on the session, so the
     /// same session always renders the same record.
-    init(session: FieldSession, vaultName: String, vaultSourceNote: String? = nil) {
+    init(session: FieldSession, vaultName: String, vaultSourceNote: String? = nil,
+         usage: JobUsageSummary? = nil) {
         self.sessionId = session.id
         self.jobReference = session.jobReference
         self.vaultId = session.vaultId
@@ -167,6 +174,7 @@ struct WorkRecord: Codable, Equatable {
         let ledger = UnitLedger(session: session)
         self.units = ledger.isMultiUnit ? ledger.units : nil
         self.spokenReadings = session.spokenReadings.isEmpty ? nil : session.spokenReadings
+        self.usage = Self.nonEmpty(usage)
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -206,6 +214,14 @@ struct WorkRecord: Codable, Equatable {
         billableUnits = try c.decodeIfPresent(Int.self, forKey: .billableUnits)
         units = try c.decodeIfPresent([UnitLedger.Unit].self, forKey: .units)
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings)
+        usage = Self.nonEmpty(try c.decodeIfPresent(JobUsageSummary.self, forKey: .usage))
+    }
+
+    /// A summary with no requests is no summary: kept out of the record, so the synthesized encoder
+    /// writes no `usage` key for it.
+    private static func nonEmpty(_ usage: JobUsageSummary?) -> JobUsageSummary? {
+        guard let usage, !usage.isEmpty else { return nil }
+        return usage
     }
 
     // MARK: - Derived views
@@ -240,6 +256,11 @@ struct WorkRecord: Codable, Equatable {
     /// customer actually signed. The two are equal until the record moves on, and telling them
     /// apart is the reason both exist.
     var customerSummaryLines: [String] { CustomerSummary.lines(for: self) }
+
+    /// "Model usage: $0.42 · 12 requests" — the technician's line (Plan GD1), nil when the job
+    /// recorded no model usage. Deliberately **not** one of `summaryLines`: those are the lines the
+    /// work order prints for the customer, and what the job cost in model usage is not theirs.
+    var usageLine: String? { JobTabModel.usageLine(usage) }
 
     func tasks(status: FieldSession.Task.Status) -> [FieldSession.Task] {
         tasks.filter { $0.status == status }
