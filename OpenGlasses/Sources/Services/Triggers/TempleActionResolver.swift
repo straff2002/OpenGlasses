@@ -51,6 +51,8 @@ enum TempleEffect: Equatable {
     case photoToCameraRoll
     case readDigest
     case toggleRecording(starting: Bool)
+    /// Toggle music on whichever provider is playing, else the default one.
+    case musicPlayPause
     case askAgent
     case quickAction(String)
 }
@@ -150,6 +152,11 @@ enum TempleActionResolver {
             if !context.recording && !context.glassesCameraReady { return .ignored(.noGlassesCamera) }
             return .run(.toggleRecording(starting: !context.recording))
 
+        case .musicPlayPause:
+            // Only between conversations: mid-turn the tap would fight the reply for the audio.
+            guard activity == .standby else { return .ignored(.busy) }
+            return .run(.musicPlayPause)
+
         case .askAgent:
             guard context.agentModeEnabled else { return .ignored(.agentModeOff) }
             guard context.agentAvailable else { return .ignored(.agentNotConfigured) }
@@ -199,7 +206,8 @@ enum TempleEarcon: Equatable, CaseIterable {
             // Starting a conversation plays the listening tone; ending one plays the
             // end-of-conversation tone. A second sound on top would blur both.
             case .startListening, .askAgent, .endConversation: return .ownCue
-            case .interruptAndListen, .photoDescribe, .photoToCameraRoll, .readDigest, .quickAction:
+            case .interruptAndListen, .photoDescribe, .photoToCameraRoll, .readDigest, .quickAction,
+                 .musicPlayPause:
                 return .accepted
             case .endLiveSession: return .ended
             case .setMicMuted(let muted), .setLiveMicMuted(let muted): return muted ? .muted : .unmuted

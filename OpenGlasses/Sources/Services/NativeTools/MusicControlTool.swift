@@ -237,9 +237,14 @@ struct MusicControlEnvironment {
     // MARK: - Running a call
 
     func run(_ request: MusicToolRequest) async -> String {
+        await execute(request).spoken
+    }
+
+    /// The outcome as well as the words — a temple tap speaks only answers the wearer needs.
+    func execute(_ request: MusicToolRequest) async -> MusicCommandResult {
         let command: MusicCommand
         switch request.parsed {
-        case .reply(let line): return line
+        case .reply(let line): return MusicCommandResult(spoken: line, outcome: .needsInput)
         case .command(let parsed): command = parsed
         }
 
@@ -266,17 +271,17 @@ struct MusicControlEnvironment {
 
         if command == .devices {
             guard context.homeAssistantUsable else {
-                return context.homeAssistantUnavailableLine ?? MusicPhraser.speakersNeedHomeAssistant
+                return .failed(context.homeAssistantUnavailableLine ?? MusicPhraser.speakersNeedHomeAssistant)
             }
-            return MusicPhraser.speakerList(context.speakers)
+            return .done(MusicPhraser.speakerList(context.speakers))
         }
 
         let result: MusicCommandResult
         switch MusicCommandRouter.route(command, target: request.target, context: context) {
         case .refuse(let line):
-            return line
+            return .unsupported(line)
         case .askSpeaker(let speakers):
-            return MusicPhraser.askWhichSpeaker(speakers)
+            return MusicCommandResult(spoken: MusicPhraser.askWhichSpeaker(speakers), outcome: .needsInput)
         case .appleMusic:
             // Commands are for the wearer's own player: the temple-tap trigger drops its claim
             // first so it never races their playback for Now Playing.
@@ -284,14 +289,14 @@ struct MusicControlEnvironment {
             result = await appleMusic.perform(command, speaker: nil)
         case .homeAssistant(let speaker):
             // A speaker plays in the room, not on the phone: the phone's Now Playing is untouched.
-            guard let homeAssistant else { return MusicPhraser.speakersNeedHomeAssistant }
+            guard let homeAssistant else { return .failed(MusicPhraser.speakersNeedHomeAssistant) }
             result = await homeAssistant.perform(command, speaker: speaker)
         }
 
         if request.isLike, result.outcome == .done, result.spoken.hasPrefix("Added") {
-            return MusicPhraser.likeIsAddToLibrary
+            return .done(MusicPhraser.likeIsAddToLibrary)
         }
-        return result.spoken
+        return result
     }
 
     /// Whether routing needs the speaker list — a network call to Home Assistant, skipped when the

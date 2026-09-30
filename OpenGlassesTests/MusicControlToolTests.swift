@@ -127,6 +127,35 @@ final class MusicControlToolTests: XCTestCase {
         XCTAssertNil(MusicToolRequest.level(-5))
     }
 
+    // MARK: - Temple tap (the music action in the tap set)
+
+    func testMusicTapRunsOnlyBetweenConversations() {
+        XCTAssertEqual(TempleActionResolver.resolve(action: .musicPlayPause, context: TempleContext(activity: .standby)),
+                       .run(.musicPlayPause))
+        for activity: TempleContext.Activity in [.listening, .thinking, .speaking, .liveSession, .busy] {
+            XCTAssertEqual(TempleActionResolver.resolve(action: .musicPlayPause, context: TempleContext(activity: activity)),
+                           .ignored(.busy), "\(activity)")
+        }
+        XCTAssertEqual(TempleEarcon.for(.run(.musicPlayPause)), .accepted)
+        XCTAssertEqual(TempleAction(rawValue: "musicPlayPause"), .musicPlayPause)
+        XCTAssertTrue(TempleAction.builtIns.contains(.musicPlayPause))
+    }
+
+    func testTapOutcomeSeparatesDoneFromAQuestion() async {
+        defaultProvider = .homeAssistant
+        homeAssistant.players = [MusicFixtures.player("media_player.kitchen", name: "Kitchen"),
+                                 MusicFixtures.player("media_player.lounge", name: "Lounge")]
+        let environment = tool().makeEnvironment()
+        let ask = await environment.execute(MusicToolRequest.parse(action: "toggle", args: [:]))
+        XCTAssertEqual(ask.outcome, .needsInput)
+        XCTAssertEqual(ask.spoken, "Which speaker: Kitchen or Lounge?")
+
+        homeAssistant.players[1] = MusicFixtures.player("media_player.lounge", name: "Lounge", state: "playing")
+        let toggled = await environment.execute(MusicToolRequest.parse(action: "toggle", args: [:]))
+        XCTAssertEqual(toggled.outcome, .done)
+        XCTAssertEqual(speaker.received.last?.1?.entityId, "media_player.lounge")
+    }
+
     func testDescriptionTellsTheModelCatalogueFromLibraryAndNoSpotify() {
         let description = MusicControlTool().description
         XCTAssertTrue(description.contains("catalogue"))
