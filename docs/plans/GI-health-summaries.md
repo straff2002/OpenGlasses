@@ -1,6 +1,35 @@
 # Plan GI — Health Summaries (heart rate, sleep, steps from Apple Health)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** ✅ Shipped 2026-10-01 — P0–P2 built in one PR: the HealthKit entitlement (spec, committed
+entitlements, personal example, setup-script patch for existing personal copies), the pure core
+(`SleepNightAggregator`, `StepBaseline`, `HeartRateSummary`, `HealthSummaryPhraser`,
+`HealthSummaryDeliveryPolicy`, `HealthSummaryCache`), `HealthKitSampleReader`, the `health_summary`
+tool, Settings → Privacy → Health, and 76 headless tests. Decisions taken: fix the entitlement now;
+cache summary numbers for locked-phone answers; speak-direct when sharing is off; free for everyone;
+no HRV / blood oxygen / workouts in v1. **Owed (P3, device):** register the HealthKit capability on
+the App ID before the next archive; confirm `fitness_coach` authorisation and workout saving now
+work; Watch and no-Watch phones; a night with and without stages; locked phone in a pocket;
+speak-direct during a Gemini Live / OpenAI Realtime session; toggling sharing mid-conversation;
+VoiceOver on the Health settings screen.
+
+**As built — where the code differs from the draft below:**
+- The reader takes `restingHeartRates(from:to:)` (the pure summary picks the day) rather than
+  `restingHeartRate(on:)`; `authorizationState()` can only say *asked / not asked / unavailable*,
+  because HealthKit never reveals whether read access was granted.
+- "On-device model active" is computed conservatively: Direct mode, an on-device active model **and
+  no cloud model saved at all** (routing, the cascade or a later model switch could otherwise carry
+  this turn's history to the cloud). Otherwise the tool treats the model as cloud.
+- Speak-direct uses on-device voices only (`TextToSpeechService.speakReporting(_:onDeviceOnly:)`
+  drops the cloud voice for that utterance); the glasses display mirrors the sentence as usual. A
+  suppressed or failed utterance returns a second, still number-free receipt.
+- Medical Compliance speaks direct even with an on-device model (the draft's delivery list left the
+  order implicit; the test "HIPAA always speak-direct" decides it).
+- A steps read that returns nothing at all, today and for two weeks, is what a denied read looks
+  like; `CMPedometer` answers today's count in that case, when Health is unavailable or not yet
+  allowed, and when the phone is locked with no cached count.
+- Registered as an `AIFeature` (`healthSummaries`, own off switch) and a `SensitiveStore`
+  (`healthSummaryCache`) so the privacy inventories stay complete; the ET data-lifecycle matrix was
+  regenerated.
 **Related:** Plan [B](B-personal-health-vault.md) (Health Vault, a separate document vault; its
 "HealthKit auto-population" open question stays open), the Tier 3 fitness work
 (`FitnessCoachingTool`, `PedometerTool`), HIPAA / Medical-Compliance modes (`MedicalEgressGuard`).
