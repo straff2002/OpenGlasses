@@ -1437,6 +1437,8 @@ enum PrivacyLog {
         // Completions. Endpoint and reason tokens only.
         case routeSelected, routeFallback
         case spendCap
+        // Plan GD3 — the field-mode tool profile trimmed the declared tools: counts and a digest.
+        case toolProfileApplied
         case agentSelected, catalogDiscovered, catalogUnavailable
         case classified, classificationFailed, analysisCompleted
     }

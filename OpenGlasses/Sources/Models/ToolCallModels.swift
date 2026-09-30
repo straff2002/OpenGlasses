@@ -144,10 +144,25 @@ enum ToolDeclarations {
     @MainActor
     private static func nativeToolDeclarations(registry: NativeToolRegistry?) -> [[String: Any]] {
         guard let registry else { return [] }
+        // Plan GD3: during a Field Assist job the field-mode profile narrows the list — read here,
+        // on the main actor, as HIPAA mode is.
+        let profileEnabled = Config.fieldToolProfileEnabled
+        return nativeToolDeclarations(registry: registry,
+                                      fieldJobActive: profileEnabled && FieldToolProfile.fieldJobActive,
+                                      fieldProfileEnabled: profileEnabled)
+    }
+
+    /// The same, with the job and profile flags stated — what a test drives to prove the declared
+    /// schemas and the prompt's tool list agree.
+    @MainActor
+    static func nativeToolDeclarations(registry: NativeToolRegistry, fieldJobActive: Bool,
+                                       fieldProfileEnabled: Bool) -> [[String: Any]] {
         let declarable = Set(declarableNames(registry.allTools.map(\.name),
                                              isEnabled: Config.isToolEnabled,
                                              hipaaMode: Config.hipaaMode,
-                                             hipaaDisabled: Config.hipaaDisabledTools))
+                                             hipaaDisabled: Config.hipaaDisabledTools,
+                                             fieldJobActive: fieldJobActive,
+                                             fieldProfileEnabled: fieldProfileEnabled))
         return registry.allTools
             .filter { declarable.contains($0.name) }
             .sorted { $0.name < $1.name }
@@ -160,14 +175,19 @@ enum ToolDeclarations {
             }
     }
 
-    /// The tool names that may be declared to a model, sorted: enabled, and not disabled by
-    /// HIPAA mode. Pure — the headless test drives it without a registry.
+    /// The tool names that may be declared to a model, sorted: enabled, not disabled by HIPAA
+    /// mode, and — during a Field Assist job with the profile on — in the field-mode profile
+    /// (Plan GD3). Pure — the headless test drives it without a registry.
     static func declarableNames(_ names: [String], isEnabled: (String) -> Bool,
-                                hipaaMode: Bool, hipaaDisabled: Set<String>) -> [String] {
-        names.filter { name in
+                                hipaaMode: Bool, hipaaDisabled: Set<String>,
+                                fieldJobActive: Bool = false,
+                                fieldProfileEnabled: Bool = false) -> [String] {
+        let allowed = names.filter { name in
             guard isEnabled(name) else { return false }
             return !(hipaaMode && hipaaDisabled.contains(name))
         }.sorted()
+        return FieldToolProfile.declaredNames(all: allowed, fieldJobActive: fieldJobActive,
+                                              enabled: fieldProfileEnabled)
     }
 
     /// Declarations for tools discovered on connected MCP servers, so the model can call them

@@ -2365,6 +2365,16 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "skillPackDevModeEnabled")
     }
 
+    // MARK: - Field-mode tool profile (Plan GD3)
+
+    /// During a Field Assist job, offer the model only the field tools (`FieldToolProfile`), which
+    /// cuts the tool schemas every request carries. Default ON; the Developer panel turns it off to
+    /// offer every tool.
+    static var fieldToolProfileEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: "fieldToolProfileEnabled") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "fieldToolProfileEnabled") }
+    }
+
     // MARK: - Captions (Plan BY)
 
     /// Rolling compaction + endpoint debouncing under ambient captions. Default ON — behavior-
