@@ -1,6 +1,31 @@
 import Foundation
 
-/// Caller authentication for the `openglasses://` URL scheme.
+/// The app's own URL schemes (Plan FY P3.1, decision D3).
+///
+/// Both `openglasses://` and `avenkin://` are registered, and every handler asks this one helper
+/// whether a link is the app's, so no route can accept one and refuse the other. Case-insensitive,
+/// as URL schemes are. `openglasses://` is never retired: links already printed, scanned and saved
+/// keep working for good.
+///
+/// Compiled into the app and the widget extension with `DeepLinkTrust`.
+enum DeepLinkScheme {
+    /// The scheme links are *generated* with. Stays `openglasses` until the build that accepts
+    /// `avenkin://` is what users have (P3.3, a later release), so a link made today still opens
+    /// on a phone that has not updated.
+    static let generated = "openglasses"
+
+    /// Every scheme the app answers to.
+    static let accepted: Set<String> = ["openglasses", "avenkin"]
+
+    static func isApp(_ url: URL) -> Bool { isApp(scheme: url.scheme) }
+
+    static func isApp(scheme: String?) -> Bool {
+        guard let scheme else { return false }
+        return accepted.contains(scheme.lowercased())
+    }
+}
+
+/// Caller authentication for the app's URL schemes (`DeepLinkScheme`).
 ///
 /// A custom URL scheme is an **unauthenticated entry point**: any app on the device can call
 /// `openURL("openglasses://action/photo")` and iOS will deliver it with no prompt and no usable

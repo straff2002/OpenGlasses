@@ -166,17 +166,14 @@ struct PersonaEditorView: View {
     let onSave: (Persona) -> Void
 
     @State private var name = ""
-    @State private var wakePhrase = "openglasses"
+    @State private var wakePhrase = Config.defaultWakePhrase
     @State private var wakeAlts = ""
     @State private var selectedModelId = ""
     @State private var selectedPresetId = "preset-default"
     @State private var enabled = true
     @State private var editingPromptPreset: PromptPreset? = nil
 
-    private let wakePhrasePresets = [
-        "openglasses", "hey openglasses", "hey claude", "hey jarvis", "hey rayban",
-        "hey computer", "hey assistant", "hey gemini", "hey gpt"
-    ]
+    private let wakePhrasePresets = Config.wakePhrasePresets + ["hey gemini", "hey gpt"]
 
     var body: some View {
         NavigationStack {
@@ -192,7 +189,7 @@ struct PersonaEditorView: View {
                         ForEach(wakePhrasePresets, id: \.self) { phrase in
                             Text(phrase.capitalized).tag(phrase)
                         }
-                        if !wakePhrasePresets.contains(wakePhrase) && !wakePhrase.isEmpty {
+                        if Config.isCustomWakePhrase(wakePhrase, presets: wakePhrasePresets) {
                             Text("Custom: \(wakePhrase)").tag(wakePhrase)
                         }
                     }

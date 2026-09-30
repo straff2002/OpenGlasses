@@ -270,15 +270,40 @@ struct Config {
 
     // MARK: - Wake Word
 
+    /// The wake phrase every install starts with (Plan FY P3.2, decision D4). The one default:
+    /// `wakePhrase`'s fallback, the settings screens' `@AppStorage` defaults, the picker fallback
+    /// and the persona editor all read it, and `BrandNameGuardTests` fails on a literal left behind.
+    ///
+    /// No "hey" prefix: the phrase is matched as whole words anywhere in the utterance, so the bare
+    /// name also catches anyone who says "hey avenkin" — one default covers both habits.
+    static let defaultWakePhrase = "avenkin"
+
+    /// The defaults earlier builds shipped. A stored phrase equal to one of these is the product
+    /// default of its day, not a choice, and `migrateWakePhraseToAvenkinIfNeeded()` moves it on —
+    /// once, and for good, so an install that skipped a version still migrates. They stay valid
+    /// wake phrases: a wearer who wants one back types it in, and it keeps working as a custom
+    /// phrase with its alternatives below.
+    static let legacyDefaultWakePhrases = ["openglasses", "hey openglasses"]
+
+    /// The wake phrases the pickers offer, the new name's first. The old name's are listed below
+    /// them for one App Store version (Plan FY P3.2) and then dropped from here — only from here:
+    /// the migration and `defaultAlternativesForPhrase` keep them for good.
+    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
+        "hey claude", "hey jarvis", "hey computer", "hey assistant", "hey rayban",
+    ]
+
+    /// Whether `phrase` is one the picker does not list, and so shows as "Custom: …". The wake word
+    /// is whatever is stored, not whatever the picker lists, so a custom phrase still wakes the app.
+    static func isCustomWakePhrase(_ phrase: String, presets: [String] = wakePhrasePresets) -> Bool {
+        !phrase.isEmpty && !presets.contains(phrase.lowercased())
+    }
+
     /// The primary wake word phrase (user-configurable)
     static var wakePhrase: String {
         if let phrase = UserDefaults.standard.string(forKey: "wakePhrase"), !phrase.isEmpty {
             return phrase.lowercased()
         }
-        // No "hey" prefix: the phrase is matched as whole words anywhere in the utterance, so the
-        // bare name also catches anyone who still says "hey openglasses" — one default covers both
-        // habits.
-        return "openglasses"
+        return defaultWakePhrase
     }
 
     /// The wake phrase as copy shows it ("Say “Avenkin” …"): the configured phrase, never a
@@ -318,6 +343,15 @@ struct Config {
             return ["hey assistance", "a assistant"]
         case "hey rayban":
             return ["hey ray ban", "hey ray-ban", "hey raven", "hey rayben", "hey ray band"]
+        case "avenkin":
+            // Hey-less default (D4). Three syllables of a coined word are not ordinary speech, so
+            // the bare name is safe; the alternates cover the recogniser splitting it or hearing a
+            // near neighbour. Seven letters is under the fuzzy floor, so these are the only cover.
+            return ["aven kin", "haven kin", "avon kin", "avenkins", "a ven kin"]
+        case "hey avenkin":
+            return ["hey aven kin", "hey haven kin", "hey avon kin", "hey avenkins", "hey a ven kin"]
+        // The old name's phrases stay for good: custom phrases draw on these too, so a wearer who
+        // keeps the old phrase keeps the recogniser's splits of it covered.
         case "hey openglasses":
             return ["hey open glasses", "hey open glass", "hey openclass", "hey open class", "hey openglass"]
         case "openglasses":
@@ -1685,6 +1719,52 @@ struct Config {
             resetAssistantDisplayName()
         }
         defaults.set(true, forKey: assistantNameMigratedKey)
+    }
+
+    /// UserDefaults flag recording that the one-time wake-phrase migration has run.
+    private static let wakePhraseMigratedKey = "wakePhraseMigratedToAvenkin_v1"
+
+    /// Carry the default wake phrase across the rename to Avenkin (Plan FY P3.2, decision D4).
+    ///
+    /// A stored phrase equal to a former default (`legacyDefaultWakePhrases`) becomes
+    /// `defaultWakePhrase`, in the global setting and in every saved persona — which is where the
+    /// first-run persona stored it. The alternatives move with the phrase only while they are still
+    /// the old phrase's suggestions (or, on a persona, empty); edited ones are the wearer's and are
+    /// left alone, as the settings screens do. Any other phrase is untouched. An install that never
+    /// stored a phrase already reads the new default. Runs once, behind a stored flag, so choosing
+    /// the old phrase again afterwards sticks.
+    static func migrateWakePhraseToAvenkinIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: wakePhraseMigratedKey) else { return }
+        let legacy = Set(legacyDefaultWakePhrases)
+        let newAlternatives = defaultAlternativesForPhrase(defaultWakePhrase)
+
+        if let stored = defaults.string(forKey: "wakePhrase")?.lowercased(), legacy.contains(stored) {
+            let inherited = defaultAlternativesForPhrase(stored)
+            setWakePhrase(defaultWakePhrase)
+            if let alternatives = defaults.stringArray(forKey: "alternativeWakePhrases"),
+               alternatives.map({ $0.lowercased() }) == inherited {
+                // Cleared, not rewritten: with no stored list the alternatives follow the phrase.
+                defaults.removeObject(forKey: "alternativeWakePhrases")
+            }
+        }
+
+        if let data = defaults.data(forKey: "savedPersonas"),
+           var personas = try? JSONDecoder().decode([Persona].self, from: data) {
+            var migrated = false
+            for index in personas.indices {
+                let phrase = personas[index].wakePhrase.lowercased()
+                guard legacy.contains(phrase) else { continue }
+                let alternatives = personas[index].alternativeWakePhrases.map { $0.lowercased() }
+                personas[index].wakePhrase = defaultWakePhrase
+                if alternatives.isEmpty || alternatives == defaultAlternativesForPhrase(phrase) {
+                    personas[index].alternativeWakePhrases = newAlternatives
+                }
+                migrated = true
+            }
+            if migrated { setSavedPersonas(personas) }
+        }
+        defaults.set(true, forKey: wakePhraseMigratedKey)
     }
 
     static func setSavedPersonas(_ personas: [Persona]) {

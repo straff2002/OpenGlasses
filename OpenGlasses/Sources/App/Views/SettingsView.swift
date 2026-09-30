@@ -20,7 +20,7 @@ struct SettingsView: View {
     @ObservedObject private var orgProfile = OrgProfileManager.shared
     private var restricted: Bool { adminGate.isRestricted }
     @AppStorage("appAppearance") private var appearance: String = "system"
-    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
     @AppStorage("activeModelId") private var activeModelId = ""
     @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
 

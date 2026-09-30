@@ -5,7 +5,7 @@ import SwiftUI
 /// Wake word + hands-free trigger settings (always visible, including Simple Mode).
 struct VoiceTriggersSettingsScreen: View {
     @ObservedObject var appState: AppState
-    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
 
     // Plan FE P3. Seeded from the live preference and written straight back through `Config`, so
     // the clamp and the defaulting stay in one place rather than being re-implemented per control.
@@ -17,10 +17,7 @@ struct VoiceTriggersSettingsScreen: View {
     @State private var assistantName = Config.assistantDisplayName
     @State private var nameRefused = false
 
-    private let wakePhrasePresets = [
-        "openglasses", "hey openglasses", "hey claude", "hey jarvis",
-        "hey computer", "hey assistant", "hey rayban"
-    ]
+    private let wakePhrasePresets = Config.wakePhrasePresets
 
     /// The misrecognitions currently being listened for alongside the phrase. Shown because a
     /// custom phrase now gets generated ones, and a wake word that answers to words the wearer
@@ -95,9 +92,13 @@ struct VoiceTriggersSettingsScreen: View {
                 }
 
                 Picker("Wake Phrase", selection: Binding(
-                    get: { wakePhrase.isEmpty ? "openglasses" : wakePhrase },
+                    get: { wakePhrase.isEmpty ? Config.defaultWakePhrase : wakePhrase },
                     set: { newValue in adoptWakePhrase(newValue, replacing: wakePhrase) }
                 )) {
+                    // The new name first; the old name's phrases below it for one App Store
+                    // version (Plan FY P3.2). Tags match `Config.wakePhrasePresets`.
+                    Text("Avenkin").tag("avenkin")
+                    Text("Hey Avenkin").tag("hey avenkin")
                     Text("OpenGlasses").tag("openglasses")
                     Text("Hey OpenGlasses").tag("hey openglasses")
                     Text("Hey Claude").tag("hey claude")
@@ -105,7 +106,7 @@ struct VoiceTriggersSettingsScreen: View {
                     Text("Hey Computer").tag("hey computer")
                     Text("Hey Assistant").tag("hey assistant")
                     Text("Hey Rayban").tag("hey rayban")
-                    if !wakePhrasePresets.contains(wakePhrase) && !wakePhrase.isEmpty {
+                    if Config.isCustomWakePhrase(wakePhrase, presets: wakePhrasePresets) {
                         Text("Custom: \(wakePhrase)").tag(wakePhrase)
                     }
                 }

@@ -355,6 +355,25 @@ final class BrandNameGuardTests: XCTestCase {
         XCTAssertTrue(schemes.contains(slug), "the \(slug):// scheme is never retired (D3)")
     }
 
+    /// P3.2: the default wake phrase is written once, in `Config.defaultWakePhrase`. A settings
+    /// screen or editor that spells a default phrase out again is how the app came to hold five
+    /// copies of the old one; this fails on a literal left behind on any line about the phrase.
+    func testNoWakePhraseDefaultIsWrittenOutsideConfig() throws {
+        let phrases = Config.legacyDefaultWakePhrases + [Config.defaultWakePhrase, "hey avenkin"]
+        for directory in Self.swiftDirectories {
+            for path in files(under: directory, extensions: ["swift"])
+            where path != "OpenGlasses/Sources/Utils/Config.swift" {
+                for (index, line) in try text(path).components(separatedBy: "\n").enumerated()
+                where line.contains("akePhrase") && !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                    for phrase in phrases where line.contains("\"\(phrase)\"") {
+                        XCTFail("\(path):\(index + 1) writes the wake phrase \"\(phrase)\" out; read "
+                                    + "Config.defaultWakePhrase or Config.wakePhrasePresets instead")
+                    }
+                }
+            }
+        }
+    }
+
     /// The watch draws its wordmark from separate pieces, which a search for the name misses.
     func testTheWatchWordmarkIsAvenkin() throws {
         let watch = try text("OpenGlassesWatch/WatchMainView.swift")

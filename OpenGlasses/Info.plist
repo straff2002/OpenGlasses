@@ -79,6 +79,7 @@
 			<array>
 				<string>mwdat-$(MWDAT_META_APP_ID)</string>
 				<string>openglasses</string>
+				<string>avenkin</string>
 			</array>
 		</dict>
 	</array>
