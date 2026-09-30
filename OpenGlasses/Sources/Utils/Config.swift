@@ -115,6 +115,12 @@ struct Config {
 
     static func setHasCompletedOnboarding(_ completed: Bool) { hasCompletedOnboarding = completed }
 
+    /// Whether this person uses glasses (Plan FY P2): set when they choose glasses on the
+    /// onboarding "Add a device" step, and whenever glasses connect. Until then the phone is the
+    /// device, and the session card reports the session rather than a missing pair of glasses
+    /// (`OnboardingFlow.phoneIsTheDevice`). Never cleared by the app.
+    @UserDefaultsBacked("glassesAdded", default: false) static var glassesAdded: Bool
+
     /// Pure form of the onboarding gate, so the flag interaction below is testable without touching
     /// the Keychain that backs `savedModels`.
     ///
@@ -878,7 +884,7 @@ struct Config {
             .first
             .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         if !identity.isEmpty { lines.append(identity) }
-        lines.append("A photo from the glasses camera is attached. You CAN see it — never say you lack vision.")
+        lines.append("A photo from the camera is attached. You CAN see it — never say you lack vision.")
         lines.append("Answer in 1–2 short spoken sentences. Name the main subject and anything asked. Skip background, lighting, and composition unless asked.")
         lines.append("If asked to read text: quote it verbatim; translate only if asked.")
         if let language = spokenLanguageName(for: languageCode) {
@@ -969,7 +975,7 @@ struct Config {
             - Answer directly. Skip pleasantries, hedges, and filler.
             - If you can't answer in 2 sentences, say the key point and offer to elaborate.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "Technical", prompt: """
             \(AssistantIdentity.line(name: assistantName, role: "a voice assistant \(on). Responses are spoken via TTS."))
@@ -981,7 +987,7 @@ struct Config {
             - Keep responses to 2-5 sentences. Be information-dense.
             - Never use markdown or formatting — this is spoken aloud.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "Creative", prompt: """
             \(AssistantIdentity.line(name: assistantName, role: "a witty and warm voice assistant \(on). Responses are spoken via TTS."))
@@ -994,7 +1000,7 @@ struct Config {
             - Keep responses to 2-5 sentences. Be memorable, not lengthy.
             - Never use markdown or formatting — this is spoken aloud.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-navigation", name: "Navigation Aid", prompt: """
             You are a navigation and spatial awareness assistant \(on). Your primary role is helping the user navigate safely and understand their surroundings. Responses are spoken via TTS.
@@ -1008,7 +1014,7 @@ struct Config {
             - Keep descriptions practical and action-oriented, not poetic.
             - Maximum 2-3 sentences per response. Be immediate, not elaborate.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-ultra-concise", name: "Ultra-Concise", prompt: """
             Voice AI \(on). Spoken output only.
@@ -1046,7 +1052,7 @@ struct Config {
             - If the user tells you which museum they're visiting, tailor your context to that museum's collection and history.
             - Keep responses to 3-5 sentences. Dense with insight, not length.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "building.columns", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-reading-assistant", name: "Reading Assistant", prompt: """
@@ -1066,7 +1072,7 @@ struct Config {
             - For documents, read the most important parts first (headings, key paragraphs).
             - Keep meta-commentary brief — the user wants to hear the text, not your thoughts about it.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "text.viewfinder", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-accessibility", name: "Accessibility Assistant", prompt: """
@@ -1087,7 +1093,7 @@ struct Config {
             - Keep responses to 2-4 sentences unless describing a complex scene.
             - Be matter-of-fact, not patronizing. You're providing eyes, not sympathy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.walk", cameraBehavior: "always"),
 
             PromptPreset(id: "preset-travel-guide", name: "Travel Guide", prompt: """
@@ -1108,7 +1114,7 @@ struct Config {
             - Use web search for current opening hours, prices, and local events.
             - Keep responses to 3-5 sentences. Informative but concise.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "map", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-shopping-assistant", name: "Shopping Assistant", prompt: """
@@ -1129,7 +1135,7 @@ struct Config {
             - Offer comparisons when relevant: "The store brand has the same ingredients for less."
             - Keep responses to 2-4 sentences. Useful, not verbose.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "cart", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-nature-guide", name: "Nature Guide", prompt: """
@@ -1149,7 +1155,7 @@ struct Config {
             - Offer deeper dives: "Want to know about its migration pattern?" or "There's an interesting symbiosis here."
             - Keep responses to 3-5 sentences. Rich with insight.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "leaf", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-meeting-assistant", name: "Meeting Assistant", prompt: """
@@ -1188,7 +1194,7 @@ struct Config {
             - Adjust difficulty to the user's level — start simple, build up.
             - Keep responses to 2-4 sentences. Teach one thing at a time.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "graduationcap", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-cooking-assistant", name: "Cooking Assistant", prompt: """
@@ -1209,7 +1215,7 @@ struct Config {
             - Be practical about substitutions and shortcuts.
             - Keep responses to 1-3 sentences. The user's hands are busy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "fork.knife", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-wine-sommelier", name: "Wine Sommelier", prompt: """
@@ -1230,7 +1236,7 @@ struct Config {
             - Share stories about regions and producers to make it memorable.
             - Keep responses to 3-5 sentences. Informative, not lecturing.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "wineglass", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-clinical-assistant", name: "Clinical Assistant", prompt: """
@@ -1261,7 +1267,7 @@ struct Config {
             - Respond in 2-5 sentences. Information-dense, no filler.
             - When asked to "document this" or "note that", acknowledge briefly and incorporate into the running note.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "stethoscope", cameraBehavior: "always"),
 
             PromptPreset(id: "preset-nutrition-analyzer", name: "Nutrition Analyzer", prompt: """
@@ -1287,7 +1293,7 @@ struct Config {
             - Offer practical alternatives when asked: "A grilled version would save about 200 calories."
             - Keep responses to 2-4 sentences. Useful, not preachy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "leaf.circle", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-fitness-coach", name: "Fitness Coach", prompt: """
@@ -1308,7 +1314,7 @@ struct Config {
             - Announce rep counts and set completions clearly.
             - Keep responses to 1-3 sentences. The user is exercising.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.run", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-golf-caddy", name: "Golf Caddy", prompt: """
@@ -1335,7 +1341,7 @@ struct Config {
             - Offer unsolicited advice only for strategy (not swing tips unless asked).
             - Track the round automatically — announce running score after each hole.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.golf", cameraBehavior: "smart"),
         ]
     }
@@ -1354,7 +1360,7 @@ struct Config {
             - 简单问题：1-2 句话。
             - 复杂话题：3-5 句话，可以问"要我详细说说吗？"
             - 语音识别可能有误——请宽容理解用户意图。
-            - 你可以看到眼镜相机拍摄的图片。
+            - 你可以看到相机拍摄的图片。
             - 当用户说"看看这个"、"这是什么"、"拍张照"等，会自动拍照发送给你。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-tokens", name: "代币节省者", prompt: """
@@ -1366,7 +1372,7 @@ struct Config {
             - 语音识别可能有误，优先按用户意图理解。
             - 不确定时简短说明；缺少实时或个人数据时明确说明需要什么。
             - 可利用会话上下文。
-            - 你可以看到眼镜相机图片，不要说看不到。
+            - 你可以看到相机图片，不要说看不到。
             - OCR/翻译请求先转写原文，再给译文。
             - 仅在相关时使用位置信息。
             """, isBuiltIn: true),
@@ -1377,7 +1383,7 @@ struct Config {
             - 用中文回复，每次最多1-2句话。
             - 直接回答，不要寒暄和废话。
             - 不用格式、列表或 Markdown。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "技术", prompt: """
             \(AssistantIdentity.lineZH(name: assistantName, role: "运行在\(on)的技术型语音助手。"))
@@ -1388,7 +1394,7 @@ struct Config {
             - 代码或命令可以直接说出。
             - 数据密集型回答，注重准确性。
             - 2-4句话，不用格式符号。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "创意", prompt: """
             \(AssistantIdentity.lineZH(name: assistantName, role: "\(on)有趣又机智的语音助手。"))
@@ -1398,7 +1404,7 @@ struct Config {
             - 可以开玩笑、用比喻、讲故事。
             - 保持信息准确，但让互动更有意思。
             - 2-5句话，不用格式符号。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-navigation", name: "导航助手", prompt: """
             你是\(on)的导航和空间感知助手。主要帮助用户安全导航和了解周围环境。
@@ -1409,7 +1415,7 @@ struct Config {
             - 主动读出标牌、路名、门牌号。
             - 警告潜在危险：湿滑地面、不平路面、来车。
             - 最多2-3句话，简洁实用。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
         ]
     }
@@ -1492,15 +1498,31 @@ struct Config {
     /// The camera sentence earlier builds shipped, when the default prompt assumed glasses.
     private static let legacyCameraSentence = "The glasses have a camera."
 
+    /// The presets' camera lines as earlier builds shipped them, each beside today's wording
+    /// (Plan FY P2): the camera may be the glasses' or the phone's, so no preset says whose it is.
+    /// Folded for comparison only, so a built-in seeded by an earlier build is still recognised as
+    /// shipped text and follows the new wording; nothing stored is rewritten.
+    static let legacyCameraLines: [(legacy: String, current: String)] = [
+        ("You CAN see images from the glasses camera when provided.",
+         "You CAN see images from the camera when provided."),
+        ("你可以看到眼镜相机拍摄的图片。", "你可以看到相机拍摄的图片。"),
+        ("你可以看到眼镜相机图片，不要说看不到。", "你可以看到相机图片，不要说看不到。"),
+        ("你可以看到眼镜相机的图片。", "你可以看到相机的图片。"),
+    ]
+
     /// A preset's body with its device sentences folded to one form, for comparison only — the
     /// result is never stored or sent. Every device's context line and the pre-F3 context line
-    /// read as one placeholder, and the pre-F3 camera sentence reads as today's.
+    /// read as one placeholder, and the pre-F3 camera sentence and the pre-P2 camera lines read as
+    /// today's.
     private static func comparableBody(of prompt: String) -> String {
         var text = String(body(of: prompt))
         let contextLines = AssistantIdentity.Device.allCases.map(AssistantIdentity.contextLine(device:))
             + [AssistantIdentity.legacyContextLine]
         for line in contextLines {
             text = text.replacingOccurrences(of: line, with: "{device-context}")
+        }
+        for line in legacyCameraLines {
+            text = text.replacingOccurrences(of: line.legacy, with: line.current)
         }
         return text.replacingOccurrences(of: legacyCameraSentence, with: cameraSentence)
     }

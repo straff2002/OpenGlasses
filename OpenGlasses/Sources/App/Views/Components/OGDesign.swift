@@ -758,6 +758,8 @@ struct OGHeroDeviceCard: View {
     /// e.g. 82 — omitted when the firmware hasn't reported yet.
     var batteryPercent: Int? = nil
     var chips: [(label: String, available: Bool)] = []
+    /// The device's SF Symbol — glasses by default; the phone when it is the device in use.
+    var symbol: String = "eyeglasses"
     @Environment(\.appAccent) private var accent
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .body) private var glyphTile: CGFloat = 50
@@ -793,7 +795,7 @@ struct OGHeroDeviceCard: View {
             .fill(inkAccent.opacity(0.2))
             .frame(width: glyphTile, height: glyphTile)
             .overlay {
-                Image(systemName: "eyeglasses")
+                Image(systemName: symbol)
                     .font(.title3)
                     .foregroundStyle(inkAccentLabel)
             }

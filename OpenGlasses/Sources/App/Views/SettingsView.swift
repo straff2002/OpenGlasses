@@ -56,17 +56,31 @@ struct SettingsView: View {
         // grouped card of category rows, each with a live value summary, then the
         // Discover section for everything still folded.
         OGScrollPage {
-            OGHeroDeviceCard(
-                title: appState.glassesService.deviceName ?? "Meta Glasses",
-                status: appState.isConnected ? "Connected" : "Not connected",
-                dot: appState.isConnected ? OGTheme.ok : Color.secondary,
-                batteryPercent: appState.glassesService.batteryLevel,
-                chips: [
-                    ("Camera", appState.isConnected),
-                    ("Display", appState.glassesDisplay.hasDisplayCapability),
-                    ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
-                ]
-            )
+            // The device in use (Plan FY P2): the glasses once they are added, and this phone
+            // until then — a phone-only hub never opens on a pair of glasses that are "Not
+            // connected". Glasses are added under Devices & Privacy → Hardware & Privacy.
+            if OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
+                                               glassesAdded: Config.glassesAdded) {
+                OGHeroDeviceCard(
+                    title: "This iPhone",
+                    status: "In use",
+                    dot: OGTheme.ok,
+                    chips: [("Voice", true), ("Chat", true), ("Camera", true)],
+                    symbol: "iphone"
+                )
+            } else {
+                OGHeroDeviceCard(
+                    title: appState.glassesService.deviceName ?? "Meta Glasses",
+                    status: appState.isConnected ? "Connected" : "Not connected",
+                    dot: appState.isConnected ? OGTheme.ok : Color.secondary,
+                    batteryPercent: appState.glassesService.batteryLevel,
+                    chips: [
+                        ("Camera", appState.isConnected),
+                        ("Display", appState.glassesDisplay.hasDisplayCapability),
+                        ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
+                    ]
+                )
+            }
 
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
             ManagedByOrganisationSection(manager: OrgProfileManager.shared)
@@ -128,7 +142,8 @@ struct SettingsView: View {
 
             OGSection(
                 header: "About",
-                footer: "Avenkin © 2026 Skunkworks NZ Ltd. Source-available under the Business Source License 1.1: free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
+                // The tagline and the device line, in the owner's words (Plan FY P2.1).
+                footer: "Your AI. Your terms. On your phone, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 Skunkworks NZ Ltd. Source-available under the Business Source License 1.1: free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
             ) {
                 OGRow("Version", icon: "info.circle", mutedIcon: true, verbatimValue: Self.appVersion, showsChevron: false)
                 OGDivider()
@@ -993,7 +1008,7 @@ struct HardwarePrivacyView: View {
                 InfoToggle(
                     title: "Blur Bystander Faces",
                     isOn: $privacyFilterEnabled,
-                    info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
+                    info: "Uses Apple's on-device Vision framework to detect faces in the camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
                 .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
                 ManagedSettingNote(key: .privacyFilterEnabled)

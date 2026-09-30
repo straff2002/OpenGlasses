@@ -582,7 +582,7 @@ class LLMService: ObservableObject {
 
 
             VISION INPUT:
-            This turn includes an image captured from the user's glasses camera. You can analyze that image for this response.
+            This turn includes an image captured from the user's camera. You can analyze that image for this response.
             Do not say you lack camera or image access when an image is attached. If the image is unclear, say what you can and cannot make out.
 
             IDENTIFY & OCR:

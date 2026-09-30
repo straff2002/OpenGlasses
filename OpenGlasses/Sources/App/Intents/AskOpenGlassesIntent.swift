@@ -50,7 +50,7 @@ struct AskOpenGlassesIntent: AppIntent, AudioRecordingIntent {
 /// AppIntent to take a photo and analyze it.
 struct TakePhotoIntent: AppIntent {
     static var title: LocalizedStringResource = "Avenkin Photo"
-    static var description = IntentDescription("Take a photo with the glasses and describe what you see")
+    static var description = IntentDescription("Take a photo and describe what you see")
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true

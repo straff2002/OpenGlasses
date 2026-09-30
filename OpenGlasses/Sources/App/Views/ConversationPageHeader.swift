@@ -140,7 +140,7 @@ struct ConversationSwitcherSheet: View {
                     ContentUnavailableView {
                         Label("No conversations yet", systemImage: "bubble.left.and.bubble.right")
                     } description: {
-                        Text("Talk to your glasses or type a message, and it will show up here.")
+                        Text("Talk or type a message, and it will show up here.")
                     }
                 } else {
                     list

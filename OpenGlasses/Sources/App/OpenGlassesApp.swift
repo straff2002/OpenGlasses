@@ -678,6 +678,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
                 speechService.playConnectTone()
                 PrivacyLog.device(.glasses, .connected)
+                // Glasses that have connected are glasses this person uses (Plan FY P2): from now
+                // on a missing pair is news on the session card, not the phone's normal state.
+                Config.glassesAdded = true
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     // Let the Bluetooth audio link settle before grabbing the mic.

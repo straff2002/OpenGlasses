@@ -67,7 +67,7 @@ struct AccessibilitySettingsView: View {
                                                 : "Reading accessibility off. Its settings are hidden.")
                     }
             } footer: {
-                Text("Reads text through the glasses camera using on-device OCR. When enabled, the `reading_assist` tool can read aloud, simplify, translate, or define text you're looking at. Images never leave your device.")
+                Text("Reads text through the camera using on-device OCR. When enabled, the `reading_assist` tool can read aloud, simplify, translate, or define text you're looking at. Images never leave your device.")
             }
 
             if enabled {

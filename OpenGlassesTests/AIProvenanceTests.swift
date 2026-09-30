@@ -194,7 +194,7 @@ final class AIProvenanceTests: XCTestCase {
         XCTAssertTrue(text.contains("AI assessment"))
         XCTAssertTrue(text.contains("trained inspector or first aider"))
         // Localisable: the copy is one whole sentence per surface, resolved through the catalog.
-        XCTAssertEqual(text, String(localized: "This is an AI assessment from the glasses camera. It is not a substitute for a trained inspector or first aider."))
+        XCTAssertEqual(text, String(localized: "This is an AI assessment from the camera. It is not a substitute for a trained inspector or first aider."))
         XCTAssertEqual(text, AIDisclosureLedger.text(for: .assessment))
     }
 

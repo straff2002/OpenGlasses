@@ -33,7 +33,7 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Send to Support",
-                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, any connected glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
             ) {
                 supportEmailField
                 OGDivider()

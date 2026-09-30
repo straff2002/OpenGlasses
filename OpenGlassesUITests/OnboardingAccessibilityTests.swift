@@ -54,13 +54,16 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry,
                           .appBehindTheOverlay, .decorativePageIndicator])
 
-        // The walk stops here, and on purpose. Page 6 is where onboarding starts talking to the
-        // glasses — camera permission and registration with the companion app — and a simulator
-        // has no glasses to register with. Driving into it produced a page that sometimes never
-        // arrived, which is a gate that fails for a reason unrelated to what it measures. Pages 6
-        // to 8 are built from the same components as the five above (`OGCard`/`OGRow` and the
-        // permission rows audited on page 5, over the same `centeredScroll` the AX5 test drives),
-        // so what is unaudited here is their composition, not their parts.
+        // The walk stops here, and on purpose. Continuing needs the microphone, which is a system
+        // alert, and page 7 ("Add a device", Plan FY P2) is where onboarding can start talking to
+        // the glasses — camera permission and registration with the companion app — and a
+        // simulator has no glasses to register with. Driving into it produced a page that
+        // sometimes never arrived, which is a gate that fails for a reason unrelated to what it
+        // measures. Pages 6 to 8 are built from the same components as the five above
+        // (`OGCard`/`OGRow` and the permission rows audited on page 5, over the same
+        // `centeredScroll` the AX5 test drives), so what is unaudited here is their composition,
+        // not their parts. The device step's order and its phone path are walked headlessly by
+        // `OnboardingFlowTests`.
     }
 
     /// Where in the flow the user is has to be *said*, since the dots that draw it are 4pt of
@@ -74,6 +77,8 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         let welcomeTitle = app.staticTexts["Avenkin"].firstMatch
         XCTAssertEqual(welcomeTitle.value as? String, "Page 1 of 8",
                        "The welcome page's title does not say where in the flow it sits")
+        XCTAssertTrue(app.staticTexts["Your AI. Your terms."].exists,
+                      "The welcome page leads with the assistant, under the tagline (Plan FY P2)")
         XCTAssertFalse(app.buttons["Back"].exists,
                        "There is nothing behind the first page to go back to")
 

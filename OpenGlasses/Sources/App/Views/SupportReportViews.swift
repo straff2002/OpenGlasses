@@ -261,7 +261,7 @@ struct SupportReportSheet: View {
         if document.failedTurnCount > 0 { turns += " (\(document.failedTurnCount) failed)" }
         parts.append(turns)
         return parts.joined(separator: " · ")
-            + "\nPlus this phone and the glasses, and the app's own event log."
+            + "\nPlus this phone, any connected glasses, and the app's own event log."
     }
 
     private func maskingSummary(_ document: JobTranscriptExport.Document) -> String {

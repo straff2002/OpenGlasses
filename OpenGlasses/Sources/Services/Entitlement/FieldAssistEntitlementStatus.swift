@@ -65,6 +65,9 @@ struct FieldAssistEntitlementStatus: Equatable {
 /// as a way around in-app purchase. The copy therefore describes licence *entry*, never licence
 /// *purchase*.
 enum FieldAssistPaywallCopy {
+    /// How the professional tier is named wherever it is sold or licensed (Plan FY P2): the tier's
+    /// own name first, the product it runs in second.
+    static let poweredBy = "Field Assist, powered by Avenkin"
     static let locked = "Field Assist is locked"
     static let lockedDetail = "Unlock the solo tier with a subscription, or enter the licence code your organisation issued."
     static let licenseHeader = "Organisation Licence"
@@ -102,7 +105,7 @@ enum FieldAssistPaywallCopy {
 
     /// Every static string, for the copy guard test.
     static var all: [String] {
-        [locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
+        [poweredBy, locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
          bundledVaultsOnly, ownVaultsLapsed, ownVaultsLocked,
          renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),

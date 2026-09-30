@@ -209,4 +209,58 @@ final class DeviceIdentityTests: XCTestCase {
             XCTAssertTrue(firstLine(Config.systemPrompt(device: .glasses)).contains("on smart glasses"), id)
         }
     }
+
+    // MARK: - Plan FY P2: the preset bodies and the agent documents
+
+    /// F3 made the opening line name the device; P2 carries it through the bodies. The camera may
+    /// be the phone's, so no shipped preset, the on-device photo prompt or the image note says it
+    /// is the glasses'.
+    @MainActor
+    func testNoShippedPresetBodyAssumesGlassesOnAPhone() {
+        for preset in Config.builtInPresets(device: .phone) {
+            XCTAssertFalse(withoutWakePhrase(preset.prompt).localizedCaseInsensitiveContains("glasses"),
+                           "\(preset.id) mentions glasses on a phone")
+        }
+        for preset in Config.chineseBuiltInPresets(device: .phone) {
+            XCTAssertFalse(preset.prompt.contains("眼镜"), "\(preset.id) (zh) mentions glasses on a phone")
+        }
+        XCTAssertFalse(Config.compactVisionTurnPrompt(from: "You are Avenkin.", languageCode: "en")
+            .localizedCaseInsensitiveContains("glasses"))
+    }
+
+    /// A built-in seeded by an earlier build still carries the old camera line. It is shipped text
+    /// nobody edited, so it follows the new wording — and storage is left as it was.
+    func testAPresetStoredWithThePreP2CameraLineIsStillRecognisedAsShipped() throws {
+        let shipped = try XCTUnwrap(Config.builtInPresets(device: .phone).first { $0.id == "preset-concise" })
+        var legacy = shipped
+        legacy.prompt = shipped.prompt.replacingOccurrences(
+            of: "You CAN see images from the camera when provided.",
+            with: "You CAN see images from the glasses camera when provided.")
+        XCTAssertNotEqual(legacy.prompt, shipped.prompt, "the concise preset carries the camera line")
+
+        Config.setSavedPresets([legacy])
+        Config.setActivePresetId("preset-concise")
+        let stored = UserDefaults.standard.data(forKey: presetsKey)
+
+        XCTAssertEqual(Config.systemPrompt(device: .phone), shipped.prompt)
+        XCTAssertEqual(UserDefaults.standard.data(forKey: presetsKey), stored)
+    }
+
+    func testTheLegacyCameraLinesFoldOntoTodaysWording() {
+        for line in Config.legacyCameraLines {
+            XCTAssertNotEqual(line.legacy, line.current)
+            XCTAssertFalse(line.current.localizedCaseInsensitiveContains("glasses"))
+            XCTAssertFalse(line.current.contains("眼镜"))
+        }
+    }
+
+    /// Agent mode's documents are written once on first use and then belong to the user; the
+    /// template a new one starts from no longer says the agent lives on one vendor's glasses.
+    func testTheAgentDocumentTemplatesDoNotAssumeGlasses() {
+        let soul = AgentDocumentStore.defaultSoul
+        XCTAssertFalse(soul.contains("Ray-Ban"))
+        XCTAssertFalse(soul.contains("lives on"))
+        XCTAssertTrue(soul.contains("their phone, their watch, or their smart glasses"))
+        XCTAssertFalse(soul.contains("when glasses are off"))
+    }
 }
