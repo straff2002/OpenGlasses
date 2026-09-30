@@ -119,11 +119,31 @@ final class PromptPrefixStabilityTests: XCTestCase {
     }
 
     func testVaultCoreIsBoundedOnEveryProvider() {
-        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt), 24_000, "FM's bound, as shipped")
         for provider in [LLMProvider.openai, .anthropic, .gemini, .custom] {
             XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: provider), VaultValidator.coreBudgetCharacters)
         }
         XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: nil), VaultValidator.coreBudgetCharacters)
+    }
+
+    /// Decision 6: ChatGPT keeps FM's 24k only on the conservative 32k-context fallback; a
+    /// recognised model's 272k context sends the whole validated core, as the API route does.
+    func testChatGPTVaultBoundFollowsTheResolvedRequestContext() {
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt), 24_000, "no context known")
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: 32_768), 24_000)
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: 127_999), 24_000)
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: 128_000),
+                       VaultValidator.coreBudgetCharacters)
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: 272_000),
+                       VaultValidator.coreBudgetCharacters)
+        // The resolver's own numbers, so the two cannot drift apart.
+        let recognised = RequestContextBudget.resolve(model: "gpt-5.5", endpoint: ChatGPTOAuth.backendResponsesURL)
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: recognised.context),
+                       VaultValidator.coreBudgetCharacters)
+        let fallback = RequestContextBudget.resolve(model: "gpt-unknown", endpoint: ChatGPTOAuth.backendResponsesURL)
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .chatgpt, requestContext: fallback.context), 24_000)
+        // Off the ChatGPT route the context is not consulted.
+        XCTAssertEqual(VaultPromptBuilder.referenceByteLimit(for: .openai, requestContext: 8_192),
+                       VaultValidator.coreBudgetCharacters)
     }
 
     func testDeclaredToolNamesAreSorted() {

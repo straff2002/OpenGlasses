@@ -215,10 +215,14 @@ tools, and why. Spend caps warn before a budget runs out and ask before going ov
    dropped `service_values.md`, the file the pressure and temperature checks depend on. The bound
    on API providers is now the validator's own core budget (`VaultValidator.coreBudgetCharacters`,
    32k), so any vault that validates is sent in full and the ceiling is enforced once, at
-   validation time, where the author sees it. ChatGPT keeps its 24k because that backend has a
-   hard request budget (FM). The cost argument was weak: after the stable-prefix change the vault
-   text sits in the cached head, so the ~1.3k extra tokens on this vault are paid at the cached
-   rate. If vaults outgrow 32k, the lever is retrieval (send passages), not a smaller cap.
+   validation time, where the author sees it. On ChatGPT the bound follows the request context FM
+   resolves for the model: a recognised model (272k) sends the whole validated core too, and only
+   the conservative 32k-context fallback (an unrecognised model or endpoint) keeps FM's 24k — so a
+   vault that validates is sent whole on both routes. The cost argument was weak: after the
+   stable-prefix change the vault text sits in the cached head, so the ~1.3k extra tokens on this
+   vault are paid at the cached rate. If vaults outgrow 32k, the lever is retrieval (send
+   passages), not a smaller cap. (The field tester is on the API route — `provider=openai` on
+   every logged request, and a per-token bill.)
 
 ## Scope and invariants
 
