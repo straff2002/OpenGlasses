@@ -299,22 +299,23 @@ stated by the provider's docs.
 `LLM/OpenAIRouteSelector.swift`: `select(provider:model:baseURL:toolsAttached:requested:
 learnedToolRejection:learnedResponsesRejection:) -> Selection` where `Selection` is
 `{ endpoint: .chatCompletions | .responses, reasoning: ReasoningPolicy.Resolution, reason }` and
-`reason` is a case with an editor explanation (`reasoningWithTools`, `automaticStaysCheap`,
-`noToolsAttached`, `notReasoningModel`, `otherProvider`, `customHostChat`, `customHostResponsesURL`,
-`responsesRefusedEarlier`, `responsesOnlyModel`). `ReasoningRoute` gains nothing: the selector picks
+`reason` is a case with an editor explanation (`reasoningWithTools`, `chatToolsUnavailable`,
+`automaticStaysCheap`, `noToolsAttached`, `explicitNone`, `notReasoningModel`, `otherProvider`,
+`customHostChat`, `customHostResponsesURL`, `responsesRefusedEarlier`). `ReasoningRoute` gains nothing: the selector picks
 the route and calls `ReasoningPolicy.resolve` with it. `ModelConfig.routeSelection(toolsAttached:)`
 wraps it for the editor and the request builder.
 
 ### P1 — Translator and budget generalisation
 - `ResponsesTranslator.requestBody` gains `includeEncryptedReasoning:` (adds `include:
   ["reasoning.encrypted_content"]`), `maxOutputTokens:` and `promptCacheKey:`; `inputItems` replays
-  a reasoning item stored on an assistant message before its `function_call` items;
-  `parseOutput` returns `reasoningItems` as a third element; `assistantHistoryMessage` carries them;
-  `HistoryHygiene.stripReasoningItems` removes them.
+  the raw output items stored on an assistant message (`rawOutputItemsKey`) verbatim, reasoning
+  ahead of its `function_call`; `parseOutput` returns `rawOutputItems` as a third element;
+  `assistantHistoryMessage(rawOutputItems:)` carries them; `HistoryHygiene.stripResponsesItems`
+  removes them; `incompleteReason` names an incomplete response.
 - `RequestContextBudget.resolve` recognises `api.openai.com` and returns the table context with
   provenance `openaiModelPages20260930`; unknown models on that host get the conservative API default.
 - `UsageTracker.parseUsage` shape detection (Decision 5).
-- `ReasoningPolicy.openAIFamily` gains `responsesOnly` if the docs name any such model.
+- `ReasoningPolicy.Family` gains `chatToolsRequireNone` and `chatToolsUnavailable` (Decision 1).
 
 ### P2 — The API route in `LLMService`
 `sendOpenAIResponses` mirrors `sendChatGPT`: Bearer key via `openAICompatibleAuthorization`, endpoint
