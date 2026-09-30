@@ -28,10 +28,12 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   with positional specifiers skipping the suffix argument. `ru` moved from the downloadable packs
   to `LocalizationManager.bundledLanguages`. `Translations/ru.json` stays for builds that still
   download it. `LocalizationCatalogGuardTests` is the first slice of P2: for each *complete*
-  language it enforces full coverage, specifier parity against the English source (an English
-  plural-suffix `%@` may be dropped) and every plural category the language needs, and it checks
-  the language is offered as bundled. Each language joins its `completeLanguages` set as its
-  catalog fills. Human review of the flagged subset (below) is still owed for `ru`.
+  language it enforces the 95% coverage floor (relaxed from 100% on 2026-09-30, so a catalog sync
+  that brings in untranslated English keys doesn't fail the suite; a failure names the missing
+  keys). It also enforces specifier parity against the English source, where an English
+  plural-suffix `%@` may be dropped, and every plural category the language needs. It checks the
+  language is offered as bundled. Each language joins its `completeLanguages` set as its catalog
+  fills. Human review of the flagged subset (below) is still owed for `ru`.
 - **Literal copy in the design kit reaches the catalog again** ([#483](https://github.com/straff2002/OpenGlasses/pull/483)).
   Commit 5b35f09f added generic `init<S: StringProtocol>` verbatim overloads beside the
   `LocalizedStringKey` ones, and none of them was disfavoured. A string literal's default type,
