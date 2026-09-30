@@ -329,6 +329,23 @@ struct ServicesSettingsView: View {
                 Text("Turn-by-turn pedestrian directions on the HUD — \u{201C}navigate to\u{2026}\u{201D}.")
             }
 
+            // MARK: Parking
+            Section {
+                NavigationLink {
+                    ParkingSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Label("Parking", systemImage: "car")
+                        Spacer()
+                        if appState.parkingStore.active != nil {
+                            Text("Spot saved").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } footer: {
+                Text("\u{201C}Where did I park?\u{201D} — the level, space and a way back, saved by voice, from a sign photo, or when a drive ends.")
+            }
+
             // MARK: Notification Digest
             Section {
                 NavigationLink {

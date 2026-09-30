@@ -13,6 +13,9 @@ import CoreMotion
 @MainActor
 final class MotionActivityProvider: ObservableObject {
     @Published private(set) var isActive = false
+    /// Every activity update as a pure sample (Plan GH) — parking capture reads the transitions,
+    /// where presence only needs the boolean.
+    var onSample: ((MotionSample) -> Void)?
 
     private let manager = CMMotionActivityManager()
     private var running = false
@@ -28,7 +31,11 @@ final class MotionActivityProvider: ObservableObject {
         manager.startActivityUpdates(to: .main) { [weak self] activity in
             // CoreMotion delivers on the main OperationQueue; hop to the main actor to mutate state.
             let moving = MotionActivityProvider.isMoving(activity)
-            Task { @MainActor [weak self] in self?.isActive = moving }
+            let sample = activity.map(MotionActivityProvider.sample(from:))
+            Task { @MainActor [weak self] in
+                self?.isActive = moving
+                if let sample { self?.onSample?(sample) }
+            }
         }
     }
 
@@ -38,6 +45,38 @@ final class MotionActivityProvider: ObservableObject {
         running = false
         manager.stopActivityUpdates()
         isActive = false
+    }
+
+    /// Recorded activity between two instants, oldest first (Plan GH). CoreMotion keeps about a
+    /// week of history, which is what lets a drive that ended while the app was suspended still be
+    /// found when it next becomes active. Empty when unavailable or not permitted.
+    func samples(from start: Date, to end: Date) async -> [MotionSample] {
+        guard Self.isAvailable, start < end else { return [] }
+        return await withCheckedContinuation { continuation in
+            manager.queryActivityStarting(from: start, to: end, to: .main) { activities, _ in
+                continuation.resume(returning: (activities ?? []).map(MotionActivityProvider.sample(from:)))
+            }
+        }
+    }
+
+    /// `CMMotionActivity` → `MotionSample`. Automotive wins over the on-foot flags when both are
+    /// set (a phone in a moving car can report both), and stationary is only reported when nothing
+    /// else is.
+    nonisolated static func sample(from activity: CMMotionActivity) -> MotionSample {
+        let kind: MotionSample.Kind
+        if activity.automotive { kind = .automotive }
+        else if activity.running { kind = .running }
+        else if activity.walking { kind = .walking }
+        else if activity.cycling { kind = .cycling }
+        else if activity.stationary { kind = .stationary }
+        else { kind = .unknown }
+        let confidence: MotionSample.Confidence
+        switch activity.confidence {
+        case .high: confidence = .high
+        case .medium: confidence = .medium
+        default: confidence = .low
+        }
+        return MotionSample(kind, confidence: confidence, at: activity.startDate)
     }
 
     /// Whether a `CMMotionActivity` represents active motion (vs stationary / unknown). Pulled out so

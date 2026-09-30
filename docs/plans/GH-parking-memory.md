@@ -1,6 +1,12 @@
 # Plan GH — Parking Memory ("Where did I park?")
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** ✅ Shipped 2026-10-01 (P0–P3 in one PR) — voice, sign-photo and automatic capture,
+recall, HUD pin, phone card and walking guidance to the car are built and tested headless (79 tests).
+Device checks owed (P3 list below): a real drive with CarPlay, a drive without CarPlay with
+"I drive" on, a multi-storey car park, a bus ride, and the phone locked in a pocket throughout — plus
+whether the CarPlay scene connects at all when Avenkin is not opened on the car screen, and whether a
+spoken confirmation plays with the phone locked after disconnect. Option (a) for location (Always +
+one-shot fix) is not built; it waits on the device run showing (b) is too stale.
 **Continues:** Plan [CA](CA-walking-navigation.md) (walking guidance back to the car).
 **Related:** Plan W (`MotionActivityProvider`), Plan [GG](GG-readable-memory.md) (the spot shows under
 Places and can be forgotten), Plan [GM](GM-watch-map-and-list-surfaces.md) (watch pin), CarPlay
@@ -133,6 +139,32 @@ without CarPlay and "I drive" on; a multi-storey car park (GPS drift, level read
 3. Speak a confirmation on automatic save ("Saved where you parked") or stay silent with a
    notification. *Recommend silent + notification; spoken only after CarPlay disconnect.*
 4. History off by default (recommended), last 10 when on.
+
+## Implementation notes (2026-10-01)
+
+Decisions as recommended: (1) last-known fix only; (2) motion capture behind "I drive", off;
+(3) silent + notification on automatic save, spoken only after CarPlay disconnect; (4) history
+off, last 10 when on. Automatic capture as a whole sits behind a master "Save When a Drive Ends"
+switch, off by default (CarPlay on beneath it), so nothing changes for existing wearers until they
+turn it on.
+
+Where the code disagreed with the draft:
+- **No new privacy scope.** The sign photo uses `.toolPhotoCapture`, as `JobPhotoEvidenceService`
+  does: a scope names where pixels go, and "a still kept with a record on the wearer's
+  instruction" already has one. The roster has two entries (`parkingSignCapture`,
+  `parkingPhonePhoto`) owned by `ParkingPhotoFlow`.
+- **A fix from before the drive is refused.** With When-In-Use only and no `location` background
+  mode, the app's last fix during a suspended drive is usually where the drive *started*; the
+  detector only uses a fix taken during the drive (up to 30 s past its end), and saves nothing
+  otherwise. The retrospective CoreMotion replay therefore finds the transition but rarely has a
+  coordinate for it — that is what the device run has to measure.
+- **Automatic never replaces a recent manual spot**, whatever its confidence (the draft said
+  `probable` only): a CarPlay disconnect right after "level 2, space 41" would otherwise erase the
+  level and space. A spoken spot with no fix inherits a moments-old automatic coordinate.
+- **Knowledge-graph ingest only while history is on** — with history off the wearer asked for a
+  replaced spot to be forgotten, and a graph copy would be a history by the back door.
+- `WalkingRouteService.start(destination:)` left its state at `.resolving` when search or routing
+  threw; both starts now return to `.idle`.
 
 ## Out of scope
 

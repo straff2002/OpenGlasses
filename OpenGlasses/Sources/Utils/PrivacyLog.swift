@@ -880,6 +880,9 @@ enum PrivacyLog {
         case authorized, denied, updateFailed, placeResolved
         case regionMonitoringFailed, geofencesRestored, geofenceEntered, geofenceExited
         case rerouteFailed, routeStartFailed
+        /// An automatic parking save fired, or was dropped because a recent spot the wearer gave
+        /// themselves was kept. Which path it came from is the only detail; never where.
+        case parkingAutoSaved, parkingAutoKept
     }
 
     @discardableResult
@@ -1674,6 +1677,9 @@ enum PrivacyLog {
         case evolvedSkills, usage, playbooks, operationJournal
         case readingSessions, studyDecks, recordedSessions, skillPacks, skillHub
         case offlineQueue, homeGrid
+        /// The parking spot file and its sign photos. Failures only — a spot is a place the wearer
+        /// was, and it never reaches a log line.
+        case parking
         /// Reviewed tool-definition digests per server, and the versioned consent register. Both
         /// hold one-way digests and closed-vocabulary fields only.
         case toolDefinitionDigests, consentRecords

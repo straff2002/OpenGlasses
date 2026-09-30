@@ -229,6 +229,11 @@ extension NavigationAssistTool {
 extension NavigateTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(.bestEffort, idempotency: .intrinsic) }
 }
+// Saves or forgets one spot on the phone, but its strongest actions start walking guidance and
+// take a photo through the glasses. Saving the same spot twice leaves one active spot.
+extension ParkingTool {
+    var executionSemantics: ToolExecutionSemantics { .actuation(.bestEffort, idempotency: .intrinsic) }
+}
 extension ReadingSessionTool {
     var executionSemantics: ToolExecutionSemantics { .actuation(.bestEffort, idempotency: .intrinsic) }
 }

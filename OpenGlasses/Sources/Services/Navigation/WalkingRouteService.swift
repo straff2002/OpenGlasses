@@ -29,6 +29,14 @@ final class WalkingRouteService: ObservableObject {
     var speak: ((String, TextToSpeechService.SpeechUrgency) -> Void)?
     var powerPosture: () -> PowerPosture = { PowerPolicyService.shared.posture }
 
+    /// The three live edges, as seams so a headless test can prove which ones a start touches
+    /// (Plan GH). Production leaves them at their defaults.
+    var originFix: (() async -> CLLocation?)?
+    var localSearch: (MKLocalSearch.Request) async throws -> [MKMapItem] = { request in
+        try await MKLocalSearch(request: request).start().mapItems
+    }
+    var directions: ((CLLocationCoordinate2D, MKMapItem) async throws -> MKRoute)?
+
     private var tracker: RouteProgressTracker?
     private var cuePolicy = NavigationCuePolicy()
     private var destinationItem: MKMapItem?
@@ -55,7 +63,7 @@ final class WalkingRouteService: ObservableObject {
         stop(announce: false)
         state = .resolving(query)
 
-        guard let origin = await locationService?.awaitFix(timeout: 3) else {
+        guard let origin = await currentOrigin() else {
             state = .idle
             throw NavigationError.noLocation
         }
@@ -64,21 +72,70 @@ final class WalkingRouteService: ObservableObject {
         request.naturalLanguageQuery = query
         request.region = MKCoordinateRegion(center: origin.coordinate,
                                             latitudinalMeters: 5_000, longitudinalMeters: 5_000)
-        let search = try await MKLocalSearch(request: request).start()
+        let items: [MKMapItem]
+        do {
+            items = try await localSearch(request)
+        } catch {
+            state = .idle
+            throw error
+        }
         // Open decision resolved for hands-free flow: confirm-top-candidate (no pick list).
-        guard let top = search.mapItems.first else {
+        guard let top = items.first else {
             state = .idle
             throw NavigationError.noMatch(query)
         }
 
         let name = top.name ?? query
-        let route = try await walkingRoute(from: origin.coordinate, to: top)
+        let route: MKRoute
+        do {
+            route = try await walkingRoute(from: origin.coordinate, to: top)
+        } catch {
+            state = .idle
+            throw error
+        }
         beginGuiding(route: route, origin: origin.coordinate, destination: top, name: name)
 
         Config.addRecentDestination(name)
         let distance = DistanceFormatter.spoken(DistanceFormatter.banded(route.distance), metric: usesMetric)
         let eta = Self.etaPhrase(seconds: route.expectedTravelTime)
         return "Starting walking directions to \(name) — \(distance), about \(eta)."
+    }
+
+    /// Walk to a known coordinate — a parked car, a saved spot (Plan GH). Skips `MKLocalSearch`
+    /// entirely: the destination is already a point, and searching for its label would find some
+    /// other place of the same name. Not added to the recent destinations — "My car" is not a
+    /// place to go back to next week.
+    @discardableResult
+    func start(to coordinate: CLLocationCoordinate2D, label: String) async throws -> String {
+        stop(announce: false)
+        state = .resolving(label)
+
+        guard let origin = await currentOrigin() else {
+            state = .idle
+            throw NavigationError.noLocation
+        }
+        let destination = MKMapItem(
+            location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude),
+            address: nil)
+        destination.name = label
+
+        let route: MKRoute
+        do {
+            route = try await walkingRoute(from: origin.coordinate, to: destination)
+        } catch {
+            state = .idle
+            throw error
+        }
+        beginGuiding(route: route, origin: origin.coordinate, destination: destination, name: label)
+
+        let distance = DistanceFormatter.spoken(DistanceFormatter.banded(route.distance), metric: usesMetric)
+        let eta = Self.etaPhrase(seconds: route.expectedTravelTime)
+        return "Starting walking directions to \(label) — \(distance), about \(eta)."
+    }
+
+    private func currentOrigin() async -> CLLocation? {
+        if let originFix { return await originFix() }
+        return await locationService?.awaitFix(timeout: 3)
     }
 
     func stop(announce: Bool) {
@@ -110,6 +167,7 @@ final class WalkingRouteService: ObservableObject {
     // MARK: - Routing
 
     private func walkingRoute(from origin: CLLocationCoordinate2D, to item: MKMapItem) async throws -> MKRoute {
+        if let directions { return try await directions(origin, item) }
         let request = MKDirections.Request()
         // A coordinate-only origin: no address to attach, which is all `MKDirections` reads.
         request.source = MKMapItem(
@@ -274,7 +332,7 @@ final class WalkingRouteService: ObservableObject {
     }
 }
 
-enum NavigationError: LocalizedError {
+enum NavigationError: LocalizedError, Equatable {
     case noLocation
     case noMatch(String)
     case noRoute

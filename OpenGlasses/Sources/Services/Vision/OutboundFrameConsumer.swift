@@ -112,6 +112,14 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// neither the relay nor the still accessor — which is precisely the gap this file exists to
     /// stop being invisible.
     case jobPhoneEvidence
+    /// A parking sign read through the glasses (Plan GH): the still is filtered, read by on-device
+    /// OCR, and kept on disk with the parking spot. Kept means egress by this file's reading — a
+    /// stored picture of a car park with somebody in it — so it is filtered under the same scope as
+    /// any other still a tool keeps on the wearer's instruction.
+    case parkingSignCapture
+    /// The same sign photo taken or picked on the phone, from the Parking card. Pixels that never
+    /// came from `CameraService`, filtered at their own chokepoint before OCR or storage.
+    case parkingPhonePhoto
 
     // MARK: - On-device still readers (exempt, and asked to say so)
     //
@@ -226,6 +234,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .fingerspelling: return "FingerspellingSessionService"
         case .dwellCapture, .dwellCaptureSave: return "DwellCaptureService"
         case .jobPhoneEvidence: return "JobPhotoEvidenceService"
+        case .parkingSignCapture, .parkingPhonePhoto: return "ParkingPhotoFlow"
         case .structuredVisionAssessment: return "StructuredVisionService"
         case .safetyAssessment: return "SafetyAssessmentService"
         case .assistiveGuidanceLoop: return "AssistiveModeService"
@@ -273,7 +282,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .structuredVisionAssessment, .safetyAssessment: return .visionAssessment
         case .assistiveGuidanceLoop, .navigationAssist, .liveCoach: return .assistiveGuidance
         case .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
-             .jobPhoneEvidence: return .toolPhotoCapture
+             .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto: return .toolPhotoCapture
         case .dwellCaptureSave: return .photoLibrary
         case .mcpFrameRequest: return .remoteFrameRequest
         case .faceRecognitionTool: return .faceRecognition
@@ -296,13 +305,13 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .liveSessionPollFallback, .directModelTurn, .pinnedFrame, .agentAttachment,
              .sceneNarration, .fitnessPoseFrame: return .latestFrameStill
         case .dwellCaptureSave: return .rawCameraPublisher
-        case .jobPhoneEvidence: return .heldImage
+        case .jobPhoneEvidence, .parkingPhonePhoto: return .heldImage
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .studyScan, .teleprompterScan, .readingAccessibilityTool,
              .smartCaptureTool, .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
-             .faceRecognitionTool, .lookCloselyCapture: return .filteredStill
+             .faceRecognitionTool, .lookCloselyCapture, .parkingSignCapture: return .filteredStill
         }
     }
 
@@ -320,7 +329,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture,
-             .jobPhoneEvidence: return .chokepoint
+             .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto: return .chokepoint
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
