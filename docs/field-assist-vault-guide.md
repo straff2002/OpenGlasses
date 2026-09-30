@@ -1,6 +1,6 @@
 # Building a Field Assist vault from your own manuals
 
-*Avenkin Field Assist · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
+*Field Assist, powered by Avenkin · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
 
 A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 

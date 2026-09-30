@@ -360,6 +360,38 @@ final class BrandNameGuardTests: XCTestCase {
                       "the device step's first answer is this phone")
     }
 
+    /// P2.5: the professional tier is named as it is sold, on every surface that sells or licenses
+    /// it and in its guide.
+    func testFieldAssistIsNamedPoweredByAvenkin() throws {
+        XCTAssertEqual(FieldAssistPaywallCopy.poweredBy, "Field Assist, powered by Avenkin")
+        let settings = try text("OpenGlasses/Sources/App/Views/FieldAssistSettingsView.swift")
+        XCTAssertTrue(settings.contains("Text(\"Field Assist, powered by Avenkin, gives service technicians"),
+                      "Settings → Field Assist names the tier")
+        XCTAssertEqual(settings.components(separatedBy: "Text(FieldAssistPaywallCopy.poweredBy)").count - 1, 2,
+                       "the paywall and the licence section both carry the name")
+        XCTAssertTrue(try text("docs/field-assist-vault-guide.md").contains("Field Assist, powered by Avenkin"))
+        XCTAssertTrue(try text("README.md").contains("Field Assist, powered by Avenkin"))
+    }
+
+    /// P2.1: the tagline, the positioning sentence and the device line, verbatim, wherever the
+    /// product introduces itself.
+    func testThePositioningIsTheOwnersWording() throws {
+        let tagline = "Your AI. Your terms."
+        let sentence = "Avenkin is a private AI assistant that works for you, not for a platform: your "
+            + "choice of AI, your memory on your device, on your phone, your watch or your glasses."
+        let deviceLine = "On your phone, from your wrist, or hands-free with glasses."
+        for page in ["README.md", "about.html", "index.html"] {
+            let body = try text(page)
+            for line in [tagline, sentence, deviceLine] {
+                XCTAssertTrue(body.contains(line), "\(page) is missing \"\(line)\"")
+            }
+        }
+        let onboarding = try text("OpenGlasses/Sources/App/Views/OnboardingView.swift")
+        XCTAssertTrue(onboarding.contains("Text(\"\(tagline)\")") && onboarding.contains(sentence))
+        let hub = try text("OpenGlasses/Sources/App/Views/SettingsView.swift")
+        XCTAssertTrue(hub.contains("\(tagline) \(deviceLine)"), "the About footer carries the tagline and device line")
+    }
+
     // MARK: - The script
 
     /// The repository is what a run of the script produces: running it now would change nothing.
