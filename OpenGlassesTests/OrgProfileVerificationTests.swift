@@ -119,7 +119,7 @@ final class OrgProfileVerificationTests: XCTestCase {
     /// A profile payload signed under the revocation domain must not verify as either.
     func testProfileSignedUnderTheRevocationDomainIsRefused() throws {
         let payload = try ProfileVerification.encoder.encode(profile())
-        let text = try document(payload: payload, domain: ProfileVerification.revocationDomain)
+        let text = try document(payload: payload, domain: ProfileVerification.revocationSigningDomain)
         XCTAssertThrowsError(try ProfileVerification.verify(text, keys: keys)) {
             XCTAssertEqual($0 as? ProfileVerification.Failure, .badSignature)
         }

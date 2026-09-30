@@ -12,9 +12,23 @@ actor ConversationEncryptionService {
 
     static let shared = ConversationEncryptionService()
 
-    // Keychain identifiers
-    private let keychainAccount = "com.openglasses.conversation-key"
-    private let keychainService = "OpenGlasses"
+    // MARK: Keychain storage keys
+
+    /// **Storage key, not a product name.** The Keychain account the conversation encryption key
+    /// is filed under.
+    ///
+    /// **Never change this value** (including in a rename): the key is looked up by it, so a new
+    /// value cannot find the existing key and **encrypted conversation history becomes
+    /// unreadable** — a fresh key is minted and the old ciphertext stays sealed under a key nobody
+    /// asks for. Pinned by `StorageIdentifierGuardTests`.
+    static let storageAccount = "com.openglasses.conversation-key"
+
+    /// The Keychain service, shared with every other item the app stores
+    /// (`KeychainService.storageService` — changing that one loses every stored API key too).
+    static let storageService = KeychainService.storageService
+
+    private let keychainAccount = ConversationEncryptionService.storageAccount
+    private let keychainService = ConversationEncryptionService.storageService
 
     /// Whether encryption is currently active (check Config, not the key presence).
     nonisolated var isEnabled: Bool {

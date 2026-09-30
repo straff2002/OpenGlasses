@@ -8,6 +8,10 @@ import Foundation
 /// Compiled into BOTH the app and the extension target. The pure, side-effect-free helpers
 /// plus the `testContainerURL` seam make it unit-testable without the real container.
 enum SharedTeleprompterInbox {
+    /// **Storage key, not a product name.** The shared App Group. A literal rather than
+    /// `SharedAppState.appGroup` because the Share Extension does not compile that file.
+    /// **Never change this value** (including in a rename): scripts shared from other apps would be
+    /// written where the app never looks. Pinned by `StorageIdentifierGuardTests`.
     static let appGroupID = "group.com.openglasses.app"
     private static let fileName = "teleprompter_inbox.json"
 

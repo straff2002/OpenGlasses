@@ -27,8 +27,18 @@ enum ProfileVerification {
     /// The key id new profiles are minted under.
     static let currentKeyId = "og-profile-2026-09"
 
-    static let profileDomain = Data("openglasses.org-profile.v1\n".utf8)
-    static let revocationDomain = Data("openglasses.org-revocation.v1\n".utf8)
+    /// **Signing domain, not a product name.** The prefix every org profile signature covers,
+    /// mirrored byte-for-byte in `Scripts/make-org-profile.swift`.
+    ///
+    /// **Never change this value** (including in a rename): every org profile already issued was
+    /// signed over it, so a new value makes every issued profile stop verifying and every enrolled
+    /// organisation's phones fall back to unmanaged. Pinned by `StorageIdentifierGuardTests`.
+    static let profileSigningDomain = Data("openglasses.org-profile.v1\n".utf8)
+    /// **Signing domain, not a product name.** The prefix every revocation signature covers,
+    /// mirrored in `Scripts/make-org-profile.swift`. **Never change this value:** every revocation
+    /// already issued stops verifying, so a revoked profile would be honoured again. Pinned by
+    /// `StorageIdentifierGuardTests`.
+    static let revocationSigningDomain = Data("openglasses.org-revocation.v1\n".utf8)
 
     /// A verified hosted document.
     enum Document: Equatable, Sendable {
@@ -89,8 +99,8 @@ enum ProfileVerification {
 
         let domain: Data
         switch header.format {
-        case ConfigProfile.formatId: domain = profileDomain
-        case ProfileRevocation.formatId: domain = revocationDomain
+        case ConfigProfile.formatId: domain = profileSigningDomain
+        case ProfileRevocation.formatId: domain = revocationSigningDomain
         default: throw Failure.malformed
         }
 
@@ -162,12 +172,12 @@ enum ProfileVerification {
     /// Sign a profile. The app never calls this in production — it holds no private key — but it
     /// is the authoritative format `Scripts/make-org-profile.swift` mirrors and the tests use.
     static func makeDocument(_ profile: ConfigProfile, privateKeyBase64: String) throws -> String {
-        try sign(try encoder.encode(profile), domain: profileDomain, privateKeyBase64: privateKeyBase64)
+        try sign(try encoder.encode(profile), domain: profileSigningDomain, privateKeyBase64: privateKeyBase64)
     }
 
     /// Sign a whole-link revocation.
     static func makeDocument(_ revocation: ProfileRevocation, privateKeyBase64: String) throws -> String {
-        try sign(try encoder.encode(revocation), domain: revocationDomain, privateKeyBase64: privateKeyBase64)
+        try sign(try encoder.encode(revocation), domain: revocationSigningDomain, privateKeyBase64: privateKeyBase64)
     }
 
     private static func sign(_ payload: Data, domain: Data, privateKeyBase64: String) throws -> String {

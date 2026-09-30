@@ -59,12 +59,20 @@ protocol ScopedKeyStore: AnyObject {
 /// to fail; and `ThisDeviceOnly` keeps the key out of an iCloud keychain, which is the copy an
 /// erasure could not reach.
 final class KeychainScopedKeyStore: ScopedKeyStore {
-    private let service = "OpenGlasses.ScopedKey"
+    /// **Storage key, not a product name.** The Keychain service the per-class erasure keys are
+    /// filed under.
+    ///
+    /// **Never change this value** (including in a rename): the keys are looked up by it, so a new
+    /// value cannot find them and everything sealed under a scoped key (enrolled face templates,
+    /// scoped conversation content) becomes unreadable — the outcome of a crypto-erasure, applied
+    /// to data nobody asked to erase. Pinned
+    /// by `StorageIdentifierGuardTests`.
+    static let storageService = "OpenGlasses.ScopedKey"
 
     func key(for erasable: ErasableClass) -> SymmetricKey? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.storageService,
             kSecAttrAccount as String: erasable.rawValue,
             kSecReturnData as String: true,
         ]
@@ -79,12 +87,12 @@ final class KeychainScopedKeyStore: ScopedKeyStore {
         let data = key.withUnsafeBytes { Data($0) }
         SecItemDelete([
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.storageService,
             kSecAttrAccount as String: erasable.rawValue,
         ] as CFDictionary)
         let add: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.storageService,
             kSecAttrAccount as String: erasable.rawValue,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -97,7 +105,7 @@ final class KeychainScopedKeyStore: ScopedKeyStore {
     func destroyKey(for erasable: ErasableClass) -> Bool {
         let status = SecItemDelete([
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: Self.storageService,
             kSecAttrAccount as String: erasable.rawValue,
         ] as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound

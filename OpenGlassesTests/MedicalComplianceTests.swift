@@ -240,7 +240,7 @@ final class MedicalComplianceTests: XCTestCase {
                                                  from: Data(export.utf8))
         XCTAssertEqual(document.entryCount, 2)
         XCTAssertEqual(document.events.map(\.event.action), ["EXPORT_TEST_1", "EXPORT_TEST_2"])
-        XCTAssertEqual(document.schema, AuditLogExportDocument.currentSchema)
+        XCTAssertEqual(document.schema, AuditLogExportDocument.schemaSigningDomain)
     }
 
     func testClearAuditLogEmptiesLog() {

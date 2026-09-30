@@ -30,9 +30,15 @@ import CryptoKit
 /// The key is the **organisation's**, from its CT profile, never the vendor's content key.
 struct JobFile: Equatable {
 
+    /// **Wire identifier, not a product name.** The `format` every job file carries, and the
+    /// signature covers. **Never change this value** (including in a rename): `.ogjob` files
+    /// offices have already sent would be refused. Pinned by `StorageIdentifierGuardTests`.
     static let format = "openglasses.job"
     static let formatVersion = 1
     static let fileExtension = "ogjob"
+    /// **Type identifier, not a product name.** Declared in `OpenGlasses/Info.plist`; iOS routes
+    /// `.ogjob` files to the app by it. **Never change this value:** job files already sent would
+    /// stop opening in the app. Pinned by `StorageIdentifierGuardTests`.
     static let typeIdentifier = "com.openglasses.app.job"
     /// A job is a few hundred bytes. Anything near this is not a job.
     static let maximumBytes = 64 * 1024

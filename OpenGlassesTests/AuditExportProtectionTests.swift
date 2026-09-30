@@ -91,7 +91,7 @@ final class AuditExportProtectionTests: XCTestCase {
                        "a canary reached the exported evidence:\n\(text)")
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8))
                                     as? [String: Any])
-        XCTAssertEqual(object["schema"] as? String, AuditLogExportDocument.currentSchema)
+        XCTAssertEqual(object["schema"] as? String, AuditLogExportDocument.schemaSigningDomain)
         XCTAssertEqual(object["policyVersion"] as? String, AuditPolicyVersion.current)
         XCTAssertEqual(object["integrity"] as? String, AuditChainVerification.intact.auditToken)
         let rows = try XCTUnwrap(object["events"] as? [[String: Any]])
