@@ -166,3 +166,16 @@ condition = "AND"
 paths = ['''^Contracts/fixtures/managed-job-fixture-keys\.json$''']
 regexTarget = "line"
 regexes = ['''11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=''', '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''']
+
+[[allowlists]]
+description = """
+The one-time wake-phrase migration flag (Plan FY P3): a UserDefaults key name, not a credential.
+The constant that holds it ends in "Key", which is what the generic rule keys on. Scoped to the
+literal and to the two files that own it.
+"""
+condition = "AND"
+paths = [
+  '''OpenGlasses/Sources/Utils/Config\.swift''',
+  '''OpenGlassesTests/WakePhraseMigrationTests\.swift''',
+]
+regexes = ['''wakePhraseMigratedToAvenkin_v1''']
