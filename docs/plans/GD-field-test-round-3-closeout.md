@@ -1,12 +1,31 @@
 # Plan GD — Field Test Round 3 Close-out: Job Cost, Earlier Work, Field Tool Profile
 
-**Status:** 📋 Planned 2026-09-30 — the three buildable items Plan [GB](GB-field-test-round-3.md)
-left behind from the field tester's round-3 feedback, in one PR, so that everything he asked for is
-built before the next TestFlight build. Owner decisions taken 2026-09-30: build the field-mode tool
+**Status:** ✅ Shipped 2026-09-30 — GD1–GD3 in one PR (branch `feat/gd-field-r3-closeout`). The three
+buildable items Plan [GB](GB-field-test-round-3.md) left behind from the field tester's round-3
+feedback, so that everything he asked for is built before the next TestFlight build. Owner decisions
+taken 2026-09-30: build the field-mode tool
 profile (on by default during a job); pages shown automatically stay out of the customer PDF (JSON
 only, as shipped); the glasses stream is **not** resumed after a relaunch (`record_clip` claims it on
 demand, GB P4). **Owed after merge:** the device pass GB lists, plus this plan's rows: the Job tab's
 cost against the provider's dashboard for one job, and one field job with the profile on.
+
+**Shipped:** GD1 — `WorkRecord.usage` (decode-if-present, written only when the job made requests)
+filled at every record builder from `FieldSessionService.jobUsage(sessionId:)` (over its
+`usageTracker`, the app's `UsageTracker`), and `JobTabModel.usageLine` shown in `ActiveJobView`'s
+time section and `PastJobView`'s visit section. The line is kept out of `summaryLines` as well as
+`CustomerSummary`: `summaryLines` are what the work order PDF prints (`SessionExporter`), so Decision
+1 keeps it off them; the JSON and the two Job-tab views carry it. GD2 —
+`FieldSession.earlierWorkAttachedAt`, set in `setEquipment` on a first identification with tasks or
+scoped readings already on the unit; `FieldSessionService.separateEarlierWork()` and the
+`unit_split` event (`SessionLogger`); `VisitedUnit.rescoped(to:)`; `field_session
+separate_earlier_work` with its rule beside `next_unit` in `FieldSessionTool`, and the sentence
+appended by `EquipmentLookupTool` when its call attached the work. Work recorded after the
+identification moves with the identified unit; the marker also clears when the equipment is cleared
+or the job moves to another unit. GD3 — `FieldToolProfile` (`Services/FieldAssist/`), applied in
+`ToolDeclarations.declarableNames` and to the prompt's tool list in `LLMService` (direct and cloud
+agent) and `GeminiLiveSessionManager`; `Config.fieldToolProfileEnabled` and the Developer panel
+switch; `PrivacyLog.ModelEvent.toolProfileApplied` (counts and a digest). Tests: `WorkRecordTests`,
+`JobTabModelTests`, `EquipmentUnitsTests`, `FieldToolProfileTests`.
 
 **Trigger:** GB's Status names three deferrals that are code, not device checks: per-job cost on the
 Job tab (the usage store carries the job id, nothing reads it — `UsageTracker.jobUsage` has no
