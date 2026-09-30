@@ -2,7 +2,7 @@ import Foundation
 
 /// Manages downloadable language packs for on-demand localization.
 ///
-/// Bundled languages (en, fr, es, de, ja, pl, zh-Hans, zh-Hant, uk) are built into
+/// Bundled languages (en, fr, es, de, ja, pl, ru, zh-Hans, zh-Hant, uk) are built into
 /// the app via Localizable.xcstrings. Additional languages can be downloaded from
 /// GitHub and cached locally.
 @MainActor
@@ -37,7 +37,7 @@ final class LocalizationManager: ObservableObject {
 
     /// Bundled language codes — these ship with the app in Localizable.xcstrings.
     static let bundledLanguages: Set<String> = [
-        "en", "fr", "es", "es-MX", "de", "ja", "pl", "zh-Hans", "zh-Hant", "uk"
+        "en", "fr", "es", "es-MX", "de", "ja", "pl", "ru", "zh-Hans", "zh-Hant", "uk"
     ]
 
     /// Base URL for downloading translation JSON files from GitHub.
@@ -65,7 +65,6 @@ final class LocalizationManager: ObservableObject {
         ("pt-BR", "Portuguese (Brazil)", "Português (Brasil)", 137),
         ("pt-PT", "Portuguese (Portugal)", "Português (Portugal)", 34),
         ("ro", "Romanian", "Română", 29),
-        ("ru", "Russian", "Русский", 58),
         ("sk", "Slovak", "Slovenčina", 28),
         ("sv", "Swedish", "Svenska", 39),
         ("th", "Thai", "ไทย", 137),
@@ -82,6 +81,7 @@ final class LocalizationManager: ObservableObject {
         ("de", "German", "Deutsch"),
         ("ja", "Japanese", "日本語"),
         ("pl", "Polish", "Polski"),
+        ("ru", "Russian", "Русский"),
         ("zh-Hans", "Chinese (Simplified)", "简体中文"),
         ("zh-Hant", "Chinese (Traditional)", "繁體中文"),
         ("uk", "Ukrainian", "Українська"),

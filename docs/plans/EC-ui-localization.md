@@ -1,8 +1,8 @@
 # Plan EC — Automatic UI Localization
 
-**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-09-15). One P1 prerequisite fix
-and two catalog syncs have landed; P1 items 1 and 2, plural variants, all of P2 and all of P3
-remain. No translations have been added.
+**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-09-30). One P1 prerequisite fix,
+two catalog syncs and the first complete catalog (Russian) have landed; P1 items 1 and 2, English
+plural variants, the rest of P2 and the other P3 languages remain.
 **Origin:** The design-kit `LocalizedStringKey` conversion ([#394](https://github.com/straff2002/OpenGlasses/pull/394))
 made the string catalog able to see the app's authored copy, and the owner decision followed the same
 day: the UI should render in the phone's language. iOS does the "automatic" part natively — the
@@ -16,9 +16,22 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 
 ---
 
-## Progress (2026-09-15)
+## Progress (2026-09-30)
 
 **Landed.**
+- **Russian is the first complete catalog (2026-09-30).** Added to the language set by owner
+  request. Every current catalog key with words in it now has a machine-translated `ru` value;
+  that is the whole catalog, not the old 178-key slice. Stale keys, and keys that are only symbols
+  or specifiers, are left alone. Count-of-noun strings with a single integer carry `ru` plural
+  variants (`one`/`few`/`many`/`other`). The English `"file%@"` suffix tricks, and counts that
+  share a sentence with other arguments, use the declension-free colon form (`«Файлов: %lld»`),
+  with positional specifiers skipping the suffix argument. `ru` moved from the downloadable packs
+  to `LocalizationManager.bundledLanguages`. `Translations/ru.json` stays for builds that still
+  download it. `LocalizationCatalogGuardTests` is the first slice of P2: for each *complete*
+  language it enforces full coverage, specifier parity against the English source (an English
+  plural-suffix `%@` may be dropped) and every plural category the language needs, and it checks
+  the language is offered as bundled. Each language joins its `completeLanguages` set as its
+  catalog fills. Human review of the flagged subset (below) is still owed for `ru`.
 - **Literal copy in the design kit reaches the catalog again** ([#483](https://github.com/straff2002/OpenGlasses/pull/483)).
   Commit 5b35f09f added generic `init<S: StringProtocol>` verbatim overloads beside the
   `LocalizedStringKey` ones, and none of them was disfavoured. A string literal's default type,
@@ -38,7 +51,8 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 - P1 item 2: `OGChip`, `OGStatusPill`, `OGHeroDeviceCard` and `OGDiscoverCard` still accept only
   `String`.
 - P1 items 3 and 4: runtime-composed sentences, and plural variants (the catalog has none).
-- All of P2 (guardrail tests, `knownRegions` prune) and all of P3 (translated catalogs).
+- The rest of P2: a coverage floor for partial languages and the `knownRegions` prune. Of P3,
+  every language except `ru`.
 
 ---
 
@@ -48,6 +62,8 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   already-started zh-Hant and pl (shipping a 9%-translated language reads as broken; removing a
   started language is a regression). **es-MX stays an override layer** (~28 keys) over es — iOS
   language matching falls back es-MX → es, so it never needs a full fill. Ten full catalogs total.
+  **ru added 2026-09-30** (owner request), making eleven; it shipped first, ahead of the P3 order.
+  Its plural rules (`one`/`few`/`many`) are the same shape as uk's, so it also exercises plurals.
 - **Machine translation is the first pass.** A flagged subset (below) gets human review before any
   store-listing claim of support; everything else ships MT and improves opportunistically.
 - **English stays the development and fallback language.** An untranslated key renders English, by
@@ -104,7 +120,7 @@ Deterministic, headless, en-locale-independent tests over the catalog file itsel
   keys so a failing run is actionable. Floor ratchets to ~100% once P3 lands.
 - **Declarations honest:** the shipped-language set (catalog languages meeting the floor) must
   equal what the app offers. Prune `knownRegions` from the ~30-language aspirational list down to
-  en + the ten shipped (+ es-MX) — today's list makes iOS offer per-app language choices that do
+  en + the eleven shipped (+ es-MX) — today's list makes iOS offer per-app language choices that do
   nothing.
 - **Plural completeness:** keys with plural variants carry every category the language requires
   (uk/pl `few`/`many`).
