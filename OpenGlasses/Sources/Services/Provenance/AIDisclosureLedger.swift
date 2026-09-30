@@ -57,7 +57,7 @@ final class AIDisclosureLedger {
     static func text(for surface: Surface) -> String {
         switch surface {
         case .assessment:
-            return String(localized: "This is an AI assessment from the glasses camera. It is not a substitute for a trained inspector or first aider.")
+            return String(localized: "This is an AI assessment from the camera. It is not a substitute for a trained inspector or first aider.")
         }
     }
 }

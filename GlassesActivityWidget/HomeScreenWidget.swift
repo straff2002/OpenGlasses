@@ -11,7 +11,7 @@ struct OpenGlassesHomeWidget: Widget {
                     HomeWidgetBackground()
                 }
         }
-        .configurationDisplayName("OpenGlasses")
+        .configurationDisplayName("Avenkin")
         .description("Glasses status and a quick Listen toggle.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
@@ -79,7 +79,7 @@ struct HomeWidgetView: View {
                 statusDot
             }
             Spacer()
-            Text("OpenGlasses")
+            Text("Avenkin")
                 .font(.headline)
                 .foregroundStyle(.primary)
             Text(entry.isListening ? "Listening" : "Tap to listen")
@@ -106,7 +106,7 @@ struct HomeWidgetView: View {
                 HStack(spacing: 6) {
                     LogoIcon(size: 20)
                         .foregroundStyle(accent)
-                    Text("OpenGlasses")
+                    Text("Avenkin")
                         .font(.headline)
                         .foregroundStyle(.primary)
                 }
@@ -149,7 +149,7 @@ struct HomeWidgetView: View {
             HStack(spacing: 8) {
                 LogoIcon(size: 28)
                     .foregroundStyle(accent)
-                Text("OpenGlasses")
+                Text("Avenkin")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()

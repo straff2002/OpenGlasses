@@ -21,22 +21,34 @@ struct LogoIcon: View {
 }
 
 enum AccentColors {
-    /// AI accent — Claude-adjacent coral. Adaptive so it passes WCAG AA in both modes:
-    /// - Dark:  `#F08A4B` (≈ 8.4:1 on black, AAA)
-    /// - Light: `#B05426` (≈ 5.4:1 on white, AA — burnt-orange variant of the same hue)
+    /// The AI accent in dark mode: the brand orange `#E77F47` (Plan FY P1 item 11), ≈ 7.5:1 on
+    /// black. The one place the value is written — `aiCoral` below and `OGTheme.Token.accent`
+    /// both read it. The accent's rule stands: never violet, never cyan.
+    static let aiAccentDarkHex: UInt32 = 0xE77F47
+    /// Its light-mode derivative, `#B05426` — the same hue, darker, ≈ 5.1:1 on white (AA).
+    static let aiAccentLightHex: UInt32 = 0xB05426
+
+    private static func rgb(_ hex: UInt32) -> (red: Double, green: Double, blue: Double) {
+        (Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255)
+    }
+
+    /// AI accent — the brand orange. Adaptive so it passes WCAG AA in both modes. (The name is
+    /// historical; every target reads it, so it is not renamed with the colour.)
     static let aiCoral: Color = {
+        let dark = rgb(aiAccentDarkHex)
         #if os(watchOS)
         // watchOS UI is always dark; UIColor(dynamicProvider:) and userInterfaceStyle
         // are unavailable here, so use the dark-mode value directly.
-        return Color(red: 0.941, green: 0.541, blue: 0.294)
+        return Color(red: dark.red, green: dark.green, blue: dark.blue)
         #elseif canImport(UIKit)
+        let light = rgb(aiAccentLightHex)
         return Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.941, green: 0.541, blue: 0.294, alpha: 1)
-                : UIColor(red: 0.690, green: 0.329, blue: 0.149, alpha: 1)
+                ? UIColor(red: dark.red, green: dark.green, blue: dark.blue, alpha: 1)
+                : UIColor(red: light.red, green: light.green, blue: light.blue, alpha: 1)
         })
         #else
-        return Color(red: 0.941, green: 0.541, blue: 0.294)
+        return Color(red: dark.red, green: dark.green, blue: dark.blue)
         #endif
     }()
 }

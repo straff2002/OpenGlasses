@@ -419,14 +419,16 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         // the Gemini manager's twin of this call (Plan FF P0).
         let mode = Config.activeLiveAIMode
         var prompt = BlindAssistanceContract.composeLiveInstruction(
-            modePrefix: mode.promptPrefix, basePrompt: Config.systemPrompt, modeID: mode.id)
+            modePrefix: mode.promptPrefix,
+            basePrompt: Config.systemPrompt(device: LLMService.deviceInUse()),   // Plan FY F3: read once per session
+            modeID: mode.id)
 
         if isCameraStreaming {
             prompt += """
 
 
             VISION:
-            You are connected to the camera on the user's Ray-Ban Meta smart glasses. You receive periodic \
+            You are connected to the camera on the user's smart glasses. You receive periodic \
             camera frames as images in the conversation. When the user asks you to look at something or asks \
             "what do you see?", analyze the most recent image and describe what you observe. You have visual \
             awareness of the user's environment through these camera frames.
@@ -436,7 +438,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
 
             VISION:
-            You are running on the user's Ray-Ban Meta smart glasses. The camera is still connecting and you \
+            You are running on the user's smart glasses. The camera is still connecting and you \
             have NOT received any images yet. If the user asks you to look at something, tell them the camera \
             is still connecting. Do NOT guess what the user might be looking at.
             """

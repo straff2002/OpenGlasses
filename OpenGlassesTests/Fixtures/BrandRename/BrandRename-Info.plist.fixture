@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mail offers "Open with OpenGlasses". -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>OpenGlasses</string>
+		</dict>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>OpenGlasses needs camera access.</string>
+	<key>UISceneDelegateClassName</key>
+	<string>$(PRODUCT_MODULE_NAME).OpenGlassesSceneDelegate</string>
+	<key>CFBundleURLSchemes</key>
+	<string>openglasses</string>
+</dict>
+</plist>

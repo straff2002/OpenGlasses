@@ -41,6 +41,11 @@ final class LocalizationManager: ObservableObject {
     ]
 
     /// Base URL for downloading translation JSON files from GitHub.
+    ///
+    /// Deliberately **not** on `PublicSite`: these files are read from the repository itself, not
+    /// from the published site, so they do not move with the site's domain (Plan FY P0 item 7). The
+    /// address keeps answering while the repository stays public. `PublicSiteGuardTests` allows
+    /// this one line.
     private static let translationsBaseURL =
         "https://raw.githubusercontent.com/straff2002/OpenGlasses/main/OpenGlasses/Sources/Resources/Translations"
 

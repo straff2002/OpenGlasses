@@ -216,6 +216,13 @@ struct OpenGlassesApp: App {
         FieldAssistEntitlement.removeLegacyPreferenceKeys()
         // Carry the retired global small-context switch onto the saved cloud models it applied to.
         Config.migrateSmallContextToPerModelIfNeeded()
+        // Carry the assistant's default name across the rename to Avenkin (Plan FY F2): a persona or
+        // preference still holding the old default takes the new one. Once, behind a flag; a name
+        // the wearer chose is never touched.
+        Config.migrateAssistantNameToAvenkinIfNeeded()
+        // And the default wake phrase (Plan FY P3.2): a stored former default becomes "avenkin",
+        // in the setting and on the personas. Once, behind a flag; a phrase the wearer chose stays.
+        Config.migrateWakePhraseToAvenkinIfNeeded()
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,
@@ -349,7 +356,7 @@ struct OpenGlassesApp: App {
                     }
 
                     // Handle shortcut x-callback-url results
-                    if url.scheme == "openglasses",
+                    if DeepLinkScheme.isApp(url),
                        ["shortcut-result", "shortcut-cancel", "shortcut-error"].contains(url.host) {
                         ShortcutCallbackManager.shared.handleCallback(url: url)
                         return
@@ -359,7 +366,7 @@ struct OpenGlassesApp: App {
                     // no prompt and no caller identity. Links that act — capture a frame from the
                     // glasses, open the mic, run a quick action — are honoured only when they carry
                     // the app-group token the first-party widgets stamp on. See [[DeepLinkTrust]].
-                    if url.scheme == "openglasses",
+                    if DeepLinkScheme.isApp(url),
                        DeepLinkTrust.requiresTrustedCaller(host: url.host, action: url.lastPathComponent),
                        !DeepLinkTrust.isTrusted(url) {
                         PrivacyLog.deepLink(route: privacyRoute(for: url),
@@ -373,7 +380,7 @@ struct OpenGlassesApp: App {
                     // handler never starts transport — it first raises a download confirmation;
                     // a second confirmation follows archive inspection. Sources are HTTPS-or-LAN-only (see
                     // SkillPackSideload.isPermittedSource).
-                    if url.scheme == "openglasses", url.host == "skillpack" {
+                    if DeepLinkScheme.isApp(url), url.host == "skillpack" {
                         switch SkillPackSideload.parse(url) {
                         case .success(let request):
                             Task { @MainActor in
@@ -391,7 +398,7 @@ struct OpenGlassesApp: App {
                     // scanned code cannot carry the app-group token. Nothing is fetched from the
                     // link — the handler raises a review, the reader approves the site, and a
                     // second confirmation follows the archive's contents.
-                    if url.scheme == "openglasses", url.host == "vault" {
+                    if DeepLinkScheme.isApp(url), url.host == "vault" {
                         Task { @MainActor in appState.vaultLink.open(url) }
                         return
                     }
@@ -400,14 +407,14 @@ struct OpenGlassesApp: App {
                     // DeepLinkTrust gate for the reason the vault and skill-pack routes are, with the
                     // same control: the link never acts. It raises a review of the host, and a second
                     // of the verified profile, and only the second one's button changes anything.
-                    if url.scheme == "openglasses", url.host == "enrol" {
+                    if DeepLinkScheme.isApp(url), url.host == "enrol" {
                         PrivacyLog.deepLink(route: .enrol, source: PrivacyToken("SwiftUI"), verdict: .received)
                         Task { @MainActor in appState.orgEnrolment.open(url) }
                         return
                     }
 
                     // Handle persona quick-launch from widget/watch
-                    if url.scheme == "openglasses", url.host == "persona" {
+                    if DeepLinkScheme.isApp(url), url.host == "persona" {
                         let personaId = url.lastPathComponent
                         Task { @MainActor in
                             if let persona = Config.enabledPersonas.first(where: { $0.id == personaId }) {
@@ -423,14 +430,14 @@ struct OpenGlassesApp: App {
                     }
 
                     // Handle connect/disconnect deep links (from widget, DI, watch)
-                    if url.scheme == "openglasses", url.host == "connect" {
+                    if DeepLinkScheme.isApp(url), url.host == "connect" {
                         Task { @MainActor in
                             await appState.connectAndListen()
                         }
                         return
                     }
 
-                    if url.scheme == "openglasses", url.host == "disconnect" {
+                    if DeepLinkScheme.isApp(url), url.host == "disconnect" {
                         Task { @MainActor in
                             appState.disconnectGlasses()
                         }
@@ -438,7 +445,7 @@ struct OpenGlassesApp: App {
                     }
 
                     // Handle widget quick action deep links
-                    if url.scheme == "openglasses", url.host == "action" {
+                    if DeepLinkScheme.isApp(url), url.host == "action" {
                         let action = url.lastPathComponent
                         Task { @MainActor in
                             switch action {
@@ -457,7 +464,7 @@ struct OpenGlassesApp: App {
                     }
 
                     // Handle listen toggle from widget / Control Center / Action Button
-                    if url.scheme == "openglasses", url.host == "listen" {
+                    if DeepLinkScheme.isApp(url), url.host == "listen" {
                         let action = url.lastPathComponent
                         Task { @MainActor in
                             switch action {
@@ -475,7 +482,7 @@ struct OpenGlassesApp: App {
                     }
 
                     // Handle quick action buttons from widget
-                    if url.scheme == "openglasses", url.host == "quickaction" {
+                    if DeepLinkScheme.isApp(url), url.host == "quickaction" {
                         let actionId = url.lastPathComponent
                         Task { @MainActor in
                             guard let action = Config.quickActions.first(where: { $0.id == actionId }) else { return }
@@ -551,7 +558,7 @@ struct OpenGlassesApp: App {
                     appState.setListeningEnabled(storedEnabled)
                 }
                 if appState.listeningEnabled {
-                    appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "OpenGlasses")
+                    appState.liveActivityManager.start(glassesName: appState.glassesService.deviceName ?? "Avenkin")
                     appState.updateLiveActivity()
                 }
                 if Config.isPastOnboarding {
@@ -671,6 +678,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
                 speechService.playConnectTone()
                 PrivacyLog.device(.glasses, .connected)
+                // Glasses that have connected are glasses this person uses (Plan FY P2): from now
+                // on a missing pair is news on the session card, not the phone's normal state.
+                Config.glassesAdded = true
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     // Let the Bluetooth audio link settle before grabbing the mic.
@@ -1040,6 +1050,12 @@ class AppState: ObservableObject, AppStateProtocol {
             provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
         // Plan FO P3b — Direct mode's system prompt carries the debrief block while one runs.
         LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }
+        // Plan FY F3 — the device the identity line names. `isConnected` is the glasses link this
+        // state already tracks. No turn is marked as coming from the watch (its "ask" starts the
+        // phone's own listening), so there is no watch-only signal to pass yet.
+        LLMService.deviceInUse = { [weak self] in
+            AssistantIdentity.Device(glassesConnected: self?.isConnected ?? false, watchOnly: false)
+        }
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
         guidedJobFlow.connectUpcoming(upcomingJobs)
@@ -3569,7 +3585,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         if enabled {
             // Restart wake word detection and Live Activity
-            liveActivityManager.start(glassesName: glassesService.deviceName ?? "OpenGlasses")
+            liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
             if glassesConnectionIsLive() {
                 Task { try? await wakeWordService.startListening() }
             }

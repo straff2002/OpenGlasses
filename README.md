@@ -1,14 +1,16 @@
-# OpenGlasses
+# Avenkin
 
-### Look up. Ask anything. Keep going.
+### Your AI. Your terms.
 
-Turn your smart glasses into an AI assistant for the world in front of you. Ask about what you see, translate a conversation, remember the details, and get things done—without reaching for your phone.
+Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your phone, your watch or your glasses.
 
-**Your choice of AI. Hands-free by voice. Offline when you need it.**
+**On your phone, from your wrist, or hands-free with glasses.**
+
+Ask about what you see, translate a conversation, remember the details, and get things done. Buy once, with no subscription to us—a cloud AI provider you choose bills its own usage. With the [on-device setup](#offline-ai-right-on-your-iphone), the conversation runs offline on your iPhone.
 
 [Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 
-> **OpenGlasses is becoming Avenkin.** The app is growing into a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Field Assist becomes *Field Assist, powered by Avenkin*. It stays the same app: your settings, API keys, conversations and subscription carry over. [Read the plan](docs/plans/FY-rename-to-avenkin.md).
+> **OpenGlasses is now Avenkin.** The app is a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Field Assist becomes *Field Assist, powered by Avenkin*. It is the same app: your settings, API keys, conversations and subscription carry over, and "OpenGlasses" still reaches it through Siri. [Read the plan](docs/plans/FY-rename-to-avenkin.md).
 
 ---
 
@@ -16,7 +18,7 @@ Turn your smart glasses into an AI assistant for the world in front of you. Ask 
 
 ### See it. Understand it. Act on it.
 
-Read a sign, ask about a piece of equipment, or extract the details from a business card. OpenGlasses brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
+Read a sign, ask about a piece of equipment, or extract the details from a business card. Avenkin brings the camera into the conversation, with scene descriptions, text recognition, smart capture, and live visual coaching.
 
 *“What am I looking at?” · “Save this card.” · “Log this receipt.”*
 
@@ -62,7 +64,7 @@ Capture photos and video by voice, broadcast over RTMP, or share a live view in 
 
 ## Your assistant. Your choice.
 
-Use a cloud model, run a model on your own server, or keep the voice loop on your iPhone. OpenGlasses lets you choose the AI, speech recognition, and spoken voice separately—and route different requests to different models.
+Use a cloud model, run a model on your own server, or keep the voice loop on your iPhone. Avenkin lets you choose the AI, speech recognition, and spoken voice separately—and route different requests to different models.
 
 ### Offline AI, right on your iPhone
 
@@ -72,13 +74,13 @@ Download the models once, select the local engines, and enable Offline Mode for 
 
 You also control which tools are enabled, inspect the context sent to the assistant, and review network activity.
 
-Check AI, speech recognition, spoken voice and remote tools separately: selecting a local model alone does not make the whole conversation local. Choosing another AI still uses Meta's glasses integration and setup.
+Check AI, speech recognition, spoken voice and remote tools separately: selecting a local model alone does not make the whole conversation local. With glasses, choosing another AI still uses Meta's glasses integration and setup.
 
 [Choose your AI →](docs/CAPABILITIES.md#choose-your-ai) · [Privacy controls →](docs/CAPABILITIES.md#privacy-and-control)
 
 ## Expertise where the work happens
 
-**Field Assist** puts procedures and reference knowledge within speaking distance. Follow guided steps, report a reading, look up a fault, and bring in a remote expert when the job needs another pair of eyes.
+**Field Assist, powered by Avenkin,** puts procedures and reference knowledge within speaking distance. Follow guided steps, report a reading, look up a fault, and bring in a remote expert when the job needs another pair of eyes.
 
 Teams can add their own manuals and knowledge vaults for answers with source references and exportable session records. Clinical recording features add biometric access, retention controls, audit records, and medical export options.
 
@@ -88,14 +90,14 @@ Security and privacy engineering is documented against SOC 2, ISO 27001, ISO 277
 
 ## Quick Start
 
-Start on an **iPhone running iOS 26+**. Pair compatible **Meta smart glasses** for hands-free camera and audio use; phone-based features and camera fallback also let you explore without glasses.
+Start on an **iPhone running iOS 26+**; the phone is enough on its own. Add compatible **Meta smart glasses** for hands-free camera and audio.
 
 The documented installation route is a source build on a Mac with Xcode. See [availability and the first-use checklist](docs/BUILDING.md#availability-and-first-use) before starting; this guide does not assume an App Store download or public TestFlight invitation.
 
 1. **Build the app.** Follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
 2. **Choose your AI.** Open **Settings → AI Models** and connect a provider or download a compatible local model.
-3. **Connect your glasses.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in OpenGlasses.
-4. **Start talking.** Enable listening and say **“OpenGlasses”**, or tap the microphone. Try asking about something in front of you.
+3. **Add glasses, if you use them.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in Avenkin.
+4. **Start talking.** Enable listening and say **“Avenkin”**, or tap the microphone. Try asking about something in front of you.
 
 Camera and display features depend on the device and SDK support. Ray-Ban Display has an in-lens display path; **EVEN G2 support is experimental**. See [device notes](docs/CAPABILITIES.md#devices-and-displays) before choosing a setup.
 
@@ -116,6 +118,6 @@ Contributions are welcome—from new tools and integrations to better local infe
 
 Found a security defect? Please report it privately—see [SECURITY.md](SECURITY.md) for the channels, the response targets and the safe-harbour terms.
 
-OpenGlasses is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
+Avenkin is **source-available under [BSL 1.1](LICENSE)**, with non-commercial use permitted and a stated change date of March 24, 2030 to Apache 2.0. Commercial use requires a separate licence: [g@skunkworks.kiwi](mailto:g@skunkworks.kiwi).
 
 Built by [Skunk0](https://github.com/straff2002) at **Skunkworks NZ Ltd**. Independent of Meta and Anthropic.

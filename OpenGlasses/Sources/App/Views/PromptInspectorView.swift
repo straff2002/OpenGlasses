@@ -87,7 +87,8 @@ struct PromptInspectorView: View {
     }
 
     private func buildSections() {
-        let basePrompt = Config.systemPrompt
+        // The same device a turn would be composed for right now (Plan FY F3).
+        let basePrompt = Config.systemPrompt(device: LLMService.deviceInUse())
         let toolNames = appState.nativeToolRouter.registry.toolNames
         // BK P0: the prompt preview must match the real gated prompt — the OpenClaw block is only
         // present when the gateway is an active agentic capability.
@@ -116,8 +117,8 @@ struct PromptInspectorView: View {
             name: "Vision & Camera",
             icon: "eye.fill",
             content: visionAutoInjected
-                ? "Auto-injected: tells the AI it can see images from the glasses camera, handle OCR, translation, and object identification."
-                : "Included in your system prompt. A camera frame is attached when a question needs one and the glasses camera is available.",
+                ? "Auto-injected: tells the AI it can see images from the camera, handle OCR, translation, and object identification."
+                : "Included in your system prompt. A camera frame is attached when a question needs one and a camera is available.",
             isPresent: true
         ))
 

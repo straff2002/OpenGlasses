@@ -383,7 +383,7 @@ struct TurnTimelineDebugView: View {
 
             OGDivider()
 
-            ShareLink(item: text, subject: Text("OpenGlasses turn ledger")) {
+            ShareLink(item: text, subject: Text("Avenkin turn ledger")) {
                 OGRow("Share Diagnostics", icon: "square.and.arrow.up", mutedIcon: true, showsChevron: false) {
                     EmptyView()
                 }

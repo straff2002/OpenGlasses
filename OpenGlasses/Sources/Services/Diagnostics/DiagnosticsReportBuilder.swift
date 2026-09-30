@@ -81,9 +81,10 @@ struct DiagnosticsReport: Equatable {
 /// redaction, which is not optional and not best-effort.
 enum DiagnosticsReportBuilder {
 
-    /// The project's own issue tracker. Hard-coded rather than derived from a git
-    /// remote: the shipped app has no repository to ask.
-    static let issueBaseURL = "https://github.com/straff2002/OpenGlasses/issues/new"
+    /// Where the report link opens: the public support page, which explains how to send a report
+    /// with no account (Plan FY P0 item 7). It used to be the repository's issue tracker, which
+    /// needed a GitHub account.
+    static let issueBaseURL = PublicSite.support.absoluteString
 
     /// Where an emailed report goes — the published support and privacy address. Defined once so
     /// the composer, the share-sheet note and the tests cannot drift apart. Email needs no GitHub
@@ -115,7 +116,7 @@ enum DiagnosticsReportBuilder {
         let selfTest = snapshot.selfTestSummary.map(clean)
         let context = contextTable(snapshot, clean: clean)
 
-        let title = "Bug report — OpenGlasses \(snapshot.appVersion) (\(snapshot.buildNumber))"
+        let title = "Bug report — Avenkin \(snapshot.appVersion) (\(snapshot.buildNumber))"
         let fullBody = markdown(context: context, selfTest: selfTest, logLines: logLines, omitted: 0)
 
         let (urlBody, included, omitted) = fitted(

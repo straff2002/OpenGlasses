@@ -5,12 +5,12 @@ import Foundation
 /// "Run *daily briefing* on OpenGlasses" — the `action` entity resolves against whatever
 /// the user has exposed in Settings → Siri & Search.
 struct RunGlassesActionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Run OpenGlasses Action"
+    static var title: LocalizedStringResource = "Run Avenkin Action"
     // App Intent metadata must not name a reserved term — App Store Connect rejects the upload
     // with ITMS-90626 ("Invalid Siri Support") if a title or description contains "Siri" (or
     // "Apple"). Ordinary UI copy is unaffected; only extracted intent metadata is scanned.
     static var description = IntentDescription(
-        "Run an OpenGlasses action you've exposed for voice — built-in, authored, or custom"
+        "Run an Avenkin action you've exposed for voice — built-in, authored, or custom"
     )
 
     static var isDiscoverable: Bool { true }
@@ -46,13 +46,13 @@ enum SiriActionError: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notFound:
-            return "That action no longer exists. Check OpenGlasses Settings → Siri & Search."
+            return "That action no longer exists. Check Avenkin Settings → Siri & Search."
         case .disabled:
-            return "That action is turned off in OpenGlasses Settings → Siri & Search."
+            return "That action is turned off in Avenkin Settings → Siri & Search."
         case .busy:
-            return "OpenGlasses is busy with another request. Try again in a moment."
+            return "Avenkin is busy with another request. Try again in a moment."
         case .noResponse:
-            return "OpenGlasses didn't return a response. Try again."
+            return "Avenkin didn't return a response. Try again."
         }
     }
 }

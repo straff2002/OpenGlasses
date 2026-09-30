@@ -115,6 +115,12 @@ struct Config {
 
     static func setHasCompletedOnboarding(_ completed: Bool) { hasCompletedOnboarding = completed }
 
+    /// Whether this person uses glasses (Plan FY P2): set when they choose glasses on the
+    /// onboarding "Add a device" step, and whenever glasses connect. Until then the phone is the
+    /// device, and the session card reports the session rather than a missing pair of glasses
+    /// (`OnboardingFlow.phoneIsTheDevice`). Never cleared by the app.
+    @UserDefaultsBacked("glassesAdded", default: false) static var glassesAdded: Bool
+
     /// Pure form of the onboarding gate, so the flag interaction below is testable without touching
     /// the Keychain that backs `savedModels`.
     ///
@@ -270,16 +276,45 @@ struct Config {
 
     // MARK: - Wake Word
 
+    /// The wake phrase every install starts with (Plan FY P3.2, decision D4). The one default:
+    /// `wakePhrase`'s fallback, the settings screens' `@AppStorage` defaults, the picker fallback
+    /// and the persona editor all read it, and `BrandNameGuardTests` fails on a literal left behind.
+    ///
+    /// No "hey" prefix: the phrase is matched as whole words anywhere in the utterance, so the bare
+    /// name also catches anyone who says "hey avenkin" — one default covers both habits.
+    static let defaultWakePhrase = "avenkin"
+
+    /// The defaults earlier builds shipped. A stored phrase equal to one of these is the product
+    /// default of its day, not a choice, and `migrateWakePhraseToAvenkinIfNeeded()` moves it on —
+    /// once, and for good, so an install that skipped a version still migrates. They stay valid
+    /// wake phrases: a wearer who wants one back types it in, and it keeps working as a custom
+    /// phrase with its alternatives below.
+    static let legacyDefaultWakePhrases = ["openglasses", "hey openglasses"]
+
+    /// The wake phrases the pickers offer, the new name's first. The old name's are listed below
+    /// them for one App Store version (Plan FY P3.2) and then dropped from here — only from here:
+    /// the migration and `defaultAlternativesForPhrase` keep them for good.
+    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
+        "hey claude", "hey jarvis", "hey computer", "hey assistant", "hey rayban",
+    ]
+
+    /// Whether `phrase` is one the picker does not list, and so shows as "Custom: …". The wake word
+    /// is whatever is stored, not whatever the picker lists, so a custom phrase still wakes the app.
+    static func isCustomWakePhrase(_ phrase: String, presets: [String] = wakePhrasePresets) -> Bool {
+        !phrase.isEmpty && !presets.contains(phrase.lowercased())
+    }
+
     /// The primary wake word phrase (user-configurable)
     static var wakePhrase: String {
         if let phrase = UserDefaults.standard.string(forKey: "wakePhrase"), !phrase.isEmpty {
             return phrase.lowercased()
         }
-        // No "hey" prefix: the phrase is matched as whole words anywhere in the utterance, so the
-        // bare name also catches anyone who still says "hey openglasses" — one default covers both
-        // habits.
-        return "openglasses"
+        return defaultWakePhrase
     }
+
+    /// The wake phrase as copy shows it ("Say “Avenkin” …"): the configured phrase, never a
+    /// literal, so a hint can never disagree with the setting (Plan FY P1 item 12).
+    static var wakePhraseDisplayName: String { wakePhrase.capitalized }
 
     static func setWakePhrase(_ phrase: String) {
         UserDefaults.standard.set(phrase.lowercased(), forKey: "wakePhrase")
@@ -314,6 +349,15 @@ struct Config {
             return ["hey assistance", "a assistant"]
         case "hey rayban":
             return ["hey ray ban", "hey ray-ban", "hey raven", "hey rayben", "hey ray band"]
+        case "avenkin":
+            // Hey-less default (D4). Three syllables of a coined word are not ordinary speech, so
+            // the bare name is safe; the alternates cover the recogniser splitting it or hearing a
+            // near neighbour. Seven letters is under the fuzzy floor, so these are the only cover.
+            return ["aven kin", "haven kin", "avon kin", "avenkins", "a ven kin"]
+        case "hey avenkin":
+            return ["hey aven kin", "hey haven kin", "hey avon kin", "hey avenkins", "hey a ven kin"]
+        // The old name's phrases stay for good: custom phrases draw on these too, so a wearer who
+        // keeps the old phrase keeps the recogniser's splits of it covered.
         case "hey openglasses":
             return ["hey open glasses", "hey open glass", "hey openclass", "hey open class", "hey openglass"]
         case "openglasses":
@@ -687,12 +731,17 @@ struct Config {
     private static let assistantDisplayNameKey = "assistantDisplayName"
 
     /// The name the wearer chose for their assistant, or `AssistantIdentity.defaultName` when they
-    /// never chose one. Existing installs have no stored key and so keep OpenGlasses with nothing
-    /// written and no onboarding re-run. Re-validated on read, so a hand-edited preference file
-    /// cannot put a control character or a 900-character "name" into a prompt.
+    /// never chose one. Existing installs have no stored key and so follow the default with
+    /// nothing written and no onboarding re-run. Re-validated on read, so a hand-edited preference
+    /// file cannot put a control character or a 900-character "name" into a prompt. A stored former
+    /// default (`AssistantIdentity.legacyDefaultNames`) reads as today's default.
     static var assistantDisplayName: String {
-        AssistantIdentity.sanitized(UserDefaults.standard.string(forKey: assistantDisplayNameKey))
-            ?? AssistantIdentity.defaultName
+        guard let stored = AssistantIdentity.sanitized(
+                UserDefaults.standard.string(forKey: assistantDisplayNameKey)),
+              !AssistantIdentity.isDefaultName(stored) else {
+            return AssistantIdentity.defaultName
+        }
+        return stored
     }
 
     /// Store a typed name. Blank (or whitespace-only) **resets** to the default; a name that is
@@ -704,8 +753,8 @@ struct Config {
         case .success(let name?):
             // Choosing the default name back is the same state as never having chosen one, so it
             // clears the key rather than writing it — "no stored preference" stays the default's
-            // only representation.
-            if name == AssistantIdentity.defaultName {
+            // only representation. A former default is the default too (Plan FY F2).
+            if AssistantIdentity.isDefaultName(name) {
                 resetAssistantDisplayName()
             } else {
                 UserDefaults.standard.set(name, forKey: assistantDisplayNameKey)
@@ -754,8 +803,16 @@ struct Config {
     /// the current assistant name, so renaming the assistant reaches every route that starts here
     /// (Direct, on-device and — through `systemPrompt` — the two realtime builders) on the next
     /// turn or the next session, without rewriting anybody's saved prompt text.
-    static var defaultSystemPrompt: String { """
-    \(AssistantIdentity.defaultPromptOpening(name: assistantName, wakePhrase: wakePhrase))
+    ///
+    /// This form names no device in particular, so it reads as the phone — the case with nothing
+    /// connected. Prompt assembly calls `defaultSystemPrompt(device:)` with the device in use.
+    static var defaultSystemPrompt: String { defaultSystemPrompt(device: .phone) }
+
+    /// The shipped prompt for the device in use this turn (Plan FY F3): the identity opening and
+    /// the context line name it — "on smart glasses", "on the user's watch" or "on the user's
+    /// phone" — and never a vendor.
+    static func defaultSystemPrompt(device: AssistantIdentity.Device) -> String { """
+    \(AssistantIdentity.defaultPromptOpening(name: assistantName, wakePhrase: wakePhrase, device: device))
 
     RESPONSE STYLE:
     - Keep responses CONCISE but COMPLETE — typically 2-4 sentences, longer for complex topics.
@@ -765,14 +822,14 @@ struct Config {
     - If you genuinely can't answer (e.g., real-time data, personal info you don't have), say so briefly and suggest what the user could do instead.
 
     CONTEXT:
-    - The user is wearing smart glasses and talking to you hands-free while going about their day.
+    - \(AssistantIdentity.contextLine(device: device))
     - Speech recognition may mishear words — interpret the user's intent generously.
     - You have full conversational memory within this session and can reference any earlier exchange.
     - Past conversations are stored and can be resumed — if the user references something from before, check memory first.
     - For very complex questions, offer to break the topic into parts: "That's a big topic. Would you like me to start with X?"
 
     VISION & CAMERA:
-    - The glasses have a camera. When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
+    - \(cameraSentence) When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
     - You CAN see images — never say you lack camera or vision access.
     - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
     - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
@@ -827,7 +884,7 @@ struct Config {
             .first
             .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         if !identity.isEmpty { lines.append(identity) }
-        lines.append("A photo from the glasses camera is attached. You CAN see it — never say you lack vision.")
+        lines.append("A photo from the camera is attached. You CAN see it — never say you lack vision.")
         lines.append("Answer in 1–2 short spoken sentences. Name the main subject and anything asked. Skip background, lighting, and composition unless asked.")
         lines.append("If asked to read text: quote it verbatim; translate only if asked.")
         if let language = spokenLanguageName(for: languageCode) {
@@ -852,15 +909,22 @@ struct Config {
     /// opening gets its name: `assistantName`, which prefers a selected persona's own name and
     /// otherwise uses `assistantDisplayName`. A preset the wearer wrote or edited is returned
     /// verbatim, so an explicit identity in a custom prompt still wins over both.
-    static var systemPrompt: String {
-        if let preset = activePreset {
+    ///
+    /// This form names no device in particular (the phone); prompt assembly calls
+    /// `systemPrompt(device:)` with the device in use this turn (Plan FY F3). The device reaches a
+    /// shipped preset's text only — a preset the wearer wrote or edited is returned verbatim for
+    /// every device.
+    static var systemPrompt: String { systemPrompt(device: .phone) }
+
+    static func systemPrompt(device: AssistantIdentity.Device) -> String {
+        if let preset = activePreset(device: device) {
             return preset.prompt
         }
         // Legacy fallback: check old customSystemPrompt key
         if let prompt = UserDefaults.standard.string(forKey: "customSystemPrompt"), !prompt.isEmpty {
             return prompt
         }
-        return defaultSystemPrompt
+        return defaultSystemPrompt(device: device)
     }
 
     static func setSystemPrompt(_ prompt: String) {
@@ -878,16 +942,19 @@ struct Config {
         Locale.current.language.languageCode?.identifier ?? "en"
     }
 
-    static func builtInPresets() -> [PromptPreset] {
+    /// The shipped presets, composed for `device` (Plan FY F3). The default is the phone — the
+    /// neutral case, used where no turn is being assembled (seeding, the presets list).
+    static func builtInPresets(device: AssistantIdentity.Device = .phone) -> [PromptPreset] {
         let lang = preferredLanguageCode
         // Chinese users get Chinese prompts so they can read and customize them
         if lang == "zh" {
-            return chineseBuiltInPresets()
+            return chineseBuiltInPresets(device: device)
         }
+        let on = device.phrase
         return [
-            PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt, isBuiltIn: true),
+            PromptPreset(id: "preset-default", name: "Default", prompt: defaultSystemPrompt(device: device), isBuiltIn: true),
             PromptPreset(id: "preset-tokens", name: "Tokens Saver", prompt: """
-            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant \(on). Responses are spoken via TTS."))
 
             RULES:
             - Reply naturally, directly, and briefly by default. Be complete.
@@ -900,7 +967,7 @@ struct Config {
             - Use location only when relevant.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "Concise", prompt: """
-            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant \(on). Responses are spoken via TTS."))
 
             RULES:
             - Maximum 1-2 sentences per response. No exceptions unless the user says "explain more."
@@ -908,10 +975,10 @@ struct Config {
             - Answer directly. Skip pleasantries, hedges, and filler.
             - If you can't answer in 2 sentences, say the key point and offer to elaborate.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "Technical", prompt: """
-            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
+            \(AssistantIdentity.line(name: assistantName, role: "a voice assistant \(on). Responses are spoken via TTS."))
 
             RESPONSE STYLE:
             - Be precise and technical. Use correct terminology.
@@ -920,10 +987,10 @@ struct Config {
             - Keep responses to 2-5 sentences. Be information-dense.
             - Never use markdown or formatting — this is spoken aloud.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "Creative", prompt: """
-            \(AssistantIdentity.line(name: assistantName, role: "a witty and warm voice assistant on Ray-Ban Meta smart glasses. Responses are spoken via TTS."))
+            \(AssistantIdentity.line(name: assistantName, role: "a witty and warm voice assistant \(on). Responses are spoken via TTS."))
 
             PERSONALITY:
             - Be playful, expressive, and engaging — like a clever friend.
@@ -933,10 +1000,10 @@ struct Config {
             - Keep responses to 2-5 sentences. Be memorable, not lengthy.
             - Never use markdown or formatting — this is spoken aloud.
             - Speech recognition may mishear — interpret generously.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-navigation", name: "Navigation Aid", prompt: """
-            You are a navigation and spatial awareness assistant on smart glasses. Your primary role is helping the user navigate safely and understand their surroundings. Responses are spoken via TTS.
+            You are a navigation and spatial awareness assistant \(on). Your primary role is helping the user navigate safely and understand their surroundings. Responses are spoken via TTS.
 
             NAVIGATION FOCUS:
             - Describe the environment: obstacles, stairs, doorways, crosswalks, vehicles, people nearby.
@@ -947,21 +1014,22 @@ struct Config {
             - Keep descriptions practical and action-oriented, not poetic.
             - Maximum 2-3 sentences per response. Be immediate, not elaborate.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true),
             PromptPreset(id: "preset-ultra-concise", name: "Ultra-Concise", prompt: """
-            Smart glasses voice AI. Spoken output only.
+            Voice AI \(on). Spoken output only.
             One sentence max. No filler. No formatting. Interpret speech errors generously.
             Can see via camera. Describe only what you see.
             """, isBuiltIn: true),
-        ] + modePresets()
+        ] + modePresets(device: device)
     }
 
-    /// Mode-specific prompt presets for built-in persona modes.
-    static func modePresets() -> [PromptPreset] {
-        [
+    /// Mode-specific prompt presets for built-in persona modes, composed for `device`.
+    static func modePresets(device: AssistantIdentity.Device = .phone) -> [PromptPreset] {
+        let on = device.phrase
+        return [
             PromptPreset(id: "preset-museum-guide", name: "Museum Guide", prompt: """
-            You are an expert museum docent on smart glasses. Responses are spoken via TTS.
+            You are an expert museum docent \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Identify artworks, sculptures, artifacts, and exhibits from camera images.
@@ -984,11 +1052,11 @@ struct Config {
             - If the user tells you which museum they're visiting, tailor your context to that museum's collection and history.
             - Keep responses to 3-5 sentences. Dense with insight, not length.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "building.columns", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-reading-assistant", name: "Reading Assistant", prompt: """
-            You are a reading assistant on smart glasses. Responses are spoken via TTS.
+            You are a reading assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Read visible text aloud clearly and completely: signs, menus, documents, labels, screens, books.
@@ -1004,11 +1072,11 @@ struct Config {
             - For documents, read the most important parts first (headings, key paragraphs).
             - Keep meta-commentary brief — the user wants to hear the text, not your thoughts about it.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "text.viewfinder", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-accessibility", name: "Accessibility Assistant", prompt: """
-            You are a visual accessibility assistant on smart glasses for a visually impaired user. Responses are spoken via TTS.
+            You are a visual accessibility assistant \(on) for a visually impaired user. Responses are spoken via TTS.
 
             YOUR ROLE:
             - Provide detailed, proactive scene descriptions: people, objects, obstacles, layout, lighting.
@@ -1025,11 +1093,11 @@ struct Config {
             - Keep responses to 2-4 sentences unless describing a complex scene.
             - Be matter-of-fact, not patronizing. You're providing eyes, not sympathy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.walk", cameraBehavior: "always"),
 
             PromptPreset(id: "preset-travel-guide", name: "Travel Guide", prompt: """
-            You are a knowledgeable travel companion on smart glasses. Responses are spoken via TTS.
+            You are a knowledgeable travel companion \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Identify landmarks, buildings, monuments, and points of interest from camera images.
@@ -1046,11 +1114,11 @@ struct Config {
             - Use web search for current opening hours, prices, and local events.
             - Keep responses to 3-5 sentences. Informative but concise.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "map", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-shopping-assistant", name: "Shopping Assistant", prompt: """
-            You are a smart shopping assistant on smart glasses. Responses are spoken via TTS.
+            You are a smart shopping assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Read and analyze product labels: ingredients, nutrition facts, prices, sizes.
@@ -1067,11 +1135,11 @@ struct Config {
             - Offer comparisons when relevant: "The store brand has the same ingredients for less."
             - Keep responses to 2-4 sentences. Useful, not verbose.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "cart", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-nature-guide", name: "Nature Guide", prompt: """
-            You are a naturalist and wildlife guide on smart glasses. Responses are spoken via TTS.
+            You are a naturalist and wildlife guide \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Identify plants, trees, flowers, mushrooms, insects, birds, and animals from camera images.
@@ -1087,11 +1155,11 @@ struct Config {
             - Offer deeper dives: "Want to know about its migration pattern?" or "There's an interesting symbiosis here."
             - Keep responses to 3-5 sentences. Rich with insight.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "leaf", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-meeting-assistant", name: "Meeting Assistant", prompt: """
-            You are a meeting assistant on smart glasses. Responses are spoken via TTS.
+            You are a meeting assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Take notes and track key points, decisions, and action items during conversations.
@@ -1110,7 +1178,7 @@ struct Config {
             """, isBuiltIn: true, icon: "person.3", cameraBehavior: nil),
 
             PromptPreset(id: "preset-language-tutor", name: "Language Tutor", prompt: """
-            You are a patient, encouraging language tutor on smart glasses. Responses are spoken via TTS.
+            You are a patient, encouraging language tutor \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Help the user practice a target language through natural conversation.
@@ -1126,11 +1194,11 @@ struct Config {
             - Adjust difficulty to the user's level — start simple, build up.
             - Keep responses to 2-4 sentences. Teach one thing at a time.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "graduationcap", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-cooking-assistant", name: "Cooking Assistant", prompt: """
-            You are a hands-free cooking assistant on smart glasses. Responses are spoken via TTS.
+            You are a hands-free cooking assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Guide the user through recipes step by step, pacing to their progress.
@@ -1147,11 +1215,11 @@ struct Config {
             - Be practical about substitutions and shortcuts.
             - Keep responses to 1-3 sentences. The user's hands are busy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "fork.knife", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-wine-sommelier", name: "Wine Sommelier", prompt: """
-            You are an approachable wine sommelier on smart glasses. Responses are spoken via TTS.
+            You are an approachable wine sommelier \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Read and analyze wine labels from camera images: producer, region, vintage, grape variety.
@@ -1168,11 +1236,11 @@ struct Config {
             - Share stories about regions and producers to make it memorable.
             - Keep responses to 3-5 sentences. Informative, not lecturing.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "wineglass", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-clinical-assistant", name: "Clinical Assistant", prompt: """
-            You are a clinical documentation assistant on smart glasses for a healthcare professional. Responses are spoken via TTS.
+            You are a clinical documentation assistant \(on) for a healthcare professional. Responses are spoken via TTS.
 
             YOUR ROLE:
             - Capture clinical observations hands-free during patient encounters.
@@ -1199,11 +1267,11 @@ struct Config {
             - Respond in 2-5 sentences. Information-dense, no filler.
             - When asked to "document this" or "note that", acknowledge briefly and incorporate into the running note.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "stethoscope", cameraBehavior: "always"),
 
             PromptPreset(id: "preset-nutrition-analyzer", name: "Nutrition Analyzer", prompt: """
-            You are a nutrition analysis assistant on smart glasses. Responses are spoken via TTS.
+            You are a nutrition analysis assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Identify food items from camera images: individual ingredients, prepared dishes, packaged foods, restaurant plates.
@@ -1225,11 +1293,11 @@ struct Config {
             - Offer practical alternatives when asked: "A grilled version would save about 200 calories."
             - Keep responses to 2-4 sentences. Useful, not preachy.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "leaf.circle", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-fitness-coach", name: "Fitness Coach", prompt: """
-            You are a hands-free fitness coach on smart glasses. Responses are spoken via TTS.
+            You are a hands-free fitness coach \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Guide workouts with real-time rep counting and form cues when camera is active.
@@ -1246,11 +1314,11 @@ struct Config {
             - Announce rep counts and set completions clearly.
             - Keep responses to 1-3 sentences. The user is exercising.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.run", cameraBehavior: "smart"),
 
             PromptPreset(id: "preset-golf-caddy", name: "Golf Caddy", prompt: """
-            You are a golf caddy assistant on smart glasses. Responses are spoken via TTS.
+            You are a golf caddy assistant \(on). Responses are spoken via TTS.
 
             YOUR ROLE:
             - Help the user with club selection based on distance, wind, elevation, and lie.
@@ -1273,16 +1341,17 @@ struct Config {
             - Offer unsolicited advice only for strategy (not swing tips unless asked).
             - Track the round automatically — announce running score after each hole.
             - Never use markdown or formatting — this is spoken aloud.
-            - You CAN see images from the glasses camera when provided.
+            - You CAN see images from the camera when provided.
             """, isBuiltIn: true, icon: "figure.golf", cameraBehavior: "smart"),
         ]
     }
 
-    /// Chinese-language built-in presets for zh-Hans/zh-Hant users.
-    private static func chineseBuiltInPresets() -> [PromptPreset] {
-        [
+    /// Chinese-language built-in presets for zh-Hans/zh-Hant users, composed for `device`.
+    static func chineseBuiltInPresets(device: AssistantIdentity.Device = .phone) -> [PromptPreset] {
+        let on = device.phraseZH
+        return [
             PromptPreset(id: "preset-default", name: "默认", prompt: """
-            \(AssistantIdentity.lineZH(name: assistantName, role: "一个运行在 Ray-Ban Meta 智能眼镜上的语音助手。所有回复都通过语音合成（TTS）朗读。"))
+            \(AssistantIdentity.lineZH(name: assistantName, role: "一个运行在\(on)的语音助手。所有回复都通过语音合成（TTS）朗读。"))
 
             回复规则：
             - 始终用中文回复。
@@ -1291,11 +1360,11 @@ struct Config {
             - 简单问题：1-2 句话。
             - 复杂话题：3-5 句话，可以问"要我详细说说吗？"
             - 语音识别可能有误——请宽容理解用户意图。
-            - 你可以看到眼镜相机拍摄的图片。
+            - 你可以看到相机拍摄的图片。
             - 当用户说"看看这个"、"这是什么"、"拍张照"等，会自动拍照发送给你。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-tokens", name: "代币节省者", prompt: """
-            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。"))
+            \(AssistantIdentity.lineZH(name: assistantName, role: "\(on)的语音助手。回复通过 TTS 朗读。"))
 
             规则：
             - 用中文自然回复，默认简洁但完整。
@@ -1303,21 +1372,21 @@ struct Config {
             - 语音识别可能有误，优先按用户意图理解。
             - 不确定时简短说明；缺少实时或个人数据时明确说明需要什么。
             - 可利用会话上下文。
-            - 你可以看到眼镜相机图片，不要说看不到。
+            - 你可以看到相机图片，不要说看不到。
             - OCR/翻译请求先转写原文，再给译文。
             - 仅在相关时使用位置信息。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-concise", name: "简洁", prompt: """
-            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上的语音助手。回复通过 TTS 朗读。"))
+            \(AssistantIdentity.lineZH(name: assistantName, role: "\(on)的语音助手。回复通过 TTS 朗读。"))
 
             规则：
             - 用中文回复，每次最多1-2句话。
             - 直接回答，不要寒暄和废话。
             - 不用格式、列表或 Markdown。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-technical", name: "技术", prompt: """
-            \(AssistantIdentity.lineZH(name: assistantName, role: "运行在 Ray-Ban Meta 智能眼镜上的技术型语音助手。"))
+            \(AssistantIdentity.lineZH(name: assistantName, role: "运行在\(on)的技术型语音助手。"))
 
             风格要求：
             - 用中文回复，精确专业。
@@ -1325,20 +1394,20 @@ struct Config {
             - 代码或命令可以直接说出。
             - 数据密集型回答，注重准确性。
             - 2-4句话，不用格式符号。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-creative", name: "创意", prompt: """
-            \(AssistantIdentity.lineZH(name: assistantName, role: "Ray-Ban Meta 智能眼镜上有趣又机智的语音助手。"))
+            \(AssistantIdentity.lineZH(name: assistantName, role: "\(on)有趣又机智的语音助手。"))
 
             风格：
             - 用中文回复，活泼有趣。
             - 可以开玩笑、用比喻、讲故事。
             - 保持信息准确，但让互动更有意思。
             - 2-5句话，不用格式符号。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
             PromptPreset(id: "preset-navigation", name: "导航助手", prompt: """
-            你是智能眼镜上的导航和空间感知助手。主要帮助用户安全导航和了解周围环境。
+            你是\(on)的导航和空间感知助手。主要帮助用户安全导航和了解周围环境。
 
             导航重点：
             - 用中文描述环境：障碍物、台阶、门、人行横道、车辆、行人。
@@ -1346,19 +1415,25 @@ struct Config {
             - 主动读出标牌、路名、门牌号。
             - 警告潜在危险：湿滑地面、不平路面、来车。
             - 最多2-3句话，简洁实用。
-            - 你可以看到眼镜相机的图片。
+            - 你可以看到相机的图片。
             """, isBuiltIn: true),
         ]
     }
 
-    static var savedPresets: [PromptPreset] {
+    /// The stored presets, with shipped ones recomposed for no device in particular (the phone) —
+    /// what the presets list and editors show. Prompt assembly reads `savedPresets(device:)`.
+    static var savedPresets: [PromptPreset] { savedPresets(device: .phone) }
+
+    /// The stored presets, with shipped ones recomposed for `device` (Plan FY F3). Nothing is
+    /// written back: the device reaches the text a turn is given, never storage.
+    static func savedPresets(device: AssistantIdentity.Device) -> [PromptPreset] {
         if let data = UserDefaults.standard.data(forKey: "savedPromptPresets"),
            let presets = try? JSONDecoder().decode([PromptPreset].self, from: data),
            !presets.isEmpty {
-            return withCurrentIdentity(presets)
+            return withCurrentIdentity(presets, device: device)
         }
         // First access: seed with built-ins + migrate any existing custom prompt
-        var presets = builtInPresets()
+        var presets = builtInPresets(device: device)
         if let custom = UserDefaults.standard.string(forKey: "customSystemPrompt"),
            !custom.isEmpty, custom != defaultSystemPrompt {
             let migrated = PromptPreset(
@@ -1385,13 +1460,20 @@ struct Config {
     /// A user-owned prompt — a custom one, or a built-in the wearer edited — is returned exactly
     /// as stored: its identity, whatever it says, is respected and its contents are never
     /// rewritten.
-    private static func withCurrentIdentity(_ presets: [PromptPreset]) -> [PromptPreset] {
+    ///
+    /// The same refresh carries the device in use (Plan FY F3). The opening line names it, and the
+    /// default prompt's body has two sentences that depend on it or that earlier builds shipped
+    /// with glasses assumed; `comparableBody(of:)` reads those as one, so a stored built-in is
+    /// recomposed for whatever device this turn is on, and one seeded by an earlier build is
+    /// recognised as the shipped text it is.
+    private static func withCurrentIdentity(_ presets: [PromptPreset],
+                                            device: AssistantIdentity.Device) -> [PromptPreset] {
         guard presets.contains(where: { $0.isBuiltIn }) else { return presets }
-        let shipped = Dictionary(builtInPresets().map { ($0.id, $0.prompt) },
+        let shipped = Dictionary(builtInPresets(device: device).map { ($0.id, $0.prompt) },
                                  uniquingKeysWith: { first, _ in first })
         return presets.map { preset in
             guard preset.isBuiltIn, let text = shipped[preset.id], text != preset.prompt,
-                  body(of: text) == body(of: preset.prompt) else {
+                  comparableBody(of: text) == comparableBody(of: preset.prompt) else {
                 return preset
             }
             var refreshed = preset
@@ -1407,6 +1489,42 @@ struct Config {
     private static func body(of prompt: String) -> Substring {
         guard let firstBreak = prompt.firstIndex(of: "\n") else { return "" }
         return prompt[prompt.index(after: firstBreak)...]
+    }
+
+    /// The default prompt's camera sentence. Device-neutral since Plan FY F3: the camera may be
+    /// the glasses' or the phone's, and a phone-only user is not told they wear anything.
+    static let cameraSentence = "You have a camera."
+
+    /// The camera sentence earlier builds shipped, when the default prompt assumed glasses.
+    private static let legacyCameraSentence = "The glasses have a camera."
+
+    /// The presets' camera lines as earlier builds shipped them, each beside today's wording
+    /// (Plan FY P2): the camera may be the glasses' or the phone's, so no preset says whose it is.
+    /// Folded for comparison only, so a built-in seeded by an earlier build is still recognised as
+    /// shipped text and follows the new wording; nothing stored is rewritten.
+    static let legacyCameraLines: [(legacy: String, current: String)] = [
+        ("You CAN see images from the glasses camera when provided.",
+         "You CAN see images from the camera when provided."),
+        ("你可以看到眼镜相机拍摄的图片。", "你可以看到相机拍摄的图片。"),
+        ("你可以看到眼镜相机图片，不要说看不到。", "你可以看到相机图片，不要说看不到。"),
+        ("你可以看到眼镜相机的图片。", "你可以看到相机的图片。"),
+    ]
+
+    /// A preset's body with its device sentences folded to one form, for comparison only — the
+    /// result is never stored or sent. Every device's context line and the pre-F3 context line
+    /// read as one placeholder, and the pre-F3 camera sentence and the pre-P2 camera lines read as
+    /// today's.
+    private static func comparableBody(of prompt: String) -> String {
+        var text = String(body(of: prompt))
+        let contextLines = AssistantIdentity.Device.allCases.map(AssistantIdentity.contextLine(device:))
+            + [AssistantIdentity.legacyContextLine]
+        for line in contextLines {
+            text = text.replacingOccurrences(of: line, with: "{device-context}")
+        }
+        for line in legacyCameraLines {
+            text = text.replacingOccurrences(of: line.legacy, with: line.current)
+        }
+        return text.replacingOccurrences(of: legacyCameraSentence, with: cameraSentence)
     }
 
     static func setSavedPresets(_ presets: [PromptPreset]) {
@@ -1425,6 +1543,11 @@ struct Config {
 
     static var activePreset: PromptPreset? {
         savedPresets.first { $0.id == activePresetId }
+    }
+
+    /// The active preset, with a shipped one composed for `device` (Plan FY F3).
+    static func activePreset(device: AssistantIdentity.Device) -> PromptPreset? {
+        savedPresets(device: device).first { $0.id == activePresetId }
     }
 
     // MARK: - Persona Mode Templates
@@ -1568,10 +1691,11 @@ struct Config {
            !personas.isEmpty {
             return personas
         }
-        // Migration: create a persona from current config
+        // Migration: create a persona from current config. It carries the product default, which
+        // `AssistantIdentity.resolve` recognises as "not a name anybody picked".
         let migrated = Persona(
             id: UUID().uuidString,
-            name: "OpenGlasses",
+            name: AssistantIdentity.defaultName,
             wakePhrase: wakePhrase,
             alternativeWakePhrases: alternativeWakePhrases,
             modelId: activeModelId,
@@ -1581,6 +1705,88 @@ struct Config {
         let personas = [migrated]
         setSavedPersonas(personas)
         return personas
+    }
+
+    /// UserDefaults flag recording that the one-time assistant-name migration has run.
+    private static let assistantNameMigratedKey = "assistantNameMigratedToAvenkin_v1"
+
+    /// Carry the product default's rename onto what earlier builds stored (Plan FY F2).
+    ///
+    /// Earlier builds created the first-run persona with the literal `"OpenGlasses"`. A saved
+    /// persona still named exactly that is renamed to `AssistantIdentity.defaultName`, so the
+    /// Personas list shows the new name as well as the assistant speaking it; a stored
+    /// `assistantDisplayName` equal to a former default is cleared, which is the default's only
+    /// representation. Every other name — any persona or preference the wearer typed — is left
+    /// exactly as it is. Runs once, behind a stored flag: someone who renames a persona back to
+    /// "OpenGlasses" afterwards keeps it (the plan's accepted edge).
+    ///
+    /// Reads the raw stored personas rather than `savedPersonas`, which would seed a first-run
+    /// persona on a fresh install before onboarding has set anything up.
+    static func migrateAssistantNameToAvenkinIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: assistantNameMigratedKey) else { return }
+
+        if let data = defaults.data(forKey: "savedPersonas"),
+           var personas = try? JSONDecoder().decode([Persona].self, from: data) {
+            var renamed = false
+            for index in personas.indices
+            where AssistantIdentity.legacyDefaultNames.contains(personas[index].name) {
+                personas[index].name = AssistantIdentity.defaultName
+                renamed = true
+            }
+            if renamed { setSavedPersonas(personas) }
+        }
+        if let stored = defaults.string(forKey: assistantDisplayNameKey),
+           AssistantIdentity.legacyDefaultNames.contains(stored) {
+            resetAssistantDisplayName()
+        }
+        defaults.set(true, forKey: assistantNameMigratedKey)
+    }
+
+    /// UserDefaults flag recording that the one-time wake-phrase migration has run.
+    private static let wakePhraseMigratedKey = "wakePhraseMigratedToAvenkin_v1"
+
+    /// Carry the default wake phrase across the rename to Avenkin (Plan FY P3.2, decision D4).
+    ///
+    /// A stored phrase equal to a former default (`legacyDefaultWakePhrases`) becomes
+    /// `defaultWakePhrase`, in the global setting and in every saved persona — which is where the
+    /// first-run persona stored it. The alternatives move with the phrase only while they are still
+    /// the old phrase's suggestions (or, on a persona, empty); edited ones are the wearer's and are
+    /// left alone, as the settings screens do. Any other phrase is untouched. An install that never
+    /// stored a phrase already reads the new default. Runs once, behind a stored flag, so choosing
+    /// the old phrase again afterwards sticks.
+    static func migrateWakePhraseToAvenkinIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: wakePhraseMigratedKey) else { return }
+        let legacy = Set(legacyDefaultWakePhrases)
+        let newAlternatives = defaultAlternativesForPhrase(defaultWakePhrase)
+
+        if let stored = defaults.string(forKey: "wakePhrase")?.lowercased(), legacy.contains(stored) {
+            let inherited = defaultAlternativesForPhrase(stored)
+            setWakePhrase(defaultWakePhrase)
+            if let alternatives = defaults.stringArray(forKey: "alternativeWakePhrases"),
+               alternatives.map({ $0.lowercased() }) == inherited {
+                // Cleared, not rewritten: with no stored list the alternatives follow the phrase.
+                defaults.removeObject(forKey: "alternativeWakePhrases")
+            }
+        }
+
+        if let data = defaults.data(forKey: "savedPersonas"),
+           var personas = try? JSONDecoder().decode([Persona].self, from: data) {
+            var migrated = false
+            for index in personas.indices {
+                let phrase = personas[index].wakePhrase.lowercased()
+                guard legacy.contains(phrase) else { continue }
+                let alternatives = personas[index].alternativeWakePhrases.map { $0.lowercased() }
+                personas[index].wakePhrase = defaultWakePhrase
+                if alternatives.isEmpty || alternatives == defaultAlternativesForPhrase(phrase) {
+                    personas[index].alternativeWakePhrases = newAlternatives
+                }
+                migrated = true
+            }
+            if migrated { setSavedPersonas(personas) }
+        }
+        defaults.set(true, forKey: wakePhraseMigratedKey)
     }
 
     static func setSavedPersonas(_ personas: [Persona]) {
@@ -2168,12 +2374,12 @@ struct Config {
 
     // MARK: - Skill packs (Plan BX)
 
-    /// Signed catalog index URL. Default is the repo's GitHub Pages deployment (the catalog is a
+    /// Signed catalog index URL. Default is the public site (`PublicSite`; the catalog is a
     /// committed file; publishing is a git push). Enterprises can point at their own index —
     /// whatever serves it must serve the signed envelope shape `SkillPackCatalog.parse` expects.
     static var skillPackCatalogURL: String {
         UserDefaults.standard.string(forKey: "skillPackCatalogURL")
-            ?? "https://straff2002.github.io/OpenGlasses/skillpacks/catalog.json"
+            ?? PublicSite.skillPackCatalog.absoluteString
     }
 
     static func setSkillPackCatalogURL(_ url: String) {
@@ -2183,7 +2389,7 @@ struct Config {
     /// Signed vault-pack catalog URL (Plan EG). Same envelope, same key, a second index file.
     static var vaultPackCatalogURL: String {
         UserDefaults.standard.string(forKey: "vaultPackCatalogURL")
-            ?? "https://straff2002.github.io/OpenGlasses/vaultpacks/catalog.json"
+            ?? PublicSite.vaultPackCatalog.absoluteString
     }
 
     static func setVaultPackCatalogURL(_ url: String) {

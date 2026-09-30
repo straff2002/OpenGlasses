@@ -96,9 +96,10 @@ final class OrgEnrolmentService: ObservableObject {
 
     // MARK: - Parsing
 
-    /// Parse `openglasses://enrol?url=…`. HTTPS only; no credentials, no fragment.
+    /// Parse `openglasses://enrol?url=…` (or `avenkin://enrol?url=…`). HTTPS only; no
+    /// credentials, no fragment.
     static func parse(_ url: URL) -> Result<URL, LinkRefusal> {
-        guard url.scheme == "openglasses", url.host == "enrol" else { return .failure(.notAnEnrolmentLink) }
+        guard DeepLinkScheme.isApp(url), url.host == "enrol" else { return .failure(.notAnEnrolmentLink) }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard let raw = items.first(where: { $0.name == "url" })?.value,
               let target = URL(string: raw) else {
@@ -152,7 +153,7 @@ final class OrgEnrolmentService: ObservableObject {
         let link: URL
         if url.scheme?.lowercased() == "https" {
             var components = URLComponents()
-            components.scheme = "openglasses"
+            components.scheme = DeepLinkScheme.generated
             components.host = "enrol"
             components.queryItems = [URLQueryItem(name: "url", value: trimmed)]
             guard let wrapped = components.url else {
@@ -193,7 +194,7 @@ final class OrgEnrolmentService: ObservableObject {
         reset()
         source = .licence
         var components = URLComponents()
-        components.scheme = "openglasses"
+        components.scheme = DeepLinkScheme.generated
         components.host = "enrol"
         components.queryItems = [URLQueryItem(name: "url", value: address)]
         guard let link = components.url, case .success(let target) = Self.parse(link) else {
@@ -237,7 +238,7 @@ final class OrgEnrolmentService: ObservableObject {
         } catch {
             reset()
             source = .office
-            stage = .failed("This Avenkin setup file is invalid. Ask your organisation for a new file.")
+            stage = .failed("This Avenkin Office setup file is invalid. Ask your organisation for a new file.")
         }
     }
 

@@ -7,7 +7,7 @@ import AppIntents
 /// intents can't be added/removed after compile, but what THIS entity's query returns is
 /// entirely user-controlled — built-in toggles, harvested capabilities, hand-made actions.
 struct SiriActionEntity: AppEntity, Identifiable {
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "OpenGlasses Action"
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Avenkin Action"
     static var defaultQuery = SiriActionQuery()
 
     let id: String

@@ -119,12 +119,12 @@ class AgentScheduler: ObservableObject {
         PrivacyLog.agent(.scheduler, .onboardingRun)
 
         let onboardingPrompt = """
-        This is your first interaction with your new wearer. You don't know anything about them yet.
+        This is your first interaction with your new user. You don't know anything about them yet.
 
-        Introduce yourself warmly (you're an AI that lives on their smart glasses). Then ask them \
+        Introduce yourself warmly (you're their private AI assistant). Then ask them \
         3-4 friendly questions to get to know them:
         - Their name
-        - What they mainly want to use the glasses for
+        - What they mainly want your help with
         - Any daily routines you should know about
 
         Keep it conversational and brief — remember this is spoken aloud. After they respond, \

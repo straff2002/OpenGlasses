@@ -51,7 +51,8 @@ enum VaultLinkPolicy {
 
     /// The one query parameter the scheme route accepts.
     static let sourceParameterName = "src"
-    static let scheme = "openglasses"
+    /// The scheme vault links are generated with; both app schemes are accepted (`DeepLinkScheme`).
+    static let scheme = DeepLinkScheme.generated
     static let host = "vault"
 
     /// Resolve whatever was pasted or scanned to the https URL the archive will be fetched from.
@@ -63,7 +64,7 @@ enum VaultLinkPolicy {
 
     static func resolve(_ url: URL) -> Result<URL, Refusal> {
         let scheme = url.scheme?.lowercased() ?? ""
-        if scheme == Self.scheme {
+        if DeepLinkScheme.isApp(scheme: scheme) {
             guard url.host?.lowercased() == Self.host else { return .failure(.notAVaultLink) }
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let extras = items.map(\.name).filter { $0 != sourceParameterName }

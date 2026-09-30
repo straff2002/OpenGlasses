@@ -127,7 +127,7 @@ struct AppleIntegrationsSettingsScreen: View {
                     } header: {
                         Text("Leave By")
                     } footer: {
-                        Text("Maps estimates only the next event with a physical location. Event locations and routes are not saved by OpenGlasses.")
+                        Text("Maps estimates only the next event with a physical location. Event locations and routes are not saved by Avenkin.")
                     }
                 }
 
@@ -169,7 +169,7 @@ struct AppleIntegrationsSettingsScreen: View {
                 } header: {
                     Text("Scheduled Delivery")
                 } footer: {
-                    Text("Delivered while OpenGlasses is active. Open My Day once to resolve Calendar and Reminders access before scheduled delivery. Speech is private-by-default: it only plays while you are present, outside quiet hours, online, and out of power reserve.")
+                    Text("Delivered while Avenkin is active. Open My Day once to resolve Calendar and Reminders access before scheduled delivery. Speech is private-by-default: it only plays while you are present, outside quiet hours, online, and out of power reserve.")
                 }
 
                 Section {
@@ -374,7 +374,7 @@ struct DisplayHUDSettingsScreen: View {
             } header: {
                 Text("In-Lens Display")
             } footer: {
-                Text("These are the same switches as under Glasses & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
+                Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
             }
 
             Section {

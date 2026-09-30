@@ -18,7 +18,7 @@ enum AudioSessionError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
-            return "Microphone access is required. Enable microphone permission for OpenGlasses in Settings."
+            return "Microphone access is required. Enable microphone permission for Avenkin in Settings."
         case .invalidFormat(let context):
             return "Could not create the \(context) audio format."
         case .activationFailed(let detail):

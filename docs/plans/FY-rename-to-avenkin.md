@@ -1,12 +1,15 @@
 # Plan FY — Rename to Avenkin (a private assistant; glasses become one device among several)
 
-**Status:** 📝 Drafted 2026-09-26, revised 2026-09-28 and 2026-09-29 — for review before any code
-changes. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
+**Status:** 🚧 P1–P3 shipped 2026-09-30; P5 in the private desktop repository; owed on device: pronunciation,
+tinted icon; owner: App Store listing text. P2 built 2026-09-30 on branch `feat/fy-copy` (*P2 → Built*).
+Drafted 2026-09-26, revised
+2026-09-28 and 2026-09-29. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
 desktop thread's phone-side PR, with the `Contracts/` and `Transport/` moves ([#574](https://github.com/straff2002/OpenGlasses/pull/574)); and a
-coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). **F1 built
-2026-09-29 (PR pending):** the storage and signing constants renamed to read as keys, values unchanged,
-and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and P1–P5 are not started. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
+coming-soon page at avenkin.com, which now serves this repository's Pages site ([#575](https://github.com/straff2002/OpenGlasses/pull/575)). F1 shipped
+([#580](https://github.com/straff2002/OpenGlasses/pull/580)): the storage and signing constants renamed to read as keys, values unchanged,
+and `StorageIdentifierGuardTests` pinning every D2 identifier. F2, F3 and the base-URL PR built
+2026-09-30; rename PR next. P1's rename itself and P3 built 2026-09-30 (*The rename itself → Built*, *P3 → Built*), and P2 the same day (*P2 → Built*); P4 is not being done and P5 is carried out in the private desktop repository. **Every open question was answered 2026-09-29** (*Decisions 2026-09-29 → Open
 questions answered*), so P1 and P2 are unblocked. Drafted as Plan FX; relettered FY on 2026-09-28 because Plan FX is
 the desktop plan.
 **Origin:** The owner's direction of 2026-09-25/26: the product is being renamed **Avenkin**. It is
@@ -55,7 +58,7 @@ in the private desktop repository (P5).
 
 **D1 — The name is Avenkin.** Display name `Avenkin`. Owner's decision, 2026-09-26, after comparing
 OhGee, TaskRook and Ogee: Avenkin is a coined word, reads as credible behind "Field Assist, powered
-by Avenkin", and is distinctive enough to be a wake word on its own. Pronounced **AV-en-kin**
+by Avenkin", and is distinctive enough to be a wake word on its own. Pronounced **a-VEN-kin** (the owner's stress, 2026-09-30)
 ("haven" without the h, plus "kin"); the in-app voices must say it that way (P1 item 9). The desktop
 app is **Avenkin Office** (2026-09-28, D9). This supersedes Plan FX's 2026-09-27 note that named the
 desktop app plain "Avenkin".
@@ -394,6 +397,17 @@ or breaks signatures.
    | Clone and download URLs | `docs/BUILDING.md:45`, `docs/field-assist-vault-guide.md:61` | Build-from-source and the manual extractor download | Still correct: the repository stays public under its name. Update them only if it is renamed (P4); GitHub redirects them after a rename |
    | PR and commit links | 57 files in `docs/plans/` | History | Leave as they are; they keep resolving, and GitHub redirects them if the repository is ever renamed |
 
+   **Redirects verified 2026-09-30:** each old `straff2002.github.io/OpenGlasses/…` address answers 301
+   to the same path on avenkin.com, and `avenkin.com/skillpacks/catalog.json` answers 200. The base-URL
+   PR shipped (branch `feat/fy-prereqs`): `PublicSite` (`Utils/PublicSite.swift`) derives the privacy,
+   support and about pages, both pack catalogs and the activation directory from `https://avenkin.com`,
+   keeping the paths the redirect preserves; the pack catalogs' `UserDefaults` overrides still work. The
+   OpenRouter `HTTP-Referer` is the base. The report link in Diagnostics & Support opens the support page
+   (no account needed) instead of a GitHub issue, and no longer carries the report in its address.
+   The translations address stays on the repository (it is not served by the site).
+   `PublicSiteGuardTests` pins every derived address under the base at its old path, and fails on any
+   `github.io` or repository address in `OpenGlasses/Sources` outside comments and that one line.
+
 ## P1 — The visible name (one PR)
 
 P1 rests on three fixes (F1–F3), all before any copy changes. **F1 lands ahead as its own PR, any
@@ -467,6 +481,19 @@ OpenGlasses.
    runs once. Known edge: someone who deliberately named a persona "OpenGlasses" is renamed too. That
    is accepted, and they can rename it back.
 
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.defaultName` is `"Avenkin"`, with
+`legacyDefaultNames` and `isDefaultName(_:)`; `resolve`, `Config.assistantDisplayName`, the setter,
+Settings' Reset button and the status badge all use the check, so the old default counts as the
+default wherever a name is compared (typing it is the same as choosing the default). The first-run
+persona, onboarding's placeholder and its "Skip — call it …" button, and Settings' placeholder and
+"Reset to …" button read `defaultName`. `Config.migrateAssistantNameToAvenkinIfNeeded()` runs at
+launch beside the other Config migrations, behind `assistantNameMigratedToAvenkin_v1`: a persona named
+exactly "OpenGlasses" becomes "Avenkin" and a stored display name equal to it is cleared; it reads the
+raw stored personas, so a fresh install is not seeded early. The legacy name is spelled in pieces in
+the source and in `AssistantNameMigrationTests`, so the rename's find-and-replace cannot turn the
+migration into a no-op. Two button titles become format keys ("Skip — call it %@", "Reset to %@"), so
+their translations return with the next catalog sync.
+
 ### F3 — Stop the assistant calling itself a glasses product when there are no glasses
 
 The shipped prompts give the assistant a glasses identity whatever the device:
@@ -483,6 +510,28 @@ The shipped prompts give the assistant a glasses identity whatever the device:
    `AssistantIdentity` rule).
 3. Tests: a phone-only prompt contains no "glasses"; a Meta glasses session says smart glasses; a G2
    session never says "Ray-Ban Meta"; a user's own prompt is unchanged.
+
+**Built 2026-09-30 (PR pending).** `AssistantIdentity.Device` (`glasses`, `watch`, `phone`) with
+`devicePhrase(glassesConnected:watchOnly:)` — "on smart glasses", "on the user's watch", "on the
+user's phone" — and a Chinese counterpart ("智能眼镜上", "用户的手表上", "用户的手机上"). The default
+prompt's opening and context line, the four English identity role lines, the navigation and
+ultra-concise presets, the fourteen mode presets, the five Chinese openings and the lean cloud prompt
+are composed with it; no prompt names a vendor, and the two realtime vision notes lose "Ray-Ban Meta"
+too. The default prompt's camera sentence is now device-neutral ("You have a camera."). The device is
+read once per turn where the prompt is assembled, through `LLMService.deviceInUse` (set by the app
+from its existing glasses link, the same closure pattern as the debrief context), and passed down;
+`AssistantIdentity` and `Config` never read it. **Stored prompts stay untouched:** nothing is written
+back. Shipped presets were already recomposed on read when their body matched the shipped body
+(Plan FE P6), and a built-in the wearer edits stops being built-in; the comparison now folds the
+device-dependent sentences and their pre-F3 wording into one form, so a Default preset stored by an
+earlier build is recognised as shipped text and follows the device, while a user-owned prompt is
+returned byte for byte on every device. **No watch-turn signal exists yet**: the watch's "ask"
+starts the phone's own listening and nothing marks a turn as the watch's, so the app passes
+`watchOnly: false` and a watch turn reads as the phone until such a signal exists. The EVEN
+Realities link is not part of "glasses connected" yet either; its wearers read as the phone, which
+is honest if not complete, and never as Ray-Ban Meta. Left for the copy PR (P2): the "glasses camera"
+lines in the preset bodies, the Chinese default body's camera line, and the agent-mode document
+template — all three done in P2 (*P2 → Built*).
 
 ### The rename itself
 
@@ -545,7 +594,7 @@ complete:
    `OnboardingAccessibilityTests` finds the welcome screen by the text "OpenGlasses", and
    `SettingsAccessibilityTests` looks for "Open iOS Settings for OpenGlasses".
 9. **Pronunciation.** The assistant says its own name in its identity line and in replies. Check
-   "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **AV-en-kin**;
+   "Avenkin" in each voice tier (system voices, Kokoro, the realtime providers) says **a-VEN-kin** (the owner's stress; it is how the app's voices say the name, not how people must);
    where a voice gets it wrong, substitute a spelling it reads correctly at the TTS boundary only,
    never in displayed text or stored data.
 10. **The watch wordmark.** `WatchMainView.swift:147–154` draws "OpenGlasses" from four separate
@@ -567,6 +616,29 @@ assistant introduces itself as Avenkin on an existing install; `rg -i openglasse
 identifiers (now pinned by F1), target, module and file names, historical plans, and the legacy-name
 checks this plan adds; `BrandNameGuardTests` passes, and a second run of the rename script changes
 nothing.
+
+**Built 2026-09-30** (branch `feat/fy-rename`). `Scripts/rename-to-avenkin.swift` holds the rule list
+and `BrandNameGuardTests` the allowlist, each entry with its reason; the script's output is its own
+commit, and a second run changes nothing (asserted on fixtures and on the tree). Items 1–8 and 10–12
+are done; item 9 is owed on device. Deviations and additions:
+- The script renames Swift **string literals only**. Comments are history and keep the old name, so
+  the exit's `rg -i openglasses` also finds comments; `BrandNameGuardTests` scans every Swift literal
+  (not only `Text`/`Label`), so nothing user-visible is missed.
+- Kept, and allowlisted with reasons beyond the plan's list: the HealthKit workout metadata key and
+  the HL7 `MSH` sending-application field (both keys other systems read), and the catalog and
+  translation entries for the old wake phrase's picker label (P3.2).
+- The two wake-phrase hints (onboarding and the agent setup) became `Say "%@"…` keys; the script
+  carries their translations across with the placeholder. Finnish's inflected form (`…iin`) has its
+  own rule.
+- Also renamed: `docs/support-reports-guide.md` and the bundled refrigeration vault's prose, which
+  the app shows. The README notice now says the rename has happened.
+- Item 11: `#E77F47` is written once, in `AccentColors`, and `OGTheme.Token.accent` reads it; the
+  light derivative `#B05426` is unchanged (≈ 5.1:1 on white, 4.6:1 on the canvas). The preset keeps
+  id `"violet"` and is labelled **Orange**; the old Orange swatch (id `"orange"`) is labelled **Amber**
+  so two presets never share a name.
+- Item 3: the desktop-naming strings (setup-file import, pairing, the vault receipt's source) say
+  Avenkin Office. `INAlternativeAppNames` carries the old name with the hint "open glasses".
+- The UI-test assertions follow the new copy; the UI target is compiled, not run, headless.
 
 ## P2 — Repositioning the copy (one PR; can merge with P1; waits for the desktop thread's phone-side PR, as P1 does)
 
@@ -593,6 +665,145 @@ nothing.
 
 **Exit:** a first run with no glasses never shows a screen that treats the user as unfinished, and
 the assistant does not describe itself as a glasses product during a phone-only session.
+
+**Built 2026-09-30** (branch `feat/fy-copy`, one PR; no build bump — the rename PR's build 430 is the
+TestFlight build this ships in).
+
+1. **Positioning.** The tagline, the P2.1 sentence and the device line, verbatim, open the README
+   (and its Chinese translation), `about.html` and `index.html`; the onboarding welcome page carries
+   the tagline and the sentence, and the Settings About footer the tagline and the device line.
+   Claims stay as precise as the README's: "offline" only for the on-device setup (local AI, speech
+   recognition and voice), and "buy once, with no subscription to us — a cloud AI provider you choose
+   bills its own usage". The Quick Start and *What you need* say the phone is enough on its own and
+   glasses are an addition, not "explore without glasses".
+2. **Onboarding.** `OnboardingFlow` (`Services/Flow/`) holds the page order and the device step's
+   answers, out of the view. The device page moved after the assistant's pages and became **Add a
+   device**; nothing else moved:
+
+   | | Before | After |
+   |---|---|---|
+   | 1–5 | Welcome, Choose your AI, Access key, Services, Permissions | unchanged |
+   | 6 | Connect Your Glasses | Name Your Assistant |
+   | 7 | Name Your Assistant | **Add a device** |
+   | 8 | Ready | Ready |
+
+   The step lists **This iPhone** as a device that is already *Ready* and offers **Use this phone** as
+   its primary button, which ends the step; **Add smart glasses** is one tap below it and brings up
+   the camera and Meta AI rows, after which the buttons are Continue and Use this phone. The glasses
+   rows start open for someone set up for Field Assist (an activated licence or a managed phone),
+   per open question 2. "Skip — no glasses yet" is gone. There is no memory page to lead with, so
+   "memory" is carried by the positioning sentence on the welcome page. Every permission and safety
+   page is where it was, `OnboardingAccessibilityTests` reads the new tagline and still counts eight
+   pages, and no accessibility identifier changed (the flow has none; VoiceOver focus follows the page
+   index as before). The Bluetooth row on the permissions page says "To connect smart glasses, if you
+   use them", and the Meta hint now points at "the Permissions page" rather than "the previous page".
+3. **After the first run.** The exit reaches past onboarding: the session card used to headline
+   "Glasses Not Connected" and the Settings hub opened on a "Meta Glasses — Not connected" card for
+   everyone. `Config.glassesAdded` (UserDefaults `glassesAdded`) records that someone uses glasses —
+   set when they choose glasses on the device step or when glasses connect. Until then
+   `OnboardingFlow.phoneIsTheDevice` is true: the session card reports the session (Ready,
+   Listening…, Speaking…), the glasses pill is quiet and says "Not added" instead of an error-coloured
+   "Disconnected", and the hub's device card is **This iPhone — In use**. Someone who has added
+   glasses sees their state exactly as before.
+4. **The glasses-copy sweep** — the table below. `BrandNameGuardTests.GlassesCopyGuard` scrapes the
+   phone-only surfaces (onboarding, the Settings hub and its general screens, the Chat tab and the
+   conversation list, the model and prompt settings) and fails on "glasses" standing as a word in any
+   string literal there that is not on its list, each entry with its reason; a stale entry fails too.
+5. **Field Assist.** `FieldAssistPaywallCopy.poweredBy` — "Field Assist, powered by Avenkin" — heads
+   the paywall's locked block and the licence (entitlement) section; the Settings → Field Assist footer
+   opens with it, as do the vault guide's byline and the README's Field Assist section.
+6. **F3's leftovers.** The seventeen English "You CAN see images from the glasses camera" preset
+   lines and the six Chinese camera lines (the Chinese Default's included) say "the camera"; the
+   on-device photo prompt and the cloud image note say "the camera" / "the user's camera". A stored
+   built-in seeded by an earlier build is still recognised as shipped text: `Config.legacyCameraLines`
+   folds the old lines onto the new for comparison only, so it follows the new wording and nothing
+   stored is rewritten. The agent-mode templates (`AgentDocumentStore.defaultSoul`/`defaultSkills`)
+   and the agent's first-run prompt no longer say the agent "lives on Ray-Ban Meta smart glasses"; they
+   name the phone, the watch and glasses when worn, and say "user" where they said "wearer". Existing
+   agent documents are the user's own files and are not touched.
+7. **Localisation.** `Localizable.xcstrings` was edited by hand, not by a build: twenty keys renamed
+   where the English changed, one removed ("Skip — no glasses yet"), eight added for new strings.
+   Each carries a Russian translation rewritten to the new meaning — carrying the old one across would
+   have kept "glasses" in Russian — and the catalog keeps Xcode's formatting and key order. The
+   downloadable translations had none of the changed keys.
+
+**Tests.** `OnboardingFlowTests` walks the phone path from the welcome page to completion (every page
+once, "Use this phone" ends the step, nothing recorded, the session card reports the phone), pins the
+order and the organisation shortcut's page numbers, and the glasses answer and Field Assist opening.
+The assistant's phone-only identity is F3's `DeviceIdentityTests.testAPhoneOnlyPromptContainsNoGlasses`;
+P2 adds `testNoShippedPresetBodyAssumesGlassesOnAPhone`, the stored pre-P2 preset and the agent
+template. `BrandNameGuardTests` gains the glasses guard, the onboarding phrases that must not return,
+the Field Assist naming and the verbatim positioning.
+
+### Sweep 2026-09-30
+
+Scope: every string literal under `OpenGlasses/Sources/App` (views, App Intents, support reports) and
+the watch that says "glasses" as a word, the user-visible service strings that do, and the
+`OpenGlasses/Info.plist` usage strings. The plan's "~59 UI strings and 34 plist lines" were counted
+before P1: P1 already made 21 of the plist's usage strings device-neutral, and 2 still mention glasses.
+Rule (D6): keep "glasses" only when the feature needs glasses — the glasses' camera stream, the
+in-lens HUD, the glasses' mic or Bluetooth link, the glasses themselves — otherwise say the device the
+feature runs on, or nothing. Still photos fall back to the phone's camera (`CameraService.capturePhoto`),
+so photo features are device-neutral; live video, narration, fingerspelling and the reading
+companion need the glasses' stream.
+
+**Changed — 33 strings**
+
+| Where | Before → after | Why |
+|---|---|---|
+| Onboarding welcome | "AI assistant for your smart glasses" → "Your AI. Your terms." + the P2.1 sentence | Leads with the assistant; glasses are one device of three |
+| Onboarding device page (title, subtitle) | "Connect Your Glasses" / "Authorize camera access and link Avenkin to the Meta AI app." → "Add a device" / "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings." | The phone is a device, not a missing one |
+| Onboarding device page | "Skip — no glasses yet" → removed; "Use this phone" | Framed a phone-only user as not set up |
+| Onboarding permissions (Bluetooth) | "To connect to your Ray-Ban Meta glasses" → "To connect smart glasses, if you use them" | Kept the word (Bluetooth is for glasses); no vendor, not a requirement |
+| Onboarding device page (Camera) | "…from your Ray-Ban Meta glasses" → "…from your Meta glasses" | Kept the word; the registration is Meta's, not one model's |
+| Chat tab, conversation list (3) | "…works with or without your glasses." ×2, "Talk to your glasses or type…" → "Start a chat by typing a message.", "Type a message below to start.", "Talk or type a message, and it will show up here." | Chat runs on the phone |
+| Model settings (2) | "Turn on Vision to send photos from your glasses to the AI…" → "…send photos to the AI…" | Photos come from either camera |
+| Prompt inspector (2) | "…images from the glasses camera…", "…the glasses camera is available." → "the camera", "a camera" | Matches the device-neutral prompts |
+| Hardware & Privacy (face blur) | "…faces in the glasses camera feed…" → "…in the camera feed…" | The blur applies to every outbound frame |
+| Accessibility (reading) | "Reads text through the glasses camera…" → "…through the camera…" | `reading_assist` takes a still, which falls back to the phone |
+| Quick action editor | "Captures a still through the glasses (or the phone)…" → "Captures a still from the camera…" | Device-neutral |
+| Agent features (image for remote agents) | "…one still from the glasses camera…" → "…from the camera…" | Device-neutral still |
+| Support report, Diagnostics footer (2) | "Plus this phone and the glasses…", "…this phone, the glasses and…" → "…any connected glasses…" | Said the user has glasses |
+| Gateway Remote Invoke footer | "ask the glasses to act (speak, show text…" → "ask Avenkin to act (speak, show text on the glasses…" | Speaking and status run on the phone; only the text display needs glasses |
+| Settings hub, screen title (3 sites) | "Glasses & Privacy" → "Devices & Privacy" | The screen holds mic, face blur, encryption and Medical Compliance; the glasses' own rows live inside it |
+| Cross-references (3) | "…under Glasses & Privacy → Hardware & Privacy…" (HUD screen, evidence review ×2) → "Devices & Privacy" | Follows the rename |
+| Settings hub (Diagnostics) | "Test the glasses, camera, and AI…" → "Test your devices and AI…" | General section |
+| App Intents (4) | "Take a photo with the glasses and analyze it", "Read text visible through the glasses", "Analyze food nutrition from what the glasses see", "Take a photo with the glasses and describe what you see" → "Take a photo and analyze it", "Read text the camera can see", "…what the camera sees", "Take a photo and describe what you see" | The intents capture a still, which falls back to the phone |
+| AI disclosure (structured assessment) | "…an AI assessment from the glasses camera." → "…from the camera." | Either camera |
+| Session card headline | "Glasses Not Connected" → the session's own state while no glasses are added | Was the first thing a phone-only user read |
+| Session card glasses pill | "Disconnected" (error colour) → "Not added" (quiet) while no glasses are added | Not an error |
+| Settings hub device card | "Meta Glasses — Not connected" → "This iPhone — In use" while no glasses are added | The phone is the device |
+
+Prompts (not UI strings, finished from F3): 17 English and 6 Chinese preset camera lines, the
+on-device photo prompt, the cloud image note, the agent-mode soul and skills templates and the agent's
+first-run prompt — all device-neutral as described in *Built* item 6.
+
+**Kept — 86 strings**
+
+| Where | Strings | Why the feature needs glasses |
+|---|---|---|
+| App Intents: connect, disconnect, toggle (6) | descriptions and results ("Could not connect to glasses", "Glasses disconnected", …) | They connect the glasses |
+| App Intents: capture (5), glasses actions (3) | "Capture Glasses Photo", "Record Glasses Video", "Connect your glasses first.", … | Capture on the glasses' own camera; they fail without glasses rather than fall back |
+| App Intents: broadcast (1), camera choice (1) | "Start or stop broadcasting the glasses camera over RTMP", the "Glasses" camera option | Live stream; a named choice beside "Phone" |
+| Support report fields (3) | "Glasses: connected", "Glasses: not connected", "Glasses display" | Report fields describing the glasses link |
+| Hardware & Privacy — the glasses' section (18) | "Connected Glasses", "Update Glasses App/Firmware", "No glasses detected…", "Unavailable on these glasses", SDK-unavailable ×1, companion-app note, wake-mic and mic-route explanations, camera-off note, "Glasses Display (HUD)" + note, translation-mic note, "Glasses Only Audio" + note, "Glasses Analytics" + note, the privacy footer's glasses-SDK sentence | The glasses' hardware, firmware, mic, HUD and SDK |
+| Settings hub (2) | the device card's "Meta Glasses" once glasses are added; the About footer's device line | Names the glasses in use; the owner's device line |
+| Voice & Triggers (1) | temple double-tap | A gesture on the glasses |
+| Display & HUD screens (6) | HUD toggle + note (journey screen), EVEN display picker, web HUD mirror ×3 | In-lens display |
+| Accessibility (3) | scene narration, fingerspelling ×2 | The glasses' live camera stream |
+| Reading companion, teleprompter, navigation, translation, digest (5) | "…the glasses will follow along", "Point the glasses at a printed…script", "the glasses menu under Navigate", "the glasses display shows only the line addressed to you", "when the glasses reconnect" | Page capture from the stream; in-lens teleprompter, menu, captions and digest |
+| Capture & streaming, live vision, preview (6) | codec note, the "Glasses" Photos album (the existing album's name), RTMP "Stream what your glasses see", live-frame dedup, live preview error, "Paused — no live camera feed from the glasses." | The glasses' video stream; an album that already holds the user's photos |
+| Field Assist expert streaming (2), job clips (1) | "How the glasses view reaches the expert", signalling note, "Records up to %lld seconds from the glasses camera" | Glasses video to the expert; the glasses' clip recorder |
+| Developer (4) | MCP glasses server ×2, turn-timeline "8 kHz glasses mic", scan assist's wearing side | Glasses camera server; the glasses mic route; a setting about wearing them |
+| Skill packs / local models (1), agent cadence (1), diagnostics field (1) | "Needs %@ — connect glasses first", "Faster when glasses are on", "glasses connection" | A glasses capability is missing; behaviour keyed to the connection; a report field |
+| Session card (7) | pill "Glasses", "Disconnect Glasses", "Glasses: %@", its two hints, "Glasses Not Connected" (once added), "Glasses Idle" | The glasses link |
+| Watch (1) | "Glasses Connected" | The glasses link |
+| Onboarding "Add a device" (5) | "Links Avenkin to your glasses via the Meta AI app", "Smart glasses", "Add smart glasses", "Meta glasses, linked through the Meta AI app", its hint | The step where glasses are one choice |
+| Onboarding welcome (1) | the P2.1 sentence ("…or your glasses") | The owner's wording, glasses last |
+| `Info.plist` (2) | `NSBluetoothAlwaysUsageDescription`, `NSBluetoothPeripheralUsageDescription` ("…connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2)") | Bluetooth is only for glasses (P1 item 2) |
+
+`GlassesCopyGuard` holds thirteen entries — the strings in these two tables that sit on the phone-only
+surfaces it scans, plus one category id the hub routes on — each with its reason.
 
 ## P3 — Scheme alias and wake-phrase migration (one PR)
 
@@ -625,6 +836,20 @@ the assistant does not describe itself as a glasses product during a phone-only 
 3. **Later, in a following release:** generate `avenkin://` links (enrolment links, widget and quick
    action URLs) once the P3 build is what users have. `openglasses://` stays accepted for good. Meta's
    `AppLinkURLScheme` changes only after the portal does (D3).
+
+**Built 2026-09-30** (branch `feat/fy-rename`, with P1). `DeepLinkScheme` sits in
+`Shared/DeepLinkTrust.swift`, so the widget compiles it too; `isApp(_:)` is case-insensitive and
+replaced fourteen hand-written comparisons (eleven routes in `onOpenURL`, enrolment, skill-pack
+sideload, vault links). Generated links read `DeepLinkScheme.generated`, still `openglasses`, until
+P3.3. The routing stays inline in `onOpenURL`, so `DeepLinkSchemeTests` asserts "same result" on
+what each route consults — the scheme helper, the trust policy, the privacy route and the three
+parsers — and fails on any hand-written scheme comparison in the sources.
+`Config.defaultWakePhrase`, `legacyDefaultWakePhrases`, `wakePhrasePresets` and
+`isCustomWakePhrase(_:presets:)` are the one source for the five default sites and both pickers.
+`migrateWakePhraseToAvenkinIfNeeded()` (flag `wakePhraseMigratedToAvenkin_v1`) runs at launch after
+F2's; it moves the alternatives with the phrase only while they are still the old phrase's
+suggestions (or empty on a persona). Added beyond the plan: a `hey avenkin` alternates case, and the
+persona picker shares the settings presets (plus its two extra phrases).
 
 ## P4 — Internal rename (not being done; unscheduled)
 

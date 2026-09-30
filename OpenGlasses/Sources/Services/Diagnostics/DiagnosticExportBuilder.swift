@@ -63,7 +63,7 @@ enum DiagnosticExportBuilder {
         let generated = generatedFormatter(timeZone: timeZone)
 
         var headerLines = [
-            "OpenGlasses diagnostics",
+            "Avenkin diagnostics",
             "Generated \(generated.string(from: now))",
             "App \(environment.appVersion) (\(environment.buildNumber)) · \(environment.systemName) \(environment.systemVersion) · \(environment.deviceModel)",
             "\(entries.count) event\(entries.count == 1 ? "" : "s") from this session"
@@ -99,7 +99,7 @@ enum DiagnosticExportBuilder {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd-HHmm"
-        return "openglasses-diagnostics-\(formatter.string(from: now)).txt"
+        return "avenkin-diagnostics-\(formatter.string(from: now)).txt"
     }
 
     // MARK: - Formatters

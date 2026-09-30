@@ -35,8 +35,9 @@ struct ActivationKey: Equatable, Sendable {
     /// activation key already issued would derive the wrong key and fail to open its licence.
     /// Pinned by `StorageIdentifierGuardTests`.
     static let sealingSigningDomain = "openglasses.activation-key.v1"
-    /// Where the sealed files are published (`activation/` in `Scripts/stage-pages-site.sh`).
-    static let defaultDirectory = URL(string: "https://straff2002.github.io/OpenGlasses/activation/")!
+    /// Where the sealed files are published (`activation/` in `Scripts/stage-pages-site.sh`), on the
+    /// public site. Builds that read the old Pages address reach the same files through its redirect.
+    static let defaultDirectory = PublicSite.activationDirectory
 
     /// The longest input still read as an attempt at a key — sixteen characters plus dashes and a
     /// few spaces. Anything longer is a licence code, whatever its characters.

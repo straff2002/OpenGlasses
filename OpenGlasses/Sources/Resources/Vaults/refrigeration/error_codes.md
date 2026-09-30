@@ -1,6 +1,6 @@
 # Error Codes by Manufacturer
 
-These are the most commonly encountered error codes on the equipment lines OpenGlasses Field Assist supports. Always confirm against the unit's actual service manual.
+These are the most commonly encountered error codes on the equipment lines Avenkin Field Assist supports. Always confirm against the unit's actual service manual.
 
 ## Carrier (ComfortLink — 30RB / 30XA / WeatherMaker)
 

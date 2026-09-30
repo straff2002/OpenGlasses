@@ -101,7 +101,7 @@ struct FieldAssistSettingsView: View {
                     .tint(AppAccent.color)
                     .disabled(!Config.fieldAssistUnlocked)
             } footer: {
-                Text("Field Assist provides hands-free, domain-grounded guidance for service technicians. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
+                Text("Field Assist, powered by Avenkin, gives service technicians hands-free, domain-grounded guidance. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
             }
 
             // ──────────────── Entitlement (paywall when locked, status when unlocked)
@@ -124,9 +124,9 @@ struct FieldAssistSettingsView: View {
             if !orgProfile.isManaged {
                 Section {
                     Button("Scan an Organisation Code") { showingOrgScanner = true }
-                    Button("Import Avenkin Setup File") { showingOfficeSetupImporter = true }
+                    Button("Import Avenkin Office Setup File") { showingOfficeSetupImporter = true }
                 } footer: {
-                    Text("Scan your organisation's code or import its signed Avenkin setup file. You'll review the settings before anything changes.")
+                    Text("Scan your organisation's code or import its signed Avenkin Office setup file. You'll review the settings before anything changes.")
                 }
             }
             #if AVENKIN_OFFICE_TRANSPORT
@@ -443,7 +443,7 @@ struct FieldAssistSettingsView: View {
         .fileImporter(isPresented: $showingOfficeSetupImporter, allowedContentTypes: [.json]) { result in
             switch result {
             case .failure:
-                officeImportError = "Couldn't open the Avenkin setup file. Try selecting it again."
+                officeImportError = "Couldn't open the Avenkin Office setup file. Try selecting it again."
             case .success(let url):
                 Task {
                     do {
@@ -456,7 +456,7 @@ struct FieldAssistSettingsView: View {
                         }.value
                         appState.orgEnrolment.openOfficePackageFile(bytes)
                     } catch {
-                        officeImportError = "Couldn't read the Avenkin setup file. Try selecting it again."
+                        officeImportError = "Couldn't read the Avenkin Office setup file. Try selecting it again."
                     }
                 }
             }
@@ -843,6 +843,9 @@ struct FieldAssistSettingsView: View {
     private var entitlementPaywall: some View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
+                Text(FieldAssistPaywallCopy.poweredBy)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 Label(FieldAssistPaywallCopy.locked, systemImage: "lock.fill")
                     .font(.headline)
                 Text(FieldAssistPaywallCopy.lockedDetail)
@@ -1026,7 +1029,8 @@ struct FieldAssistSettingsView: View {
                 }
             }
         } header: {
-            Text("Entitlement")
+            // The licence page names the tier as it is sold (Plan FY P2).
+            Text(FieldAssistPaywallCopy.poweredBy)
         } footer: {
             if license.activeLicense?.seats != nil {
                 Text(FieldAssistPaywallCopy.seatsNote)

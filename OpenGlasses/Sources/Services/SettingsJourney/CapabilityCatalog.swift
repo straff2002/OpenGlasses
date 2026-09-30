@@ -208,7 +208,7 @@ enum CapabilityCatalog {
         ),
         .everyday(
             id: glasses,
-            title: "Glasses & Privacy",
+            title: "Devices & Privacy",
             icon: "lock.shield",
             subtitle: "Hardware, privacy, and medical compliance"
         ),
@@ -224,7 +224,7 @@ enum CapabilityCatalog {
             id: diagnostics,
             title: "Diagnostics & Support",
             icon: "stethoscope",
-            subtitle: "Test the glasses, camera, and AI — or report a problem"
+            subtitle: "Test your devices and AI — or report a problem"
         ),
         .discover(
             id: capture,

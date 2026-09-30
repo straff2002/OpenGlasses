@@ -120,7 +120,7 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         XCTAssertEqual(toggle.value as? String, "1",
                        "The launch switch did not turn on when its row was tapped")
 
-        let settingsRoute = app.buttons["Open iOS Settings for OpenGlasses"]
+        let settingsRoute = app.buttons["Open iOS Settings for Avenkin"]
         XCTAssertTrue(settingsRoute.waitForExistence(timeout: 20),
                       "Turning the switch on revealed no route to the iOS permission page, which "
                       + "is the only place a refused microphone can be granted")

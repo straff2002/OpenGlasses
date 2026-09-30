@@ -26,9 +26,9 @@ import AppIntents
 /// `dialog`, so Siri — not the in-app TTS — reads it aloud (`speakResponse: false`).
 // AudioRecordingIntent: background mic-start rights (see AskOpenGlassesIntent).
 struct AskQuestionIntent: AppIntent, AudioRecordingIntent {
-    static var title: LocalizedStringResource = "Ask OpenGlasses a Question"
+    static var title: LocalizedStringResource = "Ask Avenkin a Question"
     static var description = IntentDescription(
-        "Ask OpenGlasses anything by voice and hear the answer, without the wake word"
+        "Ask Avenkin anything by voice and hear the answer, without the wake word"
     )
 
     // By default, run in the background so Siri can speak the answer without forcing
@@ -40,7 +40,7 @@ struct AskQuestionIntent: AppIntent, AudioRecordingIntent {
 
     @Parameter(
         title: "Question",
-        description: "What you want to ask OpenGlasses",
+        description: "What you want to ask Avenkin",
         requestValueDialog: "What would you like to ask?"
     )
     var question: String
@@ -86,7 +86,7 @@ struct AskQuestionIntent: AppIntent, AudioRecordingIntent {
         var localizedStringResource: LocalizedStringResource {
             switch self {
             case .busy:
-                return "OpenGlasses is still working on something. Try again in a moment."
+                return "Avenkin is still working on something. Try again in a moment."
             case .emptyQuestion:
                 return "I didn't catch a question."
             case .noResponse:

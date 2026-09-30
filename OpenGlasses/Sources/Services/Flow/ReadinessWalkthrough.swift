@@ -221,7 +221,7 @@ enum ReadinessWalkthrough {
 
     /// Where a refused permission is actually granted. iOS asks once, so this is the only route.
     static let openSettingsInstruction =
-        "Open iOS Settings, find OpenGlasses, and turn the permission on there. iOS only asks once."
+        "Open iOS Settings, find Avenkin, and turn the permission on there. iOS only asks once."
 
     // MARK: - The table
 
@@ -540,7 +540,7 @@ enum ReadinessWalkthrough {
         case .muted: return "Turn spoken output back on, then try again."
         case .noRoute: return "Put the glasses on, or check the audio output, then try again."
         case .silentMode: return "Turn Silent Mode off, then try again."
-        case .backgrounded: return "Keep OpenGlasses open while the check runs, then try again."
+        case .backgrounded: return "Keep Avenkin open while the check runs, then try again."
         }
     }
 

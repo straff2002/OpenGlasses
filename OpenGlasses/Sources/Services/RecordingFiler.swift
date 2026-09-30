@@ -115,7 +115,7 @@ struct RecordingFiler {
             }
             if photosRequested && !savedToPhotos {
                 if photosNotPermitted {
-                    return "OpenGlasses doesn't have permission to add to your photo library, so "
+                    return "Avenkin doesn't have permission to add to your photo library, so "
                          + "the recording isn't in Photos. You can turn that on in Settings. It is "
                          + "safe in \(location)\(lossClause)"
                 }

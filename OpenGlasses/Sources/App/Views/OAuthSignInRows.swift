@@ -396,7 +396,7 @@ struct ChatGPTDeviceCodeSignInRows: View {
                     }
                     .frame(minHeight: rowMinHeight)
 
-                    Text("Only enter this code at auth.openai.com. Never send it to another person. The code expires and is not saved by OpenGlasses.")
+                    Text("Only enter this code at auth.openai.com. Never send it to another person. The code expires and is not saved by Avenkin.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

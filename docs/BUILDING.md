@@ -17,7 +17,7 @@ and camera fallback let you explore before completing glasses setup.
 
 After following the build steps below, check one thing at a time:
 
-1. **Registration:** complete Meta setup and the callback into OpenGlasses. If Connect fails,
+1. **Registration:** complete Meta setup and the callback into Avenkin. If Connect fails,
    check the credentials and the troubleshooting section before repeating registration.
 2. **Permissions:** grant the microphone/camera and service permissions needed for the task;
    denied access needs a permission fix, not a different model.
@@ -110,7 +110,7 @@ Host an `apple-app-site-association` file at `https://YOUR-DOMAIN/.well-known/ap
 </array>
 ```
 
-The failure mode when either end is wrong: approval completes in the Meta AI app, but the approval callback (a Universal Link) never reaches OpenGlasses — registration never finalises, the devices listener never fires, and connecting fails. The in-app error names the stalled registration state and points here.
+The failure mode when either end is wrong: approval completes in the Meta AI app, but the approval callback (a Universal Link) never reaches Avenkin — registration never finalises, the devices listener never fires, and connecting fails. The in-app error names the stalled registration state and points here.
 
 ### 5. Enable Developer Mode
 
@@ -323,7 +323,7 @@ uses the model marked as its current default.
 
 For advanced or headless sign-in, expand **Other sign-in options** and choose **Use a device
 code**. First enable **Device Code Authorization** in ChatGPT Settings → Security. Enter the
-one-time code only at `auth.openai.com` and never share it; OpenGlasses keeps the device ceremony
+one-time code only at `auth.openai.com` and never share it; Avenkin keeps the device ceremony
 in memory and stores only the resulting account credentials in Keychain. See the
 [official authentication guidance](https://learn.chatgpt.com/docs/auth).
 

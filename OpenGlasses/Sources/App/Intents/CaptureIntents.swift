@@ -33,7 +33,7 @@ struct CaptureGlassesPhotoIntent: AppIntent {
 
         var localizedStringResource: LocalizedStringResource {
             switch self {
-            case .appNotRunning: return "OpenGlasses is not running. Open the app first."
+            case .appNotRunning: return "Avenkin is not running. Open the app first."
             case .glassesNotConnected: return "Connect your glasses first."
             }
         }
@@ -71,7 +71,7 @@ struct RecordGlassesVideoIntent: AppIntent {
 
         var localizedStringResource: LocalizedStringResource {
             switch self {
-            case .appNotRunning: return "OpenGlasses is not running. Open the app first."
+            case .appNotRunning: return "Avenkin is not running. Open the app first."
             case .glassesNotConnected: return "Connect your glasses first."
             }
         }

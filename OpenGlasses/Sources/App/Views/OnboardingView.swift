@@ -6,11 +6,15 @@ import Speech
 
 /// Full-screen onboarding flow — Apple HIG compliant.
 ///
-/// Pages:
-///   1. Welcome — what OpenGlasses is, AI transparency disclosure
+/// Pages (`OnboardingFlow.Page`), assistant first and devices last (Plan FY P2):
+///   1. Welcome — what Avenkin is, AI transparency disclosure
 ///   2. Choose Provider — pick an AI provider (large tap targets)
 ///   3. Access Key — paste key, link to get one, inline validation
-///   4. Ready — success, get started
+///   4. Services — optional voice and search keys
+///   5. Permissions
+///   6. Name Your Assistant
+///   7. Add a Device — this phone is a complete answer; glasses are one tap away
+///   8. Ready — success, get started
 ///
 /// Design: the system's own language, on the OGDesign foundation — warm canvas,
 /// grouped lists for anything list-shaped, standard field affordances, Dynamic
@@ -74,7 +78,10 @@ struct OnboardingView: View {
     @State private var assistantName = Config.assistantDisplayName
     @State private var assistantNameRefused = false
 
-    // Connect glasses state (page 5)
+    // Add a device (page 7, Plan FY P2). The glasses rows start open for someone set up for
+    // Field Assist, and one tap away for everyone else.
+    @State private var showingGlassesSetup = OnboardingFlow.glassesStartOpen(
+        fieldAssistSetUp: LicenseService.shared.activeLicense != nil || OrgProfileManager.shared.isManaged)
     @State private var cameraGranted = false
     @State private var metaRegistered = false
     @State private var registrationStatus = ""
@@ -94,7 +101,7 @@ struct OnboardingView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var logoSize: CGFloat = 76
     @ScaledMetric(relativeTo: .largeTitle) private var successGlyph: CGFloat = 56
 
-    private let totalPages = 8
+    private let totalPages = OnboardingFlow.pageCount
 
     var body: some View {
         ZStack {
@@ -107,16 +114,16 @@ struct OnboardingView: View {
                 // so text fields on the API key page respond to taps immediately
                 // (paged TabView's swipe gestures steal focus from text fields)
                 Group {
-                    switch page {
-                    case 0: welcomePage
-                    case 1: providerPage
-                    case 2: apiKeyPage
-                    case 3: servicesPage
-                    case 4: permissionsPage
-                    case 5: connectGlassesPage
-                    case 6: assistantNamePage
-                    case 7: readyPage
-                    default: EmptyView()
+                    switch OnboardingFlow.Page(rawValue: page) {
+                    case .welcome: welcomePage
+                    case .provider: providerPage
+                    case .accessKey: apiKeyPage
+                    case .services: servicesPage
+                    case .permissions: permissionsPage
+                    case .assistantName: assistantNamePage
+                    case .addDevice: addDevicePage
+                    case .ready: readyPage
+                    case nil: EmptyView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -136,6 +143,8 @@ struct OnboardingView: View {
     private func go(to next: Int) {
         withAnimation(pageChange) { page = next }
     }
+
+    private func go(to next: OnboardingFlow.Page) { go(to: next.rawValue) }
 
     // MARK: - Header
 
@@ -186,14 +195,14 @@ struct OnboardingView: View {
     private var pagePosition: String { "Page \(page + 1) of \(totalPages)" }
 
     /// The title block every page opens with — the VoiceOver landing point.
-    private func pageTitle(_ title: String, _ subtitle: String? = nil, page index: Int) -> some View {
+    private func pageTitle(_ title: String, _ subtitle: String? = nil, page index: OnboardingFlow.Page) -> some View {
         VStack(spacing: 6) {
             Text(title)
                 .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityValue(pagePosition)
-                .accessibilityFocused($focusedPage, equals: index)
+                .accessibilityFocused($focusedPage, equals: index.rawValue)
             if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
@@ -272,7 +281,7 @@ struct OnboardingView: View {
                 primaryButton("Restore my setup") {
                     completeOnboarding()
                 }
-                Button("Set up fresh") { go(to: 1) }
+                Button("Set up fresh") { go(to: .provider) }
                     .buttonStyle(.ogQuiet)
             }
         }
@@ -286,16 +295,24 @@ struct OnboardingView: View {
                         .foregroundStyle(accent)
                         .accessibilityHidden(true)
 
-                    Text("OpenGlasses")
+                    Text("Avenkin")
                         .font(.largeTitle.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityValue(pagePosition)
                         .accessibilityFocused($focusedPage, equals: 0)
 
-                    Text("AI assistant for your smart glasses")
+                    // The tagline and the positioning sentence, in the owner's words (Plan FY P2.1):
+                    // the assistant first, the devices last.
+                    Text("Your AI. Your terms.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+
+                    Text("Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your phone, your watch or your glasses.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 // AI transparency disclosure (Apple Generative AI HIG)
@@ -399,7 +416,7 @@ struct OnboardingView: View {
                         .font(.system(size: 44))
                         .foregroundStyle(accent)
                         .accessibilityHidden(true)
-                    pageTitle("Setting up for \(licensee)", page: 0)
+                    pageTitle("Setting up for \(licensee)", page: .welcome)
                 }
                 OrgSetupStatus(service: appState.orgEnrolment)
             }
@@ -439,7 +456,7 @@ struct OnboardingView: View {
 
     private var providerPage: some View {
         VStack(spacing: 0) {
-            pageTitle("Choose your AI", "Pick a provider. You can add more later in Settings.", page: 1)
+            pageTitle("Choose your AI", "Pick a provider. You can add more later in Settings.", page: .provider)
 
             List {
                 Section {
@@ -557,7 +574,7 @@ struct OnboardingView: View {
                 pageFooter {
                     primaryButton("Continue") {
                         configureDefaults()
-                        go(to: 2)
+                        go(to: .accessKey)
                     }
                 }
             }
@@ -573,7 +590,7 @@ struct OnboardingView: View {
         let claudeConnected = provider == .anthropic && claudeOAuth.isConnected
 
         return VStack(spacing: 0) {
-            pageTitle(keyPageTitle(provider), keyPageSubtitle(provider), page: 2)
+            pageTitle(keyPageTitle(provider), keyPageSubtitle(provider), page: .accessKey)
 
             List {
                 if needsKey {
@@ -623,12 +640,12 @@ struct OnboardingView: View {
                 if needsAccount {
                     primaryButton("Continue") {
                         saveModel()
-                        go(to: 3)
+                        go(to: .services)
                     }
                     if !chatgptOAuth.isConnected {
                         Button("I'll sign in later") {
                             saveModel()
-                            go(to: 3)
+                            go(to: .services)
                         }
                         .buttonStyle(.ogQuiet)
                     }
@@ -636,7 +653,7 @@ struct OnboardingView: View {
                     if keyValid || claudeConnected {
                         primaryButton("Continue") {
                             saveModel()
-                            go(to: 3)
+                            go(to: .services)
                         }
                     } else {
                         primaryButton(isValidating ? "Validating..." : "Validate Key") {
@@ -649,13 +666,13 @@ struct OnboardingView: View {
                         if !apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
                             saveModel()
                         }
-                        go(to: 3)
+                        go(to: .services)
                     }
                     .buttonStyle(.ogQuiet)
                 } else {
                     primaryButton("Continue") {
                         saveModel()
-                        go(to: 3)
+                        go(to: .services)
                     }
                 }
             }
@@ -1039,7 +1056,7 @@ struct OnboardingView: View {
             pageTitle(
                 "Enhance your experience",
                 "Optional — add these later in Settings if you prefer.",
-                page: 3
+                page: .services
             )
 
             List {
@@ -1124,7 +1141,7 @@ struct OnboardingView: View {
                         Config.setPerplexityAPIKey(perplexityKey)
                     }
                     Config.setSearXNGBaseURL(searxngBaseURL)
-                    go(to: 4)
+                    go(to: .permissions)
                 }
                 skipButton()
             }
@@ -1142,7 +1159,7 @@ struct OnboardingView: View {
 
     private var permissionsPage: some View {
         VStack(spacing: 0) {
-            pageTitle("Permissions", "OpenGlasses needs a few permissions to work.", page: 4)
+            pageTitle("Permissions", "Avenkin needs a few permissions to work.", page: .permissions)
 
             List {
                 Section {
@@ -1176,7 +1193,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "antenna.radiowaves.left.and.right",
                         title: "Bluetooth",
-                        detail: "To connect to your Ray-Ban Meta glasses",
+                        detail: "To connect smart glasses, if you use them",
                         granted: bluetoothConfigured
                     ) {
                         configureWearablesSDK()
@@ -1196,7 +1213,7 @@ struct OnboardingView: View {
             .ogFormStyle()
 
             pageFooter {
-                primaryButton("Continue") { go(to: 5) }
+                primaryButton("Continue") { go(to: .assistantName) }
                     .disabled(!micGranted)
 
                 if micGranted {
@@ -1368,54 +1385,139 @@ struct OnboardingView: View {
         announcePermission("Home data", granted: true)
     }
 
-    // MARK: - Page 6: Connect Glasses
+    // MARK: - Page 7: Add a Device (Plan FY P2)
 
-    private var connectGlassesPage: some View {
+    /// Devices come last, after everything about the assistant itself. This phone is a whole
+    /// answer — it is already the device, so choosing it ends the step with nothing pending — and
+    /// glasses are one tap away on the same page (open from the start for someone set up for Field
+    /// Assist). There is no "skip": nobody here is missing anything.
+    private var addDevicePage: some View {
         VStack(spacing: 0) {
             pageTitle(
-                "Connect Your Glasses",
-                "Authorize camera access and link OpenGlasses to the Meta AI app.",
-                page: 5
+                "Add a device",
+                "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings.",
+                page: .addDevice
             )
 
             List {
                 Section {
-                    // iOS Camera permission
-                    permissionRow(
-                        icon: "camera.fill",
-                        title: "Camera",
-                        detail: "Required to stream video from your Ray-Ban Meta glasses",
-                        granted: cameraGranted
-                    ) {
-                        await requestCameraPermission()
-                    }
+                    thisPhoneRow
+                }
 
-                    // Meta AI integration
-                    permissionRow(
-                        icon: "OpenGlassesLogo",
-                        title: "Meta AI Integration",
-                        detail: "Links OpenGlasses to your glasses via the Meta AI app",
-                        granted: metaRegistered
-                    ) {
-                        await connectToMetaAI()
+                Section {
+                    if showingGlassesSetup {
+                        // iOS Camera permission — what the glasses' video arrives through
+                        permissionRow(
+                            icon: "camera.fill",
+                            title: "Camera",
+                            detail: "Required to stream video from your Meta glasses",
+                            granted: cameraGranted
+                        ) {
+                            await requestCameraPermission()
+                        }
+
+                        // Meta AI integration
+                        permissionRow(
+                            icon: "OpenGlassesLogo",
+                            title: "Meta AI Integration",
+                            detail: "Links Avenkin to your glasses via the Meta AI app",
+                            granted: metaRegistered
+                        ) {
+                            await connectToMetaAI()
+                        }
+                    } else {
+                        addGlassesRow
                     }
+                } header: {
+                    Text("Smart glasses")
                 } footer: {
-                    registrationFooter
+                    if showingGlassesSetup {
+                        registrationFooter
+                    }
                 }
             }
             .listStyle(.insetGrouped)
             .ogFormStyle()
 
             pageFooter {
-                primaryButton("Continue") { go(to: 6) }
-                Button("Skip — no glasses yet") { go(to: 6) }
-                    .buttonStyle(.ogQuiet)
+                if showingGlassesSetup {
+                    primaryButton("Continue") { finishDeviceStep(.glasses) }
+                    Button("Use this phone") { finishDeviceStep(.thisPhone) }
+                        .buttonStyle(.ogQuiet)
+                } else {
+                    primaryButton("Use this phone") { finishDeviceStep(.thisPhone) }
+                }
             }
         }
         .onAppear {
             cameraGranted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
             metaRegistered = bluetoothConfigured && Wearables.shared.registrationState.rawValue >= 3
         }
+    }
+
+    /// This iPhone, already in use — stated as ready in words, not only by the check mark.
+    private var thisPhoneRow: some View {
+        HStack(spacing: OGMetrics.rowSpacing) {
+            OGIconTile(systemName: "iphone")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("This iPhone")
+                    .font(.body)
+                Text("Voice, chat and the phone's camera, with nothing more to set up.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Label("Ready", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(OGTheme.okLabel)
+        }
+        .frame(minHeight: rowMinHeight)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The one tap that brings the glasses rows up.
+    private var addGlassesRow: some View {
+        Button {
+            withAnimation(pageChange) { showingGlassesSetup = true }
+        } label: {
+            HStack(spacing: OGMetrics.rowSpacing) {
+                OGIconTile(systemName: "eyeglasses")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Add smart glasses")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    Text("Meta glasses, linked through the Meta AI app")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: rowMinHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows the camera and Meta AI steps for connecting glasses.")
+    }
+
+    /// Either answer ends the step. Glasses are recorded as a device this person uses, so the
+    /// session card reports them; this phone records nothing, so nothing is left half-set-up.
+    private func finishDeviceStep(_ answer: OnboardingFlow.DeviceAnswer) {
+        if OnboardingFlow.addsGlasses(answer) {
+            Config.glassesAdded = true
+        }
+        go(to: OnboardingFlow.page(after: answer))
     }
 
     @ViewBuilder
@@ -1439,7 +1541,7 @@ struct OnboardingView: View {
 
     private func connectToMetaAI() async {
         guard bluetoothConfigured else {
-            registrationStatus = "Grant Bluetooth permission first (previous page)"
+            registrationStatus = "Grant Bluetooth permission first, on the Permissions page"
             SessionAnnouncer.say(registrationStatus, interrupts: true)
             return
         }
@@ -1463,21 +1565,22 @@ struct OnboardingView: View {
         appState.glassesService.startObserving()
     }
 
-    // MARK: - Page 7: Name Your Assistant (Plan FE P6)
+    // MARK: - Page 6: Name Your Assistant (Plan FE P6)
 
-    /// Asked late, after the permissions and the glasses, because it is the one question in the
-    /// flow that nothing depends on: naming never blocks setup, and Skip is a first-class answer.
+    /// Asked after the permissions and before the devices (Plan FY P2 moved the device step after
+    /// it): nothing depends on the name, so naming never blocks setup, and Skip is a first-class
+    /// answer.
     private var assistantNamePage: some View {
         VStack(spacing: 0) {
             pageTitle(
                 "Name Your Assistant",
                 "What would you like to call your assistant?",
-                page: 6
+                page: .assistantName
             )
 
             List {
                 Section {
-                    TextField("OpenGlasses", text: $assistantName)
+                    TextField(AssistantIdentity.defaultName, text: $assistantName)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
                         .submitLabel(.done)
@@ -1499,12 +1602,12 @@ struct OnboardingView: View {
             .ogFormStyle()
 
             pageFooter {
-                primaryButton("Continue") { go(to: 7) }
-                Button("Skip — call it OpenGlasses") {
+                primaryButton("Continue") { go(to: .addDevice) }
+                Button("Skip — call it \(AssistantIdentity.defaultName)") {
                     Config.resetAssistantDisplayName()
                     assistantName = AssistantIdentity.defaultName
                     assistantNameRefused = false
-                    go(to: 7)
+                    go(to: .addDevice)
                 }
                 .buttonStyle(.ogQuiet)
             }
@@ -1526,9 +1629,11 @@ struct OnboardingView: View {
                         .font(.title.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityValue(pagePosition)
-                        .accessibilityFocused($focusedPage, equals: 7)
+                        .accessibilityFocused($focusedPage, equals: OnboardingFlow.Page.ready.rawValue)
 
-                    Text("Say \"OpenGlasses\" or tap the mic to start a conversation.")
+                    // The configured phrase, never a literal, so the hint cannot disagree with
+                    // the setting (Plan FY P1 item 12).
+                    Text("Say \"\(Config.wakePhraseDisplayName)\" or tap the mic to start a conversation.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1559,7 +1664,7 @@ struct OnboardingView: View {
             }
 
             pageFooter {
-                primaryButton("Start Using OpenGlasses") {
+                primaryButton("Start Using Avenkin") {
                     completeOnboarding()
                 }
             }

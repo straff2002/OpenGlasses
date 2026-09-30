@@ -11,7 +11,7 @@ final class OpenClawConnectParamsTests: XCTestCase {
                        identity: OpenClawDeviceIdentity.Identity? = nil,
                        signedAtMs: Int? = nil) -> [String: Any] {
         OpenClawConnectParams.build(
-            displayName: "OpenGlasses",
+            displayName: "Avenkin",
             version: "1.0",
             token: "tok",
             role: role,
@@ -30,7 +30,7 @@ final class OpenClawConnectParamsTests: XCTestCase {
         XCTAssertEqual(params["role"] as? String, "operator")
         XCTAssertEqual(params["scopes"] as? [String], ["operator.read", "operator.write"])
         XCTAssertEqual(params["locale"] as? String, "en_US")
-        XCTAssertEqual(params["userAgent"] as? String, "openglasses-ios/1.0")
+        XCTAssertEqual(params["userAgent"] as? String, "avenkin-ios/1.0")
         XCTAssertEqual((params["auth"] as? [String: String])?["token"], "tok")
         XCTAssertNil(params["deviceCapabilities"], "no free-form keys: the schema is closed")
         XCTAssertNil(params["caps"], "empty caps are omitted rather than sent as []")
@@ -55,7 +55,7 @@ final class OpenClawConnectParamsTests: XCTestCase {
 
     func testCapsAndCommandsAreCarriedWhenDeclared() {
         let params = OpenClawConnectParams.build(
-            displayName: "OpenGlasses", version: "1.0", token: "tok", role: .node,
+            displayName: "Avenkin", version: "1.0", token: "tok", role: .node,
             caps: ["talk"], commands: ["camera.snap", "system.notify"], challenge: nil)
         XCTAssertEqual(params["caps"] as? [String], ["talk"])
         XCTAssertEqual(params["commands"] as? [String], ["camera.snap", "system.notify"])

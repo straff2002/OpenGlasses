@@ -46,7 +46,7 @@ enum WebHUDRenderer {
         <meta charset="utf-8">
         <meta name="viewport" content="width=600, initial-scale=1">
         <meta name="mrbd-web-app-capable" content="yes">
-        <title>OpenGlasses HUD</title>
+        <title>Avenkin HUD</title>
         <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 600px; height: 600px; background: #000; color: #fff;

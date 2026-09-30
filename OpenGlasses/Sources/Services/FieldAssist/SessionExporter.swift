@@ -320,7 +320,7 @@ enum SessionExporter {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "OpenGlasses — contains AI-generated content",
+            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
             kCGPDFContextSubject as String: "Field session record with AI-generated assistant turns. Model not recorded.",
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
@@ -541,7 +541,7 @@ enum SessionExporter {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "OpenGlasses — contains AI-generated content",
+            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
             kCGPDFContextSubject as String: "Field job debrief addendum. Model not recorded.",
         ]
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)

@@ -52,7 +52,7 @@ enum OpenClawConnectParams {
             "scopes": effectiveScopes,
             "client": client,
             "locale": localeIdentifier,
-            "userAgent": "openglasses-ios/\(version)",
+            "userAgent": "avenkin-ios/\(version)",
             "auth": ["token": token],
         ]
         if !caps.isEmpty { params["caps"] = caps }

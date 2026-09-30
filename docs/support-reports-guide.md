@@ -1,6 +1,6 @@
 # Transcripts and support reports
 
-*OpenGlasses · a guide for support · September 2026*
+*Avenkin · a guide for support · September 2026*
 
 ## First: set the support email
 
@@ -77,7 +77,7 @@ Each job starts with its job number, the machine, and when it started and finish
 
 ## Report a Problem is different
 
-**Settings** → **Diagnostics & Support** → **Report a Problem** is for problems with the app itself. It goes to the developer of OpenGlasses, not to your company, and it never includes conversations or private data. For anything about a job or a customer, use **Send to Support**.
+**Settings** → **Diagnostics & Support** → **Report a Problem** is for problems with the app itself. It goes to the developer of Avenkin, not to your company, and it never includes conversations or private data. For anything about a job or a customer, use **Send to Support**.
 
 ## Privacy
 

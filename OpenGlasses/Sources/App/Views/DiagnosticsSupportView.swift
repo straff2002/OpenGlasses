@@ -33,7 +33,7 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Send to Support",
-                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, the glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, any connected glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
             ) {
                 supportEmailField
                 OGDivider()
@@ -98,7 +98,7 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Report a Problem",
-                footer: "For problems with the app itself. This goes to the developer of OpenGlasses, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
+                footer: "For problems with the app itself. This goes to the developer of Avenkin, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
             ) {
                 Button {
                     presentReport()
@@ -335,7 +335,7 @@ private struct DiagnosticsReportSheet: View {
                     }
                     .buttonStyle(.plain)
 
-                    Text("Goes to the developer of OpenGlasses at \(DiagnosticsReportBuilder.supportEmail), not to your company's support. It contains no conversations or private data. No account needed, and you can add to it before you send.")
+                    Text("Goes to the developer of Avenkin at \(DiagnosticsReportBuilder.supportEmail), not to your company's support. It contains no conversations or private data. No account needed, and you can add to it before you send.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -347,13 +347,17 @@ private struct DiagnosticsReportSheet: View {
                     }
                 }
 
-                OGSection(footer: linkFooter) {
+                OGSection(footer: "Copy or share the report if you'd rather send it another way.") {
+                    // The support page (Plan FY P0 item 7), not an issue tracker: no account needed.
+                    // It opens without the report attached — a static page cannot read one, so
+                    // sending it in the address would only put it in a server log. Email, copy and
+                    // share carry the report.
                     Button {
-                        UIApplication.shared.open(report.issueURL)
+                        UIApplication.shared.open(PublicSite.support)
                     } label: {
                         OGRow(
-                            "Open a GitHub Issue", icon: "arrow.up.right.square", mutedIcon: true,
-                            subtitle: "Needs a GitHub account", showsChevron: false
+                            "Open the Support Page", icon: "arrow.up.right.square", mutedIcon: true,
+                            subtitle: "Other ways to reach us, no account needed", showsChevron: false
                         ) {
                             Image(systemName: "arrow.up.right")
                                 .font(.caption)
@@ -441,10 +445,4 @@ private struct DiagnosticsReportSheet: View {
             : "Masked before you saw it: \(report.redactionHits.joined(separator: ", "))."
     }
 
-    private var linkFooter: LocalizedStringKey {
-        if report.omittedLogLines > 0 {
-            return "A link can't hold the whole log, so \(report.omittedLogLines) older \(report.omittedLogLines == 1 ? "line is" : "lines are") left out of the GitHub issue link. Email, copy or share to send the complete report."
-        }
-        return "Copy or share the report if you'd rather send it another way."
-    }
 }

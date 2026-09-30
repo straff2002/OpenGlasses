@@ -1,0 +1,29 @@
+import SwiftUI
+
+// OpenGlasses in a comment is history, and stays.
+struct SampleView: View {
+    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    let name = "Aria"
+
+    var body: some View {
+        VStack {
+            Image("OpenGlassesLogo")
+            Text("OpenGlasses")
+            Text("Ask \(name.isEmpty ? "OpenGlasses" : name) on OpenGlasses today")
+            Text("Hey OpenGlasses").tag("hey openglasses")
+            Button("Open iOS Settings for OpenGlasses") {}
+        }
+    }
+
+    static let storageService = "OpenGlasses"
+    static let scene = "OpenGlassesDeviceScene"
+    static let prefix = "OpenGlasses_"
+    static let path = "OpenGlasses/Sources/App/OpenGlassesApp.swift"
+    static let export = "openglasses-export-2026"
+    static let scheme = "openglasses"
+    static let prompt = """
+        # OpenGlasses Agent
+        Say "OpenGlasses" to begin.
+        """
+    static let raw = #"OpenGlasses says "hi""#
+}

@@ -20,7 +20,7 @@ struct SettingsView: View {
     @ObservedObject private var orgProfile = OrgProfileManager.shared
     private var restricted: Bool { adminGate.isRestricted }
     @AppStorage("appAppearance") private var appearance: String = "system"
-    @AppStorage("wakePhrase") private var wakePhrase = "openglasses"
+    @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
     @AppStorage("activeModelId") private var activeModelId = ""
     @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
 
@@ -56,17 +56,31 @@ struct SettingsView: View {
         // grouped card of category rows, each with a live value summary, then the
         // Discover section for everything still folded.
         OGScrollPage {
-            OGHeroDeviceCard(
-                title: appState.glassesService.deviceName ?? "Meta Glasses",
-                status: appState.isConnected ? "Connected" : "Not connected",
-                dot: appState.isConnected ? OGTheme.ok : Color.secondary,
-                batteryPercent: appState.glassesService.batteryLevel,
-                chips: [
-                    ("Camera", appState.isConnected),
-                    ("Display", appState.glassesDisplay.hasDisplayCapability),
-                    ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
-                ]
-            )
+            // The device in use (Plan FY P2): the glasses once they are added, and this phone
+            // until then — a phone-only hub never opens on a pair of glasses that are "Not
+            // connected". Glasses are added under Devices & Privacy → Hardware & Privacy.
+            if OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
+                                               glassesAdded: Config.glassesAdded) {
+                OGHeroDeviceCard(
+                    title: "This iPhone",
+                    status: "In use",
+                    dot: OGTheme.ok,
+                    chips: [("Voice", true), ("Chat", true), ("Camera", true)],
+                    symbol: "iphone"
+                )
+            } else {
+                OGHeroDeviceCard(
+                    title: appState.glassesService.deviceName ?? "Meta Glasses",
+                    status: appState.isConnected ? "Connected" : "Not connected",
+                    dot: appState.isConnected ? OGTheme.ok : Color.secondary,
+                    batteryPercent: appState.glassesService.batteryLevel,
+                    chips: [
+                        ("Camera", appState.isConnected),
+                        ("Display", appState.glassesDisplay.hasDisplayCapability),
+                        ("HUD \(glassesDisplayEnabled ? "on" : "off")", glassesDisplayEnabled),
+                    ]
+                )
+            }
 
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
             ManagedByOrganisationSection(manager: OrgProfileManager.shared)
@@ -128,7 +142,8 @@ struct SettingsView: View {
 
             OGSection(
                 header: "About",
-                footer: "OpenGlasses © 2026 Skunkworks NZ Ltd. Source-available under the Business Source License 1.1: free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
+                // The tagline and the device line, in the owner's words (Plan FY P2.1).
+                footer: "Your AI. Your terms. On your phone, from your wrist, or hands-free with glasses.\n\nAvenkin © 2026 Skunkworks NZ Ltd. Source-available under the Business Source License 1.1: free for personal, non-commercial use — commercial use requires a licence.\n\nJoin the Discord for help, ideas, and to share what you've built."
             ) {
                 OGRow("Version", icon: "info.circle", mutedIcon: true, verbatimValue: Self.appVersion, showsChevron: false)
                 OGDivider()
@@ -143,8 +158,7 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
                 OGDivider()
                 Button {
-                    let webURL = URL(string: "https://straff2002.github.io/OpenGlasses/privacy.html")!
-                    UIApplication.shared.open(webURL)
+                    UIApplication.shared.open(PublicSite.privacy)
                 } label: {
                     OGRow("Privacy Policy", icon: "hand.raised", mutedIcon: true, showsChevron: false) {
                         Image(systemName: "arrow.up.right")
@@ -160,7 +174,7 @@ struct SettingsView: View {
                 } label: {
                     OGRow("Discord", icon: "bubble.left.and.bubble.right", showsChevron: false) {
                         HStack(spacing: 4) {
-                            Text("OpenGlasses Discord")
+                            Text("Avenkin Discord")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                             Image(systemName: "arrow.up.right")
@@ -389,7 +403,7 @@ struct SettingsView: View {
 
     private func authenticateSettingsEntry() {
         guard entryGate.begin() else { return }
-        OwnerGateAuth.authenticate(reason: "Unlock OpenGlasses Settings") { granted in
+        OwnerGateAuth.authenticate(reason: "Unlock Avenkin Settings") { granted in
             entryGate.finish(success: granted)
             if entryGate.consume() {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { settingsLocked = false }
@@ -994,7 +1008,7 @@ struct HardwarePrivacyView: View {
                 InfoToggle(
                     title: "Blur Bystander Faces",
                     isOn: $privacyFilterEnabled,
-                    info: "Uses Apple's on-device Vision framework to detect faces in the glasses camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
+                    info: "Uses Apple's on-device Vision framework to detect faces in the camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
                 .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
                 ManagedSettingNote(key: .privacyFilterEnabled)
@@ -1009,12 +1023,12 @@ struct HardwarePrivacyView: View {
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
-                    info: "OpenGlasses has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
+                    info: "Avenkin has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
                 )
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. OpenGlasses has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI is off by default: Apple Health data is sent to your AI provider only when you turn it on. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {

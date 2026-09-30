@@ -62,7 +62,7 @@ enum ProfileVerification {
         var errorDescription: String? {
             switch self {
             case .malformed:
-                return "That isn't an OpenGlasses organisation profile."
+                return "That isn't an Avenkin organisation profile."
             case .unknownKey:
                 return "This profile was signed with a key this version of the app doesn't know. Update the app, or ask your organisation for a new code."
             case .badSignature:

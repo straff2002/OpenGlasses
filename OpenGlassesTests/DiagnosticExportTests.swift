@@ -235,7 +235,7 @@ final class DiagnosticExportBuilderTests: XCTestCase {
     func testDisplayNameIsADateAndNothingElse() {
         let name = DiagnosticExportBuilder.displayName(now: Date(timeIntervalSince1970: 1_700_000_000),
                                                        timeZone: TimeZone(identifier: "UTC")!)
-        XCTAssertEqual(name, "openglasses-diagnostics-2023-11-14-2213.txt")
+        XCTAssertEqual(name, "avenkin-diagnostics-2023-11-14-2213.txt")
     }
 }
 
