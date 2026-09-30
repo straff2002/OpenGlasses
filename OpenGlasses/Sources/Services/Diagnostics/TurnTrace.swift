@@ -33,6 +33,8 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var micRoute: String?
     var endOfTurn: String?
     var imageSent: Bool
+    /// The effective reasoning token (Plan GB P0). Optional: traces written before it decode as nil.
+    var reasoning: String?
     var promptBlocks: [TurnTimeline.PromptBlock]
     var manualPassages: [String]
     var manualRefused: Bool
@@ -59,6 +61,7 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         micRoute = timeline.micRoute?.rawValue
         endOfTurn = timeline.endOfTurnReason?.rawValue
         imageSent = timeline.imageSent
+        reasoning = timeline.reasoning
         promptBlocks = timeline.promptBlocks
         manualPassages = timeline.manualPassages
         manualRefused = timeline.manualRefused

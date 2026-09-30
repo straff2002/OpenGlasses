@@ -16,9 +16,14 @@ enum ModelPricing {
     struct Rate: Equatable, Codable {
         let inputPer1M: Double
         let outputPer1M: Double
-        init(_ inputPer1M: Double, _ outputPer1M: Double) {
+        /// The provider's published cached-input rate, when it differs from the generic
+        /// `cacheReadMultiplier` (Plan GB P0: `gpt-6.1-sol` caches at 0.05× input, not 0.1×).
+        /// Optional so overrides saved before the field decode unchanged.
+        let cachedInputPer1M: Double?
+        init(_ inputPer1M: Double, _ outputPer1M: Double, cached cachedInputPer1M: Double? = nil) {
             self.inputPer1M = inputPer1M
             self.outputPer1M = outputPer1M
+            self.cachedInputPer1M = cachedInputPer1M
         }
     }
 
@@ -39,7 +44,26 @@ enum ModelPricing {
         "claude-3-5-haiku": Rate(0.80, 4),
         "claude-3-opus": Rate(15, 75),
         "claude-3-haiku": Rate(0.25, 1.25),
-        // OpenAI
+        // OpenAI — the GPT-5.x / GPT-6 rows were read off the provider's published price list on
+        // 2026-09-30 (standard tier: input / cached input / output per 1M). `gpt-5.5` also matches
+        // the field tester's bill ($5 / $0.50 / $30). A family member missing here (a `-pro`
+        // variant, a new point release) stays unpriced rather than borrowing a sibling's rate.
+        "gpt-6-astra": Rate(10, 50, cached: 1.00),
+        "gpt-6-sol": Rate(2, 10, cached: 0.20),
+        "gpt-6-luna": Rate(0.10, 0.50, cached: 0.01),
+        "gpt-6.1-sol": Rate(2, 10, cached: 0.10),
+        "gpt-5.6-sol": Rate(4, 20, cached: 0.40),
+        "gpt-5.6-terra": Rate(2, 12, cached: 0.20),
+        "gpt-5.6-luna": Rate(0.20, 1.20, cached: 0.02),
+        "gpt-5.5": Rate(5, 30, cached: 0.50),
+        "gpt-5.4": Rate(2.50, 15, cached: 0.25),
+        "gpt-5.4-mini": Rate(0.75, 4.50, cached: 0.075),
+        "gpt-5.4-nano": Rate(0.20, 1.25, cached: 0.02),
+        "gpt-5.2": Rate(1.75, 14, cached: 0.175),
+        "gpt-5.1": Rate(1.25, 10, cached: 0.125),
+        "gpt-5": Rate(1.25, 10, cached: 0.125),
+        "gpt-5-mini": Rate(0.25, 2, cached: 0.025),
+        "gpt-5-nano": Rate(0.05, 0.40, cached: 0.005),
         "gpt-4o-mini": Rate(0.15, 0.60),
         "gpt-4o": Rate(2.50, 10),
         "gpt-4.1-mini": Rate(0.40, 1.60),
@@ -98,8 +122,11 @@ enum ModelPricing {
 
     /// Estimated USD cost for a call, or `nil` if the model is unpriced. Zero tokens
     /// at a known rate is `0` (priced, just free), distinct from `nil` (unpriced).
-    /// Cache-creation and cache-read tokens are Anthropic's separate input-side counts
-    /// (excluded from `tokensIn`), priced off the input rate via the multipliers above.
+    /// Cache-creation and cache-read tokens are separate input-side counts, **excluded from
+    /// `tokensIn`** on every provider: Anthropic reports them that way, and `UsageTracker`
+    /// subtracts the cached share from OpenAI's and Gemini's prompt counts, which include it
+    /// (Plan GB P0 — the double count overstated cost by 10% of cached tokens). A cache read is
+    /// priced at the model's published cached rate, else off the input rate via the multiplier.
     static func estimate(model: String, tokensIn: Int, tokensOut: Int,
                          cacheWriteTokens: Int = 0, cacheReadTokens: Int = 0) -> Double? {
         guard let rate = rate(for: model) else { return nil }
@@ -107,7 +134,8 @@ enum ModelPricing {
         let input = Double(max(0, tokensIn)) / 1_000_000 * rate.inputPer1M
         let output = Double(max(0, tokensOut)) / 1_000_000 * rate.outputPer1M
         let cacheWrite = Double(max(0, cacheWriteTokens)) * perToken * cacheWriteMultiplier
-        let cacheRead = Double(max(0, cacheReadTokens)) * perToken * cacheReadMultiplier
+        let cacheReadPerToken = rate.cachedInputPer1M.map { $0 / 1_000_000 } ?? perToken * cacheReadMultiplier
+        let cacheRead = Double(max(0, cacheReadTokens)) * cacheReadPerToken
         return input + output + cacheWrite + cacheRead
     }
 }

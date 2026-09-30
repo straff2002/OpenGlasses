@@ -315,6 +315,12 @@ enum TurnRecorder {
         update { $0.imageSent = true }
     }
 
+    /// The effective reasoning setting of the request that served this turn (Plan GB P0). A token
+    /// from `ReasoningPolicy.Resolution.token`, never text. Last-wins across a cascade.
+    static func noteReasoning(_ token: String) {
+        update { $0.reasoning = token }
+    }
+
     /// The system prompt this turn is sending, block by block. Last-wins: a cascade that rebuilds
     /// the prompt for the next model replaces the list rather than doubling it.
     static func notePromptBlocks(_ blocks: [TurnTimeline.PromptBlock]) {
