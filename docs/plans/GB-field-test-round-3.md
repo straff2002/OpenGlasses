@@ -210,6 +210,15 @@ tools, and why. Spend caps warn before a budget runs out and ask before going ov
 5. **At 100% of a spend cap the app warns and asks** for a spoken or tapped confirmation to continue.
    It does not silently drop to a cheaper model, because an unannounced model change undermines
    "reliable answers". Falling back to a cheaper tier is an opt-in setting.
+6. **The vault core is sent whole on API providers (decided 2026-09-30, revising P5 below).** The
+   P5 draft capped the vault at 24k bytes on every provider; on the Lennox vault that silently
+   dropped `service_values.md`, the file the pressure and temperature checks depend on. The bound
+   on API providers is now the validator's own core budget (`VaultValidator.coreBudgetCharacters`,
+   32k), so any vault that validates is sent in full and the ceiling is enforced once, at
+   validation time, where the author sees it. ChatGPT keeps its 24k because that backend has a
+   hard request budget (FM). The cost argument was weak: after the stable-prefix change the vault
+   text sits in the cached head, so the ~1.3k extra tokens on this vault are paid at the cached
+   rate. If vaults outgrow 32k, the lever is retrieval (send passages), not a smaller cap.
 
 ## Scope and invariants
 
@@ -458,7 +467,8 @@ the headless tests prove recovery, not cause.
   FM's ChatGPT behaviour is unchanged.
 - **Drop stale images.** An image rides only on the turn that asked about it (`keepLast: 0` after the
   turn), and it is not resent on tool round-trips.
-- **Vault byte cap** of 24k on every provider, not just ChatGPT.
+- **Vault byte cap on every provider** — the validator's 32k core budget on API providers (the
+  whole validated core is always sent), 24k on ChatGPT as shipped. See Decision 6.
 - **Dedupe tool guidance.** Tool descriptions appear once, in the schemas. A field-mode tool profile
   (`NativeToolRegistry.contextualToolNames`, which exists and is unused) sends the tools a job
   actually uses.
@@ -482,7 +492,7 @@ figure is independent. The savings overlap and do not add up.
 | 2 | Budgeted API history (FM budget, fresh per job, image estimate fixed) | History held to 12–16k instead of growing 39 → 159 messages across both jobs | about $2–4 (15–30%) |
 | 3 | Drop stale images | About 1–1.5k image tokens and about 0.9 MB of upload per request | about $0.5–1 (4–8%); large latency gain |
 | 4 | Dedupe tool guidance and a field-mode tool profile | About 8k duplicated tokens, plus unused schemas | about $1.5–3 (10–20%) |
-| 5 | 24k vault cap on every provider | Bounds the vault core | depends on the vault; zero if already under 24k |
+| 5 | Vault cap on every provider (32k, the validator's budget) | Bounds the vault core at what validation already allows | zero for a valid vault; a guard against unbounded growth |
 
 Enabling reasoning moves the other way: reasoning tokens bill as output ($30/M on this bill), which
 is why the editor says so and why Automatic resolves to `none` with tools.
