@@ -13,6 +13,53 @@ final class RequestContextBudgetTests: XCTestCase {
         XCTAssertLessThan(RequestContextBudget.resolve(model: "gpt-5.5", endpoint: endpoint).inputAllowance, 272_000)
     }
 
+    // MARK: - Plan GC: the OpenAI API host
+
+    func testOpenAIAPIHostResolvesFromTheModelPageTable() {
+        for endpoint in ["https://api.openai.com/v1/responses", "https://api.openai.com/v1/chat/completions",
+                         "https://api.openai.com/v1"] {
+            let cases: [(String, Int)] = [
+                ("gpt-5.5", 1_050_000), ("gpt-6-sol", 1_050_000), ("gpt-6.1-sol", 1_050_000),
+                ("gpt-5.6-terra", 1_050_000), ("gpt-5.4-mini", 1_050_000), ("gpt-5.1", 400_000),
+                ("gpt-5.2", 400_000), ("gpt-5-mini", 400_000), ("gpt-5-chat-latest", 400_000),
+                ("gpt-4.1", 1_047_576), ("gpt-4.1-mini", 1_047_576), ("gpt-4o", 128_000),
+                ("gpt-4o-mini", 128_000), ("o4-mini", 200_000), ("o3", 200_000), ("o1", 200_000),
+                ("gpt-5.5-2026-06-01", 1_050_000),
+            ]
+            for (model, context) in cases {
+                let limit = RequestContextBudget.resolve(model: model, endpoint: endpoint)
+                XCTAssertEqual(limit.context, context, "\(model) @ \(endpoint)")
+                XCTAssertEqual(limit.provenance, "openaiModelPages20260930", model)
+            }
+            let unknown = RequestContextBudget.resolve(model: "some-future-model", endpoint: endpoint)
+            XCTAssertEqual(unknown, RequestContextBudget.Limit(context: 128_000,
+                                                               provenance: "openaiUnknownModelConservativeV1"))
+        }
+    }
+
+    func testSubscriptionAndOtherHostsAreUnchanged() {
+        XCTAssertEqual(RequestContextBudget.resolve(model: "gpt-5.5", endpoint: endpoint),
+                       RequestContextBudget.Limit(context: 272_000, provenance: "codexCatalog20260919"))
+        XCTAssertEqual(RequestContextBudget.resolve(model: "gpt-5.5", endpoint: "https://r.openai.azure.com/openai/v1/responses"),
+                       RequestContextBudget.Limit(context: 32_768, provenance: "unknownEndpointConservativeV1"))
+        XCTAssertEqual(RequestContextBudget.resolve(model: "gpt-5.5", endpoint: "https://proxy.test/v1/responses").context, 32_768)
+        // The API host never takes an account catalog value.
+        XCTAssertEqual(RequestContextBudget.resolve(model: "gpt-4o", endpoint: "https://api.openai.com/v1/responses",
+                                                    catalogContext: 64_000).context, 128_000)
+    }
+
+    func testBuildCountsTheTrailingDeveloperMessage() throws {
+        let history: [[String: Any]] = [["role": "user", "content": "q"]]
+        let tail = String(repeating: "t", count: 2_000)
+        let plain = try RequestContextBudget.build(model: "m", instructions: "i", history: history, tools: nil,
+                                                   protectedStart: 0, allowance: 100_000)
+        let withTail = try RequestContextBudget.build(model: "m", instructions: "i", history: history, tools: nil,
+                                                      protectedStart: 0, allowance: 100_000,
+                                                      options: .init(trailingDeveloperMessage: tail))
+        XCTAssertGreaterThan(withTail.estimate.input, plain.estimate.input + 2_000)
+        XCTAssertEqual((withTail.body["input"] as? [[String: Any]])?.last?["role"] as? String, "developer")
+    }
+
     func testInstructionsAndSchemasForceCompactionWithOnlyThreeMessages() throws {
         let history: [[String: Any]] = [
             ["role": "user", "content": String(repeating: "old", count: 1_000)],

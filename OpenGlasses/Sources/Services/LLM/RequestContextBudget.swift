@@ -34,7 +34,16 @@ enum RequestContextBudget {
     /// Exact IDs only. API product limits are deliberately not borrowed for Subscription.
     /// Source verified 2026-09-19: github.com/openai/codex, codex-rs/models-manager/models.json.
     /// Catalog defaults (272k), not optional max_context_window overrides (872k/1M).
+    ///
+    /// Plan GC: the OpenAI API host (`api.openai.com`, any path) resolves from
+    /// `openAIAPIContext(model:)` — the provider's per-model pages — and never borrows the
+    /// subscription's 32k fallback. Azure (`*.openai.azure.com`) stays on the unknown-endpoint
+    /// 32k: its limits are per deployment, and the deployment name need not be a model id.
     static func resolve(model: String, endpoint: String, catalogContext: Int? = nil) -> Limit {
+        if URL(string: endpoint)?.host?.lowercased() == OpenAIRouteSelector.apiHost {
+            return openAIAPIContext(model: model).map { Limit(context: $0, provenance: "openaiModelPages20260930") }
+                ?? Limit(context: 128_000, provenance: "openaiUnknownModelConservativeV1")
+        }
         guard URL(string: endpoint)?.host == "chatgpt.com",
               URL(string: endpoint)?.path == "/backend-api/codex/responses" else {
             return Limit(context: 32_768, provenance: "unknownEndpointConservativeV1")
@@ -46,6 +55,27 @@ enum RequestContextBudget {
         return known.contains(model)
             ? Limit(context: 272_000, provenance: "codexCatalog20260919")
             : Limit(context: 32_768, provenance: "unknownModelConservativeV1")
+    }
+
+    /// Context windows from the provider's model pages, read 2026-09-30, matched by prefix with
+    /// the most specific first. nil for a model the table does not know.
+    static func openAIAPIContext(model: String) -> Int? {
+        let id = model.lowercased().trimmingCharacters(in: .whitespaces)
+        let table: [(prefix: String, context: Int)] = [
+            ("gpt-6", 1_050_000),
+            ("gpt-5.6", 1_050_000),
+            ("gpt-5.5", 1_050_000),
+            ("gpt-5.4", 1_050_000),
+            ("gpt-5.2", 400_000),
+            ("gpt-5.1", 400_000),
+            ("gpt-5", 400_000),       // gpt-5, -mini, -nano, -chat-latest
+            ("gpt-4.1", 1_047_576),
+            ("gpt-4o", 128_000),
+            ("o4-mini", 200_000),
+            ("o3", 200_000),
+            ("o1", 200_000),
+        ]
+        return table.first { id.hasPrefix($0.prefix) }?.context
     }
 
     static func estimate(_ body: [String: Any]) -> Estimate {
@@ -72,8 +102,13 @@ enum RequestContextBudget {
     /// call/result since it are protected as a unit, including synthetic image messages.
     /// Instructions and schemas are never sliced: capacity failure is safer than losing a
     /// warning, a unit, or half of a function exchange. Selection only mutates request copies.
+    ///
+    /// `options` (Plan GC) are passed to `ResponsesTranslator.requestBody`, so the API route's
+    /// trailing developer message and extra fields are inside the estimate; the default is the
+    /// subscription body, unchanged.
     static func build(model: String, instructions: String, history: [[String: Any]],
-                      tools: [[String: Any]]?, protectedStart: Int, allowance: Int) throws -> Selection {
+                      tools: [[String: Any]]?, protectedStart: Int, allowance: Int,
+                      options: ResponsesTranslator.RequestOptions = ResponsesTranslator.RequestOptions()) throws -> Selection {
         let boundary = min(max(0, protectedStart), history.count)
         var selected = history
         // Retain every current-turn image; omit historical images before removing text.
@@ -85,7 +120,8 @@ enum RequestContextBudget {
             if removed > 0 {
                 prompt += "\n\n[Working context: \(removed) older messages omitted. The saved transcript is unchanged. Do not infer missing results. Use field_session recall for older technician reports and task evidence; current session state takes precedence over older conversation.]"
             }
-            let body = ResponsesTranslator.requestBody(model: model, instructions: prompt, history: selected, tools: tools)
+            let body = ResponsesTranslator.requestBody(model: model, instructions: prompt, history: selected,
+                                                       tools: tools, options: options)
             let estimate = estimate(body)
             if estimate.total <= allowance { return Selection(body: body, estimate: estimate, omittedMessages: removed) }
             let remainingOld = boundary - removed

@@ -53,14 +53,26 @@ final class ReasoningPolicyTests: XCTestCase {
     // MARK: - Other OpenAI families
 
     func testGPT55AutomaticWithToolsResolvesToNone() {
+        // Plan GC: GPT-5.5 takes tools on Chat Completions only at `none` (the provider's
+        // migration guide, read 2026-09-30), so the reason is now the clamp, not Automatic's
+        // choice. The wire and the effective level are unchanged.
         let r = resolve(.openai, "gpt-5.5", tools: true, nil)
         XCTAssertEqual(r.wire, .reasoningEffort(.none))
         XCTAssertEqual(r.effective, .level(.none))
-        XCTAssertEqual(r.reason, .automaticToolTurn)
+        XCTAssertEqual(r.reason, .chatToolsClamp)
     }
 
-    func testGPT55ExplicitWithToolsIsHonoured() {
+    func testGPT55ExplicitWithToolsOnChatClampsToNone() {
+        // Plan GC corrected GB's table: an explicit level with tools on Chat Completions is a 400
+        // for GPT-5.5, so the chat route clamps it; `OpenAIRouteSelector` sends such turns to
+        // Responses instead, where the level is honoured.
         let r = resolve(.openai, "gpt-5.5", tools: true, .medium)
+        XCTAssertEqual(r.wire, .reasoningEffort(.none))
+        XCTAssertEqual(r.reason, .chatToolsClamp)
+    }
+
+    func testGPT52ExplicitWithToolsIsHonouredOnChat() {
+        let r = resolve(.openai, "gpt-5.2", tools: true, .medium)
         XCTAssertEqual(r.wire, .reasoningEffort(.medium))
         XCTAssertEqual(r.reason, .asSet)
     }
@@ -95,7 +107,9 @@ final class ReasoningPolicyTests: XCTestCase {
     }
 
     func testLearnedRejectionClampsAFamilyMissingFromTheTable() {
-        let r = resolve(.openai, "gpt-5.5", tools: true, .high, learned: true)
+        // Plan GC: GPT-5.5 is now a clamping family, so a family that still takes reasoning with
+        // tools on Chat Completions (GPT-5.2) stands in for "missing from the table".
+        let r = resolve(.openai, "gpt-5.2", tools: true, .high, learned: true)
         XCTAssertEqual(r.wire, .reasoningEffort(.none))
         XCTAssertEqual(r.reason, .learnedRejection)
     }
@@ -158,7 +172,9 @@ final class ReasoningPolicyTests: XCTestCase {
 
     func testOutputCapRaisedOnlyWhenTheModelReasons() {
         XCTAssertEqual(resolve(.openai, "gpt-6-sol", tools: true, .high).outputCap(base: 1024), 1024)
-        XCTAssertEqual(resolve(.openai, "gpt-5.5", tools: true, .high).outputCap(base: 1024), 4096)
+        // Plan GC: GPT-5.5 clamps to `none` with tools on Chat Completions; GPT-5.2 does not.
+        XCTAssertEqual(resolve(.openai, "gpt-5.5", tools: true, .high).outputCap(base: 1024), 1024)
+        XCTAssertEqual(resolve(.openai, "gpt-5.2", tools: true, .high).outputCap(base: 1024), 4096)
         // Automatic without tools: the provider default (medium) still reasons.
         XCTAssertEqual(resolve(.openai, "gpt-5.5", tools: false, nil).outputCap(base: 500), 4096)
         XCTAssertEqual(resolve(.openai, "gpt-4o", tools: false, nil).outputCap(base: 500), 500)
@@ -211,5 +227,99 @@ final class ReasoningPolicyTests: XCTestCase {
         XCTAssertFalse(ReasoningRejectionClassifier.isReasoningWithToolsRejection(
             status: 429, message: "reasoning_effort tools rate limited"))
         XCTAssertFalse(ReasoningRejectionClassifier.isReasoningWithToolsRejection(status: 400, message: nil))
+    }
+
+    // MARK: - Plan GC: corrected family table (verified 2026-09-30)
+
+    func testFamilyTableFlags() throws {
+        let requireNone = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra",
+                           "gpt-5.6-luna", "gpt-6-sol", "gpt-6-luna"]
+        for model in requireNone {
+            let family = try XCTUnwrap(ReasoningPolicy.openAIFamily(model: model), model)
+            XCTAssertTrue(family.chatToolsRequireNone, model)
+            XCTAssertFalse(family.chatToolsUnavailable, model)
+            XCTAssertTrue(family.rejectsReasoningWithToolsOnChat, model)
+            XCTAssertEqual(family.accepted, [.none, .low, .medium, .high, .xhigh], model)
+        }
+        for model in ["gpt-6-astra", "gpt-6.1-sol"] {
+            let family = try XCTUnwrap(ReasoningPolicy.openAIFamily(model: model), model)
+            XCTAssertTrue(family.chatToolsUnavailable, model)
+            XCTAssertFalse(family.chatToolsRequireNone, model)
+            XCTAssertTrue(family.rejectsReasoningWithToolsOnChat, model)
+            XCTAssertEqual(family.accepted, [.low, .medium, .high, .xhigh], model)
+            XCTAssertEqual(family.providerDefault, .medium, model)
+        }
+        for model in ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5.1", "gpt-5.2", "o1", "o3", "o4-mini"] {
+            let family = try XCTUnwrap(ReasoningPolicy.openAIFamily(model: model), model)
+            XCTAssertFalse(family.rejectsReasoningWithToolsOnChat, model)
+        }
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5.4")?.providerDefault, ReasoningEffort.none)
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5.1")?.providerDefault, ReasoningEffort.none)
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5.5")?.providerDefault, .medium)
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5")?.accepted, [.minimal, .low, .medium, .high])
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "o3")?.accepted, [.low, .medium, .high])
+        XCTAssertNil(ReasoningPolicy.openAIFamily(model: "gpt-5-chat-latest"))
+        XCTAssertNil(ReasoningPolicy.openAIFamily(model: "gpt-4.1"))
+    }
+
+    func testDateSuffixedAndUntrimmedIdsMatchTheirFamily() {
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5.5-2026-06-01"),
+                       ReasoningPolicy.openAIFamily(model: "gpt-5.5"))
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: " GPT-6-Sol "),
+                       ReasoningPolicy.openAIFamily(model: "gpt-6-sol"))
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-6.1-sol-2026-09-01")?.chatToolsUnavailable, true)
+        XCTAssertEqual(ReasoningPolicy.openAIFamily(model: "gpt-5.4-mini-2026-03-01")?.providerDefault, ReasoningEffort.none)
+    }
+
+    func testGPT55WithToolsOnChatClampsToNoneAtEveryLevel() {
+        for requested: ReasoningEffort? in [nil, .low, .medium, .high, .xhigh] {
+            let r = resolve(.openai, "gpt-5.5", tools: true, requested)
+            XCTAssertEqual(r.wire, .reasoningEffort(.none), "requested \(String(describing: requested))")
+        }
+    }
+
+    func testGPT6AstraNearestAcceptedNoneIsLow() throws {
+        let family = try XCTUnwrap(ReasoningPolicy.openAIFamily(model: "gpt-6-astra"))
+        XCTAssertEqual(family.nearestAccepted(.none), .low)
+        XCTAssertEqual(family.nearestAccepted(.minimal), .low)
+        XCTAssertEqual(family.lowest, .low)
+    }
+
+    func testResponsesAutomaticWithToolsUsesLowestOnTheAPIRoute() {
+        let astra = ReasoningPolicy.resolve(provider: .openai, model: "gpt-6-astra", route: .responses,
+                                            toolsAttached: true, requested: nil)
+        XCTAssertEqual(astra.wire, .responsesEffort(.low))
+        XCTAssertEqual(astra.effective, .level(.low))
+        XCTAssertEqual(astra.reason, .automaticToolTurn)
+
+        let sol = ReasoningPolicy.resolve(provider: .openai, model: "gpt-6-sol", route: .responses,
+                                          toolsAttached: true, requested: nil)
+        XCTAssertEqual(sol.wire, .responsesEffort(.none))
+
+        // Lowest already the default: nothing sent, effective still the lowest.
+        let five4 = ReasoningPolicy.resolve(provider: .openai, model: "gpt-5.4", route: .responses,
+                                            toolsAttached: true, requested: nil)
+        XCTAssertEqual(five4.wire, .omit)
+        XCTAssertEqual(five4.effective, .level(.none))
+
+        // Without tools Automatic still sends nothing.
+        let noTools = ReasoningPolicy.resolve(provider: .openai, model: "gpt-6-astra", route: .responses,
+                                              toolsAttached: false, requested: nil)
+        XCTAssertEqual(noTools.wire, .omit)
+        XCTAssertEqual(noTools.effective, .providerDefault(.medium))
+    }
+
+    func testResponsesExplicitNoneOnAstraMovesToLow() {
+        let r = ReasoningPolicy.resolve(provider: .openai, model: "gpt-6-astra", route: .responses,
+                                        toolsAttached: true, requested: "none")
+        XCTAssertEqual(r.wire, .responsesEffort(.low))
+        XCTAssertEqual(r.reason, .adjustedToAccepted)
+    }
+
+    func testChatGPTSubscriptionAutomaticIsUnchangedByPlanGC() {
+        // The subscription path is out of Plan GC's scope: Automatic still sends nothing.
+        let r = resolve(.chatgpt, "gpt-6-astra", tools: true, nil)
+        XCTAssertEqual(r.wire, .omit)
+        XCTAssertEqual(r.reason, .automaticProviderDefault)
     }
 }

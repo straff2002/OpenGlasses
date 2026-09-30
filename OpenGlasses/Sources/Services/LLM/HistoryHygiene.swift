@@ -120,6 +120,21 @@ enum HistoryHygiene {
         return out
     }
 
+    // MARK: - Responses replay items (Plan GC)
+
+    /// Remove the Responses output items an assistant message carries for in-turn replay
+    /// (`ResponsesTranslator.rawOutputItemsKey`) from every message. Run when a turn finalises
+    /// — the items are kilobytes of opaque ciphertext — and before any Chat Completions body,
+    /// which would reject the unknown field. Everything else in each message is left as is.
+    static func stripResponsesItems(_ history: [[String: Any]]) -> [[String: Any]] {
+        history.map { message in
+            guard message[ResponsesTranslator.rawOutputItemsKey] != nil else { return message }
+            var out = message
+            out.removeValue(forKey: ResponsesTranslator.rawOutputItemsKey)
+            return out
+        }
+    }
+
     // MARK: - Token estimation
 
     /// Estimate the token weight of a history, counting image blocks by their base64 payload size

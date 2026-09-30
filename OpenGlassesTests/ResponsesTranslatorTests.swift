@@ -235,4 +235,185 @@ final class ResponsesTranslatorTests: XCTestCase {
         XCTAssertEqual(accumulator.failureMessage, "quota exhausted")
         XCTAssertNil(accumulator.completedResponse)
     }
+
+    // MARK: - Plan GC: the API route's body and reasoning replay
+
+    private let rawReasoning: [String: Any] = [
+        "type": "reasoning", "id": "rs_1",
+        "summary": [["type": "summary_text", "text": "thinking"]],
+        "encrypted_content": "gAAAAB-ciphertext",
+    ]
+    private let rawCall: [String: Any] = [
+        "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "manual_lookup",
+        "arguments": #"{"query":"fault 42"}"#, "status": "completed",
+    ]
+
+    private func replayHistory() -> [[String: Any]] {
+        [
+            ["role": "user", "content": "why is the pump tripping?"],
+            ResponsesTranslator.assistantHistoryMessage(
+                text: "",
+                toolCalls: [ToolInvocation(id: "call_1", name: "manual_lookup",
+                                           arguments: ["query": "fault 42"],
+                                           rawArguments: #"{"query":"fault 42"}"#)],
+                rawOutputItems: [rawReasoning, rawCall]),
+            ["role": "tool", "tool_call_id": "call_1", "content": "Fault 42: over-current."],
+        ]
+    }
+
+    private func replayOptions() -> ResponsesTranslator.RequestOptions {
+        ResponsesTranslator.RequestOptions(
+            includeEncryptedReasoning: true, maxOutputTokens: 4096, promptCacheKey: "og-abc",
+            reasoning: ReasoningPolicy.resolve(provider: .openai, model: "gpt-6-sol", route: .responses,
+                                               toolsAttached: true, requested: "medium"),
+            trailingDeveloperMessage: "Local time 09:14.")
+    }
+
+    private func replayBody() -> [String: Any] {
+        ResponsesTranslator.requestBody(
+            model: "gpt-6-sol", instructions: "stable head", history: replayHistory(),
+            tools: [["type": "function", "function": ["name": "manual_lookup", "description": "d",
+                                                      "parameters": ["type": "object"]] as [String: Any]]],
+            options: replayOptions())
+    }
+
+    func testToolTurnGoldenBodyReplaysReasoningInOrder() throws {
+        let body = replayBody()
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 5)
+        XCTAssertEqual(input[0]["type"] as? String, "message")
+        XCTAssertEqual(input[0]["role"] as? String, "user")
+        XCTAssertEqual(input[1]["type"] as? String, "reasoning")
+        XCTAssertEqual(input[1]["id"] as? String, "rs_1")
+        XCTAssertEqual(input[1]["encrypted_content"] as? String, "gAAAAB-ciphertext")
+        XCTAssertEqual(input[2]["type"] as? String, "function_call")
+        XCTAssertEqual(input[2]["id"] as? String, "fc_1", "replayed verbatim, not re-synthesised")
+        XCTAssertEqual(input[2]["call_id"] as? String, "call_1")
+        XCTAssertEqual(input[3]["type"] as? String, "function_call_output")
+        XCTAssertEqual(input[3]["call_id"] as? String, "call_1")
+        XCTAssertEqual(input[4]["type"] as? String, "message")
+        XCTAssertEqual(input[4]["role"] as? String, "developer")
+        let tail = try XCTUnwrap(input[4]["content"] as? [[String: Any]])
+        XCTAssertEqual(tail.first?["type"] as? String, "input_text")
+        XCTAssertEqual(tail.first?["text"] as? String, "Local time 09:14.")
+
+        XCTAssertEqual(body["include"] as? [String], ["reasoning.encrypted_content"])
+        XCTAssertEqual(body["store"] as? Bool, false)
+        XCTAssertEqual(body["stream"] as? Bool, true)
+        XCTAssertEqual(body["max_output_tokens"] as? Int, 4096)
+        XCTAssertEqual(body["prompt_cache_key"] as? String, "og-abc")
+        XCTAssertEqual((body["reasoning"] as? [String: String])?["effort"], "medium")
+        XCTAssertNil(body["reasoning_effort"])
+        XCTAssertEqual(body["instructions"] as? String, "stable head")
+        XCTAssertEqual((body["tools"] as? [[String: Any]])?.first?["name"] as? String, "manual_lookup")
+    }
+
+    func testSerialisedBodyIsStableAcrossBuilds() throws {
+        let first = try JSONSerialization.data(withJSONObject: replayBody(), options: [.sortedKeys])
+        let second = try JSONSerialization.data(withJSONObject: replayBody(), options: [.sortedKeys])
+        XCTAssertEqual(first, second)
+    }
+
+    func testDefaultOptionsLeaveTheSubscriptionBodyUnchanged() {
+        let history: [[String: Any]] = [["role": "user", "content": "hi"]]
+        let plain = ResponsesTranslator.requestBody(model: "m", instructions: "i", history: history, tools: nil)
+        XCTAssertEqual(Set(plain.keys), ["model", "instructions", "input", "store", "stream"])
+        let empty = ResponsesTranslator.requestBody(model: "m", instructions: "i", history: history, tools: nil,
+                                                    options: .init(trailingDeveloperMessage: ""))
+        XCTAssertEqual((empty["input"] as? [[String: Any]])?.count, 1, "an empty tail adds no item")
+    }
+
+    func testMessageWithoutRawItemsStillSynthesises() {
+        let message = ResponsesTranslator.assistantHistoryMessage(
+            text: "checking",
+            toolCalls: [ToolInvocation(id: "call_3", name: "t", arguments: [:], rawArguments: "{}")],
+            rawOutputItems: [])
+        XCTAssertNil(message[ResponsesTranslator.rawOutputItemsKey], "no empty key is stored")
+        let items = ResponsesTranslator.inputItems(history: [message])
+        XCTAssertEqual(items.map { $0["type"] as? String }, ["message", "function_call"])
+        XCTAssertEqual(items[1]["call_id"] as? String, "call_3")
+    }
+
+    func testParseOutputKeepsRawItemsAsReceived() {
+        let output: [[String: Any]] = [
+            rawReasoning,
+            ["type": "message", "phase": "commentary", "content": [["type": "output_text", "text": "Looking."]]],
+            rawCall,
+        ]
+        let parsed = ResponsesTranslator.parseOutput(["output": output])
+        XCTAssertEqual(parsed.text, "Looking.")
+        XCTAssertEqual(parsed.toolCalls.count, 1)
+        XCTAssertEqual(parsed.rawOutputItems.count, 3)
+        XCTAssertEqual(parsed.rawOutputItems[0]["encrypted_content"] as? String, "gAAAAB-ciphertext")
+        XCTAssertEqual(parsed.rawOutputItems[1]["phase"] as? String, "commentary")
+        XCTAssertTrue(ResponsesTranslator.parseOutput([:]).rawOutputItems.isEmpty)
+    }
+
+    func testStripResponsesItemsRemovesOnlyTheKey() throws {
+        let history = replayHistory()
+        let stripped = HistoryHygiene.stripResponsesItems(history)
+        XCTAssertEqual(stripped.count, history.count)
+        for message in stripped {
+            XCTAssertNil(message[ResponsesTranslator.rawOutputItemsKey])
+        }
+        let assistant = stripped[1]
+        XCTAssertEqual(assistant["role"] as? String, "assistant")
+        XCTAssertEqual(assistant["content"] as? String, "")
+        let calls = try XCTUnwrap(assistant["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(calls.first?["id"] as? String, "call_1")
+        XCTAssertEqual(stripped[0]["content"] as? String, "why is the pump tripping?")
+        XCTAssertEqual(stripped[2]["tool_call_id"] as? String, "call_1")
+        // After stripping, the chat-shape fallback synthesises the call again.
+        let items = ResponsesTranslator.inputItems(history: stripped)
+        XCTAssertEqual(items.map { $0["type"] as? String }, ["message", "function_call", "function_call_output"])
+    }
+
+    func testHygieneIsUnaffectedByTheRawItemsKey() {
+        let history = replayHistory()
+        let stripped = HistoryHygiene.stripResponsesItems(history)
+        XCTAssertEqual(HistoryHygiene.estimatedTokens(history), HistoryHygiene.estimatedTokens(stripped))
+        let pruned = HistoryHygiene.pruneImages(history, keepLast: 0)
+        XCTAssertNotNil(pruned[1][ResponsesTranslator.rawOutputItemsKey], "pruning leaves the replay items alone")
+        XCTAssertEqual(pruned.count, history.count)
+    }
+
+    func testIncompleteReason() {
+        XCTAssertEqual(ResponsesTranslator.incompleteReason(
+            ["status": "incomplete", "incomplete_details": ["reason": "max_output_tokens"]]), "max_output_tokens")
+        XCTAssertEqual(ResponsesTranslator.incompleteReason(["status": "incomplete"]), "unknown")
+        XCTAssertNil(ResponsesTranslator.incompleteReason(["status": "completed"]))
+        XCTAssertNil(ResponsesTranslator.incompleteReason([:]))
+    }
+
+    func testAccumulatorKeepsReasoningDoneItemsForReplay() throws {
+        var accumulator = ResponsesTranslator.StreamAccumulator()
+        for event in SSEEventParser.parse("""
+        event: response.output_item.added
+        data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"rs_9","summary":[]}}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_9","summary":[],"encrypted_content":"enc-9"}}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_9","call_id":"call_9","name":"field_session","arguments":"{}"}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_9","usage":{"input_tokens":10,"output_tokens":5}}}
+
+        """) {
+            _ = accumulator.consume(event)
+        }
+        XCTAssertEqual(accumulator.doneItems.map { $0["type"] as? String }, ["reasoning", "function_call"])
+        let response = try XCTUnwrap(accumulator.effectiveResponse)
+        let parsed = ResponsesTranslator.parseOutput(response)
+        XCTAssertEqual(parsed.toolCalls.first?.id, "call_9")
+        XCTAssertEqual(parsed.rawOutputItems.first?["type"] as? String, "reasoning")
+        XCTAssertEqual(parsed.rawOutputItems.first?["encrypted_content"] as? String, "enc-9",
+                       "the done copy, not the partial added copy")
+        // Round-trip: the next request replays reasoning before its call.
+        let message = ResponsesTranslator.assistantHistoryMessage(text: parsed.text, toolCalls: parsed.toolCalls,
+                                                                  rawOutputItems: parsed.rawOutputItems)
+        let items = ResponsesTranslator.inputItems(history: [message])
+        XCTAssertEqual(items.map { $0["type"] as? String }, ["reasoning", "function_call"])
+    }
 }

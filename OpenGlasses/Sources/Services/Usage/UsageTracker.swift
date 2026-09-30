@@ -91,13 +91,7 @@ final class UsageTracker: ObservableObject {
             // The Responses backend: `input_tokens` **includes** the cached share, which it reports
             // under `input_tokens_details.cached_tokens` (Plan GB P0 — previously ignored).
             guard let u = json["usage"] as? [String: Any] else { return nil }
-            let recognized = u["input_tokens"] != nil || u["output_tokens"] != nil
-            let cached = (u["input_tokens_details"] as? [String: Any]).map { intValue($0["cached_tokens"]) } ?? 0
-            return ParsedUsage(tokensIn: max(0, intValue(u["input_tokens"]) - cached),
-                               tokensOut: intValue(u["output_tokens"]),
-                               cacheWriteTokens: 0,
-                               cacheReadTokens: cached,
-                               recognized: recognized)
+            return responsesUsage(u)
         case .anthropic:
             // Anthropic's `input_tokens` already excludes both cache counts.
             guard let u = json["usage"] as? [String: Any] else { return nil }
@@ -121,6 +115,10 @@ final class UsageTracker: ObservableObject {
                                recognized: recognized)
         case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom, .local, .appleOnDevice:
             guard let u = json["usage"] as? [String: Any] else { return nil }
+            // Plan GC: the OpenAI API's Responses route reports the Responses shape.
+            if u["input_tokens"] != nil && u["prompt_tokens"] == nil {
+                return responsesUsage(u)
+            }
             let recognized = u["prompt_tokens"] != nil || u["completion_tokens"] != nil
             // `prompt_tokens` includes `prompt_tokens_details.cached_tokens` (Plan GB P0).
             let cachedRead = (u["prompt_tokens_details"] as? [String: Any]).map { intValue($0["cached_tokens"]) } ?? 0
@@ -130,6 +128,23 @@ final class UsageTracker: ObservableObject {
                                cacheReadTokens: cachedRead,
                                recognized: recognized)
         }
+    }
+
+    /// The Responses usage shape (the ChatGPT backend, and the OpenAI API's `/v1/responses`).
+    /// `input_tokens` **includes** both the cached share (`input_tokens_details.cached_tokens`,
+    /// Plan GB P0) and, on GPT-5.6+, the cache-write share (`cache_write_tokens`, Plan GC), so
+    /// both are subtracted and priced on their own — nothing is counted twice. Reasoning tokens
+    /// sit inside `output_tokens` and bill as output.
+    private nonisolated static func responsesUsage(_ u: [String: Any]) -> ParsedUsage {
+        let recognized = u["input_tokens"] != nil || u["output_tokens"] != nil
+        let details = u["input_tokens_details"] as? [String: Any]
+        let cached = details.map { intValue($0["cached_tokens"]) } ?? 0
+        let cacheWrite = details.map { intValue($0["cache_write_tokens"]) } ?? 0
+        return ParsedUsage(tokensIn: max(0, intValue(u["input_tokens"]) - cached - cacheWrite),
+                           tokensOut: intValue(u["output_tokens"]),
+                           cacheWriteTokens: cacheWrite,
+                           cacheReadTokens: cached,
+                           recognized: recognized)
     }
 
     /// Back-compat convenience: just the `(tokensIn, tokensOut)` pair.

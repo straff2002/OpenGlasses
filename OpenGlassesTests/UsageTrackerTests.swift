@@ -240,4 +240,58 @@ final class UsageTrackerTests: XCTestCase {
         XCTAssertEqual(r.totalTokensIn, 100)
         XCTAssertEqual(try XCTUnwrap(r.totalUSD), 0.20, accuracy: 1e-9)
     }
+
+    // MARK: - Plan GC: Responses usage on the API route
+
+    func testParseUsageResponsesShapeUnderOpenAI() throws {
+        let json: [String: Any] = ["usage": [
+            "input_tokens": 1_000,
+            "input_tokens_details": ["cached_tokens": 400, "cache_write_tokens": 100],
+            "output_tokens": 300,
+            "output_tokens_details": ["reasoning_tokens": 250],
+        ]]
+        let u = try XCTUnwrap(UsageTracker.parseUsage(provider: .openai, json: json))
+        XCTAssertEqual(u, UsageTracker.ParsedUsage(tokensIn: 500, tokensOut: 300, cacheWriteTokens: 100,
+                                                   cacheReadTokens: 400, recognized: true))
+    }
+
+    func testParseUsageResponsesShapeWithoutCacheWrite() throws {
+        let json: [String: Any] = ["usage": ["input_tokens": 800, "input_tokens_details": ["cached_tokens": 200],
+                                             "output_tokens": 50]]
+        let u = try XCTUnwrap(UsageTracker.parseUsage(provider: .openai, json: json))
+        XCTAssertEqual(u.tokensIn, 600)
+        XCTAssertEqual(u.cacheReadTokens, 200)
+        XCTAssertEqual(u.cacheWriteTokens, 0)
+        XCTAssertTrue(u.recognized)
+    }
+
+    func testParseUsageChatShapeUnderOpenAIIsUnchanged() throws {
+        let json: [String: Any] = ["usage": ["prompt_tokens": 1_000, "completion_tokens": 20,
+                                             "prompt_tokens_details": ["cached_tokens": 300]]]
+        let u = try XCTUnwrap(UsageTracker.parseUsage(provider: .openai, json: json))
+        XCTAssertEqual(u, UsageTracker.ParsedUsage(tokensIn: 700, tokensOut: 20, cacheWriteTokens: 0,
+                                                   cacheReadTokens: 300, recognized: true))
+    }
+
+    func testParseUsageChatGPTCacheWrite() throws {
+        let json: [String: Any] = ["usage": ["input_tokens": 1_000, "output_tokens": 10,
+                                             "input_tokens_details": ["cached_tokens": 400, "cache_write_tokens": 100]]]
+        let u = try XCTUnwrap(UsageTracker.parseUsage(provider: .chatgpt, json: json))
+        XCTAssertEqual(u.tokensIn, 500)
+        XCTAssertEqual(u.cacheWriteTokens, 100)
+        XCTAssertEqual(u.cacheReadTokens, 400)
+    }
+
+    func testCacheWritePricedAtOnePointTwoFiveInputOnGPT56Sol() throws {
+        // 1,000 input of which 400 cached and 100 cache-write on gpt-5.6-sol ($4 in, $0.40 cached,
+        // $5 cache write per 1M — the provider's price list, 2026-09-30): 500×4 + 400×0.40 + 100×5.
+        let json: [String: Any] = ["usage": ["input_tokens": 1_000, "output_tokens": 0,
+                                             "input_tokens_details": ["cached_tokens": 400, "cache_write_tokens": 100]]]
+        let u = try XCTUnwrap(UsageTracker.parseUsage(provider: .openai, json: json))
+        let cost = try XCTUnwrap(ModelPricing.estimate(model: "gpt-5.6-sol", tokensIn: u.tokensIn, tokensOut: u.tokensOut,
+                                                       cacheWriteTokens: u.cacheWriteTokens,
+                                                       cacheReadTokens: u.cacheReadTokens))
+        let expected: Double = (500.0 * 4.0 + 400.0 * 0.40 + 100.0 * 5.0) / 1_000_000.0
+        XCTAssertEqual(cost, expected, accuracy: 1e-12)
+    }
 }

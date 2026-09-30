@@ -92,7 +92,10 @@ enum ModelPricing {
     /// a cache *write* costs ≈1.25× input, a cache *read* ≈0.1×. Named (not inlined)
     /// so the cost math isn't magic, and calibrated to Anthropic — the dominant cache
     /// consumer post-BF `cache_control`. Other providers' read discounts differ; a read
-    /// billed at 0.1× is a safe floor (never overstates cost).
+    /// billed at 0.1× is a safe floor (never overstates cost). The write multiplier also
+    /// matches OpenAI's GPT-5.6+ cache writes (1.25× input, `cache_write_tokens`, read off the
+    /// provider's prompt-caching guide and price list 2026-09-30, Plan GC), so every row prices
+    /// writes the same way and no OpenAI row needs its own cache-write rate.
     static let cacheWriteMultiplier = 1.25
     static let cacheReadMultiplier = 0.10
 
