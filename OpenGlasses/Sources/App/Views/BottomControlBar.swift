@@ -611,7 +611,7 @@ struct BottomControlBar: View {
         } else if !appState.isConnected && !Config.silentMode {
             // Disconnected and not in Push-to-Talk — one tap to reconnect + start listening
             ActionCapsule(
-                icon: "OpenGlassesLogo",
+                icon: "AvenkinMark",
                 label: "Connect & Talk",
                 color: accent
             ) {
@@ -642,7 +642,7 @@ struct BottomControlBar: View {
     @ViewBuilder
     private var cameraButton: some View {
         if !appState.isConnected {
-            BarButton(icon: "OpenGlassesLogo", label: "Connect") {
+            BarButton(icon: "AvenkinMark", label: "Connect") {
                 Task { await appState.glassesService.connect() }
             }
         } else if isRealtime {
@@ -738,7 +738,7 @@ private struct ActionCapsule: View {
                     // stop-red or a pale accent preset stays legible whether the
                     // capsule is washed (active) or bare glass (idle).
                     Group {
-                        if icon == "OpenGlassesLogo" {
+                        if icon == "AvenkinMark" {
                             LogoIcon(size: glyph)
                         } else {
                             Image(systemName: icon)
@@ -863,7 +863,7 @@ private struct BarButton: View {
                     if isBusy {
                         ProgressView()
                             .scaleEffect(0.7)
-                    } else if icon == "OpenGlassesLogo" {
+                    } else if icon == "AvenkinMark" {
                         LogoIcon(size: glyph)
                             .foregroundStyle(foreground)
                     } else if let assetIcon {

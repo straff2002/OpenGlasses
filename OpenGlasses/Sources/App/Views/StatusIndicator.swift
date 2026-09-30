@@ -39,7 +39,7 @@ struct StatusIndicator: View {
                         .frame(width: statusTile, height: statusTile)
 
                     Group {
-                        if iconName == "OpenGlassesLogo" {
+                        if iconName == "AvenkinMark" {
                             LogoIcon(size: statusGlyph)
                         } else {
                             Image(systemName: iconName)
@@ -293,7 +293,7 @@ struct StatusIndicator: View {
                     .frame(width: statusDot, height: statusDot)
                     .accessibilityHidden(true)
                 Group {
-                    if icon == "OpenGlassesLogo" {
+                    if icon == "AvenkinMark" {
                         LogoIcon(size: pillGlyph)
                     } else {
                         Image(systemName: icon)
@@ -333,7 +333,7 @@ struct StatusIndicator: View {
 
     private var iconName: String {
         if !appState.isConnected && !phoneIsTheDevice {
-            return "OpenGlassesLogo"
+            return "AvenkinMark"
         }
 
         if appState.glassesIdle {
@@ -343,23 +343,23 @@ struct StatusIndicator: View {
         if isGemini {
             switch session.connectionState {
             case .ready where session.isModelSpeaking: return "speaker.wave.3.fill"
-            case .ready: return "OpenGlassesLogo"
+            case .ready: return "AvenkinMark"
             case .connecting, .settingUp: return "antenna.radiowaves.left.and.right"
             case .error: return "exclamationmark.triangle.fill"
-            case .disconnected: return "OpenGlassesLogo"
+            case .disconnected: return "AvenkinMark"
             }
         } else if isOpenAI {
             switch openAISession.connectionState {
             case .ready where openAISession.isModelSpeaking: return "speaker.wave.3.fill"
-            case .ready: return "OpenGlassesLogo"
+            case .ready: return "AvenkinMark"
             case .connecting, .settingUp: return "antenna.radiowaves.left.and.right"
             case .error: return "exclamationmark.triangle.fill"
-            case .disconnected: return "OpenGlassesLogo"
+            case .disconnected: return "AvenkinMark"
             }
         } else {
             if appState.isListening { return "ear.fill" }
             if appState.speechService.isSpeaking { return "speaker.wave.3.fill" }
-            return "OpenGlassesLogo"
+            return "AvenkinMark"
         }
     }
 

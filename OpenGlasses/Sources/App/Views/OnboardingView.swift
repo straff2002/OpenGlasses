@@ -1285,7 +1285,7 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private func permissionIcon(_ icon: String) -> some View {
-        if icon == "OpenGlassesLogo" {
+        if icon == "AvenkinMark" {
             RoundedRectangle(cornerRadius: iconTile * 0.28, style: .continuous)
                 .fill(accent.opacity(OGTheme.Opacity.accentFill))
                 .frame(width: iconTile, height: iconTile)
@@ -1418,7 +1418,7 @@ struct OnboardingView: View {
 
                         // Meta AI integration
                         permissionRow(
-                            icon: "OpenGlassesLogo",
+                            icon: "AvenkinMark",
                             title: "Meta AI Integration",
                             detail: "Links Avenkin to your glasses via the Meta AI app",
                             granted: metaRegistered

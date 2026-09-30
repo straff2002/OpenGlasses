@@ -272,7 +272,7 @@ final class BrandNameGuardTests: XCTestCase {
         ]
 
         /// Offsets of "glasses" standing as a word (any case) inside `range`. Glued to an
-        /// identifier — `OpenGlassesLogo`, `eyeglasses`, `connect_glasses` — it is a name or a key,
+        /// identifier — `AvenkinMark`, `eyeglasses`, `connect_glasses` — it is a name or a key,
         /// not copy.
         static func wordOffsets(in bytes: [UInt8], range: Range<Int>) -> [Int] {
             let word = Array("glasses".utf8)

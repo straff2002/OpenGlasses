@@ -41,7 +41,7 @@ struct LaunchScreen: View {
                         )
 
                     // Vector logo — template-rendered so it picks up the coral tint.
-                    Image("OpenGlassesLogo")
+                    Image("AvenkinMark")
                         .renderingMode(.template)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
