@@ -37,7 +37,7 @@ Spotify gets nothing useful.
    Spotify app installed and authorises with the same Client ID, so it is bound by the same policy
    and the same user allowlist.
 
-**Consequence for a public App Store release:** OpenGlasses cannot integrate the Spotify Platform
+**Consequence for a public App Store release:** Avenkin cannot integrate the Spotify Platform
 (Web API or App Remote) for voice control — the use case itself is prohibited, independently of
 the 5-user cap. Building it anyway would put the Client ID, and plausibly the App Store listing, at
 risk. **Recommendation:** do not ship a Spotify Platform integration; ship the provider layer below,
@@ -52,12 +52,12 @@ bind the add-on author the same way. The app will not ship or promote one.
 
 - A **default music provider** setting: Apple Music (today's behaviour) or a **Home Assistant media
   player** (which may be a Spotify Connect speaker, a Sonos, or HA's own Spotify entity — HA holds
-  its own Spotify credentials under its own arrangement; OpenGlasses never calls Spotify).
+  its own Spotify credentials under its own arrangement; Avenkin never calls Spotify).
 - "Play / pause / skip / previous / volume" go to the default provider; "on the kitchen speaker"
   picks a specific HA media player.
 - "What's playing?" answers from the provider that is playing (Apple Music now-playing item; HA's
   `media_title`/`media_artist`), and says honestly when it cannot see another app's playback.
-- When the wearer names Spotify and no route exists, one clear sentence: OpenGlasses can't control
+- When the wearer names Spotify and no route exists, one clear sentence: Avenkin can't control
   the Spotify app directly; the glasses' temple controls still work on whatever is playing, and a
   Home Assistant speaker can be set as the music provider. Copy never names plan letters.
 

@@ -93,7 +93,7 @@ Anything marked **(unverified)** needs a device check in P3.
   `RSAPublicKeyComponents` (parsed from PKCS#1 DER by a tiny ASN.1 reader), checksum check,
   hex-case and whitespace tolerant.
 - `SelfSignedCertificateBuilder` — DER for a minimal X.509 v3 certificate (RSA-2048, SHA-256 with
-  RSA, 10-year validity, CN "OpenGlasses Remote"); signing is injected so tests use a fixed key.
+  RSA, 10-year validity, CN "Avenkin Remote"); signing is injected so tests use a fixed key.
 - `TVSessionStateMachine` — pairing and remote handshakes as states and events (configure → active →
   ready; ping → pong; idle timeout; `remote_error` → failed), producing messages to send.
 - `TVKeyMap` — spoken intents → key codes. From the reference proto: POWER 26, HOME 3, BACK 4,
