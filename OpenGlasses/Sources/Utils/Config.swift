@@ -542,6 +542,13 @@ struct Config {
 
     static func setNarrateModelSwitchesEnabled(_ enabled: Bool) { narrateModelSwitchesEnabled = enabled }
 
+    /// "Keep talking without signal" (Plan GE): when the connection goes, the conversation carries
+    /// on on the phone — on-device model, offline tool set — and moves back to the cloud on its own
+    /// once a stable connection returns. Only takes effect when an on-device model is installed
+    /// (`ConnectivityHandoffController.isEffectivelyEnabled`); inert under medical local-only, which
+    /// never uses the cloud in the first place. Default on.
+    @UserDefaultsBacked("offlineHandoffEnabled", default: true) static var offlineHandoffEnabled: Bool
+
     /// Whether explicit multiple-choice replies ("A) …, B) …") render as band-selectable
     /// HUD buttons (Plan CG). Detection is deliberately conservative; default on.
     @UserDefaultsBacked("hudChoiceButtonsEnabled", default: true) static var hudChoiceButtonsEnabled: Bool

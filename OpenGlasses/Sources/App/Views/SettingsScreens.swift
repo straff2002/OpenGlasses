@@ -353,6 +353,8 @@ struct AIPersonalitySettingsScreen: View {
                     info: "Sends the text of your turns to your configured AI provider so it can spot relationships the on-device patterns miss (who works where, who lives where, who knows whom). What it finds is filed as unconfirmed until you say it again in another conversation. Needs Agentic Features on and a cloud model \u{2014} it never runs in HIPAA mode, and never on an on-device model. Off by default."
                 )
 
+                OfflineHandoffSettingsRow(appState: appState)
+
                 NavigationLink {
                     SmartRoutingView(
                         autoModelRoutingEnabled: $autoModelRoutingEnabled,

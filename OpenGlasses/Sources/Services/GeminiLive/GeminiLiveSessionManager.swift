@@ -69,6 +69,10 @@ class GeminiLiveSessionManager: ObservableObject {
     /// fallback for every wearer who has not selected the Blind Assistant preset, and two voices
     /// saying the same thing is the failure the return value exists to prevent.
     var onLifecycle: ((AudibleLifecycleCoordinator.Signal) -> Bool)?
+    /// Plan GE P3: the conversation carried on on the phone while the signal was gone; the next
+    /// start opens with this handover block (``LiveContextHandover``) so the session picks up where
+    /// the phone left off. Consumed by that start.
+    var pendingResumeContext: String?
 
     // Camera frame source — set by AppState to the existing CameraService's periodic captures
     var onRequestVideoFrame: (() async -> UIImage?)?
@@ -180,7 +184,9 @@ class GeminiLiveSessionManager: ObservableObject {
         // Configure Gemini with system instruction, vision context, location, and tools.
         // Only declare OpenClaw tools if the gateway is actually connected (prevents Gemini
         // from attempting tool calls that will fail when gateway is unreachable).
-        let systemInstruction = buildSystemInstruction()
+        let resumeContext = pendingResumeContext
+        pendingResumeContext = nil
+        let systemInstruction = buildSystemInstruction(recoveredContext: resumeContext)
         // The instruction embeds location, the mode prefix and the live contexts (vault, visual
         // state, project, reading) — its length is what a context-overflow report needs, and all
         // of it that may be persisted. Wearer memory is *not* among them; see the record at the
