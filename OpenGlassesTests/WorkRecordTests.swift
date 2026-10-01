@@ -706,9 +706,11 @@ final class WorkRecordTests: XCTestCase {
 
     func testTheQueueCarriesTheRecordAndEachPartsRequest() async throws {
         let queuePath = tempRoot.appendingPathComponent("queue.sqlite")
-        let queue = OfflineQueue(path: queuePath)
+        // Declared before the queue so it runs after the queue (and the service holding it) is
+        // released and its connection closed.
         defer { for suffix in ["", "-wal", "-shm"] {
             try? FileManager.default.removeItem(at: URL(fileURLWithPath: queuePath.path + suffix)) } }
+        let queue = OfflineQueue(path: queuePath)
 
         let service = try lennoxSession(jobReference: "WO-4471")
         service.offlineQueue = queue

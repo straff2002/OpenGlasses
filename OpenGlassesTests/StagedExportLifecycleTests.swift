@@ -218,6 +218,8 @@ final class AgentArchiveExportLifecycleTests: XCTestCase {
     }
 
     override func tearDown() {
+        // Release the store, closing its SQLite connection, before its files are unlinked.
+        memory = nil
         try? FileManager.default.removeItem(at: workspace)
         super.tearDown()
     }

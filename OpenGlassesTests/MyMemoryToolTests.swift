@@ -30,6 +30,11 @@ final class MyMemoryToolTests: XCTestCase {
     }
 
     override func tearDown() {
+        // Release the stores (and the services holding them), closing their SQLite connections,
+        // before their files are unlinked.
+        services = nil
+        memory = nil
+        brain = nil
         try? FileManager.default.removeItem(at: dir)
         super.tearDown()
     }
