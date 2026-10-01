@@ -320,8 +320,14 @@ class CameraService: ObservableObject, FilteredStillProviding {
             }
             lastCaptureSource = .phone
         }
-        saveToPhotoLibrary(data)
+        captureLibrarySink(data)
         return data
+    }
+
+    /// Where `capturePhoto()` files each capture: the Photos album. Replaceable for tests only — a
+    /// decodable image reaching the album asks the simulator for library access nobody can grant.
+    lazy var captureLibrarySink: (Data) -> Void = { [weak self] data in
+        self?.saveToPhotoLibrary(data)
     }
 
     /// Plan GV: the phone camera on screen, which a tool's still waits on when no glasses camera
