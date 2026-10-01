@@ -97,20 +97,29 @@ enum MicRoutePolicy {
         outputs.contains(.builtInSpeaker)
     }
 
-    /// Category options per route. The phone route deliberately excludes
-    /// every Bluetooth option — with them present, iOS re-routes input to
-    /// the glasses on its own and the "phone mic" choice silently stops
-    /// being true.
+    /// Category options per route. The phone route excludes the hands-free option
+    /// (`.allowBluetoothHFP`) — with it present, iOS re-routes input to the glasses or AirPods on
+    /// its own and the "phone mic" choice silently stops being true. It keeps
+    /// `.allowBluetoothA2DP`: A2DP is output only, so it can never move the mic, and without it a
+    /// conversation recorded on the phone mic pulled the reply off the wearer's AirPods onto the
+    /// loudspeaker.
     static func categoryOptions(for route: MicRoute, mixWithOthers: Bool) -> AVAudioSession.CategoryOptions {
-        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
+        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
         if route != .phone {
             options.insert(.allowBluetoothHFP)
-            options.insert(.allowBluetoothA2DP)
         }
         if mixWithOthers {
             options.insert(.mixWithOthers)
         }
         return options
+    }
+
+    /// Whether output has to be forced to the loudspeaker: only when the system would otherwise
+    /// play through the earpiece (the receiver) or has no output at all. Headphones, AirPods,
+    /// glasses, a car or an AirPlay speaker are where the person is listening — forcing the
+    /// loudspeaker over them is what sent replies out of the phone while AirPods were in.
+    static func shouldOverrideToSpeaker(outputs: [AVAudioSession.Port]) -> Bool {
+        outputs.isEmpty || outputs.allSatisfy { $0 == .builtInReceiver }
     }
 
     /// Plan GU §1 — the idle listener on the **phone** mic, whatever the conversation route is.

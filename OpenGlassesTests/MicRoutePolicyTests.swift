@@ -6,15 +6,27 @@ final class MicRoutePolicyTests: XCTestCase {
 
     // MARK: - Category options
 
-    func testPhoneRouteExcludesAllBluetoothOptions() {
-        // With any Bluetooth option present, iOS re-routes input to the
-        // glasses on its own — "phone mic" must mean phone mic.
+    func testPhoneRouteExcludesHandsFreeButKeepsBluetoothOutput() {
+        // With the hands-free option present, iOS re-routes input to the glasses or AirPods on
+        // its own — "phone mic" must mean phone mic. A2DP is output only, so it stays: a reply
+        // recorded on the phone mic still plays in the wearer's AirPods.
         for mix in [true, false] {
             let options = MicRoutePolicy.categoryOptions(for: .phone, mixWithOthers: mix)
             XCTAssertFalse(options.contains(.allowBluetoothHFP))
-            XCTAssertFalse(options.contains(.allowBluetoothA2DP))
+            XCTAssertTrue(options.contains(.allowBluetoothA2DP))
             XCTAssertTrue(options.contains(.defaultToSpeaker))
             XCTAssertEqual(options.contains(.mixWithOthers), mix)
+        }
+    }
+
+    func testLoudspeakerIsForcedOnlyOverTheEarpiece() {
+        XCTAssertTrue(MicRoutePolicy.shouldOverrideToSpeaker(outputs: []))
+        XCTAssertTrue(MicRoutePolicy.shouldOverrideToSpeaker(outputs: [.builtInReceiver]))
+        XCTAssertFalse(MicRoutePolicy.shouldOverrideToSpeaker(outputs: [.builtInSpeaker]))
+        for external: AVAudioSession.Port in [.bluetoothA2DP, .bluetoothHFP, .bluetoothLE,
+                                              .headphones, .carAudio, .airPlay, .usbAudio] {
+            XCTAssertFalse(MicRoutePolicy.shouldOverrideToSpeaker(outputs: [external]),
+                           "a reply must stay on \(external.rawValue), glasses connected or not")
         }
     }
 
