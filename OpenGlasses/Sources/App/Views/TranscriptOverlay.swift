@@ -117,6 +117,10 @@ struct SessionNoticeOverlay: View {
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
 
     @State private var expandedCard: ExpandedCard?
+    /// The exact text the wearer last dismissed. Keyed by text rather than by source, so a dismiss
+    /// never depends on which of the three channels below produced it — and a *different* failure
+    /// (even from the same source) still shows, because it is not the string that was dismissed.
+    @State private var dismissedError: String?
 
     private var isGemini: Bool { appState.currentMode == .geminiLive }
     private var isOpenAI: Bool { appState.currentMode == .openaiRealtime }
@@ -126,7 +130,7 @@ struct SessionNoticeOverlay: View {
     /// the camera off.
     private var noticeText: String? { notices.current?.text }
 
-    private var errorText: String? {
+    private var rawErrorText: String? {
         // The session's error is the more specific one, but its *absence* must not hide an
         // app-level failure: the camera button only exists in a live session and reports there,
         // so returning session-only made "start streaming" fail silently (device-traced).
@@ -137,11 +141,20 @@ struct SessionNoticeOverlay: View {
         return appState.errorMessage ?? noticeText
     }
 
+    /// `rawErrorText`, minus whatever the wearer already dismissed. A glasses-connection failure
+    /// also clears itself the moment the link comes up (`AppState.errorMessageIsGlassesConnection`);
+    /// this is the manual half of that hygiene — the wearer should not be stuck looking at a card
+    /// they have already read and closed.
+    private var errorText: String? {
+        guard let rawErrorText, rawErrorText != dismissedError else { return nil }
+        return rawErrorText
+    }
+
     var body: some View {
         Group {
             if let error = errorText, !error.isEmpty {
                 TranscriptCard(label: "Error", text: error, accent: OGTheme.error,
-                               style: .error, onGlass: true) {
+                               style: .error, onGlass: true, onDismiss: { dismissedError = error }) {
                     // Plan GB P4: an HTTP failure or a recorder error is the app talking, not the
                     // model — it is never badged or disclaimed as AI-generated.
                     expandedCard = ExpandedCard(label: "Error", text: error, accent: OGTheme.error,
@@ -175,6 +188,9 @@ private struct TranscriptCard: View {
     let accent: Color
     let style: Style
     let onGlass: Bool
+    /// Only the error card passes one — a transcript is never "dismissed", it is the record of what
+    /// was said.
+    var onDismiss: (() -> Void)? = nil
     let onTap: () -> Void
 
     enum Style {
@@ -224,57 +240,81 @@ private struct TranscriptCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                if style == .ai {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.bold))
+        // `ZStack` rather than one more view in the `VStack`: the dismiss button has to sit
+        // *outside* the card's combined accessibility element below, or `.combine` absorbs its
+        // button trait into the card's and VoiceOver loses the ability to dismiss it separately
+        // from opening it.
+        ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    if style == .ai {
+                        Image(systemName: "sparkles")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                            .accessibilityHidden(true)
+                    }
+                    Text(label)
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-                        .accessibilityHidden(true)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                    if style == .ai {
+                        Text("AI")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(OGTheme.secondaryLabel)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    // Room for the dismiss button overlaid in the corner, so the label never sits
+                    // under it.
+                    if onDismiss != nil { Spacer(minLength: 20) }
                 }
-                Text(label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-                if style == .ai {
-                    Text("AI")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(OGTheme.secondaryLabel)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                }
-            }
 
-            Text(text)
-                .font(style.textStyle)
-                .foregroundStyle(style.textColor)
-                .lineLimit(4)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, style.verticalPadding)
-        .background {
-            if onGlass {
-                Color.clear.glassEffect(in: .rect(cornerRadius: 12))
-            } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(OGTheme.card)
+                Text(text)
+                    .font(style.textStyle)
+                    .foregroundStyle(style.textColor)
+                    .lineLimit(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, style.verticalPadding)
+            .background {
+                if onGlass {
+                    Color.clear.glassEffect(in: .rect(cornerRadius: 12))
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(OGTheme.card)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
+            // `children: .combine` then `.accessibilityLabel` *replaces* what was combined, so the
+            // card announced who was talking and never what they said — the transcript, the one
+            // thing on this card worth reading, was unreachable. The speaker is the name, the words
+            // are the value; the card is also only tappable through a gesture, which leaves no trait
+            // behind to say it can be opened.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(style == .ai ? "AI-generated response from \(label)" : label)
+            .accessibilityValue(text)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Double-tap to see the full response.")
+
+            if let onDismiss {
+                // A sibling of the card's own accessibility element, not a child of it — see the
+                // `ZStack` comment above.
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(OGTheme.secondaryLabel)
+                        .padding(10)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss error")
+                .accessibilityHint("Double-tap to clear this error.")
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-        // `children: .combine` then `.accessibilityLabel` *replaces* what was combined, so the
-        // card announced who was talking and never what they said — the transcript, the one
-        // thing on this card worth reading, was unreachable. The speaker is the name, the words
-        // are the value; the card is also only tappable through a gesture, which leaves no trait
-        // behind to say it can be opened.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(style == .ai ? "AI-generated response from \(label)" : label)
-        .accessibilityValue(text)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Double-tap to see the full response.")
     }
 }
 
