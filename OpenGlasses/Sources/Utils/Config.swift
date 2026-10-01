@@ -3429,6 +3429,60 @@ struct Config {
         setMicRoute(enabled ? .glasses : .phone)
     }
 
+    // MARK: - Wake-word audio (Plan GU)
+
+    /// Where the idle wake-word listener waits. `micRoute` stays the conversation mic. Default
+    /// iPhone: media on Bluetooth stays in full quality while the app waits, and the glasses'
+    /// radio is spared. The setting is the rollback.
+    static var wakeListenMic: WakeListenMic {
+        UserDefaults.standard.string(forKey: "wakeListenMic").flatMap(WakeListenMic.init(rawValue:)) ?? .iPhone
+    }
+
+    static func setWakeListenMic(_ mic: WakeListenMic) {
+        UserDefaults.standard.set(mic.rawValue, forKey: "wakeListenMic")
+    }
+
+    /// How replies are played on a Bluetooth conversation mic. Default call quality (the link held,
+    /// always interruptible) until the switch is measured on device.
+    static var replyAudioMode: ReplyAudioMode {
+        UserDefaults.standard.string(forKey: "replyAudioMode").flatMap(ReplyAudioMode.init(rawValue:)) ?? .callQuality
+    }
+
+    static func setReplyAudioMode(_ mode: ReplyAudioMode) {
+        UserDefaults.standard.set(mode.rawValue, forKey: "replyAudioMode")
+    }
+
+    /// "Switch time limit" for Automatic reply audio, seconds, clamped to 0.3–2.0. Default 0.7.
+    static var replySwitchTimeLimit: Double {
+        guard UserDefaults.standard.object(forKey: "replySwitchTimeLimit") != nil else {
+            return ReplyRoutePolicy.defaultThreshold
+        }
+        return ReplyRoutePolicy.clampedThreshold(UserDefaults.standard.double(forKey: "replySwitchTimeLimit"))
+    }
+
+    static func setReplySwitchTimeLimit(_ seconds: Double) {
+        UserDefaults.standard.set(ReplyRoutePolicy.clampedThreshold(seconds), forKey: "replySwitchTimeLimit")
+    }
+
+    /// The wake-word speech gate (full recognition only while somebody talks). Off until P2 shows
+    /// no missed wakes; a Developer panel toggle.
+    @UserDefaultsBacked("wakeSpeechGateEnabled", default: false) static var wakeSpeechGateEnabled: Bool
+
+    /// Measured conversation-mic switch times per device (opaque key), for Automatic reply audio.
+    static var micSwitchTimes: SwitchTimeLedger {
+        guard let data = UserDefaults.standard.data(forKey: "micSwitchTimes"),
+              let ledger = try? JSONDecoder().decode(SwitchTimeLedger.self, from: data) else {
+            return SwitchTimeLedger()
+        }
+        return ledger
+    }
+
+    static func setMicSwitchTimes(_ ledger: SwitchTimeLedger) {
+        if let data = try? JSONEncoder().encode(ledger) {
+            UserDefaults.standard.set(data, forKey: "micSwitchTimes")
+        }
+    }
+
     /// Use on-device speech recognition for the always-on wake-word listener (Plan BE). Default on:
     /// short-phrase spotting doesn't need the server, and streaming mic audio to Apple 24/7 is the
     /// biggest steady battery/data drain. Real queries still use server recognition.

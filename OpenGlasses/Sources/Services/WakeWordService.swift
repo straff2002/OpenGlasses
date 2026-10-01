@@ -69,6 +69,57 @@ class WakeWordService: NSObject, ObservableObject {
     /// triggers must not re-open the mic the wearer just closed with Disconnect.
     var glassesStoodDown: () -> Bool = { false }
 
+    // MARK: - Plan GU: idle plan, turn hand-off, hand-back
+
+    /// Everything `WakeListenPolicy` reads that the service cannot see for itself. `AppState`
+    /// injects the live answer (listening toggle, mute, stand-down, power posture); the default
+    /// reads the settings so the service works standalone and in tests. `carPlayMode`,
+    /// `foreignOwner` and the consumer flag are filled in by the service.
+    var wakeListenInputs: @MainActor () -> WakeListenPolicy.Inputs = {
+        WakeListenPolicy.Inputs(listeningEnabled: true, silentMode: Config.silentMode,
+                                wakeListenMic: Config.wakeListenMic, micRoute: Config.micRoute,
+                                speechGateEnabled: Config.wakeSpeechGateEnabled)
+    }
+
+    /// The glasses facts a turn's mic choice reads (`TurnMicHandoff.target`): stood down, and worn
+    /// (nil when unknown). Injected by `AppState`.
+    var glassesTurnState: @MainActor () -> (stoodDown: Bool, worn: Bool?) = { (false, nil) }
+
+    /// The session coordinator. A closure so tests inject a fresh one over a fake session and the
+    /// shared one is never touched there.
+    var sessionCoordinator: () -> AudioSessionCoordinator = { .shared }
+
+    /// The idle plan the session was last configured for.
+    private(set) var appliedIdlePlan: IdleAudioPlan?
+    /// Our own route switches, so their route-change notifications are not taken for disruptions.
+    private var routeSwitch = RouteSwitchGeneration()
+    /// Whether the engine running now was started for the turn in progress.
+    private var turnEngine = TurnEngineOwnership()
+    /// The mic the current conversation records on, once its hand-off is done.
+    private(set) var turnMicRoute: MicRoute?
+    /// A turn's hand-off is rebuilding the engine itself; the configuration-change observer stands
+    /// back while it does.
+    private var handOffInProgress = false
+    /// The end-of-conversation release is running and owns the hand-back.
+    private var conversationReleaseInProgress = false
+    /// A reply released the hands-free link (Reply audio: full quality); the next follow-up takes
+    /// it back before it records.
+    private(set) var callLinkReleasedForReply = false
+    /// Consecutive live buffers, counted on the render thread for the hand-off.
+    private let liveFrames = LiveFrameCounter()
+    /// Observer for `AVAudioEngineConfigurationChange` on the current engine.
+    private var engineConfigObserver: NSObjectProtocol?
+    /// Speech-gate counts for the hourly log line.
+    private var gateOpens = 0
+    private var gateCloses = 0
+    private var lastGateReport = Date()
+
+    /// Test seams for the explicit-turn engine (Plan GU P0 `ExplicitTurnEngineTests`).
+    /// Replaces the consumer-engine start (permission + session + engine).
+    var consumerEngineStartOverride: (@MainActor () async throws -> Void)?
+    /// Replaces the push-to-talk / listening-toggle read that picks a turn's engine source.
+    var turnListeningOverride: (@MainActor () -> (silentMode: Bool, listeningEnabled: Bool))?
+
     /// The gate every restart the service initiates on its own passes: the master listening
     /// toggle, and no glasses stand-down. Explicit `startListening()` callers decide for themselves.
     func mayAutoRestart() -> Bool {
@@ -156,7 +207,9 @@ class WakeWordService: NSObject, ObservableObject {
     /// Our claim on the shared session with the coordinator. Wake word is the always-on baseline
     /// owner: it self-activates with its tuned config and registers ownership so a live session
     /// (Gemini/OpenAI) supersedes it cleanly, and its release deactivates only if still current.
-    private var sessionLease: AudioSessionLease?
+    ///
+    /// Internal (not private) so a test can hand the service a lease from a fake coordinator.
+    var sessionLease: AudioSessionLease?
     /// When true, don't start continuous wake word listening — only listen when explicitly triggered.
     /// Set to true when CarPlay is active so we don't hold a recording session open.
     var carPlayMode: Bool = false
@@ -225,6 +278,10 @@ class WakeWordService: NSObject, ObservableObject {
     /// whole interaction and only resume after everything finishes.
     private var pauseHoldCount: Int = 0
 
+    /// Plan GU §2 — the first hold also asks for the **conversation** mic: non-mixable (other audio
+    /// pauses, as before), the conversation route's options, and that route's port preferred. The
+    /// route chosen here is provisional; `handOffMic()` waits for it to be live and falls back to
+    /// the phone when it is not.
     func pauseOtherAudio() async {
         guard !carPlayMode else { return }
         // Never interrupt an active phone or FaceTime call
@@ -241,29 +298,62 @@ class WakeWordService: NSObject, ObservableObject {
             PrivacyLog.audio(.wakeWord, .otherAudioHeld, count: pauseHoldCount)
             return
         }
-        // Omitting mixWithOthers/duckOthers causes iOS to interrupt (pause) other audio apps
-        let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: false)
-        // .default (NOT .measurement): .measurement disables system audio processing/gain,
-        // which makes TTS playback extremely quiet on the iPhone speaker. The wake-word /
-        // command capture works fine in .default (see resumeOtherAudio, which already does this).
-        // BJ PR2: the blocking setCategory→setActive runs off-main through the coordinator's
-        // `reconfigure` (no deactivate-first, no fallback — the hand-tuned options are preserved).
-        try? await AudioSessionCoordinator.shared.reconfigure(
-            category: .playAndRecord, mode: .default, options: options)
-        // Cheap, non-blocking route hints stay inline (they are not the TPC hang source — the
-        // blocking activation above is what moved off-main).
+        await applyConversationRoute()
         let session = AVAudioSession.sharedInstance()
-        let onBluetooth = session.currentRoute.outputs.contains {
-            [.bluetoothHFP, .bluetoothA2DP, .bluetoothLE].contains($0.portType)
-        }
-        if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
-        preferConfiguredMicIfAvailable(session)
         PrivacyLog.audio(.wakeWord, .otherAudioPaused,
                          route: PrivacyToken(session.currentRoute.outputs.first?.portType.rawValue ?? "none"))
     }
 
+    /// Reconfigure for the conversation mic and prefer its port. Shared by the first pause hold and
+    /// by a follow-up taking the hands-free link back after a full-quality reply.
+    private func applyConversationRoute() async {
+        if turnSwitchStartedAt == nil { turnSwitchStartedAt = Date() }
+        // The engine will reconfigure under this switch; the turn's hand-off rebuilds it on the
+        // live input, so the configuration-change observer stands back meanwhile.
+        handOffInProgress = true
+        defer { handOffInProgress = false }
+        let generation = routeSwitch.begin()
+        defer { routeSwitch.end(generation, at: Date()) }
+        let configured = wakeListenInputs().micRoute
+        let glasses = glassesTurnState()
+        // First the route the wearer configured (unless the glasses are stood down or off the
+        // face). Whether its port is really there can only be read once the category allows it —
+        // a phone-mic idle session lists no hands-free inputs at all.
+        let wanted = TurnMicHandoff.target(micRoute: configured, glassesStoodDown: glasses.stoodDown,
+                                           glassesWorn: glasses.worn, routePortAvailable: true)
+        // Omitting mixWithOthers/duckOthers causes iOS to interrupt (pause) other audio apps.
+        // .default (NOT .measurement): .measurement disables system audio processing/gain, which
+        // makes TTS playback extremely quiet on the iPhone speaker.
+        // BJ PR2: the blocking setCategory→setActive runs off-main through the coordinator's
+        // `reconfigure` (no deactivate-first, no fallback — the hand-tuned options are preserved).
+        try? await sessionCoordinator().reconfigure(
+            category: .playAndRecord, mode: .default,
+            options: MicRoutePolicy.conversationCategoryOptions(for: wanted))
+        let session = AVAudioSession.sharedInstance()
+        let available = wanted == .phone || preferredPort(for: wanted, in: session) != nil
+        let target = TurnMicHandoff.target(micRoute: configured, glassesStoodDown: glasses.stoodDown,
+                                           glassesWorn: glasses.worn, routePortAvailable: available)
+        turnMicRoute = target
+        // Cheap, non-blocking route hints stay inline.
+        let onBluetooth = session.currentRoute.outputs.contains {
+            [.bluetoothHFP, .bluetoothA2DP, .bluetoothLE].contains($0.portType)
+        }
+        if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
+        if target == .phone {
+            preferBuiltInMic(session)
+        } else {
+            preferConfiguredMicIfAvailable(session, route: target)
+        }
+    }
+
     /// Restore other audio (podcasts, music) after active listening ends.
-    /// The .notifyOthersOnDeactivation flag tells paused apps to resume.
+    ///
+    /// Plan GU §3: when the last hold goes outside a conversation's own release (an announcement
+    /// spoken while idle, push-to-talk's reply arriving after the turn closed), this hands the
+    /// session back for real — engine stopped, a deactivation with `.notifyOthersOnDeactivation`
+    /// (the old code passed that option to an *activation*, where it does nothing) — and puts the
+    /// idle listener back the way it was. Inside a conversation's release, `endConversationAudio`
+    /// owns the hand-back and this only counts.
     func resumeOtherAudio() async {
         guard !carPlayMode else { return }
         guard pauseHoldCount > 0 else { return }
@@ -273,15 +363,15 @@ class WakeWordService: NSObject, ObservableObject {
             PrivacyLog.audio(.wakeWord, .otherAudioHeld, count: pauseHoldCount)
             return
         }
-        let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
-        // .default (not .measurement) so concurrent music/podcasts keep playing cleanly
-        // while the wake-word listener runs — .measurement disables system audio
-        // processing and fights other audio even with .mixWithOthers.
-        // notifyOthersOnDeactivation tells paused apps (Music, Podcasts) they can resume.
-        try? await AudioSessionCoordinator.shared.reconfigure(
-            category: .playAndRecord, mode: .default, options: options,
-            activeOptions: .notifyOthersOnDeactivation)
+        guard !conversationReleaseInProgress else { return }
+        let wasListening = isListening || recognitionTask != nil
+            || deliberatePause == .speechGateClosed || deliberatePause == .sharedEngine
+        await handBackSession()
         PrivacyLog.audio(.wakeWord, .otherAudioResumed)
+        if wasListening && startGeneration.wantsListening && mayAutoRestart() {
+            deliberatePause = nil
+            try? await autoStartListening()
+        }
     }
 
     /// Force release of any held pauses — used when listening is toggled off entirely.
@@ -289,6 +379,70 @@ class WakeWordService: NSObject, ObservableObject {
         guard pauseHoldCount > 0 else { return }
         pauseHoldCount = 1  // resumeOtherAudio will decrement to 0 and restore
         await resumeOtherAudio()
+    }
+
+    /// Whether anything other than dictation is feeding off the shared tap.
+    private var sharedConsumersActive: Bool {
+        audioBufferForwarders.keys.contains { $0 != "default" }
+    }
+
+    /// Plan GU §3 — stop what must stop, then hand the session back per `HandBackDecision`.
+    ///
+    /// With shared consumers on the tap the engine keeps running for them, the session cannot be
+    /// deactivated, and it is reconfigured in place to the idle shape instead. Another owner's
+    /// session is left alone. Otherwise: engine down, lease released, session deactivated with
+    /// notify, and the next configure activates the idle plan afresh.
+    private func handBackSession() async {
+        let consumers = sharedConsumersActive
+        if !consumers {
+            // Deactivating with running I/O fails; the recognizer goes with the engine.
+            cleanupAudioGraph()
+            setListening(false)
+        }
+        let generation = routeSwitch.begin()
+        defer { routeSwitch.end(generation, at: Date()) }
+        let decision = await sessionCoordinator().handBack(sessionLease, sharedConsumersActive: consumers)
+        switch decision {
+        case .deactivate:
+            sessionLease = nil
+            audioSessionConfigured = false
+            appliedIdlePlan = nil
+        case .reconfigureInPlace:
+            // Something still rides the session: the old behaviour, minus the hands-free hold —
+            // mixable, in the idle shape. The next configure re-applies the plan in full.
+            let plan = currentIdlePlan()
+            try? await sessionCoordinator().reconfigure(category: .playAndRecord, mode: plan.mode,
+                                                        options: plan.categoryOptions)
+            if plan.preferredInput == .phone { preferBuiltInMic(AVAudioSession.sharedInstance()) }
+            audioSessionConfigured = false
+        case .leaveToOwner:
+            break
+        }
+        turnMicRoute = nil
+        turnSwitchStartedAt = nil
+        callLinkReleasedForReply = false
+    }
+
+    /// Prefer the phone's built-in mic (Plan GU: the idle phone listener, and a turn on the phone).
+    /// Explicit because, with A2DP allowed, leaving the preference unset is not a promise iOS keeps.
+    private func preferBuiltInMic(_ session: AVAudioSession) {
+        guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
+        guard session.preferredInput?.portType != .builtInMic else { return }
+        do {
+            try session.setPreferredInput(builtIn)
+            PrivacyLog.audio(.wakeWord, .preferredInputSet, route: PrivacyToken(MicRoute.phone.rawValue),
+                             detail: PrivacyToken(builtIn.portType.rawValue))
+        } catch {
+            PrivacyLog.audio(.wakeWord, .preferredInputFailed, route: PrivacyToken(MicRoute.phone.rawValue),
+                             error: SafeErrorSummary(error))
+        }
+    }
+
+    /// The available input `route` would prefer, if it is there.
+    private func preferredPort(for route: MicRoute, in session: AVAudioSession) -> AVAudioSessionPortDescription? {
+        guard route != .phone, let inputs = session.availableInputs else { return nil }
+        let ports = inputs.map { (name: $0.portName, type: $0.portType) }
+        return MicRoutePolicy.preferredInputIndex(for: route, ports: ports).map { inputs[$0] }
     }
 
     /// Explicitly prefer the Bluetooth input the configured route asks for.
@@ -300,17 +454,14 @@ class WakeWordService: NSObject, ObservableObject {
     /// their call screen over the lens HUD. No-op on the phone route or when
     /// no matching input is present, so the iPhone-mic fallback path is never
     /// affected. (Additive and guarded; needs hardware to verify live.)
-    private func preferConfiguredMicIfAvailable(_ session: AVAudioSession) {
-        let route = Config.micRoute
-        guard route != .phone, let inputs = session.availableInputs else { return }
-        let ports = inputs.map { (name: $0.portName, type: $0.portType) }
-        guard let index = MicRoutePolicy.preferredInputIndex(for: route, ports: ports) else {
+    private func preferConfiguredMicIfAvailable(_ session: AVAudioSession, route: MicRoute) {
+        guard route != .phone else { return }
+        guard let input = preferredPort(for: route, in: session) else {
             if route == .headset {
                 PrivacyLog.audio(.wakeWord, .noMatchingInput, route: PrivacyToken(route.rawValue))
             }
             return
         }
-        let input = inputs[index]
         do {
             try session.setPreferredInput(input)
             PrivacyLog.audio(.wakeWord, .preferredInputSet, route: PrivacyToken(route.rawValue),
@@ -322,7 +473,27 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
+    /// The idle plan for now (`WakeListenPolicy`), with what only the service can see filled in.
+    func currentIdlePlan() -> IdleAudioPlan {
+        var inputs = wakeListenInputs()
+        inputs.carPlayMode = carPlayMode
+        inputs.wearerAudioConsumerActive =
+            !Set(audioBufferForwarders.keys).isDisjoint(with: WakeListenPolicy.wearerAudioConsumerIDs)
+        if let owner = sessionCoordinator().currentOwner, !HandBackDecision.handBackOwners.contains(owner) {
+            inputs.foreignOwner = true
+        }
+        return WakeListenPolicy.decide(inputs)
+    }
+
     /// Configure the shared audio session once — call before first use.
+    ///
+    /// Plan GU §1: the shape comes from `WakeListenPolicy` — by default the phone's mic, mixable,
+    /// with Bluetooth output on A2DP, so a podcast on the glasses stays in full quality while the
+    /// app waits; the glasses' (or a headset's) hands-free mic only by the wearer's choice or while
+    /// a consumer that wants the wearer's own voice is running. An explicit turn with no idle
+    /// listener (`.off`) starts from the phone shape and `pauseOtherAudio` moves it on. The old
+    /// `.notifyOthersOnDeactivation` passed to this *activation* is gone: the SDK documents it as
+    /// valid only on deactivation, and the hand-back now deactivates for real.
     ///
     /// BJ PR2: records baseline ownership (`assumeOwnership`) then activates **off-main** through the
     /// coordinator's `reconfigure` (no deactivate-first, no `.default` fallback — the hand-tuned
@@ -333,40 +504,40 @@ class WakeWordService: NSObject, ObservableObject {
         guard !audioSessionConfigured else { return }
         // Register as the baseline owner first (supersedes any prior lease); the reconfigure below
         // performs the real activation while keeping the tuned config.
-        sessionLease = AudioSessionCoordinator.shared.assumeOwnership(.wakeWord)
+        sessionLease = sessionCoordinator().assumeOwnership(.wakeWord)
 
-        let category: AVAudioSession.Category = .playAndRecord
-        let mode: AVAudioSession.Mode
-        let options: AVAudioSession.CategoryOptions
-        if carPlayMode {
-            // In CarPlay mode, only activate recording when explicitly requested (voice control
-            // template showing). Otherwise use playback-only to avoid disrupting car audio.
-            mode = .voiceChat
-            options = [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
-        } else {
-            // .default (not .measurement) so other audio coexists cleanly with the always-on
-            // listener — see resumeOtherAudio for the same rationale.
-            mode = .default
-            options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
+        // CarPlay keeps its own shape whatever the listening settings say: it is only configured
+        // when voice control is asked for.
+        var plan = currentIdlePlan()
+        if carPlayMode, plan.listen != .carPlay {
+            plan = IdleAudioPlan(listen: .carPlay, speechGate: false, strictGate: false)
         }
 
+        let generation = routeSwitch.begin()
+        defer { routeSwitch.end(generation, at: Date()) }
         do {
-            try await AudioSessionCoordinator.shared.reconfigure(
-                category: category, mode: mode, options: options,
-                activeOptions: .notifyOthersOnDeactivation)
+            try await sessionCoordinator().reconfigure(
+                category: .playAndRecord, mode: plan.mode, options: plan.categoryOptions)
         } catch {
             PrivacyLog.audio(.wakeWord, .sessionConfigureFailed, error: SafeErrorSummary(error))
             return
         }
         audioSessionConfigured = true
+        appliedIdlePlan = plan
 
         let audioSession = AVAudioSession.sharedInstance()
-        if carPlayMode {
+        switch plan.listen {
+        case .carPlay:
             PrivacyLog.audio(.wakeWord, .modeSelected, detail: PrivacyToken("carPlayVoiceChat"))
-        } else {
-            preferConfiguredMicIfAvailable(audioSession)
-            PrivacyLog.audio(.wakeWord, .modeSelected, route: PrivacyToken(Config.micRoute.rawValue))
+        case .bluetooth(let route):
+            preferConfiguredMicIfAvailable(audioSession, route: route)
+            PrivacyLog.audio(.wakeWord, .modeSelected, route: PrivacyToken(route.rawValue))
+        case .phone, .off, .notOurs:
+            preferBuiltInMic(audioSession)
+            PrivacyLog.audio(.wakeWord, .modeSelected, route: PrivacyToken(MicRoute.phone.rawValue))
         }
+        PrivacyLog.audio(.wakeWord, .idlePlanSelected, route: PrivacyToken(Self.token(for: plan.listen)),
+                         detail: PrivacyToken(plan.speechGate ? (plan.strictGate ? "gateStrict" : "gate") : "noGate"))
 
         // Port *types* only. A port name is the wearer's own device name — "Greig's Ray-Ban
         // Meta" — and naming both ends of the route would say who they are and what they own.
@@ -379,6 +550,16 @@ class WakeWordService: NSObject, ObservableObject {
         // re-registration (Plan BE) — the old code discarded them, leaking a fresh pair on
         // every reconfigure so one route change fired N duplicate handlers after N reconnects.
         installSessionObservers(audioSession: audioSession)
+    }
+
+    static func token(for listen: IdleAudioPlan.Listen) -> String {
+        switch listen {
+        case .off: return "off"
+        case .notOurs: return "notOurs"
+        case .carPlay: return "carPlay"
+        case .phone: return "phone"
+        case .bluetooth(let route): return route.rawValue
+        }
     }
 
     /// Register the interruption + route-change observers exactly once per configuration, removing
@@ -419,32 +600,32 @@ class WakeWordService: NSObject, ObservableObject {
             // shared audio session, it handles its own interruption recovery — reactivating here
             // with our .playAndRecord/.default config would stomp its .videoChat setup and spin up a
             // second engine contending for the mic. Only reclaim when wake word is the owner.
-            let owner = AudioSessionCoordinator.shared.currentOwner
+            let owner = sessionCoordinator().currentOwner
             guard owner == nil || owner == .wakeWord else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
                                  owner: PrivacyToken(owner?.rawValue ?? "unknown"))
                 return
             }
-            // Only restart if Bluetooth (glasses) route is available
-            let route = AVAudioSession.sharedInstance().currentRoute
-            let hasBluetooth = MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType))
             guard mayAutoRestart() else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
                                  detail: PrivacyToken("listeningDisabled"))
                 return
             }
-            if hasBluetooth {
+            // Plan GU §3: restart per the idle plan, not "a Bluetooth mic is in the route" — a
+            // phone-mic listener has no Bluetooth mic and used to stay down after every phone call.
+            let plan = currentIdlePlan()
+            if plan.holdsSession {
                 PrivacyLog.audio(.wakeWord, .interruptionEnded,
-                                 detail: PrivacyToken("bluetoothActive"))
+                                 detail: PrivacyToken(Self.token(for: plan.listen)))
                 // BJ PR2: reactivate off-main through the coordinator (was a main-thread setActive),
                 // then restart — one Task so the reactivate precedes the listener start.
                 Task {
-                    await AudioSessionCoordinator.shared.ensureActiveOffMain()
+                    await sessionCoordinator().ensureActiveOffMain()
                     try? await autoStartListening()
                 }
             } else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
-                                 detail: PrivacyToken("noBluetooth"))
+                                 detail: PrivacyToken(Self.token(for: plan.listen)))
             }
         @unknown default:
             break
@@ -461,15 +642,30 @@ class WakeWordService: NSObject, ObservableObject {
                          route: PrivacyToken(route.inputs.first?.portType.rawValue ?? "none"),
                          detail: PrivacyToken(String(describing: reason)))
 
+        // Plan GU §3: our own switches (idle → conversation, the hand-back, the re-arm) are
+        // expected, not disruptions. A switch nobody in the app asked for — another app, "Hey
+        // Meta" — still is, and so is a Bluetooth device that really went away mid-switch.
+        let lostBluetooth = !hasBluetoothAudioRoute()
+        if SelfRouteChangeFilter.verdict(reason: reason,
+                                         ownSwitchInFlight: routeSwitch.isOwnSwitch(at: Date()),
+                                         bluetoothLost: lostBluetooth) == .ignore {
+            PrivacyLog.audio(.wakeWord, .ownRouteChangeIgnored, detail: PrivacyToken(String(describing: reason)))
+            return
+        }
+
         switch reason {
         case .oldDeviceUnavailable:
             // Bluetooth device disconnected — kill the engine so it's recreated fresh.
             // Judged on inputs *and* outputs: when playback starts the mic port can drop out of
             // the route while the glasses are still the speaker, and that is not a disconnect.
-            let lostBluetooth = !hasBluetoothAudioRoute()
             PrivacyLog.audio(.wakeWord, .deviceDisconnected,
                              detail: PrivacyToken(lostBluetooth ? "bluetoothLost" : "bluetoothRetained"))
-            pauseForAudioDisruption()
+            // Plan GU: an idle listener on the phone's own mic did not lose its input when a
+            // Bluetooth *output* went away — leave it listening (the configuration-change observer
+            // rebuilds the engine if its format moved). Anything else is torn down as before.
+            let phoneInputIntact = turnMicRoute == nil && appliedIdlePlan?.listen == .phone
+                && route.inputs.contains { $0.portType == .builtInMic }
+            if !phoneInputIntact { pauseForAudioDisruption() }
             if lostBluetooth {
                 onBluetoothDisconnected?()
             }
@@ -615,7 +811,7 @@ class WakeWordService: NSObject, ObservableObject {
             }
             do {
                 try startRecognitionThroughSeam()
-                deliberatePause = nil
+                deliberatePause = startedBehindClosedGate ? .speechGateClosed : nil
                 setListening(true)
                 PrivacyLog.wakeWord(.listenerStarted, attempt: attempt)
                 return
@@ -760,6 +956,7 @@ class WakeWordService: NSObject, ObservableObject {
 
     private func startRecognitionThroughSeam() throws {
         recognitionGeneration &+= 1
+        startedBehindClosedGate = false
         if let startRecognitionOverride {
             try startRecognitionOverride()
             return
@@ -781,11 +978,11 @@ class WakeWordService: NSObject, ObservableObject {
             // current owner, so this can't tear down a live Gemini/OpenAI session that preempted us.
             // The deactivation itself runs off-main on the coordinator's sessionIOQueue (BJ PR1).
             sessionLease = nil
-            AudioSessionCoordinator.shared.release(lease)
+            sessionCoordinator().release(lease)
             PrivacyLog.audio(.wakeWord, .sessionReleased)
         } else {
             // BJ PR2: rare no-lease fallback — deactivate off-main via the coordinator too.
-            await AudioSessionCoordinator.shared.deactivateOffMain()
+            await sessionCoordinator().deactivateOffMain()
             PrivacyLog.audio(.wakeWord, .sessionDeactivated)
         }
     }
@@ -803,18 +1000,235 @@ class WakeWordService: NSObject, ObservableObject {
         Task { try? await autoStartListening() }
     }
 
+    // MARK: - Turn mic hand-off and hand-back (Plan GU §2–§4)
+
+    /// When the current conversation's route switch began (the first pause hold), for the
+    /// switch-time measurement.
+    private var turnSwitchStartedAt: Date?
+
+    /// Switch first, then listen: wait until the conversation mic `pauseOtherAudio` asked for is
+    /// live — the route resolves to it **and** a rebuilt engine delivers buffers carrying sound —
+    /// then return, so the caller's tone means "talk now" on the mic that will hear it. At
+    /// `TurnMicHandoff.deadline` the turn moves to the phone mic instead (`turnMicFellBack`); a
+    /// slow link never eats the request.
+    func handOffMic() async {
+        guard !carPlayMode else { return }
+        let session = AVAudioSession.sharedInstance()
+        // No pause hold means the session was not moved (a phone call is active): record on
+        // whatever is there, exactly as before.
+        guard pauseHoldCount > 0, let target = turnMicRoute else {
+            if audioEngine?.isRunning != true { try? createAndStartAudioEngine() }
+            return
+        }
+        handOffInProgress = true
+        defer { handOffInProgress = false }
+        let generation = routeSwitch.begin()
+        defer { routeSwitch.end(generation, at: Date()) }
+        let began = turnSwitchStartedAt ?? Date()
+        let deadline = Date().addingTimeInterval(TurnMicHandoff.deadline)
+        var machine = TurnMicHandoff.Machine(target: target)
+
+        // Already there: an engine running on a valid format on the target mic.
+        if resolvedInput(session) == target, let engine = audioEngine, engine.isRunning,
+           engine.inputNode.outputFormat(forBus: 0).sampleRate > 0 {
+            finishHandOff(on: target, fellBack: false, began: began, session: session)
+            return
+        }
+        // Stop on purpose rather than mid-dictation: the route change would stop it anyway.
+        stopEngineKeepingRecognition()
+        while true {
+            var action: TurnMicHandoff.Action = .none
+            switch machine.state {
+            case .waitingForRoute:
+                action = machine.handle(.routeObserved(resolvedInput(session)))
+            case .waitingForFrames:
+                if audioEngine?.isRunning != true { rebuildHandOffEngine() }
+                if liveFrames.consecutive >= TurnMicHandoff.liveFramesRequired {
+                    action = machine.handle(.framesNonSilent)
+                }
+            case .live, .fellBack:
+                break
+            }
+            if action == .buildEngine {
+                rebuildHandOffEngine()
+                action = .none
+            }
+            if action == .none, Date() >= deadline {
+                action = machine.handle(.deadline)
+            }
+            switch action {
+            case .startTurn(let route):
+                finishHandOff(on: route, fellBack: false, began: began, session: session)
+                return
+            case .fallBackToPhone:
+                await fallBackToPhoneMic(session)
+                finishHandOff(on: .phone, fellBack: true, began: began, session: session)
+                return
+            case .none, .buildEngine:
+                try? await Task.sleep(nanoseconds: 40_000_000)
+            }
+        }
+    }
+
+    private func rebuildHandOffEngine() {
+        stopEngineKeepingRecognition()
+        do { try createAndStartAudioEngine() } catch {
+            // A half-up link can report a zero format for a moment; the loop tries again.
+            stopEngineKeepingRecognition()
+        }
+    }
+
+    /// The deadline passed: move this turn to the phone mic (conversation shape, no Bluetooth).
+    private func fallBackToPhoneMic(_ session: AVAudioSession) async {
+        try? await sessionCoordinator().reconfigure(
+            category: .playAndRecord, mode: .default,
+            options: MicRoutePolicy.conversationCategoryOptions(for: .phone))
+        preferBuiltInMic(session)
+        try? session.overrideOutputAudioPort(.speaker)
+        rebuildHandOffEngine()
+    }
+
+    private func finishHandOff(on route: MicRoute, fellBack: Bool, began: Date, session: AVAudioSession) {
+        turnMicRoute = route
+        turnSwitchStartedAt = nil
+        let elapsed = Date().timeIntervalSince(began)
+        let ms = Int((elapsed * 1000).rounded())
+        if fellBack {
+            PrivacyLog.audio(.wakeWord, .turnMicFellBack, route: PrivacyToken(route.rawValue), milliseconds: ms)
+            return
+        }
+        PrivacyLog.audio(.wakeWord, .turnMicLive, route: PrivacyToken(route.rawValue), milliseconds: ms)
+        guard route != .phone, let port = session.currentRoute.inputs.first else { return }
+        // The measurement Automatic reply audio reads: a rolling median per device, keyed by an
+        // opaque hash of the port UID — never its name.
+        var ledger = Config.micSwitchTimes
+        ledger.record(elapsed, device: SwitchTimeLedger.deviceKey(portUID: port.uid))
+        Config.setMicSwitchTimes(ledger)
+        if let hq = port.bluetoothMicrophoneExtension?.highQualityRecording {
+            PrivacyLog.audio(.wakeWord, .highQualityRecordingSupport,
+                             route: PrivacyToken(port.portType.rawValue),
+                             detail: PrivacyToken("supported-\(hq.isSupported)-enabled-\(hq.isEnabled)"))
+        }
+    }
+
+    /// Which route the session's live input is on (`MicRoutePolicy.resolvedRoute`).
+    private func resolvedInput(_ session: AVAudioSession) -> MicRoute? {
+        MicRoutePolicy.resolvedRoute(from: session.currentRoute.inputs.map { (name: $0.portName, type: $0.portType) })
+    }
+
+    /// The measured switch time for the device the conversation is on, if any.
+    func measuredSwitchSeconds() -> Double? {
+        guard let port = AVAudioSession.sharedInstance().currentRoute.inputs.first,
+              port.portType != .builtInMic else { return nil }
+        return Config.micSwitchTimes.median(device: SwitchTimeLedger.deviceKey(portUID: port.uid))
+    }
+
+    /// Plan GU §3 step 2 — the conversation is over: stop the recognizer and the engine (shared
+    /// consumers permitting). Deactivating with running I/O fails, so this precedes the hand-back.
+    func stopConversationEngine(listenerWanted: Bool) {
+        guard !carPlayMode else { return }
+        conversationReleaseInProgress = true
+        let consumers = sharedConsumersActive
+        _ = turnEngine.endTurn(listenerWanted: listenerWanted, consumersActive: consumers)
+        if !consumers {
+            cleanupAudioGraph()
+            setListening(false)
+        }
+    }
+
+    /// Plan GU §3 step 3 — drop every pause hold the conversation took and hand the session back
+    /// (`HandBackDecision`: a real deactivation with notify when nothing else rides it).
+    func handBackConversationAudio() async {
+        guard !carPlayMode else {
+            await forceResumeOtherAudio()
+            return
+        }
+        conversationReleaseInProgress = true
+        defer { conversationReleaseInProgress = false }
+        pauseHoldCount = 0
+        await handBackSession()
+        PrivacyLog.audio(.wakeWord, .otherAudioResumed)
+    }
+
+    /// Steps 2 and 3 together.
+    func endConversationAudio(listenerWanted: Bool) async {
+        stopConversationEngine(listenerWanted: listenerWanted)
+        await handBackConversationAudio()
+    }
+
+    /// The re-arm was skipped (push-to-talk, listening off, muted, stood down): nothing may be left
+    /// running or held. Shared consumers keep their engine.
+    func ensureReleasedAfterTurn() {
+        guard !sharedConsumersActive else { return }
+        if audioEngine != nil || recognitionTask != nil {
+            cleanupAudioGraph()
+            setListening(false)
+        }
+        deliberatePause = nil
+    }
+
+    /// Plan GU §4 — a reply in full quality: release the hands-free link (A2DP output only,
+    /// non-mixable so other audio stays paused) and move the engine to the phone mic, where the
+    /// stop phrase and barge-in listen. The next follow-up takes the link back
+    /// (`retakeConversationMicIfReleased`). No-op unless the policy chose `.fullQuality` and the
+    /// conversation is on a Bluetooth mic.
+    func applyReplyRoute(_ route: ReplyRoute) async {
+        guard route == .fullQuality, !carPlayMode, pauseHoldCount > 0,
+              let current = turnMicRoute, current != .phone, !callLinkReleasedForReply else { return }
+        handOffInProgress = true
+        defer { handOffInProgress = false }
+        let generation = routeSwitch.begin()
+        defer { routeSwitch.end(generation, at: Date()) }
+        stopEngineKeepingRecognition()
+        try? await sessionCoordinator().reconfigure(
+            category: .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
+        preferBuiltInMic(AVAudioSession.sharedInstance())
+        rebuildHandOffEngine()
+        callLinkReleasedForReply = true
+        PrivacyLog.audio(.wakeWord, .replyRouteSelected, detail: PrivacyToken("fullQuality"))
+    }
+
+    /// A follow-up after a full-quality reply: take the conversation mic back before recording.
+    func retakeConversationMicIfReleased() async {
+        guard callLinkReleasedForReply else { return }
+        callLinkReleasedForReply = false
+        if recognitionTask != nil { pauseRecognitionForSharedEngine() }
+        turnSwitchStartedAt = Date()
+        await applyConversationRoute()
+        await handOffMic()
+    }
+
     // MARK: - Shared Audio Engine (for TranscriptionService)
 
     /// Ensure the shared audio engine is running (creates one if needed).
     /// Call this before `TranscriptionService.startRecording()` to guarantee
     /// the buffer-forwarding path is alive — e.g. after TTS playback which
     /// may have interrupted or stopped the engine.
+    ///
+    /// Plan GU §2: a push-to-talk or listening-off turn used to get nothing here — the listener
+    /// refuses to start in push-to-talk — and fell to `TranscriptionService`'s dedicated engine,
+    /// which device logs show silent. Such a turn now starts the shared engine for consumers only
+    /// (`TurnEngineOwnership`), and the turn's end stops it.
     func ensureAudioEngineRunning() async throws {
-        if let engine = audioEngine, engine.isRunning { return }
-        // Engine is nil or stopped — restart it (without starting recognition)
-        PrivacyLog.audio(.wakeWord, .engineRestarted, detail: PrivacyToken("sharedUse"))
-        try await startListening()
-        pauseRecognitionForSharedEngine()
+        let settings = turnListeningOverride?()
+            ?? (silentMode: Config.silentMode, listeningEnabled: shouldAutoRestart())
+        let source = TurnEngineOwnership.source(engineRunning: graphSnapshot().engineRunning,
+                                                silentMode: settings.silentMode,
+                                                listeningEnabled: settings.listeningEnabled)
+        switch source {
+        case .reuseRunning:
+            return
+        case .consumerEngineForTurn:
+            PrivacyLog.audio(.wakeWord, .engineRestarted, detail: PrivacyToken("turnOnly"))
+            try await ensureAudioEngineRunningForConsumers()
+            turnEngine.noteStarted(source)
+        case .wakeListener:
+            // Engine is nil or stopped — restart it (without starting recognition)
+            PrivacyLog.audio(.wakeWord, .engineRestarted, detail: PrivacyToken("sharedUse"))
+            try await startListening()
+            pauseRecognitionForSharedEngine()
+            turnEngine.noteStarted(source)
+        }
     }
 
     /// Hand the running audio engine over to another consumer: tear down the wake-word recognizer
@@ -847,6 +1261,10 @@ class WakeWordService: NSObject, ObservableObject {
     /// listening is disabled. Unlike `startListening()`, this only needs microphone permission and
     /// does not create a Speech recognition task.
     func ensureAudioEngineRunningForConsumers() async throws {
+        if let consumerEngineStartOverride {
+            try await consumerEngineStartOverride()
+            return
+        }
         if let engine = audioEngine, engine.isRunning { return }
 
         guard await AVAudioApplication.requestRecordPermission() else {
@@ -855,12 +1273,7 @@ class WakeWordService: NSObject, ObservableObject {
         }
 
         await configureAudioSession()
-        if let oldEngine = audioEngine {
-            oldEngine.stop()
-            oldEngine.inputNode.removeTap(onBus: 0)
-            tapIsInstalled = false
-            audioEngine = nil
-        }
+        if audioEngine != nil { stopEngineKeepingRecognition() }
         try createAndStartAudioEngine()
 
         guard audioEngine?.isRunning == true else {
@@ -902,6 +1315,16 @@ class WakeWordService: NSObject, ObservableObject {
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+        stopEngineKeepingRecognition()
+    }
+
+    /// Stop the engine and remove its tap; leave the recognition state and the forwarders alone.
+    /// The forwarders are re-published into the next tap, so consumers survive a rebuild.
+    private func stopEngineKeepingRecognition() {
+        if let observer = engineConfigObserver {
+            NotificationCenter.default.removeObserver(observer)
+            engineConfigObserver = nil
+        }
         if let engine = audioEngine {
             engine.stop()
             engine.inputNode.removeTap(onBus: 0)
@@ -910,42 +1333,47 @@ class WakeWordService: NSObject, ObservableObject {
         audioEngine = nil
     }
 
+    /// Set by `startRecognition()` when it left the recognizer waiting behind a closed speech gate
+    /// (Plan GU §5), so the start records that deliberate pause instead of clearing it.
+    private var startedBehindClosedGate = false
+    /// After the gate gave up (open longer than `WakeSpeechGate.maxOpenSeconds` — a conversation
+    /// nearby), listen continuously until this time, then gate again.
+    private var gateRetryAfter: Date?
+    private static let gateRetryInterval: TimeInterval = 300
+
     private func startRecognition() throws {
         // A fresh recognizer consumes no older cancel: `suppressAutoRestart` belongs to the task
         // being replaced, and the generation tag below is what actually silences its callbacks.
         suppressAutoRestart = false
+        startedBehindClosedGate = false
         // Cancel any existing recognition task
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
 
-        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-        guard let recognitionRequest = recognitionRequest else {
-            throw WakeWordError.configurationError("Unable to create recognition request")
-        }
+        try ensureEngineForRecognition()
 
-        recognitionRequest.shouldReportPartialResults = true
-        // On-device wake-word spotting (Plan BE): the always-on listener no longer streams mic
-        // audio to Apple's servers 24/7 — the single largest steady battery/data drain. Short-phrase
-        // spotting works well on-device (contextualStrings still apply); real queries keep server
-        // recognition in TranscriptionService. Falls back to server if the locale can't do on-device.
-        let wantsOnDevice = Config.onDeviceWakeWordEnabled
-        let canDoOnDevice = speechRecognizer?.supportsOnDeviceRecognition ?? false
-        recognitionRequest.requiresOnDeviceRecognition = wantsOnDevice && canDoOnDevice
-        if wantsOnDevice && !canDoOnDevice {
-            PrivacyLog.wakeWord(.onDeviceUnavailable)
+        // Plan GU §5 — behind the flag, full recognition runs only while somebody is talking. The
+        // engine and tap keep running (the app stays alive in the background, every shared
+        // consumer stays fed, the mic indicator stays truthful); only the task waits. Never while
+        // a reply plays — barge-in and the stop phrase need the recognizer continuously.
+        if let plan = appliedIdlePlan, plan.speechGate, !listenForStop,
+           gateRetryAfter.map({ Date() >= $0 }) ?? true,
+           let format = audioEngine?.inputNode.outputFormat(forBus: 0), format.sampleRate > 0 {
+            gateRetryAfter = nil
+            tapState.enableGate(format: format, strict: plan.strictGate) { [weak self] output in
+                Task { @MainActor [weak self] in self?.handleGateOutput(output) }
+            }
+            startedBehindClosedGate = true
+            return
         }
-        recognitionRequest.taskHint = .search  // Short phrase detection
-        // Boost recognition of all persona wake phrases
-        let personaPhrases = Config.allActiveWakePhrases
-        let contextPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
-        recognitionRequest.contextualStrings = contextPhrases
-        // The contextual-boost list *is* the wake phrases, and the persona names beside them are
-        // what the wearer called their assistants — often a real name. Only how many there are.
-        PrivacyLog.wakeWord(.contextConfigured, count: contextPhrases.count)
+        tapState.disableGate()
+        try openRecognizer()
+    }
 
-        // Reuse existing engine if it's already running AND has a valid format
+    /// Reuse a running engine with a valid format, or build one.
+    private func ensureEngineForRecognition() throws {
         if let engine = audioEngine, engine.isRunning {
             let format = engine.inputNode.outputFormat(forBus: 0)
             if format.sampleRate > 0 && format.channelCount > 0 {
@@ -954,22 +1382,40 @@ class WakeWordService: NSObject, ObservableObject {
                 // Engine is running but format is invalid (Bluetooth route lost)
                 PrivacyLog.audio(.wakeWord, .formatInvalid, detail: PrivacyToken("running"),
                                  hertz: Int(format.sampleRate), channels: Int(format.channelCount))
-                engine.stop()
-                engine.inputNode.removeTap(onBus: 0)
-                tapIsInstalled = false
-                audioEngine = nil
-                // Fall through to create a new engine below
+                stopEngineKeepingRecognition()
                 try createAndStartAudioEngine()
             }
         } else {
             // Clean up old engine if it exists but isn't running
-            if let oldEngine = audioEngine {
-                oldEngine.inputNode.removeTap(onBus: 0)
-                tapIsInstalled = false
-                audioEngine = nil
-            }
+            if audioEngine != nil { stopEngineKeepingRecognition() }
             try createAndStartAudioEngine()
         }
+    }
+
+    /// Create the wake-word recognition request and task on the running engine.
+    private func openRecognizer() throws {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        // On-device wake-word spotting (Plan BE): the always-on listener no longer streams mic
+        // audio to Apple's servers 24/7 — the single largest steady battery/data drain. Short-phrase
+        // spotting works well on-device (contextualStrings still apply); real queries keep server
+        // recognition in TranscriptionService. Falls back to server if the locale can't do on-device.
+        let wantsOnDevice = Config.onDeviceWakeWordEnabled
+        let canDoOnDevice = speechRecognizer?.supportsOnDeviceRecognition ?? false
+        request.requiresOnDeviceRecognition = wantsOnDevice && canDoOnDevice
+        if wantsOnDevice && !canDoOnDevice {
+            PrivacyLog.wakeWord(.onDeviceUnavailable)
+        }
+        request.taskHint = .search  // Short phrase detection
+        // Boost recognition of all persona wake phrases
+        let personaPhrases = Config.allActiveWakePhrases
+        let contextPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
+        request.contextualStrings = contextPhrases
+        // The contextual-boost list *is* the wake phrases, and the persona names beside them are
+        // what the wearer called their assistants — often a real name. Only how many there are.
+        PrivacyLog.wakeWord(.contextConfigured, count: contextPhrases.count)
+        // Publishing the request into the tap replays the gate's pre-roll first, if one is held.
+        recognitionRequest = request
 
         // Tag the handler with the generation it was created under. A task that has been
         // cancelled or replaced still delivers a final callback, and that callback used to be
@@ -977,12 +1423,60 @@ class WakeWordService: NSObject, ObservableObject {
         // successor. An older generation is now simply dropped.
         lastRecognitionFailed = false
         let generation = recognitionGeneration
-        recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+        recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in
                 guard let self, self.recognitionGeneration == generation else { return }
                 self.handleRecognitionResult(result: result, error: error)
             }
         }
+    }
+
+    // MARK: - Speech gate (Plan GU §5)
+
+    /// A transition from the gate, on the main actor.
+    private func handleGateOutput(_ output: WakeSpeechGate.Output) {
+        guard isListening, appliedIdlePlan?.speechGate == true, !listenForStop else { return }
+        switch output {
+        case .open:
+            guard recognitionTask == nil else { return }
+            do {
+                recognitionGeneration &+= 1
+                try openRecognizer()
+                if deliberatePause == .speechGateClosed { deliberatePause = nil }
+                gateOpens += 1
+            } catch {
+                PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
+                pauseForAudioDisruption()
+                resumeListening()
+                return
+            }
+        case .close:
+            guard recognitionTask != nil, !wakeWordFired else { return }
+            recognitionGeneration &+= 1
+            recognitionTask?.cancel()
+            recognitionTask = nil
+            recognitionRequest?.endAudio()
+            recognitionRequest = nil
+            deliberatePause = .speechGateClosed
+            gateCloses += 1
+        case .giveUpGating:
+            // A conversation nearby: stop gating and recognise continuously (restart-on-final, as
+            // before the gate) for a while. The recognizer that is open stays open.
+            PrivacyLog.audio(.wakeWord, .gateAbandoned)
+            tapState.disableGate()
+            gateRetryAfter = Date().addingTimeInterval(Self.gateRetryInterval)
+        }
+        reportGateCountsIfDue()
+    }
+
+    /// Gate opens and closes are logged as hourly counts, never per event.
+    private func reportGateCountsIfDue() {
+        guard Date().timeIntervalSince(lastGateReport) >= 3600 else { return }
+        PrivacyLog.audio(.wakeWord, .gateOpened, count: gateOpens)
+        PrivacyLog.audio(.wakeWord, .gateClosed, count: gateCloses)
+        gateOpens = 0
+        gateCloses = 0
+        lastGateReport = Date()
     }
 
     private func createAndStartAudioEngine() throws {
@@ -1008,6 +1502,7 @@ class WakeWordService: NSObject, ObservableObject {
         // The tap runs on the Core Audio render thread. It must NOT touch any @MainActor state —
         // it reads everything it needs from the lock-guarded `tapState` box (Plan BE).
         let tapState = self.tapState
+        liveFrames.reset()
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             tapState.dispatch(buffer)
             // Silence detection is nonisolated and does its own (batched) main-actor hop.
@@ -1016,8 +1511,50 @@ class WakeWordService: NSObject, ObservableObject {
 
         tapIsInstalled = true
 
+        // Plan GU §2/P1: the engine **stops itself** when its input's sample rate or channel count
+        // changes (built-in 48 kHz → hands-free 16 kHz is one). Nothing used to listen for that, so
+        // a route flip mid-listen left a stopped engine that every check still believed in.
+        if let observer = engineConfigObserver { NotificationCenter.default.removeObserver(observer) }
+        engineConfigObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak self, weak engine] _ in
+            Task { @MainActor in
+                guard let self, let engine else { return }
+                self.handleEngineConfigurationChange(engine)
+            }
+        }
+
         engine.prepare()
         try engine.start()
+    }
+
+    /// The engine reconfigured itself (a route or format change). Rebuild it on the live format,
+    /// keeping whatever was running: the recognizer if it was listening, the consumers either way.
+    /// A turn's hand-off rebuilds the engine itself and is left to it.
+    private func handleEngineConfigurationChange(_ engine: AVAudioEngine) {
+        guard engine === audioEngine, !handOffInProgress else { return }
+        let format = engine.inputNode.outputFormat(forBus: 0)
+        PrivacyLog.audio(.wakeWord, .engineConfigurationChanged,
+                         detail: PrivacyToken(engine.isRunning ? "running" : "stopped"),
+                         hertz: Int(format.sampleRate), channels: Int(format.channelCount))
+        guard !engine.isRunning else { return }
+        let hadRecognizer = recognitionTask != nil || startedBehindClosedGate && isListening
+        do {
+            if hadRecognizer {
+                // The recognizer's request was fed by the old tap; a fresh one on the new format.
+                cleanupAudioGraph()
+                try startRecognition()
+            } else {
+                stopEngineKeepingRecognition()
+                try createAndStartAudioEngine()
+            }
+            PrivacyLog.audio(.wakeWord, .engineRebuilt, hertz: Int(format.sampleRate),
+                             channels: Int(format.channelCount))
+        } catch {
+            PrivacyLog.audio(.wakeWord, .engineRestartFailed, error: SafeErrorSummary(error))
+            pauseForAudioDisruption()
+            resumeListening()
+        }
     }
 
     // MARK: - Silence Detection (Glasses in Case)
@@ -1040,6 +1577,7 @@ class WakeWordService: NSObject, ObservableObject {
             sum += sample * sample
         }
         let rms = sqrtf(sum / Float(frames))
+        liveFrames.observe(rms: rms)
 
         switch silenceTracker.observe(rms: rms, threshold: silenceRMSThreshold, limit: silenceBufferThreshold) {
         case .none:
@@ -1047,6 +1585,10 @@ class WakeWordService: NSObject, ObservableObject {
         case .enteredSilence(let count):
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Plan GU §1: silence means "glasses in the case" only when the idle mic *is* the
+                // glasses'. On the phone's mic it means a quiet room — and stopping the listener
+                // for it would turn the wake word off whenever the room went quiet.
+                guard self.appliedIdlePlan?.silenceMeansGlassesIdle ?? true else { return }
                 self.silenceReported = true
                 self.pausedForSilence = true
                 PrivacyLog.wakeWord(.sustainedSilence, count: count)
@@ -1143,6 +1685,7 @@ class WakeWordService: NSObject, ObservableObject {
         if let matched = matchedWakePhrase(transcript) {
             if !wakeWordFired {
                 // Normal wake word detection (not during TTS)
+                tapState.noteWakeMatched()
                 PrivacyLog.wakeWord(.detected)
                 wakeWordFired = true
                 handleWakeWordDetected(matchedPhrase: matched)
@@ -1331,13 +1874,47 @@ final class SilenceTracker: @unchecked Sendable {
 final class WakeTapState: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock<State>(initialState: State())
 
+    /// Plan GU §5 — the speech gate's render-thread half: scorer, gate and pre-roll, mutated in
+    /// place under the lock (never copied out — the pre-roll's storage must not reallocate on the
+    /// render thread).
+    private struct GateState {
+        var router: GatedTapRouter
+        var scorer: EnergySpeechScorer
+        var gate: WakeSpeechGate
+        let format: AVAudioFormat
+        let onOutput: @Sendable (WakeSpeechGate.Output) -> Void
+    }
+
     private struct State {
         var request: SFSpeechAudioBufferRecognitionRequest?
         var forwarders: [@Sendable (AVAudioPCMBuffer) -> Void] = []
+        var gate: GateState?
     }
 
+    private struct Snapshot {
+        let request: SFSpeechAudioBufferRecognitionRequest?
+        let forwarders: [@Sendable (AVAudioPCMBuffer) -> Void]
+        let output: WakeSpeechGate.Output?
+        let onOutput: (@Sendable (WakeSpeechGate.Output) -> Void)?
+    }
+
+    /// Publish the recognizer's request. With the gate in use, attaching a request replays the
+    /// pre-roll into it first and switches to live in the same locked step — so no frame is lost
+    /// between the two and none is delivered twice (`GatedTapRouter`). Clearing it goes back to
+    /// buffering.
     func setRequest(_ request: SFSpeechAudioBufferRecognitionRequest?) {
-        lock.withLock { $0.request = request }
+        lock.withLock { state in
+            if let request, state.gate != nil {
+                if state.gate?.router.attached == false, let held = state.gate?.router.attach(),
+                   let format = state.gate?.format,
+                   let replay = Self.makeBuffer(held.samples, format: format) {
+                    request.append(replay)
+                }
+            } else if request == nil {
+                state.gate?.router.detach()
+            }
+            state.request = request
+        }
     }
 
     func setForwarders(_ forwarders: [String: @Sendable (AVAudioPCMBuffer) -> Void]) {
@@ -1345,13 +1922,76 @@ final class WakeTapState: @unchecked Sendable {
         lock.withLock { $0.forwarders = values }
     }
 
-    /// Called from the audio thread: append to the recognizer and fan out to consumers, all from a
-    /// single locked snapshot.
+    /// Start gating on `format`. A request already attached stays live.
+    func enableGate(format: AVAudioFormat, strict: Bool,
+                    onOutput: @escaping @Sendable (WakeSpeechGate.Output) -> Void) {
+        let preRoll = PreRollBuffer(seconds: WakeSpeechGate.preRollSeconds, sampleRate: format.sampleRate)
+        lock.withLock { state in
+            state.gate = GateState(router: GatedTapRouter(preRoll: preRoll),
+                                   scorer: EnergySpeechScorer(thresholds: strict ? .strict : .standard),
+                                   gate: WakeSpeechGate(strict: strict),
+                                   format: format, onOutput: onOutput)
+            if state.request != nil { _ = state.gate?.router.attach() }
+        }
+    }
+
+    func disableGate() {
+        lock.withLock { $0.gate = nil }
+    }
+
+    /// A wake phrase matched: the gate must not close under the turn that follows.
+    func noteWakeMatched() {
+        lock.withLock { $0.gate?.gate.noteWakeMatched() }
+    }
+
+    /// Called from the audio thread: score for the gate, append to the recognizer and fan out to
+    /// consumers, all from a single locked snapshot.
     func dispatch(_ buffer: AVAudioPCMBuffer) {
-        let snapshot = lock.withLock { $0 }
+        let now = Date()
+        let snapshot: Snapshot = lock.withLock { state in
+            var output: WakeSpeechGate.Output?
+            if state.gate != nil, let channels = buffer.floatChannelData, buffer.frameLength > 0 {
+                let mono = UnsafeBufferPointer(start: channels[0], count: Int(buffer.frameLength))
+                let score = state.gate?.scorer.score(mono, sampleRate: buffer.format.sampleRate) ?? 0
+                output = state.gate?.gate.observe(score: score, at: now)
+                _ = state.gate?.router.route(mono)
+            }
+            return Snapshot(request: state.request, forwarders: state.forwarders,
+                            output: output, onOutput: state.gate?.onOutput)
+        }
         snapshot.request?.append(buffer)
         for handler in snapshot.forwarders { handler(buffer) }
+        if let output = snapshot.output { snapshot.onOutput?(output) }
     }
+
+    /// The pre-roll as one buffer in the tap's format (channel 0 copied to every channel).
+    private static func makeBuffer(_ samples: [Float], format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        guard !samples.isEmpty,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+              let channels = buffer.floatChannelData else { return nil }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { source in
+            for channel in 0..<Int(format.channelCount) {
+                channels[channel].update(from: source.baseAddress!, count: samples.count)
+            }
+        }
+        return buffer
+    }
+}
+
+/// Plan GU §2 — consecutive live buffers on the current engine, counted on the render thread for
+/// the turn hand-off's "frames non-silent" check.
+final class LiveFrameCounter: @unchecked Sendable {
+    private let lock = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    func observe(rms: Float) {
+        let live = TurnMicHandoff.isLiveFrame(rms: rms)
+        lock.withLock { $0 = live ? $0 + 1 : 0 }
+    }
+
+    func reset() { lock.withLock { $0 = 0 } }
+
+    var consecutive: Int { lock.withLock { $0 } }
 }
 
 
