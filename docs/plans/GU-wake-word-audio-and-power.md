@@ -256,7 +256,7 @@ DAT 1.0.0 and unpublishable. Worn state comes from the stable `DeviceState`, via
 
 ## Settings (glasses section only)
 
-Settings → Hardware & Privacy, beside "Microphone": **"Listen for the wake word on"** — *iPhone*
+Settings → Hardware & Privacy, as the first row of the glasses section (prominent — Greig wants to flip it per situation): **"Listen for the wake word on"** — *iPhone*
 (default) / *Same as Microphone*. Footer: "iPhone keeps music and podcasts on your glasses in full
 quality and saves their battery. Choose Same as Microphone if your phone is usually in a bag." The
 "Microphone" picker keeps its meaning for the conversation itself. Nothing appears outside the
@@ -341,21 +341,21 @@ classifier if pocket rustle dominates gate opens; Silero as the scorer when CU P
 6. Settings stay in the **glasses section**.
 7. **No DAT experimental** APIs.
 
-## Open questions for Greig
+## Answered by Greig (2026-10-01)
 
-1. **Default idle mic for glasses wearers — iPhone or glasses?** Recommend iPhone (media quality and
-   glasses battery for everyone, Display HUD free); revisit only if P2 pocket recall is under 8/10.
-2. **Glasses off the face, link up: keep the wake word on the phone?** The link-state branch's
-   automatic stand-down closes voice input on doff because it existed to release the glasses mic;
-   with idle on the phone that cost is gone. Recommend: keep listening on the phone (phone-first,
-   as with glasses away), replies to the phone speaker; the wearer's own Disconnect still closes it.
-3. **Speech gate default.** Recommend off at first (Developer toggle); on after the P2 battery run if
-   it shows a clear saving and no missed wakes.
-4. **Replies in full quality (P3)?** Recommend deciding on P2's switch timing: only if the median
-   switch is under ~0.7 s.
-5. **Phone-only users and the always-on wake word** (on at launch on the link-state branch).
-   Recommend keeping it on; the gate is what makes it affordable, so flip the gate's default for
-   phone-only users at the same time as for glasses wearers.
+1. **Idle mic for glasses wearers:** a setting, defaulting to the iPhone, placed prominently — first
+   row of the glasses section, not buried under Microphone — so it can be flipped per situation
+   (phone in a bag → glasses). Revisit the default if P2 pocket recall is under 8/10.
+2. **Glasses off the face, link up:** keep the wake word listening on the phone; replies to the phone
+   speaker. This replaces the link-state PR's doff → 30 s → automatic stand-down *for the wake word*
+   (`GlassesSleepPolicy`): with idle listening on the phone there is no glasses mic to release. The
+   wearer's own Disconnect still closes voice input. Update `GlassesSleepPolicy` and its tests in P1.
+3. **Speech gate:** off until tuned; on by default only after the P2 battery comparison shows a clear
+   saving and no missed wakes.
+4. **Replies in full quality (P3):** only if P2 measures a median switch under ~0.7 s; otherwise the
+   whole conversation stays on the call link.
+5. **Phone-only users:** the always-on wake word follows the Listening switch (shipped in the
+   link-state PR); the gate's default flips for them at the same time as for glasses wearers.
 
 ## Out of scope
 
