@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import OpenGlasses
 
 /// Proves the rename to Avenkin complete (Plan FY P1, decision D10).
@@ -98,10 +99,6 @@ final class BrandNameGuardTests: XCTestCase {
                 snippet: "Text(\"Hey \(oldName)\").tag(",
                 reason: "P3.2: the old wake phrase stays in the picker, below the new ones, for one "
                     + "App Store version."),
-        Allowed(path: "OpenGlasses/Info.plist",
-                snippet: "<string>\(oldName)</string>",
-                reason: "INAlternativeAppNames: Siri still reaches the app by the name people "
-                    + "learned it by."),
         Allowed(path: catalog, snippet: "key \"\(oldName)\"",
                 reason: "P3.2: the catalog entry for the old wake phrase's picker label."),
         Allowed(path: catalog, snippet: "key \"Hey \(oldName)\"",
@@ -462,7 +459,7 @@ final class BrandNameGuardTests: XCTestCase {
         let plist = try read("OpenGlasses/Info.plist")
         XCTAssertTrue(plist.contains("<string>Avenkin needs camera access.</string>"))
         XCTAssertTrue(plist.contains("Mail offers \"Open with Avenkin\""))
-        XCTAssertTrue(plist.contains("<string>\(old)</string>"), "the Siri alternative name must stay")
+        XCTAssertFalse(plist.contains("<string>\(old)</string>"), "no plist value keeps the old name")
         XCTAssertTrue(plist.contains(".\(old)SceneDelegate"), "a class name is not copy")
 
         let readme = try read("README.md")
@@ -561,14 +558,172 @@ final class BrandNameGuardTests: XCTestCase {
                       "the watch wordmark is drawn in pieces, so it must say its name to VoiceOver")
     }
 
-    /// The Siri alternative name keeps the old name reaching the app (P1 item 3).
-    func testSiriStillAnswersToTheOldName() throws {
+    // MARK: - Siri, Shortcuts and the system surfaces
+
+    /// Decision 2026-10-01 ("it should all be avenkin"): Siri answers to Avenkin only. The old name
+    /// is not registered as an alternative app name, in the authored plist or the built app.
+    func testSiriNoLongerAnswersToTheOldName() throws {
         let info = try PropertyListSerialization.propertyList(
             from: Data(contentsOf: Self.repoRoot.appendingPathComponent("OpenGlasses/Info.plist")),
             options: [], format: nil) as? [String: Any]
-        let alternatives = (info?["INAlternativeAppNames"] as? [[String: Any]]) ?? []
-        XCTAssertTrue(alternatives.contains { $0["INAlternativeAppName"] as? String == Self.oldName },
-                      "INAlternativeAppNames no longer offers the old name; \"Hey Siri, ask "
-                          + "\(Self.oldName)\" would stop reaching the app")
+        XCTAssertNil(info?["INAlternativeAppNames"],
+                     "OpenGlasses/Info.plist registers INAlternativeAppNames again; Siri and Shortcuts "
+                         + "should know the app as Avenkin only")
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "INAlternativeAppNames"),
+                     "the built app still carries INAlternativeAppNames")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "Avenkin",
+                       "App Shortcut phrases say \\(.applicationName), which is the display name")
+    }
+
+    /// Files that declare App Intents metadata: intents, entities, enums, the shortcuts provider
+    /// and the widgets' configuration and control intents.
+    private func appIntentsFiles() throws -> [String] {
+        let declaration = try NSRegularExpression(pattern:
+            "(:|,)\\s*(AppIntent|AudioRecordingIntent|AppEntity|AppEnum|AppShortcutsProvider|"
+                + "WidgetConfigurationIntent|ControlConfigurationIntent|SetValueIntent|LiveActivityIntent)\\b"
+                + "|ControlWidget\\b")
+        var found: [String] = []
+        for directory in Self.swiftDirectories {
+            for path in files(under: directory, extensions: ["swift"]) {
+                let source = try text(path)
+                if declaration.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)) != nil {
+                    found.append(path)
+                }
+            }
+        }
+        return found
+    }
+
+    /// A literal on one of these lines is metadata the AppIntents processor exports or a system
+    /// surface shows: titles, descriptions, dialogs, parameter titles, display representations,
+    /// App Shortcut phrases and short titles, widget names.
+    private static let metadataLine = try! NSRegularExpression(pattern:
+        "static (var|let) (title|description|typeDisplayRepresentation|caseDisplayRepresentations)\\b"
+            + "|IntentDescription\\(|IntentDialog|requestValueDialog|shortTitle:|@Parameter\\("
+            + "|DisplayRepresentation|\\.applicationName\\)|^\\s*\\.\\w+:\\s*\""
+            + "|configurationDisplayName\\(|\\.description\\(|\\.displayName\\(")
+
+    private struct MetadataLiteral: CustomStringConvertible {
+        let path: String
+        let line: String
+        let literal: String
+        var description: String { "\(path): \(line.trimmingCharacters(in: .whitespaces))" }
+    }
+
+    private func appIntentsMetadataLiterals() throws -> [MetadataLiteral] {
+        var found: [MetadataLiteral] = []
+        for path in try appIntentsFiles() {
+            let bytes = Array(try text(path).utf8)
+            for range in BrandRename.swiftLiteralRanges(bytes) {
+                let line = String(BrandRename.line(in: bytes, containing: range.lowerBound))
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.hasPrefix("//"),
+                      Self.metadataLine.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+                else { continue }
+                let literal = String(decoding: bytes[range], as: UTF8.self)
+                found.append(MetadataLiteral(path: path, line: line, literal: literal))
+            }
+        }
+        return found
+    }
+
+    /// Every App Intents string — titles, descriptions, dialogs, parameter titles, entity and enum
+    /// display names, App Shortcut phrases and short titles, widget and control names — says
+    /// Avenkin, in any spelling of the old name, glued or not. They also stay clear of the platform
+    /// words App Store validation rejects in App Intents metadata (ITMS-90626).
+    func testAppIntentsMetadataSaysAvenkinAndPassesStoreValidation() throws {
+        let literals = try appIntentsMetadataLiterals()
+        XCTAssertGreaterThan(literals.count, 60, "the metadata scan found too little; has its pattern rotted?")
+        XCTAssertTrue(literals.contains { $0.literal == "Ask Avenkin" }, "the scan misses the Ask Avenkin title")
+        XCTAssertTrue(literals.contains { $0.literal.contains("Ask ") && $0.line.contains(".applicationName") },
+                      "the scan misses the App Shortcut phrases")
+
+        let oldSpellings = [Self.oldName.lowercased(), "open glasses"]
+        let oldName = literals.filter { literal in
+            oldSpellings.contains { literal.literal.lowercased().contains($0) }
+        }
+        XCTAssertTrue(oldName.isEmpty, "App Intents metadata still names the old product:\n"
+                          + oldName.map(\.description).joined(separator: "\n"))
+
+        let reserved = try NSRegularExpression(pattern: "\\b(apple|siri)\\b", options: .caseInsensitive)
+        let rejected = literals.filter { literal in
+            reserved.firstMatch(in: literal.literal, range: NSRange(literal.literal.startIndex..., in: literal.literal)) != nil
+        }
+        XCTAssertTrue(rejected.isEmpty, "App Intents metadata may not contain \"apple\" or \"siri\" "
+                          + "(App Store ITMS-90626):\n" + rejected.map(\.description).joined(separator: "\n"))
+    }
+
+    private static let shortcutsProvider = "OpenGlasses/Sources/App/Intents/AskOpenGlassesIntent.swift"
+
+    /// The App Shortcuts are what Siri, Spotlight and the Action button picker list. Every phrase
+    /// names the app through `.applicationName` (never a spelled-out brand), the Ask shortcut is
+    /// titled for Avenkin, and every glyph resolves: a system symbol, or a symbol image in the app.
+    func testAppShortcutsSayAvenkinAndEveryGlyphResolves() throws {
+        let source = try text(Self.shortcutsProvider)
+        let body = try XCTUnwrap(source.range(of: "static var appShortcuts").map { String(source[$0.lowerBound...]) })
+
+        let phraseLines = body.components(separatedBy: "\n").filter {
+            $0.trimmingCharacters(in: .whitespaces).hasPrefix("\"") && $0.contains("\\(")
+        }
+        XCTAssertGreaterThanOrEqual(phraseLines.count, 20, "the phrase scan found too few phrases")
+        for line in phraseLines {
+            XCTAssertTrue(line.contains("\\(.applicationName)"), "a phrase does not name the app: \(line)")
+            XCTAssertFalse(line.contains("Avenkin") || line.contains(Self.oldName),
+                           "a phrase spells a brand out instead of \\(.applicationName): \(line)")
+        }
+
+        let shortTitles = matches(of: "shortTitle: \"([^\"]*)\"", in: body)
+        XCTAssertTrue(shortTitles.contains("Ask Avenkin"), "the Ask shortcut's short title is \(shortTitles)")
+        XCTAssertFalse(shortTitles.contains { $0.contains(Self.oldName) })
+
+        let glyphs = matches(of: "systemImageName: \"([^\"]*)\"", in: body)
+        XCTAssertEqual(glyphs.count, shortTitles.count, "every App Shortcut carries a glyph")
+        XCTAssertTrue(glyphs.contains("AvenkinSymbol"), "the Ask shortcut no longer uses the Avenkin symbol")
+        XCTAssertFalse(glyphs.contains { $0.contains(Self.oldName) }, "a shortcut still names the old symbol")
+        for glyph in glyphs {
+            let custom = UIImage(named: glyph, in: .main, with: nil)
+            XCTAssertTrue(UIImage(systemName: glyph) != nil || custom?.isSymbolImage == true,
+                          "the App Shortcut glyph \"\(glyph)\" resolves to no symbol; system surfaces "
+                              + "would show a placeholder")
+        }
+
+        XCTAssertEqual(AskOpenGlassesIntent.title.key, "Ask Avenkin")
+        XCTAssertEqual(TakePhotoIntent.title.key, "Avenkin Photo")
+    }
+
+    /// The shortcut glyph is the Avenkin mark as a real symbol template: the asset catalog compiled
+    /// it as a symbol (a plain vector image would load as a non-symbol, or not as a symbol at all),
+    /// it takes weight and scale configurations, and the old symbol is gone.
+    func testTheAvenkinSymbolIsAValidSymbolTemplate() throws {
+        let symbol = try XCTUnwrap(UIImage(named: "AvenkinSymbol", in: .main, with: nil),
+                                   "AvenkinSymbol is missing from the app's asset catalog")
+        XCTAssertTrue(symbol.isSymbolImage, "AvenkinSymbol compiled as a plain image, not a symbol")
+        XCTAssertNil(UIImage(named: Self.oldName + "Symbol", in: .main, with: nil), "the old symbol still ships")
+
+        func size(_ weight: UIImage.SymbolWeight, _ scale: UIImage.SymbolScale) throws -> CGSize {
+            let configuration = UIImage.SymbolConfiguration(pointSize: 100, weight: weight, scale: scale)
+            let image = try XCTUnwrap(UIImage(named: "AvenkinSymbol", in: .main, with: configuration))
+            XCTAssertTrue(image.isSymbolImage)
+            return image.size
+        }
+        // Black is drawn heavier than Ultralight, and Large bigger than Small: the template's
+        // weight and scale sources were read, not just one fixed glyph.
+        XCTAssertGreaterThan(try size(.black, .medium).width, try size(.ultraLight, .medium).width)
+        XCTAssertGreaterThan(try size(.regular, .large).height, try size(.regular, .small).height)
+
+        let svg = try text("OpenGlasses/Sources/Resources/Assets.xcassets/AvenkinSymbol.symbolset/AvenkinSymbol.svg")
+        for group in ["id=\"Notes\"", "id=\"Guides\"", "id=\"Symbols\"", "id=\"template-version\"",
+                      "id=\"Ultralight-S\"", "id=\"Regular-S\"", "id=\"Black-S\"", "id=\"Regular-M\"",
+                      "id=\"Baseline-M\"", "id=\"Capline-M\"", "id=\"left-margin-Regular-M\"",
+                      "id=\"right-margin-Regular-M\""] {
+            XCTAssertTrue(svg.contains(group), "AvenkinSymbol.svg lost the template's \(group)")
+        }
+    }
+
+    private func matches(of pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range(at: 1), in: text).map { String(text[$0]) }
+        }
     }
 }

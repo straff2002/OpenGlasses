@@ -85,17 +85,6 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<!-- The name people learned the app by (Plan FY P1 item 3), so asking Siri for the app by its
-	     old name keeps reaching it after the rename; the phrases themselves follow the display name. -->
-	<key>INAlternativeAppNames</key>
-	<array>
-		<dict>
-			<key>INAlternativeAppName</key>
-			<string>OpenGlasses</string>
-			<key>INAlternativeAppNamePronunciationHint</key>
-			<string>open glasses</string>
-		</dict>
-	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fb-viewapp</string>
