@@ -169,7 +169,8 @@ enum BuiltinActionRunner {
 
         case "connect_glasses":
             await appState.connectAndListen()
-            return appState.isConnected ? "Connected and listening." : "Could not connect to glasses."
+            return appState.isConnected ? "Connected and listening."
+                                        : "Listening on your phone — glasses aren't connected."
 
         case "disconnect_glasses":
             guard appState.isConnected else { return "Glasses are already disconnected." }
@@ -182,7 +183,8 @@ enum BuiltinActionRunner {
                 return "Glasses disconnected."
             }
             await appState.connectAndListen()
-            return appState.isConnected ? "Connected and listening." : "Could not connect."
+            return appState.isConnected ? "Connected and listening."
+                                        : "Listening on your phone — glasses aren't connected."
 
         case "listening_on":
             UserDefaults.standard.set(true, forKey: "listeningEnabled")

@@ -298,6 +298,34 @@ final class WakeWordListenerRecoveryTests: XCTestCase {
         XCTAssertFalse(service.isListening)
     }
 
+    // MARK: - Glasses stand-down
+
+    /// The wearer's Disconnect stands the app down while the glasses' link stays up. A route flip
+    /// (HFP↔A2DP, audio reappearing) then reaches the service's own restart paths — the route
+    /// change, the interruption end, `resumeListening()` — and none may re-open the mic.
+    func testAStandDownClosesTheAutoRestartGate() {
+        XCTAssertTrue(service.mayAutoRestart(), "allowed by default, standalone and in tests")
+        var stoodDown = true
+        service.glassesStoodDown = { stoodDown }
+        XCTAssertFalse(service.mayAutoRestart())
+        stoodDown = false
+        XCTAssertTrue(service.mayAutoRestart(), "an explicit connect, or the link dropping, lifts it")
+        service.shouldAutoRestart = { false }
+        XCTAssertFalse(service.mayAutoRestart(), "the master toggle still gates on its own")
+    }
+
+    func testResumeListeningWhileStoodDownDoesNotReopenTheMic() async throws {
+        try await startHealthyListener()
+        harness.graph = ListenerGraphSnapshot()    // the route flip took the engine
+        service.glassesStoodDown = { true }
+
+        service.resumeListening()
+
+        let restarted = await poll(until: { self.harness.count(.startRecognition) > 0 },
+                                   timeout: 0.3)
+        XCTAssertFalse(restarted, "the wearer disconnected; the service must not listen again")
+    }
+
     // MARK: - Other consumers
 
     /// The shared-engine handoff hands a running engine to dictation. An automatic restart must

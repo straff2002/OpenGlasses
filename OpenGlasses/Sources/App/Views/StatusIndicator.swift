@@ -171,13 +171,15 @@ struct StatusIndicator: View {
         let color: Color = connected ? OGTheme.okLabel
             : (phoneIsTheDevice ? OGTheme.secondaryLabel : OGTheme.errorLabel)
         let label = connected ? (appState.glassesService.deviceName ?? "Glasses")
-            : (phoneIsTheDevice ? "Not added" : "Disconnected")
+            : (phoneIsTheDevice ? "Not added"
+                : (appState.glassesPaused ? "Paused"
+                    : (appState.glassesPhase.isConnecting ? "Connecting" : "Disconnected")))
 
         return Button {
             if connected {
                 showDisconnectConfirm = true
             } else {
-                Task { await appState.glassesService.connect() }
+                Task { await appState.connectGlasses() }
             }
         } label: {
             HStack(spacing: 5) {
@@ -328,11 +330,20 @@ struct StatusIndicator: View {
     /// session rather than a missing pair of glasses (Plan FY P2, `OnboardingFlow`).
     private var phoneIsTheDevice: Bool {
         OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
-                                        glassesAdded: Config.glassesAdded)
+                                        glassesAdded: appState.glassesAdded)
+    }
+
+    /// The glasses' line when it, not the session, is the headline — only while the wearer's own
+    /// glasses connect is under way (`SessionCardGlassesHeadline`). Phone-first: glasses away
+    /// otherwise leave the card reporting the session the phone is carrying.
+    private var glassesHeadline: String? {
+        SessionCardGlassesHeadline.headline(connectAttemptInFlight: appState.isConnectingGlasses,
+                                            link: appState.glassesPhase,
+                                            connectionStatus: appState.glassesService.connectionStatus)
     }
 
     private var iconName: String {
-        if !appState.isConnected && !phoneIsTheDevice {
+        if glassesHeadline != nil {
             return "AvenkinMark"
         }
 
@@ -367,7 +378,7 @@ struct StatusIndicator: View {
     /// opacity and the glyph is this corrected to read on that wash. Every value
     /// is a palette token so both halves are measurable.
     private var ringColor: Color {
-        if !appState.isConnected && !phoneIsTheDevice { return OGTheme.inactive }
+        if glassesHeadline != nil { return OGTheme.inactive }
         if appState.glassesIdle { return OGTheme.inactive }
 
         if isGemini {
@@ -394,11 +405,7 @@ struct StatusIndicator: View {
     }
 
     private var statusLabel: String {
-        if !appState.isConnected && !phoneIsTheDevice {
-            let status = appState.glassesService.connectionStatus
-            if status == "Not connected" { return "Glasses Not Connected" }
-            return status
-        }
+        if let glassesHeadline { return glassesHeadline }
 
         if appState.glassesIdle {
             return "Glasses Idle"

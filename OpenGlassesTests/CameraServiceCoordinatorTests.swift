@@ -154,6 +154,67 @@ final class CameraServiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(phone.captureCount, 0, "a wrong-camera photo is worse than an error")
     }
 
+    // MARK: - Glasses link
+
+    func testCaptureFallsBackToThePhoneWhenTheLinkIsDownThoughTheBackendIsReady() async throws {
+        // The bug: the backend's readiness is registration, which a pair in its case still has.
+        // With no link the glasses must not be tried — the phone serves the capture, announced.
+        let backend = MockCameraBackend(isReady: true)
+        backend.captureResult = .success(Data([0xDE, 0xAD]))
+        let phone = MockPhoneCamera()
+        let service = CameraService(backend: backend, phoneCamera: phone)
+        service.isGlassesLinkUp = { false }
+
+        let data = try await service.capturePhoto()
+
+        XCTAssertEqual(backend.captureCount, 0, "a pair with no link is not asked for a photo")
+        XCTAssertEqual(backend.readyQueries, [], "nor is the SDK configured to find out")
+        XCTAssertEqual(phone.captureCount, 1)
+        XCTAssertEqual(data, Data([0xBE, 0xEF]))
+        XCTAssertEqual(service.lastCaptureSource, .phone)
+    }
+
+    func testGlassesOnlyCaptureRefusesWhenTheLinkIsDown() async {
+        let backend = MockCameraBackend(isReady: true)
+        let phone = MockPhoneCamera()
+        let service = CameraService(backend: backend, phoneCamera: phone)
+        service.isGlassesLinkUp = { false }
+
+        do {
+            _ = try await service.capturePhoto(allowPhoneFallback: false)
+            XCTFail("a glasses-only capture with no link must refuse")
+        } catch {
+            XCTAssertTrue(error is CameraService.GlassesOnlyCaptureError)
+        }
+        XCTAssertEqual(backend.captureCount, 0)
+        XCTAssertEqual(phone.captureCount, 0, "never a hidden phone shot")
+    }
+
+    func testCaptureUsesTheGlassesWhenTheLinkIsUp() async throws {
+        let backend = MockCameraBackend(isReady: true)
+        backend.captureResult = .success(Data([0xDE, 0xAD]))
+        let phone = MockPhoneCamera()
+        let service = CameraService(backend: backend, phoneCamera: phone)
+        service.isGlassesLinkUp = { true }
+
+        _ = try await service.capturePhoto()
+
+        XCTAssertEqual(backend.captureCount, 1)
+        XCTAssertEqual(phone.captureCount, 0)
+        XCTAssertEqual(service.lastCaptureSource, .glasses)
+    }
+
+    func testActiveCapabilitiesAreNilWhileTheLinkIsDown() {
+        let backend = MockCameraBackend(isReady: true)
+        let service = CameraService(backend: backend, phoneCamera: MockPhoneCamera())
+        var linkUp = false
+        service.isGlassesLinkUp = { linkUp }
+
+        XCTAssertNil(service.activeCapabilities, "registered but away is not a reachable camera")
+        linkUp = true
+        XCTAssertNotNil(service.activeCapabilities)
+    }
+
     // MARK: - Streaming gate
 
     func testStreamingIsRefusedWithAReadableReasonWhenThereIsNoLiveFeed() async {
