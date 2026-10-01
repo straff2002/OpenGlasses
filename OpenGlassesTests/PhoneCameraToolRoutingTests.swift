@@ -85,9 +85,10 @@ final class PhoneCameraToolRoutingTests: XCTestCase {
     }
 
     /// Runs `work` as if the named tool were executing, with a fresh ledger, as the router does.
-    private func asTool<T>(_ name: String, ledger: PhoneCaptureLedger = PhoneCaptureLedger(),
+    private func asTool<T>(_ name: String, ledger: PhoneCaptureLedger? = nil,
                            _ work: () async throws -> T) async rethrows -> T {
-        try await ToolInvocationScope.$current.withValue(.root(name: name, origin: .model)) {
+        let ledger = ledger ?? PhoneCaptureLedger()
+        return try await ToolInvocationScope.$current.withValue(.root(name: name, origin: .model)) {
             try await PhoneCaptureScope.$ledger.withValue(ledger) { try await work() }
         }
     }

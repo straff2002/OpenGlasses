@@ -1,6 +1,22 @@
 # Plan GV — Camera Tools on the Phone Camera
 
-**Status:** 📋 Planned 2026-10-02 — one PR, P0–P2.
+**Status:** ✅ Shipped 2026-10-02 — P0–P2 in one PR: `PhoneCapturePolicy` (the per-tool table,
+hints, tile list, router budget, result composition), `PhonePhotoCoordinator` (one pending request,
+90 s timeout, busy, app-not-on-screen, 4 s presentation watchdog, task cancellation, staged tile
+photo), `CameraService` routing for tool calls, the router's phone-photo ledger and widened budget,
+the root camera sheet with a framing line, the Fault Code / Safety Check / Log Photo tiles opening
+the phone camera first, device-neutral descriptions and failure strings across 20 camera tools
+and their services. Decisions taken as listed below. **Owed (P3, device):** glasses in the case,
+on the face and never added, with each tile and the spoken requests; the locked-phone and
+sheet-already-open sentences.
+
+**As built — where the code differs from the draft below:**
+- `CameraService.captureLibrarySink` is a small seam over the Photos-album write in
+  `capturePhoto()`, so the routing tests can use decodable images without asking the simulator for
+  library access.
+- `MainView` now imports Combine (a warning in a touched file).
+- Two non-camera failure strings in `StudyService` / `TeleprompterService` and the `parking`
+  "no camera" note were reworded with the tools.
 
 **Related:** Plan [GJ](GJ-remappable-temple-gestures.md) (the glasses-only capture rule this plan
 keeps), Plan [FO](FO-guided-job-flow-and-job-tab.md) (the Field Assist job tiles), Plan

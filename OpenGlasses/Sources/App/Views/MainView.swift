@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Root tab view — Voice / Modes / Chat / Settings, with a Job tab for Field Assist.

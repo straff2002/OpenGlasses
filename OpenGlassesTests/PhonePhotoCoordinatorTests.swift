@@ -58,10 +58,17 @@ final class PhonePhotoCoordinatorTests: XCTestCase {
     private func start(_ coordinator: PhonePhotoCoordinator,
                        tool: String? = "capture_photo") async -> Task<PhonePhotoOutcome, Never> {
         let task = Task { await coordinator.requestPhoto(PhonePhotoRequest(toolName: tool, hint: "Frame it")) }
-        for _ in 0..<200 where coordinator.pending == nil {
+        await settle(coordinator)
+        return task
+    }
+
+    /// Yields until a request is pending *and* both of its timers have parked their sleeps, so a
+    /// `fire` cannot land before the timer it means to fire is waiting.
+    private func settle(_ coordinator: PhonePhotoCoordinator) async {
+        for _ in 0..<1_000 {
+            if coordinator.pending != nil, sleeper.parkedDurations.count >= 2 { return }
             await Task.yield()
         }
-        return task
     }
 
     // MARK: - Endings
@@ -196,7 +203,7 @@ final class PhonePhotoCoordinatorTests: XCTestCase {
         let coordinator = makeCoordinator()
         coordinator.stage(Data([5]))
         let task = Task { await coordinator.preCapture(hint: "Frame it") }
-        for _ in 0..<200 where coordinator.pending == nil { await Task.yield() }
+        await settle(coordinator)
         XCTAssertNil(coordinator.pending?.toolName)
         coordinator.fulfil(coordinator.pending!.id, data: Data([6]))
         let outcome = await task.value
