@@ -958,6 +958,11 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("Insights", systemImage: "chart.bar")
                 }
+                NavigationLink {
+                    MemoryView(model: appState.memoryFacts.makeScreenModel())
+                } label: {
+                    Label("Memory", systemImage: "brain.head.profile")
+                }
                 InfoToggle(
                     title: "Use Phone Mic for Translation",
                     isOn: Binding(

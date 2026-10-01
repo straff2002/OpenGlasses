@@ -1,6 +1,12 @@
 # Plan GG — Readable Memory (what it knows about me, one fact at a time)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** ✅ Shipped 2026-10-01 — P0–P3 built in one PR (contracts, provenance migration, the
+persona-erasure fix, Forget and Correct across every store with tombstones, the Memory screen, the
+`my_memory` voice tool). **Owed on device:** the Memory screen with VoiceOver and the largest
+Dynamic Type sizes, and a spoken forget on the glasses (confirmation prompt, the several-matches
+hand-off notification). **Not buildable here:** the gateway copy can only be queued for deletion
+(the bridge has no delete), and live-session snapshot invalidation waits for Plan FJ, which is
+unbuilt — the forgetter's invalidation hook is where it plugs in. See *Implementation notes*.
 **Relation to Plan [DX](DX-private-memory-timeline.md):** DX (drafted 2026-08-29, unbuilt) is the full
 memory control surface: federated timeline, conversation search, export. GG is **its first
 shippable cut**, narrowed to facts about the wearer, grouped the way people think about them, with
@@ -145,6 +151,45 @@ forget requires confirmation).
 4. Diary observations (inferred) in the list: shown under Other with an "inferred" badge
    (recommended) or hidden.
 5. Voice summary length: counts + three recent facts (recommended).
+
+## Implementation notes (2026-10-01)
+
+Decisions taken (Greig: the plan's recommendations): GG is DX's first cut; tombstones yes; forgetting
+*offers* to delete the originating conversation, never automatically; inferred diary observations
+under Other with an "inferred" badge; voice summary = counts + three recent facts.
+
+Where the code differed from this plan:
+
+- **The erasure bug was wider than suspected.** `eraseSemanticMemory` scanned only the shared
+  cache, so under a persona the shared row survived (as suspected) *and* no persona's own facts were
+  ever reached, whichever persona was active. Both are fixed — the walk now searches every namespace
+  and deletes per namespace — with `SubjectErasureTests.testGlobalFactErasedWhilePersonaActive` and
+  `testPersonaScopedFactsAreErasedWhicheverPersonaIsActive` written first and seen failing.
+- **Confirmation is in the tool, not `HighImpactToolPolicy`.** That floor only runs with agent mode
+  off and sees only the model's arguments; the confirmation has to name the *resolved* fact. The
+  tool resolves exactly one fact, then asks through `ToolConfirmationCoordinator` in both modes, and
+  fails closed without one.
+- **A fact forget is not written to the erasure ledger.** A ledger replay would delete the fact
+  again after the wearer re-told it. The tombstone is what keeps it from returning, and it yields to
+  the wearer's own word. `ErasureSubject.memoryFact` carries the confirmed note lines and the gateway
+  key; most stores answer "not held here", and the transcript is reported unsupported with the
+  reason, never claimed erased.
+- **Provenance of reply tags.** The model emits the same `[REMEMBER…]` tag whether asked or not, so
+  the utterance it answered decides: an explicit request ("remember…", "don't forget…",
+  "actually, …") is `toldMe`; everything else, including the memory review and background agent
+  tasks, is `inferred`. Brain edges gained an `origin` column outside the versioned migration (no
+  backfill; NULL reads as `legacyUnknown`), and every brain write path now names its origin.
+- **Places** come from object memory and a new `SavedLocationStore` over the existing
+  `saved_locations` preference; saved places are not in the subject walk, so the forgetter removes
+  them itself and adds the receipt.
+- **The voice tool reads no wider than recall.** Another persona's facts, and the assistant's notes
+  outside agent mode, are left out of what `my_memory` tells the model; the phone screen shows all.
+- **Entry points:** Settings → AI & Personality (beside the User Memory switch) and the features
+  list beside Insights. A My Day entry was left for a design call.
+- **FK:** unbuilt, so there were no benchmark deletion cases to promote; `MemoryFactForgetterTests`
+  checks each store's deletion and re-reads from disk instead.
+- **FJ hook:** FJ is unbuilt, so there is no live snapshot to drop yet; the gateway-echo cache is the
+  one in-memory projection, and it is purged on forget and filtered on every gateway sync.
 
 ## Out of scope
 

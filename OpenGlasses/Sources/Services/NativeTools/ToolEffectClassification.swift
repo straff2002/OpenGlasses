@@ -85,6 +85,9 @@ extension PlaybookTool { var executionSemantics: ToolExecutionSemantics { .local
 extension MeetingSummaryTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension SocialContextTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension BrainTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+/// Reads memory, and forgets or corrects one fact on the wearer's say-so — on-device stores only;
+/// a gateway copy is queued for deletion, never sent anything new.
+extension MyMemoryTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AgentDiaryTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AgentDocumentTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AgentScheduleTool { var executionSemantics: ToolExecutionSemantics { .local() } }

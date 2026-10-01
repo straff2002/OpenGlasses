@@ -28,6 +28,11 @@ class SemanticMemoryStore: ObservableObject {
         let namespace: String  // "global" or personaId
         let createdAt: Date
         let expiresAt: Date?
+        /// Where the fact came from (Plan GG). `legacyUnknown` for a row written before the column
+        /// existed — never guessed.
+        var origin: MemoryOrigin = .legacyUnknown
+        /// The conversation thread (or other source) the fact was taken from, when known.
+        var sourceRef: String? = nil
     }
 
     struct DiaryEntry: Identifiable {
@@ -129,51 +134,75 @@ class SemanticMemoryStore: ObservableObject {
     /// Returns false when the fact was not kept — the write did not reach the database, or the
     /// fact alone is larger than its namespace's storage cap. Callers at a tool/spoken boundary
     /// should say so rather than claim the fact was saved.
+    ///
+    /// `origin` records where the fact came from (Plan GG); a direct call is the wearer's own
+    /// request unless the caller says otherwise. An inferred write of a fact the wearer asked to
+    /// forget is dropped — and still returns true, because nothing failed: it was declined.
     @discardableResult
-    func remember(_ key: String, value: String) -> Bool {
+    func remember(_ key: String, value: String, origin: MemoryOrigin = .toldMe,
+                  sourceRef: String? = nil) -> Bool {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
         if let pid = activePersonaId {
             if personaMemories[k] == value { return true }
-            return write(key: k, value: value, namespace: pid, maxChars: maxPersonaChars)
+            return write(key: k, value: value, namespace: pid, maxChars: maxPersonaChars,
+                         origin: origin, sourceRef: sourceRef) != .failed
         } else {
             if memories[k] == value { return true }
-            return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
+            return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars,
+                         origin: origin, sourceRef: sourceRef) != .failed
         }
     }
 
     @discardableResult
-    func rememberGlobal(_ key: String, value: String) -> Bool {
+    func rememberGlobal(_ key: String, value: String, origin: MemoryOrigin = .toldMe,
+                        sourceRef: String? = nil) -> Bool {
         let k = normalise(key)
         guard !k.isEmpty, !value.isEmpty else { return false }
         if memories[k] == value { return true }
-        return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars)
+        return write(key: k, value: value, namespace: "global", maxChars: maxGlobalChars,
+                     origin: origin, sourceRef: sourceRef) != .failed
     }
+
+    /// What one write did. `suppressed` is a forgotten fact the assistant tried to learn again
+    /// on its own (Plan GG decision 2) — not a failure, and not saved.
+    private enum WriteOutcome { case saved, suppressed, failed }
 
     /// The shared write path: size check, upsert, evict to fit, then log and sync.
     ///
     /// A fact that could never fit its namespace's cap on its own is refused *before* the upsert,
     /// so it neither overwrites an earlier value for the same key nor evicts anything to make room
     /// it could not use.
-    private func write(key k: String, value: String, namespace ns: String, maxChars: Int) -> Bool {
+    private func write(key k: String, value: String, namespace ns: String, maxChars: Int,
+                       origin: MemoryOrigin, sourceRef: String?) -> WriteOutcome {
         let scope: PrivacyLog.StoreScope = ns == "global" ? .global : .persona
+        // Plan GG tombstones: the wearer forgot this fact. Only the wearer saying it again brings
+        // it back; the assistant inferring it again does not.
+        if isTombstoned(key: k, value: value) {
+            guard origin == .toldMe else {
+                PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
+                                 detail: PrivacyToken("tombstoned"))
+                return .suppressed
+            }
+            clearTombstone(key: k, value: value)
+        }
         guard k.count + value.count <= maxChars else {
             PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
                              characters: value.count, detail: PrivacyToken("overCap"))
-            return false
+            return .failed
         }
-        guard upsert(key: k, value: value, namespace: ns) else {
+        guard upsert(key: k, value: value, namespace: ns, origin: origin, sourceRef: sourceRef) else {
             PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope)
-            return false
+            return .failed
         }
         guard trim(namespace: ns, maxChars: maxChars, keeping: k) else {
             PrivacyLog.store(.semanticMemory, .writeFailed, scope: scope,
                              characters: value.count, detail: PrivacyToken("overCap"))
-            return false
+            return .failed
         }
         PrivacyLog.store(.semanticMemory, .recordWritten, scope: scope, characters: value.count)
         pushToGateway(key: k, value: value)
-        return true
+        return .saved
     }
 
     @discardableResult
@@ -190,6 +219,124 @@ class SemanticMemoryStore: ObservableObject {
         return ok
     }
 
+    /// Delete one fact from one namespace, whichever persona is active. The subject erasure and
+    /// the per-fact forget both need this: `forget(_:)` only ever reaches the active namespace.
+    @discardableResult
+    func forget(key: String, namespace: String) -> Bool {
+        let ok = deleteMemory(key: normalise(key), namespace: namespace)
+        if namespace == "global" { refreshGlobalCache() } else { refreshPersonaCache() }
+        return ok
+    }
+
+    // MARK: - Per-fact access (Plan GG)
+
+    /// Every live fact in every namespace — shared and each persona's. For the wearer's own Memory
+    /// screen; prompt assembly and the model's tools keep their own namespace scoping.
+    func allEntries() -> [MemoryEntry] {
+        fetchAllMemories(namespace: nil)
+    }
+
+    /// One fact by its row id (`"<namespace>:<key>"`).
+    func entry(id: String) -> MemoryEntry? {
+        fetchAllMemories(namespace: nil).first { $0.id == id }
+    }
+
+    /// Facts in any namespace whose key or value mentions `token`, case-insensitively.
+    func entries(mentioning token: String) -> [MemoryEntry] {
+        let needle = token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return [] }
+        return fetchAllMemories(namespace: nil).filter {
+            $0.keyName.lowercased().contains(needle) || $0.value.lowercased().contains(needle)
+        }
+    }
+
+    /// Forget one fact as the wearer asked: delete the row (its embedding is in the same row),
+    /// drop any gateway echo of it from the prompt cache, and leave a content-free tombstone so the
+    /// assistant does not learn it again on its own. Returns whether the row is gone.
+    @discardableResult
+    func forgetFact(entryID: String) -> Bool {
+        guard let found = entry(id: entryID) else { return true }
+        tombstone(key: found.keyName, value: found.value)
+        dropGatewayEcho(key: found.keyName, value: found.value)
+        forget(key: found.keyName, namespace: found.namespace)
+        return entry(id: entryID) == nil
+    }
+
+    /// Replace a fact's value in place — same key, same namespace — re-embedded, and marked as the
+    /// wearer's own word. The old value is not kept anywhere.
+    @discardableResult
+    func correct(entryID: String, newValue: String) -> Bool {
+        let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, let found = entry(id: entryID) else { return false }
+        dropGatewayEcho(key: found.keyName, value: found.value)
+        let cap = found.namespace == "global" ? maxGlobalChars : maxPersonaChars
+        return write(key: found.keyName, value: value, namespace: found.namespace, maxChars: cap,
+                     origin: .toldMe, sourceRef: nil) == .saved
+    }
+
+    func diaryEntry(id: String) -> DiaryEntry? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT id, text, created_at FROM diary WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return DiaryEntry(id: String(cString: sqlite3_column_text(stmt, 0)),
+                          text: String(cString: sqlite3_column_text(stmt, 1)),
+                          createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2)))
+    }
+
+    /// Delete one diary observation (and the embedding stored with it).
+    @discardableResult
+    func deleteDiary(id: String) -> Bool {
+        run("DELETE FROM diary WHERE id = ?", [.text(id)])
+        return diaryEntry(id: id) == nil
+    }
+
+    @discardableResult
+    func correctDiary(id: String, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, diaryEntry(id: id) != nil,
+              run("UPDATE diary SET text = ?, embedding = NULL, embedding_version = NULL WHERE id = ?",
+                  [.text(trimmed), .text(id)]) else { return false }
+        if let vec = embed(trimmed) { writeDiaryEmbedding(id: id, vec: vec) }
+        return true
+    }
+
+    // MARK: - Tombstones (Plan GG decision 2)
+
+    func isTombstoned(key: String, value: String) -> Bool {
+        isTombstoned(digest: MemoryTombstone.digest(key, value))
+    }
+
+    private func isTombstoned(digest: String) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM forgotten WHERE digest = ?", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, digest, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    private func tombstone(key: String, value: String) {
+        run("INSERT OR REPLACE INTO forgotten (digest, created_at) VALUES (?, ?)",
+            [.text(MemoryTombstone.digest(key, value)), .real(now().timeIntervalSince1970)])
+    }
+
+    private func clearTombstone(key: String, value: String) {
+        run("DELETE FROM forgotten WHERE digest = ?", [.text(MemoryTombstone.digest(key, value))])
+    }
+
+    /// The gateway hands back what this store pushed as `"key: value"`. A forgotten or corrected
+    /// fact's echo must not keep reaching the prompt through that cache.
+    private func dropGatewayEcho(key: String, value: String) {
+        let echo = MemoryTombstone.digest(key, value)
+        gatewayMemories.removeAll { Self.gatewayLineDigest($0) == echo }
+    }
+
+    private static func gatewayLineDigest(_ line: String) -> String? {
+        guard let colon = line.firstIndex(of: ":") else { return nil }
+        return MemoryTombstone.digest(String(line[..<colon]), String(line[line.index(after: colon)...]))
+    }
+
     func recall(_ key: String) -> String? {
         let k = normalise(key)
         return personaMemories[k] ?? memories[k]
@@ -202,6 +349,7 @@ class SemanticMemoryStore: ObservableObject {
         personaWrittenAt.removeAll()
         exec("DELETE FROM memories")
         exec("DELETE FROM diary")
+        exec("DELETE FROM forgotten")
         PrivacyLog.store(.semanticMemory, .cleared)
     }
 
@@ -534,9 +682,16 @@ class SemanticMemoryStore: ObservableObject {
                comment: "Appended to a spoken reply when a fact the assistant tried to remember was not saved.")
     }
 
-    func parseAndExecuteCommands(in response: String) -> String {
+    /// - Parameters:
+    ///   - userUtterance: what the wearer said that this reply answers. It decides the origin of
+    ///     the reply's `[REMEMBER…]` tags (Plan GG): an explicit request to keep something is
+    ///     `toldMe`, anything else — or no utterance at all — is `inferred`.
+    ///   - threadID: the conversation the reply belongs to, recorded as the facts' source.
+    func parseAndExecuteCommands(in response: String, userUtterance: String? = nil,
+                                 threadID: String? = nil) -> String {
         var cleaned = response
         var anySaveFailed = false
+        let origin = MemoryOriginClassifier.originForReplyTags(userUtterance: userUtterance)
         // Each pass matches against the text as it stands after the previous pass, so its ranges
         // are valid for the string they are removed from. (Matching the original response and
         // removing from the already-shortened text cut at the wrong offsets when a reply mixed
@@ -549,7 +704,8 @@ class SemanticMemoryStore: ObservableObject {
             for match in matches.reversed() {
                 if let kr = Range(match.range(at: 1), in: source),
                    let vr = Range(match.range(at: 2), in: source) {
-                    if !rememberGlobal(String(source[kr]), value: String(source[vr])) {
+                    if !rememberGlobal(String(source[kr]), value: String(source[vr]),
+                                       origin: origin, sourceRef: threadID) {
                         anySaveFailed = true
                     }
                 }
@@ -564,7 +720,8 @@ class SemanticMemoryStore: ObservableObject {
             for match in matches.reversed() {
                 if let kr = Range(match.range(at: 1), in: source),
                    let vr = Range(match.range(at: 2), in: source) {
-                    if !remember(String(source[kr]), value: String(source[vr])) {
+                    if !remember(String(source[kr]), value: String(source[vr]),
+                                 origin: origin, sourceRef: threadID) {
                         anySaveFailed = true
                     }
                 }
@@ -639,7 +796,13 @@ class SemanticMemoryStore: ObservableObject {
         let result = await bridge.queryMemory(query: q, limit: maxGatewayResults)
         switch result {
         case .success(let text) where !text.isEmpty && text != "No memory results":
-            gatewayMemories = text.components(separatedBy: "\n---\n").filter { !$0.isEmpty }
+            // A fact the wearer forgot here may still sit on the gateway (it has no delete); its
+            // echo is not let back into the prompt.
+            gatewayMemories = text.components(separatedBy: "\n---\n").filter { line in
+                guard !line.isEmpty else { return false }
+                guard let digest = Self.gatewayLineDigest(line) else { return true }
+                return !isTombstoned(digest: digest)
+            }
         default:
             break
         }
@@ -694,24 +857,37 @@ class SemanticMemoryStore: ObservableObject {
         // `Embedder` seam now in use — so they read as outdated (NULL) and re-embed on next access.
         exec("ALTER TABLE memories ADD COLUMN embedding_version TEXT")
         exec("ALTER TABLE diary ADD COLUMN embedding_version TEXT")
+        // Provenance (Plan GG). Additive and idempotent like the stamp above (the ALTER fails
+        // harmlessly once the column exists). Deliberately not backfilled: an older row's origin
+        // is unknown, NULL reads back as `legacyUnknown`, and nothing guesses otherwise.
+        exec("ALTER TABLE memories ADD COLUMN origin TEXT")
+        exec("ALTER TABLE memories ADD COLUMN source_ref TEXT")
+        // Content-free tombstones of forgotten facts (Plan GG decision 2): a digest, never words.
+        exec("CREATE TABLE IF NOT EXISTS forgotten (digest TEXT PRIMARY KEY, created_at REAL NOT NULL)")
     }
 
     // MARK: - Private: CRUD
 
     @discardableResult
-    private func upsert(key: String, value: String, namespace: String) -> Bool {
+    private func upsert(key: String, value: String, namespace: String,
+                        origin: MemoryOrigin = .legacyUnknown, sourceRef: String? = nil) -> Bool {
         let id = "\(namespace):\(key)"
         let topic = detectTopic(key: key, value: value)
         let now = self.now().timeIntervalSince1970
+        // A rewrite replaces the provenance with the new write's: the value changed, so where the
+        // old one came from no longer describes it.
         let ok = run("""
-        INSERT INTO memories (id, key_name, value, topic, namespace, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO memories (id, key_name, value, topic, namespace, created_at, origin, source_ref)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(key_name, namespace) DO UPDATE SET
             value = excluded.value,
             topic = excluded.topic,
             created_at = excluded.created_at,
+            origin = excluded.origin,
+            source_ref = excluded.source_ref,
             embedding = NULL
-        """, [.text(id), .text(key), .text(value), .text(topic), .text(namespace), .real(now)])
+        """, [.text(id), .text(key), .text(value), .text(topic), .text(namespace), .real(now),
+              .optionalText(origin.storageValue), .optionalText(sourceRef)])
         guard ok else { return false }
         // Compute and store embedding (+ version stamp) synchronously (fast for short texts).
         if let vec = embed("\(key) \(value)") {
@@ -731,9 +907,9 @@ class SemanticMemoryStore: ObservableObject {
         var stmt: OpaquePointer?
         let sql: String
         if namespace != nil {
-            sql = "SELECT id, key_name, value, topic, namespace, created_at, expires_at FROM memories WHERE namespace = ?"
+            sql = "SELECT \(Self.entryColumns) FROM memories WHERE namespace = ?"
         } else {
-            sql = "SELECT id, key_name, value, topic, namespace, created_at, expires_at FROM memories"
+            sql = "SELECT \(Self.entryColumns) FROM memories"
         }
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return entries }
         defer { sqlite3_finalize(stmt) }
@@ -744,15 +920,7 @@ class SemanticMemoryStore: ObservableObject {
         while sqlite3_step(stmt) == SQLITE_ROW {
             let expiresAt = sqlite3_column_type(stmt, 6) != SQLITE_NULL ? sqlite3_column_double(stmt, 6) : nil
             if let exp = expiresAt, exp < now { continue }  // skip expired
-            entries.append(MemoryEntry(
-                id: String(cString: sqlite3_column_text(stmt, 0)),
-                keyName: String(cString: sqlite3_column_text(stmt, 1)),
-                value: String(cString: sqlite3_column_text(stmt, 2)),
-                topic: String(cString: sqlite3_column_text(stmt, 3)),
-                namespace: String(cString: sqlite3_column_text(stmt, 4)),
-                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
-                expiresAt: expiresAt.map { Date(timeIntervalSince1970: $0) }
-            ))
+            entries.append(Self.entry(from: stmt, expiresAt: expiresAt))
         }
         return entries
     }
@@ -765,7 +933,7 @@ class SemanticMemoryStore: ObservableObject {
         var entries: [MemoryEntry] = []
         var stmt: OpaquePointer?
         let placeholders = unique.map { _ in "?" }.joined(separator: ", ")
-        let sql = "SELECT id, key_name, value, topic, namespace, created_at, expires_at FROM memories WHERE namespace IN (\(placeholders))"
+        let sql = "SELECT \(Self.entryColumns) FROM memories WHERE namespace IN (\(placeholders))"
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return entries }
         defer { sqlite3_finalize(stmt) }
         for (i, ns) in unique.enumerated() {
@@ -775,17 +943,29 @@ class SemanticMemoryStore: ObservableObject {
         while sqlite3_step(stmt) == SQLITE_ROW {
             let expiresAt = sqlite3_column_type(stmt, 6) != SQLITE_NULL ? sqlite3_column_double(stmt, 6) : nil
             if let exp = expiresAt, exp < now { continue }  // skip expired
-            entries.append(MemoryEntry(
-                id: String(cString: sqlite3_column_text(stmt, 0)),
-                keyName: String(cString: sqlite3_column_text(stmt, 1)),
-                value: String(cString: sqlite3_column_text(stmt, 2)),
-                topic: String(cString: sqlite3_column_text(stmt, 3)),
-                namespace: String(cString: sqlite3_column_text(stmt, 4)),
-                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
-                expiresAt: expiresAt.map { Date(timeIntervalSince1970: $0) }
-            ))
+            entries.append(Self.entry(from: stmt, expiresAt: expiresAt))
         }
         return entries
+    }
+
+    /// The column list every entry read shares, so the provenance columns are read in one place.
+    private static let entryColumns =
+        "id, key_name, value, topic, namespace, created_at, expires_at, origin, source_ref"
+
+    private static func entry(from stmt: OpaquePointer?, expiresAt: Double?) -> MemoryEntry {
+        func optionalText(_ i: Int32) -> String? {
+            sqlite3_column_type(stmt, i) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, i)) : nil
+        }
+        return MemoryEntry(
+            id: String(cString: sqlite3_column_text(stmt, 0)),
+            keyName: String(cString: sqlite3_column_text(stmt, 1)),
+            value: String(cString: sqlite3_column_text(stmt, 2)),
+            topic: String(cString: sqlite3_column_text(stmt, 3)),
+            namespace: String(cString: sqlite3_column_text(stmt, 4)),
+            createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
+            expiresAt: expiresAt.map { Date(timeIntervalSince1970: $0) },
+            origin: MemoryOrigin(storageValue: optionalText(7)),
+            sourceRef: optionalText(8))
     }
 
     private func fetchEmbedding(key: String, namespace: String) -> (vec: [Float], version: String?)? {
@@ -1016,6 +1196,8 @@ class SemanticMemoryStore: ObservableObject {
     private enum SQLValue {
         case text(String)
         case real(Double)
+        /// NULL when nil.
+        case optionalText(String?)
     }
 
     /// Run a parameterized (non-query) statement with positional `?` binds.
@@ -1034,6 +1216,8 @@ class SemanticMemoryStore: ObservableObject {
             switch bind {
             case .text(let s): sqlite3_bind_text(stmt, idx, s, -1, SQLITE_TRANSIENT)
             case .real(let d): sqlite3_bind_double(stmt, idx, d)
+            case .optionalText(let s?): sqlite3_bind_text(stmt, idx, s, -1, SQLITE_TRANSIENT)
+            case .optionalText(nil): sqlite3_bind_null(stmt, idx)
             }
         }
         let ok = sqlite3_step(stmt) == SQLITE_DONE

@@ -301,6 +301,21 @@ struct OpenGlassesApp: App {
                         }
                     }
 
+                // Several facts matched a spoken forget or correction (Plan GG): the Memory screen,
+                // filtered to the phrase the wearer used, so they choose.
+                Color.clear
+                    .sheet(item: Binding(get: { appState.memoryHandOffQuery },
+                                         set: { appState.memoryHandOffQuery = $0 })) { handOff in
+                        NavigationStack {
+                            MemoryView(model: appState.memoryFacts.makeScreenModel(query: handOff.query))
+                                .toolbar {
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button("Done") { appState.memoryHandOffQuery = nil }
+                                    }
+                                }
+                        }
+                    }
+
                 // Apple Translation session host (BY P3) — invisible; the framework only hands
                 // out sessions through a view, so the on-device tier's session lives here.
                 TranslationEngineHost(engine: appState.translationEngine)
@@ -1316,6 +1331,29 @@ class AppState: ObservableObject, AppStateProtocol {
     let conversationRecallCoordinator = ConversationRecallCoordinator()
     let userMemory = SemanticMemoryStore()
 
+    /// Readable memory (Plan GG): the Memory screen and the `my_memory` tool read and change facts
+    /// through this, so a forget made either way reaches every store the same way.
+    lazy var memoryFacts: MemoryFactServices = {
+        var erasure = SubjectErasureCoordinator.Stores()
+        erasure.stagedExports = StagedExportCoordinator.allFamilies
+        erasure.brain = BrainStore.shared
+        erasure.semanticMemory = userMemory
+        erasure.objectMemory = ObjectMemoryStore.shared
+        erasure.agentDocuments = agentDocs
+        erasure.conversations = conversationStore
+        erasure.offlineQueue = offlineQueue
+        return MemoryFactServices(
+            stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
+                                     agentDocuments: agentDocs, objects: .shared,
+                                     savedPlaces: .shared, conversations: conversationStore),
+            coordinator: SubjectErasureCoordinator(stores: erasure, ledger: erasureLedger),
+            protectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
+    }()
+
+    /// Set when a spoken forget or correction matched several facts: the phrase the wearer used,
+    /// so the Memory screen opens filtered to the candidates. Cleared when the sheet closes.
+    @Published var memoryHandOffQuery: MemoryHandOff?
+
     /// The wearer-memory block for a prompt, and the record of what it contained (Plan FC P3).
     ///
     /// One helper for every send site because the two decisions in front of the store — is memory
@@ -1586,6 +1624,30 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.speechService.speak(prompt)
             }
         }
+
+        // Readable memory by voice (Plan GG P3). Registered here rather than in the registry's
+        // init because it needs the stores AppState owns. It reads no wider than the model could
+        // already recall, and a forget asks the wearer first through the shared confirmation.
+        var myMemory = MyMemoryTool()
+        let memoryFactsForTool = memoryFacts
+        let memoryForScope = userMemory
+        myMemory.facts = {
+            MyMemoryToolScope.visible(memoryFactsForTool.repository.load().facts,
+                                      activePersona: memoryForScope.activePersonaId,
+                                      agentModeEnabled: Config.agentModeEnabled)
+        }
+        myMemory.forgetter = memoryFacts.forgetter
+        myMemory.corrector = memoryFacts.corrector
+        myMemory.confirm = { [weak self] summary in
+            guard let self else { return false }
+            return await self.toolConfirmationCoordinator.requestConfirmation(toolName: "my_memory",
+                                                                             summary: summary)
+        }
+        myMemory.handOff = { [weak self] query in
+            self?.memoryHandOffQuery = MemoryHandOff(query: query)
+            MemoryHandOffNotifier.post()
+        }
+        nativeToolRegistry.register(myMemory)
 
         // Wire agent document store into the doc editing tool
         if var docTool = nativeToolRegistry.tool(named: "edit_agent_docs") as? AgentDocumentTool {
@@ -4099,7 +4161,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 memoryContext: memoryContextForPrompt(query: prompt)
             )
             TurnRecorder.mark(.generationDone)
-            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: userLog)
@@ -4145,7 +4207,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 memoryContext: memoryContextForPrompt(query: prompt)
             )
             TurnRecorder.mark(.generationDone)
-            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: "[Photo] \(prompt)")
@@ -5267,7 +5329,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             )
                         },
                         postProcess: { rawResponse in
-                            var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+                            var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: self.conversationStore.activeThreadId) : rawResponse
                             // Phone-camera captures must announce themselves (see captureAndAnalyzePhoto).
                             if self.cameraService.lastCaptureSource == .phone {
                                 response = "From the phone camera — the glasses weren't available. " + response
@@ -5858,7 +5920,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 postProcess: { [self] rawResponse in
                     // Parse and execute memory commands from the response
                     guard Config.userMemoryEnabled else { return rawResponse }
-                    let response = userMemory.parseAndExecuteCommands(in: rawResponse)
+                    let response = userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId)
 
                     // Periodic nudge: after N turns, inject a hidden review prompt
                     // into the LLM history so the next response considers what to remember
@@ -5997,7 +6059,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     )
                 },
                 postProcess: { [self] rawResponse in
-                    Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+                    Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId) : rawResponse
                 },
                 accept: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else {

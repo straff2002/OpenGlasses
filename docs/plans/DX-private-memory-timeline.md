@@ -1,6 +1,11 @@
 # Plan DX — Private Memory Timeline and Control Surface
 
-**Status:** 📝 Drafted (2026-08-29)
+**Status:** 🚧 Core shipped via Plan [GG](GG-readable-memory.md) (2026-10-01) — GG built DX P0's
+contracts (fact identity, provenance, source protocol, fail-closed merge), the fact half of P1 (the
+Memory screen over semantic, brain, notes and places) and P3's fact routes (correct, forget, voice).
+**DX keeps:** P2 conversation search (needs DK), protected export, the object-memory move out of
+`UserDefaults`, `memoryTimelineEnabled` (GG shipped without a flag), the access-policy matrix and P4
+adapters. *(Drafted 2026-08-29.)*
 **Origin:** Follow-up to the opportunity assessment's “explicit private memory” recommendation and
 the DK plan review. The app already retains several kinds of memory, but it has no single place where
 the user can see, correct, or genuinely remove what is retained.

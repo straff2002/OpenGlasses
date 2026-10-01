@@ -47,6 +47,11 @@ final class BrainStore: ObservableObject {
         var lastSeen: Date?
         /// Set when a newer claim retired this one. Nothing is deleted; history is stamped.
         var supersededAt: Date?
+        /// The row id, for per-fact correct and forget (Plan GG). Empty for an edge built by hand.
+        var id: String = ""
+        /// Where the claim came from (Plan GG). `legacyUnknown` for a row written before the
+        /// column existed, or by a caller that did not say.
+        var origin: MemoryOrigin = .legacyUnknown
 
         /// How the edge reads to the model. The failure mode that matters is a guess or a
         /// retired fact being read as a present-tense truth, so both say so in words.
@@ -93,6 +98,9 @@ final class BrainStore: ObservableObject {
 
     private var db: OpaquePointer?
     private let dbURL: URL
+    /// False when the database did not open, so the readable-memory screen can say the graph is
+    /// unreadable rather than show it as empty.
+    private(set) var isStorageAvailable = true
     private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     /// The dials the distillation pass turns on. Injectable so a test can compress a fortnight
@@ -124,6 +132,7 @@ final class BrainStore: ObservableObject {
         } else {
             exec("PRAGMA user_version = \(Self.schemaVersion)")
         }
+        addProvenanceColumnIfNeeded()
         StoreProtection.applyDatabase(at: dbURL)
     }
 
@@ -207,19 +216,30 @@ final class BrainStore: ObservableObject {
                  sessionID: String? = nil,
                  confidence: Double = 1.0,
                  state: BrainDistiller.State = .permanent,
+                 origin: MemoryOrigin? = nil,
                  now: Date = Date()) {
         let canonical = RelationOntology.canonical(relation)
         guard RelationOntology.isAllowed(canonical) else {
             RelationOntology.recordDrop(canonical)
             return
         }
+        // Plan GG tombstones: a claim the wearer had forgotten (or corrected away) comes back only
+        // on their own word, never from an extraction, a meeting or the memory loop.
+        let digest = Self.claimDigest(srcName, canonical, dstName)
+        if isForgotten(digest) {
+            guard origin == .toldMe else {
+                PrivacyLog.store(.brain, .writeFailed, detail: PrivacyToken("tombstoned"))
+                return
+            }
+            exec("DELETE FROM forgotten_edges WHERE digest = '\(escapedSQL(digest))'")
+        }
         let srcId = upsertEntity(kind: srcKind, name: srcName)
         let dstId = upsertEntity(kind: dstKind, name: dstName)
         let sql = """
         INSERT INTO edges (id, src_id, relation, dst_id, source_ref, created_at,
                            session_id, confidence, state, observations, distinct_sessions,
-                           valid_from, last_seen, superseded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, NULL)
+                           valid_from, last_seen, superseded_at, origin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, NULL, ?)
         ON CONFLICT(src_id, relation, dst_id) DO UPDATE SET
             observations = observations + 1,
             last_seen = excluded.last_seen,
@@ -236,7 +256,9 @@ final class BrainStore: ObservableObject {
                                  THEN NULL ELSE superseded_at END,
             valid_from = CASE WHEN state = 'superseded' AND excluded.state = 'permanent'
                               THEN excluded.valid_from ELSE valid_from END,
-            source_ref = COALESCE(source_ref, excluded.source_ref)
+            source_ref = COALESCE(source_ref, excluded.source_ref),
+            origin = CASE WHEN excluded.origin = 'told_me' THEN 'told_me'
+                          ELSE COALESCE(origin, excluded.origin) END
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
@@ -261,7 +283,105 @@ final class BrainStore: ObservableObject {
         sqlite3_bind_text(stmt, 9, state.rawValue, -1, SQLITE_TRANSIENT)
         sqlite3_bind_double(stmt, 10, stamp)
         sqlite3_bind_double(stmt, 11, stamp)
+        if let stored = origin?.storageValue {
+            sqlite3_bind_text(stmt, 12, stored, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(stmt, 12)
+        }
         _ = sqlite3_step(stmt)
+    }
+
+    // MARK: - Per-fact access (Plan GG)
+
+    /// Every current edge, newest first. Retired history and `mentioned_in` bookkeeping are left
+    /// out: the first is not a present fact, the second is not a fact about anyone.
+    func allEdges(limit: Int = 500) -> [Edge] {
+        fetchEdges("""
+        SELECT \(Self.edgeColumns)
+        FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
+        WHERE e.superseded_at IS NULL AND e.state <> 'superseded' AND e.relation <> 'mentioned_in'
+        ORDER BY e.created_at DESC LIMIT \(limit)
+        """)
+    }
+
+    /// One edge by row id, current or retired.
+    func edge(id: String) -> Edge? {
+        fetchEdges("""
+        SELECT \(Self.edgeColumns)
+        FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
+        WHERE e.id = '\(escapedSQL(id))'
+        """).first
+    }
+
+    /// Forget one claim as the wearer asked: the edge, **and the retired claims it replaced for
+    /// the same subject and relation** — a forgotten fact must not survive as history — with a
+    /// tombstone for each so none is re-learned unasked. Returns how many rows went.
+    @discardableResult
+    func forgetEdge(id: String) -> Int {
+        guard let target = edge(id: id), let srcID = edgeSourceID(id) else { return 0 }
+        let canonical = escapedSQL(target.relation)
+        var doomed = [target]
+        doomed += fetchEdges("""
+        SELECT \(Self.edgeColumns)
+        FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
+        WHERE e.src_id = '\(escapedSQL(srcID))' AND e.relation = '\(canonical)'
+          AND e.id <> '\(escapedSQL(id))'
+          AND (e.superseded_at IS NOT NULL OR e.state = 'superseded')
+        """)
+        for edge in doomed {
+            tombstoneClaim(edge.srcName, edge.relation, edge.dstName)
+            exec("DELETE FROM edges WHERE id = '\(escapedSQL(edge.id))'")
+        }
+        return doomed.filter { self.edge(id: $0.id) == nil }.count
+    }
+
+    /// Replace a wrong claim's destination. The wrong edge is **deleted**, not superseded — it was
+    /// never true, so it must not read back as history — and tombstoned so the extractor does not
+    /// put it back. The corrected edge is the wearer's own word. Returns the new edge's id.
+    func correctEdge(id: String, newDestination: String) -> String? {
+        let destination = newDestination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !destination.isEmpty, let wrong = edge(id: id) else { return nil }
+        tombstoneClaim(wrong.srcName, wrong.relation, wrong.dstName)
+        exec("DELETE FROM edges WHERE id = '\(escapedSQL(id))'")
+        addEdge(srcKind: wrong.srcKind, srcName: wrong.srcName, relation: wrong.relation,
+                dstKind: wrong.dstKind, dstName: destination, sourceRef: nil,
+                confidence: 1.0, state: .permanent, origin: .toldMe)
+        return fetchEdges("""
+        SELECT \(Self.edgeColumns)
+        FROM edges e JOIN entities s ON e.src_id = s.id JOIN entities d ON e.dst_id = d.id
+        WHERE s.normalized = '\(escapedSQL(wrong.srcName.lowercased()))'
+          AND e.relation = '\(escapedSQL(wrong.relation))'
+          AND d.normalized = '\(escapedSQL(destination.lowercased()))'
+        """).first?.id
+    }
+
+    private func edgeSourceID(_ id: String) -> String? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT src_id FROM edges WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return String(cString: sqlite3_column_text(stmt, 0))
+    }
+
+    private static func claimDigest(_ src: String, _ relation: String, _ dst: String) -> String {
+        MemoryTombstone.digest(src, RelationOntology.canonical(relation), dst)
+    }
+
+    private func tombstoneClaim(_ src: String, _ relation: String, _ dst: String) {
+        let digest = escapedSQL(Self.claimDigest(src, relation, dst))
+        exec("""
+        INSERT OR REPLACE INTO forgotten_edges (digest, created_at)
+        VALUES ('\(digest)', \(Self.number(Date().timeIntervalSince1970)))
+        """)
+    }
+
+    private func isForgotten(_ digest: String) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM forgotten_edges WHERE digest = ?", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, digest, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     /// Edges touching the named entity, in either direction, newest first.
@@ -475,6 +595,24 @@ final class BrainStore: ObservableObject {
         return rows
     }
 
+    func need(id: String) -> Need? {
+        needs(limit: 10_000).first { $0.id == id }
+    }
+
+    @discardableResult
+    func deleteNeed(id: String) -> Bool {
+        let existed = need(id: id) != nil
+        exec("DELETE FROM needs WHERE id = '\(escapedSQL(id))'")
+        return existed && need(id: id) == nil
+    }
+
+    @discardableResult
+    func updateNeed(id: String, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, need(id: id) != nil else { return false }
+        return exec("UPDATE needs SET text = '\(escapedSQL(trimmed))' WHERE id = '\(escapedSQL(id))'")
+    }
+
     /// Mark a specific need resolved. No-op if already resolved or unknown.
     func resolveNeed(id: String) {
         let sql = "UPDATE needs SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL"
@@ -543,6 +681,47 @@ final class BrainStore: ObservableObject {
         return rows
     }
 
+    /// Every project note across projects, newest first — the wearer's view, not prompt injection,
+    /// which stays scoped to the active project.
+    func allProjectMemories(limit: Int = 500) -> [ProjectMemory] {
+        projectMemoryRows(where: "1 = 1", order: "created_at DESC", limit: limit)
+    }
+
+    func projectMemory(id: String) -> ProjectMemory? {
+        projectMemoryRows(where: "id = '\(escapedSQL(id))'", order: "created_at DESC", limit: 1).first
+    }
+
+    @discardableResult
+    func deleteProjectMemory(id: String) -> Bool {
+        let existed = projectMemory(id: id) != nil
+        exec("DELETE FROM project_memory WHERE id = '\(escapedSQL(id))'")
+        return existed && projectMemory(id: id) == nil
+    }
+
+    @discardableResult
+    func updateProjectMemory(id: String, text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, projectMemory(id: id) != nil else { return false }
+        return exec("UPDATE project_memory SET text = '\(escapedSQL(trimmed))' WHERE id = '\(escapedSQL(id))'")
+    }
+
+    private func projectMemoryRows(where clause: String, order: String, limit: Int) -> [ProjectMemory] {
+        let sql = "SELECT id, project_tag, text, created_at FROM project_memory WHERE \(clause) ORDER BY \(order) LIMIT \(limit)"
+        var rows: [ProjectMemory] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return rows }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let id = UUID(uuidString: String(cString: sqlite3_column_text(stmt, 0))) else { continue }
+            rows.append(ProjectMemory(
+                id: id,
+                projectTag: String(cString: sqlite3_column_text(stmt, 1)),
+                text: String(cString: sqlite3_column_text(stmt, 2)),
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3))))
+        }
+        return rows
+    }
+
     /// Drop all project memories for a project (e.g. when the job is closed and you don't want to
     /// retain its notes). No-op for an unknown tag.
     func clearProjectMemories(for projectTag: String) {
@@ -559,14 +738,16 @@ final class BrainStore: ObservableObject {
     /// lets corroboration mean "heard in two different conversations" rather than "said twice in
     /// one breath"; callers that have no conversation to name pass nothing and lose nothing.
     func ingest(text: String, subject: String? = nil, sourceRef: String? = nil,
-                sourceKind: String? = nil, sessionID: String? = nil) {
+                sourceKind: String? = nil, sessionID: String? = nil,
+                origin: MemoryOrigin? = nil) {
         var relations = BrainRelationExtractor.extract(from: text)
         if relations.isEmpty, let subject, !subject.isEmpty {
             relations = BrainRelationExtractor.extract(from: "\(subject) \(text)")
         }
         for r in relations {
             addEdge(srcKind: r.srcKind, srcName: r.src, relation: r.relation,
-                    dstKind: r.dstKind, dstName: r.dst, sourceRef: sourceRef, sessionID: sessionID)
+                    dstKind: r.dstKind, dstName: r.dst, sourceRef: sourceRef, sessionID: sessionID,
+                    origin: origin)
         }
         if let ref = sourceRef, let kind = sourceKind {
             for person in entityNames(mentionedIn: text, kind: "person") where person.lowercased() != ref.lowercased() {
@@ -596,6 +777,7 @@ final class BrainStore: ObservableObject {
 
     private func openDatabase() {
         if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
+            isStorageAvailable = false
             PrivacyLog.store(.brain, .openFailed,
                              error: .sqlite(code: sqlite3_errcode(db),
                                             extended: sqlite3_extended_errcode(db)))
@@ -635,9 +817,12 @@ final class BrainStore: ObservableObject {
             valid_from REAL,
             last_seen REAL,
             superseded_at REAL,
+            origin TEXT,
             UNIQUE(src_id, relation, dst_id)
         )
         """)
+        // Content-free tombstones of forgotten or corrected-away claims (Plan GG).
+        exec("CREATE TABLE IF NOT EXISTS forgotten_edges (digest TEXT PRIMARY KEY, created_at REAL NOT NULL)")
         exec("""
         CREATE TABLE IF NOT EXISTS encounters (
             id TEXT PRIMARY KEY,
@@ -714,6 +899,14 @@ final class BrainStore: ObservableObject {
         PrivacyLog.store(.brain, .migrated, count: carried)
     }
 
+    /// Provenance (Plan GG): one nullable column, added outside the versioned migration because it
+    /// needs no backfill — NULL is the honest value for a row whose origin was never recorded, and
+    /// it reads back as `legacyUnknown`.
+    private func addProvenanceColumnIfNeeded() {
+        guard !columnNames(of: "edges").contains("origin") else { return }
+        exec("ALTER TABLE edges ADD COLUMN origin TEXT")
+    }
+
     private func userVersion() -> Int32 {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &stmt, nil) == SQLITE_OK else { return 0 }
@@ -747,7 +940,8 @@ final class BrainStore: ObservableObject {
     /// The edge projection every read shares, so a new column is added in one place.
     private static let edgeColumns = """
     s.name, s.kind, e.relation, d.name, d.kind, e.source_ref, e.created_at, e.state, \
-    e.confidence, e.observations, e.distinct_sessions, e.valid_from, e.last_seen, e.superseded_at
+    e.confidence, e.observations, e.distinct_sessions, e.valid_from, e.last_seen, e.superseded_at, \
+    e.id, e.origin
     """
 
     private static func currencyClause(_ includeSuperseded: Bool) -> String {
@@ -794,7 +988,10 @@ final class BrainStore: ObservableObject {
                 lastSeen: sqlite3_column_type(stmt, 12) != SQLITE_NULL
                     ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 12)) : nil,
                 supersededAt: sqlite3_column_type(stmt, 13) != SQLITE_NULL
-                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 13)) : nil
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 13)) : nil,
+                id: String(cString: sqlite3_column_text(stmt, 14)),
+                origin: MemoryOrigin(storageValue: sqlite3_column_type(stmt, 15) != SQLITE_NULL
+                    ? String(cString: sqlite3_column_text(stmt, 15)) : nil)
             ))
         }
         return rows
