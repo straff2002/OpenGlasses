@@ -1300,12 +1300,30 @@ class WakeWordService: NSObject, ObservableObject {
     func addAudioBufferConsumer(id: String, handler: @escaping @Sendable (AVAudioPCMBuffer) -> Void) {
         audioBufferForwarders[id] = handler
         tapState.setForwarders(audioBufferForwarders)
+        reapplyIdlePlanIfChanged()
     }
 
     /// Remove a named audio buffer consumer.
     func removeAudioBufferConsumer(id: String) {
         audioBufferForwarders.removeValue(forKey: id)
         tapState.setForwarders(audioBufferForwarders)
+        reapplyIdlePlanIfChanged()
+    }
+
+    /// Plan GU §1 — a consumer that wants the wearer's own voice (captions, the teleprompter, a
+    /// glasses recording or broadcast) started or stopped while the app was idle: move the idle
+    /// session to the plan's new mic. The engine reconfigures under the switch and the
+    /// configuration-change observer rebuilds it, consumers and recognizer included. Never under a
+    /// turn — a conversation owns the route until its hand-back.
+    private func reapplyIdlePlanIfChanged() {
+        guard audioSessionConfigured, pauseHoldCount == 0, turnMicRoute == nil, !carPlayMode,
+              let applied = appliedIdlePlan else { return }
+        let plan = currentIdlePlan()
+        guard plan.holdsSession, plan.listen != applied.listen else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.pauseHoldCount == 0, self.turnMicRoute == nil else { return }
+            await self.reconfigureAudioSession()
+        }
     }
 
     private func cleanupAudioEngine() {
