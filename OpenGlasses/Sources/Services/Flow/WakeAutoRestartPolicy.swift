@@ -16,17 +16,19 @@ enum WakeAutoRestartPolicy {
     /// - Parameters:
     ///   - listeningEnabled: the user's master toggle. Off ⇒ never.
     ///   - silentMode: push-to-talk. Suppresses the always-on listener.
-    ///   - isConnected: glasses link. Off ⇒ don't grab the phone mic behind the user's back.
+    ///   - voiceInputAvailable: false only while the wearer has disconnected the app from their
+    ///     glasses (`GlassesUse.voiceInputAvailable`). Phone-first: glasses being away does not
+    ///     close it — the phone's mic is a good device, and the master toggle is the wearer's say.
     ///   - micMuted: explicit mute.
     ///   - alreadyListening: nothing to restart.
     static func shouldRestart(listeningEnabled: Bool,
                               silentMode: Bool,
-                              isConnected: Bool,
+                              voiceInputAvailable: Bool,
                               micMuted: Bool,
                               alreadyListening: Bool) -> Bool {
         guard listeningEnabled else { return false }
         guard !silentMode else { return false }
-        guard isConnected else { return false }
+        guard voiceInputAvailable else { return false }
         guard !micMuted else { return false }
         return !alreadyListening
     }

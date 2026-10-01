@@ -598,8 +598,10 @@ struct OpenGlassesApp: App {
                 // Only restart wake word listener in Direct Mode
                 if appState.currentMode == .direct {
                     Task {
+                        // Phone-first: only a registration visibly in flight holds this back
+                        // (route churn destabilises it). No glasses is not a reason to skip.
                         let regState = appState.registrationStateRaw
-                        guard regState >= 3 else {
+                        guard !WakeLaunchPolicy.defersForegroundRestart(stateRaw: regState) else {
                             appState.addDebugEvent("Skipping wake word restart on foreground: registration state=\(regState)")
                             return
                         }
@@ -610,7 +612,7 @@ struct OpenGlassesApp: App {
                         if WakeAutoRestartPolicy.shouldRestart(
                             listeningEnabled: appState.listeningEnabled,
                             silentMode: Config.silentMode,
-                            isConnected: appState.isConnected,
+                            voiceInputAvailable: appState.voiceInputAvailable(),
                             micMuted: appState.micMuted,
                             alreadyListening: appState.wakeWordService.isListening || appState.isListening) {
                             // Re-configure audio session in case Bluetooth route changed
@@ -662,7 +664,11 @@ struct OpenGlassesApp: App {
 /// Global application state
 @MainActor
 class AppState: ObservableObject, AppStateProtocol {
-    @Published var isConnected: Bool = false {
+    /// Whether the app may use the glasses now: their link is up (`glassesPhase == .connected`)
+    /// and the wearer has not disconnected the app from them (`glassesStoodDown`). Folded by
+    /// `GlassesUse`; written only by `applyGlassesUse()`. Registration and the SDK's device list
+    /// mean glasses are *added*, never that they are connected.
+    @Published private(set) var isConnected: Bool = false {
         didSet {
             speechService.glassesConnected = isConnected
             // Tell the gateway-side agent the glasses attached/detached (device.event push,
@@ -678,20 +684,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // The agent and in-flight LLM requests keep running — results
             // can appear in notifications or be read when the app is opened.
             if !isConnected && oldValue {
-                wakeWordService.stopListening()
-                isListening = false
-                inConversation = false
-                glassesIdle = false
-
-                // Stop realtime streaming sessions (they need the BT audio link)
-                if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
-                if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
-                releaseFramePin(trigger: .sessionStop)   // Plan CE
-
-                // Stop camera streaming and TTS (no speakers to output to)
-                Task { await cameraService.stopStreaming() }
-                speechService.stopSpeaking()
-
+                releaseGlassesHardware()
                 PrivacyLog.device(.glasses, .disconnected)
             } else if isConnected && !oldValue {
                 // Smart connect: glasses just came on (e.g. mid text-only session). Hand
@@ -700,6 +693,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
                 speechService.playConnectTone()
                 PrivacyLog.device(.glasses, .connected)
+                // The link that just came up is the fix for the one error class the app can watch
+                // resolve itself — "Connect glasses first", the SDK's own registered-but-no-device
+                // text. Any other error (a failed photo, a chat request) is untouched: the flag is
+                // only ever true for this class (see `errorMessage`'s own `didSet`).
+                if errorMessageIsGlassesConnection { errorMessage = nil }
                 // Glasses that have connected are glasses this person uses (Plan FY P2): from now
                 // on a missing pair is news on the session card, not the phone's normal state.
                 Config.glassesAdded = true
@@ -708,13 +706,144 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Let the Bluetooth audio link settle before grabbing the mic.
                     try? await Task.sleep(nanoseconds: 2_500_000_000)
                     guard self.isConnected else { return }  // bail if it dropped again
+                    // Only into an idle app. A turn in progress — typically the "Resume & Talk"
+                    // tap that brought the glasses back — owns the audio: reconfiguring the
+                    // session under its dictation cut it off (device-traced: noSpeechDetected).
+                    // That turn's own end re-arms the wake word.
+                    guard GlassesAudioHandoffPolicy.mayHandOff(
+                        inConversation: self.inConversation, isListening: self.isListening,
+                        isProcessing: self.isProcessing,
+                        isSpeaking: self.speechService.isSpeaking) else {
+                        self.addDebugEvent("Glasses audio hand-off skipped: a turn is in progress")
+                        return
+                    }
                     await self.wakeWordService.reconfigureAudioSessionIfNeeded()
-                    if self.listeningEnabled && !self.isListening {
+                    // Through the same gate every automatic restart uses: the master toggle,
+                    // push-to-talk, a stand-down, the mute.
+                    if WakeAutoRestartPolicy.shouldRestart(
+                        listeningEnabled: self.listeningEnabled, silentMode: Config.silentMode,
+                        voiceInputAvailable: self.voiceInputAvailable(), micMuted: self.micMuted,
+                        alreadyListening: self.isListening || self.wakeWordService.isListening) {
                         try? await self.wakeWordService.startListening()
                     }
                 }
+                // Deliver queued agent notifications now the glasses can speak them — after a
+                // delay, so the audio session has settled after the Bluetooth reconnect.
+                if Config.agentModeEnabled {
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        guard let self, self.isConnected else { return }
+                        self.agentNotificationQueue.onGlassesReconnected()
+                    }
+                }
+                // Plan BZ: flash the digest once on reconnect when something urgent is pending
+                // (presence- and power-gated inside; after the queue's window so spoken delivery
+                // and the glance don't collide).
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    guard let self, self.isConnected else { return }
+                    await self.notificationDigest.autoSurfaceOnConnect()
+                }
             }
         }
+    }
+    /// The glasses' link as the SDK reports it: never added, added but away, connecting,
+    /// connected. Mirrors `glassesService.phase`. Unaffected by the wearer's Disconnect — that is
+    /// `glassesStoodDown`.
+    @Published private(set) var glassesPhase: GlassesConnectionPhase = .noGlassesAdded
+    /// The wearer disconnected the app from glasses whose link is still up (Disconnect, auto-sleep).
+    /// Cleared by an explicit connect and whenever the link leaves `.connected`.
+    @Published private(set) var glassesStoodDown = false
+    /// Link connected but stood down — "Connected · paused" rather than "Not connected".
+    var glassesPaused: Bool { glassesUse.isPaused }
+    private var glassesUse = GlassesUse()
+    /// Whether glasses are part of this person's setup — added now (registered or listed by the
+    /// SDK) or at any time before (`Config.glassesAdded`). Not whether they are reachable.
+    var glassesAdded: Bool { glassesPhase.glassesAdded || Config.glassesAdded }
+
+    /// A new link phase from `glassesService`.
+    private func applyGlassesPhase(_ phase: GlassesConnectionPhase) {
+        guard phase != glassesUse.link else { return }
+        addDebugEvent("Glasses: \(phase)")
+        // Registered or listed glasses are glasses this person uses (Plan FY P2), connected or not.
+        if phase.glassesAdded { Config.glassesAdded = true }
+        glassesUse.linkChanged(phase)
+        applyGlassesUse()
+    }
+
+    /// Stop using glasses whose link stays up — the wearer's Disconnect, or the app's own
+    /// (`GlassesSleepPolicy`). No-op unless connected.
+    private func standDownGlasses(_ reason: GlassesUse.StandDownReason) {
+        glassesUse.standDown(reason)
+        applyGlassesUse()
+    }
+
+    /// An explicit connect: lift a stand-down. Glasses whose link is up are in use again at once.
+    func resumeGlasses() {
+        guard glassesUse.stoodDown else { return }
+        glassesUse.resume()
+        applyGlassesUse()
+    }
+
+    /// The one writer of `glassesPhase`, `glassesStoodDown` and `isConnected`. Each is assigned
+    /// only on change, so the `isConnected` transitions (teardown, smart connect) run once each.
+    private func applyGlassesUse() {
+        if glassesPhase != glassesUse.link { glassesPhase = glassesUse.link }
+        if glassesStoodDown != glassesUse.stoodDown { glassesStoodDown = glassesUse.stoodDown }
+        if isConnected != glassesUse.inUse { isConnected = glassesUse.inUse }
+    }
+
+    /// A connect the wearer asked for from the glasses controls (the session card's glasses pill,
+    /// onboarding) — the only place a failure to connect glasses is reported, because it is the
+    /// only place connecting them was the request. Lifts a stand-down; registers only when the link
+    /// is not already up (registering a registered app is a round trip to Meta AI for nothing).
+    ///
+    /// - Parameter awaitLink: wait (up to 15 s — DAT registration can take a while the first time
+    ///   or after re-pairing) for the link to come up, and report it if it does not. Onboarding
+    ///   passes `false`: it is after the registration, and reports that itself.
+    func connectGlasses(awaitLink: Bool = true) async {
+        resumeGlasses()
+        guard !isConnected else { return }
+        isConnectingGlasses = true
+        defer { isConnectingGlasses = false }
+        await glassesService.connect()
+        guard awaitLink else { return }
+        for _ in 0..<60 where !isConnected {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        guard !isConnected else { return }
+        // The listener-maintained raw state, not `Wearables.shared`: with the SDK unconfigured the
+        // latter traps, and that is one of the failures this message exists to report.
+        let stateRaw = registrationStateRaw
+        let configStatus = MWDATConfigCheck.validate(
+            Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
+        errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
+                                                              configStatus: configStatus)
+        errorMessageIsGlassesConnection = true
+        addDebugEvent("connectGlasses gave up: registrationState=\(stateRaw), config=\(configStatus)")
+    }
+
+    /// The wearer's glasses connect (`connectGlasses()`) is under way — the session card shows its
+    /// progress ("Approve in Meta AI…", "Waiting for device…") instead of the session.
+    @Published private(set) var isConnectingGlasses = false
+
+    /// Stop everything that needs the glasses' audio or camera: the wake word, live sessions, the
+    /// camera stream, speech. Run when the link drops, and when the Bluetooth audio route is lost
+    /// while the link is still up (the reply must not carry on out of the phone's speaker).
+    private func releaseGlassesHardware() {
+        wakeWordService.stopListening()
+        isListening = false
+        inConversation = false
+        glassesIdle = false
+
+        // Stop realtime streaming sessions (they need the BT audio link)
+        if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
+        if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
+        releaseFramePin(trigger: .sessionStop)   // Plan CE
+
+        // Stop camera streaming and TTS (no speakers to output to)
+        Task { await cameraService.stopStreaming() }
+        speechService.stopSpeaking()
     }
     /// Glasses are connected but idle (likely in case — sustained audio silence detected).
     @Published var glassesIdle: Bool = false
@@ -732,7 +861,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 wakeWordService.stopListening()
                 isListening = false
                 PrivacyLog.app(.micMuted)
-            } else if glassesConnectionIsLive() {
+            } else if voiceInputAvailable() {
                 Task {
                     await startWakeWordIfListeningEnabled(PrivacyToken("unmute"))
                     PrivacyLog.app(.micUnmuted)
@@ -746,7 +875,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// supports it (on-device models today). The Chat thread renders this as a live bubble, then
     /// swaps it for the persisted message on completion. Nil when no reply is streaming.
     @Published var streamingTurn: StreamingTurn?
-    @Published var errorMessage: String?
+    /// Resets to `false` on every assignment — including from outside this type (the camera button,
+    /// recording, a chat failure) — so only the three glasses-connection call sites that re-affirm
+    /// it right after can leave it `true`. A glasses link coming up clears `errorMessage`
+    /// automatically only while this is set — never an unrelated failure.
+    @Published private(set) var errorMessageIsGlassesConnection = false
+    @Published var errorMessage: String? {
+        didSet { errorMessageIsGlassesConnection = false }
+    }
     @Published var currentMode: AppMode = Config.appMode
     @Published var activePersona: Persona? {
         // Mirrored into `Config` as well as memory: the static prompt assembly resolves the
@@ -1452,7 +1588,6 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { @MainActor in await self.handleTranscription(held.text) }
     }
 
-    private var hasEverRegistered: Bool = false
     var inConversation: Bool = false
 
     func addDebugEvent(_ message: String) {
@@ -2664,6 +2799,31 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     private func setupServiceCallbacks() {
+        // The glasses' connection has one owner: `glassesService.phase`, folded from the SDK's own
+        // link state. `isConnected` and `glassesPhase` mirror it and are written nowhere else —
+        // registration and the device list used to set the flag too, and a pair in its case read
+        // as connected for days. `$phase` fires in willSet, so the value is taken from the sink,
+        // not read back from the service.
+        let glassesPhaseToken = glassesService.$phase
+            .removeDuplicates()
+            .sink { [weak self] phase in
+                self?.applyGlassesPhase(phase)
+            }
+        cancellables.append(glassesPhaseToken)
+        // The camera asks the same question before trusting the glasses with a capture: a
+        // registered pair with no link would otherwise be tried, and fail, instead of falling back.
+        // Stood down counts as away too: the wearer disconnected, so a capture uses the phone.
+        cameraService.isGlassesLinkUp = { [weak self] in self?.isConnected ?? false }
+        // Worn or not drives the automatic stand-down (`GlassesSleepPolicy`). `$isWorn` fires in willSet, so the
+        // value is handed over rather than read back; the hop lets the service finish publishing.
+        let wornToken = glassesService.$isWorn
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] worn in
+                DispatchQueue.main.async { self?.glassesWornChanged(worn) }
+            }
+        cancellables.append(wornToken)
+
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
         // standalone engine instead of silently going video-only.
@@ -3000,6 +3160,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // itself on route changes and after interruptions, so it needs the toggle too — the
         // AppState-side callers already check it (issue 427 follow-up).
         wakeWordService.shouldAutoRestart = { Config.listeningEnabled }
+        // Nor after the wearer's Disconnect: a Bluetooth route flip can bring the service's own
+        // restart round while the glasses' link never dropped, so it asks about the stand-down too.
+        wakeWordService.glassesStoodDown = { [weak self] in self?.glassesStoodDown ?? false }
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
@@ -3095,13 +3258,16 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        // The Bluetooth audio route went away. That is not the link — the SDK's link state says
+        // whether the glasses are connected, and it will say so if they have gone — but nothing
+        // that needs the glasses' audio can carry on without the route, so it is released here.
+        // Only while the link is up: with no glasses connected the route was someone else's
+        // headphones, and a phone-only session must not be torn down with them.
         wakeWordService.onBluetoothDisconnected = { [weak self] in
             Task { @MainActor in
-                guard let self else { return }
-                if self.isConnected {
-                    self.isConnected = false
-                    PrivacyLog.device(.glasses, .disconnected, state: PrivacyToken("bluetoothLost"))
-                }
+                guard let self, self.isConnected else { return }
+                self.releaseGlassesHardware()
+                PrivacyLog.device(.glasses, .disconnected, state: PrivacyToken("bluetoothLost"))
             }
         }
 
@@ -3325,13 +3491,15 @@ class AppState: ObservableObject, AppStateProtocol {
             let hasBluetooth = route.outputs.contains { $0.portType == .bluetoothA2DP || $0.portType == .bluetoothHFP || $0.portType == .bluetoothLE }
             if !hasBluetooth {
                 // Stop audio immediately on the main thread before it can reroute to phone speaker.
-                // The isConnected didSet also calls stopSpeaking() but goes via async Task — too late.
+                // `releaseGlassesHardware()` also calls stopSpeaking() but goes via async Task — too late.
                 MainActor.assumeIsolated {
                     self?.speechService.stopSpeaking()
                 }
+                // The route is not the link (see `onBluetoothDisconnected`): release the
+                // glasses' audio, and leave "connected" to the SDK's link state.
                 Task { @MainActor in
                     guard let self, self.isConnected else { return }
-                    self.isConnected = false
+                    self.releaseGlassesHardware()
                     PrivacyLog.device(.glasses, .disconnected, state: PrivacyToken("routeLost"))
                 }
             }
@@ -3344,49 +3512,9 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
 
-        // Monitor devices list
-        let deviceToken = Wearables.shared.addDevicesListener { [weak self] deviceIds in
-            Task { @MainActor in
-                guard let self else { return }
-                let now = Date()
-                let fmt = DateFormatter()
-                fmt.dateFormat = "HH:mm:ss.SSS"
-                PrivacyLog.device(.glasses, .deviceListChanged, count: deviceIds.count)
-                self.addDebugEvent("Devices changed: \(deviceIds.count) at \(fmt.string(from: now))")
-                if !deviceIds.isEmpty {
-                    let wasDisconnected = !self.isConnected
-                    self.hasEverRegistered = true
-                    self.isConnected = true
-
-                    // Deliver queued agent notifications on reconnect
-                    if wasDisconnected && Config.agentModeEnabled {
-                        // Delay to let audio session stabilize after Bluetooth reconnect
-                        Task {
-                            try? await Task.sleep(nanoseconds: 3_000_000_000)
-                            self.agentNotificationQueue.onGlassesReconnected()
-                        }
-                    }
-                    // Plan BZ: flash the digest once on reconnect when something urgent is
-                    // pending (presence- and power-gated inside; after the queue's window so
-                    // spoken delivery and the glance don't collide).
-                    if wasDisconnected {
-                        Task {
-                            try? await Task.sleep(nanoseconds: 5_000_000_000)
-                            await self.notificationDigest.autoSurfaceOnConnect()
-                        }
-                    }
-                } else if self.isConnected {
-                    // Glasses powered off or Bluetooth disconnected
-                    self.isConnected = false
-                    PrivacyLog.device(.glasses, .deviceListEmpty)
-                }
-            }
-        }
-        cancellables.append(deviceToken)
-
-        // Monitor registration state
-        // Registration bounces between states 0-3, so once we see state 3,
-        // consider connected for the session (don't disconnect on state changes)
+        // Registration is watched here for its own consequences — the raw state the UI and the
+        // wake-word gates read, and the early camera-permission request. It does not make the
+        // glasses connected: `glassesService` owns that, from each device's link state.
         let regToken = Wearables.shared.addRegistrationStateListener { [weak self] newState in
             Task { @MainActor in
                 guard let self else { return }
@@ -3395,8 +3523,6 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.registrationStateRaw = newState.rawValue
                 if newState.rawValue >= 3 {
                     // State 3 = fully registered
-                    self.hasEverRegistered = true
-                    self.isConnected = true
                     UserDefaults.standard.set(true, forKey: "hasRegisteredWithMeta")
 
                     // Pre-request Meta camera permission so it's ready for first photo
@@ -3416,8 +3542,6 @@ class AppState: ObservableObject, AppStateProtocol {
         addDebugEvent("Initial registration state: \(initialState.rawValue)")
         registrationStateRaw = initialState.rawValue
         if initialState.rawValue >= 3 {
-            hasEverRegistered = true
-            isConnected = true
             PrivacyLog.device(.glasses, .alreadyRegistered)
         }
     }
@@ -3433,7 +3557,6 @@ class AppState: ObservableObject, AppStateProtocol {
             // Small delay to let SDK initialize
             try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5s
             guard WearablesBootstrap.ensureConfigured() else {
-                self.isConnected = false
                 self.addDebugEvent("Wearables SDK unavailable — skipping launch state check")
                 return
             }
@@ -3443,7 +3566,6 @@ class AppState: ObservableObject, AppStateProtocol {
 
             if state.rawValue >= 3 {
                 // Already registered this session
-                self.hasEverRegistered = true
                 self.addDebugEvent("Already registered on launch")
                 await requestEarlyPermission(allowRequest: false)
             } else {
@@ -3452,11 +3574,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 let settledState = Wearables.shared.registrationState
                 self.registrationStateRaw = settledState.rawValue
                 if settledState.rawValue >= 3 {
-                    self.hasEverRegistered = true
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
                     await requestEarlyPermission(allowRequest: false)
                 } else {
-                    self.isConnected = false
                     self.addDebugEvent("State \(settledState.rawValue) — tap Connect to register")
                 }
             }
@@ -3501,9 +3621,9 @@ class AppState: ObservableObject, AppStateProtocol {
             let status = try? await Wearables.shared.checkPermissionStatus(.camera)
             addDebugEvent("Early check: \(String(describing: status))")
             if status == .granted {
+                // Devices appear via the listener; whether one is *connected* is its link state's
+                // call, not this permission's.
                 addDebugEvent("Camera permission already granted — devices should appear")
-                // Mark as connected — devices should now appear via listener
-                self.isConnected = true
                 // Also ensure CameraService knows permission is cached
                 cameraService.permissionGranted = true
                 return
@@ -3519,14 +3639,12 @@ class AppState: ObservableObject, AppStateProtocol {
             let result = try await Wearables.shared.requestPermission(.camera)
             addDebugEvent("Early permission result: \(String(describing: result))")
             if result == .granted {
-                self.isConnected = true
                 cameraService.permissionGranted = true
             }
         } catch {
             addDebugEvent("Early permission failed: \(error.localizedDescription)")
-            // Still mark as connected based on registration state —
-            // user can retry permission via UI
-            self.isConnected = true
+            // The user can retry permission via the UI. Registration is not a link, so this
+            // claims nothing about whether the glasses are connected.
         }
 
         // Poll devices list after permission to track when device appears
@@ -3548,7 +3666,6 @@ class AppState: ObservableObject, AppStateProtocol {
                     let device = Wearables.shared.deviceForIdentifier(firstId)
                     addDebugEvent("Device: \(device?.name ?? "unknown") type=\(String(describing: device?.deviceType()))")
                 }
-                self.isConnected = true
                 return
             }
             if i % 5 == 0 {
@@ -3626,17 +3743,16 @@ class AppState: ObservableObject, AppStateProtocol {
             // Small delay to let the app finish initializing
             try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1s
 
-            // Avoid starting audio capture while registration is still negotiating,
-            // as Bluetooth route churn can destabilize registration state transitions.
-            if registrationStateRaw < 3 {
+            // Avoid starting audio capture while glasses registration is still negotiating, as
+            // Bluetooth route churn can destabilize registration state transitions. Only someone
+            // with glasses has a registration to protect, and the wait never cancels the start:
+            // phone-first, the wake word comes up on whatever mic there is (`WakeLaunchPolicy`).
+            if WakeLaunchPolicy.awaitsRegistrationOnLaunch(stateRaw: registrationStateRaw,
+                                                           glassesAdded: glassesAdded) {
                 addDebugEvent("Wake word auto-start deferred: registration state=\(registrationStateRaw)")
                 let settled = await waitForRegistration(minState: 3, timeoutSeconds: 20)
                 registrationStateRaw = settled
                 addDebugEvent("Wake word auto-start registration wait result: state=\(settled)")
-                guard settled >= 3 else {
-                    addDebugEvent("Skipping wake word auto-start: registration did not reach state 3")
-                    return
-                }
             }
 
             // Don't auto-start in silent mode — saves battery, user uses tap-to-talk
@@ -3711,7 +3827,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if enabled {
             // Restart wake word detection and Live Activity
             liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
-            if glassesConnectionIsLive() {
+            if voiceInputAvailable() {
                 Task { try? await wakeWordService.startListening() }
             }
             PrivacyLog.app(.listeningEnabled)
@@ -3795,7 +3911,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Hand one utterance to the wearer's agent (a temple tap assigned to "ask my agent", Plan
     /// GJ). Goes through the tool router as a user-origin `execute` call, so the gateway's Agent
     /// Mode gate and the authorization policy apply exactly as they do to any other delegation.
-    func runAgentTurn(_ query: String) async {
+    /// - Parameter threadId: the saved conversation the question went into, so the reply follows
+    ///   it there; nil files it in whichever thread is active.
+    func runAgentTurn(_ query: String, threadId: String? = nil) async {
         guard Config.isOpenClawAgentActive, let router = llmService.nativeToolRouter else {
             await speechService.speak(String(localized: "Your agent isn't set up."))
             await resumeListeningOrReturnToWakeWord(ensureEngine: true)
@@ -3813,7 +3931,7 @@ class AppState: ObservableObject, AppStateProtocol {
         lastResponse = reply
         llmService.recordExternalExchange(user: query, assistant: reply)
         if Config.conversationPersistenceEnabled {
-            conversationStore.appendMessage(role: "assistant", content: reply)
+            conversationStore.appendMessage(role: "assistant", content: reply, toThread: threadId)
         }
         isProcessing = false
         startStopListener()
@@ -4456,13 +4574,13 @@ class AppState: ObservableObject, AppStateProtocol {
             errorMessage = String(localized: "The glasses camera isn't available.")
             return
         }
-        if !isConnected {
-            // Recheck before surrendering to the phone camera: the flag can be stale (auto-
-            // sleep fired, a Disconnect tap, a dropped link) while the glasses sit on the
-            // user's face. One bounded reconnect attempt — the same path the hero capsule uses.
-            PrivacyLog.camera(.glasses, .captureFallbackUsed, detail: PrivacyToken("reconnectFirst"))
-            await glassesService.connect()
-            for _ in 0..<20 where !isConnected {   // up to 5s
+        if glassesPhase.isConnecting {
+            // A link that is coming up is worth a short wait before surrendering to the phone
+            // camera. A pair that is not connecting (in its case, off, never added) is not: the
+            // phase is the SDK's own link state, not a flag that might be stale, so waiting on it
+            // was a dead pause before the phone camera every time.
+            PrivacyLog.camera(.glasses, .captureFallbackUsed, detail: PrivacyToken("awaitLink"))
+            for _ in 0..<20 where !isConnected && glassesPhase.isConnecting {   // up to 5s
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
         }
@@ -4530,6 +4648,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func captureAndSharePhoto() async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
+            errorMessageIsGlassesConnection = true
             return
         }
         do {
@@ -4607,6 +4726,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func capturePhotoFromGlasses(glassesOnly: Bool = false) async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
+            errorMessageIsGlassesConnection = true
             return
         }
         do {
@@ -4761,7 +4881,7 @@ class AppState: ObservableObject, AppStateProtocol {
     private func configurePresence() {
         // Signal sources (cheap, on-device): DAT connectivity, scene-phase foreground (MLX is
         // foreground-only), live voice activity, and the last explicit command timestamp.
-        presenceMonitor.connected = { [weak self] in self?.glassesService.isConnected ?? false }
+        presenceMonitor.connected = { [weak self] in self?.isConnected ?? false }
         presenceMonitor.foreground = { [weak self] in self?.isForegroundActive ?? true }
         presenceMonitor.voiceActive = { [weak self] in self?.wakeWordService.isListening ?? false }
         presenceMonitor.lastInteraction = { [weak self] in self?.lastInteractionAt ?? Date() }
@@ -5294,7 +5414,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// the user's turn is persisted to the conversation store and after persona detection, so the
     /// photo handler prompts the LLM with the persona-stripped `query` while command matching uses
     /// the raw transcript. Same first-consumer-wins contract as `preLLMHandlers`.
-    private func postStoreHandlers(query: String) -> [VoiceCommandHandler] {
+    private func postStoreHandlers(query: String, threadId: String?) -> [VoiceCommandHandler] {
         [
             // "stop" — interrupt TTS, stay in conversation
             VoiceCommandHandler(label: "stop") { [weak self] text in
@@ -5362,7 +5482,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             }
                             self.lastResponse = response
                             if Config.conversationPersistenceEnabled {
-                                self.conversationStore.appendMessage(role: "assistant", content: response)
+                                self.conversationStore.appendMessage(role: "assistant", content: response,
+                                                                     toThread: threadId)
                             }
 
                             // If an audio or video recording is active, inject the description
@@ -5630,10 +5751,11 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold
     /// line — in the tier-0 shape: record it (marked as answered on the phone), speak, resume.
-    private func finishPhoneTurnWithoutModel(_ reply: String) async {
+    private func finishPhoneTurnWithoutModel(_ reply: String, threadId: String?) async {
         lastResponse = reply
         if Config.conversationPersistenceEnabled {
-            conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+            conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
+                                            toThread: threadId)
         }
         startStopListener()
         TurnRecorder.handOffToSpeech()
@@ -5643,6 +5765,21 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.endTurn()
         await connectivityHandoff.turnEnded()
         await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+    }
+
+    /// Persist a spoken question, opening a thread if none is active, and return the thread it went
+    /// into — the one its reply must be filed in. Nil with conversation history switched off.
+    private func recordVoiceQuestion(_ text: String) -> String? {
+        guard Config.conversationPersistenceEnabled else { return nil }
+        if conversationStore.activeThreadId == nil {
+            conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
+        }
+        conversationStore.appendMessage(role: "user", content: text)
+        guard let threadId = conversationStore.activeThreadId else { return nil }
+        // Named from its first question now rather than when it ends: a voice conversation stays
+        // open across turns, and the history list should not show it as untitled meanwhile.
+        conversationStore.applyAutoTitleIfNeeded(threadId)
+        return threadId
     }
 
     func handleTranscription(_ text: String) async {
@@ -5702,19 +5839,20 @@ class AppState: ObservableObject, AppStateProtocol {
         // job's, whichever wake-word cycle this turn belongs to (Plan FO P1) — the flow binds or
         // resumes it before anything is appended, so a turn is never filed in the wrong
         // conversation and moved afterwards.
+        //
+        // The same call decides whether this turn continues the open conversation or, after the
+        // idle gap, starts a new one. The thread the question lands in is captured here and every
+        // reply below is filed against it: in push-to-talk `returnToWakeWord()` runs as soon as
+        // the release delivers this transcript, before the model has answered.
         guidedJobFlow.prepareThreadForTurn(manuallyTriggered ? .tapToTalk : .wakeWord)
-        if Config.conversationPersistenceEnabled {
-            if conversationStore.activeThreadId == nil {
-                conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
-            }
-            conversationStore.appendMessage(role: "user", content: text)
-        }
+        let turnThreadId = recordVoiceQuestion(text)
 
         // Post-store voice-command chain (Plan BG P2): stop, goodbye, photo. Runs after the user
         // turn is persisted (so "stop"/"goodbye" still appear in the thread) and after persona
         // detection (the photo prompt uses the persona-stripped `query`). The first consumer
         // short-circuits before the LLM; order is preserved from the original if-ladder.
-        if await ConversationFlowEngine(handlers: postStoreHandlers(query: query)).route(text) != nil {
+        if await ConversationFlowEngine(handlers: postStoreHandlers(query: query, threadId: turnThreadId))
+            .route(text) != nil {
             return
         }
 
@@ -5722,7 +5860,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // the agent. After the stop/goodbye handlers, so those still end the conversation.
         if pendingAgentTurn {
             pendingAgentTurn = false
-            await runAgentTurn(query)
+            await runAgentTurn(query, threadId: turnThreadId)
             return
         }
 
@@ -5777,7 +5915,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 llmService.recordExternalExchange(user: query, assistant: result)
 
                 if Config.conversationPersistenceEnabled {
-                    conversationStore.appendMessage(role: "assistant", content: result)
+                    conversationStore.appendMessage(role: "assistant", content: result,
+                                                    toThread: turnThreadId)
                 }
 
                 startStopListener()
@@ -5816,7 +5955,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = true
             TurnRecorder.beginTurn()
             if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
-                await finishPhoneTurnWithoutModel(reply)
+                await finishPhoneTurnWithoutModel(reply, threadId: turnThreadId)
                 return
             }
             TurnRecorder.abandonTurnReleasingUtterance()
@@ -5827,7 +5966,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = true
             TurnRecorder.beginTurn()
             let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
-            await finishPhoneTurnWithoutModel(line)
+            await finishPhoneTurnWithoutModel(line, threadId: turnThreadId)
             return
         }
         var phoneModelId: String?
@@ -6010,10 +6149,12 @@ class AppState: ObservableObject, AppStateProtocol {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 
-                    // Save to conversation store
+                    // Save to conversation store — in the thread the question went into, which in
+                    // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
-                                                        answeredOnDevice: answeredOnPhone)
+                                                        answeredOnDevice: answeredOnPhone,
+                                                        toThread: turnThreadId)
                     }
                 },
                 speak: { [self] response in
@@ -6092,6 +6233,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
             }
         }
+        // The thread this question went into; the reply is filed there even if the wearer moves to
+        // another conversation while the model is thinking.
+        let turnThreadId = Config.conversationPersistenceEnabled ? conversationStore.activeThreadId : nil
 
         // Plan GE: a typed turn without signal is served on the phone exactly as a spoken one is.
         var handoffPlan = connectivityHandoff.planTurn(query)
@@ -6099,7 +6243,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
                 lastResponse = reply
                 if Config.conversationPersistenceEnabled {
-                    conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+                    conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
+                                                    toThread: turnThreadId)
                 }
                 if speakResponse { await speechService.speak(reply) }
                 return
@@ -6110,7 +6255,8 @@ class AppState: ObservableObject, AppStateProtocol {
             let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
             lastResponse = line
             if Config.conversationPersistenceEnabled {
-                conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true)
+                conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true,
+                                                toThread: turnThreadId)
             }
             if speakResponse { await speechService.speak(line) }
             return
@@ -6191,7 +6337,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
-                                                        answeredOnDevice: answeredOnPhone)
+                                                        answeredOnDevice: answeredOnPhone,
+                                                        toThread: turnThreadId)
                     }
 
                     // Memory loop (Phase 3): spot a durable fact or a repeated multi-step request and
@@ -6472,7 +6619,7 @@ class AppState: ObservableObject, AppStateProtocol {
             deviceStatus: { [weak self] in
                 guard let self else { return [:] }
                 return [
-                    "glasses_connected": String(self.glassesService.isConnected),
+                    "glasses_connected": String(self.isConnected),
                     "device_name": self.glassesService.deviceName ?? "none",
                     "battery": self.glassesService.batteryLevel.map(String.init) ?? "unknown",
                     "listening": String(self.isListening),
@@ -6486,11 +6633,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return [:] }
                 // What is *currently* true, not what the app theoretically has.
                 return [
-                    "camera": String(self.glassesService.isConnected),
+                    "camera": String(self.isConnected),
                     "display": String(self.glassesDisplay.deviceSupportsDisplay()),
                     "speak": "true",
                     "audio_recording": "true",
-                    "video_recording": String(self.glassesService.isConnected),
+                    "video_recording": String(self.isConnected),
                     "transcription": "true",
                     "translation": "true",
                     "notes": "true",
@@ -6737,56 +6884,108 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // MARK: - Connect & Listen
 
-    /// One-tap reconnect — connect glasses and immediately start listening.
-    /// Used by hero capsule, widget, watch, and Dynamic Island reconnect actions.
+    /// The talk capsule's action — and the widget's, the watch's, the Dynamic Island's,
+    /// `avenkin://connect`'s and the Siri/Shortcuts connect actions'. Phone-first
+    /// (`TalkEntryPolicy`): it starts a turn now, on the phone when the glasses are away, and never
+    /// tries to register glasses or reports a glasses error. A link that is coming up gets a short
+    /// wait; glasses the wearer stood down are resumed.
     func connectAndListen() async {
-        guard !isConnected else {
-            // Already connected — just start listening
-            wakeWordService.stopListening()
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            await handleWakeWordDetected(manual: true)
-            return
+        switch TalkEntryPolicy.decide(link: glassesPhase, stoodDown: glassesStoodDown).action {
+        case .resumeGlassesThenTalk:
+            resumeGlasses()
+        case .awaitLinkThenTalk:
+            let polls = Int(TalkEntryPolicy.linkWaitSeconds * 4)
+            for _ in 0..<polls where !isConnected && glassesPhase.isConnecting {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        case .talk:
+            break
         }
+        await startTalking()
+    }
 
-        // Connect glasses
-        await glassesService.connect()
-
-        // Wait for connection to establish — up to 15s on fresh install (DAT registration
-        // can take a while the first time or after re-pairing)
-        for _ in 0..<60 {
-            if isConnected { break }
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
-
-        guard isConnected else {
-            let stateRaw = Wearables.shared.registrationState.rawValue
-            let configStatus = MWDATConfigCheck.validate(
-                Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
-            errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
-                                                                  configStatus: configStatus)
-            addDebugEvent("connectAndListen gave up: registrationState=\(stateRaw), config=\(configStatus)")
-            return
-        }
-
-        // Now start listening
-        try? await Task.sleep(nanoseconds: 200_000_000)
+    /// Start a turn on whatever microphone there is — the one entry the capsule, the push-to-talk
+    /// tile and `connectAndListen()` share. A wake-word listener still running would contend for
+    /// the engine the turn needs, so it is stopped first.
+    func startTalking() async {
+        wakeWordService.stopListening()
+        try? await Task.sleep(nanoseconds: 100_000_000)
         await handleWakeWordDetected(manual: true)
     }
 
-    /// Start auto-sleep countdown. If glasses stay idle for N minutes, disconnect.
+    /// Whether the always-on wake-word listener runs by design — the only thing an automatic
+    /// stand-down exists to release (`GlassesSleepPolicy`).
+    private var alwaysOnListening: Bool {
+        GlassesSleepPolicy.alwaysOnListening(listeningEnabled: listeningEnabled,
+                                             silentMode: Config.silentMode)
+    }
+
+    /// Start the silence countdown for idle glasses (`GlassesSleepPolicy`): only with the
+    /// always-on listener running, and not for glasses being worn unless the wearer opted in.
     private func startAutoSleepTimer() {
         cancelAutoSleepTimer()
         let minutes = Config.autoSleepMinutes
-        guard minutes > 0 else { return }
+        guard GlassesSleepPolicy.shouldArmSilenceSleep(
+            alwaysOnListening: alwaysOnListening, autoSleepMinutes: minutes,
+            worn: glassesService.isWorn,
+            sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
 
         autoSleepTask = Task { @MainActor [weak self] in
             let seconds = UInt64(minutes) * 60
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            guard let self, !Task.isCancelled, self.glassesIdle, self.isConnected else { return }
+            guard let self, !Task.isCancelled else { return }
+            self.autoSleepTask = nil
+            // Re-checked here: they may have put the glasses on, or switched listening off.
+            guard GlassesSleepPolicy.silenceSleepFires(
+                alwaysOnListening: self.alwaysOnListening, idle: self.glassesIdle,
+                inUse: self.isConnected, worn: self.glassesService.isWorn,
+                sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
             PrivacyLog.device(.glasses, .autoSleepFired, minutes: minutes)
-            self.disconnectGlasses()
+            self.disconnectGlasses(reason: .automatic)
         }
         PrivacyLog.device(.glasses, .autoSleepArmed, minutes: minutes)
+    }
+
+    private var doffGraceTask: Task<Void, Never>?
+
+    /// The glasses were put on or taken off (or stopped saying), link up (`GlassesSleepPolicy`).
+    private func glassesWornChanged(_ worn: Bool?) {
+        switch worn {
+        case true?:
+            doffGraceTask?.cancel()
+            doffGraceTask = nil
+            // Back on the face after the app stood down on its own: in use again, no tap. The
+            // wearer's own Disconnect is not lifted here.
+            if glassesUse.standDownReason == .automatic {
+                addDebugEvent("Glasses put back on — resuming")
+                glassesUse.donned()
+                applyGlassesUse()
+            }
+            // Worn glasses do not sleep for silence unless the wearer opted in.
+            if !GlassesSleepPolicy.silenceRuleApplies(
+                worn: true, sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) {
+                cancelAutoSleepTimer()
+            }
+        case false?:
+            guard doffGraceTask == nil,
+                  GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: alwaysOnListening,
+                                                      worn: false, inUse: isConnected) else { return }
+            doffGraceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(GlassesSleepPolicy.doffGraceSeconds * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.doffGraceTask = nil
+                guard GlassesSleepPolicy.doffGraceApplies(
+                    alwaysOnListening: self.alwaysOnListening, worn: self.glassesService.isWorn,
+                    inUse: self.isConnected) else { return }
+                self.addDebugEvent("Glasses taken off — standing down")
+                self.disconnectGlasses(reason: .automatic)
+            }
+        case nil:
+            // The device stopped saying: no grace to run, and the silence rule is the fallback.
+            doffGraceTask?.cancel()
+            doffGraceTask = nil
+            if glassesIdle && autoSleepTask == nil { startAutoSleepTimer() }
+        }
     }
 
     private func cancelAutoSleepTimer() {
@@ -6794,30 +6993,25 @@ class AppState: ObservableObject, AppStateProtocol {
         autoSleepTask = nil
     }
 
-    /// Tear down all glasses-dependent services in one tap.
-    /// Stops mic, TTS, camera, realtime sessions, and marks glasses disconnected.
-    /// OpenClaw bridge and agent tasks continue running server-side.
-    func disconnectGlasses() {
+    /// Tear down all glasses-dependent services in one tap, and stand the app down from the
+    /// glasses. A `.user` stand-down (Disconnect) lifts only on an explicit connect or the link
+    /// dropping; an `.automatic` one (taken off, silent too long — `GlassesSleepPolicy`) also lifts
+    /// when the glasses are put back on. OpenClaw bridge and agent tasks continue server-side.
+    func disconnectGlasses(reason: GlassesUse.StandDownReason = .user) {
         guard isConnected else { return }
 
-        // Stop all active interactions
-        speechService.stopSpeaking()
-        wakeWordService.stopListening()
-        isListening = false
-        inConversation = false
-        glassesIdle = false
-
-        // Stop realtime sessions. Plan FF P1/PR3: cancel a startup still in flight too — there is
-        // nothing to start into a disconnect. Not a *user stop* of the assistant, though: the
-        // wearer put the glasses down, they did not ask the assistant to stay down, so this does
-        // not latch.
+        // Plan FF P1/PR3: cancel a live-session startup still in flight — there is nothing to
+        // start into a disconnect. Not a *user stop* of the assistant, though: the wearer put the
+        // glasses down, they did not ask the assistant to stay down, so this does not latch.
         liveActivator.noteSessionEndedExternally()
-        if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
-        if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
-        releaseFramePin(trigger: .sessionStop)   // Plan CE
 
-        // Stop camera + recording
-        Task { await cameraService.stopStreaming() }
+        // Stand down. The link is not ours to drop — the SDK has no app-side disconnect — so the
+        // wearer's request is kept beside it (`GlassesUse`), and `isConnected` goes false here.
+        // Its didSet runs the hardware teardown once: speech, wake word, live sessions, the frame
+        // pin, the camera stream. An explicit connect, or the link dropping, lifts it.
+        standDownGlasses(reason)
+
+        // Beyond the hardware teardown: recording, ambient features, the conversation thread.
         if videoRecorder.isRecording {
             Task { _ = await videoRecorder.stopRecording() }
         }
@@ -6831,9 +7025,6 @@ class AppState: ObservableObject, AppStateProtocol {
         // mid-job is not finishing the job, and the thread the technician comes back to has to be
         // the same one (Plan FO P1).
         guidedJobFlow.endThreadForDisconnect()
-
-        // Disconnect the glasses (triggers isConnected didSet cleanup too)
-        glassesService.disconnect()
 
         // Update live activity
         liveActivityManager.end()
@@ -6863,8 +7054,10 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak("Resuming \(media.displayName).")
         }
         updateLiveActivity()
-        // End the saved thread — unless a Field Assist job owns it, in which case the next
-        // wake-word turn continues the same conversation (Plan FO P1: `JobThreadPolicy`).
+        // The saved conversation carries on: the next turn joins it (`JobThreadPolicy`). A new one
+        // starts only on an explicit New conversation or after the idle gap, decided when the
+        // next turn begins. In push-to-talk this runs before the reply has arrived — the reply is
+        // filed by thread id, so it lands with its question whatever happens here.
         guidedJobFlow.endThreadForVoiceReturn()
 
         switch WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation)) {
@@ -6881,25 +7074,24 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// The re-arm decision's inputs, with connection **observed** rather than read from the cached
-    /// flag — see `glassesConnectionIsLive()`.
+    /// The re-arm decision's inputs — see `voiceInputAvailable()`.
     private func rearmInputs(wasInConversation: Bool) -> WakeRearmPolicy.Inputs {
         WakeRearmPolicy.Inputs(listeningEnabled: listeningEnabled,
                                silentMode: Config.silentMode,
                                wasInConversation: wasInConversation,
-                               isConnected: glassesConnectionIsLive(),
+                               voiceInputAvailable: voiceInputAvailable(),
                                micMuted: micMuted)
     }
 
-    /// Whether the glasses are connected *now*.
+    /// Whether voice may open a microphone on its own — the wake word on launch, foreground,
+    /// unmute, the listening toggle, the end-of-turn re-arm.
     ///
-    /// `isConnected` is a cache that only clears on a Bluetooth event, and one of the handlers
-    /// that clears it fired on a route flip the glasses survived — after which the flag stayed
-    /// false for the rest of the launch and every end-of-turn re-arm skipped as `disconnected`.
-    /// Three sources, any of which being true means there is something to listen on: the cached
-    /// flag, the connection service, and the live audio route.
-    func glassesConnectionIsLive() -> Bool {
-        isConnected || glassesService.isConnected || wakeWordService.hasBluetoothAudioRoute()
+    /// Phone-first: the phone's mic is always a good device, so glasses being away (or never
+    /// added) is not a reason to keep it shut. The one glasses-shaped reason is the wearer's own
+    /// Disconnect: stood down, nothing re-opens a mic — not even with a Bluetooth route present —
+    /// until they connect again or the glasses go away (`GlassesUse.voiceInputAvailable`).
+    func voiceInputAvailable() -> Bool {
+        glassesUse.voiceInputAvailable
     }
 
     /// Open the wake-word listener, reporting failure the way the wearer can act on.

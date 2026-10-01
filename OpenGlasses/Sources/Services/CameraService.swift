@@ -187,7 +187,21 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// Side-effect-free, because this is read from view bodies — see
     /// `GlassesCameraBackend.isReady(configuringIfNeeded:)`.
     var activeCapabilities: CameraCapabilities? {
-        backend.isReady(configuringIfNeeded: false) ? backend.capabilities : nil
+        glassesCameraReachable(configuringIfNeeded: false) ? backend.capabilities : nil
+    }
+
+    /// Whether the glasses' link is up, from the app's connection owner
+    /// (`GlassesConnectionService.isConnected`, wired by `AppState`). The backend's own readiness
+    /// is registration, which a pair in its case still has — so without this a registered pair
+    /// with no link was tried, and failed, instead of falling back to the phone. Defaults to
+    /// "up" so a camera built without a connection owner (tests, previews) is judged by its
+    /// backend alone.
+    var isGlassesLinkUp: () -> Bool = { true }
+
+    /// The glasses camera can serve this request: the link is up and the backend is ready.
+    /// The link is asked first, so a pair that is away never configures the SDK to find out.
+    private func glassesCameraReachable(configuringIfNeeded: Bool) -> Bool {
+        isGlassesLinkUp() && backend.isReady(configuringIfNeeded: configuringIfNeeded)
     }
 
     /// Whether a feature that needs the camera can run on the connected glasses, and if not,
@@ -269,7 +283,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
     ///   must never take a hidden shot of the pocket, so this throws `GlassesOnlyCaptureError`
     ///   instead of swapping cameras.
     func capturePhoto(allowPhoneFallback: Bool = true) async throws -> Data {
-        // When the glasses camera is offline / not connected / not registered, capture from the
+        // When the glasses camera is offline / not connected (link down) / not registered, capture from the
         // iPhone back camera instead so the vision tools keep working without glasses. This is
         // also what lets them work on a device (or simulator) where the glasses SDK never came up.
         //
@@ -281,7 +295,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
         // Plan CQ P1: a backend that cannot capture stills at all falls the same way as one that
         // isn't ready — the phone is the only camera left, and callers announce the swap.
         let data: Data
-        if backend.isReady(configuringIfNeeded: true) && backend.capabilities.stillCapture {
+        if glassesCameraReachable(configuringIfNeeded: true) && backend.capabilities.stillCapture {
             isCaptureInProgress = true
             defer { isCaptureInProgress = false }
             data = try await backend.capturePhoto()

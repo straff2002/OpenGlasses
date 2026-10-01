@@ -3958,6 +3958,10 @@ struct Config {
         UserDefaults.standard.set(minutes, forKey: "autoSleepMinutes")
     }
 
+    /// Worn glasses never auto-sleep for silence unless this is on (`GlassesSleepPolicy`). Default
+    /// off. Glasses that do not report whether they are worn always follow the silence rule.
+    @UserDefaultsBacked("sleepWhenQuietWhileWorn", default: false) static var sleepWhenQuietWhileWorn: Bool
+
     // MARK: - Agentic Features Mode
 
     /// When enabled, the agent uses soul.md/skills.md/memory.md instead of prompt presets.

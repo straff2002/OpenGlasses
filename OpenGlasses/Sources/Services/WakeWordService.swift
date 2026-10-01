@@ -59,6 +59,21 @@ class WakeWordService: NSObject, ObservableObject {
     /// gates only the restarts the service initiates on its own. Defaults to "allowed" so the
     /// service keeps working standalone (and in tests) until AppState wires the toggle in.
     var shouldAutoRestart: () -> Bool = { true }
+
+    /// Whether the wearer has disconnected the app from the glasses while their link stays up
+    /// (`AppState.glassesStoodDown`). Injected by `AppState`; defaults to "not stood down" so the
+    /// service keeps working standalone and in tests.
+    ///
+    /// A Bluetooth route flip — HFP↔A2DP renegotiation, the glasses' or someone's headphones'
+    /// audio reappearing — can arrive with the link never having dropped, and the restart it
+    /// triggers must not re-open the mic the wearer just closed with Disconnect.
+    var glassesStoodDown: () -> Bool = { false }
+
+    /// The gate every restart the service initiates on its own passes: the master listening
+    /// toggle, and no glasses stand-down. Explicit `startListening()` callers decide for themselves.
+    func mayAutoRestart() -> Bool {
+        shouldAutoRestart() && !glassesStoodDown()
+    }
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest? {
         didSet { tapState.setRequest(recognitionRequest) }   // keep the tap's view in sync (Plan BE)
@@ -413,7 +428,7 @@ class WakeWordService: NSObject, ObservableObject {
             // Only restart if Bluetooth (glasses) route is available
             let route = AVAudioSession.sharedInstance().currentRoute
             let hasBluetooth = MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType))
-            guard shouldAutoRestart() else {
+            guard mayAutoRestart() else {
                 PrivacyLog.audio(.wakeWord, .interruptionEndedNotResuming,
                                  detail: PrivacyToken("listeningDisabled"))
                 return
@@ -467,7 +482,7 @@ class WakeWordService: NSObject, ObservableObject {
                 pauseForAudioDisruption()
                 onBluetoothReconnected?()
                 // The glasses coming back is not permission to listen: the master toggle decides.
-                guard shouldAutoRestart() else {
+                guard mayAutoRestart() else {
                     PrivacyLog.wakeWord(.listenerSkippedDisabled)
                     return
                 }
@@ -781,7 +796,7 @@ class WakeWordService: NSObject, ObservableObject {
     /// the same question from the graph, so a stale flag can neither suppress a needed restart nor
     /// hide a listener that is genuinely already up.
     func resumeListening() {
-        guard shouldAutoRestart() else {
+        guard mayAutoRestart() else {
             PrivacyLog.wakeWord(.listenerSkippedDisabled)
             return
         }
@@ -1205,9 +1220,8 @@ class WakeWordService: NSObject, ObservableObject {
 
     /// Whether the live audio route still carries a Bluetooth mic or speaker.
     ///
-    /// An observation, taken now. `AppState.isConnected` is a cached flag that only clears on a
-    /// Bluetooth event, so a handler that latched it false leaves it false; anything deciding
-    /// whether it may open the mic should ask the route as well as the flag.
+    /// An observation, taken now — what the route-change handler uses to tell a lost Bluetooth
+    /// device from a mic port that merely dropped out while the glasses kept playing.
     func hasBluetoothAudioRoute() -> Bool {
         let route = AVAudioSession.sharedInstance().currentRoute
         return MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType)) ||

@@ -62,7 +62,7 @@ final class WakeAutoRestartPolicyTests: XCTestCase {
                          already: Bool = false) -> Bool {
         WakeAutoRestartPolicy.shouldRestart(listeningEnabled: listening,
                                             silentMode: silent,
-                                            isConnected: connected,
+                                            voiceInputAvailable: connected,
                                             micMuted: muted,
                                             alreadyListening: already)
     }
@@ -95,7 +95,9 @@ final class WakeAutoRestartPolicyTests: XCTestCase {
         XCTAssertFalse(restart(silent: true))
     }
 
-    func testDisconnectedGlassesDoNotHandTheListenerThePhoneMic() {
+    /// `connected` here is `voiceInputAvailable`: false only while the wearer has disconnected
+    /// the app from their glasses. Glasses being away is not an input — the phone's mic is fine.
+    func testAStandDownKeepsTheListenerShut() {
         XCTAssertFalse(restart(connected: false))
     }
 
@@ -121,7 +123,7 @@ final class WakeRearmPolicyTests: XCTestCase {
         WakeRearmPolicy.decide(.init(listeningEnabled: listening,
                                      silentMode: silent,
                                      wasInConversation: wasInConversation,
-                                     isConnected: connected,
+                                     voiceInputAvailable: connected,
                                      micMuted: muted))
     }
 
@@ -147,12 +149,11 @@ final class WakeRearmPolicyTests: XCTestCase {
         XCTAssertFalse(WakeRearmPolicy.SkipReason.micMuted.isRecoverable)
     }
 
-    /// The bug's shape: the one skip the wearer did not ask for, and the only one that may clear
-    /// on its own — so it must be the one that schedules another attempt.
-    func testADisconnectedLinkIsTheOnlyRecoverableSkip() {
-        XCTAssertEqual(decide(connected: false), .skip(.disconnected))
-        XCTAssertTrue(WakeRearmPolicy.SkipReason.disconnected.isRecoverable)
-        for reason in [WakeRearmPolicy.SkipReason.masterOff, .silentMode, .micMuted] {
+    /// Phone-first: glasses being away no longer closes the mic, so the only glasses-shaped skip
+    /// is the wearer's own Disconnect — a decision, and like the others never retried around.
+    func testAStandDownSkipsAndNoSkipIsRetried() {
+        XCTAssertEqual(decide(connected: false), .skip(.glassesStoodDown))
+        for reason in [WakeRearmPolicy.SkipReason.masterOff, .silentMode, .micMuted, .glassesStoodDown] {
             XCTAssertFalse(reason.isRecoverable, "\(reason) is the wearer's decision, not a fault")
         }
     }
@@ -166,7 +167,7 @@ final class WakeRearmPolicyTests: XCTestCase {
     func testEveryReasonIsLoggableAsAStableToken() {
         XCTAssertEqual(WakeRearmPolicy.SkipReason.masterOff.rawValue, "masterOff")
         XCTAssertEqual(WakeRearmPolicy.SkipReason.silentMode.rawValue, "silentMode")
-        XCTAssertEqual(WakeRearmPolicy.SkipReason.disconnected.rawValue, "disconnected")
+        XCTAssertEqual(WakeRearmPolicy.SkipReason.glassesStoodDown.rawValue, "glassesStoodDown")
         XCTAssertEqual(WakeRearmPolicy.SkipReason.micMuted.rawValue, "micMuted")
     }
 

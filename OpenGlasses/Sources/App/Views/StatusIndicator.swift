@@ -164,67 +164,93 @@ struct StatusIndicator: View {
 
     // MARK: - Connection pills (merged from the old StatusPillsRow)
 
-    private var glassesPill: some View {
-        let connected = appState.isConnected
-        // Glasses nobody has added are not an error (Plan FY P2): the pill stays, one tap from
-        // connecting a pair, but in the quiet colour and without the word "Disconnected".
-        let color: Color = connected ? OGTheme.okLabel
-            : (phoneIsTheDevice ? OGTheme.secondaryLabel : OGTheme.errorLabel)
-        let label = connected ? (appState.glassesService.deviceName ?? "Glasses")
-            : (phoneIsTheDevice ? "Not added" : "Disconnected")
+    /// `nil` when glasses have never been added — the footer then carries no glasses pill at all.
+    private var glassesPillPresentation: SessionCardGlassesPill.Presentation? {
+        SessionCardGlassesPill.presentation(link: appState.glassesPhase,
+                                            stoodDown: appState.glassesStoodDown,
+                                            everAdded: appState.glassesAdded)
+    }
 
-        return Button {
-            if connected {
-                showDisconnectConfirm = true
-            } else {
-                Task { await appState.glassesService.connect() }
-            }
-        } label: {
-            HStack(spacing: 5) {
-                LogoIcon(size: pillGlyph)
-                    .foregroundStyle(color)
-                if connected {
-                    Circle().fill(OGTheme.ok).frame(width: statusDot, height: statusDot)
+    @ViewBuilder
+    private var glassesPill: some View {
+        if let presentation = glassesPillPresentation {
+            let color = labelColor(presentation.tint)
+
+            Button {
+                didTapGlassesPill(presentation.action)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "eyeglasses")
+                        .font(.caption)
+                        .foregroundStyle(color)
+                    // Hidden at accessibility sizes: the pill shrinks to the symbol alone rather
+                    // than forcing the footer row's `VStack` layout to find room for a sentence
+                    // beside "Mode: <persona>", which already claims its own line there.
+                    if !typeSize.isAccessibilitySize {
+                        Text(presentation.word)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(color)
+                            .lineLimit(1)
+                    }
+                    if presentation.showsLiveDot {
+                        Circle().fill(OGTheme.ok).frame(width: statusDot, height: statusDot)
+                    }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(in: .capsule)
+                // The drawn capsule stays the size the signature draws it; what
+                // grows is the target around it. A pill that *looked* 44pt would be
+                // a different status card — this is the same card with a control a
+                // finger can actually land on, and it is the reason the footer row
+                // gave up its bottom padding above.
+                //
+                // A *floor*, and deliberately not a `@ScaledMetric` one. 44pt is an
+                // absolute minimum for a fingertip, not a type-relative measure: a
+                // reader who turns the text up has not grown their thumb, and a
+                // scaled 44 reaches about 130pt at AX5, which is a third of the
+                // screen for a status dot. The drawn pill still grows on its own,
+                // and when it outgrows 44 this stops applying.
+                .frame(minWidth: OGMetrics.minTouchTarget,
+                       minHeight: OGMetrics.minTouchTarget)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .glassEffect(in: .capsule)
-            // The drawn capsule stays the size the signature draws it; what
-            // grows is the target around it. A pill that *looked* 44pt would be
-            // a different status card — this is the same card with a control a
-            // finger can actually land on, and it is the reason the footer row
-            // gave up its bottom padding above.
-            //
-            // A *floor*, and deliberately not a `@ScaledMetric` one. 44pt is an
-            // absolute minimum for a fingertip, not a type-relative measure: a
-            // reader who turns the text up has not grown their thumb, and a
-            // scaled 44 reaches about 130pt at AX5, which is a third of the
-            // screen for a status dot. The drawn pill still grows on its own,
-            // and when it outgrows 44 this stops applying.
-            .frame(minWidth: OGMetrics.minTouchTarget,
-                   minHeight: OGMetrics.minTouchTarget)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .confirmationDialog("Disconnect Glasses", isPresented: $showDisconnectConfirm) {
-            Button("Disconnect", role: .destructive) {
-                appState.disconnectGlasses()
+            .buttonStyle(.plain)
+            .confirmationDialog("Disconnect Glasses", isPresented: $showDisconnectConfirm) {
+                Button("Disconnect", role: .destructive) {
+                    appState.disconnectGlasses()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Stop mic, camera, and TTS. Gateway tasks keep running.")
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Stop mic, camera, and TTS. Gateway tasks keep running.")
+            // Without `children: .ignore` the element is the union of the pill's children rather
+            // than the pill itself, so VoiceOver's focus ring landed inside the capsule instead of
+            // around it.
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(presentation.accessibilityLabel)
+            .accessibilityHint(presentation.accessibilityHint)
         }
-        // Without `children: .ignore` the element is the union of the pill's children — a 13pt
-        // logo — rather than the pill itself, so VoiceOver's focus ring landed inside the
-        // capsule instead of around it.
-        .accessibilityElement(children: .ignore)
-        .accessibilityAddTraits(.isButton)
-        // The pill is drawn as a status dot, but it is a button that does opposite things in its
-        // two states — which is exactly what a hint is for.
-        .accessibilityLabel("Glasses: \(label)")
-        .accessibilityHint(connected ? "Double-tap to disconnect the glasses."
-                                     : "Double-tap to connect the glasses.")
+    }
+
+    /// `SessionCardGlassesPill.Action` → what actually happens. A tap while the glasses are merely
+    /// away used to run `AppState.connectGlasses()` — a 15 s wait ending in the SDK's own error
+    /// text, for a tap Greig made by accident. It now posts a plain, transient hint instead
+    /// (`NoticeCenter`, the same surface every other glasses condition already posts to) and never
+    /// starts that wait. `connectGlasses()` stays reserved for onboarding's genuine first connect.
+    private func didTapGlassesPill(_ action: SessionCardGlassesPill.Action) {
+        switch action {
+        case .disconnect:
+            showDisconnectConfirm = true
+        case .resume:
+            appState.resumeGlasses()
+        case .hint:
+            NoticeCenter.shared.post(SessionCardGlassesPill.awayHint, severity: .advisory,
+                                     source: .glasses)
+        case .none:
+            break
+        }
     }
 
     private var openClawPill: some View {
@@ -280,11 +306,12 @@ struct StatusIndicator: View {
                 .flatMap { AssistantIdentity.isDefaultName($0) ? nil : $0 }
             ?? AssistantIdentity.defaultName
         let icon = persona?.icon ?? "sparkles"
-        let connected = appState.isConnected
+        let dot = modeDot
+        let isActive = dot.readsAsActiveMode
         // The dot is a fill and the name beside it is text — the same state, two
         // roles, and the raw success hue is unreadable as the second one.
-        let dotColor: Color = connected ? OGTheme.ok : OGTheme.secondaryLabel
-        let nameColor: Color = connected ? OGTheme.okLabel : OGTheme.secondaryLabel
+        let dotColor = dotFillColor(dot.tint)
+        let nameColor = labelColor(dot.tint)
 
         return badgeLayout {
             HStack(spacing: 6) {
@@ -302,7 +329,7 @@ struct StatusIndicator: View {
                 }
                 .foregroundStyle(nameColor)
                 .accessibilityHidden(true)
-                Text(connected ? "Active mode:" : "Mode:")
+                Text(isActive ? "Active mode:" : "Mode:")
                     .font(.caption)
                     .foregroundStyle(OGTheme.secondaryLabel)
                     .fixedSize(horizontal: false, vertical: true)
@@ -319,20 +346,82 @@ struct StatusIndicator: View {
         .accessibilityElement(children: .combine)
         // Disconnected, the interpolation used to open with an empty string, so the line began
         // with a pause and read as " mode: OpenGlasses".
-        .accessibilityLabel(connected ? "Active mode: \(name)" : "Mode: \(name)")
+        .accessibilityLabel(isActive ? "Active mode: \(name)" : "Mode: \(name)")
+    }
+
+    /// The row's state — `SessionCardModeDot` — read from whichever session is live. Pure mapping
+    /// lives in `SessionCardModeDot`/`TalkEntryPolicyTests`; this is just which inputs apply.
+    private var modeDot: SessionCardModeDot {
+        if isGemini {
+            return .realtime(sessionActive: session.isActive,
+                             phase: realtimePhase(session.connectionState),
+                             muted: session.micMuted,
+                             reconnecting: session.reconnecting)
+        } else if isOpenAI {
+            return .realtime(sessionActive: openAISession.isActive,
+                             phase: realtimePhase(openAISession.connectionState),
+                             muted: openAISession.micMuted,
+                             reconnecting: openAISession.reconnecting)
+        } else {
+            return .direct(muted: appState.micMuted)
+        }
+    }
+
+    private func realtimePhase(_ state: GeminiConnectionState) -> SessionCardRealtimePhase {
+        switch state {
+        case .disconnected: return .disconnected
+        case .connecting: return .connecting
+        case .settingUp: return .settingUp
+        case .ready: return .ready
+        case .error: return .error
+        }
+    }
+
+    private func realtimePhase(_ state: OpenAIRealtimeConnectionState) -> SessionCardRealtimePhase {
+        switch state {
+        case .disconnected: return .disconnected
+        case .connecting: return .connecting
+        case .settingUp: return .settingUp
+        case .ready: return .ready
+        case .error: return .error
+        }
+    }
+
+    /// `SessionCardTint` → a status-dot fill. Bare hues (`OGTheme.ok`/`.warn`/`.error`/`.inactive`):
+    /// a filled circle doesn't carry text, so it is exempt from the label-contrast correction below.
+    private func dotFillColor(_ tint: SessionCardTint) -> Color {
+        switch tint {
+        case .ok: return OGTheme.ok
+        case .warn: return OGTheme.warn
+        case .error: return OGTheme.error
+        case .quiet: return OGTheme.inactive
+        }
+    }
+
+    /// `SessionCardTint` → a colour for text or a glyph, corrected to clear AA on the card
+    /// (`OGTheme`'s `...Label` tokens — the bare hues above measure far too light as text).
+    private func labelColor(_ tint: SessionCardTint) -> Color {
+        switch tint {
+        case .ok: return OGTheme.okLabel
+        case .warn: return OGTheme.warnLabel
+        case .error: return OGTheme.errorLabel
+        case .quiet: return OGTheme.secondaryLabel
+        }
     }
 
     // MARK: - Computed Properties
 
-    /// No glasses connected and none added: this phone is the device, so the card reports the
-    /// session rather than a missing pair of glasses (Plan FY P2, `OnboardingFlow`).
-    private var phoneIsTheDevice: Bool {
-        OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
-                                        glassesAdded: Config.glassesAdded)
+    /// The glasses' line when it, not the session, is the headline — only while the wearer's own
+    /// glasses connect is under way (`SessionCardGlassesHeadline`). Phone-first: glasses away
+    /// otherwise leave the card reporting the session the phone is carrying.
+    private var glassesHeadline: String? {
+        SessionCardGlassesHeadline.headline(connectAttemptInFlight: appState.isConnectingGlasses,
+                                            link: appState.glassesPhase,
+                                            connectionStatus: appState.glassesService.connectionStatus)
     }
 
     private var iconName: String {
-        if !appState.isConnected && !phoneIsTheDevice {
+        if glassesHeadline != nil {
             return "AvenkinMark"
         }
 
@@ -367,7 +456,7 @@ struct StatusIndicator: View {
     /// opacity and the glyph is this corrected to read on that wash. Every value
     /// is a palette token so both halves are measurable.
     private var ringColor: Color {
-        if !appState.isConnected && !phoneIsTheDevice { return OGTheme.inactive }
+        if glassesHeadline != nil { return OGTheme.inactive }
         if appState.glassesIdle { return OGTheme.inactive }
 
         if isGemini {
@@ -394,11 +483,7 @@ struct StatusIndicator: View {
     }
 
     private var statusLabel: String {
-        if !appState.isConnected && !phoneIsTheDevice {
-            let status = appState.glassesService.connectionStatus
-            if status == "Not connected" { return "Glasses Not Connected" }
-            return status
-        }
+        if let glassesHeadline { return glassesHeadline }
 
         if appState.glassesIdle {
             return "Glasses Idle"

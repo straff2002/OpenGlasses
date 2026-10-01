@@ -60,7 +60,7 @@ struct LaunchScreen: View {
                     .foregroundStyle(.primary)
                     .opacity(isAnimating ? 1.0 : 0)
 
-                Text("Voice-Powered AI Assistant")
+                Text("Voice & Vision AI Assistant")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(OGTheme.secondaryLabel)
                     .padding(.top, 8)
