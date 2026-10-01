@@ -60,13 +60,13 @@ final class VaultLinkScreenshotTests: AccessibilityAuditCase {
     // MARK: - The badged row
 
     func testCustomVaultsRowWithTheBadgeLight() {
-        let app = launch([.configured, .showAllSettings, .fieldAssist, .vaultReceivedBadge])
+        let app = launch([.configured, .fieldAssist, .vaultReceivedBadge])
         openCustomVaults(app)
         save(app, named: "fs2-custom-vaults-badge-light")
     }
 
     func testCustomVaultsRowWithTheBadgeDark() {
-        let app = launch([.configured, .showAllSettings, .fieldAssist, .vaultReceivedBadge,
+        let app = launch([.configured, .fieldAssist, .vaultReceivedBadge,
                           .darkAppearance])
         openCustomVaults(app)
         save(app, named: "fs2-custom-vaults-badge-dark")

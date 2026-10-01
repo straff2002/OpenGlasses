@@ -117,10 +117,6 @@ final class ToolConfirmationCoordinator: ObservableObject {
     private func ask(toolName: String, summary: String, source: RemoteActionSource,
                      reply: ConfirmationReplyKind) async -> ConfirmationAnswer {
         if pending != nil { return .denied }
-        // Plan DE: being asked before the assistant acts is the moment a user learns it
-        // *acts* — the tool surface is where they decide what it may act on. Suggestion
-        // only, raised at most once ever, and never affecting this confirmation.
-        SettingsJourneyStore.note(.highImpactActionConfirmed)
         onSpeakPrompt?(RemoteActionConsentRequest(source: source, summary: summary).spokenPrompt)
         return await withCheckedContinuation { (continuation: CheckedContinuation<ConfirmationAnswer, Never>) in
             pending = PendingToolConfirmation(toolName: toolName, summary: summary, source: source,

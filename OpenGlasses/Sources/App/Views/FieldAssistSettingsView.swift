@@ -20,6 +20,9 @@ struct FieldAssistSettingsView: View {
     @AppStorage("briefOnCarPlayConnect") private var briefOnCarPlayConnect: Bool = false
 
     @ObservedObject private var orgProfile = OrgProfileManager.shared
+    /// Plan HA C2: under an organisation's edition the master switch is locked — the edition is
+    /// Field Assist. The rest of this screen follows the organisation's per-key policy.
+    @ObservedObject private var adminGate = AdminGate.shared
     @State private var showingOrgScanner = false
     @State private var showingOfficeSetupImporter = false
     @State private var showingOfficePairing = false
@@ -99,7 +102,10 @@ struct FieldAssistSettingsView: View {
             Section {
                 Toggle("Enable Field Assist", isOn: $enabled)
                     .tint(AppAccent.color)
-                    .disabled(!Config.fieldAssistUnlocked)
+                    .disabled(!Config.fieldAssistUnlocked || adminGate.isLocked(.fieldAssistSwitch))
+                if adminGate.isLocked(.fieldAssistSwitch) {
+                    ManagedLockNote(organization: ManagedLockReason.organization)
+                }
             } footer: {
                 Text("Field Assist, powered by Avenkin, gives service technicians hands-free, domain-grounded guidance. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
             }

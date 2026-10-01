@@ -66,6 +66,9 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     var adminPasscode: PasscodeVerifier?
     /// Plan CT 3b — hex SHA-256 of the admin card's secret (`AdminSecrets.cardDigest`).
     var adminCard: String?
+    /// Plan HA C2 — which settings categories the edition opens or locks beyond its default, and
+    /// which tools it closes. Only with an edition; resolved by `ManagedLockdown.resolve`.
+    var lockdown: LockdownSpec?
     /// Schema 2 only. The vendor authorises an organisation administrator to bind office
     /// peers; this carries no office private key, job-signing key or route URL.
     var officeAuthority: OfficeAuthority?
@@ -128,6 +131,27 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         }
     }
 
+    /// `{open?, lock?, closedTools?}` — settings category ids (`SettingsCategoryID` raw values) and
+    /// tool names. Decoded without failing, like `AIModel`: a malformed entry is a named drop.
+    struct LockdownSpec: Codable, Equatable, Sendable {
+        var open: [String]?
+        var lock: [String]?
+        var closedTools: [String]?
+
+        init(open: [String]? = nil, lock: [String]? = nil, closedTools: [String]? = nil) {
+            self.open = open
+            self.lock = lock
+            self.closedTools = closedTools
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            open = try? container?.decodeIfPresent([String].self, forKey: .open)
+            lock = try? container?.decodeIfPresent([String].self, forKey: .lock)
+            closedTools = try? container?.decodeIfPresent([String].self, forKey: .closedTools)
+        }
+    }
+
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
         /// An organisation-hosted location for its own documents. A pointer, never bytes.
@@ -140,6 +164,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          vaultPack: VaultPackReference? = nil, skillPacks: [String]? = nil,
          revokedEnrolmentIds: [String]? = nil, aiModel: AIModel? = nil,
          edition: String? = nil, adminPasscode: PasscodeVerifier? = nil, adminCard: String? = nil,
+         lockdown: LockdownSpec? = nil,
          officeAuthority: OfficeAuthority? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
@@ -162,6 +187,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.edition = edition
         self.adminPasscode = adminPasscode
         self.adminCard = adminCard
+        self.lockdown = lockdown
         self.officeAuthority = officeAuthority
         self.settings = settings
     }

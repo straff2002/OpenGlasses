@@ -562,17 +562,7 @@ struct ToolsActionsSettingsScreen: View {
                     Label("Tools", systemImage: "wrench.and.screwdriver")
                 }
 
-                NavigationLink {
-                    FieldAssistSettingsView()
-                } label: {
-                    HStack {
-                        Label("Field Assist", systemImage: "wrench.adjustable")
-                        Spacer()
-                        if Config.fieldAssistEnabled {
-                            Text("On").foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                // Field Assist moved to its own row on the hub (Plan HA).
 
                 NavigationLink {
                     VaultManagerView()
@@ -610,10 +600,9 @@ struct ToolsActionsSettingsScreen: View {
                     }
                 }
 
-                // Accessibility used to live here. It is now a pinned Everyday row on the
-                // hub itself (Plan DE): assistive features are free forever and must never
-                // be reachable only through a category that folds — or, as here, one that
-                // Simple Mode hides outright.
+                // Accessibility is its own row on the hub, pinned: assistive features are free
+                // forever and must never be reachable only through a category that Simple Mode
+                // hides outright, or an organisation locks.
 
                 NavigationLink {
                     CustomToolsView()
@@ -722,6 +711,18 @@ struct ConnectionsSettingsScreen: View {
 
     var body: some View {
         Form {
+            // The Apple apps on this phone, and My Day (Plan HA: this was the hub's "Works with
+            // your iPhone" row — a connection to the apps you already have).
+            Section {
+                NavigationLink {
+                    AppleIntegrationsSettingsScreen()
+                } label: {
+                    Label("Works with your iPhone", systemImage: "iphone.gen3")
+                }
+            } footer: {
+                Text("Home, Calendar, Reminders, Contacts, Music, Maps and Alarms, and My Day.")
+            }
+
             Section {
                 NavigationLink {
                     ServicesSettingsView(appState: appState)
@@ -762,9 +763,14 @@ struct ConnectionsSettingsScreen: View {
 
 // MARK: - Devices & Privacy
 
-/// Hardware, privacy, and medical compliance (always visible, including Simple Mode).
+/// Glasses, hardware, privacy, and medical compliance (always visible, including Simple Mode).
+///
+/// Under an organisation's edition this category is locked except for Glasses (a technician has to
+/// get the glasses working) and the routing disclosure (a description, not a setting): those two
+/// rows stay open and the rest are read-only (Plan HA C2).
 struct GlassesPrivacySettingsScreen: View {
     @ObservedObject var appState: AppState
+    @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("hipaaMode") private var hipaaMode = false
 
     // Privacy filter
@@ -775,8 +781,38 @@ struct GlassesPrivacySettingsScreen: View {
     @State private var conversationEncryptionEnabled = Config.conversationEncryptionEnabled
     @State private var isTogglingEncryption = false
 
+    /// The rest of the category is locked; only the open areas are not.
+    private var restLocked: Bool { adminGate.lock(.devices).isLocked }
+
+    private var glassesStatus: String {
+        if appState.glassesPaused { return "Paused" }
+        switch appState.glassesPhase {
+        case .connected: return "Connected"
+        case .connecting: return "Connecting…"
+        case .addedDisconnected: return "Not connected"
+        case .noGlassesAdded: return "Not added"
+        }
+    }
+
     var body: some View {
         Form {
+            // Plan HA C3: the glasses' own settings, one row away whatever the hero card shows.
+            Section {
+                NavigationLink {
+                    GlassesSettingsView(appState: appState)
+                } label: {
+                    HStack {
+                        Label("Glasses", systemImage: "eyeglasses")
+                        Spacer()
+                        Text(glassesStatus)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(adminGate.isLocked(.glasses))
+            } footer: {
+                Text("Where the wake word listens, how replies play, sleep, and updates for the glasses themselves.")
+            }
+
             Section {
                 NavigationLink {
                     HardwarePrivacyView(
@@ -789,6 +825,7 @@ struct GlassesPrivacySettingsScreen: View {
                 } label: {
                     Label("Hardware & Privacy", systemImage: "lock.shield")
                 }
+                .disabled(restLocked)
 
                 NavigationLink {
                     MedicalCompliancePaywallView(
@@ -808,6 +845,7 @@ struct GlassesPrivacySettingsScreen: View {
                         }
                     }
                 }
+                .disabled(restLocked)
             } header: {
                 Text("Devices & Privacy")
             } footer: {
@@ -821,6 +859,7 @@ struct GlassesPrivacySettingsScreen: View {
                     Label("How Your Requests Are Processed", systemImage: "arrow.triangle.branch")
                 }
                 .accessibilityHint("Shows where the camera picture, what you say, the answer, the voice and remote tools each go.")
+                .disabled(adminGate.isLocked(.requestRouting))
             } header: {
                 Text("Where Your Requests Go")
             } footer: {

@@ -21,10 +21,8 @@ enum UITestSupport {
     enum Flag: String, CaseIterable {
         /// A never-launched install: onboarding is the first thing on screen.
         case freshInstall = "-OGUITestFreshInstall"
-        /// Past onboarding, with the settings journey in its folded first-run shape.
+        /// Past onboarding.
         case configured = "-OGUITestConfigured"
-        /// "Show everything" already on, so the hub renders every category as a row.
-        case showAllSettings = "-OGUITestShowAllSettings"
         /// Captions overlay on screen with a short history and a live line.
         case seedCaptions = "-OGUITestSeedCaptions"
         /// My Day set up and loaded with a full card's worth of rows — the state that needs a
@@ -168,10 +166,6 @@ enum UITestSupport {
 
         if isSet(.configured) {
             Config.setHasCompletedOnboarding(true)
-            // Write the journey state directly rather than letting the migration infer it: a
-            // completed onboarding reads as a prior install, which unfolds every category and
-            // leaves no Discover card to audit. The folded hub is the shape this seeds.
-            seedJourney(showsEverything: isSet(.showAllSettings))
         }
 
         // Sessions live in Documents, which outlives the defaults wipe, so **every** UI-test
@@ -242,15 +236,6 @@ enum UITestSupport {
         model: LLMProvider.anthropic.defaultModel,
         baseURL: LLMProvider.anthropic.defaultBaseURL
     )
-
-    private static func seedJourney(showsEverything: Bool) {
-        var state = SettingsJourneyMigration.initialState(
-            signals: .init(hasPriorInstall: false, configuredCategoryIDs: [])
-        )
-        state.showsEverything = showsEverything
-        guard let data = try? JSONEncoder().encode(state) else { return }
-        UserDefaults.standard.set(data, forKey: "settingsJourneyState")
-    }
 
     // MARK: - Runtime state
 

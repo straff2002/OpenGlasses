@@ -130,14 +130,22 @@ enum ProfileApplier {
                     case .failure(let reason): result.drops.append(Drop(key: "adminCard", reason: reason))
                     }
                 }
-                result.adminPolicy = AdminPolicy(edition: edition, credentials: credentials)
+                var policy = AdminPolicy(edition: edition, credentials: credentials)
+                if let spec = layer.lockdown {
+                    let (lockdown, drops) = ManagedLockdown.resolve(spec)
+                    policy.lockdown = lockdown
+                    result.drops.append(contentsOf: drops)
+                }
+                result.adminPolicy = policy
             } else {
                 result.drops.append(Drop(key: "edition",
                                          reason: .invalidValue("\u{201C}\(raw)\u{201D} is not an edition this version of the app knows")))
             }
         } else {
             // A passcode or card opens what an edition hides; with no edition there is nothing to open.
-            for (key, present) in [("adminPasscode", layer.adminPasscode != nil), ("adminCard", layer.adminCard != nil)]
+            // A lockdown is what the edition locks; with no edition there is nothing to lock.
+            for (key, present) in [("adminPasscode", layer.adminPasscode != nil), ("adminCard", layer.adminCard != nil),
+                                   ("lockdown", layer.lockdown != nil)]
             where present {
                 result.drops.append(Drop(key: key, reason: .invalidValue("it only applies with an edition")))
             }

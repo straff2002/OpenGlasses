@@ -81,6 +81,11 @@ enum PolicyEnvelope {
         current.isLocked(key)
     }
 
+    /// The edition's lockdown in force (Plan HA C2), or nil on a phone without an edition.
+    static var lockdown: ManagedLockdown? {
+        current.adminPolicy?.lockdown
+    }
+
     // MARK: - Typed reads for Config
 
     static func bool(_ key: SettingKey, stored: Bool) -> Bool {

@@ -148,10 +148,6 @@ enum GlassesPhotoAlbum {
         let saved = await saveTargetingAlbum {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         }
-        // Plan DE: the first photo is one of the four moments the hub may quietly
-        // point at the next capability. Recorded here rather than at any one call
-        // site because every route into the album passes through this function.
-        if saved { SettingsJourneyStore.note(.firstPhotoCaptured) }
         PrivacyLog.photoLibrary(saved ? .saved : .saveFailed, asset: .image)
         report(saved ? "Photo saved to the \(albumName) album" : "Photo library save failed")
         return saved ? .saved : .failed

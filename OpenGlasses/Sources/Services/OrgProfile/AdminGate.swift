@@ -84,6 +84,21 @@ final class AdminGate: ObservableObject {
         policy != nil && !isSessionLive && !isAdministratorPhone
     }
 
+    // MARK: - The lockdown (Plan HA C2)
+
+    /// The edition's lockdown, or nil on a phone without an edition.
+    var lockdown: ManagedLockdown? { policy?.lockdown }
+
+    /// How a settings category renders right now: locked only in the technician's view.
+    func lock(_ category: SettingsCategoryID) -> CategoryLock {
+        SettingsLockPolicy.lock(category, lockdown: lockdown, restricted: isRestricted)
+    }
+
+    /// Whether one named setting is locked right now.
+    func isLocked(_ area: ManagedArea) -> Bool {
+        SettingsLockPolicy.isLocked(area, lockdown: lockdown, restricted: isRestricted)
+    }
+
     // MARK: - The administrator phone
 
     /// This phone kept the organisation's current admin card: the full view, all the time.
