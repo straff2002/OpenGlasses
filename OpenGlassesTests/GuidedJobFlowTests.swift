@@ -23,6 +23,9 @@ final class GuidedJobFlowTests: XCTestCase {
     /// the whole point of the tests that assert on it.
     private var loadedHistory: [(role: String, content: String)]?
     private var clearHistoryCalls = 0
+    /// How far the flow's clock runs ahead of the wall clock — the idle gap without the wait.
+    private var clockOffset: TimeInterval = 0
+    private var persistenceEnabled = true
 
     override func setUp() {
         super.setUp()
@@ -65,7 +68,8 @@ final class GuidedJobFlowTests: XCTestCase {
             clearHistory: { [weak self] in self?.clearHistoryCalls += 1 },
             threadMode: { AppMode.direct.rawValue },
             personaId: { nil },
-            persistenceEnabled: { true }))
+            persistenceEnabled: { [weak self] in self?.persistenceEnabled ?? true },
+            now: { [weak self] in Date().addingTimeInterval(self?.clockOffset ?? 0) }))
     }
 
     /// Everything a cold launch rebuilds, from the same directories.
@@ -124,11 +128,116 @@ final class GuidedJobFlowTests: XCTestCase {
         XCTAssertEqual(store.threads[0].messages.count, 6)
     }
 
-    func testWithoutAJobEveryTurnStillClosesItsOwnConversation() async {
+    // MARK: - One conversation across voice turns
+
+    /// The reported defect: every Tap & Talk started a new conversation. Consecutive turns now
+    /// continue the same one.
+    func testWithoutAJobConsecutiveTurnsContinueOneConversation() async throws {
+        await turn("what's the weather", source: .tapToTalk)
+        let threadId = try XCTUnwrap(store.activeThreadId, "the end of a turn ends nothing")
+        await turn("and tomorrow", source: .tapToTalk)
+        await turn("and the weekend", source: .wakeWord)
+
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertEqual(store.activeThreadId, threadId)
+        XCTAssertEqual(store.threads[0].messages.map(\.content).filter { $0 != "Right you are." },
+                       ["what's the weather", "and tomorrow", "and the weekend"])
+        XCTAssertEqual(clearHistoryCalls, 0, "the model keeps the conversation's context")
+    }
+
+    func testTwentyNineQuietMinutesStillContinueTheConversation() async {
         await turn("what's the weather")
-        XCTAssertNil(store.activeThreadId, "no job, so the thread closes as it always did")
+        clockOffset = 29 * 60
         await turn("and tomorrow")
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertEqual(clearHistoryCalls, 0)
+    }
+
+    func testThirtyQuietMinutesStartANewConversation() async throws {
+        await turn("what's the weather")
+        let first = try XCTUnwrap(store.activeThreadId)
+        clockOffset = 30 * 60
+        await turn("remind me about the dentist")
+
         XCTAssertEqual(store.threads.count, 2)
+        XCTAssertNotEqual(store.activeThreadId, first)
+        XCTAssertEqual(clearHistoryCalls, 1, "a new conversation is new to the model as well")
+        let ended = try XCTUnwrap(store.threads.first { $0.id == first })
+        XCTAssertEqual(ended.messages.count, 2, "the quiet conversation is kept, not emptied")
+        XCTAssertNotNil(ended.summary, "ended like any other — titled and summarised")
+    }
+
+    /// Opening a conversation is choosing to carry on with it, however old it is.
+    func testResumingAnOldConversationIsActivity() async throws {
+        await turn("about the roof")
+        let roof = try XCTUnwrap(store.activeThreadId)
+        flow.requestNewChat()
+        await turn("about the fence")
+        let idx = try XCTUnwrap(store.threads.firstIndex { $0.id == roof })
+        store.threads[idx].updatedAt = Date().addingTimeInterval(-3 * 60 * 60)
+
+        flow.requestResume(threadId: roof)
+        await turn("and the gutters?")
+        XCTAssertEqual(store.activeThreadId, roof)
+        XCTAssertEqual(store.threads.first { $0.id == roof }?.messages.count, 4)
+    }
+
+    func testAJobsConversationIsNeverEndedForBeingQuiet() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("first look")
+        let threadId = try XCTUnwrap(service.activeSession?.conversationThreadId)
+        clockOffset = 3 * 60 * 60
+        await turn("back after lunch")
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertEqual(store.activeThreadId, threadId)
+        XCTAssertEqual(clearHistoryCalls, 0)
+    }
+
+    func testNewConversationStillStartsAFreshOne() async {
+        await turn("what's the weather")
+        XCTAssertNil(flow.requestNewChat())
+        XCTAssertNil(store.activeThreadId)
+        await turn("something else entirely")
+        XCTAssertEqual(store.threads.count, 2)
+    }
+
+    func testWithoutPersistenceTheIdleGapTouchesNothing() async throws {
+        await turn("what's the weather")
+        let threadId = try XCTUnwrap(store.activeThreadId)
+        persistenceEnabled = false
+        clockOffset = 3 * 60 * 60
+        flow.prepareThreadForTurn(.wakeWord)
+        flow.endThreadForVoiceReturn()
+        XCTAssertEqual(store.activeThreadId, threadId)
+        XCTAssertEqual(clearHistoryCalls, 0)
+    }
+
+    /// Push-to-talk: the release delivers the transcript and returns to the wake word at once, so
+    /// `returnToWakeWord()` runs before the model has answered. The reply must still land with its
+    /// question — on device it used to land nowhere, because the thread had already been ended.
+    func testAPushToTalkReplyLandsInTheQuestionsThread() async throws {
+        flow.prepareThreadForTurn(.tapToTalk)
+        store.startThread(mode: AppMode.direct.rawValue)
+        store.appendMessage(role: "user", content: "how far to the coast")
+        let questionThread = try XCTUnwrap(store.activeThreadId)
+
+        flow.endThreadForVoiceReturn()          // the release, before the reply
+        store.appendMessage(role: "assistant", content: "About forty minutes.",
+                            toThread: questionThread)
+
+        XCTAssertEqual(store.activeThreadId, questionThread)
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertEqual(store.threads[0].messages.map(\.role), ["user", "assistant"])
+
+        // Even if the wearer starts a new conversation while the model is still thinking, the
+        // answer is filed with the question that asked for it.
+        await turn("and to the airport?", source: .tapToTalk)
+        store.appendMessage(role: "user", content: "and the station?")
+        let secondQuestion = try XCTUnwrap(store.activeThreadId)
+        flow.requestNewChat()
+        store.appendMessage(role: "assistant", content: "Ten minutes.", toThread: secondQuestion)
+        XCTAssertEqual(store.threads.first { $0.id == secondQuestion }?.messages.last?.content,
+                       "Ten minutes.")
     }
 
     func testStartingAJobAdoptsTheConversationItWasStartedIn() async throws {

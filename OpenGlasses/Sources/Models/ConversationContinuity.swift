@@ -43,11 +43,11 @@ enum ConversationContinuity {
     /// The thread a "carry on" offer would resume: the most recent one, and only while nothing is
     /// active.
     ///
-    /// This is the reported defect made reachable. A voice session ends its thread when it
-    /// returns to the wake word (`AppState.returnToWakeWord` → `ConversationStore.endThread`), so
-    /// the moment a reply finished, the conversation on screen was one the next turn would *not*
-    /// join — it would silently open a new thread with none of the context. Nothing on the page
-    /// said so and nothing could undo it. One tap does.
+    /// A voice turn's end no longer ends its thread (see `JobThreadPolicy`'s idle-gap rule), so
+    /// after an ordinary reply there is still an active thread and nothing to offer. What leaves
+    /// no thread active is an explicit New conversation, a deletion, or a launch whose saved
+    /// session had gone stale — and after any of those the most recent conversation is one tap
+    /// away rather than gone.
     static func resumableThread(in store: ConversationStore) -> ConversationThread? {
         guard store.activeThreadId == nil, !store.isLocked else { return nil }
         return recentThreads(in: store, limit: 1).first
@@ -64,7 +64,12 @@ enum ConversationContinuity {
     static func resume(_ threadId: String, in store: ConversationStore,
                        loadHistory: ([(role: String, content: String)]) -> Void) -> Bool {
         guard store.threads.contains(where: { $0.id == threadId }) else { return false }
-        guard store.activeThreadId != threadId else { return true }
+        guard store.activeThreadId != threadId else {
+            // Choosing the thread that is already open is still choosing it: the idle gap counts
+            // from here, so a conversation picked to carry on with is the one the next turn joins.
+            store.noteActiveThreadActivity()
+            return true
+        }
         _ = store.resumeThread(threadId)
         loadHistory(store.replayMessages(for: threadId))
         return true
@@ -182,8 +187,8 @@ enum ConversationContinuity {
             return .history(threadId: activeThreadId)
         }
         // No thread yet, or an empty one, but something was just said: the turn that started this
-        // conversation is on screen before it has been persisted, and after a voice session has
-        // ended its thread the reply the wearer is still reading is only here.
+        // conversation is on screen before it has been persisted, and with history switched off
+        // (or after New conversation) the reply the wearer is still reading is only here.
         return hasLiveText ? .liveTurn : .empty
     }
 

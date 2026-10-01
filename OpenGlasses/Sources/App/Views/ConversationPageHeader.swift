@@ -3,10 +3,10 @@ import SwiftUI
 /// The conversation page's other half: which conversation this is, how to start a new one, and how
 /// to get back into an earlier one.
 ///
-/// The page used to be a transcript and nothing else, which was fine while a reply was arriving and
-/// useless the moment it finished — the voice session ends its thread when it returns to the wake
-/// word, so the conversation on screen was one nobody could add to any more, with no way to say so
-/// and no way to pick it back up. Naming the active thread and offering it back is the whole fix.
+/// The page used to be a transcript and nothing else, with no way to say which conversation the next
+/// thing said would join or to pick an earlier one back up. Naming the active thread and offering
+/// the last one back is the fix. (Voice turns now continue their conversation outright; it ends on
+/// New conversation or after a long quiet spell — see `JobThreadPolicy.conversationIdleGap`.)
 struct ConversationPageHeader: View {
     @EnvironmentObject var appState: AppState
     /// Observed directly: a nested `ObservableObject`'s changes don't republish through
@@ -49,8 +49,9 @@ struct ConversationPageHeader: View {
 
             Spacer(minLength: 4)
 
-            // Only while nothing is active, which is exactly the state a finished voice turn
-            // leaves behind. Without it the conversation just read is unreachable in one gesture.
+            // Only while nothing is active — after New conversation, a deletion, or a launch whose
+            // saved session had gone stale. Without it the last conversation is unreachable in one
+            // gesture.
             if let resumable = ConversationContinuity.resumableThread(in: store) {
                 Button {
                     resume(resumable.id)

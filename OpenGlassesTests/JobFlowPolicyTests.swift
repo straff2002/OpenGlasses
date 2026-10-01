@@ -17,22 +17,31 @@ final class JobThreadPolicyTests: XCTestCase {
                            detached: Bool = false,
                            active: String? = "thread-job",
                            reference: String? = "1005",
-                           persistence: Bool = true) -> JobThreadPolicy.Inputs {
+                           persistence: Bool = true,
+                           idle: TimeInterval? = nil) -> JobThreadPolicy.Inputs {
         JobThreadPolicy.Inputs(jobActive: true, jobReference: reference, boundThreadId: bound,
                                boundThreadExists: exists, boundThreadDetached: detached,
-                               activeThreadId: active, persistenceEnabled: persistence)
+                               activeThreadId: active, persistenceEnabled: persistence,
+                               activeThreadIdleFor: idle)
     }
 
     private func noJob(active: String? = "thread-other",
-                       persistence: Bool = true) -> JobThreadPolicy.Inputs {
+                       persistence: Bool = true,
+                       idle: TimeInterval? = nil,
+                       debrief: JobThreadPolicy.DebriefBinding? = nil) -> JobThreadPolicy.Inputs {
         JobThreadPolicy.Inputs(jobActive: false, activeThreadId: active,
-                               persistenceEnabled: persistence)
+                               persistenceEnabled: persistence, debrief: debrief,
+                               activeThreadIdleFor: idle)
     }
 
-    // MARK: The rule the narrow policy carried, in its new home
+    private func minutes(_ count: Double) -> TimeInterval { count * 60 }
 
-    func testAnOrdinaryTurnClosesItsThread() {
-        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, noJob()), .endThread)
+    // MARK: The end of a voice turn
+
+    /// The reported defect: every Tap & Talk ended its thread, so no conversation could be
+    /// continued. The end of a turn now ends nothing — the next turn joins the same thread.
+    func testAnOrdinaryTurnKeepsItsThreadOpen() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, noJob()), .keepThread)
     }
 
     func testAJobKeepsItsThreadOpenBetweenTurns() {
@@ -46,9 +55,94 @@ final class JobThreadPolicyTests: XCTestCase {
                        .keepThread)
     }
 
-    func testTheThreadClosesOnceTheJobIsOver() {
+    /// Closing a job ends its thread (`.jobClosed`); after that the conversation the wearer is in
+    /// carries on like any other.
+    func testOnceTheJobIsOverTurnsStillDoNotEndTheConversation() {
         XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, jobInputs()), .keepThread)
-        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, noJob()), .endThread)
+        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, noJob()), .keepThread)
+    }
+
+    // MARK: The idle gap
+
+    func testTheIdleGapIsThirtyMinutes() {
+        XCTAssertEqual(JobThreadPolicy.conversationIdleGap, 30 * 60)
+    }
+
+    func testConsecutiveVoiceTurnsContinueTheOpenConversation() {
+        for source in [JobThreadPolicy.TurnSource.wakeWord, .tapToTalk] {
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source), noJob(idle: 5)), .proceedUnbound,
+                           "\(source) a few seconds after the last one joins the same thread")
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source), noJob(idle: minutes(29))),
+                           .proceedUnbound, "29 minutes quiet is still the same conversation")
+        }
+    }
+
+    func testThirtyMinutesQuietStartsANewConversation() {
+        for source in [JobThreadPolicy.TurnSource.wakeWord, .tapToTalk] {
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source), noJob(idle: minutes(30))),
+                           .endIdleThread, "\(source)")
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source), noJob(idle: minutes(60 * 24))),
+                           .endIdleThread, "\(source)")
+        }
+    }
+
+    /// A typed turn is made looking at the thread it is typed into — the Chat tab or the page.
+    func testATypedTurnIsNeverIdleEnded() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.typed), noJob(idle: minutes(180))),
+                       .proceedUnbound)
+    }
+
+    func testWithNothingOpenThereIsNothingToEnd() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), noJob(active: nil)),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), noJob(idle: nil)),
+                       .proceedUnbound, "no activity known is not an idle gap")
+    }
+
+    func testAJobsConversationIsNeverIdleEnded() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), jobInputs(idle: minutes(180))),
+                       .useBoundThread(id: bound))
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               jobInputs(active: other, idle: minutes(180))),
+                       .useBoundThread(id: bound), "the job pulls its turn back, it does not end")
+        // Detached, the job keeps its id for review — and its thread is still never idle-ended.
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               jobInputs(detached: true, idle: minutes(180))),
+                       .proceedUnbound)
+        // The separate chat the technician stepped into is an ordinary conversation.
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               jobInputs(detached: true, active: other,
+                                                         idle: minutes(180))),
+                       .endIdleThread)
+    }
+
+    func testADebriefsConversationIsNeverIdleEnded() {
+        let debrief = JobThreadPolicy.DebriefBinding(jobId: "job-1004", threadId: other,
+                                                     threadExists: true)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               noJob(idle: minutes(180), debrief: debrief)),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.debrief(jobId: "job-1004")),
+                                               noJob(idle: minutes(180), debrief: debrief)),
+                       .useBoundThread(id: other))
+        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, noJob(debrief: debrief)),
+                       .keepThread)
+    }
+
+    func testWithoutPersistenceTheIdleGapChangesNothing() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               noJob(persistence: false, idle: minutes(180))),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               jobInputs(persistence: false, idle: minutes(180))),
+                       .proceedUnbound)
+    }
+
+    /// The other way out of a conversation is unchanged: New conversation with no job is not a
+    /// question, and the caller ends the thread (`ConversationContinuity.startFresh`).
+    func testAnExplicitNewConversationIsStillTheCallersToMake() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.newChat(confirmed: false), noJob(idle: 5)),
+                       .proceedUnbound)
     }
 
     // MARK: Which thread the turn lands in
@@ -142,16 +236,17 @@ final class JobThreadPolicyTests: XCTestCase {
         XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), jobInputs(detached: true)),
                        .proceedUnbound)
         XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, jobInputs(detached: true)),
-                       .endThread)
+                       .keepThread, "the separate chat carries on like any conversation")
         XCTAssertEqual(JobThreadPolicy.resolve(.newChat(confirmed: false), jobInputs(detached: true)),
                        .proceedUnbound)
     }
 
     // MARK: Disconnect, close, launch
 
-    func testPuttingTheGlassesDownDoesNotEndAJobsConversation() {
+    func testPuttingTheGlassesDownDoesNotEndAConversation() {
         XCTAssertEqual(JobThreadPolicy.resolve(.disconnect, jobInputs()), .keepThread)
-        XCTAssertEqual(JobThreadPolicy.resolve(.disconnect, noJob()), .endThread)
+        XCTAssertEqual(JobThreadPolicy.resolve(.disconnect, noJob()), .keepThread,
+                       "picking them back up continues it; the idle gap decides when it is over")
     }
 
     func testAThreadThatIsNotTheJobsStillEndsOnDisconnect() {
