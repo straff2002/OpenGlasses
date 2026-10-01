@@ -84,6 +84,14 @@ final class MainTabTests: XCTestCase {
         XCTAssertEqual(MainTab.job.title, "Job")
     }
 
+    func testTheHomeTabCarriesTheAppsNameAndMark() {
+        XCTAssertEqual(MainTab.voice.title, "Avenkin")
+        XCTAssertEqual(MainTab.voice.assetImage, "AvenkinSymbol")
+        for tab in MainTab.allCases where tab != .voice {
+            XCTAssertNil(tab.assetImage, "\(tab) should keep its SF Symbol")
+        }
+    }
+
     func testTitlesAreDistinct() {
         let titles = MainTab.allCases.map(\.title)
         XCTAssertEqual(Set(titles).count, titles.count,

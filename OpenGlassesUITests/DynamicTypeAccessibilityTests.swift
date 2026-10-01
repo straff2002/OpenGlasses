@@ -72,7 +72,7 @@ final class DynamicTypeAccessibilityTests: AccessibilityAuditCase {
         // makes the automation session attach to the process the audit is about to walk; a
         // successful query apparently does not. The tap is a no-op for the app: the Voice tab is
         // already selected.
-        openTab("Voice", in: app)
+        openTab("Avenkin", in: app)
 
         // And wait for the *surface*, not just the shell around it: at AX5 this screen's first
         // layout pass is not cheap, and the capsule is the last part of it to resolve.

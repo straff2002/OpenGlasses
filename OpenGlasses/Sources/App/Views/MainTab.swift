@@ -43,7 +43,9 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
     /// the word the wearer hears.
     var title: String {
         switch self {
-        case .voice: return "Voice"
+        // The home of the app carries its name, not the name of one way into it: since Avenkin
+        // stopped being glasses-first, this tab is the dock and grid as much as the voice session.
+        case .voice: return "Avenkin"
         case .modes: return "Modes"
         case .chat: return "Chat"
         case .job: return "Job"
@@ -51,6 +53,17 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         }
     }
 
+    /// An image from the asset catalog that replaces `systemImage` in the bar. The home tab wears
+    /// the Avenkin mark as a custom symbol (`AvenkinSymbol.symbolset`), so it tints and sizes like
+    /// the SF Symbols beside it.
+    var assetImage: String? {
+        switch self {
+        case .voice: return "AvenkinSymbol"
+        case .modes, .chat, .job, .settings: return nil
+        }
+    }
+
+    /// The SF Symbol for the tab, used where `assetImage` is nil.
     var systemImage: String {
         switch self {
         case .voice: return "waveform"

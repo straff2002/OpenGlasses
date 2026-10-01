@@ -57,7 +57,8 @@ struct MainView: View {
         ZStack {
             TabView(selection: $selectedTab) {
                 // Declared in `MainTab.displayOrder`; keep the two in step.
-                Tab("Voice", systemImage: "waveform", value: MainTab.voice) {
+                Tab(MainTab.voice.title, image: MainTab.voice.assetImage ?? "AvenkinSymbol",
+                    value: MainTab.voice) {
                     VoiceTab()
                 }
 

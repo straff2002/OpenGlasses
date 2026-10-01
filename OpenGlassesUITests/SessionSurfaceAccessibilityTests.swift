@@ -17,16 +17,16 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
 
     func testVoiceTabPassesAccessibilityAudit() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
         audit(app, screen: "Session surface — Voice tab",
               deferring: [.contrastThroughGlass])
     }
 
     func testTabBarDestinationsAreNamed() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
-        for name in ["Voice", "Modes", "Chat", "Settings"] {
+        for name in ["Avenkin", "Modes", "Chat", "Settings"] {
             XCTAssertTrue(app.tabBars.buttons[name].exists, "The \(name) tab is not named")
         }
     }
@@ -36,7 +36,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// name instead; this fails if that name is ever dropped back to the drawn copy.
     func testSessionCapsuleDoesNotSpeakItsDrawnTapCopy() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         for drawnCopy in ["Tap & Talk", "Resume & Talk", "Tap to stop"] {
             XCTAssertFalse(
@@ -63,7 +63,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// leaves them off the panel.
     func testQuickActionGridTilesAreNamedButtons() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         for name in ["Meetings", "Tasks", "Photo → Event", "Photo → Task"] {
             XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 60),
@@ -81,7 +81,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// fails if the index view is ever dropped for tidiness.
     func testTheDockPanelShowsItsPageControl() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         XCTAssertTrue(app.pageIndicators.firstMatch.waitForExistence(timeout: 60),
                       "The dock panel has no page control — its conversation and edit pages are "
@@ -92,7 +92,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// every moment of a turn. It sits below the panel, outside it.
     func testTheCapsuleIsOutsideThePagerAndAlwaysPresent() {
         let app = launch([.configured])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         let capsule = app.buttons.matching(
             NSPredicate(format: "label IN %@",
@@ -113,7 +113,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// the panel is opaque now, and the chip has a real 44pt target.
     func testCaptionsOverlayPassesAccessibilityAudit() {
         let app = launch([.configured, .seedCaptions])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         let liveLine = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH 'Now: '")).firstMatch
@@ -144,7 +144,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// all. Without it the audit above would pass by measuring a control that never rendered.
     func testTheSpeakerChipIsOnScreenToBeAudited() {
         let app = launch([.configured, .seedCaptions])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         let chip = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH 'Speaker '")).firstMatch
@@ -157,7 +157,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// rather than pushed — which means each past line is its own element, not one blob.
     func testCaptionHistoryLinesAreIndividuallyFocusable() {
         let app = launch([.configured, .seedCaptions])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         let aHistoryLine = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@",

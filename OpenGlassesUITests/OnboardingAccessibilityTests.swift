@@ -131,7 +131,7 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(app.buttons["Restore my setup"], named: "The welcome-back page")
         app.buttons["Restore my setup"].tap()
 
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The session surface after restoring")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The session surface after restoring")
         XCTAssertFalse(app.buttons["Restore my setup"].exists,
                        "Onboarding is still up after the user chose to restore")
     }
