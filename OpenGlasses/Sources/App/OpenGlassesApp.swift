@@ -3094,6 +3094,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // itself on route changes and after interruptions, so it needs the toggle too — the
         // AppState-side callers already check it (issue 427 follow-up).
         wakeWordService.shouldAutoRestart = { Config.listeningEnabled }
+        // Nor after the wearer's Disconnect: a Bluetooth route flip can bring the service's own
+        // restart round while the glasses' link never dropped, so it asks about the stand-down too.
+        wakeWordService.glassesStoodDown = { [weak self] in self?.glassesStoodDown ?? false }
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
