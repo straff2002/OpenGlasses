@@ -3795,7 +3795,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Hand one utterance to the wearer's agent (a temple tap assigned to "ask my agent", Plan
     /// GJ). Goes through the tool router as a user-origin `execute` call, so the gateway's Agent
     /// Mode gate and the authorization policy apply exactly as they do to any other delegation.
-    func runAgentTurn(_ query: String) async {
+    /// - Parameter threadId: the saved conversation the question went into, so the reply follows
+    ///   it there; nil files it in whichever thread is active.
+    func runAgentTurn(_ query: String, threadId: String? = nil) async {
         guard Config.isOpenClawAgentActive, let router = llmService.nativeToolRouter else {
             await speechService.speak(String(localized: "Your agent isn't set up."))
             await resumeListeningOrReturnToWakeWord(ensureEngine: true)
@@ -3813,7 +3815,7 @@ class AppState: ObservableObject, AppStateProtocol {
         lastResponse = reply
         llmService.recordExternalExchange(user: query, assistant: reply)
         if Config.conversationPersistenceEnabled {
-            conversationStore.appendMessage(role: "assistant", content: reply)
+            conversationStore.appendMessage(role: "assistant", content: reply, toThread: threadId)
         }
         isProcessing = false
         startStopListener()
@@ -5294,7 +5296,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// the user's turn is persisted to the conversation store and after persona detection, so the
     /// photo handler prompts the LLM with the persona-stripped `query` while command matching uses
     /// the raw transcript. Same first-consumer-wins contract as `preLLMHandlers`.
-    private func postStoreHandlers(query: String) -> [VoiceCommandHandler] {
+    private func postStoreHandlers(query: String, threadId: String?) -> [VoiceCommandHandler] {
         [
             // "stop" — interrupt TTS, stay in conversation
             VoiceCommandHandler(label: "stop") { [weak self] text in
@@ -5362,7 +5364,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             }
                             self.lastResponse = response
                             if Config.conversationPersistenceEnabled {
-                                self.conversationStore.appendMessage(role: "assistant", content: response)
+                                self.conversationStore.appendMessage(role: "assistant", content: response,
+                                                                     toThread: threadId)
                             }
 
                             // If an audio or video recording is active, inject the description
@@ -5630,10 +5633,11 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold
     /// line — in the tier-0 shape: record it (marked as answered on the phone), speak, resume.
-    private func finishPhoneTurnWithoutModel(_ reply: String) async {
+    private func finishPhoneTurnWithoutModel(_ reply: String, threadId: String?) async {
         lastResponse = reply
         if Config.conversationPersistenceEnabled {
-            conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+            conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
+                                            toThread: threadId)
         }
         startStopListener()
         TurnRecorder.handOffToSpeech()
@@ -5643,6 +5647,21 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.endTurn()
         await connectivityHandoff.turnEnded()
         await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+    }
+
+    /// Persist a spoken question, opening a thread if none is active, and return the thread it went
+    /// into — the one its reply must be filed in. Nil with conversation history switched off.
+    private func recordVoiceQuestion(_ text: String) -> String? {
+        guard Config.conversationPersistenceEnabled else { return nil }
+        if conversationStore.activeThreadId == nil {
+            conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
+        }
+        conversationStore.appendMessage(role: "user", content: text)
+        guard let threadId = conversationStore.activeThreadId else { return nil }
+        // Named from its first question now rather than when it ends: a voice conversation stays
+        // open across turns, and the history list should not show it as untitled meanwhile.
+        conversationStore.applyAutoTitleIfNeeded(threadId)
+        return threadId
     }
 
     func handleTranscription(_ text: String) async {
@@ -5702,19 +5721,20 @@ class AppState: ObservableObject, AppStateProtocol {
         // job's, whichever wake-word cycle this turn belongs to (Plan FO P1) — the flow binds or
         // resumes it before anything is appended, so a turn is never filed in the wrong
         // conversation and moved afterwards.
+        //
+        // The same call decides whether this turn continues the open conversation or, after the
+        // idle gap, starts a new one. The thread the question lands in is captured here and every
+        // reply below is filed against it: in push-to-talk `returnToWakeWord()` runs as soon as
+        // the release delivers this transcript, before the model has answered.
         guidedJobFlow.prepareThreadForTurn(manuallyTriggered ? .tapToTalk : .wakeWord)
-        if Config.conversationPersistenceEnabled {
-            if conversationStore.activeThreadId == nil {
-                conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
-            }
-            conversationStore.appendMessage(role: "user", content: text)
-        }
+        let turnThreadId = recordVoiceQuestion(text)
 
         // Post-store voice-command chain (Plan BG P2): stop, goodbye, photo. Runs after the user
         // turn is persisted (so "stop"/"goodbye" still appear in the thread) and after persona
         // detection (the photo prompt uses the persona-stripped `query`). The first consumer
         // short-circuits before the LLM; order is preserved from the original if-ladder.
-        if await ConversationFlowEngine(handlers: postStoreHandlers(query: query)).route(text) != nil {
+        if await ConversationFlowEngine(handlers: postStoreHandlers(query: query, threadId: turnThreadId))
+            .route(text) != nil {
             return
         }
 
@@ -5722,7 +5742,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // the agent. After the stop/goodbye handlers, so those still end the conversation.
         if pendingAgentTurn {
             pendingAgentTurn = false
-            await runAgentTurn(query)
+            await runAgentTurn(query, threadId: turnThreadId)
             return
         }
 
@@ -5777,7 +5797,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 llmService.recordExternalExchange(user: query, assistant: result)
 
                 if Config.conversationPersistenceEnabled {
-                    conversationStore.appendMessage(role: "assistant", content: result)
+                    conversationStore.appendMessage(role: "assistant", content: result,
+                                                    toThread: turnThreadId)
                 }
 
                 startStopListener()
@@ -5816,7 +5837,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = true
             TurnRecorder.beginTurn()
             if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
-                await finishPhoneTurnWithoutModel(reply)
+                await finishPhoneTurnWithoutModel(reply, threadId: turnThreadId)
                 return
             }
             TurnRecorder.abandonTurnReleasingUtterance()
@@ -5827,7 +5848,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = true
             TurnRecorder.beginTurn()
             let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
-            await finishPhoneTurnWithoutModel(line)
+            await finishPhoneTurnWithoutModel(line, threadId: turnThreadId)
             return
         }
         var phoneModelId: String?
@@ -6010,10 +6031,12 @@ class AppState: ObservableObject, AppStateProtocol {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 
-                    // Save to conversation store
+                    // Save to conversation store — in the thread the question went into, which in
+                    // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
-                                                        answeredOnDevice: answeredOnPhone)
+                                                        answeredOnDevice: answeredOnPhone,
+                                                        toThread: turnThreadId)
                     }
                 },
                 speak: { [self] response in
@@ -6092,6 +6115,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
             }
         }
+        // The thread this question went into; the reply is filed there even if the wearer moves to
+        // another conversation while the model is thinking.
+        let turnThreadId = Config.conversationPersistenceEnabled ? conversationStore.activeThreadId : nil
 
         // Plan GE: a typed turn without signal is served on the phone exactly as a spoken one is.
         var handoffPlan = connectivityHandoff.planTurn(query)
@@ -6099,7 +6125,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
                 lastResponse = reply
                 if Config.conversationPersistenceEnabled {
-                    conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+                    conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
+                                                    toThread: turnThreadId)
                 }
                 if speakResponse { await speechService.speak(reply) }
                 return
@@ -6110,7 +6137,8 @@ class AppState: ObservableObject, AppStateProtocol {
             let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
             lastResponse = line
             if Config.conversationPersistenceEnabled {
-                conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true)
+                conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true,
+                                                toThread: turnThreadId)
             }
             if speakResponse { await speechService.speak(line) }
             return
@@ -6191,7 +6219,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
-                                                        answeredOnDevice: answeredOnPhone)
+                                                        answeredOnDevice: answeredOnPhone,
+                                                        toThread: turnThreadId)
                     }
 
                     // Memory loop (Phase 3): spot a durable fact or a repeated multi-step request and
@@ -6863,8 +6892,10 @@ class AppState: ObservableObject, AppStateProtocol {
             await speechService.speak("Resuming \(media.displayName).")
         }
         updateLiveActivity()
-        // End the saved thread — unless a Field Assist job owns it, in which case the next
-        // wake-word turn continues the same conversation (Plan FO P1: `JobThreadPolicy`).
+        // The saved conversation carries on: the next turn joins it (`JobThreadPolicy`). A new one
+        // starts only on an explicit New conversation or after the idle gap, decided when the
+        // next turn begins. In push-to-talk this runs before the reply has arrived — the reply is
+        // filed by thread id, so it lands with its question whatever happens here.
         guidedJobFlow.endThreadForVoiceReturn()
 
         switch WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation)) {

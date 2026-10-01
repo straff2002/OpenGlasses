@@ -21,7 +21,19 @@ import Foundation
 /// thread that is already active if there is one (which is the normal case: "start a job" is
 /// itself a turn, and by the time the tool runs its thread exists), and otherwise binds the first
 /// thread the next turn creates.
+///
+/// **The same table decides when an ordinary conversation ends.** A voice turn's end used to close
+/// the saved thread whenever no job held it, so every Tap & Talk or wake-word exchange became its
+/// own conversation and nothing could be continued. Now the end of a turn ends nothing: the next
+/// turn joins the same thread. A conversation is left behind only when the wearer asks for a new
+/// one (New conversation on the page or CarPlay — `ConversationContinuity.startFresh`), or when the
+/// next voice turn starts after `conversationIdleGap` with nothing said. Like binding, that is
+/// decided lazily, at the start of the turn that would join the thread, never by a timer.
 enum JobThreadPolicy {
+
+    /// How long a conversation may sit untouched before the next voice turn starts a fresh one.
+    /// Measured from the active thread's last activity — a message, or the wearer choosing it.
+    static let conversationIdleGap: TimeInterval = 30 * 60
 
     /// Everything the decision depends on. A value type so the whole table is testable without a
     /// store, a session or an app.
@@ -42,6 +54,9 @@ enum JobThreadPolicy {
         var persistenceEnabled: Bool = true
         /// The debrief in hand, when one is (Plan FO P3b).
         var debrief: DebriefBinding?
+        /// How long the active thread has gone without activity, in seconds. Nil with no active
+        /// thread, or when the caller does not know.
+        var activeThreadIdleFor: TimeInterval?
     }
 
     /// Where a turn came from. Carried through so the audit can say which surface bound a thread,
@@ -71,6 +86,15 @@ enum JobThreadPolicy {
             if case .debrief(let jobId) = self { return jobId }
             return nil
         }
+
+        /// A spoken turn. Only these are subject to the idle gap: a typed turn is made looking at
+        /// the conversation it is typed into, and filing it anywhere else would be a surprise.
+        var isVoice: Bool {
+            switch self {
+            case .wakeWord, .tapToTalk: return true
+            case .typed, .debrief: return false
+            }
+        }
     }
 
     /// The job a debrief is bound to, and the conversation that debrief's turns land in.
@@ -99,7 +123,8 @@ enum JobThreadPolicy {
         case newChat(confirmed: Bool)
         /// Opening another conversation — the switcher, the Chat tab, CarPlay, the watch.
         case resumeThread(id: String, confirmed: Bool)
-        /// A voice turn finished and the wake word is re-arming.
+        /// A voice turn finished and the wake word is re-arming. In push-to-talk this can arrive
+        /// before the reply does — the release ends listening while the model is still thinking.
         case returnToWakeWord
         /// The wearer put the glasses down.
         case disconnect
@@ -137,6 +162,10 @@ enum JobThreadPolicy {
         /// turns stop resolving to it until something re-attaches.
         case detachThread
         case endThread
+        /// The open conversation has gone quiet for `conversationIdleGap`: end it — and the
+        /// model's context with it — so this turn starts a fresh one. Never a thread a job or a
+        /// debrief owns.
+        case endIdleThread
         /// Leave the saved thread exactly as it is — the job owns it.
         case keepThread
         case askFirst(JobThreadQuestion)
@@ -164,9 +193,11 @@ enum JobThreadPolicy {
             }
             return .useBoundThread(id: thread)
 
-        case .turn:
-            guard inputs.jobActive, inputs.persistenceEnabled else { return .proceedUnbound }
-            guard !inputs.boundThreadDetached else { return .proceedUnbound }
+        case .turn(let source):
+            guard inputs.persistenceEnabled else { return .proceedUnbound }
+            guard inputs.jobActive, !inputs.boundThreadDetached else {
+                return unboundTurn(source, inputs)
+            }
             guard let bound = inputs.boundThreadId else {
                 if let active = inputs.activeThreadId { return .bindActiveThread(id: active) }
                 return .bindNewThread(reason: .noThreadYet)
@@ -177,6 +208,11 @@ enum JobThreadPolicy {
             return .useBoundThread(id: bound)
 
         case .returnToWakeWord, .disconnect:
+            // The end of a voice turn — or the glasses going down — is not the end of a
+            // conversation. The next turn joins this thread; it is left behind only by an explicit
+            // New conversation or, at the start of the next voice turn, the idle gap. Ending it
+            // here is what made every Tap & Talk its own conversation, and in push-to-talk it ran
+            // before the reply arrived, so the answer had no thread to land in.
             guard inputs.persistenceEnabled, inputs.activeThreadId != nil else { return .keepThread }
             // A debrief owns the open thread across wake-word cycles exactly as a job does — the
             // conversation is the point of it, and ending it between sentences would scatter one
@@ -184,9 +220,10 @@ enum JobThreadPolicy {
             if let debrief = inputs.debrief, debrief.threadId == inputs.activeThreadId {
                 return .keepThread
             }
-            guard inputs.jobActive, !inputs.boundThreadDetached else { return .endThread }
+            guard inputs.jobActive, !inputs.boundThreadDetached else { return .keepThread }
             // A job is running. The open thread is the job's — either already bound, or about to
-            // be by the next turn — unless the technician deliberately stepped into another one.
+            // be by the next turn — unless the technician stepped into another one without
+            // detaching, which closes here so the job's next turn is back in the job's thread.
             if let bound = inputs.boundThreadId, bound != inputs.activeThreadId { return .endThread }
             return .keepThread
 
@@ -225,6 +262,19 @@ enum JobThreadPolicy {
             }
             return .useBoundThread(id: bound)
         }
+    }
+
+    /// A turn no job claims: it joins the open conversation, unless that has gone quiet for the
+    /// idle gap and this is a voice turn. A thread a job or debrief owns is never ended for being
+    /// idle — a detached job keeps the id, and a debrief carries on across a long drive.
+    private static func unboundTurn(_ source: TurnSource, _ inputs: Inputs) -> Resolution {
+        guard source.isVoice, let active = inputs.activeThreadId,
+              let idle = inputs.activeThreadIdleFor, idle >= conversationIdleGap else {
+            return .proceedUnbound
+        }
+        if active == inputs.boundThreadId { return .proceedUnbound }
+        if let debrief = inputs.debrief, debrief.threadId == active { return .proceedUnbound }
+        return .endIdleThread
     }
 
     /// Whether leaving the job's thread is what is being asked for. Only then is there a question.

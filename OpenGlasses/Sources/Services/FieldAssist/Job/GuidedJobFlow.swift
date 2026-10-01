@@ -39,6 +39,9 @@ final class GuidedJobFlow: ObservableObject {
         var threadMode: () -> String = { AppMode.direct.rawValue }
         var personaId: () -> String? = { nil }
         var persistenceEnabled: () -> Bool = { Config.conversationPersistenceEnabled }
+        /// The clock the idle gap is measured on. A seam so the 30-minute rule is testable
+        /// without waiting for it.
+        var now: () -> Date = { Date() }
         /// Ask the model for one structured result — `LLMService.completeStructured` in the app.
         /// A debrief's summary is the only thing in this flow a model produces, and it produces it
         /// through a seam so the whole review is exercisable with no network (Plan FO P3b).
@@ -290,11 +293,14 @@ final class GuidedJobFlow: ObservableObject {
 
     // MARK: - The thread chokepoint
 
-    /// A voice turn finished. The job owns its thread across wake-word cycles — that is the whole
-    /// point — so this ends a thread only when there is no job holding it open.
+    /// A voice turn finished. Its conversation carries on — the next turn joins it — so this ends
+    /// a thread only when a running job is pulling the technician back from one they stepped into
+    /// without detaching. Whether a conversation has gone quiet long enough to start a new one is
+    /// decided at the start of the next turn (`prepareThreadForTurn`), not here: in push-to-talk
+    /// this runs before the reply has even arrived.
     func endThreadForVoiceReturn() { apply(JobThreadPolicy.resolve(.returnToWakeWord, inputs())) }
 
-    /// The wearer put the glasses down. Same rule: a job survives a disconnect.
+    /// The wearer put the glasses down. Same rule: a conversation, and a job, survive a disconnect.
     func endThreadForDisconnect() { apply(JobThreadPolicy.resolve(.disconnect, inputs())) }
 
     /// What has to be asked before the technician is taken out of the job's conversation, or nil
@@ -482,7 +488,10 @@ final class GuidedJobFlow: ObservableObject {
             boundThreadDetached: session?.conversationThreadDetached == true,
             activeThreadId: store.activeThreadId,
             persistenceEnabled: seams.persistenceEnabled(),
-            debrief: debriefBinding())
+            debrief: debriefBinding(),
+            activeThreadIdleFor: store.activeThreadLastActivityAt.map {
+                seams.now().timeIntervalSince($0)
+            })
     }
 
     private func apply(_ resolution: JobThreadPolicy.Resolution,
@@ -510,6 +519,11 @@ final class GuidedJobFlow: ObservableObject {
             sessions.detachConversationThread()
         case .endThread:
             if store.activeThreadId != nil { store.endThread() }
+        case .endIdleThread:
+            // A new conversation, exactly as New conversation makes one: the saved thread ends
+            // (titled, summarised, distilled) and the model forgets it. The turn about to run opens
+            // the fresh thread lazily, as every turn with nothing active does.
+            startFresh()
         }
     }
 
