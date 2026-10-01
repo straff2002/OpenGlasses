@@ -8,6 +8,9 @@ enum ModelTurnRoute: Equatable {
     case switchModel(toId: String)
     /// Keep the currently active model.
     case keepCurrent
+    /// Plan GE: the conversation is on the phone without signal — this on-device model serves the
+    /// turn, with no cloud attempt first.
+    case phoneHandoff(toId: String)
 }
 
 /// Pure decision for how to route a classified turn to a model. Extracted from
@@ -20,6 +23,8 @@ enum ModelRoutingPolicy {
     ///   - localAgentEnabled: user opt-in for the on-device agent (off by default; that path can crash).
     ///   - tierModelId: id of the model recommended for this tier (`Config.modelForTier(...)?.id`), if any.
     ///   - activeModelId: the currently active model id.
+    ///   - phoneModelId: Plan GE — the on-device model the offline handoff chose for this turn, or nil
+    ///     when the conversation is on the cloud. Read first: without signal nothing else can run.
     static func decide(
         isFastTier: Bool,
         agentModeEnabled: Bool,
@@ -29,8 +34,10 @@ enum ModelRoutingPolicy {
         isPhoto: Bool,
         autoRoutingEnabled: Bool,
         tierModelId: String?,
-        activeModelId: String?
+        activeModelId: String?,
+        phoneModelId: String? = nil
     ) -> ModelTurnRoute {
+        if let phoneModelId { return .phoneHandoff(toId: phoneModelId) }
         // Fast-tier queries go to the agent model when agentic mode is on and the model is ready.
         // The on-device MLX agent only runs when the user opted in (it can fatally crash); a cloud
         // agent model routes normally. Photo turns never use the agent (they need vision).

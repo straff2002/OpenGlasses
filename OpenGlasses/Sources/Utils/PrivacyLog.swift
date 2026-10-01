@@ -1442,6 +1442,8 @@ enum PrivacyLog {
         case spendCap
         // Plan GD3 — the field-mode tool profile trimmed the declared tools: counts and a digest.
         case toolProfileApplied
+        // Plan GE — the conversation moved onto the phone or back; route tokens and counts only.
+        case offlineHandoff, offlineTurn
         case agentSelected, catalogDiscovered, catalogUnavailable
         case classified, classificationFailed, analysisCompleted
     }

@@ -14,11 +14,14 @@ enum LiveActivationSource: String, Equatable, CaseIterable {
     case appUI
     /// A glasses temple tap (Plan GJ).
     case templeTap
+    /// Plan GE P3: the signal came back after a live session was handed to the phone, and the
+    /// session it lost is being started again. The app resuming, not the wearer asking.
+    case offlineReturn
 
     /// Whether this is the wearer asking, rather than the app assuming.
     var isExplicit: Bool {
         switch self {
-        case .launch, .foreground: return false
+        case .launch, .foreground, .offlineReturn: return false
         case .actionButton, .siriShortcut, .wakeWord, .appUI, .templeTap: return true
         }
     }

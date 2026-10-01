@@ -130,6 +130,8 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case intentClassification
     case providerModelCatalog
     case conversationRecallSummary
+    /// Plan GE: the one check that decides an offline conversation can move back to the cloud.
+    case connectivityProbe
 
     // MARK: Tools
     case webSearch
@@ -203,6 +205,7 @@ extension NetworkRoute {
         case .intentClassification: return "Classify an utterance into an intent using the configured model provider."
         case .providerModelCatalog: return "List the models a configured provider key may use."
         case .conversationRecallSummary: return "Summarize retrieved past conversation turns into a cited answer."
+        case .connectivityProbe: return "Send a content-free HEAD request to the configured model provider's own host to confirm the connection is back before an offline conversation returns to the cloud."
         case .webSearch: return "Run a web search for a query the wearer or the model produced."
         case .weatherAttributionMark: return "Download the Apple Weather mark shown beside weather data, as Apple requires; the request names a fixed image and nothing about the wearer."
         case .newsHeadlines: return "Fetch news headlines for a topic."
@@ -269,7 +272,8 @@ extension NetworkRoute {
             return [.promptText]
         case .aircraftOverhead, .aedDirectory:
             return [.location]
-        case .currencyRates, .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark:
+        case .currencyRates, .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark,
+             .connectivityProbe:
             return [.telemetryFree]
         case .playbookHTTPStep:
             return [.promptText]
@@ -315,7 +319,7 @@ extension NetworkRoute {
              .elevenLabsSpeechSynthesis, .elevenLabsVoiceCatalog,
              .openAIRealtimeSession, .geminiLiveSession, .geminiLiveModelCatalog,
              .cloudTranslationCaptions, .llmCompletion, .intentClassification,
-             .providerModelCatalog, .conversationRecallSummary,
+             .providerModelCatalog, .conversationRecallSummary, .connectivityProbe,
              .customAgentHarness, .expertBridgeWebhook, .expertSignaling,
              .offlineEndpointSync, .webRTCBrowserStreaming,
              .fhirExport, .fhirConnectionTest:
@@ -388,6 +392,7 @@ extension NetworkRoute {
         case .intentClassification: return ["IntentClassifier"]
         case .providerModelCatalog: return ["ModelFetcher"]
         case .conversationRecallSummary: return []
+        case .connectivityProbe: return ["ConnectivityProbe"]
         case .webSearch: return ["WebSearchTool"]
         case .weatherAttributionMark: return ["WeatherAttributionMarkLoader"]
         case .newsHeadlines: return ["NewsTool"]

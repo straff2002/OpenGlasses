@@ -879,6 +879,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// locally and flushed on reconnect.
     let offlineQueue = OfflineQueue()
     let reachability = Reachability()
+    /// Plan GE: moves the conversation onto the phone when the signal goes, and back once a stable
+    /// connection returns. Fed by `reachability` and every cloud attempt (wired below).
+    lazy var connectivityHandoff: ConnectivityHandoffController = makeConnectivityHandoff()
     /// On-device translation (BY P3) — sessions are served by `TranslationEngineHost` in the
     /// app root; the engine itself is UI-free.
     let translationEngine = AppleTranslationEngine()
@@ -1884,17 +1887,24 @@ class AppState: ObservableObject, AppStateProtocol {
         // Offline field queue (Plan T): feed captured photos into the durable queue, surface the
         // offline/reconnect state hands-free, and flush on the rising edge of connectivity.
         FieldSessionService.shared.offlineQueue = offlineQueue
+        _ = connectivityHandoff   // built before the first path edge, so it starts from the real state
+        // Plan GE: the offline announcement now belongs to the handoff, which says it once per
+        // episode (not on every flap) and mentions saved work only when the queue holds some. The
+        // rising-edge sync line stays here, and stays conditional on queued items.
         reachability.onChange = { [weak self] online in
             guard let self else { return }
             if online {
                 let n = self.offlineQueue.pendingCount
-                guard n > 0 else { return }
-                self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
-                Task { await self.speechService.speak("Back online. Syncing \(n) item\(n == 1 ? "" : "s").") }
-            } else {
-                self.glassesDisplay.showNavigation("Offline — your work is saved and will sync when you reconnect", icon: .info)
-                Task { await self.speechService.speak("You're offline. Your work is being saved and will sync when you're back online.") }
+                if let line = HandoffAnnouncer.syncLine(queuedItems: n) {
+                    self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
+                    self.connectivityHandoff.noteSyncLineSpoken()
+                    Task { await self.speechService.speak(line) }
+                }
             }
+            Task { await self.connectivityHandoff.pathChanged(online: online) }
+        }
+        llmService.onCloudAttempt = { [weak self] error in
+            self?.connectivityHandoff.noteCloudAttempt(error: error)
         }
         syncEngine.bind(to: reachability)        // chains the affordance above, then flushes on reconnect
         syncEngine.onConflict = { [weak self] _, reason in
@@ -4968,8 +4978,17 @@ class AppState: ObservableObject, AppStateProtocol {
             })
         audibleLifecycle = lifecycle
 
-        geminiLiveSession.onLifecycle = { signal in lifecycle.handle(signal) }
-        openAIRealtimeSession.onLifecycle = { signal in lifecycle.handle(signal) }
+        // Plan GE P3: a live session that gave up reconnecting because the signal is gone hands the
+        // conversation to the phone instead of ending; the claim keeps the manager's own "couldn't
+        // reconnect" line from being said over the handoff's.
+        geminiLiveSession.onLifecycle = { [weak self] signal in
+            if case .reconnectExhausted = signal, self?.handOffLostLiveSession(.geminiLive) == true { return true }
+            return lifecycle.handle(signal)
+        }
+        openAIRealtimeSession.onLifecycle = { [weak self] signal in
+            if case .reconnectExhausted = signal, self?.handOffLostLiveSession(.openaiRealtime) == true { return true }
+            return lifecycle.handle(signal)
+        }
     }
 
     /// A capture the wearer asked for produced an image. Called from `look_closely` and from the
@@ -5609,6 +5628,23 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold
+    /// line — in the tier-0 shape: record it (marked as answered on the phone), speak, resume.
+    private func finishPhoneTurnWithoutModel(_ reply: String) async {
+        lastResponse = reply
+        if Config.conversationPersistenceEnabled {
+            conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+        }
+        startStopListener()
+        TurnRecorder.handOffToSpeech()
+        await speechService.speak(reply)
+        stopStopListener()
+        isProcessing = false
+        TurnRecorder.endTurn()
+        await connectivityHandoff.turnEnded()
+        await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+    }
+
     func handleTranscription(_ text: String) async {
         // Shared consent surface, voice half (BN P1): while an approve/deny prompt is pending, a
         // short spoken yes/no answers THE PROMPT — never the model. Checked before the
@@ -5772,6 +5808,32 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        // Plan GE: without signal the conversation carries on on the phone. A request a native tool
+        // can serve with no model is answered here; one nothing on the phone can think through is
+        // held for the cloud; anything else goes to the on-device model through the route below.
+        var handoffPlan = connectivityHandoff.planTurn(query)
+        if case .deterministic = handoffPlan {
+            isProcessing = true
+            TurnRecorder.beginTurn()
+            if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
+                await finishPhoneTurnWithoutModel(reply)
+                return
+            }
+            TurnRecorder.abandonTurnReleasingUtterance()
+            isProcessing = false
+            handoffPlan = connectivityHandoff.modelPlan()
+        }
+        if case .hold = handoffPlan {
+            isProcessing = true
+            TurnRecorder.beginTurn()
+            let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
+            await finishPhoneTurnWithoutModel(line)
+            return
+        }
+        var phoneModelId: String?
+        if case .phoneModel(let configId) = handoffPlan { phoneModelId = configId }
+        let answeredOnPhone = phoneModelId != nil
+
         // Tier 2: Model selection (Plan BG P2). The pure `ModelRoutingPolicy` decides between the
         // on-device agent model, a temporary switch to the tier-recommended model, and keeping the
         // active one; this applies the chosen route's side effects.
@@ -5789,8 +5851,17 @@ class AppState: ObservableObject, AppStateProtocol {
             isPhoto: isPhotoCommand(query),
             autoRoutingEnabled: Config.autoModelRoutingEnabled,
             tierModelId: tierModel?.id,
-            activeModelId: Config.activeModelId
+            activeModelId: Config.activeModelId,
+            phoneModelId: phoneModelId
         ) {
+        case .phoneHandoff(let id):
+            // Plan GE: straight to the on-device model with the offline tool set — no cloud attempt
+            // to time out first. Announced once by the handoff, so no per-turn switch narration.
+            originalModelId = Config.activeModelId
+            Config.setActiveModelId(id)
+            llmService.refreshActiveModel()
+            llmService.offlineHandoffTurn = true
+            PrivacyLog.model(.offlineTurn, detail: PrivacyToken("phoneModel"))
         case .localAgent:
             useLocalAgent = true
             PrivacyLog.model(.agentSelected,
@@ -5871,7 +5942,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // bridge is the brain for the turn — it runs its own tools/memory and
                     // may request a photo mid-query. Any failure falls through to the
                     // normal local/cloud path so the bridge can never strand a turn.
-                    if hermesBridge.isEnabled {
+                    if hermesBridge.isEnabled, !answeredOnPhone {
                         do {
                             let bridged = try await hermesBridge.ask(query)
                             nowPlayingAtStart = nil
@@ -5935,10 +6006,14 @@ class AppState: ObservableObject, AppStateProtocol {
                         return
                     }
                     lastResponse = response
+                    if answeredOnPhone {
+                        connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
+                    }
 
                     // Save to conversation store
                     if Config.conversationPersistenceEnabled {
-                        conversationStore.appendMessage(role: "assistant", content: response)
+                        conversationStore.appendMessage(role: "assistant", content: response,
+                                                        answeredOnDevice: answeredOnPhone)
                     }
                 },
                 speak: { [self] response in
@@ -5962,6 +6037,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     await speechService.speak(spoken)
                 },
                 finish: { [self] in
+                    llmService.offlineHandoffTurn = false
                     // Restore original model if we switched for this request
                     if let originalId = originalModelId {
                         Config.setActiveModelId(originalId)
@@ -5971,6 +6047,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // After responding, stay in conversation — listen for follow-up
                     isProcessing = false
                     speechService.stopThinkingSound()
+                    // Plan GE: a route change that waited for this turn applies now.
+                    await connectivityHandoff.turnEnded()
                     await resumeListeningOrReturnToWakeWord(ensureEngine: true)
                 }
             ))
@@ -5984,7 +6062,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter speakResponse: when `false`, the answer is not read aloud via the
     ///   internal TTS engine. Used by the Siri "ask a question" intent, where Siri
     ///   itself speaks the returned dialog (avoids the response being spoken twice).
-    func sendTextMessage(_ text: String, imageData: Data? = nil, speakResponse: Bool = true) async {
+    /// - Parameter recordUserTurn: `false` when the question is already in the saved conversation —
+    ///   the offline handoff's replay of a held question on return (Plan GE).
+    func sendTextMessage(_ text: String, imageData: Data? = nil, speakResponse: Bool = true,
+                         recordUserTurn: Bool = true) async {
         guard !isProcessing else { return }
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
@@ -6003,11 +6084,46 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             // User-correction signal (Plan AW): before logging this turn, if it corrects the
             // previous answer, feed it to the skill-evolution loop (Agent-Mode-gated, no-op otherwise).
-            if let prev = conversationStore.lastExchange() {
-                await SkillEvolutionService.shared.noteUserTurn(
-                    message: query, priorPrompt: prev.prompt, priorResponse: prev.response)
+            if recordUserTurn {
+                if let prev = conversationStore.lastExchange() {
+                    await SkillEvolutionService.shared.noteUserTurn(
+                        message: query, priorPrompt: prev.prompt, priorResponse: prev.response)
+                }
+                conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
             }
-            conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
+        }
+
+        // Plan GE: a typed turn without signal is served on the phone exactly as a spoken one is.
+        var handoffPlan = connectivityHandoff.planTurn(query)
+        if case .deterministic = handoffPlan {
+            if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
+                lastResponse = reply
+                if Config.conversationPersistenceEnabled {
+                    conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+                }
+                if speakResponse { await speechService.speak(reply) }
+                return
+            }
+            handoffPlan = connectivityHandoff.modelPlan()
+        }
+        if case .hold = handoffPlan {
+            let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
+            lastResponse = line
+            if Config.conversationPersistenceEnabled {
+                conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true)
+            }
+            if speakResponse { await speechService.speak(line) }
+            return
+        }
+        var phoneOriginalModelId: String?
+        var answeredOnPhone = false
+        if case .phoneModel(let configId) = handoffPlan {
+            phoneOriginalModelId = Config.activeModelId
+            Config.setActiveModelId(configId)
+            llmService.refreshActiveModel()
+            llmService.offlineHandoffTurn = true
+            answeredOnPhone = true
+            PrivacyLog.model(.offlineTurn, detail: PrivacyToken("phoneModelTyped"))
         }
 
         isProcessing = true
@@ -6069,9 +6185,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                     lastResponse = response
                     streamingTurn = nil  // clear before persisting so the live bubble doesn't duplicate the saved message
+                    if answeredOnPhone {
+                        connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
+                    }
 
                     if Config.conversationPersistenceEnabled {
-                        conversationStore.appendMessage(role: "assistant", content: response)
+                        conversationStore.appendMessage(role: "assistant", content: response,
+                                                        answeredOnDevice: answeredOnPhone)
                     }
 
                     // Memory loop (Phase 3): spot a durable fact or a repeated multi-step request and
@@ -6117,8 +6237,16 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                 },
                 finish: { [self] in
+                    if answeredOnPhone {
+                        llmService.offlineHandoffTurn = false
+                        if let phoneOriginalModelId {
+                            Config.setActiveModelId(phoneOriginalModelId)
+                            llmService.refreshActiveModel()
+                        }
+                    }
                     isProcessing = false
                     speechService.stopThinkingSound()
+                    await connectivityHandoff.turnEnded()   // Plan GE: apply a change that waited
                 }
             ))
         }
