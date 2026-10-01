@@ -1,7 +1,9 @@
 # Plan FY — Rename to Avenkin (a private assistant; glasses become one device among several)
 
 **Status:** 🚧 P1–P3 shipped 2026-09-30; P5 in the private desktop repository; owed on device: pronunciation,
-tinted icon; owner: App Store listing text. P2 built 2026-09-30 on branch `feat/fy-copy` (*P2 → Built*).
+tinted icon, the Avenkin shortcut glyph on the Action button and in Shortcuts; owner: App Store listing text.
+**2026-10-01:** Siri answers to Avenkin only — `INAlternativeAppNames` withdrawn, App Shortcut glyph
+is the Avenkin symbol (*P1 → item 3*). P2 built 2026-09-30 on branch `feat/fy-copy` (*P2 → Built*).
 Drafted 2026-09-26, revised
 2026-09-28 and 2026-09-29. **Built so far (all merged 2026-09-29):** the Home Screen name and icons ([#571](https://github.com/straff2002/OpenGlasses/pull/571), build 422,
 *Decisions 2026-09-28 → Branding*); the same Meta sign-in link from any address ([#573](https://github.com/straff2002/OpenGlasses/pull/573)); the
@@ -205,8 +207,10 @@ The direction is **Open Span**, committed with PR #571 at `docs/branding/avenkin
   `docs/branding/avenkin/` assets. That is P0 item 3's icon work and P1 item 1's display names; once
   it merges, P1 does not redo them. Because Siri phrases are written with `.applicationName`, they
   already say "Ask Avenkin…" from that build; registering the old name under
-  `INAlternativeAppNames`, so "Ask OpenGlasses…" keeps working, belongs in P1 (item 3). The in-app
-  `OpenGlassesLogo` and `OpenGlassesSymbol` images are not part of it and stay in P0 item 3.
+  `INAlternativeAppNames`, so "Ask OpenGlasses…" keeps working, belonged in P1 (item 3) — **withdrawn
+  2026-10-01** (owner: "it should all be avenkin"): the key is removed and Siri answers to Avenkin
+  only. The in-app `OpenGlassesLogo` and `OpenGlassesSymbol` images are not part of it and stay in P0
+  item 3.
 
 ### Still open from that day
 
@@ -564,8 +568,8 @@ complete:
    glasses" because that is what it is for.
 3. **In-app strings:** views, App Intents phrases and responses (`App/Intents/*`: "Ask Avenkin…",
    "Avenkin is not running"; the Siri phrases already follow the display name through
-   `.applicationName` since PR #571, and P1 adds `INAlternativeAppNames` so the old name still
-   reaches the app), notification titles (`ProactiveAlertService`, `GeofenceTool`), the Live
+   `.applicationName` since PR #571; P1 added `INAlternativeAppNames` so the old name still
+   reached the app, and that was withdrawn 2026-10-01 — Siri answers to Avenkin only), notification titles (`ProactiveAlertService`, `GeofenceTool`), the Live
    Activity default (`LiveActivityManager`), the Settings footer, and the "Avenkin Job" document type
    description. Strings that name the desktop app, which arrive with the desktop thread's phone-app
    PR ("Import Avenkin Setup File", "Pair with Avenkin Office"), consistently say "Avenkin Office"
@@ -637,7 +641,13 @@ are done; item 9 is owed on device. Deviations and additions:
   id `"violet"` and is labelled **Orange**; the old Orange swatch (id `"orange"`) is labelled **Amber**
   so two presets never share a name.
 - Item 3: the desktop-naming strings (setup-file import, pairing, the vault receipt's source) say
-  Avenkin Office. `INAlternativeAppNames` carries the old name with the hint "open glasses".
+  Avenkin Office. `INAlternativeAppNames` carried the old name with the hint "open glasses" until
+  **2026-10-01**, when the owner withdrew it ("it should all be avenkin"): the key is gone from
+  `OpenGlasses/Info.plist`, the rename script no longer shelters it, and `BrandNameGuardTests` fails
+  if it returns. The same follow-up replaced the App Shortcut glyph `OpenGlassesSymbol` (the old
+  mark) with `AvenkinSymbol`, an SF Symbols template drawn from the Open Span mark with Ultralight,
+  Regular and Black small sources plus Regular medium, so every weight and scale interpolates; the
+  guard now also checks App Intents metadata, the App Shortcut phrases, short titles and glyphs.
 - The UI-test assertions follow the new copy; the UI target is compiled, not run, headless.
 
 ## P2 — Repositioning the copy (one PR; can merge with P1; waits for the desktop thread's phone-side PR, as P1 does)
