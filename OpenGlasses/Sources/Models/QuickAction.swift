@@ -90,6 +90,31 @@ struct QuickAction: Codable, Identifiable, Equatable {
         promptText: "A Field Assist session has just been started on my default vault — do not call field_session start. Briefly confirm you're ready and what you can help me troubleshoot."
     )
 
+    /// The job tiles that ride in with Field Assist, after `fieldAssist` itself. Injected and
+    /// stripped exactly as it is — never persisted, so they leave the grid with the entitlement.
+    /// Each asks for the job step it is named after; the Field Assist tools do the work, and a
+    /// tile pressed with no job open is answered by the tool saying so.
+    static let fieldAssistJobActions: [QuickAction] = [
+        QuickAction(
+            id: "fa-log-photo", label: "Log Photo", icon: "photo.badge.plus", type: .prompt,
+            promptText: "Take a photo for this job's log. Caption it with what it shows, and tell me in one line what you logged."),
+        QuickAction(
+            id: "fa-fault-code", label: "Fault Code", icon: "exclamationmark.magnifyingglass", type: .prompt,
+            promptText: "Read the fault code or nameplate in front of me and look it up in this job's manuals. Tell me what it means and the first thing to check."),
+        QuickAction(
+            id: "fa-safety-check", label: "Safety Check", icon: "checkmark.shield", type: .prompt,
+            promptText: "Run a safety assessment on what I'm looking at. Tell me any serious hazard that isn't controlled, most dangerous first."),
+        QuickAction(
+            id: "fa-order-part", label: "Order Part", icon: "shippingbox", type: .prompt,
+            promptText: "I need a part for this job. Ask me the part number and quantity, then request it from base."),
+        QuickAction(
+            id: "fa-send-report", label: "Send Report", icon: "paperplane", type: .prompt,
+            promptText: "Send this job's report to base, and tell me where it went."),
+    ]
+
+    /// Everything Field Assist injects, in grid order.
+    static var fieldAssistActions: [QuickAction] { [fieldAssist] + fieldAssistJobActions }
+
     /// Built-in record toggle — merged into existing users' persisted lists like the travel
     /// templates, so the meeting recorder is reachable without reconfiguring the speed dial.
     static let recordMeeting = QuickAction(
@@ -99,15 +124,13 @@ struct QuickAction: Codable, Identifiable, Equatable {
         type: .toggleRecording
     )
 
+    /// A fresh install's speed dial. Deliberately short: the photo → event and photo → task actions
+    /// that used to sit here duplicated the grid's own `Photo → Event` / `Photo → Task`, and a
+    /// Home Assistant "Lights Off" did nothing for anyone without Home Assistant. Existing lists
+    /// are the wearer's and keep whatever they hold.
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
                     promptText: "Describe what you see in this image in detail."),
         recordMeeting,
-        QuickAction(id: "calendar", label: "Event", icon: "calendar", type: .photoThenPrompt,
-                    promptText: "Extract any event details from this image (dates, times, locations, names) and create a calendar entry summary."),
-        QuickAction(id: "task", label: "Task", icon: "checklist", type: .photoThenPrompt,
-                    promptText: "Extract any action items or tasks from this image and list them."),
-        QuickAction(id: "lights-off", label: "Lights Off", icon: "lightbulb.slash", type: .homeAssistant,
-                    haService: "light.turn_off", haEntityId: "all"),
     ] + travelTemplates
 }

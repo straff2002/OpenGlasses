@@ -62,8 +62,60 @@ extension HomeGridAction {
         prompt: "Read this image and add the action items you find in it to my reminders, with due "
               + "dates where the image gives one. Tell me what you added.")
 
+    // Phone-first: none of these needs glasses. A photo action uses the glasses camera when one is
+    // connected and the phone's otherwise, and every prompt is a turn the wearer could have spoken.
+
+    static let dailyBrief = HomeGridAction(
+        id: "daily-brief",
+        label: "Brief",
+        icon: "sunrise",
+        kind: .prompt,
+        prompt: "Brief me on my day: what's coming up, what's due, the weather, and anything I "
+              + "should leave early for. Keep it short.")
+
+    static let weather = HomeGridAction(
+        id: "weather",
+        label: "Weather",
+        icon: "cloud.sun",
+        kind: .prompt,
+        prompt: "What's the weather here today? Current conditions, the high and low, and whether "
+              + "rain is coming in the next few hours.")
+
+    static let quickNote = HomeGridAction(
+        id: "quick-note",
+        label: "Note",
+        icon: "note.text",
+        kind: .prompt,
+        prompt: "I want to save a note. Ask me what to note, then save it and confirm in one line.")
+
+    static let timer = HomeGridAction(
+        id: "timer",
+        label: "Timer",
+        icon: "timer",
+        kind: .prompt,
+        prompt: "Set a timer for me. Ask how long it should be, then set it and confirm.")
+
+    static let scanDocument = HomeGridAction(
+        id: "scan-document",
+        label: "Scan Doc",
+        icon: "doc.viewfinder",
+        kind: .photoPrompt,
+        prompt: "This is a photo of a document. Transcribe its text faithfully, keeping the "
+              + "headings and lists, then give me a two-line summary of what it is.")
+
+    static let readText = HomeGridAction(
+        id: "read-text",
+        label: "Read Text",
+        icon: "text.magnifyingglass",
+        kind: .photoPrompt,
+        prompt: "Read out the text in this image exactly as written, in reading order. Don't "
+              + "summarise or add commentary.")
+
     /// The grid as it ships.
-    static let builtIns: [HomeGridAction] = [meetingsToday, tasksToday, photoToEvent, photoToTask]
+    static let builtIns: [HomeGridAction] = [
+        meetingsToday, tasksToday, dailyBrief, weather, quickNote, timer,
+        photoToEvent, photoToTask, scanDocument, readText,
+    ]
 }
 
 // MARK: - Grid entries
@@ -151,7 +203,7 @@ struct HomeGridArrangement: Codable, Equatable {
 /// Pure composition and order arithmetic for the home grid, so the migration and the salvage rules
 /// are provable without a screen — the shape `DockLayout` gives the dock.
 ///
-/// There is no visible ceiling. The grid wraps into rows of four and scrolls vertically inside the
+/// There is no visible ceiling. The grid wraps into rows of three and scrolls vertically inside the
 /// dock panel once it outgrows its bounded height, so an entry is never silently cut off; what the
 /// grid holds is the editor's business, not the layout's.
 enum HomeGridCatalog {
@@ -218,29 +270,42 @@ enum HomeGridCatalog {
 /// file estimates a layout any more except the one frame before the first measurement arrives —
 /// which is what the `default…WithoutMeasurement` names mark.
 enum DockGridMetrics {
-    /// `BarButton`'s height floor — the fingertip minimum, before Dynamic Type grows the content
-    /// past it.
-    static let tileMinHeight: CGFloat = 48
-    static let tileMinWidth: CGFloat = 58
+    /// Columns at every non-accessibility text size. Three, not four: each tile is its own glass
+    /// key now rather than a glyph printed on the panel, and a key needs the width to read as one —
+    /// four across left ~70 pt cells, which is a caption with a border rather than a button. Three
+    /// also gives a caption that fits at Large the room to still fit at xxxLarge, which is what the
+    /// old 4→3 step at `.large` existed for.
+    static let columns = 3
+
+    /// `BarButton`'s height floor — comfortably past the fingertip minimum, before Dynamic Type
+    /// grows the content past it.
+    static let tileMinHeight: CGFloat = 80
+    static let tileMinWidth: CGFloat = 72
     /// The tile's glyph box and its one caption line, at the default text size. Both are scaled by
     /// the views that draw and measure them; what has to be shared is the base.
     ///
-    /// The caption base is a point or two *above* the real line height of `.caption`, deliberately.
-    /// The two failures are not symmetric: an estimate that runs high leaves a hairline of empty
-    /// glass under the last row, and one that runs low clips the last row's tiles — which is the
-    /// bug this whole type exists to prevent.
-    static let tileGlyphBox: CGFloat = 28
-    static let tileCaptionLine: CGFloat = 18
+    /// The caption base is a point or two *above* the real line height of `.footnote`,
+    /// deliberately. The two failures are not symmetric: an estimate that runs high leaves a
+    /// hairline of empty glass under the last row, and one that runs low clips the last row's
+    /// tiles — which is the bug this whole type exists to prevent.
+    static let tileGlyphBox: CGFloat = 36
+    static let tileCaptionLine: CGFloat = 20
+    /// Padding above and below a tile's content, inside its glass. Part of the row height, so it
+    /// lives here with the parts the panel composes its first-frame estimate from.
+    static let tileVerticalPadding: CGFloat = 12
+    /// The tile's glass corner. Concentric with the panel's 28 pt corner across its 14 pt inset,
+    /// rounded up so a key reads as a key rather than as a card.
+    static let tileCornerRadius: CGFloat = 20
 
     /// The square a bundled provider mark is drawn into.
     ///
-    /// A tile's SF symbol is drawn at `.callout` — about 16 pt of ink, held up by the stroke
+    /// A tile's SF symbol is drawn at `.title2` — about 22 pt of ink, held up by the stroke
     /// weights and optical corrections every symbol in the family shares. A brand mark has none of
     /// that: it is flat artwork with its own margin baked into its viewBox, so at the symbol's size
     /// it reads visibly lighter and, on device, simply too small to recognise. It takes most of the
     /// tile's glyph box instead — roughly 1.25× the symbol beside it, which is what makes the two
     /// read at one weight in the same row, and still inside the box so the badge overlay clears it.
-    static let markGlyphBox: CGFloat = 24
+    static let markGlyphBox: CGFloat = 28
 
     /// Room the page control needs under the pages it indexes, so no tile or transcript line sits
     /// beneath the dots.
@@ -250,13 +315,14 @@ enum DockGridMetrics {
     /// capsule's own height still left it overlapping the last row's captions by a few points.
     static let pageIndicatorHeight: CGFloat = 40
     /// Gap between the glyph and the caption inside a tile.
-    static let tileStackSpacing: CGFloat = 3
-    /// Gap between tiles, in both axes.
-    static let rowSpacing: CGFloat = 4
+    static let tileStackSpacing: CGFloat = 4
+    /// Gap between tiles, in both axes. Wide enough that each key's glass reads as its own shape
+    /// rather than the container merging neighbours into one blob.
+    static let rowSpacing: CGFloat = 10
 
     /// Rows to assume before anything has been measured — the first frame, and the only frame
     /// where the panel guesses.
-    static let defaultRowsWithoutMeasurement = 4
+    static let defaultRowsWithoutMeasurement = 3
 
     /// **The one vertical rhythm.** Every gap between two stacked modules on the Voice tab is this,
     /// and there is no second number: status card ↕ My Day ↕ panel ↕ capsule. A surface whose gaps
@@ -385,6 +451,16 @@ enum DockSlot: Identifiable, Equatable {
         return true
     }
 
+    /// Whether a slot the stored order never mentions goes to the *top* of the grid rather than
+    /// the bottom. Only Field Assist's tiles: they arrive with the entitlement, usually long after
+    /// the wearer arranged their grid, and the job tiles a technician came for should not land
+    /// under the fold behind everything else. Once the wearer places one, the stored order holds
+    /// it like any other slot.
+    var leadsWhenUnplaced: Bool {
+        guard case .action(.quickAction(let action)) = self else { return false }
+        return QuickAction.fieldAssistActions.contains { $0.id == action.id }
+    }
+
     var editorLabel: String {
         switch self {
         case .control(let item): return item.displayName
@@ -413,7 +489,7 @@ enum DockGridCatalog {
 
     /// What the dock draws: the stored order wins, unknown and duplicate ids vanish, hidden actions
     /// stay off, hidden *controls* are ignored, and anything available the order never mentioned
-    /// appends in catalog order.
+    /// appends in catalog order — except a slot that `leadsWhenUnplaced`, which goes in front.
     ///
     /// `showsActions` is the home surface's yielding rule reaching the dock — while the assistant
     /// thinks or speaks, while captions are live, and while the mic is open, the content tiles give
@@ -440,10 +516,9 @@ enum DockGridCatalog {
             placed.insert(id)
             if keeps(slot) { result.append(slot) }
         }
-        for slot in catalog where !placed.contains(slot.id) && keeps(slot) {
-            result.append(slot)
-        }
-        return result
+        let unplaced = catalog.filter { !placed.contains($0.id) && keeps($0) }
+        return unplaced.filter(\.leadsWhenUnplaced) + result
+            + unplaced.filter { !$0.leadsWhenUnplaced }
     }
 }
 

@@ -51,7 +51,8 @@ final class HomeGridTests: XCTestCase {
     /// The ids are what the arrangement persists, so renaming one silently empties somebody's grid.
     func testBuiltInIdsAreStable() {
         XCTAssertEqual(HomeGridAction.builtIns.map(\.id),
-                       ["meetings-today", "tasks-today", "photo-to-event", "photo-to-task"])
+                       ["meetings-today", "tasks-today", "daily-brief", "weather", "quick-note",
+                        "timer", "photo-to-event", "photo-to-task", "scan-document", "read-text"])
     }
 
     func testEntryIdsAreNamespacedSoASpeedDialActionCannotCollide() {
@@ -89,6 +90,21 @@ final class HomeGridTests: XCTestCase {
         XCTAssertTrue(HomeGridAction.tasksToday.prompt.lowercased().contains("reminders"))
         XCTAssertTrue(HomeGridAction.photoToEvent.prompt.lowercased().contains("this image"))
         XCTAssertTrue(HomeGridAction.photoToTask.prompt.lowercased().contains("this image"))
+        XCTAssertTrue(HomeGridAction.scanDocument.prompt.lowercased().contains("photo of a document"))
+        XCTAssertTrue(HomeGridAction.readText.prompt.lowercased().contains("this image"))
+    }
+
+    /// The shipped grid is phone-first: no built-in names the glasses, so none of them reads as
+    /// broken to someone who has none. Photo actions say "image", and the camera underneath is
+    /// whichever one is there.
+    func testNoBuiltInAssumesGlasses() {
+        for action in HomeGridAction.builtIns {
+            XCTAssertFalse(action.prompt.lowercased().contains("glasses"), action.id)
+            XCTAssertFalse(action.label.lowercased().contains("glasses"), action.id)
+        }
+        XCTAssertTrue(HomeGridEntry.builtIn(.scanDocument).capturesPhoto)
+        XCTAssertTrue(HomeGridEntry.builtIn(.readText).capturesPhoto)
+        XCTAssertFalse(HomeGridEntry.builtIn(.dailyBrief).capturesPhoto)
     }
 
     /// A tile's hint is where the camera exists for someone who cannot see the glyph.
@@ -176,11 +192,9 @@ final class HomeGridTests: XCTestCase {
 
     func testTheDefaultGridIsTheBuiltInsThenTheSpeedDial() {
         let entries = HomeGridCatalog.entries(arrangement: .default, quickActions: speedDial)
-        XCTAssertEqual(ids(entries), [
-            "builtin:meetings-today", "builtin:tasks-today",
-            "builtin:photo-to-event", "builtin:photo-to-task",
-            "quick:describe", "quick:record-meeting",
-        ])
+        XCTAssertEqual(ids(entries),
+                       HomeGridAction.builtIns.map { "builtin:\($0.id)" }
+                       + ["quick:describe", "quick:record-meeting"])
     }
 
     /// Nothing is cut off: the grid wraps and scrolls, so every arranged entry resolves.
@@ -208,7 +222,9 @@ final class HomeGridTests: XCTestCase {
         // The explicit order leads; the hidden entry is off; what was never mentioned appends.
         XCTAssertEqual(entries, [
             "quick:describe", "builtin:photo-to-task", "builtin:meetings-today",
-            "builtin:photo-to-event", "quick:record-meeting",
+            "builtin:daily-brief", "builtin:weather", "builtin:quick-note", "builtin:timer",
+            "builtin:photo-to-event", "builtin:scan-document", "builtin:read-text",
+            "quick:record-meeting",
         ])
     }
 
@@ -287,11 +303,9 @@ final class HomeGridTests: XCTestCase {
                                           quickActions: speedDial, showsActions: true)
         XCTAssertEqual(Array(slotIds(slots).prefix(controls.count)),
                        controls.map { "control:\($0.rawValue)" })
-        XCTAssertEqual(Array(slotIds(slots).dropFirst(controls.count)), [
-            "builtin:meetings-today", "builtin:tasks-today",
-            "builtin:photo-to-event", "builtin:photo-to-task",
-            "quick:describe", "quick:record-meeting",
-        ])
+        XCTAssertEqual(Array(slotIds(slots).dropFirst(controls.count)),
+                       HomeGridAction.builtIns.map { "builtin:\($0.id)" }
+                       + ["quick:describe", "quick:record-meeting"])
     }
 
     /// The mode gate: realtime sessions run their own turn spine, so the Direct-mode tiles are not
@@ -315,6 +329,42 @@ final class HomeGridTests: XCTestCase {
         XCTAssertFalse(slotIds(slots).contains("quick:describe"))
         XCTAssertFalse(DockSlot.control(.disconnect).isHideable)
         XCTAssertTrue(DockSlot.action(.builtIn(.meetingsToday)).isHideable)
+    }
+
+    /// Field Assist's tiles arrive with the entitlement, usually after the grid was arranged. Left
+    /// to the append rule they would land below everything else, under the fold; they lead instead
+    /// — in a fresh grid and in an arranged one alike.
+    func testFieldAssistTilesLeadWhenTheOrderNeverPlacedThem() {
+        let withFieldAssist = QuickAction.fieldAssistActions + speedDial
+        let fieldAssistIds = QuickAction.fieldAssistActions.map { "quick:\($0.id)" }
+
+        let fresh = DockGridCatalog.slots(arrangement: .default, controlOrder: controls,
+                                          quickActions: withFieldAssist, showsActions: true)
+        XCTAssertEqual(Array(slotIds(fresh).prefix(fieldAssistIds.count)), fieldAssistIds)
+
+        var arranged = HomeGridArrangement()
+        arranged.order = ["builtin:tasks-today", "control:model", "quick:describe"]
+        let existing = DockGridCatalog.slots(arrangement: arranged, controlOrder: controls,
+                                             quickActions: withFieldAssist, showsActions: true)
+        XCTAssertEqual(Array(slotIds(existing).prefix(fieldAssistIds.count + 3)),
+                       fieldAssistIds + arranged.order)
+    }
+
+    /// Leading is only for a tile nobody placed. Once the wearer moves one, it stays where they put
+    /// it — and the ones they did not place still lead.
+    func testAPlacedFieldAssistTileKeepsItsPlace() {
+        let withFieldAssist = QuickAction.fieldAssistActions + speedDial
+        let starter = "quick:\(QuickAction.fieldAssist.id)"
+        var arranged = HomeGridArrangement()
+        arranged.order = ["builtin:tasks-today", starter]
+
+        let ids = slotIds(DockGridCatalog.slots(arrangement: arranged, controlOrder: controls,
+                                                quickActions: withFieldAssist, showsActions: true))
+        let jobTiles = QuickAction.fieldAssistJobActions.map { "quick:\($0.id)" }
+        XCTAssertEqual(Array(ids.prefix(jobTiles.count + 2)),
+                       jobTiles + ["builtin:tasks-today", starter])
+        XCTAssertFalse(DockSlot.action(.quickAction(speedDial[0])).leadsWhenUnplaced)
+        XCTAssertFalse(DockSlot.control(.model).leadsWhenUnplaced)
     }
 
     /// A control and an action can sit next to each other, which is the whole reason the two
@@ -360,8 +410,8 @@ final class HomeGridTests: XCTestCase {
             (874, 600, 52, 274),
             (874, 400, 52, 474),
             // A smaller phone. Same rule, less of it — and the first cell is the floor winning,
-            // because 67 pt of budget is less than one row and the dots.
-            (667, 600, 52, 92),
+            // because 67 pt of budget is less than one key at its 80 pt floor and the dots.
+            (667, 600, 52, 120),
             (667, 400, 52, 267),
             // An accessibility text size does not enter the frame at all any more. It only moves
             // the floor, and neither of these is near it.
@@ -539,7 +589,13 @@ final class HomeGridTests: XCTestCase {
         XCTAssertNotEqual(DockGridMetrics.dockBottomPadding, DockGridMetrics.moduleGap)
     }
 
-    /// Two columns at accessibility sizes means the same slots need more rows — and still snap.
+    /// Three glass keys across: the shipped grid of eighteen is six full rows, with no orphan row.
+    func testTheGridIsThreeKeysAcross() {
+        XCTAssertEqual(DockGridMetrics.columns, 3)
+        XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 18, columns: DockGridMetrics.columns), 6)
+    }
+
+    /// Fewer columns at accessibility sizes means the same slots need more rows — and still snap.
     func testTheAccessibilityColumnCountChangesRowsNotTheSnap() {
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 6, columns: 2), 3)
         XCTAssertEqual(DockGridMetrics.rowsNeeded(slotCount: 12, columns: 2), 6)
@@ -570,17 +626,18 @@ final class HomeGridTests: XCTestCase {
     /// being wrong are not equal — a row height under the drawn tile clips it, which is the bug;
     /// over it leaves a hairline of glass, which nobody can see. This pins the safe direction.
     func testTheRowHeightNeverUnderestimatesTheTile() {
-        XCTAssertEqual(DockGridMetrics.tileGlyphBox, 28)
-        XCTAssertEqual(DockGridMetrics.tileStackSpacing, 3)
+        XCTAssertEqual(DockGridMetrics.tileGlyphBox, 36)
+        XCTAssertEqual(DockGridMetrics.tileStackSpacing, 4)
 
-        // `.caption` renders a line at roughly 16.7 pt at the default text size; the base is above
+        // `.footnote` renders a line at roughly 18 pt at the default text size; the base is above
         // it, so a stacked tile's estimate is never short of what it draws.
-        XCTAssertGreaterThan(DockGridMetrics.tileCaptionLine, 16.7)
+        XCTAssertGreaterThan(DockGridMetrics.tileCaptionLine, 18)
 
         let stacked = DockGridMetrics.tileGlyphBox + DockGridMetrics.tileStackSpacing
-            + DockGridMetrics.tileCaptionLine
-        XCTAssertGreaterThanOrEqual(max(DockGridMetrics.tileMinHeight, stacked),
-                                    DockGridMetrics.tileMinHeight)
+            + DockGridMetrics.tileCaptionLine + DockGridMetrics.tileVerticalPadding * 2
+        // The floor is a floor, not the size: at the default text size the composed key — glyph,
+        // caption and its padding inside the glass — is what sets the row.
+        XCTAssertGreaterThanOrEqual(stacked, DockGridMetrics.tileMinHeight)
         // And the floor is still a fingertip, which is the reason it is a floor at all.
         XCTAssertGreaterThanOrEqual(DockGridMetrics.tileMinHeight, OGMetrics.minTouchTarget)
     }

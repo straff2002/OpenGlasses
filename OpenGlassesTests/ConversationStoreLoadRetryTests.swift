@@ -198,9 +198,12 @@ final class ConversationStoreLoadRetryTests: XCTestCase {
                                               ofItemAtPath: fileURL.path)
         store.protectedDataDidBecomeAvailable()
 
-        // Wait for the decrypt task to report its failure.
+        // Wait for the decrypt task to report its failure. The poll returns the moment the event
+        // lands, so the budget only matters when the host is starved: two seconds was enough
+        // alone and ran out on CI under the full suite (failed at 2.65 s), so it is fifteen.
         var reported = false
-        for _ in 0..<200 {
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
             if ring.entries.contains(where: { $0.line.contains("awaitingAuthentication") }) {
                 reported = true
                 break
