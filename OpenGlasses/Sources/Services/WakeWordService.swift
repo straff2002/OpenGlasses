@@ -1339,6 +1339,9 @@ class WakeWordService: NSObject, ObservableObject {
     /// Stop the engine and remove its tap; leave the recognition state and the forwarders alone.
     /// The forwarders are re-published into the next tap, so consumers survive a rebuild.
     private func stopEngineKeepingRecognition() {
+        // The gate's pre-roll is in the old engine's format; `startRecognition` re-enables it on
+        // the next one when the plan still wants it.
+        tapState.disableGate()
         if let observer = engineConfigObserver {
             NotificationCenter.default.removeObserver(observer)
             engineConfigObserver = nil

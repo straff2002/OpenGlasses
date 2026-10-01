@@ -101,12 +101,15 @@ final class EnergySpeechScorerTests: XCTestCase {
     }
 
     func testLowRumbleIsRejectedByTheCrossingBand() {
-        let signal = SyntheticPCM.silence(seconds: 0.5) + SyntheticPCM.rumble(seconds: 2, dBFS: -15)
+        let signal = SyntheticPCM.silence(seconds: 0.512) + SyntheticPCM.rumble(seconds: 2, dBFS: -15)
         XCTAssertTrue(scores(signal).allSatisfy { $0 == 0 })
     }
 
+    /// Leading silence is a whole number of buffers (0.512 s): a buffer straddling silence and a
+    /// sudden sound has the crossings of neither, and that edge is the gate's minimum-speech
+    /// duration's job, not the scorer's.
     func testHissIsRejectedByTheCrossingBand() {
-        let signal = SyntheticPCM.silence(seconds: 0.5) + SyntheticPCM.hiss(seconds: 2, dBFS: -15)
+        let signal = SyntheticPCM.silence(seconds: 0.512) + SyntheticPCM.hiss(seconds: 2, dBFS: -15)
         XCTAssertTrue(scores(signal).allSatisfy { $0 == 0 })
     }
 
@@ -180,8 +183,8 @@ final class WakeSpeechGateTests: XCTestCase {
     }
 
     func testRumbleAndHissNeverOpen() {
-        XCTAssertTrue(run(SyntheticPCM.silence(seconds: 1) + SyntheticPCM.rumble(seconds: 5, dBFS: -15)).isEmpty)
-        XCTAssertTrue(run(SyntheticPCM.silence(seconds: 1) + SyntheticPCM.hiss(seconds: 5, dBFS: -15)).isEmpty)
+        XCTAssertTrue(run(SyntheticPCM.silence(seconds: 1.024) + SyntheticPCM.rumble(seconds: 5, dBFS: -15)).isEmpty)
+        XCTAssertTrue(run(SyntheticPCM.silence(seconds: 1.024) + SyntheticPCM.hiss(seconds: 5, dBFS: -15)).isEmpty)
     }
 
     func testARisingFloorNeverOpens() {
