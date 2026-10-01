@@ -31,14 +31,14 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         }
     }
 
-    /// The hero capsule's visible copy is an instruction to a finger — "Tap to talk", "Tap to
+    /// The hero capsule's visible copy is an instruction to a finger — "Tap & Talk", "Tap to
     /// stop" — which is the wrong gesture and the wrong grammar for VoiceOver. P2 gave it a spoken
     /// name instead; this fails if that name is ever dropped back to the drawn copy.
     func testSessionCapsuleDoesNotSpeakItsDrawnTapCopy() {
         let app = launch([.configured])
         awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
 
-        for drawnCopy in ["Tap to talk", "Tap to stop"] {
+        for drawnCopy in ["Tap & Talk", "Resume & Talk", "Tap to stop"] {
             XCTAssertFalse(
                 app.buttons[drawnCopy].exists,
                 "The session capsule reaches VoiceOver as “\(drawnCopy)” — the drawn instruction, "
@@ -46,11 +46,11 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
             )
         }
 
-        // On a simulator with no glasses paired the capsule is in its disconnected state; the
+        // On a simulator with no glasses paired the capsule talks on the phone; the
         // spoken name is what the button is called either way.
         let capsule = app.buttons.matching(
             NSPredicate(format: "label IN %@",
-                        ["Connect & Talk", "Start talking", "End voice session",
+                        ["Start talking", "Resume glasses and start talking", "End voice session",
                          "Stop speaking", "Cancel"])
         ).firstMatch
         XCTAssertTrue(capsule.waitForExistence(timeout: 60),
@@ -96,7 +96,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
 
         let capsule = app.buttons.matching(
             NSPredicate(format: "label IN %@",
-                        ["Connect & Talk", "Start talking", "End voice session",
+                        ["Start talking", "Resume glasses and start talking", "End voice session",
                          "Stop speaking", "Cancel"])
         ).firstMatch
         XCTAssertTrue(capsule.waitForExistence(timeout: 60))

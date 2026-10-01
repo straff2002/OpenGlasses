@@ -78,7 +78,7 @@ final class DynamicTypeAccessibilityTests: AccessibilityAuditCase {
         // layout pass is not cheap, and the capsule is the last part of it to resolve.
         let capsule = app.buttons.matching(
             NSPredicate(format: "label IN %@",
-                        ["Connect & Talk", "Start talking", "End voice session",
+                        ["Start talking", "Resume glasses and start talking", "End voice session",
                          "Stop speaking", "Cancel"])
         ).firstMatch
         awaitScreen(capsule, named: "The session capsule at AX5")

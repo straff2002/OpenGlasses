@@ -1551,7 +1551,7 @@ struct OnboardingView: View {
         // so the one thing that must not happen is returning to a screen that says nothing about
         // whether it worked. Both ends of the wait are spoken: it started, and how it finished.
         SessionAnnouncer.say("Registering with Meta AI")
-        await appState.glassesService.connect()
+        await appState.connectGlasses(awaitLink: false)
         let state = Wearables.shared.registrationState
         metaRegistered = state.rawValue >= 3
         registrationStatus = metaRegistered

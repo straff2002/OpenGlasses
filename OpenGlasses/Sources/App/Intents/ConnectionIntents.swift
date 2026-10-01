@@ -16,12 +16,14 @@ struct ConnectGlassesIntent: AppIntent {
             throw IntentError.appNotRunning
         }
 
+        // Phone-first (`TalkEntryPolicy`): this starts listening whether or not the glasses are
+        // here, and says which microphone it is on rather than reporting a failure.
         await appState.connectAndListen()
 
         if appState.isConnected {
             return .result(value: "Connected and listening")
         } else {
-            return .result(value: "Could not connect to glasses")
+            return .result(value: "Listening on your phone — glasses aren't connected")
         }
     }
 
@@ -82,7 +84,8 @@ struct ToggleGlassesIntent: AppIntent {
             return .result(value: "Glasses disconnected")
         } else {
             await appState.connectAndListen()
-            return .result(value: appState.isConnected ? "Connected and listening" : "Could not connect")
+            return .result(value: appState.isConnected ? "Connected and listening"
+                                                       : "Listening on your phone — glasses aren't connected")
         }
     }
 

@@ -80,7 +80,7 @@ struct AuditDeferral {
     /// control dock, the hero capsule, the status card and its connection pills are all
     /// `glassEffect`. The audit reports text on them as failing contrast, and the rendered pixels
     /// say otherwise — measured rather than argued, by sampling the screenshot the simulator
-    /// produces: the capsule's label ("Connect & Talk", `Color(.label)` on the capsule's glass)
+    /// produces: the capsule's label ("Tap & Talk", `Color(.label)` on the capsule's glass)
     /// comes out at **20.5:1**, black on near-white.
     ///
     /// The mechanism is visible in what else trips it. A 0.8-alpha caption panel tripped it too,
