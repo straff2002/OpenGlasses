@@ -129,6 +129,8 @@ class SemanticMemoryStore: ObservableObject {
         PrivacyLog.store(.semanticMemory, .opened, scope: .global, count: memories.count)
     }
 
+    deinit { sqlite3_close(db) }
+
     // MARK: - Public API (legacy key-value compatible)
 
     /// Returns false when the fact was not kept — the write did not reach the database, or the

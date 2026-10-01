@@ -70,6 +70,14 @@ final class SubjectErasureTests: XCTestCase {
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
+        // XCTest keeps the case alive until the run ends, so the SQLite-backed stores have to be
+        // released here — closing their connections — before their files are unlinked.
+        recallIndex = nil
+        memory = nil
+        brain = nil
+        documents = nil
+        evolvedSkills = nil
+        queue = nil
         try? FileManager.default.removeItem(at: workspace)
         super.tearDown()
     }
