@@ -186,7 +186,7 @@ struct BottomControlBar: View {
             rowHeight: tileHeight)
     }
 
-    /// What a page has above the dots — the room the grid's viewport is snapped inside.
+    /// What a page has above the dots — the room the grid page fits its whole rows inside.
     private var pageBodyHeight: CGFloat {
         max(0, pagesHeight - DockGridMetrics.pageIndicatorHeight)
     }
