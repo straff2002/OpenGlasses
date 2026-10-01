@@ -749,7 +749,9 @@ struct BottomControlBar: View {
             ) {
                 guard !photoDisabledForLocalModel else { return }
                 Task {
-                    if appState.isConnected {
+                    // Connected, or a link coming up (which `captureAndAnalyzePhoto` waits briefly
+                    // for). Glasses that are away or were never added go straight to the phone.
+                    if appState.isConnected || appState.glassesPhase.isConnecting {
                         await appState.captureAndAnalyzePhoto()
                     } else {
                         // Straight to the phone camera. `captureAndAnalyzePhoto` first spends up

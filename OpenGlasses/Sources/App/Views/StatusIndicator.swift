@@ -171,7 +171,8 @@ struct StatusIndicator: View {
         let color: Color = connected ? OGTheme.okLabel
             : (phoneIsTheDevice ? OGTheme.secondaryLabel : OGTheme.errorLabel)
         let label = connected ? (appState.glassesService.deviceName ?? "Glasses")
-            : (phoneIsTheDevice ? "Not added" : "Disconnected")
+            : (phoneIsTheDevice ? "Not added"
+                : (appState.glassesPhase.isConnecting ? "Connecting" : "Disconnected"))
 
         return Button {
             if connected {
@@ -328,7 +329,7 @@ struct StatusIndicator: View {
     /// session rather than a missing pair of glasses (Plan FY P2, `OnboardingFlow`).
     private var phoneIsTheDevice: Bool {
         OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
-                                        glassesAdded: Config.glassesAdded)
+                                        glassesAdded: appState.glassesAdded)
     }
 
     private var iconName: String {

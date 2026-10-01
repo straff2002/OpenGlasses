@@ -60,7 +60,7 @@ struct SettingsView: View {
             // until then — a phone-only hub never opens on a pair of glasses that are "Not
             // connected". Glasses are added under Devices & Privacy → Hardware & Privacy.
             if OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
-                                               glassesAdded: Config.glassesAdded) {
+                                               glassesAdded: appState.glassesAdded) {
                 OGHeroDeviceCard(
                     title: "This iPhone",
                     status: "In use",
@@ -71,8 +71,11 @@ struct SettingsView: View {
             } else {
                 OGHeroDeviceCard(
                     title: appState.glassesService.deviceName ?? "Meta Glasses",
-                    status: appState.isConnected ? "Connected" : "Not connected",
-                    dot: appState.isConnected ? OGTheme.ok : Color.secondary,
+                    // The link's own state: a pair in its case is "Not connected", and its battery
+                    // (nil unless the link is up) is not shown as though it were live.
+                    status: glassesStatus,
+                    dot: appState.isConnected ? OGTheme.ok
+                        : (appState.glassesPhase.isConnecting ? OGTheme.warn : Color.secondary),
                     batteryPercent: appState.glassesService.batteryLevel,
                     chips: [
                         ("Camera", appState.isConnected),
@@ -309,12 +312,26 @@ struct SettingsView: View {
 
     // MARK: - Category rendering
 
+    /// The hero card's glasses status, from the link's phase.
+    private var glassesStatus: String {
+        switch appState.glassesPhase {
+        case .connected: return "Connected"
+        case .connecting: return "Connecting…"
+        case .noGlassesAdded, .addedDisconnected: return "Not connected"
+        }
+    }
+
     /// The live value summary beside a category row, where one is worth showing.
     private func summary(for category: CapabilityCategory) -> String? {
         switch category.id {
         case CapabilityCatalog.voice: return "“\(displayedWakePhrase)”"
         case CapabilityCatalog.intelligence: return displayedActiveModelName
-        case CapabilityCatalog.glasses: return appState.isConnected ? "Connected" : nil
+        case CapabilityCatalog.glasses:
+            switch appState.glassesPhase {
+            case .connected: return "Connected"
+            case .connecting: return "Connecting…"
+            case .noGlassesAdded, .addedDisconnected: return nil
+            }
         case CapabilityCatalog.lookAndFeel: return appearance.capitalized
         case CapabilityCatalog.accessibility: return Config.accessibilityModeEnabled ? "On" : nil
         case CapabilityCatalog.display: return glassesDisplayEnabled ? "On" : nil

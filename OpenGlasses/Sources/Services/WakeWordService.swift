@@ -1205,9 +1205,9 @@ class WakeWordService: NSObject, ObservableObject {
 
     /// Whether the live audio route still carries a Bluetooth mic or speaker.
     ///
-    /// An observation, taken now. `AppState.isConnected` is a cached flag that only clears on a
-    /// Bluetooth event, so a handler that latched it false leaves it false; anything deciding
-    /// whether it may open the mic should ask the route as well as the flag.
+    /// An observation, taken now. `AppState.isConnected` is the glasses' link, which can report in
+    /// after a Bluetooth mic is already routed; anything deciding whether it may open the mic
+    /// should ask the route as well as the link.
     func hasBluetoothAudioRoute() -> Bool {
         let route = AVAudioSession.sharedInstance().currentRoute
         return MicRoutePolicy.containsBluetoothMic(route.inputs.map(\.portType)) ||

@@ -74,7 +74,20 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   0.7.0): device state lives on `Device` — `Wearables.shared.deviceForIdentifier(_:)`, then the
   accessors `batteryLevel` (`Int?`), `chargingState`, `donState`, `hingeState`, `thermalLevel`, or
   `Device.addDeviceStateListener(_:)`, which delivers the full `DeviceState` (now also `linkState`
-  and `compatibility`) immediately and on every change. We don't observe device state yet.
+  and `compatibility`) immediately and on every change.
+- **Connected means `linkState == .connected`, nothing else.** Registration (`registrationState`)
+  and the device list (`addDevicesListener`) describe a pair that has been *added* — a pair in its
+  case stays registered and listed for days. `WearablesGlassesLinkSource` is the only code that
+  maps SDK state: it subscribes `Device.addDeviceStateListener(_:)` per listed device (link,
+  battery, charging), hops to the main queue in order, and maps `LinkState`/`ChargingState` onto
+  the app's own enums. `GlassesConnectionService` owns the subscriptions (one per device, cancelled
+  when the device leaves the list or on `stopObserving()`) and folds everything through the pure
+  `GlassesConnectionSnapshot` into `phase` (`noGlassesAdded` / `addedDisconnected` / `connecting`
+  / `connected`); `isConnected`, `deviceName` and `batteryLevel` (only while connected — never a
+  stale reading) derive from it. `AppState.isConnected`/`glassesPhase` mirror `phase` in
+  `applyGlassesPhase(_:)`, their only writer — never set the flag from registration, the device
+  list, a permission result or an audio-route event. `CameraService.isGlassesLinkUp` gates glasses
+  capture on the same truth. `donState`/`hingeState`/`thermalLevel` are not read yet.
 - `DeviceSession` — owns the connection; create with a device selector, then `addCamera`/`addDisplay`.
   `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,

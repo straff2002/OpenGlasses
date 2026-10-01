@@ -1,61 +1,139 @@
 import Foundation
 import MWDATCore
 
-/// Service for connecting to Ray-Ban Meta smart glasses
-/// Uses Meta Wearables Device Access Toolkit (MWDAT)
+/// The glasses' connection: registration with Meta AI, and whether a pair is actually reachable.
+/// Uses Meta Wearables Device Access Toolkit (MWDAT) through `GlassesLinkSource`.
+///
+/// The single source of truth for "are the glasses connected". `phase` is folded from what the
+/// SDK reports (`GlassesConnectionSnapshot`); `isConnected`, `deviceName`, `batteryLevel` and
+/// `isCharging` are derived from it and never written anywhere else. Registration and the SDK's
+/// device list mean glasses are *added*; only a device's link state `.connected` means connected.
 @MainActor
 class GlassesConnectionService: ObservableObject {
-    @Published var isConnected: Bool = false
+    /// Where the glasses are, from "never added" to "connected".
+    @Published private(set) var phase: GlassesConnectionPhase = .noGlassesAdded
+    /// `phase == .connected`. Derived — there is no other writer.
+    @Published private(set) var isConnected: Bool = false
     @Published var connectionStatus: String = "Not connected"
-    @Published var deviceName: String?
-    @Published var batteryLevel: Int?
+    @Published private(set) var deviceName: String?
+    /// The active device's battery, only while the link is up (`liveBatteryLevel`): a pair in its
+    /// case shows no battery rather than a stale one.
+    @Published private(set) var batteryLevel: Int?
+    /// Whether the active device is charging, only while the link is up.
+    @Published private(set) var isCharging: Bool = false
 
-    private var devicesListenerToken: (any AnyListenerToken)?
-    private var connectedDeviceId: DeviceIdentifier?
+    private(set) var snapshot = GlassesConnectionSnapshot()
 
-    init() {
-        // Only observe when the user is past onboarding, so the SDK's Bluetooth prompt still waits
-        // until they've reached for the glasses. `isPastOnboarding` rather than
-        // `hasCompletedOnboarding`: the narrower flag left anyone who saved an API key without
-        // finishing onboarding with this listener permanently unarmed, so even a registration that
-        // completed would never surface as connected.
-        if Config.isPastOnboarding {
-            observeDevices()
+    private let source: GlassesLinkSource
+    private var serviceObservations: [GlassesLinkObservation] = []
+    /// One state subscription per listed device. The generation tells a current subscription's
+    /// callback from one whose device left the list (or left and came back) before it fired.
+    private struct DeviceObservation {
+        let generation: UUID
+        var observation: GlassesLinkObservation?
+    }
+    private var deviceObservations: [String: DeviceObservation] = [:]
+    private var isObserving = false
+
+    /// - Parameters:
+    ///   - source: `nil` means the Meta SDK. Built here rather than as a default argument because
+    ///     a default argument is evaluated nonisolated and the source is main-actor bound.
+    ///   - observeNow: start observing at once. `nil` means "when the user is past onboarding", so
+    ///     the SDK's Bluetooth prompt still waits until they've reached for the glasses.
+    ///     `isPastOnboarding` rather than `hasCompletedOnboarding`: the narrower flag left anyone
+    ///     who saved an API key without finishing onboarding permanently unobserved.
+    init(source: GlassesLinkSource? = nil, observeNow: Bool? = nil) {
+        self.source = source ?? WearablesGlassesLinkSource()
+        if observeNow ?? Config.isPastOnboarding {
+            startObserving()
         }
     }
 
-    /// Begin observing connected devices. Configures the SDK on demand — callers are not required
-    /// to have done it first.
+    /// Begin observing registration, the device list and each device's state. Configures the SDK
+    /// on demand — callers are not required to have done it first. Idempotent.
     func startObserving() {
-        guard devicesListenerToken == nil else { return }
-        observeDevices()
-    }
-
-    private func observeDevices() {
-        guard WearablesBootstrap.ensureConfigured() else {
+        guard !isObserving else { return }
+        guard source.activate() else {
             connectionStatus = "Meta SDK unavailable"
             return
         }
-        devicesListenerToken = Wearables.shared.addDevicesListener { [weak self] deviceIds in
-            Task { @MainActor in
-                self?.handleDevicesChanged(deviceIds)
-            }
+        isObserving = true
+        apply(.registration(source.registration))
+        devicesChanged(source.devices)
+        serviceObservations.append(source.observeRegistration { [weak self] registration in
+            self?.apply(.registration(registration))
+        })
+        serviceObservations.append(source.observeDevices { [weak self] ids in
+            self?.devicesChanged(ids)
+        })
+    }
+
+    /// End every subscription and forget what they reported. Teardown, and the test seam for it.
+    func stopObserving() {
+        serviceObservations.forEach { $0.cancel() }
+        serviceObservations.removeAll()
+        deviceObservations.values.forEach { $0.observation?.cancel() }
+        deviceObservations.removeAll()
+        isObserving = false
+        snapshot = GlassesConnectionSnapshot()
+        publish()
+    }
+
+    /// Number of live per-device subscriptions — for tests of the listener lifecycle.
+    var observedDeviceCount: Int { deviceObservations.count }
+
+    private func devicesChanged(_ ids: [String]) {
+        PrivacyLog.device(.glasses, ids.isEmpty ? .deviceListEmpty : .deviceListChanged, count: ids.count)
+        let listed = Set(ids)
+        for (id, entry) in deviceObservations where !listed.contains(id) {
+            entry.observation?.cancel()
+            deviceObservations.removeValue(forKey: id)
+        }
+        apply(.devices(ids))
+        for id in snapshot.deviceIds where deviceObservations[id] == nil {
+            subscribe(to: id)
         }
     }
 
-    private func handleDevicesChanged(_ deviceIds: [DeviceIdentifier]) {
-        if let firstId = deviceIds.first {
-            let device = Wearables.shared.deviceForIdentifier(firstId)
-            connectedDeviceId = firstId
-            isConnected = true
-            deviceName = device?.name
-            connectionStatus = "Connected to \(device?.nameOrId() ?? "glasses")"
+    private func subscribe(to id: String) {
+        let generation = UUID()
+        deviceObservations[id] = DeviceObservation(generation: generation, observation: nil)
+        apply(.deviceName(id: id, source.deviceName(for: id)))
+        let observation = source.observeDeviceState(for: id) { [weak self] state in
+            guard let self, self.deviceObservations[id]?.generation == generation else { return }
+            self.apply(.deviceState(id: id, state))
+        }
+        // The source may have delivered synchronously and the device may have been dropped since;
+        // only keep the subscription if this generation is still the current one.
+        if deviceObservations[id]?.generation == generation {
+            deviceObservations[id]?.observation = observation
         } else {
-            connectedDeviceId = nil
-            isConnected = false
-            deviceName = nil
-            batteryLevel = nil
-            connectionStatus = "Disconnected"
+            observation?.cancel()
+        }
+    }
+
+    private func apply(_ event: GlassesConnectionSnapshot.Event) {
+        snapshot.apply(event)
+        publish()
+    }
+
+    /// Mirror the snapshot into the published properties. Details first and `phase` last, so a
+    /// subscriber woken by the phase reads the name and battery that go with it.
+    private func publish() {
+        let newName = snapshot.activeDeviceName
+        if deviceName != newName { deviceName = newName }
+        let newBattery = snapshot.liveBatteryLevel
+        if batteryLevel != newBattery { batteryLevel = newBattery }
+        let newCharging = snapshot.liveCharging == .charging
+        if isCharging != newCharging { isCharging = newCharging }
+        let newPhase = snapshot.phase
+        if isConnected != newPhase.isConnected { isConnected = newPhase.isConnected }
+        if phase != newPhase {
+            phase = newPhase
+            connectionStatus = newPhase.statusText(deviceName: newName)
+        } else if newPhase == .connected, connectionStatus != newPhase.statusText(deviceName: newName) {
+            // The name can arrive after the link does.
+            connectionStatus = newPhase.statusText(deviceName: newName)
         }
     }
 
@@ -100,9 +178,15 @@ class GlassesConnectionService: ObservableObject {
 
             PrivacyLog.device(.glasses, .registrationState,
                               state: PrivacyToken(String(stateAfter.rawValue)))
-            connectionStatus = RegistrationFlow.isRegistered(stateRaw: stateAfter.rawValue)
-                ? RegistrationFlow.status(stateRaw: stateAfter.rawValue)
-                : RegistrationFlow.approvalTimedOutStatus()
+            // Registered says nothing about the link: a pair already connected keeps saying so,
+            // and one still in its case is what "Waiting for device…" means.
+            if phase.isConnected {
+                connectionStatus = phase.statusText(deviceName: deviceName)
+            } else {
+                connectionStatus = RegistrationFlow.isRegistered(stateRaw: stateAfter.rawValue)
+                    ? RegistrationFlow.status(stateRaw: stateAfter.rawValue)
+                    : RegistrationFlow.approvalTimedOutStatus()
+            }
         } catch {
             // `startRegistration()` uses typed throws, so every error reaching this catch is a
             // `RegistrationError`; testing the type again is both redundant and a Swift 6 warning.
@@ -111,14 +195,6 @@ class GlassesConnectionService: ObservableObject {
             connectionStatus = message
             NoticeCenter.shared.post(message, severity: .error, source: .glasses)
         }
-    }
-
-    func disconnect() {
-        connectedDeviceId = nil
-        isConnected = false
-        deviceName = nil
-        batteryLevel = nil
-        connectionStatus = "Disconnected"
     }
 }
 
