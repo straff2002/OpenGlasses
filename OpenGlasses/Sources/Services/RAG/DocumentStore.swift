@@ -65,6 +65,8 @@ final class DocumentStore: ObservableObject {
         PrivacyLog.store(.ragDocuments, .opened, count: documents.count)
     }
 
+    deinit { sqlite3_close(db) }
+
     // MARK: - Public API
 
     /// Chunk, embed, and store a document. Yields between chunks so a large ingest doesn't

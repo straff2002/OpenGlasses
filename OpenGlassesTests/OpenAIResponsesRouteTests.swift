@@ -11,6 +11,12 @@ import XCTest
 final class OpenAIResponsesRouteTests: XCTestCase {
 
     private var usagePath: URL!
+    /// Every service a test made, and a weak hold on each tracker, so `tearDown` can see the
+    /// usage database's connection closed before it unlinks the file.
+    private var services: [LLMService] = []
+    private var trackers: [WeakTracker] = []
+
+    private struct WeakTracker { weak var tracker: UsageTracker? }
 
     override func setUp() {
         super.setUp()
@@ -20,11 +26,22 @@ final class OpenAIResponsesRouteTests: XCTestCase {
             .appendingPathComponent("gc-usage-\(UUID().uuidString).sqlite")
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         RecordingQueueProtocol.reset()
         LLMService.resetLearnedRouteStateForTesting()
+        services.forEach { $0.usageTrackerOverride = nil }
+        services = []
+        // A recorded turn lands through a main-actor Task that holds its tracker, and it can
+        // still be queued when the test returns. Let those run, so the last reference — and with
+        // it the connection — is gone before the file is.
+        var spins = 0
+        while trackers.contains(where: { $0.tracker != nil }), spins < 1_000 {
+            await Task.yield()
+            spins += 1
+        }
+        trackers = []
         try? FileManager.default.removeItem(at: usagePath)
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func service() -> (LLMService, UsageTracker) {
@@ -34,6 +51,8 @@ final class OpenAIResponsesRouteTests: XCTestCase {
         s.dataSession = session
         let tracker = UsageTracker(store: UsageStore(path: usagePath))
         s.usageTrackerOverride = tracker
+        services.append(s)
+        trackers.append(WeakTracker(tracker: tracker))
         return (s, tracker)
     }
 

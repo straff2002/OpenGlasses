@@ -20,6 +20,9 @@ final class MemoryScreenModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        // Release the store, closing its SQLite connection, before its files are unlinked.
+        memory = nil
+        notes = nil
         try? FileManager.default.removeItem(at: dir)
         super.tearDown()
     }

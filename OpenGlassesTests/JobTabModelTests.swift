@@ -158,7 +158,12 @@ final class JobTabModelTests: XCTestCase {
 
     func testTheJobTabShowsWhatTheOpenJobHasCost() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("usage-\(UUID()).sqlite")
-        defer { try? FileManager.default.removeItem(at: url) }
+        // The service outlives this test, so it lets go of the tracker — closing the usage
+        // database — before the file is unlinked.
+        defer {
+            service.usageTracker = .shared
+            try? FileManager.default.removeItem(at: url)
+        }
         let tracker = UsageTracker(store: UsageStore(path: url))
         service.usageTracker = tracker
         let model = makeModel()

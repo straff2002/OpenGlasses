@@ -35,6 +35,11 @@ final class MemoryFactForgetterTests: XCTestCase {
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suite)
+        // XCTest keeps the case alive until the run ends, so the SQLite-backed stores have to be
+        // released here — closing their connections — before their files are unlinked.
+        memory = nil
+        brain = nil
+        queue = nil
         try? FileManager.default.removeItem(at: dir)
         super.tearDown()
     }
