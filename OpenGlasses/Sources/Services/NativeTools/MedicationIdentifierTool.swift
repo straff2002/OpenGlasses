@@ -9,7 +9,7 @@ import Foundation
 final class MedicationIdentifierTool: NativeTool {
     let name = "identify_medication"
     let description = """
-    Read a medication label through the glasses camera and cross-check it against the user's recorded \
+    Read a medication label through the camera and cross-check it against the user's recorded \
     medications. Use for "what's this pill/bottle?", "is this my medication?". Reports the label text \
     and whether it matches the user's record (medications.md) — it does not make clinical claims. \
     Requires the Medical Compliance subscription.

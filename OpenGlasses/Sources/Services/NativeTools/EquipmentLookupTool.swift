@@ -14,9 +14,9 @@ final class EquipmentLookupTool: NativeTool {
     let name = "equipment_lookup"
     let description = """
     Look up an equipment error code, fault, or model number in the active Field Assist vault. The \
-    technician can read the code/model aloud (pass 'query'), or point the glasses at the nameplate / \
-    error display and omit 'query' (or set 'use_camera') to read it via on-device OCR. Returns the \
-    matching reference section with its source file. Use before diagnosing so the answer is grounded. \
+    technician can read the code/model aloud (pass 'query'), or point the camera (the glasses when \
+    connected, otherwise the phone) at the nameplate / error display and omit 'query' (or set \
+    'use_camera') to read it via on-device OCR. Returns the matching reference section with its source file. Use before diagnosing so the answer is grounded. \
     When a lookup or a nameplate read names exactly one model the vault covers, that model becomes \
     the session's active equipment and every later answer is scoped to it — say so to the \
     technician. Pass 'set_equipment' with a model or part of one to correct a wrong read ("no, it's \
@@ -34,7 +34,7 @@ final class EquipmentLookupTool: NativeTool {
             ],
             "use_camera": [
                 "type": "boolean",
-                "description": "Force reading the code/model from the glasses camera via OCR even if a query is given."
+                "description": "Force reading the code/model from the camera via OCR even if a query is given."
             ],
             "file": [
                 "type": "string",

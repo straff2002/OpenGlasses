@@ -26,7 +26,7 @@ struct JobTranscriptView: View {
                 ContentUnavailableView {
                     Label("Conversations Locked", systemImage: "lock.fill")
                 } description: {
-                    Text("Authenticate in the Chat tab to read this job's conversation.")
+                    Text("Authenticate in the History tab to read this job's conversation.")
                 }
             } else if let thread, !thread.messages.isEmpty {
                 transcript(thread)

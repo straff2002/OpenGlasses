@@ -79,7 +79,7 @@ final class StudyService: ObservableObject {
         guard let data = await camera.filteredStill(for: .onDeviceVision,
                                                     source: .cachedFrameThenPhoto)
             .jpegData(compressionQuality: 0.8) else {
-            return "I couldn't capture the page. Point the glasses at it and try again."
+            return "I couldn't capture the page. Point the camera at it and try again."
         }
         return await ingestScannedImage(data)
     }

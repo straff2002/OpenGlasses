@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// Capture a photo from the glasses camera and attach it to the active Field Assist session's
+/// Capture a photo from the camera (the glasses when connected, otherwise the phone) and attach it to the active Field Assist session's
 /// audit log with a caption (e.g. a gauge reading at a procedure step). The image is also returned
 /// for immediate analysis, so the AI can read the captured value in the same turn.
 ///
@@ -11,7 +11,7 @@ import UIKit
 final class PhotoLogTool: NativeTool {
     let name = "photo_log"
     let description = """
-    Capture a photo from the glasses camera and attach it to the active Field Assist session log \
+    Capture a photo from the camera (the glasses when connected, otherwise the phone) and attach it to the active Field Assist session log \
     with a caption (e.g. 'suction gauge 118 PSIG', 'nameplate', 'leak site'). Returns the image for \
     analysis too. Use to document readings and evidence during a session. Requires an active session.
     """
@@ -52,7 +52,7 @@ final class PhotoLogTool: NativeTool {
         guard let imageData = await cameraService
             .filteredStill(for: .toolPhotoCapture, source: .cachedFrameThenPhoto)
             .jpegData(compressionQuality: 0.8) else {
-            return "Could not capture a photo. Make sure the glasses are connected and the camera is active."
+            return "Could not capture a photo from the camera."
         }
 
         guard jobEvidence.attachPhoto(imageData, caption: caption, origin: .photoLog,

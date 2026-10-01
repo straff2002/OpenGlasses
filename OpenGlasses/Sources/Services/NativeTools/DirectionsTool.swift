@@ -39,7 +39,7 @@ struct DirectionsTool: NativeTool {
             let next = await MainActor.run { AppStateProvider.shared?.upcomingJobs.next }
             guard let next else { return "There is no upcoming job on this phone." }
             guard let address = next.destination else {
-                return "\(next.title) has no address on file, so there is nowhere to navigate to. Add one on the Job tab."
+                return "\(next.title) has no address on file, so there is nowhere to navigate to. Add one on the Jobs tab."
             }
             destination = address
         }

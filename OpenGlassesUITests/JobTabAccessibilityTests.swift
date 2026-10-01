@@ -16,7 +16,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     /// the same reason `AccessibilityAuditCase.awaitScreen` is generous.
     private func openJobTab(in app: XCUIApplication,
                             file: StaticString = #filePath, line: UInt = #line) {
-        let tab = app.tabBars.buttons["Job"]
+        let tab = app.tabBars.buttons["Jobs"]
         if !tab.waitForExistence(timeout: 90) {
             // Same infrastructure symptom `AccessibilityAuditCase.relaunchIfTheUINeverCameUp`
             // exists for, one screen further in: the first launch of a run installs a large Debug
@@ -45,7 +45,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let settings = app.tabBars.buttons["Settings"]
         awaitScreen(settings, named: "The tab bar")
 
-        XCTAssertFalse(app.tabBars.buttons["Job"].exists,
+        XCTAssertFalse(app.tabBars.buttons["Jobs"].exists,
                        "a Job tab appeared for a device with no Field Assist entitlement")
         XCTAssertEqual(app.tabBars.buttons.count, 4,
                        "the tab bar grew for a device with no Field Assist entitlement")

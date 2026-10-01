@@ -41,6 +41,23 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
 
+    /// Whether the glasses camera is connected. Plan GV: with it away, a camera tool may wait on
+    /// the user taking a photo on the phone, and its budget grows by that wait. Wired by
+    /// `AppState`; the default leaves every budget as declared.
+    var glassesCameraConnected: () -> Bool = { true }
+
+    /// A tool's declared semantics with its timeout widened for a phone photo when that can happen.
+    nonisolated static func semantics(_ declared: ToolExecutionSemantics, toolName: String,
+                                      glassesConnected: Bool,
+                                      routerDefault: TimeInterval) -> ToolExecutionSemantics {
+        let base = declared.timeout.resolved(default: routerDefault)
+        let budget = PhoneCapturePolicy.timeoutBudget(base: base, toolName: toolName,
+                                                      glassesConnected: glassesConnected)
+        guard budget != base else { return declared }
+        return ToolExecutionSemantics(effect: declared.effect, cancellation: declared.cancellation,
+                                      idempotency: declared.idempotency, timeout: .seconds(budget))
+    }
+
     /// What a composition may reach. Defaults to refusing any target the router would have gated —
     /// admission and merge-time quarantine already keep such bindings out of the registry, so the
     /// routed confirmation path is proven by tests before it is anything's default.
@@ -290,14 +307,19 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // 1. Check native tools first.
         if let tool = registry.tool(named: name) {
             PrivacyLog.toolDispatch(.native, tool: name)
-            return await dispatch(call, semantics: tool.executionSemantics,
+            let semantics = Self.semantics(tool.executionSemantics, toolName: name,
+                                           glassesConnected: glassesCameraConnected(),
+                                           routerDefault: toolTimeoutSeconds)
+            return await dispatch(call, semantics: semantics,
                                   reportProgress: reportProgress) { key in
                 // The executing call is task-local so a tool that composes another one names its
                 // own invocation as the parent instead of inventing a fresh root; the operation's
                 // idempotency key rides alongside for any adapter that can put one on the wire.
+                // Plan GV: a phone-photo ledger rides too, so a photo the user cancelled reaches
+                // the model as a plain sentence whatever the tool itself says about it.
                 try await ToolInvocationScope.$current.withValue(call) {
                     try await OperationScope.$idempotencyKey.withValue(key) {
-                        try await tool.execute(args: args)
+                        try await PhoneCaptureScope.run { try await tool.execute(args: args) }
                     }
                 }
             }

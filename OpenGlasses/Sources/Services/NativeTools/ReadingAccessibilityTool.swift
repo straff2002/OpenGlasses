@@ -9,7 +9,7 @@ import Foundation
 final class ReadingAccessibilityTool: NativeTool {
     let name = "reading_assist"
     let description = """
-    Help the user read text in front of them through the glasses camera. Modes: 'read' (clean OCR \
+    Help the user read text in front of them through the camera. Modes: 'read' (clean OCR \
     artifacts and read aloud), 'ask' (answer a specific question about the visible text — e.g. \
     "what's the total?", "when does this expire?", "what's the phone number?" — grounded ONLY in \
     the captured text), 'simplify' (rewrite at a reading level), 'translate' (into a target \

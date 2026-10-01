@@ -13,7 +13,7 @@ final class ManualLookupTool: NativeTool {
     let description = """
     Search the OEM manuals loaded into the active Field Assist vault for a fault code, model, \
     component, or procedure. Pass 'query' with what to look for, or omit it (or set 'use_camera') \
-    to read a nameplate / fault display through the glasses camera and search on what it says. \
+    to read a nameplate / fault display through the camera (the glasses when connected, otherwise the phone) and search on what it says. \
     Returns the matching manual passages, each with a Source line naming the manual and page — \
     cite those lines. If it reports that the manuals do not cover the question, or that they are \
     not for the machine the question names, say so verbatim rather than answering from general \

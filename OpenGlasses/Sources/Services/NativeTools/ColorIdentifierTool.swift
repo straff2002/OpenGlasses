@@ -7,7 +7,7 @@ import UIKit
 final class ColorIdentifierTool: NativeTool {
     let name = "identify_color"
     let description = """
-    Name the dominant color of what the user is looking at, using the glasses camera. On-device, no \
+    Name the dominant color of what the user is looking at, using the camera. On-device, no \
     network. Use for "what color is this?", "what colour am I holding?". For colorblind / low-vision support.
     """
     let parametersSchema: [String: Any] = [

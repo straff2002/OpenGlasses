@@ -8,7 +8,7 @@ import UIKit
 final class MoneyIdentifierTool: NativeTool {
     let name = "identify_money"
     let description = """
-    Identify a banknote / bill the user is holding, for low-vision support. Captures the glasses view \
+    Identify a banknote / bill the user is holding, for low-vision support. Captures the camera view \
     and reads the currency and denomination aloud. Use for "how much is this note?", "what bill is this?".
     """
     let parametersSchema: [String: Any] = [
