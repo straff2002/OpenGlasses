@@ -500,7 +500,7 @@ Here you assemble the whole vault for one customer: their core files, their manu
 
 The manuals in such a vault are normally the customer's own. They already hold them through their OEM portal access, their dealer relationship, or the equipment itself. What you are providing is the assembly, the text extraction and the testing. If you intend to reuse one master set of manuals across several customers, that is redistribution and it needs the manufacturer's permission, so check your agreements first.
 
-Delivery is by hand, or by link. By hand: you install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. By link: you build a vault archive and put it on your own site, and their technicians add it from the link or the code — see **Publishing a vault** above. An enrolment profile that installs the pack, the manuals and the configuration together from one scan is planned, so the first-run setup gets shorter too.
+Delivery is by hand, or by link. By hand: you install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. By link: you build a vault archive and put it on your own site, and their technicians add it from the link or the code — see **Publishing a vault** above. One scan can also set the phones up: ask us for an enrolment profile for the customer's organisation, and scanning its code (or entering its licence key) applies the organisation's configuration and installs its pack — the core files and procedures, published as in situation 3. A pack never carries manuals, so those still go by hand or by link; delivering them in the same step is planned.
 
 ### 3 · Publishing a pack
 
