@@ -81,6 +81,7 @@ extension View {
 }
 
 /// The organisation's name as a lock's reason.
+@MainActor
 enum ManagedLockReason {
     static var organization: String {
         PolicyEnvelope.organizationName ?? OrgProfileManager.shared.profile?.organizationName ?? "your organisation"
