@@ -7,14 +7,23 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     let content: String
     let imageAttached: Bool
     let timestamp: Date
+    /// Plan GE: this reply was given on the phone while the connection was down — by the smaller
+    /// on-device model, the deterministic router, or the hold line. Optional so threads saved before
+    /// the field existed decode unchanged, and nil (not false) is what an ordinary reply stores, so
+    /// the saved file only grows for the turns that carry it.
+    let answeredOnDevice: Bool?
 
-    init(role: String, content: String, imageAttached: Bool = false) {
+    init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
         self.imageAttached = imageAttached
         self.timestamp = Date()
+        self.answeredOnDevice = answeredOnDevice ? true : nil
     }
+
+    /// Whether this reply was given on the phone while offline.
+    var isAnsweredOnDevice: Bool { answeredOnDevice ?? false }
 }
 
 /// An assistant reply currently being streamed into a specific thread. Render-only — the
@@ -195,9 +204,11 @@ class ConversationStore: ObservableObject {
     }
 
     /// Append a message to the active thread.
-    func appendMessage(role: String, content: String, imageAttached: Bool = false) {
+    func appendMessage(role: String, content: String, imageAttached: Bool = false,
+                       answeredOnDevice: Bool = false) {
         guard let idx = threads.firstIndex(where: { $0.id == activeThreadId }) else { return }
-        let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached)
+        let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
+                                      answeredOnDevice: answeredOnDevice)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = Date()
         if let turn = indexedTurn(msg, threadID: threads[idx].id) {

@@ -932,7 +932,9 @@ class LLMService: ObservableObject {
         // The planner sees the request alone (not chat history), and tool output never re-enters
         // planning — the structural prompt-injection defense. Falls back to single-shot when the
         // request can't be planned/validated (still safe; every call is supervised either way).
-        if Config.agentModeEnabled, hasNativeTools, turnImage == nil, await classifyMultiStep(text) {
+        // Plan GE: not on a phone turn — the planner would reach for tools that need the network.
+        if Config.agentModeEnabled, hasNativeTools, turnImage == nil, !offlineHandoffTurn,
+           await classifyMultiStep(text) {
             if let summary = await runAgentPlan(request: text, nativeToolNames: nativeToolNames) {
                 conversationHistory.append(["role": "user", "content": text])
                 conversationHistory.append(["role": "assistant", "content": summary])
@@ -1032,6 +1034,27 @@ class LLMService: ObservableObject {
             reply, sourceID: fieldConversationSourceID ?? UUID().uuidString)
     }
 
+    // MARK: - Offline handoff (Plan GE)
+
+    /// Set by `AppState` for a turn the offline handoff routed to the phone: no cloud hops, the
+    /// offline tool set, and the history window `HandoffTranscriptBridge` picks for the on-device
+    /// budget. Cleared when the turn finishes.
+    var offlineHandoffTurn = false
+
+    /// The outcome of every cloud model attempt (nil on success), for the offline handoff.
+    var onCloudAttempt: ((Error?) -> Void)?
+
+    nonisolated static func isOnDeviceProvider(_ provider: LLMProvider) -> Bool {
+        provider == .local || provider == .appleOnDevice
+    }
+
+    /// The on-device tool names for a turn: the reduced local set, narrowed further to what works
+    /// without signal when the handoff put the turn on the phone. Pure.
+    nonisolated static func localToolNames(registered: [String], offlineHandoff: Bool) -> [String] {
+        let local = registered.filter { localSafeTools.contains($0) }
+        return offlineHandoff ? OfflineToolPolicy.offlineNames(local) : local
+    }
+
     // MARK: - Model Cascade (BK P2b)
 
     /// `sendMessage` with automatic fall-over to the next model when the active one can't serve the
@@ -1051,7 +1074,17 @@ class LLMService: ObservableObject {
         defer { fieldConversationSourceID = previousSourceID }
 
         func send() async throws -> String {
-            try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
+            // Plan GE: every cloud attempt tells the offline handoff how the network is doing — a
+            // connectivity-class failure counts toward moving the conversation onto the phone.
+            let isCloud = Config.activeModel.map { !Self.isOnDeviceProvider($0.llmProvider) } ?? false
+            do {
+                let response = try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
+                if isCloud { onCloudAttempt?(nil) }
+                return response
+            } catch {
+                if isCloud { onCloudAttempt?(error) }
+                throw error
+            }
         }
 
         // The normal cascade intentionally contains cloud models. Under medical local-only policy,
@@ -1059,6 +1092,12 @@ class LLMService: ObservableObject {
         // an otherwise eligible cloud candidate.
         if MedicalLLMRoutingPolicy.isEnforced(
             hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly) {
+            return try await send()
+        }
+
+        // Plan GE: the handoff put this turn on the phone. Hopping to a cloud candidate would only
+        // wait out the same timeout the handoff exists to skip, so the on-device attempt is the turn.
+        if offlineHandoffTurn {
             return try await send()
         }
 
@@ -3762,14 +3801,29 @@ class LLMService: ObservableObject {
         // Build tool instructions — use minimal set for local models
         var fullPrompt = systemPrompt
         if includeTools, let router = nativeToolRouter {
-            let toolNames = router.registry.toolNames.filter { Self.localSafeTools.contains($0) }
+            let toolNames = Self.localToolNames(registered: router.registry.toolNames,
+                                                offlineHandoff: offlineHandoffTurn)
             fullPrompt += Self.localToolInstructions(toolNames: toolNames)
         }
 
         // Build history — last 3 exchanges for local models (context is precious; the
         // LocalModelBudget cap still guards the ceiling). Was 2 — too short for a
         // follow-up that references the answer before last.
-        let history = recentTupleHistory(6, stripToolMarkup: true)
+        //
+        // Plan GE: a turn the handoff put on the phone carries the conversation across instead —
+        // the newest turns that fit this model's budget, behind the compactor's summary when one
+        // exists — so the on-device model picks up where the cloud left off.
+        let history: [(role: String, content: String)]
+        if offlineHandoffTurn {
+            let budget = LocalModelBudget.promptBudget(for: selectedID.rawValue)
+                - HandoffTranscriptBridge.estimatedTokens(fullPrompt)
+                - HandoffTranscriptBridge.estimatedTokens(text)
+            history = HandoffTranscriptBridge.outboundWindow(
+                history: recentTupleHistory(conversationHistory.count, stripToolMarkup: true),
+                budgetTokens: budget)
+        } else {
+            history = recentTupleHistory(6, stripToolMarkup: true)
+        }
 
         // Add user message to history
         conversationHistory.append(["role": "user", "content": text])

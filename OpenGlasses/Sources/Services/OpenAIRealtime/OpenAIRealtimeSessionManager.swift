@@ -49,6 +49,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     /// this backend actually exposes. Returns whether the coordinator took the spoken cue; the
     /// local cues below are unchanged whenever it did not.
     var onLifecycle: ((AudibleLifecycleCoordinator.Signal) -> Bool)?
+    /// Plan GE P3: the conversation carried on on the phone while the signal was gone; the next
+    /// start opens with this handover block (``LiveContextHandover``) so the session picks up where
+    /// the phone left off. Consumed by that start.
+    var pendingResumeContext: String?
 
     // Camera frame source — set by AppState
     var onRequestVideoFrame: (() async -> UIImage?)?
@@ -118,7 +122,9 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         }
 
         // Build system instruction
-        let systemInstruction = buildSystemInstruction()
+        let resumeContext = pendingResumeContext
+        pendingResumeContext = nil
+        let systemInstruction = buildSystemInstruction(recoveredContext: resumeContext)
 
         // Plan FO P3a — the Field Assist job tools, and nothing else. See
         // `ToolDeclarations.openAIRealtimeTools` for why the surface is narrow, and why an empty
@@ -418,7 +424,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
     // MARK: - System Instruction
 
-    private func buildSystemInstruction() -> String {
+    private func buildSystemInstruction(recoveredContext: String? = nil) -> String {
         // This builder used to start from `Config.systemPrompt` alone, which meant the selected
         // LiveAI mode reached Gemini and silently vanished here: a wearer who picked Blind
         // Assistant and happened to be on the OpenAI Realtime backend got the generic assistant,
@@ -479,6 +485,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         MemoryContextRecorder.recordLive(
             .notInjected(at: Date(), freshness: .connectSnapshot(age: 0)), route: .liveOpenAI)
 
+        // Plan GE P3: the turns answered on the phone while the signal was gone.
+        if let recoveredContext, !recoveredContext.isEmpty {
+            prompt += "\n\n\(recoveredContext)"
+        }
         return prompt
     }
 
