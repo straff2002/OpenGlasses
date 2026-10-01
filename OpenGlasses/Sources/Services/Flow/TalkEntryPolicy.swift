@@ -66,6 +66,27 @@ enum SessionCardGlassesHeadline {
     }
 }
 
+// MARK: - Session card: wake word off
+
+/// The line the session card adds when the master "Listen for Wake Phrase" switch is off.
+///
+/// That switch can be turned off from places that are nowhere near the card — the Lock Screen Live
+/// Activity's button, Control Center, the widget, the Action Button, Siri — and the card went on
+/// saying "Ready" over a wake phrase that would never be heard. So the card says it, and tapping
+/// the line turns listening back on.
+///
+/// Only when the wake phrase is *expected*: push-to-talk (`Config.silentMode`, the "Push-Talk"
+/// tile) is the wearer's own choice to talk by tapping, and the card says nothing extra then.
+enum SessionCardWakeWordNotice {
+    static let text = "Wake word off \u{2014} tap to turn on"
+    static let accessibilityLabel = "Wake word off"
+    static let accessibilityHint = "Turns listening for the wake phrase back on."
+
+    static func shows(listeningEnabled: Bool, pushToTalk: Bool) -> Bool {
+        !listeningEnabled && !pushToTalk
+    }
+}
+
 // MARK: - Session card: mode dot
 
 /// The reduced shape of `GeminiConnectionState` / `OpenAIRealtimeConnectionState` the mode dot

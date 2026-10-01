@@ -253,4 +253,25 @@ final class TalkEntryPolicyTests: XCTestCase {
                        "must never read like the SDK's own diagnostic text")
         XCTAssertTrue(SessionCardGlassesPill.awayHint.localizedCaseInsensitiveContains("Meta AI"))
     }
+
+    // MARK: - Session card: wake word off
+
+    /// The master switch can be turned off from the Lock Screen, Control Center, a widget or Siri,
+    /// and the card used to keep saying "Ready". It says so now — unless push-to-talk is the
+    /// wearer's own choice, when the wake phrase being off is expected.
+    func testTheCardSaysTheWakeWordIsOffOnlyWhenItIsExpected() {
+        XCTAssertTrue(SessionCardWakeWordNotice.shows(listeningEnabled: false, pushToTalk: false))
+        XCTAssertFalse(SessionCardWakeWordNotice.shows(listeningEnabled: false, pushToTalk: true),
+                       "Push-to-talk is a choice, not a fault")
+        XCTAssertFalse(SessionCardWakeWordNotice.shows(listeningEnabled: true, pushToTalk: false))
+        XCTAssertFalse(SessionCardWakeWordNotice.shows(listeningEnabled: true, pushToTalk: true))
+    }
+
+    func testTheWakeWordNoticeSaysWhatATapDoes() {
+        XCTAssertTrue(SessionCardWakeWordNotice.text.localizedCaseInsensitiveContains("wake word off"))
+        XCTAssertTrue(SessionCardWakeWordNotice.text.localizedCaseInsensitiveContains("tap to turn on"))
+        XCTAssertFalse(SessionCardWakeWordNotice.accessibilityLabel.localizedCaseInsensitiveContains("tap"),
+                       "VoiceOver's gesture is a double-tap; the spoken name should not instruct one")
+        XCTAssertFalse(SessionCardWakeWordNotice.accessibilityHint.isEmpty)
+    }
 }
