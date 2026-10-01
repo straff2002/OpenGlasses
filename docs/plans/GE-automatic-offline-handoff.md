@@ -1,6 +1,26 @@
 # Plan GE — Automatic Offline Handoff (cloud → phone → cloud, mid-conversation)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** 🚧 P0–P2 shipped, P3 partial (2026-10-01). Built and tested headlessly: the pure core
+(`ConnectivityHandoffPolicy`, `OfflineToolPolicy` — all 120 native tools classified, scrape-enforced —
+`HandoffTranscriptBridge`, `HandoffAnnouncer`, `OfflineBrainSelector`) in `Services/Offline/Handoff/`;
+`ConnectivityHandoffController` wired into Direct mode (voice and typed turns go straight to the
+on-device model with the offline tool set, no cloud timeout first; `ModelRoutingPolicy` reads the phone
+route; `answeredOnDevice` marking in `ConversationStore`; one-line note to the cloud model on return);
+the content-free return probe (`NetworkRoute.connectivityProbe`); the old unconditional offline line
+absorbed (sync line only with queued items); Settings → AI & Personality "Keep Talking Without Signal"
+(on when an on-device model is installed, else a link to the download); `OfflineKeywordRouter` and the
+in-memory `HeldQuestionStore` (one slot, 30-min TTL, answered automatically on return, notification
+on expiry). P3: a live session that exhausts its retries because the signal is gone hands the
+conversation to Direct mode's phone path and is restarted on return, seeded through
+`LiveContextHandover` (`LiveModeHandoffPlanner`). **Not built:** BU P2's camera-grounded
+`OfflineLiveSessionService` (the live modes use Direct mode's phone path instead — see P3 below), and the
+llama.cpp CPU-only background rung (held off by `OfflineBrainSelector.cpuTierVerifiedOnDevice`; enabling
+it needs a CPU-only load path through the coordinator's background guard). The photo turn keeps its own
+cascade. **Device-owed:** airplane-mode toggles mid-sentence, lift/tunnel flapping, captive portal,
+phone locked in a pocket (Apple on-device in background, llama.cpp CPU heat and budget kills, 10-minute
+run), live-session resume against real providers, battery. Decisions taken: 20 s stable + one probe;
+CPU tier off; held questions answered automatically within 30 min (older dropped with one line); the
+cloud model is told in one line which answers came from the phone; setting in the AI section.
 **Continues:** Plan [BU](BU-offline-live-session.md) (offline live session). BU's pure core shipped
 (`LiveSessionTurnLoop`, `FrameFreshnessPolicy`, `LiveTurnAssembler`); its P2 wiring
 (`OfflineLiveSessionService`) is unbuilt, and BU puts "mid-session cloud fallback" out of scope.
@@ -140,7 +160,13 @@ with a fake reachability, fake LLM and injected clock.
 notification on TTL expiry, llama.cpp CPU option behind a default-off flag.
 Tests: `HeldQuestionStoreTests` (one slot, TTL, never persisted), `OfflineKeywordRouterTests`.
 
-**P3 — Live modes and device checks.** Build BU P2's `OfflineLiveSessionService` as the handoff
+**P3 — Live modes and device checks.** *As built (2026-10-01):* the handoff target for a lost live
+session is Direct mode's phone path (on-device hearing, model and voice already work there), not a
+second camera-grounded loop — one offline path to keep honest. `LiveModeHandoffPlanner` decides
+hand-off-or-end on `reconnectExhausted` (only when the signal explains the loss) and the resume on
+return; the session managers open the restarted session with a `LiveContextHandover` block built from
+the phone's turns (`pendingResumeContext`). BU P2's service stays the foreground upgrade once its
+latency is measured. *As planned:* Build BU P2's `OfflineLiveSessionService` as the handoff
 target; realtime resume through `LiveContextHandover`. Device checks (owed): airplane-mode toggles
 mid-sentence; lift/tunnel flapping; captive portal; phone locked in pocket for each ladder tier
 (Apple on-device in background, llama.cpp CPU heat and CPU-budget kills, 10-minute run); battery.
