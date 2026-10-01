@@ -14,8 +14,12 @@ struct PhoneCameraRequest: Identifiable {
 /// live preview to aim — unlike the glasses path, the phone needs the user to frame.
 struct PhoneCameraView: View {
     let prompt: String
+    /// Plan GV: one line saying what to frame, when a camera tool asked for the photo.
+    var hint: String? = nil
     let onCapture: (Data) -> Void
     let onCancel: () -> Void
+    /// Plan GV: told once the camera is on screen, so a request that never got one can say so.
+    var onPresented: (() -> Void)? = nil
 
     @StateObject private var camera = PhoneCameraController()
     /// Zoom at pinch start — a magnification gesture reports scale against its own beginning, so
@@ -76,6 +80,18 @@ struct PhoneCameraView: View {
                 }
                 .padding()
 
+                if let hint, !hint.isEmpty {
+                    Text(hint)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(OGTheme.onMedia)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        // Opaque, not a wash — same reasoning as the zoom readout above.
+                        .background(OGTheme.media, in: Capsule())
+                        .padding(.horizontal)
+                }
+
                 Spacer()
 
                 if let error = camera.error {
@@ -116,6 +132,7 @@ struct PhoneCameraView: View {
             }
         }
         .task { await camera.start() }
+        .onAppear { onPresented?() }
         .onDisappear { camera.stop() }
     }
 }

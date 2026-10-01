@@ -905,6 +905,12 @@ class AppState: ObservableObject, AppStateProtocol {
     let liveTranslation = LiveTranslationService()
     let speechService = TextToSpeechService()
     let cameraService = CameraService()
+    /// Plan GV: the phone camera a camera tool waits on when no glasses are connected. The root
+    /// view presents `toolPhotoRequest` from any tab.
+    let phonePhotos = PhonePhotoCoordinator()
+    @Published private(set) var toolPhotoRequest: PhonePhotoRequest?
+    /// Whether the thinking sound was playing when the phone camera opened, to resume it after.
+    private var thinkingSoundPausedForPhonePhoto = false
     let videoRecorder = VideoRecordingService()
     let audioRecorder = AudioRecordingService()
     let recordedSessionStore = RecordedSessionStore()
@@ -1718,6 +1724,8 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return }
             Task { @MainActor in
                 guard self.activeLiveInjector == nil else { return }
+                // Plan GV: waiting on the user's phone photo is not the tool being slow.
+                guard self.phonePhotos.pending == nil else { return }
                 await self.speechService.speak(AsyncDeliveryPhrasing.directModeStillWorking(elapsedSeconds: elapsed))
             }
         }
@@ -1725,6 +1733,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire the high-impact action confirmation gate (prompt-injection backstop) and have it
         // speak the prompt aloud so the user hears what they're approving while wearing the glasses.
         nativeToolRouter.confirmationCoordinator = toolConfirmationCoordinator
+        // Plan GV: with the glasses away a camera tool may wait on a phone photo; its budget grows.
+        nativeToolRouter.glassesCameraConnected = { [weak self] in self?.isConnected ?? false }
         // Deterministic safety supervisor context (Plan S): snapshot clock + current location +
         // persisted rules per tool call so geofence/quiet-hours rules reflect the real situation.
         nativeToolRouter.safetyContextProvider = { [weak self] in
@@ -2814,6 +2824,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // registered pair with no link would otherwise be tried, and fail, instead of falling back.
         // Stood down counts as away too: the wearer disconnected, so a capture uses the phone.
         cameraService.isGlassesLinkUp = { [weak self] in self?.isConnected ?? false }
+        wirePhonePhotos()
         // Worn or not drives the automatic stand-down (`GlassesSleepPolicy`). `$isWorn` fires in willSet, so the
         // value is handed over rather than read back; the hop lets the service finish publishing.
         let wornToken = glassesService.$isWorn
@@ -4259,6 +4270,39 @@ class AppState: ObservableObject, AppStateProtocol {
         phoneCameraRequest = PhoneCameraRequest(prompt: prompt, userLog: userLog)
     }
 
+    // MARK: - Phone camera for tools (Plan GV)
+
+    /// Connects the coordinator a camera tool waits on to the camera, the screen and the turn's
+    /// audio. Called once from init.
+    private func wirePhonePhotos() {
+        cameraService.phonePhotos = phonePhotos
+        phonePhotos.isAppActive = { UIApplication.shared.applicationState == .active }
+        // The thinking pad would play under the camera for as long as the user takes to frame the
+        // shot; it steps aside and comes back for the rest of the turn.
+        phonePhotos.onWaitBegan = { [weak self] in
+            guard let self else { return }
+            self.thinkingSoundPausedForPhonePhoto = self.speechService.isPlayingThinkingSound
+            self.speechService.stopThinkingSound()
+        }
+        phonePhotos.onWaitEnded = { [weak self] in
+            guard let self, self.thinkingSoundPausedForPhonePhoto else { return }
+            self.thinkingSoundPausedForPhonePhoto = false
+            self.speechService.startThinkingSound()
+        }
+        let token = phonePhotos.$pending
+            .removeDuplicates()
+            .sink { [weak self] request in
+                DispatchQueue.main.async { self?.toolPhotoRequest = request }
+            }
+        cancellables.append(token)
+    }
+
+    /// The root sheet's binding: dismissing the sheet by a swipe is a cancel.
+    func dismissToolPhotoRequest() {
+        guard let request = phonePhotos.pending else { return }
+        phonePhotos.cancel(request.id)
+    }
+
     /// Called by the phone-camera sheet once a still is captured: save it, then run the
     /// same image+prompt → LLM → speak flow the glasses photo path uses.
     func handlePhoneCapture(_ data: Data) {
@@ -4503,7 +4547,21 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         switch action.type {
         case .prompt:
-            guard let text = action.promptText, !text.isEmpty else { return }
+            guard var text = action.promptText, !text.isEmpty else { return }
+            // Plan GV: a camera job tile with no glasses opens the phone camera before its prompt,
+            // so the tool the prompt calls has its photo without a model round trip first. A
+            // cancel sends nothing; the photo is kept for this turn only.
+            if let hint = PhoneCapturePolicy.preCaptureHint(forQuickAction: action.id,
+                                                            glassesConnected: isConnected) {
+                let outcome = await phonePhotos.preCapture(hint: hint)
+                guard let photo = outcome.photo else {
+                    if let notice = outcome.userNotice { errorMessage = notice }
+                    return
+                }
+                phonePhotos.stage(photo)
+                text += " " + PhoneCapturePolicy.stagedPhotoPromptSuffix
+            }
+            defer { phonePhotos.clearStaged() }
             // The Field Assist introduction is the app talking to the model, not the technician
             // talking: the job's log records it as an app instruction (Plan GB P0).
             if action.id == QuickAction.fieldAssist.id {

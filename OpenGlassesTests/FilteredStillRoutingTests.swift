@@ -380,7 +380,7 @@ final class FilteredStillRoutingTests: XCTestCase {
 
         let blocked = unavailableProvider()
         let reply = try await BarcodeScannerTool(cameraService: blocked).execute(args: [:])
-        XCTAssertTrue(reply.contains("No camera frame"), "unexpected reply: \(reply)")
+        XCTAssertTrue(reply.contains("No picture from the camera"), "unexpected reply: \(reply)")
     }
 
     // MARK: - Dwell capture

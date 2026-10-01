@@ -282,6 +282,11 @@ class CameraService: ObservableObject, FilteredStillProviding {
     ///   at the phone (a temple tap, Plan GJ): the glasses camera or nothing. A phone in a pocket
     ///   must never take a hidden shot of the pocket, so this throws `GlassesOnlyCaptureError`
     ///   instead of swapping cameras.
+    ///
+    /// Plan GV: with a tool executing (`ToolInvocationScope.current`), the phone branch never takes
+    /// a headless shot. `PhoneCapturePolicy` routes the tool to the phone camera on screen — the
+    /// user frames and shoots, and the call waits — or refuses it as glasses-only. Calls with no
+    /// tool in scope (the app's own photo paths, which announce the swap) keep the headless shot.
     func capturePhoto(allowPhoneFallback: Bool = true) async throws -> Data {
         // When the glasses camera is offline / not connected (link down) / not registered, capture from the
         // iPhone back camera instead so the vision tools keep working without glasses. This is
@@ -306,11 +311,60 @@ class CameraService: ObservableObject, FilteredStillProviding {
         } else {
             PrivacyLog.camera(.glasses, .unavailable)
             guard allowPhoneFallback else { throw GlassesOnlyCaptureError.glassesCameraUnavailable }
-            data = try await phoneSource.capturePhoto()
+            if let toolName = ToolInvocationScope.current?.name {
+                // Plan GV: a tool is asking. Never the headless back camera — the phone is as
+                // likely to be in a pocket as pointing at anything — so the table decides.
+                data = try await phoneStill(forTool: toolName)
+            } else {
+                data = try await phoneSource.capturePhoto()
+            }
             lastCaptureSource = .phone
         }
-        saveToPhotoLibrary(data)
+        captureLibrarySink(data)
         return data
+    }
+
+    /// Where `capturePhoto()` files each capture: the Photos album. Replaceable for tests only — a
+    /// decodable image reaching the album asks the simulator for library access nobody can grant.
+    lazy var captureLibrarySink: (Data) -> Void = { [weak self] data in
+        self?.saveToPhotoLibrary(data)
+    }
+
+    /// Plan GV: the phone camera on screen, which a tool's still waits on when no glasses camera
+    /// can serve it. Wired by `AppState`; nil (tests, previews) means no camera can be shown, and a
+    /// tool then gets `.couldNotPresent` rather than a hidden shot.
+    weak var phonePhotos: (any PhonePhotoRequesting)?
+
+    /// A tool's still from the phone, by the tool's route in `PhoneCapturePolicy`. Records the
+    /// outcome on the call's ledger, and refuses at once — without opening the camera again — when
+    /// an earlier request in the same call ended without a photo.
+    private func phoneStill(forTool toolName: String) async throws -> Data {
+        switch PhoneCapturePolicy.route(forTool: toolName) {
+        case .glassesOnly:
+            throw GlassesOnlyCaptureError.glassesCameraUnavailable
+        case .askOnPhone:
+            let ledger = PhoneCaptureScope.ledger
+            if let earlier = ledger?.failure { throw PhonePhotoError(outcome: earlier) }
+            let outcome: PhonePhotoOutcome
+            if let phonePhotos {
+                outcome = await phonePhotos.requestPhoto(PhonePhotoRequest(
+                    toolName: toolName, hint: PhoneCapturePolicy.framingHint(forTool: toolName)))
+            } else {
+                outcome = .couldNotPresent
+            }
+            ledger?.record(outcome)
+            guard let data = outcome.photo else { throw PhonePhotoError(outcome: outcome) }
+            PrivacyLog.camera(.phone, .photoCaptured, bytes: data.count)
+            return data
+        }
+    }
+
+    /// Plan GV: whether a stream-frame request from the executing tool should be served by a photo
+    /// instead. With the glasses link down there is no stream to have held a frame, and an
+    /// ask-on-phone tool (`scan_code`, `qr_context`) would otherwise answer "no frame".
+    private var streamFrameRequestBecomesPhoto: Bool {
+        guard !isGlassesLinkUp(), let toolName = ToolInvocationScope.current?.name else { return false }
+        return PhoneCapturePolicy.route(forTool: toolName) == .askOnPhone
     }
 
     /// Why a glasses-only capture refused (Plan GJ).
@@ -524,6 +578,10 @@ class CameraService: ObservableObject, FilteredStillProviding {
         // just above the backend's stall threshold on purpose, so the existing stall detector is
         // still the first thing to notice a stopped picture flow and this is the backstop.
         let cached = readinessNow.hasFreshVisualEvidence ? latestFrame : nil
+        var source = source
+        if source == .cachedFrameOnly, cached == nil, streamFrameRequestBecomesPhoto {
+            source = .photoOnly
+        }
 
         switch source {
         case .cachedFrameOnly:

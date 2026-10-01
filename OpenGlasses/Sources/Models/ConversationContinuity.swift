@@ -106,11 +106,11 @@ enum ConversationContinuity {
         var confirmMessage: String {
             switch self {
             case .one(_, let title):
-                return "\"\(title)\" is deleted for good, here and in Chat — including its "
+                return "\"\(title)\" is deleted for good, here and in History — including its "
                      + "encrypted copy. This isn't a hide. Your memories and brain are untouched."
             case .all(let count):
                 return "All \(count) conversation\(count == 1 ? "" : "s") — every message in "
-                     + "them — are deleted for good, here and in Chat, including their encrypted "
+                     + "them — are deleted for good, here and in History, including their encrypted "
                      + "copies. This isn't a hide and it cannot be undone. Your memories and "
                      + "brain are untouched."
             }

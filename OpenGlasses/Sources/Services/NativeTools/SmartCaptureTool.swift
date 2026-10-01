@@ -8,7 +8,7 @@ import Foundation
 final class SmartCaptureTool: NativeTool {
     let name = "smart_capture"
     let description = """
-    Capture a business card, receipt, or event flyer through the glasses and extract its key details. \
+    Capture a business card, receipt, or event flyer through the camera and extract its key details. \
     Modes: 'contact' (name/company/phone/email — then offer to save via contacts or notes), 'receipt' \
     (merchant/total/date — then offer to log the expense), 'event' (title/date/location — then offer \
     to create a calendar event). Use for "save this card", "log this receipt", "add this event".

@@ -33,7 +33,7 @@ struct TeleprompterTool: NativeTool {
                 "type": "string",
                 "enum": ["start", "stop", "pause", "resume", "next", "back", "restart",
                          "faster", "slower", "list", "save", "scan"],
-                "description": "What to do. 'scan' captures a page through the glasses camera and OCRs it; repeat to add pages, then 'start' (or 'save')."
+                "description": "What to do. 'scan' captures a page through the camera and OCRs it; repeat to add pages, then 'start' (or 'save')."
             ],
             "text": [
                 "type": "string",

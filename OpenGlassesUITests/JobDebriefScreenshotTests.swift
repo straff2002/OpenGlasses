@@ -92,11 +92,11 @@ final class JobDebriefScreenshotTests: AccessibilityAuditCase {
     /// for: the first launch of a run installs a large Debug build and starts it cold, and on a
     /// loaded host the seeded state occasionally never lands.
     private func openTheJobTab(_ app: XCUIApplication) {
-        var tab = app.tabBars.buttons["Job"]
+        var tab = app.tabBars.buttons["Jobs"]
         if !tab.waitForExistence(timeout: 90) {
             app.terminate()
             app.launch()
-            tab = app.tabBars.buttons["Job"]
+            tab = app.tabBars.buttons["Jobs"]
             XCTAssertTrue(tab.waitForExistence(timeout: 150),
                           "the Job tab never appeared, even after a clean restart. Tab bar: "
                           + "\(app.tabBars.buttons.allElementsBoundByIndex.map(\.label))")

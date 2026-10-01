@@ -13,7 +13,7 @@ final class ParkingTool: NativeTool {
         Remember and find where the wearer parked their car. Actions: 'save' — store the spot at \
         the current location, with level, space and zone taken from 'details' (the wearer's own \
         words, e.g. "level 2 space 41", "P3 bay B12", "green zone", "near the lifts"); 'photo' — \
-        read a parking sign or bay marker through the glasses camera and save the spot with the \
+        read a parking sign or bay marker through the camera and save the spot with the \
         photo (for "remember this" at a pillar); 'update' — correct the level/space/zone of the \
         saved spot from 'details'; 'where' — say where the car is (level, space, distance, \
         direction, how long ago) and show it on the glasses; 'directions' — walking directions \
@@ -136,7 +136,7 @@ final class ParkingTool: NativeTool {
             spot.merge(spoken)
             let saved = seams.store().saveManual(spot, now: now)
             return saveReply(saved, hadFix: location != nil,
-                             photoNote: "The glasses camera isn't available, so there's no photo — you can add one from the Parking card on the phone.")
+                             photoNote: "The camera isn't available, so there's no photo — you can add one from the Parking card on the phone.")
         }
 
         switch await flow.captureFromGlasses() {

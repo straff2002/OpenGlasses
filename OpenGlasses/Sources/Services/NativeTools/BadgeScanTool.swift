@@ -28,7 +28,7 @@ struct BadgeScanTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         guard let image = await currentFrame() else {
-            return "Could not get a camera frame. Make sure the glasses camera is active and try again."
+            return "Could not get a picture from the camera. Point it at the badge and try again."
         }
         guard let cgImage = image.cgImage else {
             return "Could not read the captured frame."

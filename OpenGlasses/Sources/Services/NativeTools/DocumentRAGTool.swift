@@ -11,7 +11,7 @@ struct DocumentRAGTool: NativeTool {
     Build and search a private on-device knowledge base of the user's documents. \
     Use 'query' to retrieve relevant passages from previously saved documents before answering \
     questions about a manual, contract, report, or any saved text — answer grounded in what comes back. \
-    Use 'ingest_scan' to capture and save a document the user is looking at through the glasses \
+    Use 'ingest_scan' to capture and save a document the user is looking at through the camera \
     ("remember this document", "save this manual"). Use 'ingest_text' to save provided/dictated text. \
     Use 'list' to see saved documents and 'forget' to delete one. All content stays on-device.
     """
@@ -132,7 +132,7 @@ struct DocumentRAGTool: NativeTool {
         do {
             photoData = try await camera.capturePhoto()
         } catch {
-            return "Could not capture from the glasses camera: \(error.localizedDescription). Make sure glasses are connected."
+            return "Could not capture from the camera: \(error.localizedDescription)"
         }
 
         let result = await ocrService.recognizeText(in: photoData)

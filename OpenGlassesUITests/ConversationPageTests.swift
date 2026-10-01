@@ -27,7 +27,7 @@ final class ConversationPageTests: AccessibilityAuditCase {
 
     func testPickingAConversationShowsWhatWasSaidInIt() {
         let app = launch([.configured, .seedConversations])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         openConversationPage(app)
         let header = conversationHeader(app)
@@ -60,7 +60,7 @@ final class ConversationPageTests: AccessibilityAuditCase {
     /// offers to carry on with it. Taking the offer has to render the conversation too.
     func testCarryingOnWithTheLastConversationShowsIt() {
         let app = launch([.configured, .seedConversations])
-        awaitScreen(app.tabBars.buttons["Voice"], named: "The tab bar")
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         openConversationPage(app)
         let carryOn = app.buttons.matching(

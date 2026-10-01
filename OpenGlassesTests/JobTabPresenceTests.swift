@@ -86,8 +86,9 @@ final class JobTabPresenceTests: XCTestCase {
         XCTAssertEqual(JobTabPresence.tabs(for: .undetermined), [.voice, .modes, .chat, .settings])
     }
 
-    func testTabsWithTheJobTabPutItBetweenChatAndSettings() {
-        XCTAssertEqual(JobTabPresence.tabs(for: .shown), [.voice, .modes, .chat, .job, .settings])
+    /// Jobs sits beside the modes that shape the work, before History.
+    func testTabsWithTheJobTabPutItBetweenModesAndHistory() {
+        XCTAssertEqual(JobTabPresence.tabs(for: .shown), [.voice, .modes, .job, .chat, .settings])
     }
 
     // MARK: - The selection when it goes away

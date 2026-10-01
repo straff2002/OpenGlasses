@@ -9,7 +9,7 @@ struct StudyTool: NativeTool {
 
     let description = """
     Study Mode — turn a document into flashcards + a quiz and review hands-free. Actions: scan (capture a \
-    page through the glasses camera via OCR — repeat for multiple pages, then make_deck), make_deck \
+    page through the camera via OCR — repeat for multiple pages, then make_deck), make_deck \
     (generate a deck from the scanned pages, a document name via 'deck', or raw 'text'), list (your decks), \
     quiz (start a quiz on a deck), answer (answer the current question via 'value' — a number or the option \
     text), review (start spaced-repetition flashcard review), flip (reveal the current card's back), grade \

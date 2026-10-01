@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Root tab view — Voice / Modes / Chat / Settings, with a Job tab for Field Assist.
@@ -57,36 +58,36 @@ struct MainView: View {
         ZStack {
             TabView(selection: $selectedTab) {
                 // Declared in `MainTab.displayOrder`; keep the two in step.
-                Tab("Voice", systemImage: "waveform", value: MainTab.voice) {
+                Tab(MainTab.voice.title, image: MainTab.voice.assetImage ?? "AvenkinSymbol",
+                    value: MainTab.voice) {
                     VoiceTab()
                 }
 
                 // The Field Assist edition hides the other modes and chat from the technician
                 // (Plan CT 3b, `EditionPresentation.hiddenTabs`); an administrator session shows them.
                 if !restricted {
-                    Tab("Modes", systemImage: "person.2.fill", value: MainTab.modes) {
+                    Tab(MainTab.modes.title, systemImage: MainTab.modes.systemImage, value: MainTab.modes) {
                         NavigationStack {
                             PersonaPickerTab(appState: appState)
                         }
                     }
                 }
 
-                if !restricted {
-                    Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
-                        ChatListView()
-                    }
-                }
-
                 // Field Assist only, and only once the entitlement is a real answer — see
-                // `jobTabPresence`. It sits here rather than at the end because Settings is the
-                // drawer everything else is kept out of, and the job is content.
+                // `jobTabPresence`. The work sits beside the modes that shape it, ahead of history.
                 if jobTabPresence.showsTab {
                     Tab(MainTab.job.title, systemImage: MainTab.job.systemImage, value: MainTab.job) {
                         JobTab()
                     }
                 }
 
-                Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
+                if !restricted {
+                    Tab(MainTab.chat.title, systemImage: MainTab.chat.systemImage, value: MainTab.chat) {
+                        ChatListView()
+                    }
+                }
+
+                Tab(MainTab.settings.title, systemImage: MainTab.settings.systemImage, value: MainTab.settings) {
                     NavigationStack {
                         SettingsView(appState: appState)
                     }
@@ -157,6 +158,18 @@ struct MainView: View {
                 prompt: request.prompt,
                 onCapture: { appState.handlePhoneCapture($0) },
                 onCancel: { appState.phoneCameraRequest = nil }
+            )
+        }
+        // Plan GV: a camera tool waiting on the user's phone photo. From the root, like the manual
+        // figure below, because a spoken turn can ask for it on any tab. A swipe-down is a cancel.
+        .sheet(item: Binding(get: { appState.toolPhotoRequest },
+                             set: { if $0 == nil { appState.dismissToolPhotoRequest() } })) { request in
+            PhoneCameraView(
+                prompt: "",
+                hint: request.hint,
+                onCapture: { appState.phonePhotos.fulfil(request.id, data: $0) },
+                onCancel: { appState.phonePhotos.cancel(request.id) },
+                onPresented: { appState.phonePhotos.notePresented(request.id) }
             )
         }
         .sheet(item: $appState.pendingSiriContent) { link in
