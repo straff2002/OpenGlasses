@@ -113,6 +113,32 @@ enum MicRoutePolicy {
         return options
     }
 
+    /// Plan GU §1 — the idle listener on the **phone** mic, whatever the conversation route is.
+    ///
+    /// A2DP output and no hands-free option: with `.playAndRecord` this lets a paired Bluetooth
+    /// device stay the *output* in full quality while capture comes from the phone's own mic, and
+    /// — the point of it — nothing asks iOS to move the glasses (or AirPods) onto the narrowband
+    /// call link while the app is only waiting. Mixable, because waiting must not pause anybody's
+    /// podcast. Phone-only setups get the same set: A2DP output is harmless with no Bluetooth
+    /// device, and the old phone options gave the system no Bluetooth output at all, which can
+    /// pull a headphone podcast onto the loudspeaker while the listener runs.
+    static func idleCategoryOptions(for route: MicRoute) -> AVAudioSession.CategoryOptions {
+        [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers]
+    }
+
+    /// Plan GU §2 — the session for a conversation on `route`: non-mixable (it pauses other
+    /// audio, as before), the route's Bluetooth options, and on a Bluetooth route
+    /// `.bluetoothHighQualityRecording`, which keeps a route that supports it (some AirPods) in
+    /// full bandwidth both ways and falls back to HFP where it does not. That option needs mode
+    /// `.default`, which is the mode conversations already use.
+    static func conversationCategoryOptions(for route: MicRoute) -> AVAudioSession.CategoryOptions {
+        var options = categoryOptions(for: route, mixWithOthers: false)
+        if route != .phone {
+            options.insert(.bluetoothHighQualityRecording)
+        }
+        return options
+    }
+
     /// Which of the session's available inputs to prefer, as an index into
     /// `ports` (nil = leave the system default alone).
     ///

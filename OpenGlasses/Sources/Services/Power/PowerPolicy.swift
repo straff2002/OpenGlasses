@@ -54,6 +54,12 @@ enum PowerPosture: Int, Comparable, CaseIterable, Equatable {
     var prefersSmallerLocalModel: Bool { self >= .conserve }
     /// A continuous stream (or live-session start) needs explicit user confirmation first.
     var requiresConfirmationBeforeStream: Bool { self == .reserve }
+    /// Plan GU §6 — the wake-word speech gate uses its stricter thresholds (a higher onset over the
+    /// noise floor, a shorter recognition tail), so less speech-shaped noise wakes the recognizer.
+    var prefersStrictWakeGate: Bool { self >= .conserve }
+    /// Plan GU §6 — a *glasses* idle-listening choice is overridden to the phone mic, saving the
+    /// glasses' radio. Never applies to a conversation, only to waiting.
+    var prefersPhoneWakeMic: Bool { self == .reserve }
 
     /// Multiplier on a live-mode frame-forwarding interval — the posture's lever on the biggest
     /// continuous spender. `1.0` = full rate; higher = fewer frames. Mirrors the shape of Plan W's

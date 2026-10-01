@@ -21,6 +21,7 @@ final class ConversationStartSequenceTests: XCTestCase {
             markListening: { log.value.append("markListening") },
             snapshotNowPlaying: { log.value.append("snapshotNowPlaying") },
             pauseOtherAudio: { log.value.append("pauseOtherAudio") },
+            handOffMic: { log.value.append("handOffMic") },
             playAcknowledgmentTone: { log.value.append("playAcknowledgmentTone") },
             startRecording: { log.value.append("startRecording") },
             updateLiveActivity: { log.value.append("updateLiveActivity") }
@@ -34,6 +35,7 @@ final class ConversationStartSequenceTests: XCTestCase {
         "markListening",
         "snapshotNowPlaying",
         "pauseOtherAudio",
+        "handOffMic",
         "playAcknowledgmentTone",
         "startRecording",
         "updateLiveActivity",
@@ -67,5 +69,19 @@ final class ConversationStartSequenceTests: XCTestCase {
         await ConversationStartSequence.run(recordingDeps(into: log, engineFails: true))
         XCTAssertEqual(log.value, Self.expectedOrder,
                        "a throwing engine bring-up is swallowed; every later stage still runs")
+    }
+
+    /// Plan GU §2: the route switch comes after the pause (which asks for the conversation mic)
+    /// and strictly before the tone — the tone means "talk now" on a mic that is live.
+    func testMicHandOffPrecedesTheToneAndFollowsThePause() async {
+        let log = Box<[String]>([])
+        await ConversationStartSequence.run(recordingDeps(into: log))
+        let pauseAt = log.value.firstIndex(of: "pauseOtherAudio")!
+        let handOffAt = log.value.firstIndex(of: "handOffMic")!
+        let toneAt = log.value.firstIndex(of: "playAcknowledgmentTone")!
+        let recordAt = log.value.firstIndex(of: "startRecording")!
+        XCTAssertLessThan(pauseAt, handOffAt)
+        XCTAssertLessThan(handOffAt, toneAt, "never a tone before the mic is live")
+        XCTAssertLessThan(handOffAt, recordAt, "dictation attaches only after the hand-off")
     }
 }
