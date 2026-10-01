@@ -1,6 +1,29 @@
 # Plan GT — Weather from WeatherKit
 
-**Status:** 📋 Planned 2026-10-01 — one PR (P0–P2); P3 is device checks.
+**Status:** ✅ Shipped 2026-10-01 — P0–P2 in one PR: the WeatherKit entitlement (spec, committed
+and personal-example entitlements, setup-script patch, generate-time warning); the pure core
+(`WeatherReport`, `WeatherUnits`, `WeatherConditionPhrase`, `RainOutlook`, `WeatherAlertDigest`,
+`WeatherPhraser`, `WeatherLocationPrecision`); `WeatherKitProvider`; `get_weather` and My Day's
+weather on the provider seam; the Apple Weather mark and legal link in My Day, chat and Settings →
+Works with your iPhone → About Weather Data; Open-Meteo removed from the app, the privacy manifest
+and the privacy page; 52 headless tests. Decisions taken as listed below. **Owed (P3, device):** a
+signed build answers weather now the capability and App Service are live (expect refusals for a
+while after activation); a minute-forecast region and one without; an active alert; US units and a
+Fahrenheit override; the mark in light and dark mode and the Legal link; airplane mode.
+
+**As built — where the code differs from the draft below:**
+- The test classes are grouped: `WeatherUnitsTests`, `RainOutlookTests`, `WeatherAlertDigestTests`
+  and `WeatherPhraserTests` (coarsening, intensity conversion and failure sentences included) live
+  in `WeatherCoreTests.swift`; the "no Open-Meteo" checks and the route check are part of
+  `WeatherKitEntitlementGuardTests` rather than a separate `NoOpenMeteoGuardTests`.
+- A rain change must hold for 3 minutes; "about N minutes" is rounded to 5 from 10 minutes up.
+- Today's line adds "N% chance of precipitation" from 30 %; the third day is named by weekday.
+- `WeatherTool.lookUp(args:)` is My Day's entry point and does not record a chat thread;
+  `execute` does, through `onAnswered`. My Day under Medical Local Only now shows "Weather is off
+  while Medical Local Only is on." — before, the refusal sentence was displayed as the forecast.
+- The attribution and the mark are not fetched under Medical Local Only; the fallback credit (the
+  service name as text and Apple's legal page) is drawn instead.
+- `privacy.html`'s effective date moves to 1 October 2026.
 **Replaces:** the Open-Meteo client inside `get_weather` (`NativeTools/WeatherTool.swift`).
 **Related:** Plan [GS](GS-spotify-control.md) (the rule that a system framework making its own
 request gets no `NetworkRoute`), Plan [GI](GI-health-summaries.md) (how a new entitlement is added
