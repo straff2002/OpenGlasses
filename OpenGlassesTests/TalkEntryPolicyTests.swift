@@ -123,4 +123,134 @@ final class TalkEntryPolicyTests: XCTestCase {
         use.linkChanged(.addedDisconnected)
         XCTAssertTrue(use.voiceInputAvailable, "the glasses went away; the phone is the device again")
     }
+
+    // MARK: - Session card mode dot
+
+    /// Device feedback: the dot before "Mode: Avenkin" tracked the glasses (green on, grey off) in a
+    /// sentence that never mentions them. Muted always wins — the session may be perfectly healthy,
+    /// the wearer just turned the input off.
+    func testMutedWinsOverEveryRealtimePhase() {
+        for phase: SessionCardRealtimePhase in [.disconnected, .connecting, .settingUp, .ready, .error] {
+            for sessionActive in [false, true] {
+                for reconnecting in [false, true] {
+                    XCTAssertEqual(.muted, SessionCardModeDot.realtime(sessionActive: sessionActive,
+                                                                       phase: phase, muted: true,
+                                                                       reconnecting: reconnecting))
+                }
+            }
+        }
+        XCTAssertEqual(.muted, SessionCardModeDot.direct(muted: true))
+    }
+
+    func testRealtimeBeforeOrAfterATurnReadsReadyAsActive() {
+        // `session.isActive == false`: the card's own headline already reads "Ready" — the dot
+        // must not disagree with the sentence beside it.
+        for phase: SessionCardRealtimePhase in [.disconnected, .connecting, .settingUp, .ready, .error] {
+            XCTAssertEqual(.active, SessionCardModeDot.realtime(sessionActive: false, phase: phase,
+                                                                muted: false, reconnecting: false))
+        }
+    }
+
+    func testRealtimeListeningSpeakingAndLinkingUpAreAllActive() {
+        for phase: SessionCardRealtimePhase in [.ready, .connecting, .settingUp] {
+            XCTAssertEqual(.active, SessionCardModeDot.realtime(sessionActive: true, phase: phase,
+                                                                muted: false, reconnecting: false))
+        }
+    }
+
+    func testRealtimeErrorIsAlwaysError() {
+        XCTAssertEqual(.error, SessionCardModeDot.realtime(sessionActive: true, phase: .error,
+                                                           muted: false, reconnecting: false))
+    }
+
+    func testRealtimeDisconnectedIsOfflineUnlessItIsRetrying() {
+        XCTAssertEqual(.offline, SessionCardModeDot.realtime(sessionActive: true, phase: .disconnected,
+                                                             muted: false, reconnecting: false))
+        // Reconnecting: the row already reads "Reconnecting…" — the dot stays active rather than
+        // repeating the sentence beside it in grey.
+        XCTAssertEqual(.active, SessionCardModeDot.realtime(sessionActive: true, phase: .disconnected,
+                                                            muted: false, reconnecting: true))
+    }
+
+    func testDirectVoiceHasNoOfflineOrErrorTier() {
+        XCTAssertEqual(.active, SessionCardModeDot.direct(muted: false))
+    }
+
+    func testModeDotTintAndPrefix() {
+        XCTAssertEqual(SessionCardModeDot.active.tint, .ok)
+        XCTAssertEqual(SessionCardModeDot.muted.tint, .warn)
+        XCTAssertEqual(SessionCardModeDot.error.tint, .error)
+        XCTAssertEqual(SessionCardModeDot.offline.tint, .quiet)
+
+        XCTAssertTrue(SessionCardModeDot.active.readsAsActiveMode)
+        for dot: SessionCardModeDot in [.muted, .error, .offline] {
+            XCTAssertFalse(dot.readsAsActiveMode, "\(dot)")
+        }
+    }
+
+    // MARK: - Session card glasses pill
+
+    func testNeverAddedGlassesShowNoPillInAnyPhaseOrStandDown() {
+        for link in everyPhase {
+            for stoodDown in [false, true] {
+                XCTAssertNil(SessionCardGlassesPill.presentation(link: link, stoodDown: stoodDown,
+                                                                  everAdded: false),
+                             "\(link)/\(stoodDown): never added means no pill at all")
+            }
+        }
+    }
+
+    func testConnectedAndInUseReadsAttached() {
+        let presentation = SessionCardGlassesPill.presentation(link: .connected, stoodDown: false,
+                                                                everAdded: true)
+        XCTAssertEqual(presentation, .init(word: "Glasses attached", tint: .ok, showsLiveDot: true,
+                                           action: .disconnect,
+                                           accessibilityHint: "Double-tap to disconnect the glasses."))
+    }
+
+    func testStoodDownReadsPausedAndResumesOnTap() {
+        let presentation = SessionCardGlassesPill.presentation(link: .connected, stoodDown: true,
+                                                                everAdded: true)
+        XCTAssertEqual(presentation, .init(word: "Glasses paused", tint: .quiet, showsLiveDot: false,
+                                           action: .resume,
+                                           accessibilityHint: "Double-tap to resume the glasses."))
+    }
+
+    func testConnectingReadsConnectingAndDoesNothingOnTap() {
+        let presentation = SessionCardGlassesPill.presentation(link: .connecting, stoodDown: false,
+                                                                everAdded: true)
+        XCTAssertEqual(presentation, .init(word: "Connecting…", tint: .warn, showsLiveDot: false,
+                                           action: .none,
+                                           accessibilityHint: "Glasses are linking up."))
+    }
+
+    /// The regression this pill redesign exists for: away (added, not connecting) must never carry
+    /// the connect-and-wait action — only a plain hint.
+    func testAddedButUnreachableReadsAwayAndOnlyHints() {
+        for link: GlassesConnectionPhase in [.addedDisconnected, .noGlassesAdded] {
+            let presentation = SessionCardGlassesPill.presentation(link: link, stoodDown: false,
+                                                                    everAdded: true)
+            XCTAssertEqual(presentation,
+                           .init(word: "Glasses away", tint: .quiet, showsLiveDot: false,
+                                 action: .hint,
+                                 accessibilityHint: "Double-tap for help reconnecting the glasses."),
+                           "\(link)")
+        }
+    }
+
+    func testEveryPresentationsAccessibilityLabelMatchesItsVisibleWord() {
+        for link in everyPhase {
+            for stoodDown in [false, true] {
+                guard let presentation = SessionCardGlassesPill.presentation(
+                    link: link, stoodDown: stoodDown, everAdded: true) else { continue }
+                XCTAssertEqual(presentation.accessibilityLabel, presentation.word, "\(link)/\(stoodDown)")
+            }
+        }
+    }
+
+    func testAwayHintNamesWhatToDoNotTheSDKsInternalState() {
+        XCTAssertFalse(SessionCardGlassesPill.awayHint.contains("state"),
+                       "must never read like the SDK's own diagnostic text")
+        XCTAssertTrue(SessionCardGlassesPill.awayHint.localizedCaseInsensitiveContains("Meta AI"))
+    }
 }
