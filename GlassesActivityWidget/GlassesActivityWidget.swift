@@ -92,7 +92,9 @@ struct GlassesActivityWidget: Widget {
 
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<GlassesActivityAttributes>) -> some View {
-        VStack(spacing: 8) {
+        let plan = LockScreenActivityLayout.plan(availableActions: actionItems(for: context.state).count,
+                                                 isConnected: context.state.isConnected)
+        VStack(spacing: LockScreenActivityLayout.sectionSpacing) {
             HStack(spacing: 12) {
                 ZStack(alignment: .bottomTrailing) {
                     LogoIcon(size: 30)
@@ -102,11 +104,12 @@ struct GlassesActivityWidget: Widget {
                         .frame(width: 8, height: 8)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: LockScreenActivityLayout.headerStatusSpacing) {
                     HStack {
                         Text(statusText(for: context.state))
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
                         Spacer()
                         if let battery = context.state.batteryLevel {
                             HStack(spacing: 2) {
@@ -146,20 +149,78 @@ struct GlassesActivityWidget: Widget {
             }
 
             // Quick actions — always shown so the Lock Screen stays useful even when the
-            // glasses are disconnected (most actions just open the app via deep link).
-            // Disconnected, the Connect row takes the vertical budget the second action
-            // row would have used — four capsule rows do not fit the Lock Screen slot.
-            actionButtons(for: context.state, compact: false,
-                          maxRows: context.state.isConnected ? 2 : 1)
-            if !context.state.isConnected {
-                chunkyLink(label: "Connect Glasses",
-                           icon: "antenna.radiowaves.left.and.right",
-                           url: DeepLinkTrust.signedURL("openglasses://connect")!,
-                           tint: AccentColors.aiCoral, strong: true, filled: true)
+            // glasses are disconnected (most actions just open the app via deep link). One row,
+            // never two: the Lock Screen slot is a hard height and a 2 × 2 grid had its bottom row
+            // cut off on a phone (`LockScreenActivityLayout`). Disconnected, Connect leads the
+            // row in the place an action would have taken.
+            lockScreenActionRow(for: context.state, plan: plan)
+        }
+        .padding(LockScreenActivityLayout.outerPadding)
+        .background(Color.black.opacity(0.6))
+        // The slot's height does not grow with the text, so the text cannot grow without limit
+        // either: past xLarge the row would push past the Lock Screen's cut-off again. The app
+        // itself, where nothing is clipped, carries the full range.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+    }
+
+    @ViewBuilder
+    private func lockScreenActionRow(for state: GlassesActivityAttributes.ContentState,
+                                     plan: LockScreenActivityLayout.Plan) -> some View {
+        let items = Array(actionItems(for: state).prefix(plan.actionCount))
+        HStack(spacing: 8) {
+            if plan.showsConnect {
+                rowButton(label: "Connect", icon: "antenna.radiowaves.left.and.right",
+                          url: DeepLinkTrust.signedURL("openglasses://connect")!,
+                          tint: AccentColors.aiCoral, strong: true, filled: true,
+                          style: plan.style)
+            }
+            ForEach(items) { item in
+                rowButton(label: item.label, icon: item.icon, url: item.url,
+                          tint: item.accent ? AccentColors.aiCoral : .white, strong: item.accent,
+                          style: plan.style)
             }
         }
-        .padding(12)
-        .background(Color.black.opacity(0.6))
+    }
+
+    /// One button of the Lock Screen row: a glyph over a one-line caption when the row holds three
+    /// or four, beside it when one or two. At least 44 pt tall either way.
+    @ViewBuilder
+    private func rowButton(label: String, icon: String, url: URL, tint: Color, strong: Bool,
+                           filled: Bool = false,
+                           style: LockScreenActivityLayout.ButtonStyle) -> some View {
+        Link(destination: url) {
+            Group {
+                if style == .glyphOverLabel {
+                    VStack(spacing: LockScreenActivityLayout.glyphCaptionSpacing) {
+                        Image(systemName: icon)
+                            .font(.callout.weight(.semibold))
+                        Text(label)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                } else {
+                    HStack(spacing: 7) {
+                        Image(systemName: icon)
+                            .font(.callout.weight(.semibold))
+                        Text(label)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
+            }
+            .foregroundStyle(filled ? AccentColors.onAiCoral : .white)
+            .frame(maxWidth: .infinity, minHeight: LockScreenActivityLayout.minimumButtonHeight
+                   - LockScreenActivityLayout.buttonVerticalPadding * 2)
+            .padding(.vertical, LockScreenActivityLayout.buttonVerticalPadding)
+            .padding(.horizontal, 6)
+            .background(filled ? tint : tint.opacity(strong ? 0.30 : 0.16),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(filled ? 0 : (strong ? 0.55 : 0.18)), lineWidth: 1))
+        }
+        .accessibilityLabel(label)
     }
 
     // MARK: - Action Buttons
@@ -174,16 +235,16 @@ struct GlassesActivityWidget: Widget {
     }
 
     /// Quick actions take priority (incl. the built-in Field Assist action), then personas,
-    /// then a generic Ask/Photo fallback. Capped at 4 for the chunky grid.
+    /// then a generic Ask/Photo fallback. Capped at 4 — the Lock Screen row's most.
     private func actionItems(for state: GlassesActivityAttributes.ContentState) -> [ActionItem] {
         if !state.quickActionButtons.isEmpty {
-            return state.quickActionButtons.prefix(4).map {
+            return state.quickActionButtons.prefix(LockScreenActivityLayout.maxButtons).map {
                 ActionItem(id: $0.id, label: $0.label, icon: $0.icon,
                            url: DeepLinkTrust.signedURL("openglasses://quickaction/\($0.id)")!,
                            accent: $0.id == "field-assist")
             }
         } else if !state.personaButtons.isEmpty {
-            return state.personaButtons.prefix(4).map {
+            return state.personaButtons.prefix(LockScreenActivityLayout.maxButtons).map {
                 ActionItem(id: $0.id, label: $0.name, icon: "person.fill",
                            url: DeepLinkTrust.signedURL("openglasses://persona/\($0.id)")!, accent: false)
             }
@@ -197,72 +258,22 @@ struct GlassesActivityWidget: Widget {
         }
     }
 
+    /// The Dynamic Island's slim single row (space-constrained). The Lock Screen draws its own
+    /// row — `lockScreenActionRow`.
     @ViewBuilder
-    private func actionButtons(for state: GlassesActivityAttributes.ContentState, compact: Bool,
-                               maxRows: Int = 2) -> some View {
-        let items = Array(actionItems(for: state).prefix(maxRows * 2))
-        if compact {
-            // Dynamic Island: slim single row (space-constrained).
-            HStack(spacing: 6) {
-                ForEach(items.prefix(3)) { item in
-                    Link(destination: item.url) {
-                        Label(item.label, systemImage: item.icon)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background((item.accent ? AccentColors.aiCoral : .white).opacity(0.22), in: Capsule())
-                    }
+    private func actionButtons(for state: GlassesActivityAttributes.ContentState,
+                               compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            ForEach(actionItems(for: state).prefix(3)) { item in
+                Link(destination: item.url) {
+                    Label(item.label, systemImage: item.icon)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background((item.accent ? AccentColors.aiCoral : .white).opacity(0.22), in: Capsule())
                 }
             }
-        } else {
-            // Lock Screen: chunky capsule buttons, two per row.
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    if items.indices.contains(0) { chunkyButton(items[0]) }
-                    if items.indices.contains(1) { chunkyButton(items[1]) }
-                }
-                if items.count > 2 {
-                    HStack(spacing: 8) {
-                        chunkyButton(items[2])
-                        if items.indices.contains(3) {
-                            chunkyButton(items[3])
-                        } else {
-                            Color.clear.frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func chunkyButton(_ item: ActionItem) -> some View {
-        chunkyLink(label: item.label, icon: item.icon, url: item.url,
-                   tint: item.accent ? AccentColors.aiCoral : .white, strong: item.accent)
-    }
-
-    /// Shared full-width, ~44pt-tall capsule button (used by quick actions and Connect).
-    /// `filled` is the primary-action form: a solid `tint` ground with the app's on-accent label
-    /// rule, rather than a wash of the tint under white text.
-    @ViewBuilder
-    private func chunkyLink(label: String, icon: String, url: URL, tint: Color, strong: Bool,
-                            filled: Bool = false) -> some View {
-        Link(destination: url) {
-            HStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.callout.weight(.semibold))
-                Text(label)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            .foregroundStyle(filled ? AccentColors.onAiCoral : .white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 10)
-            .background(filled ? tint : tint.opacity(strong ? 0.30 : 0.16), in: Capsule())
-            .overlay(Capsule().strokeBorder(tint.opacity(filled ? 0 : (strong ? 0.55 : 0.18)), lineWidth: 1))
         }
     }
 

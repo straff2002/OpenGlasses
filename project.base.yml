@@ -244,6 +244,8 @@ targets:
       # Shared with the main app — the widget stamps the deep-link trust token that the
       # app requires on any link that acts (capture, listen, quick action).
       - path: OpenGlasses/Sources/Shared/DeepLinkTrust.swift
+      # Shared with the main app's tests — the Lock Screen row's layout and height budget.
+      - path: OpenGlasses/Sources/Shared/LockScreenActivityLayout.swift
     entitlements:
       path: GlassesActivityWidget/GlassesActivityWidget.entitlements
       properties:
