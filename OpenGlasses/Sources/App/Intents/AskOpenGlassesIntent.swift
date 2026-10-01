@@ -105,12 +105,14 @@ struct OpenGlassesShortcuts: AppShortcutsProvider {
                 "\(.applicationName) listen"
             ],
             shortTitle: "Ask Avenkin",
-            // The app logo as a custom SF Symbol (Assets: OpenGlassesSymbol.symbolset). The
+            // The Avenkin mark as a custom SF Symbol template (Assets: AvenkinSymbol.symbolset —
+            // Ultralight/Regular/Black small sources plus Regular medium, so every weight and
+            // scale interpolates). The
             // metadata processor embeds referenced custom symbols so system surfaces (Action
             // button pane, Shortcuts) can render them. A "?" on those surfaces is iOS's stale
             // shortcut-metadata cache (dev-reinstall churn) — restart the phone, don't blame
             // the symbol: the "?" appeared even for plain "mic.fill".
-            systemImageName: "OpenGlassesSymbol"
+            systemImageName: "AvenkinSymbol"
         )
         AppShortcut(
             intent: TakePhotoIntent(),
