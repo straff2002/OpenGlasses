@@ -3174,6 +3174,22 @@ class AppState: ObservableObject, AppStateProtocol {
         // Nor after the wearer's Disconnect: a Bluetooth route flip can bring the service's own
         // restart round while the glasses' link never dropped, so it asks about the stand-down too.
         wakeWordService.glassesStoodDown = { [weak self] in self?.glassesStoodDown ?? false }
+        // Plan GU: where the idle listener waits (`WakeListenPolicy`) reads the live switches, and
+        // a turn's mic (`TurnMicHandoff`) reads the glasses' stand-down and worn state.
+        wakeWordService.wakeListenInputs = { [weak self] in
+            WakeListenPolicy.Inputs(
+                listeningEnabled: Config.listeningEnabled,
+                silentMode: Config.silentMode,
+                micMuted: self?.micMuted ?? false,
+                voiceInputAvailable: self?.voiceInputAvailable() ?? true,
+                wakeListenMic: Config.wakeListenMic,
+                micRoute: Config.micRoute,
+                posture: PowerPolicyService.shared.posture,
+                speechGateEnabled: Config.wakeSpeechGateEnabled)
+        }
+        wakeWordService.glassesTurnState = { [weak self] in
+            (stoodDown: self?.glassesStoodDown ?? false, worn: self?.glassesService.isWorn)
+        }
 
         wakeWordService.onWakeWordDetected = { [weak self] matchedPhrase in
             Task { @MainActor in
@@ -5314,6 +5330,7 @@ class AppState: ObservableObject, AppStateProtocol {
             markListening: { [self] in isListening = true },
             snapshotNowPlaying: { [self] in nowPlayingAtStart = NowPlayingSnapshot.current() },
             pauseOtherAudio: { [self] in await wakeWordService.pauseOtherAudio() },
+            handOffMic: { [self] in await wakeWordService.handOffMic() },
             playAcknowledgmentTone: { [self] in speechService.playAcknowledgmentTone() },
             startRecording: { [self] in transcriptionService.startRecording() },
             updateLiveActivity: { [self] in updateLiveActivity() }
@@ -5380,6 +5397,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 return
             }
             // Someone else ended the conversation while we were suspended; they own the teardown.
+            guard inConversation else { return }
+            // Plan GU §4: after a full-quality reply the hands-free link was released; take it
+            // back (switch first, then listen) before the follow-up records.
+            await wakeWordService.retakeConversationMicIfReleased()
             guard inConversation else { return }
             isListening = true
             // CO Item 4: if what we just said was a question, give the user room to think before
@@ -6497,6 +6518,14 @@ class AppState: ObservableObject, AppStateProtocol {
         Task {
             wakeWordService.stopListening()
             try? await Task.sleep(nanoseconds: 300_000_000)
+            // Plan GU: a changed mic setting must reach the idle session itself, not just the
+            // listener — re-apply the idle plan when the app is idle and holds a session.
+            if wakeWordService.appliedIdlePlan != nil,
+               GlassesAudioHandoffPolicy.mayHandOff(inConversation: inConversation, isListening: isListening,
+                                                     isProcessing: isProcessing,
+                                                     isSpeaking: speechService.isSpeaking) {
+                await wakeWordService.reconfigureAudioSession()
+            }
             await startWakeWordIfListeningEnabled(PrivacyToken("settingsChanged"))
         }
     }
@@ -6579,13 +6608,33 @@ class AppState: ObservableObject, AppStateProtocol {
     /// With .playAndRecord audio session (Bluetooth HFP), mic works during TTS.
     private func startStopListener() {
         wakeWordService.listenForStop = true
+        let replyRoute = currentReplyRoute()
         Task {
+            // Plan GU §4: "Reply audio" — full quality releases the hands-free link before the
+            // stop listener starts, so the listener runs on the phone mic. Call quality (the
+            // default) changes nothing.
+            await wakeWordService.applyReplyRoute(replyRoute)
             do {
                 try await wakeWordService.startListening()
             } catch {
                 PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
             }
         }
+    }
+
+    /// How the next reply plays (`ReplyRoutePolicy`): the "Reply audio" setting, the measured switch
+    /// time for the device the conversation is on, and the exclusions.
+    private func currentReplyRoute() -> ReplyRoute {
+        guard inConversation, let route = wakeWordService.turnMicRoute else { return .holdCallLink }
+        let decision = ReplyRoutePolicy.decide(.init(
+            mode: Config.replyAudioMode,
+            measuredSwitchSeconds: wakeWordService.measuredSwitchSeconds(),
+            thresholdSeconds: Config.replySwitchTimeLimit,
+            conversationRoute: route,
+            displayGlasses: glassesDisplay.isDisplayActive,
+            realtime: geminiLiveSession.isActive || openAIRealtimeSession.isActive,
+            carPlay: wakeWordService.carPlayMode))
+        return decision
     }
 
     /// Stop the stop-detection listener before resuming normal flow
@@ -6971,11 +7020,14 @@ class AppState: ObservableObject, AppStateProtocol {
         await handleWakeWordDetected(manual: true)
     }
 
-    /// Whether the always-on wake-word listener runs by design — the only thing an automatic
-    /// stand-down exists to release (`GlassesSleepPolicy`).
-    private var alwaysOnListening: Bool {
-        GlassesSleepPolicy.alwaysOnListening(listeningEnabled: listeningEnabled,
-                                             silentMode: Config.silentMode)
+    /// Whether the always-on wake-word listener holds the glasses' own mic open — the only thing
+    /// an automatic stand-down exists to release (`GlassesSleepPolicy`). With idle listening on
+    /// the iPhone (Plan GU, the default) it does not, and nothing stands down on its own.
+    private var idleHoldsGlassesMic: Bool {
+        GlassesSleepPolicy.holdsGlassesMic(
+            alwaysOnListening: GlassesSleepPolicy.alwaysOnListening(listeningEnabled: listeningEnabled,
+                                                                    silentMode: Config.silentMode),
+            idleListensOnGlasses: wakeWordService.currentIdlePlan().holdsGlassesMic)
     }
 
     /// Start the silence countdown for idle glasses (`GlassesSleepPolicy`): only with the
@@ -6984,7 +7036,7 @@ class AppState: ObservableObject, AppStateProtocol {
         cancelAutoSleepTimer()
         let minutes = Config.autoSleepMinutes
         guard GlassesSleepPolicy.shouldArmSilenceSleep(
-            alwaysOnListening: alwaysOnListening, autoSleepMinutes: minutes,
+            holdsGlassesMic: idleHoldsGlassesMic, autoSleepMinutes: minutes,
             worn: glassesService.isWorn,
             sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
 
@@ -6995,7 +7047,7 @@ class AppState: ObservableObject, AppStateProtocol {
             self.autoSleepTask = nil
             // Re-checked here: they may have put the glasses on, or switched listening off.
             guard GlassesSleepPolicy.silenceSleepFires(
-                alwaysOnListening: self.alwaysOnListening, idle: self.glassesIdle,
+                holdsGlassesMic: self.idleHoldsGlassesMic, idle: self.glassesIdle,
                 inUse: self.isConnected, worn: self.glassesService.isWorn,
                 sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
             PrivacyLog.device(.glasses, .autoSleepFired, minutes: minutes)
@@ -7026,14 +7078,14 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         case false?:
             guard doffGraceTask == nil,
-                  GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: alwaysOnListening,
+                  GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: idleHoldsGlassesMic,
                                                       worn: false, inUse: isConnected) else { return }
             doffGraceTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(GlassesSleepPolicy.doffGraceSeconds * 1_000_000_000))
                 guard let self, !Task.isCancelled else { return }
                 self.doffGraceTask = nil
                 guard GlassesSleepPolicy.doffGraceApplies(
-                    alwaysOnListening: self.alwaysOnListening, worn: self.glassesService.isWorn,
+                    holdsGlassesMic: self.idleHoldsGlassesMic, worn: self.glassesService.isWorn,
                     inUse: self.isConnected) else { return }
                 self.addDebugEvent("Glasses taken off — standing down")
                 self.disconnectGlasses(reason: .automatic)
@@ -7102,15 +7154,40 @@ class AppState: ObservableObject, AppStateProtocol {
         manuallyTriggered = false
         pendingAgentTurn = false
         wakeWordService.listenForStop = false
-        // Resume podcasts/music after active listening
         let resumedMedia = nowPlayingAtStart
         nowPlayingAtStart = nil
-        await wakeWordService.resumeOtherAudio()
-        speechService.playDisconnectTone()
-        // Announce what's resuming (e.g. "Resuming Hardcore History by Dan Carlin")
-        if let media = resumedMedia {
-            await speechService.speak("Resuming \(media.displayName).")
-        }
+
+        // Plan GU §3 — the hand-back, in order (`TurnAudioRelease`): the app's own audio first
+        // (tone, then "Resuming <media>" — before the release, so it no longer re-pauses the app
+        // it names), then the engine down, then a real deactivation with notify so Podcasts or
+        // Music resume, then the re-arm into the idle plan — or nothing left running at all.
+        let decision = WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation))
+        let rearm = decision == .restart
+        // Push-to-talk re-arms "because they were just talking", but the listener refuses push-to-
+        // talk anyway — so the engine is wanted only when a listener will actually run.
+        let listenerWanted = rearm && !Config.silentMode
+        await TurnAudioRelease.run(.init(
+            playDisconnectTone: { [self] in speechService.playDisconnectTone() },
+            announceResumingMedia: { [self] in
+                // Announce what's resuming (e.g. "Resuming Hardcore History by Dan Carlin")
+                guard let media = resumedMedia else { return false }
+                await speechService.speak("Resuming \(media.displayName).")
+                return true
+            },
+            settle: {
+                try? await Task.sleep(nanoseconds: UInt64(TurnAudioRelease.toneSettleSeconds * 1_000_000_000))
+            },
+            stopRecognizerAndEngine: { [self] in
+                wakeWordService.stopConversationEngine(listenerWanted: listenerWanted)
+            },
+            handBack: { [self] in await wakeWordService.handBackConversationAudio() },
+            rearm: { [self] in
+                wakeRearmRetry?.cancel()
+                wakeRearmRetry = nil
+                await armWakeWord()
+            },
+            stayReleased: { [self] in wakeWordService.ensureReleasedAfterTurn() }
+        ), rearm: rearm)
         updateLiveActivity()
         // The saved conversation carries on: the next turn joins it (`JobThreadPolicy`). A new one
         // starts only on an explicit New conversation or after the idle gap, decided when the
@@ -7118,7 +7195,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // filed by thread id, so it lands with its question whatever happens here.
         guidedJobFlow.endThreadForVoiceReturn()
 
-        switch WakeRearmPolicy.decide(rearmInputs(wasInConversation: wasInConversation)) {
+        switch decision {
         case .skip(let reason):
             PrivacyLog.app(.listeningDisabled, detail: PrivacyToken(reason.rawValue))
             if reason.isRecoverable {
@@ -7126,9 +7203,7 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             return
         case .restart:
-            wakeRearmRetry?.cancel()
-            wakeRearmRetry = nil
-            await armWakeWord()
+            break   // re-armed inside the release, after the hand-back
         }
     }
 

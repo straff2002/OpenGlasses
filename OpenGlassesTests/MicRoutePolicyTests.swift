@@ -154,4 +154,30 @@ final class BluetoothRouteRecognitionTests: XCTestCase {
             XCTAssertTrue(MicRoutePolicy.containsBluetoothMic([port]), port.rawValue)
         }
     }
+
+    // MARK: - Plan GU: idle and conversation options
+
+    func testIdleIsA2DPWithoutHFPForEveryRoute() {
+        for route in MicRoute.allCases {
+            let options = MicRoutePolicy.idleCategoryOptions(for: route)
+            XCTAssertTrue(options.contains(.allowBluetoothA2DP), "\(route)")
+            XCTAssertFalse(options.contains(.allowBluetoothHFP), "never the call link while idle (\(route))")
+            XCTAssertFalse(options.contains(.bluetoothHighQualityRecording))
+            XCTAssertTrue(options.contains(.mixWithOthers), "waiting must not pause anybody's podcast")
+            XCTAssertTrue(options.contains(.defaultToSpeaker))
+        }
+    }
+
+    func testConversationOptionsAddHighQualityRecordingOnBluetoothRoutes() {
+        for route in [MicRoute.glasses, .headset] {
+            let options = MicRoutePolicy.conversationCategoryOptions(for: route)
+            XCTAssertTrue(options.contains(.bluetoothHighQualityRecording), "\(route)")
+            XCTAssertTrue(options.contains(.allowBluetoothHFP), "HFP stays the fallback")
+            XCTAssertTrue(options.contains(.allowBluetoothA2DP))
+            XCTAssertFalse(options.contains(.mixWithOthers), "a conversation pauses other audio")
+        }
+        let phone = MicRoutePolicy.conversationCategoryOptions(for: .phone)
+        XCTAssertEqual(phone, MicRoutePolicy.categoryOptions(for: .phone, mixWithOthers: false))
+        XCTAssertFalse(phone.contains(.bluetoothHighQualityRecording))
+    }
 }

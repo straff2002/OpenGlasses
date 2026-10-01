@@ -34,6 +34,14 @@ struct SpeechActivityGate {
         var minSilenceDuration: TimeInterval = 0.5
 
         static let `default` = Configuration()
+
+        /// Plan GU §5 — the idle wake-word gate over `EnergySpeechScorer`. The scorer maps its dB
+        /// thresholds onto these same two score levels, so the gate's onset/release mean "+onset
+        /// dB / +release dB over the noise floor". Shorter speech (0.10 s) than dictation: a wake
+        /// phrase starts with a short syllable and the pre-roll covers the lag. Shorter silence
+        /// too: the recognition tail (1.5 s) is what keeps the recognizer for a final partial.
+        static let wakeIdle = Configuration(onsetThreshold: 0.6, releaseThreshold: 0.35,
+                                            minSpeechDuration: 0.10, minSilenceDuration: 0.3)
     }
 
     enum Event: Equatable {

@@ -774,6 +774,10 @@ struct HardwarePrivacyView: View {
     @State private var glassesUpdateError: String?
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
+    // Plan GU — where the wake word waits, and how replies play.
+    @State private var wakeListenMic = Config.wakeListenMic
+    @State private var replyAudioMode = Config.replyAudioMode
+    @State private var replySwitchTimeLimit = Config.replySwitchTimeLimit
 
     /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
     /// swallowed: the whole point is that the user could not find this screen on their own, so a
@@ -815,6 +819,18 @@ struct HardwarePrivacyView: View {
         )
     }
 
+    /// What the chosen "Reply audio" means, in the wearer's terms.
+    private var replyAudioFootnote: String {
+        switch replyAudioMode {
+        case .callQuality:
+            return "Replies play over the glasses' call link, so you can always interrupt by speaking or saying stop."
+        case .fullQuality:
+            return "Replies play in full quality. To interrupt one, speak towards your iPhone — the glasses' mic is off while it plays. Each follow-up waits a moment longer while the glasses switch back."
+        case .automatic:
+            return "Full quality when your glasses switch fast enough, measured on these glasses; otherwise call quality. Until the switch has been measured, replies use call quality."
+        }
+    }
+
     var body: some View {
         Form {
             // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
@@ -822,6 +838,50 @@ struct HardwarePrivacyView: View {
             // say what the connected pair CAN do rather than letting the user find the limits
             // one failed feature at a time.
             Section {
+                // Plan GU: first in the glasses section, so it can be flipped per situation —
+                // phone in a bag → the glasses.
+                Picker("Listen for the wake word on", selection: $wakeListenMic) {
+                    ForEach(WakeListenMic.allCases) { mic in
+                        Text(mic.label).tag(mic)
+                    }
+                }
+                .onChange(of: wakeListenMic) { _, newValue in
+                    Config.setWakeListenMic(newValue)
+                    appState.restartWakeWordIfDirect()
+                }
+                Text("iPhone keeps music and podcasts on your glasses in full quality and saves their battery. Choose Same as Microphone if your phone is usually in a bag.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Reply audio", selection: $replyAudioMode) {
+                    ForEach(ReplyAudioMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .onChange(of: replyAudioMode) { _, newValue in
+                    Config.setReplyAudioMode(newValue)
+                }
+                if replyAudioMode == .automatic {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Switch time limit")
+                            Spacer()
+                            Text(String(format: "%.1f s", replySwitchTimeLimit))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $replySwitchTimeLimit,
+                               in: ReplyRoutePolicy.thresholdRange, step: 0.1)
+                            .accessibilityLabel("Switch time limit")
+                            .accessibilityValue(String(format: "%.1f seconds", replySwitchTimeLimit))
+                            .onChange(of: replySwitchTimeLimit) { _, newValue in
+                                Config.setReplySwitchTimeLimit(newValue)
+                            }
+                    }
+                }
+                Text(replyAudioFootnote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 if let tier = connectedTier {
                     LabeledContent("Device class", value: tier.label)
                     Text(tier.summary)
@@ -859,7 +919,7 @@ struct HardwarePrivacyView: View {
                         get: { Config.sleepWhenQuietWhileWorn },
                         set: { Config.sleepWhenQuietWhileWorn = $0 }
                     ),
-                    info: "Only while the wake word is listening — that is what keeps the glasses' mic open. Glasses you take off sleep after 30 seconds and wake when you put them back on. Glasses you're wearing stay awake however quiet it gets, unless this is on: then they also sleep after \(Config.autoSleepMinutes) minutes of silence, and wake when you take them off and put them on again, or tap to talk. Glasses that can't tell whether they're worn always sleep after that much silence. With push-to-talk, or listening off, nothing is held open and the glasses never sleep."
+                    info: "Only while the wake word listens on the glasses' own mic (Listen for the wake word on: Same as Microphone, with Glasses Mic) — that is what keeps their mic open. Listening on the iPhone holds nothing open on the glasses, so they never sleep and the wake word keeps listening on the phone when you take them off. Glasses you take off sleep after 30 seconds and wake when you put them back on. Glasses you're wearing stay awake however quiet it gets, unless this is on: then they also sleep after \(Config.autoSleepMinutes) minutes of silence, and wake when you take them off and put them on again, or tap to talk. Glasses that can't tell whether they're worn always sleep after that much silence. With push-to-talk, or listening off, nothing is held open and the glasses never sleep."
                 )
                 Button("Update Glasses App") { Task { await openGlassesAppUpdate() } }
                 Button("Update Glasses Firmware") { Task { await openGlassesFirmwareUpdate() } }
@@ -884,7 +944,7 @@ struct HardwarePrivacyView: View {
                     }
                 }
             } footer: {
-                Text("Where the wake-word listener captures voice. Glasses Mic enables true hands-free use but streams Bluetooth audio continuously (more battery) — and on Display glasses the active hands-free link covers the lens HUD with the call screen. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never re-routes to Bluetooth.")
+                Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, at the top of this page.")
             }
 
             Section {

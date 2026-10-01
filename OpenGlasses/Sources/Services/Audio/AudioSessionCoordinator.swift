@@ -218,6 +218,64 @@ final class AudioSessionCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Plan GU §3 — hand the session back after a conversation.
+    ///
+    /// Decides with `HandBackDecision` over the ledger: only when wake word or dictation is the
+    /// current owner (or nobody is), no coexisting rider is live and no shared consumer is on the
+    /// tap does it **deactivate with `.notifyOthersOnDeactivation`** — the only call that tells a
+    /// paused Podcasts or Music to resume. `lease` (if any) is released in the same step, so after
+    /// a `.deactivate` nobody holds the session. Any other answer changes nothing here; the caller
+    /// reconfigures in place or leaves the session to its owner. Awaits the deactivation, which
+    /// runs on `sessionIOQueue` and re-checks the ledger first like `release`.
+    @discardableResult
+    func handBack(_ lease: AudioSessionLease?, sharedConsumersActive: Bool) async -> HandBackDecision {
+        let decision: HandBackDecision = stateQueue.sync {
+            // A newer claim than ours (a live session acquired after the turn began) is its owner's.
+            if let current = ledger.current, let lease, current != lease,
+               !HandBackDecision.handBackOwners.contains(current.owner) {
+                return .leaveToOwner(current.owner)
+            }
+            let decision = HandBackDecision.decide(owner: ledger.current?.owner,
+                                                   coexisting: ledger.coexistingOwners,
+                                                   sharedConsumersActive: sharedConsumersActive)
+            if decision == .deactivate, let current = ledger.current {
+                _ = ledger.release(current)
+            }
+            return decision
+        }
+        guard decision == .deactivate else {
+            PrivacyLog.audio(.coordinator, .handBackDeferred,
+                             owner: lease.map { PrivacyToken($0.owner.rawValue) },
+                             detail: PrivacyToken(Self.token(for: decision)))
+            return decision
+        }
+        do {
+            try await runOnSessionIO { [self] in
+                let stillFree = stateQueue.sync { ledger.current == nil }
+                guard stillFree else { return }
+                try session.setActive(false, options: .notifyOthersOnDeactivation)
+            }
+            PrivacyLog.audio(.coordinator, .handedBack,
+                             owner: lease.map { PrivacyToken($0.owner.rawValue) })
+        } catch {
+            // Usually "busy": something still had I/O running. The ledger is already free, so the
+            // next activation proceeds normally; the paused app is simply not told this time.
+            PrivacyLog.audio(.coordinator, .leaseDeactivateFailed,
+                             owner: lease.map { PrivacyToken($0.owner.rawValue) },
+                             error: SafeErrorSummary(error))
+        }
+        return decision
+    }
+
+    private static func token(for decision: HandBackDecision) -> String {
+        switch decision {
+        case .deactivate: return "deactivate"
+        case .reconfigureInPlace(.coexistingRider(let owner)): return "rider-\(owner.rawValue)"
+        case .reconfigureInPlace(.sharedConsumers): return "sharedConsumers"
+        case .leaveToOwner(let owner): return "owner-\(owner.rawValue)"
+        }
+    }
+
     /// Await all currently-queued activation/deactivation to finish. With async activation the
     /// ledger can report owner X *before* X's `setActive(true)` has actually run; callers that
     /// consult ownership to decide audio routing (wake-word interruption handling, expert-call
