@@ -486,6 +486,8 @@ enum ReadinessWalkthrough {
             return "Another feature is using the microphone right now."
         case .silence:
             return "Listening is paused after a long quiet spell."
+        case .speechGateClosed:
+            return "Listening, and waiting for someone to speak."
         }
     }
 

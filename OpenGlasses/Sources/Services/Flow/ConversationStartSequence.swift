@@ -28,6 +28,11 @@ enum ConversationStartSequence {
         /// Pause podcasts/music so the user can speak clearly (skips if call in progress).
         /// Async since BJ PR2 (off-main session reconfigure).
         let pauseOtherAudio: @MainActor () async -> Void
+        /// Plan GU §2 — switch first, then listen: wait until the conversation mic is live (route
+        /// resolved, engine rebuilt on it, first buffers carrying sound), falling back to the phone
+        /// mic at `TurnMicHandoff.deadline`. Strictly before the tone, so the tone means "talk now"
+        /// on the mic that will actually hear it.
+        let handOffMic: @MainActor () async -> Void
         /// Play the acknowledgment tone.
         let playAcknowledgmentTone: @MainActor () -> Void
         /// Start transcribing the user's turn.
@@ -45,6 +50,7 @@ enum ConversationStartSequence {
         deps.markListening()
         deps.snapshotNowPlaying()
         await deps.pauseOtherAudio()
+        await deps.handOffMic()
         deps.playAcknowledgmentTone()
         deps.startRecording()
         deps.updateLiveActivity()

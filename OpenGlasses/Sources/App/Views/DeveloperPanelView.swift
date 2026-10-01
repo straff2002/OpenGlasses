@@ -10,6 +10,8 @@ struct DeveloperPanelView: View {
     @Environment(\.appAccent) private var accent
     /// Plan GD3 — `Config.fieldToolProfileEnabled`, the same key and default.
     @AppStorage("fieldToolProfileEnabled") private var fieldToolProfileEnabled = true
+    /// Plan GU §5 — `Config.wakeSpeechGateEnabled`, the same key and default (off until tuned).
+    @AppStorage("wakeSpeechGateEnabled") private var wakeSpeechGateEnabled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -78,6 +80,16 @@ struct DeveloperPanelView: View {
             ) {
                 OGRow("Field-mode tool profile", isOn: $fieldToolProfileEnabled,
                       icon: "wrench.and.screwdriver")
+            }
+
+            OGSection(
+                header: "Wake Word",
+                footer: "Runs full speech recognition only while someone is talking, after a cheap loudness check. Saves battery; may miss a quiet wake phrase until tuned. Applies the next time listening starts."
+            ) {
+                OGRow("Speech gate", isOn: $wakeSpeechGateEnabled, icon: "waveform.badge.magnifyingglass")
+                    .onChange(of: wakeSpeechGateEnabled) { _, _ in
+                        appState.restartWakeWordIfDirect()
+                    }
             }
 
             OGSection(header: "Turn Latency") {

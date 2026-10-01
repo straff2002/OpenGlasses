@@ -1395,6 +1395,11 @@ enum PrivacyLog {
         case captureStarted, clientVoiceInterrupt, modeSelected
         case leaseHeld, leaseAssumed, leaseAcquired, leaseReleased
         case leaseStale, leaseSuppressed, leaseDeactivateFailed
+        // Plan GU — idle plan, turn mic hand-off, hand-back, speech gate. Counts, route tokens and
+        // durations only.
+        case idlePlanSelected, turnMicLive, turnMicFellBack, handedBack, handBackDeferred
+        case gateOpened, gateClosed, gateAbandoned, highQualityRecordingSupport
+        case engineConfigurationChanged, ownRouteChangeIgnored, replyRouteSelected
     }
 
     @discardableResult

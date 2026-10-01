@@ -244,4 +244,29 @@ final class ListenerHealthPolicyTests: XCTestCase {
         XCTAssertEqual(generation.checkpoint(first), .abandon)
         XCTAssertEqual(generation.checkpoint(second), .abandon)
     }
+
+    // MARK: - Plan GU: the speech gate
+
+    func testAClosedSpeechGateIsHealthy() {
+        let s = state(flag: true, engine: true, tap: true, recognition: .none, paused: .speechGateClosed)
+        XCTAssertEqual(ListenerHealthPolicy.decide(s), .healthy,
+                       "engine up, tap up, no task — waiting for speech, not .rebuild(.noRecognitionTask)")
+        XCTAssertEqual(ListenerHealthPolicy.decide(state(flag: true, engine: true, tap: true, recognition: .none,
+                                                         paused: .speechGateClosed, origin: .automatic)),
+                       .healthy)
+    }
+
+    func testAClosedGateWhoseGraphFellOverIsStillBroken() {
+        XCTAssertEqual(ListenerHealthPolicy.decide(state(flag: true, engine: false, tap: true,
+                                                         paused: .speechGateClosed)),
+                       .rebuild(.engineStopped))
+        XCTAssertEqual(ListenerHealthPolicy.decide(state(flag: true, engine: true, tap: false,
+                                                         paused: .speechGateClosed)),
+                       .rebuild(.noRecognitionTask))
+    }
+
+    func testWithoutTheGateTheSameShapeIsStillARebuild() {
+        XCTAssertEqual(ListenerHealthPolicy.decide(state(flag: true, engine: true, tap: true, recognition: .none)),
+                       .rebuild(.noRecognitionTask))
+    }
 }

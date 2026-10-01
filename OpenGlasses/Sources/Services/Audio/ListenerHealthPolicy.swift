@@ -63,6 +63,10 @@ enum ListenerPauseReason: String, Equatable, CaseIterable {
     /// silence pause is audio arriving, and audio only arrives while the listener runs. Refusing
     /// on it would make the pause feed itself.
     case silence
+    /// Plan GU §5 — the wake-word speech gate is closed: engine and tap run (they keep the app
+    /// alive in the background and feed every shared consumer), but no recognition task exists
+    /// until somebody starts talking. Healthy, not `.rebuild(.noRecognitionTask)`.
+    case speechGateClosed
 }
 
 /// Why a start was declined outright.
@@ -211,6 +215,16 @@ enum ListenerHealthPolicy {
            state.graph.engineRunning,
            state.graph.tapInstalled,
            state.graph.recognition == .running {
+            return .healthy
+        }
+        //    Plan GU: a closed speech gate is the one shape where "no recognition task" is the
+        //    design rather than a fault — engine and tap up, the flag set, the recognizer waiting
+        //    for speech. A gate whose graph has fallen over is still broken and falls through.
+        if state.deliberatelyPaused == .speechGateClosed,
+           state.flagSaysListening,
+           state.graph.engineRunning,
+           state.graph.tapInstalled,
+           state.graph.recognition == .none {
             return .healthy
         }
 
