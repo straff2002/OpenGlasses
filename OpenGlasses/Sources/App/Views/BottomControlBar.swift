@@ -131,20 +131,30 @@ struct BottomControlBar: View {
     @ScaledMetric(relativeTo: .footnote) private var tileCaptionLine: CGFloat
         = DockGridMetrics.tileCaptionLine
 
-    /// What a tile actually measured, once one has been laid out.
-    @State private var measuredTileHeight: CGFloat?
+    /// What a tile's *content* — glyph and caption, without the key's padding — actually measured,
+    /// once one has been laid out. The content, not the key: a key is drawn at the height the page
+    /// gives it, so measuring the key would feed the page's choice back into itself.
+    @State private var measuredTileContent: CGFloat?
 
-    /// A row's height. The composed estimate is only the first frame's answer: a prediction of a
-    /// tile's height is a prediction of a font's line height, and being a point or two short of it
-    /// is exactly how the last row ends up sliced. Once a real tile has reported its size the panel
-    /// snaps to *that*, so the arithmetic stops depending on guessing what `.caption` renders at.
-    private var tileHeight: CGFloat {
-        if let measuredTileHeight, measuredTileHeight > 0 { return measuredTileHeight }
-        let content = typeSize.isAccessibilitySize
+    /// The tile's content height. The composed estimate is only the first frame's answer: a
+    /// prediction of a tile is a prediction of a font's line height, and being a point or two short
+    /// of it is how a row ends up sliced. Once a real tile has reported, the grid works from *that*.
+    private var tileContentHeight: CGFloat {
+        if let measuredTileContent, measuredTileContent > 0 { return measuredTileContent }
+        return typeSize.isAccessibilitySize
             ? max(tileGlyphBox, tileCaptionLine)
             : tileGlyphBox + DockGridMetrics.tileStackSpacing + tileCaptionLine
-        return max(DockGridMetrics.tileMinHeight,
-                   content + DockGridMetrics.tileVerticalPadding * 2)
+    }
+
+    /// A tile with its full padding — what it draws when the page has room.
+    private var naturalTileHeight: CGFloat {
+        HomeGridPaging.naturalTileHeight(contentHeight: tileContentHeight)
+    }
+
+    /// The smallest a tile is squeezed to fit another row: its content at this text size, with
+    /// only the minimum padding. Rows are counted in these.
+    private var minimumTileHeight: CGFloat {
+        HomeGridPaging.minimumTileHeight(contentHeight: tileContentHeight)
     }
 
     /// The capsule's glyph box, for the one frame before a real capsule has reported its height.
@@ -183,7 +193,7 @@ struct BottomControlBar: View {
         DockGridMetrics.panelPagesHeight(
             availableHeight: availableHeight,
             reservedHeight: heightAboveDock.map { $0 + dockChromeHeight },
-            rowHeight: tileHeight)
+            rowHeight: minimumTileHeight)
     }
 
     /// What a page has above the dots — the room the grid page fits its whole rows inside.
@@ -206,11 +216,14 @@ struct BottomControlBar: View {
     /// The tiles the grid draws, in the one arranged order.
     private var gridTiles: [HomeGridTile] { tilePresence.tiles(for: slots) }
 
-    /// Rows per grid page: as many whole tiles as fit the page above the dots, one to four. The
-    /// tile is the measured one, so larger text fits fewer rows rather than smaller keys; and the
-    /// page body is what the surface above left, so a card expanding drops a row.
-    private var gridRows: Int {
-        HomeGridPaging.rowsThatFit(height: pageBodyHeight, rowHeight: tileHeight)
+    /// Rows per grid page and the height every tile on it is drawn at: as many rows of minimum
+    /// tiles as fit the page above the dots, one to four, then the tiles stretched to fill it
+    /// (`HomeGridPaging.fit`). The content is the measured one, so larger text fits fewer rows
+    /// rather than smaller type; and the page body is what the surface above left, so a card
+    /// expanding drops a row and the rest share its room.
+    private var gridFit: HomeGridPaging.TileFit {
+        HomeGridPaging.fit(height: pageBodyHeight, minimumTileHeight: minimumTileHeight,
+                           naturalTileHeight: naturalTileHeight)
     }
 
     var body: some View {
@@ -246,7 +259,8 @@ struct BottomControlBar: View {
         let pageHeight = pagesHeight
         let tiles = gridTiles
         let tileIDs = tiles.map(\.id)
-        let paging = HomeGridPaging(tileCount: tiles.count, columns: columnCount, rows: gridRows)
+        let fit = gridFit
+        let paging = HomeGridPaging(tileCount: tiles.count, columns: columnCount, rows: fit.rows)
         let current = paging.panelIndex(for: pager, tileIDs: tileIDs)
         let currentGridPage = paging.gridPage(forPanelIndex: current)
 
@@ -259,7 +273,7 @@ struct BottomControlBar: View {
                 .tag(HomeGridPaging.conversationIndex)
 
             ForEach(Array(0..<paging.pageCount), id: \.self) { gridPage in
-                gridPageView(gridPage, tiles: tiles, paging: paging)
+                gridPageView(gridPage, tiles: tiles, paging: paging, tileHeight: fit.tileHeight)
                     .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
                     .accessibilityHidden(currentGridPage != gridPage)
                     .tag(paging.panelIndex(forGridPage: gridPage))
@@ -435,7 +449,7 @@ struct BottomControlBar: View {
     /// empty cells, and nothing past the last row. The page is top-aligned and the glass under the
     /// last row is the panel's remainder: calm space, never a sliced tile.
     private func gridPageView(_ page: Int, tiles: [HomeGridTile],
-                              paging: HomeGridPaging) -> some View {
+                              paging: HomeGridPaging, tileHeight: CGFloat) -> some View {
         let range = paging.tileRange(onPage: page)
         let rows = paging.rowsDrawn(onPage: page)
         let columns = paging.columns
@@ -453,10 +467,6 @@ struct BottomControlBar: View {
                         HStack(spacing: DockGridMetrics.rowSpacing) {
                             ForEach(rowTiles) { tile in
                                 tileView(tile)
-                                    // One tile reports its height and the rows per page follow
-                                    // it. Measuring the first is enough: every tile in this grid
-                                    // is the same `BarButton` with a one-line caption.
-                                    .background(tile.id == tiles.first?.id ? tileHeightReader : nil)
                             }
                             // A short last row keeps the column widths of the rows above it.
                             ForEach(Array(0..<(columns - rowTiles.count)), id: \.self) { _ in
@@ -470,18 +480,26 @@ struct BottomControlBar: View {
                 // Room at the sides for a pressed key: interactive glass swells a little under
                 // the finger, and the outer column would otherwise clip on the page edge.
                 .padding(.horizontal, 4)
+                // Every key on the page at the one height the page chose — squeezed into its
+                // padding to fit another row, or stretched to fill the page.
+                .environment(\.dockTileHeight, tileHeight)
             }
 
             // The sub-row remainder, and the rows a short page does not need. Calm empty glass
             // under the tiles — which is where a leftover belongs, rather than between two cards.
             Spacer(minLength: 0)
         }
-        .onPreferenceChange(DockTileHeightKey.self) { height in
-            guard let height, height > 0, height != measuredTileHeight else { return }
+        // Every key reports its content and the tallest wins — a caption that wraps at an
+        // accessibility size is the one the rows have to fit.
+        .onPreferenceChange(DockTileContentHeightKey.self) { height in
+            guard let height, height > 0, height != measuredTileContent else { return }
             // The opening guess giving way to a real tile: a height change with no motion of its
             // own, so it settles here rather than being chased by the frame.
-            withAnimation(DockGridMetrics.heightSettle) { measuredTileHeight = height }
+            withAnimation(DockGridMetrics.heightSettle) { measuredTileContent = height }
         }
+        // A text-size change starts the measurement again, so a smaller size is not held to the
+        // tallest content a larger one drew.
+        .onChange(of: typeSize) { _, _ in measuredTileContent = nil }
         // The sighted shortcut to the editor, on the page's *background* — behind the tiles, so it
         // answers a press on the gaps and never fires alongside a tile's action. The same sheet
         // the cog opens; it is not a page, so no swipe reaches it.
@@ -501,12 +519,6 @@ struct BottomControlBar: View {
             if let local = appState.llmService.localLLMService, let active = Config.activeModel {
                 LocalModelTile(service: local, modelConfig: active)
             }
-        }
-    }
-
-    private var tileHeightReader: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: DockTileHeightKey.self, value: proxy.size.height)
         }
     }
 
@@ -889,17 +901,21 @@ private struct ActionCapsule: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        // `children: .ignore` is what makes the element *be* the capsule. Left to itself, SwiftUI
-        // took the union of the label's children — a 17pt glyph and a line of 15pt text — so the
-        // element VoiceOver focused, and the target an audit measures, was 18pt tall inside a
-        // 50pt control the whole screen is built around.
-        .accessibilityElement(children: .ignore)
-        // The mute badge is a 9pt glyph tucked behind the icon — the only thing distinguishing a
-        // muted session from a live one, so it has to be spoken, not just drawn. As a *value*
-        // rather than glued to the label, so it is re-read when it changes under a held focus.
-        .accessibilityLabel(spokenLabel ?? label)
-        .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
-        .accessibilityAddTraits(.isButton)
+        // The capsule reaches VoiceOver as exactly one button, the size of the capsule, by its
+        // spoken name. A *representation* rather than `.accessibilityElement(children: .ignore)`
+        // over the `Button`: that wrapper made a new element around the button but left the
+        // button in the tree beneath it, still named by its drawn copy ("Tap & Talk") — the
+        // instruction to a finger this capsule's spoken name exists to replace. Before it, SwiftUI
+        // took the union of the label's children — a 17pt glyph and a line of text — so the
+        // element focused, and the target an audit measures, was 18pt tall inside a 50pt control.
+        .accessibilityRepresentation {
+            Button(spokenLabel ?? label, action: action)
+                // The mute badge is a 9pt glyph tucked behind the icon — the only thing
+                // distinguishing a muted session from a live one, so it has to be spoken, not just
+                // drawn. As a *value* rather than glued to the label, so it is re-read when it
+                // changes under a held focus.
+                .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
+        }
     }
 }
 
@@ -941,6 +957,9 @@ private struct BarButton: View {
     private let minTileHeight = DockGridMetrics.tileMinHeight
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 10
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
+    /// The height the grid page chose for its keys, when there is one. The content is centred in
+    /// it: squeezing takes the padding, never the glyph or the caption.
+    @Environment(\.dockTileHeight) private var pageTileHeight
 
     private var foreground: Color {
         // Disabled reads as the audited quiet grey rather than as everything at
@@ -1031,11 +1050,21 @@ private struct BarButton: View {
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
             }
+            // The content alone, for the grid to count rows from (`DockTileContentHeightKey`).
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: DockTileContentHeightKey.self,
+                                           value: proxy.size.height)
+                }
+            )
             .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 6)
-            .padding(.vertical, DockGridMetrics.tileVerticalPadding)
+            .padding(.vertical, pageTileHeight == nil ? DockGridMetrics.tileVerticalPadding : 0)
             // The key fills its column, so three keys read as a row of equal buttons rather than
-            // three captions each wearing a different-width border.
-            .frame(maxWidth: .infinity, minHeight: minTileHeight,
+            // three captions each wearing a different-width border. On a grid page it is exactly
+            // the page's tile height; elsewhere its own padding over the `tileMinHeight` floor.
+            .frame(maxWidth: .infinity,
+                   minHeight: pageTileHeight ?? minTileHeight,
+                   maxHeight: pageTileHeight,
                    alignment: typeSize.isAccessibilitySize ? .leading : .center)
             .frame(minWidth: minTileWidth)
             .contentShape(.rect(cornerRadius: DockGridMetrics.tileCornerRadius))
@@ -1087,15 +1116,29 @@ private struct LocalModelTile: View {
     }
 }
 
-// MARK: - Measured row height
+// MARK: - Measured tile content, and the height a page draws its tiles at
 
-/// One tile's measured height, so the panel snaps rows to what was drawn rather than to a
-/// prediction of it.
-private struct DockTileHeightKey: PreferenceKey {
+/// The tallest tile content on a page — glyph and caption without the key's padding — so the grid
+/// counts rows from what was drawn rather than from a prediction of it.
+private struct DockTileContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat? { nil }
 
     static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = value ?? nextValue()
+        guard let next = nextValue() else { return }
+        value = max(value ?? 0, next)
+    }
+}
+
+/// The height a grid page draws its keys at (`HomeGridPaging.fit`). `nil` outside the grid, where
+/// a key keeps its own padding and floor.
+private struct DockTileHeightEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    fileprivate var dockTileHeight: CGFloat? {
+        get { self[DockTileHeightEnvironmentKey.self] }
+        set { self[DockTileHeightEnvironmentKey.self] = newValue }
     }
 }
 

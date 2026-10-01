@@ -71,6 +71,106 @@ final class HomeGridPagingTests: XCTestCase {
         }
     }
 
+    // MARK: - Compressible tiles
+
+    /// The default text size: a 36 pt glyph box, 4 pt gap and a 20 pt caption line.
+    private let defaultContent: CGFloat = 36 + 4 + 20
+
+    func testNaturalAndMinimumTilesKeepTheContentAndGiveUpOnlyPadding() {
+        let natural = HomeGridPaging.naturalTileHeight(contentHeight: defaultContent)
+        let minimum = HomeGridPaging.minimumTileHeight(contentHeight: defaultContent)
+        XCTAssertEqual(natural, defaultContent + 2 * DockGridMetrics.tileVerticalPadding)
+        XCTAssertEqual(minimum, defaultContent + 2 * DockGridMetrics.tileMinVerticalPadding)
+        XCTAssertLessThan(minimum, natural)
+        // Never under the fingertip, however small the content.
+        XCTAssertGreaterThanOrEqual(HomeGridPaging.minimumTileHeight(contentHeight: 10),
+                                    OGMetrics.minTouchTarget)
+        XCTAssertGreaterThanOrEqual(HomeGridPaging.naturalTileHeight(contentHeight: 10),
+                                    DockGridMetrics.tileMinHeight)
+    }
+
+    /// Rows are counted in minimum tiles, then the tiles share the page: no row's worth of empty
+    /// glass under the last row unless the cap stops the stretch.
+    func testThePageIsFilledByStretchingTheTiles() {
+        let minimum = HomeGridPaging.minimumTileHeight(contentHeight: defaultContent)  // 72
+        let natural = HomeGridPaging.naturalTileHeight(contentHeight: defaultContent)  // 84
+
+        // The page two natural rows did not quite fit — the screenshot that started this.
+        let tight = HomeGridPaging.fit(height: 166, minimumTileHeight: minimum,
+                                       naturalTileHeight: natural)
+        XCTAssertEqual(tight.rows, 2, "Two squeezed rows fit and were not used")
+        XCTAssertEqual(tight.tileHeight, 78)
+
+        // A tall page: four rows, each a little over natural.
+        let tall = HomeGridPaging.fit(height: 380, minimumTileHeight: minimum,
+                                      naturalTileHeight: natural)
+        XCTAssertEqual(tall.rows, 4)
+        XCTAssertEqual(tall.tileHeight, 87)
+    }
+
+    func testTheStretchIsCappedSoOneRowIsNotGiant() {
+        let minimum: CGFloat = 72, natural: CGFloat = 84
+        let fit = HomeGridPaging.fit(height: 140, minimumTileHeight: minimum,
+                                     naturalTileHeight: natural)
+        XCTAssertEqual(fit.rows, 1)
+        XCTAssertEqual(fit.tileHeight, (natural * DockGridMetrics.tileStretchCap).rounded(.down))
+
+        // A page taller than four capped rows leaves its remainder as glass, not giant keys.
+        let huge = HomeGridPaging.fit(height: 900, minimumTileHeight: minimum,
+                                      naturalTileHeight: natural)
+        XCTAssertEqual(huge.rows, 4)
+        XCTAssertEqual(huge.tileHeight, (natural * DockGridMetrics.tileStretchCap).rounded(.down))
+    }
+
+    /// Whatever the page, the chosen rows at the chosen height fit it (above the floor), and the
+    /// tile is never below its minimum nor above the cap.
+    func testTheFitAlwaysFitsAndStaysBetweenMinimumAndCap() {
+        for content in [CGFloat(60), 72, 90, 120] {
+            let minimum = HomeGridPaging.minimumTileHeight(contentHeight: content)
+            let natural = HomeGridPaging.naturalTileHeight(contentHeight: content)
+            for body in stride(from: CGFloat(40), through: 700, by: 3) {
+                let fit = HomeGridPaging.fit(height: body, minimumTileHeight: minimum,
+                                             naturalTileHeight: natural)
+                let used = CGFloat(fit.rows) * fit.tileHeight + CGFloat(fit.rows - 1) * gap
+                let context = "\(content) pt content, \(body) pt body"
+                XCTAssertGreaterThanOrEqual(fit.tileHeight, minimum, context)
+                XCTAssertLessThanOrEqual(fit.tileHeight,
+                                         natural * DockGridMetrics.tileStretchCap + 0.001, context)
+                if body >= minimum {
+                    XCTAssertLessThanOrEqual(used, body + 0.001, "Overran the page: \(context)")
+                }
+                XCTAssertEqual(fit.rows, HomeGridPaging.rowsThatFit(height: body,
+                                                                    rowHeight: minimum), context)
+            }
+        }
+    }
+
+    /// The goal on a 6.3–6.5" phone at the default size: a collapsed My Day leaves room for four
+    /// rows, an open one for at least two. Page bodies are the ones the simulator drew.
+    func testAPhoneGetsFourRowsUnderACollapsedCardAndTwoUnderAnOpenOne() {
+        let minimum = HomeGridPaging.minimumTileHeight(contentHeight: defaultContent)
+        let natural = HomeGridPaging.naturalTileHeight(contentHeight: defaultContent)
+        XCTAssertEqual(HomeGridPaging.fit(height: 330, minimumTileHeight: minimum,
+                                          naturalTileHeight: natural).rows, 4)
+        XCTAssertGreaterThanOrEqual(HomeGridPaging.fit(height: 160, minimumTileHeight: minimum,
+                                                       naturalTileHeight: natural).rows, 2)
+    }
+
+    /// Dynamic Type grows the content, so the same page fits fewer rows — never smaller type.
+    func testLargerTextStillFitsFewerRows() {
+        for body in stride(from: CGFloat(120), through: 500, by: 20) {
+            var previous = Int.max
+            for content in stride(from: CGFloat(50), through: 200, by: 10) {
+                let rows = HomeGridPaging.fit(
+                    height: body,
+                    minimumTileHeight: HomeGridPaging.minimumTileHeight(contentHeight: content),
+                    naturalTileHeight: HomeGridPaging.naturalTileHeight(contentHeight: content)).rows
+                XCTAssertLessThanOrEqual(rows, previous, "\(body) pt body, \(content) pt content")
+                previous = rows
+            }
+        }
+    }
+
     // MARK: - One order across the pages
 
     /// Every tile, once, in order: the pages are consecutive slices of the one order and only the

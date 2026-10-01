@@ -52,6 +52,51 @@ struct HomeGridPaging: Equatable {
         return min(maxRows, max(1, whole))
     }
 
+    // MARK: - Compressible tiles
+
+    /// A tile's height when it has room: its content (glyph box over one caption line, or side by
+    /// side at accessibility sizes) with the full `tileVerticalPadding` above and below, and never
+    /// under `tileMinHeight`. What the grid drew before tiles were compressible.
+    static func naturalTileHeight(contentHeight: CGFloat) -> CGFloat {
+        max(DockGridMetrics.tileMinHeight,
+            contentHeight + DockGridMetrics.tileVerticalPadding * 2)
+    }
+
+    /// The smallest a tile may be squeezed: the same content — glyph and one legible caption line,
+    /// at the current Dynamic Type size, because `contentHeight` is measured at that size — with
+    /// only `tileMinVerticalPadding` of glass above and below, and never under the 44 pt touch
+    /// target. Squeezing takes padding, never type: a caption is not made smaller to fit a row.
+    static func minimumTileHeight(contentHeight: CGFloat) -> CGFloat {
+        max(OGMetrics.minTouchTarget,
+            contentHeight + DockGridMetrics.tileMinVerticalPadding * 2)
+    }
+
+    /// Rows and the tile height a page is drawn at.
+    struct TileFit: Equatable {
+        let rows: Int
+        let tileHeight: CGFloat
+    }
+
+    /// How a page of `height` is filled.
+    ///
+    /// Rows are decided from the **minimum** tile — as many whole rows as fit when every tile gives
+    /// up its spare padding, one to four. The tiles then **stretch** to share the page between
+    /// them, so the page is filled rather than leaving most of a row as empty glass — capped at
+    /// `stretchCap` × the natural height, so a one-row page under a tall card does not draw one
+    /// row of giant keys. Never below the minimum: a page at the panel's floor shows one row at
+    /// its minimum and the zone above scrolls instead.
+    static func fit(height: CGFloat, minimumTileHeight: CGFloat, naturalTileHeight: CGFloat,
+                    rowSpacing: CGFloat = DockGridMetrics.rowSpacing,
+                    stretchCap: CGFloat = DockGridMetrics.tileStretchCap) -> TileFit {
+        let rows = rowsThatFit(height: height, rowHeight: minimumTileHeight, rowSpacing: rowSpacing)
+        guard height.isFinite, height > 0 else {
+            return TileFit(rows: rows, tileHeight: naturalTileHeight)
+        }
+        let shared = (height - CGFloat(rows - 1) * rowSpacing) / CGFloat(rows)
+        let capped = min(shared, max(naturalTileHeight, minimumTileHeight) * stretchCap)
+        return TileFit(rows: rows, tileHeight: max(minimumTileHeight, capped.rounded(.down)))
+    }
+
     // MARK: - Pages
 
     var tilesPerPage: Int { rows * columns }
