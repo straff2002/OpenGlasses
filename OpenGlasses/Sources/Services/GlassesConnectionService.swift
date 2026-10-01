@@ -21,6 +21,9 @@ class GlassesConnectionService: ObservableObject {
     @Published private(set) var batteryLevel: Int?
     /// Whether the active device is charging, only while the link is up.
     @Published private(set) var isCharging: Bool = false
+    /// Whether the active device is on someone's face, only while the link is up; nil when the
+    /// device does not say or the glasses are away.
+    @Published private(set) var isWorn: Bool?
 
     private(set) var snapshot = GlassesConnectionSnapshot()
 
@@ -126,6 +129,8 @@ class GlassesConnectionService: ObservableObject {
         if batteryLevel != newBattery { batteryLevel = newBattery }
         let newCharging = snapshot.liveCharging == .charging
         if isCharging != newCharging { isCharging = newCharging }
+        let newWorn = snapshot.liveWorn
+        if isWorn != newWorn { isWorn = newWorn }
         let newPhase = snapshot.phase
         if isConnected != newPhase.isConnected { isConnected = newPhase.isConnected }
         if phase != newPhase {

@@ -46,6 +46,9 @@ struct GlassesDeviceState: Equatable, Sendable {
     /// Percent, when the device reports one.
     var batteryLevel: Int?
     var charging: GlassesChargingState = .unknown
+    /// On the face (`DonState.donned`) — true; taken off (`.doffed`) — false; nil when the
+    /// device does not say (`.unknown`).
+    var worn: Bool?
 }
 
 /// The app's one answer to "are the glasses connected?".
@@ -170,6 +173,13 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
         return state(of: id).batteryLevel
     }
 
+    /// Worn, under the same rule: only while connected — a pair that is away is not "worn" by
+    /// anything the app can see — else nil (unknown).
+    var liveWorn: Bool? {
+        guard phase == .connected, let id = activeDeviceId else { return nil }
+        return state(of: id).worn
+    }
+
     /// Charging, under the same rule as the battery: only while connected, else unknown.
     var liveCharging: GlassesChargingState {
         guard phase == .connected, let id = activeDeviceId else { return .unknown }
@@ -177,38 +187,133 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
     }
 }
 
-/// The SDK's link × the wearer's own Disconnect → whether the app may use the glasses now.
+/// The SDK's link × a stand-down → whether the app may use the glasses now.
 ///
-/// The link is the SDK's truth and stays it: Disconnect cannot drop it (the SDK has no app-side
-/// disconnect), so the wearer's request is kept as a separate *stand-down* and the two are folded
-/// here. Rules:
+/// The link is the SDK's truth and stays it: the app cannot drop it (the SDK has no app-side
+/// disconnect), so standing down from the glasses is kept separately and the two are folded here.
+/// A stand-down has a reason — the wearer's Disconnect, or the app's own (`GlassesSleepPolicy`:
+/// taken off, or silent too long) — and the reason decides what lifts it. Rules:
 /// - In use only when the link is connected and the app is not stood down.
-/// - Standing down takes effect only while the link is connected; otherwise there is nothing in
-///   use to stand down, and it is a no-op.
-/// - An explicit connect (`resume()`) clears it.
-/// - The link leaving `.connected` (case, off, out of range, or merely reconnecting) clears it, so
-///   the next real connection — the glasses put back on — is live again without another tap.
+/// - Standing down takes effect only while the link is connected; otherwise it is a no-op.
+/// - An explicit connect (`resume()`) lifts either kind.
+/// - Putting the glasses on (`donned()`) lifts an automatic stand-down only. The wearer's own
+///   Disconnect is theirs to undo.
+/// - The link leaving `.connected` (case, off, out of range, or merely reconnecting) clears either
+///   kind, so the next real connection is live again without a tap.
 struct GlassesUse: Equatable, Sendable {
+    enum StandDownReason: Equatable, Sendable {
+        /// Disconnect: the hero pill, the dock tile, Siri, the watch, the deep link.
+        case user
+        /// The app's own: glasses taken off, or silent past auto-sleep.
+        case automatic
+    }
+
     private(set) var link: GlassesConnectionPhase = .noGlassesAdded
-    private(set) var stoodDown = false
+    private(set) var standDownReason: StandDownReason?
+
+    var stoodDown: Bool { standDownReason != nil }
 
     /// Whether the app may use the glasses now — what `AppState.isConnected` reports.
     var inUse: Bool { link.isConnected && !stoodDown }
 
-    /// Connected, but the wearer disconnected the app from them.
+    /// Connected, but stood down.
     var isPaused: Bool { link.isConnected && stoodDown }
+
+    /// Whether voice may open a microphone on its own (wake word, re-arm, unmute). Phone-first:
+    /// the phone's mic is always there, so glasses being away never closes it — only a stand-down
+    /// does, until it is lifted or the glasses go away.
+    var voiceInputAvailable: Bool { !stoodDown }
 
     mutating func linkChanged(_ phase: GlassesConnectionPhase) {
         link = phase
-        if !phase.isConnected { stoodDown = false }
+        if !phase.isConnected { standDownReason = nil }
     }
 
-    mutating func standDown() {
+    /// Stand down. A user stand-down replaces an automatic one (it is the stronger request); an
+    /// automatic one never downgrades the wearer's.
+    mutating func standDown(_ reason: StandDownReason = .user) {
         guard link.isConnected else { return }
-        stoodDown = true
+        if standDownReason == .user { return }
+        standDownReason = reason
     }
 
     mutating func resume() {
-        stoodDown = false
+        standDownReason = nil
+    }
+
+    /// The glasses were put on: an automatic stand-down lifts; the wearer's own does not.
+    mutating func donned() {
+        if standDownReason == .automatic { standDownReason = nil }
+    }
+}
+
+/// When the app stands down from idle glasses on its own, and when it comes back.
+///
+/// An automatic stand-down exists only to release the expensive thing: the always-on wake-word
+/// listener, which holds the glasses' hands-free mic open and runs recognition continuously. The
+/// link itself costs the app nothing. The old rule — sustained silence marks the glasses idle, and
+/// `Config.autoSleepMinutes` later the app stands down — existed because the app could not see
+/// whether the glasses were linked or worn. It now can, so:
+/// 0. **No always-on listener** (listening switched off, or push-to-talk: `alwaysOnListening`
+///    false) → nothing is held open, so nothing sleeps: no silence countdown, no doff stand-down.
+///    The app stays connected and talking is instant.
+/// 1. **Taken off** (doffed) with the link up → stand down automatically after
+///    `doffGraceSeconds`; put back on within the grace, nothing happens.
+/// 2. **Put back on** after an automatic stand-down → resume at once, no tap (`GlassesUse.donned()`).
+///    The wearer's own Disconnect is never undone this way.
+/// 3. **Worn** → never sleeps for silence, unless the wearer turned on "Sleep when quiet, even
+///    while worn"; then the silence rule applies while worn too. That stand-down is automatic, so
+///    it lifts on the next don, a link change, or an explicit connect — not on speech.
+/// 4. **Worn state unknown** (the device does not report it) → the silence rule, as before.
+/// 5. **In the case, off, out of range** → the link drops; there is nothing to time.
+enum GlassesSleepPolicy {
+    /// How long glasses may be off the face, link still up, before the app stands down.
+    static let doffGraceSeconds: TimeInterval = 30
+
+    /// Whether the always-on wake-word listener runs by design: listening on, and not
+    /// push-to-talk — the same two settings `WakeAutoRestartPolicy` reads before a mute.
+    static func alwaysOnListening(listeningEnabled: Bool, silentMode: Bool) -> Bool {
+        listeningEnabled && !silentMode
+    }
+
+    /// Whether glasses taken off should start (or, at its end, complete) the grace towards a stand-down.
+    static func doffGraceApplies(alwaysOnListening: Bool, worn: Bool?, inUse: Bool) -> Bool {
+        alwaysOnListening && worn == false && inUse
+    }
+
+    /// Whether the silence rule covers these glasses: always unless they are worn, and while worn
+    /// only with the wearer's option on.
+    static func silenceRuleApplies(worn: Bool?, sleepWhenQuietWhileWorn: Bool) -> Bool {
+        worn != true || sleepWhenQuietWhileWorn
+    }
+
+    /// Whether to start the silence countdown when the glasses go idle.
+    static func shouldArmSilenceSleep(alwaysOnListening: Bool, autoSleepMinutes: Int, worn: Bool?,
+                                      sleepWhenQuietWhileWorn: Bool) -> Bool {
+        alwaysOnListening && autoSleepMinutes > 0
+            && silenceRuleApplies(worn: worn, sleepWhenQuietWhileWorn: sleepWhenQuietWhileWorn)
+    }
+
+    /// Re-checked when the silence countdown ends: they may have put the glasses on, or switched
+    /// listening off, during it.
+    static func silenceSleepFires(alwaysOnListening: Bool, idle: Bool, inUse: Bool, worn: Bool?,
+                                  sleepWhenQuietWhileWorn: Bool) -> Bool {
+        alwaysOnListening && idle && inUse
+            && silenceRuleApplies(worn: worn, sleepWhenQuietWhileWorn: sleepWhenQuietWhileWorn)
+    }
+}
+
+/// Whether the glasses' arrival may take the audio session over now.
+///
+/// When the glasses become usable the app hands audio and the wake word to them: it
+/// reconfigures the session onto their microphone and restarts the listener. That reconfigure is
+/// a session-wide change, and device-traced it landed 2.5 s into the very turn that brought the
+/// glasses back (a "Resume & Talk" tap) — the dictation already running on the glasses mic was
+/// cut off and heard nothing. The hand-off is for an idle app; a turn in progress owns the audio
+/// and has already chosen its input.
+enum GlassesAudioHandoffPolicy {
+    static func mayHandOff(inConversation: Bool, isListening: Bool,
+                           isProcessing: Bool, isSpeaking: Bool) -> Bool {
+        !inConversation && !isListening && !isProcessing && !isSpeaking
     }
 }

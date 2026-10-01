@@ -33,7 +33,7 @@ protocol GlassesLinkObservation: AnyObject {
 /// `ChargingState` and `RegistrationState` are mapped onto the app's own enums.
 ///
 /// Uses `Device.addDeviceStateListener(_:)` (MWDATCore 1.0.0, stable API): one listener per device
-/// delivers the full `DeviceState` — link, battery, charging — immediately and on every change.
+/// delivers the full `DeviceState` — link, battery, charging, worn — immediately and on every change.
 @MainActor
 final class WearablesGlassesLinkSource: GlassesLinkSource {
     func activate() -> Bool { WearablesBootstrap.ensureConfigured() }
@@ -70,12 +70,14 @@ final class WearablesGlassesLinkSource: GlassesLinkSource {
         // first delivery lands. Both go through the same FIFO hop, so the seed cannot overtake it.
         let seed = GlassesDeviceState(link: Self.map(device.linkState),
                                       batteryLevel: device.batteryLevel,
-                                      charging: Self.map(device.chargingState))
+                                      charging: Self.map(device.chargingState),
+                                      worn: Self.map(device.donState))
         Self.deliver { onChange(seed) }
         let token = device.addDeviceStateListener { state in
             let mapped = GlassesDeviceState(link: Self.map(state.linkState),
                                             batteryLevel: state.batteryLevel,
-                                            charging: Self.map(state.chargingState))
+                                            charging: Self.map(state.chargingState),
+                                            worn: Self.map(state.donState))
             Self.deliver { onChange(mapped) }
         }
         return SDKListenerObservation(token)
@@ -93,6 +95,15 @@ final class WearablesGlassesLinkSource: GlassesLinkSource {
         case .disconnected: return .disconnected
         case .connecting: return .connecting
         case .connected: return .connected
+        }
+    }
+
+    /// `DonState` (MWDATCore 1.0.0, stable): donned → worn, doffed → not, unknown → nil.
+    nonisolated static func map(_ don: DonState) -> Bool? {
+        switch don {
+        case .donned: return true
+        case .doffed: return false
+        case .unknown: return nil
         }
     }
 

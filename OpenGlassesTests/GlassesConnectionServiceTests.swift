@@ -154,6 +154,18 @@ final class GlassesConnectionServiceTests: XCTestCase {
         XCTAssertFalse(service.isCharging)
     }
 
+    func testWornIsPublishedOnlyWhileConnected() {
+        let source = FakeLinkSource()
+        let service = make(source)
+        source.sendDevices(["a"])
+        source.sendState("a", GlassesDeviceState(link: .connected, worn: true))
+        XCTAssertEqual(service.isWorn, true)
+        source.sendState("a", GlassesDeviceState(link: .connected, worn: false))
+        XCTAssertEqual(service.isWorn, false)
+        source.sendState("a", GlassesDeviceState(link: .disconnected, worn: true))
+        XCTAssertNil(service.isWorn)
+    }
+
     // MARK: - Listener lifecycle
 
     func testOneSubscriptionPerDeviceAndCancelledWhenTheDeviceLeaves() {

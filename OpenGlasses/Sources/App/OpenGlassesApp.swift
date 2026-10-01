@@ -598,8 +598,10 @@ struct OpenGlassesApp: App {
                 // Only restart wake word listener in Direct Mode
                 if appState.currentMode == .direct {
                     Task {
+                        // Phone-first: only a registration visibly in flight holds this back
+                        // (route churn destabilises it). No glasses is not a reason to skip.
                         let regState = appState.registrationStateRaw
-                        guard regState >= 3 else {
+                        guard !WakeLaunchPolicy.defersForegroundRestart(stateRaw: regState) else {
                             appState.addDebugEvent("Skipping wake word restart on foreground: registration state=\(regState)")
                             return
                         }
@@ -610,7 +612,7 @@ struct OpenGlassesApp: App {
                         if WakeAutoRestartPolicy.shouldRestart(
                             listeningEnabled: appState.listeningEnabled,
                             silentMode: Config.silentMode,
-                            isConnected: appState.isConnected,
+                            voiceInputAvailable: appState.voiceInputAvailable(),
                             micMuted: appState.micMuted,
                             alreadyListening: appState.wakeWordService.isListening || appState.isListening) {
                             // Re-configure audio session in case Bluetooth route changed
@@ -699,8 +701,24 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Let the Bluetooth audio link settle before grabbing the mic.
                     try? await Task.sleep(nanoseconds: 2_500_000_000)
                     guard self.isConnected else { return }  // bail if it dropped again
+                    // Only into an idle app. A turn in progress — typically the "Resume & Talk"
+                    // tap that brought the glasses back — owns the audio: reconfiguring the
+                    // session under its dictation cut it off (device-traced: noSpeechDetected).
+                    // That turn's own end re-arms the wake word.
+                    guard GlassesAudioHandoffPolicy.mayHandOff(
+                        inConversation: self.inConversation, isListening: self.isListening,
+                        isProcessing: self.isProcessing,
+                        isSpeaking: self.speechService.isSpeaking) else {
+                        self.addDebugEvent("Glasses audio hand-off skipped: a turn is in progress")
+                        return
+                    }
                     await self.wakeWordService.reconfigureAudioSessionIfNeeded()
-                    if self.listeningEnabled && !self.isListening {
+                    // Through the same gate every automatic restart uses: the master toggle,
+                    // push-to-talk, a stand-down, the mute.
+                    if WakeAutoRestartPolicy.shouldRestart(
+                        listeningEnabled: self.listeningEnabled, silentMode: Config.silentMode,
+                        voiceInputAvailable: self.voiceInputAvailable(), micMuted: self.micMuted,
+                        alreadyListening: self.isListening || self.wakeWordService.isListening) {
                         try? await self.wakeWordService.startListening()
                     }
                 }
@@ -748,9 +766,10 @@ class AppState: ObservableObject, AppStateProtocol {
         applyGlassesUse()
     }
 
-    /// The wearer's Disconnect: stop using glasses whose link stays up. No-op unless connected.
-    private func standDownGlasses() {
-        glassesUse.standDown()
+    /// Stop using glasses whose link stays up — the wearer's Disconnect, or the app's own
+    /// (`GlassesSleepPolicy`). No-op unless connected.
+    private func standDownGlasses(_ reason: GlassesUse.StandDownReason) {
+        glassesUse.standDown(reason)
         applyGlassesUse()
     }
 
@@ -769,13 +788,38 @@ class AppState: ObservableObject, AppStateProtocol {
         if isConnected != glassesUse.inUse { isConnected = glassesUse.inUse }
     }
 
-    /// Connect the glasses on the wearer's say-so: lift a stand-down, and register only when the
-    /// link is not already up (registering a registered app is a round trip to Meta AI for nothing).
-    func connectGlasses() async {
+    /// A connect the wearer asked for from the glasses controls (the session card's glasses pill,
+    /// onboarding) — the only place a failure to connect glasses is reported, because it is the
+    /// only place connecting them was the request. Lifts a stand-down; registers only when the link
+    /// is not already up (registering a registered app is a round trip to Meta AI for nothing).
+    ///
+    /// - Parameter awaitLink: wait (up to 15 s — DAT registration can take a while the first time
+    ///   or after re-pairing) for the link to come up, and report it if it does not. Onboarding
+    ///   passes `false`: it is after the registration, and reports that itself.
+    func connectGlasses(awaitLink: Bool = true) async {
         resumeGlasses()
         guard !isConnected else { return }
+        isConnectingGlasses = true
+        defer { isConnectingGlasses = false }
         await glassesService.connect()
+        guard awaitLink else { return }
+        for _ in 0..<60 where !isConnected {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        guard !isConnected else { return }
+        // The listener-maintained raw state, not `Wearables.shared`: with the SDK unconfigured the
+        // latter traps, and that is one of the failures this message exists to report.
+        let stateRaw = registrationStateRaw
+        let configStatus = MWDATConfigCheck.validate(
+            Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
+        errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
+                                                              configStatus: configStatus)
+        addDebugEvent("connectGlasses gave up: registrationState=\(stateRaw), config=\(configStatus)")
     }
+
+    /// The wearer's glasses connect (`connectGlasses()`) is under way — the session card shows its
+    /// progress ("Approve in Meta AI…", "Waiting for device…") instead of the session.
+    @Published private(set) var isConnectingGlasses = false
 
     /// Stop everything that needs the glasses' audio or camera: the wake word, live sessions, the
     /// camera stream, speech. Run when the link drops, and when the Bluetooth audio route is lost
@@ -811,7 +855,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 wakeWordService.stopListening()
                 isListening = false
                 PrivacyLog.app(.micMuted)
-            } else if glassesConnectionIsLive() {
+            } else if voiceInputAvailable() {
                 Task {
                     await startWakeWordIfListeningEnabled(PrivacyToken("unmute"))
                     PrivacyLog.app(.micUnmuted)
@@ -2757,6 +2801,15 @@ class AppState: ObservableObject, AppStateProtocol {
         // registered pair with no link would otherwise be tried, and fail, instead of falling back.
         // Stood down counts as away too: the wearer disconnected, so a capture uses the phone.
         cameraService.isGlassesLinkUp = { [weak self] in self?.isConnected ?? false }
+        // Worn or not drives the automatic stand-down (`GlassesSleepPolicy`). `$isWorn` fires in willSet, so the
+        // value is handed over rather than read back; the hop lets the service finish publishing.
+        let wornToken = glassesService.$isWorn
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] worn in
+                DispatchQueue.main.async { self?.glassesWornChanged(worn) }
+            }
+        cancellables.append(wornToken)
 
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
@@ -3677,17 +3730,16 @@ class AppState: ObservableObject, AppStateProtocol {
             // Small delay to let the app finish initializing
             try? await Task.sleep(nanoseconds: 1_000_000_000)  // 1s
 
-            // Avoid starting audio capture while registration is still negotiating,
-            // as Bluetooth route churn can destabilize registration state transitions.
-            if registrationStateRaw < 3 {
+            // Avoid starting audio capture while glasses registration is still negotiating, as
+            // Bluetooth route churn can destabilize registration state transitions. Only someone
+            // with glasses has a registration to protect, and the wait never cancels the start:
+            // phone-first, the wake word comes up on whatever mic there is (`WakeLaunchPolicy`).
+            if WakeLaunchPolicy.awaitsRegistrationOnLaunch(stateRaw: registrationStateRaw,
+                                                           glassesAdded: glassesAdded) {
                 addDebugEvent("Wake word auto-start deferred: registration state=\(registrationStateRaw)")
                 let settled = await waitForRegistration(minState: 3, timeoutSeconds: 20)
                 registrationStateRaw = settled
                 addDebugEvent("Wake word auto-start registration wait result: state=\(settled)")
-                guard settled >= 3 else {
-                    addDebugEvent("Skipping wake word auto-start: registration did not reach state 3")
-                    return
-                }
             }
 
             // Don't auto-start in silent mode — saves battery, user uses tap-to-talk
@@ -3762,7 +3814,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if enabled {
             // Restart wake word detection and Live Activity
             liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
-            if glassesConnectionIsLive() {
+            if voiceInputAvailable() {
                 Task { try? await wakeWordService.startListening() }
             }
             PrivacyLog.app(.listeningEnabled)
@@ -6788,58 +6840,108 @@ class AppState: ObservableObject, AppStateProtocol {
 
     // MARK: - Connect & Listen
 
-    /// One-tap reconnect — connect glasses and immediately start listening.
-    /// Used by hero capsule, widget, watch, and Dynamic Island reconnect actions.
+    /// The talk capsule's action — and the widget's, the watch's, the Dynamic Island's,
+    /// `avenkin://connect`'s and the Siri/Shortcuts connect actions'. Phone-first
+    /// (`TalkEntryPolicy`): it starts a turn now, on the phone when the glasses are away, and never
+    /// tries to register glasses or reports a glasses error. A link that is coming up gets a short
+    /// wait; glasses the wearer stood down are resumed.
     func connectAndListen() async {
-        // An explicit connect lifts a Disconnect: glasses whose link is still up are in use again.
-        resumeGlasses()
-        guard !isConnected else {
-            // Already connected — just start listening
-            wakeWordService.stopListening()
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            await handleWakeWordDetected(manual: true)
-            return
+        switch TalkEntryPolicy.decide(link: glassesPhase, stoodDown: glassesStoodDown).action {
+        case .resumeGlassesThenTalk:
+            resumeGlasses()
+        case .awaitLinkThenTalk:
+            let polls = Int(TalkEntryPolicy.linkWaitSeconds * 4)
+            for _ in 0..<polls where !isConnected && glassesPhase.isConnecting {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        case .talk:
+            break
         }
+        await startTalking()
+    }
 
-        // Connect glasses
-        await glassesService.connect()
-
-        // Wait for connection to establish — up to 15s on fresh install (DAT registration
-        // can take a while the first time or after re-pairing)
-        for _ in 0..<60 {
-            if isConnected { break }
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
-
-        guard isConnected else {
-            let stateRaw = Wearables.shared.registrationState.rawValue
-            let configStatus = MWDATConfigCheck.validate(
-                Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
-            errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
-                                                                  configStatus: configStatus)
-            addDebugEvent("connectAndListen gave up: registrationState=\(stateRaw), config=\(configStatus)")
-            return
-        }
-
-        // Now start listening
-        try? await Task.sleep(nanoseconds: 200_000_000)
+    /// Start a turn on whatever microphone there is — the one entry the capsule, the push-to-talk
+    /// tile and `connectAndListen()` share. A wake-word listener still running would contend for
+    /// the engine the turn needs, so it is stopped first.
+    func startTalking() async {
+        wakeWordService.stopListening()
+        try? await Task.sleep(nanoseconds: 100_000_000)
         await handleWakeWordDetected(manual: true)
     }
 
-    /// Start auto-sleep countdown. If glasses stay idle for N minutes, disconnect.
+    /// Whether the always-on wake-word listener runs by design — the only thing an automatic
+    /// stand-down exists to release (`GlassesSleepPolicy`).
+    private var alwaysOnListening: Bool {
+        GlassesSleepPolicy.alwaysOnListening(listeningEnabled: listeningEnabled,
+                                             silentMode: Config.silentMode)
+    }
+
+    /// Start the silence countdown for idle glasses (`GlassesSleepPolicy`): only with the
+    /// always-on listener running, and not for glasses being worn unless the wearer opted in.
     private func startAutoSleepTimer() {
         cancelAutoSleepTimer()
         let minutes = Config.autoSleepMinutes
-        guard minutes > 0 else { return }
+        guard GlassesSleepPolicy.shouldArmSilenceSleep(
+            alwaysOnListening: alwaysOnListening, autoSleepMinutes: minutes,
+            worn: glassesService.isWorn,
+            sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
 
         autoSleepTask = Task { @MainActor [weak self] in
             let seconds = UInt64(minutes) * 60
             try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            guard let self, !Task.isCancelled, self.glassesIdle, self.isConnected else { return }
+            guard let self, !Task.isCancelled else { return }
+            self.autoSleepTask = nil
+            // Re-checked here: they may have put the glasses on, or switched listening off.
+            guard GlassesSleepPolicy.silenceSleepFires(
+                alwaysOnListening: self.alwaysOnListening, idle: self.glassesIdle,
+                inUse: self.isConnected, worn: self.glassesService.isWorn,
+                sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) else { return }
             PrivacyLog.device(.glasses, .autoSleepFired, minutes: minutes)
-            self.disconnectGlasses()
+            self.disconnectGlasses(reason: .automatic)
         }
         PrivacyLog.device(.glasses, .autoSleepArmed, minutes: minutes)
+    }
+
+    private var doffGraceTask: Task<Void, Never>?
+
+    /// The glasses were put on or taken off (or stopped saying), link up (`GlassesSleepPolicy`).
+    private func glassesWornChanged(_ worn: Bool?) {
+        switch worn {
+        case true?:
+            doffGraceTask?.cancel()
+            doffGraceTask = nil
+            // Back on the face after the app stood down on its own: in use again, no tap. The
+            // wearer's own Disconnect is not lifted here.
+            if glassesUse.standDownReason == .automatic {
+                addDebugEvent("Glasses put back on — resuming")
+                glassesUse.donned()
+                applyGlassesUse()
+            }
+            // Worn glasses do not sleep for silence unless the wearer opted in.
+            if !GlassesSleepPolicy.silenceRuleApplies(
+                worn: true, sleepWhenQuietWhileWorn: Config.sleepWhenQuietWhileWorn) {
+                cancelAutoSleepTimer()
+            }
+        case false?:
+            guard doffGraceTask == nil,
+                  GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: alwaysOnListening,
+                                                      worn: false, inUse: isConnected) else { return }
+            doffGraceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(GlassesSleepPolicy.doffGraceSeconds * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.doffGraceTask = nil
+                guard GlassesSleepPolicy.doffGraceApplies(
+                    alwaysOnListening: self.alwaysOnListening, worn: self.glassesService.isWorn,
+                    inUse: self.isConnected) else { return }
+                self.addDebugEvent("Glasses taken off — standing down")
+                self.disconnectGlasses(reason: .automatic)
+            }
+        case nil:
+            // The device stopped saying: no grace to run, and the silence rule is the fallback.
+            doffGraceTask?.cancel()
+            doffGraceTask = nil
+            if glassesIdle && autoSleepTask == nil { startAutoSleepTimer() }
+        }
     }
 
     private func cancelAutoSleepTimer() {
@@ -6848,9 +6950,10 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Tear down all glasses-dependent services in one tap, and stand the app down from the
-    /// glasses until the wearer connects again or the link drops. Also what auto-sleep calls.
-    /// OpenClaw bridge and agent tasks continue running server-side.
-    func disconnectGlasses() {
+    /// glasses. A `.user` stand-down (Disconnect) lifts only on an explicit connect or the link
+    /// dropping; an `.automatic` one (taken off, silent too long — `GlassesSleepPolicy`) also lifts
+    /// when the glasses are put back on. OpenClaw bridge and agent tasks continue server-side.
+    func disconnectGlasses(reason: GlassesUse.StandDownReason = .user) {
         guard isConnected else { return }
 
         // Plan FF P1/PR3: cancel a live-session startup still in flight — there is nothing to
@@ -6862,7 +6965,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // wearer's request is kept beside it (`GlassesUse`), and `isConnected` goes false here.
         // Its didSet runs the hardware teardown once: speech, wake word, live sessions, the frame
         // pin, the camera stream. An explicit connect, or the link dropping, lifts it.
-        standDownGlasses()
+        standDownGlasses(reason)
 
         // Beyond the hardware teardown: recording, ambient features, the conversation thread.
         if videoRecorder.isRecording {
@@ -6925,29 +7028,24 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// The re-arm decision's inputs, with connection **observed** rather than read from the cached
-    /// flag — see `glassesConnectionIsLive()`.
+    /// The re-arm decision's inputs — see `voiceInputAvailable()`.
     private func rearmInputs(wasInConversation: Bool) -> WakeRearmPolicy.Inputs {
         WakeRearmPolicy.Inputs(listeningEnabled: listeningEnabled,
                                silentMode: Config.silentMode,
                                wasInConversation: wasInConversation,
-                               isConnected: glassesConnectionIsLive(),
+                               voiceInputAvailable: voiceInputAvailable(),
                                micMuted: micMuted)
     }
 
-    /// Whether there is something to listen on *now*: the glasses' link, or a live Bluetooth
-    /// audio route.
+    /// Whether voice may open a microphone on its own — the wake word on launch, foreground,
+    /// unmute, the listening toggle, the end-of-turn re-arm.
     ///
-    /// `isConnected` used to be a cache that a route-flip handler could latch false for the rest
-    /// of the launch, so every end-of-turn re-arm skipped as `disconnected`. It is now the SDK's
-    /// link state and cannot latch; the route is still asked as well, because a Bluetooth mic can
-    /// be there before the link reports in.
-    ///
-    /// Never while stood down: the wearer disconnected, and an unmute, a listening toggle or an
-    /// end-of-turn re-arm must not bring the wake word back on the glasses' mic behind their back.
-    func glassesConnectionIsLive() -> Bool {
-        guard !glassesStoodDown else { return false }
-        return isConnected || wakeWordService.hasBluetoothAudioRoute()
+    /// Phone-first: the phone's mic is always a good device, so glasses being away (or never
+    /// added) is not a reason to keep it shut. The one glasses-shaped reason is the wearer's own
+    /// Disconnect: stood down, nothing re-opens a mic — not even with a Bluetooth route present —
+    /// until they connect again or the glasses go away (`GlassesUse.voiceInputAvailable`).
+    func voiceInputAvailable() -> Bool {
+        glassesUse.voiceInputAvailable
     }
 
     /// Open the wake-word listener, reporting failure the way the wearer can act on.

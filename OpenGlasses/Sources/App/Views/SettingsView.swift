@@ -853,6 +853,14 @@ struct HardwarePrivacyView: View {
                 // app is not the same artefact as the firmware or the phone app. The SDK has
                 // deep links straight to both flows; we were telling people to go looking instead
                 // of taking them there.
+                InfoToggle(
+                    title: "Sleep When Quiet, Even While Worn",
+                    isOn: Binding(
+                        get: { Config.sleepWhenQuietWhileWorn },
+                        set: { Config.sleepWhenQuietWhileWorn = $0 }
+                    ),
+                    info: "Only while the wake word is listening — that is what keeps the glasses' mic open. Glasses you take off sleep after 30 seconds and wake when you put them back on. Glasses you're wearing stay awake however quiet it gets, unless this is on: then they also sleep after \(Config.autoSleepMinutes) minutes of silence, and wake when you take them off and put them on again, or tap to talk. Glasses that can't tell whether they're worn always sleep after that much silence. With push-to-talk, or listening off, nothing is held open and the glasses never sleep."
+                )
                 Button("Update Glasses App") { Task { await openGlassesAppUpdate() } }
                 Button("Update Glasses Firmware") { Task { await openGlassesFirmwareUpdate() } }
                 if let glassesUpdateError {

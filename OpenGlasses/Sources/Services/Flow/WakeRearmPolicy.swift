@@ -16,12 +16,13 @@ import Foundation
 ///
 /// - **Not recoverable** — the wearer turned listening off, chose push-to-talk, or muted the mic.
 ///   The mic stays shut until they change their mind. Retrying would be overriding them.
-/// - **Recoverable** — the glasses link is the app's observation of the world, not an instruction
-///   from the wearer, and it can come back without them touching anything. A skip on this reason
-///   schedules a bounded re-arm rather than ending the session silently.
+/// - **Recoverable** — a condition the app observed rather than one the wearer chose. A skip on
+///   such a reason schedules a bounded re-arm rather than ending the session silently. There is
+///   none today: the glasses link used to be one, but the app is phone-first — glasses being away
+///   never closes the mic — so the only glasses input left is the wearer's own Disconnect.
 ///
-/// The connection input must be **re-derived at the call site**, not read from a cached flag —
-/// see `AppState.glassesConnectionIsLive()`. A policy cannot tell a stale `false` from a true one.
+/// The voice-input input must be **re-derived at the call site** — see
+/// `AppState.voiceInputAvailable()`.
 enum WakeRearmPolicy {
 
     /// Everything the decision reads.
@@ -33,8 +34,9 @@ enum WakeRearmPolicy {
         /// Whether the turn that just ended was an active conversation. Silent mode suppresses the
         /// *initial* auto-start only — a wearer who was just talking expects the mic back.
         var wasInConversation: Bool
-        /// Glasses link, freshly observed.
-        var isConnected: Bool
+        /// False only while the wearer has disconnected the app from their glasses
+        /// (`GlassesUse.voiceInputAvailable`). Glasses being away does not close it.
+        var voiceInputAvailable: Bool
         /// Explicit mute.
         var micMuted: Bool
     }
@@ -42,17 +44,16 @@ enum WakeRearmPolicy {
     enum SkipReason: String, Equatable {
         case masterOff
         case silentMode
-        case disconnected
+        case glassesStoodDown
         case micMuted
 
         /// Whether this condition can clear without the wearer changing a setting.
         ///
-        /// Only the glasses link can. The other three are decisions the wearer made, and a policy
+        /// None can: all four are decisions the wearer made (Disconnect included), and a policy
         /// that retried its way around them would be a mic that turns itself back on.
         var isRecoverable: Bool {
             switch self {
-            case .disconnected: return true
-            case .masterOff, .silentMode, .micMuted: return false
+            case .masterOff, .silentMode, .micMuted, .glassesStoodDown: return false
             }
         }
     }
@@ -78,7 +79,7 @@ enum WakeRearmPolicy {
         // Silent mode suppresses the always-on listener, but not the mic coming back after the
         // wearer has just been talking.
         if inputs.silentMode && !inputs.wasInConversation { return .skip(.silentMode) }
-        guard inputs.isConnected else { return .skip(.disconnected) }
+        guard inputs.voiceInputAvailable else { return .skip(.glassesStoodDown) }
         guard !inputs.micMuted else { return .skip(.micMuted) }
         return .restart
     }

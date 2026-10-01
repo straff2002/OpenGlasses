@@ -662,31 +662,22 @@ struct BottomControlBar: View {
             ) {
                 appState.endListeningSession()
             }
-        } else if !appState.isConnected && !Config.silentMode {
-            // Disconnected and not in Push-to-Talk — one tap to reconnect + start listening
-            ActionCapsule(
-                icon: "AvenkinMark",
-                label: "Connect & Talk",
-                color: accent
-            ) {
-                Task {
-                    await appState.connectAndListen()
-                }
-            }
         } else {
-            // Idle — tap to talk. Works phone-only (Push-to-Talk) or through the glasses.
+            // Idle — one capsule, phone-first (`TalkEntryPolicy`). With glasses away or never
+            // added this talks on the phone at once; it used to read "Connect & Talk" and spend
+            // 15 s trying to register glasses that were in their case, then show a glasses error
+            // instead of listening. Connecting glasses is the glasses pill's job.
+            let entry = TalkEntryPolicy.decide(link: appState.glassesPhase,
+                                               stoodDown: appState.glassesStoodDown)
             ActionCapsule(
                 icon: "mic.fill",
-                label: "Tap to talk",
-                spokenLabel: "Start talking",
+                label: entry.label,
+                spokenLabel: entry.action == .resumeGlassesThenTalk ? "Resume glasses and start talking"
+                                                                    : "Start talking",
                 color: accent,
                 showMuteBadge: appState.micMuted
             ) {
-                Task {
-                    appState.wakeWordService.stopListening()
-                    try? await Task.sleep(nanoseconds: 100_000_000)
-                    await appState.handleWakeWordDetected(manual: true)
-                }
+                Task { await appState.connectAndListen() }
             }
         }
     }
