@@ -63,11 +63,11 @@ enum ReportTargetResolver {
     static let recentWindow: TimeInterval = 30 * 60
 
     static let noJobReason = "There is no open job and no job was closed in this conversation "
-        + "in the last half hour. Open the job from the Job tab to send its report."
+        + "in the last half hour. Open the job from the Jobs tab to send its report."
     static let alreadySentReason = "The report for the job just closed has already been sent. "
-        + "To send it again, open the job from the Job tab and send it from there."
+        + "To send it again, open the job from the Jobs tab and send it from there."
     static let otherConversationReason = "The job just closed belongs to a different conversation. "
-        + "Open the job from the Job tab to send its report."
+        + "Open the job from the Jobs tab to send its report."
 
     /// Decide. `recentEnded` may be in any order and may include old jobs; the rule picks the most
     /// recently ended one and holds it to the window, the thread and the sent flag.

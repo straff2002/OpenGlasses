@@ -87,7 +87,7 @@ struct JobFileReviewSheet: View {
         } header: {
             Text("The job")
         } footer: {
-            Text("Anything the office left out stays empty. The job is added to Upcoming on the Job tab; it doesn't start, and nothing is sent.")
+            Text("Anything the office left out stays empty. The job is added to Upcoming on the Jobs tab; it doesn't start, and nothing is sent.")
         }
 
         Section {

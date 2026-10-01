@@ -26,15 +26,13 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
     /// Left-to-right order in the tab bar, with every tab the app has. `MainView` builds its bar
     /// from `visibleOrder(showingJob:)`, which is this filtered by what is actually on.
     ///
-    /// The Job tab sits between Chat and Settings. Voice is the primary capture surface and stays
-    /// first; Settings is the drawer everything else is kept out of and stays last; the job is
-    /// content, so it belongs with the content tabs. Inserting it there moves only Settings, and
-    /// Settings is reached by its label — the UI tests address every tab by name
-    /// (`AccessibilityAudit.openTab(_:in:)`), and nothing in the app addresses one by position.
-    static let displayOrder: [MainTab] = [.voice, .modes, .chat, .job, .settings]
+    /// Home first, then what shapes the work (modes), the work itself (jobs), what has already
+    /// been said (history), and Settings last as the drawer everything else is kept out of. The
+    /// UI tests address every tab by name (`AccessibilityAudit.openTab(_:in:)`), and nothing in the
+    /// app addresses one by position, so the order can move without breaking either.
+    static let displayOrder: [MainTab] = [.voice, .modes, .job, .chat, .settings]
 
-    /// The bar as it is actually built. Without Field Assist this is exactly the four tabs that
-    /// shipped, in the order they shipped in.
+    /// The bar as it is actually built: `displayOrder` without the Job tab when Field Assist is off.
     static func visibleOrder(showingJob: Bool) -> [MainTab] {
         showingJob ? displayOrder : displayOrder.filter { $0 != .job }
     }
@@ -47,8 +45,9 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         // stopped being glasses-first, this tab is the dock and grid as much as the voice session.
         case .voice: return "Avenkin"
         case .modes: return "Modes"
-        case .chat: return "Chat"
-        case .job: return "Job"
+        // Past conversations, not a second way to talk: the home tab is where a conversation starts.
+        case .chat: return "History"
+        case .job: return "Jobs"
         case .settings: return "Settings"
         }
     }
@@ -68,7 +67,7 @@ enum MainTab: String, Hashable, CaseIterable, Identifiable {
         switch self {
         case .voice: return "waveform"
         case .modes: return "person.2.fill"
-        case .chat: return "bubble.left.and.bubble.right"
+        case .chat: return "clock.arrow.circlepath"
         // A clipboard with a tick: the job is a list of work that gets signed off, and it reads
         // differently from the waveform, the people and the gear beside it.
         case .job: return "checklist"

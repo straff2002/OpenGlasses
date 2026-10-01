@@ -26,7 +26,7 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         let app = launch([.configured])
         awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
-        for name in ["Avenkin", "Modes", "Chat", "Settings"] {
+        for name in ["Avenkin", "Modes", "History", "Settings"] {
             XCTAssertTrue(app.tabBars.buttons[name].exists, "The \(name) tab is not named")
         }
     }

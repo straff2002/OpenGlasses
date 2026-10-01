@@ -285,7 +285,7 @@ struct ActiveJobView: View {
             choice("Open conversation", action: onOpenConversation)
                 .disabled(!job.hasConversation)
                 .accessibilityHint(job.hasConversation
-                                   ? "Opens the Chat tab on this job's conversation."
+                                   ? "Opens the History tab on this job's conversation."
                                    : "Nothing has been said on this job yet.")
 
             choice("Start a separate chat") {

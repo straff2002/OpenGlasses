@@ -49,13 +49,12 @@ final class MainTabTests: XCTestCase {
         XCTAssertEqual(MainTab.displayOrder.count, MainTab.allCases.count)
     }
 
-    func testDisplayOrderPutsTheJobTabBetweenChatAndSettings() {
-        XCTAssertEqual(MainTab.displayOrder, [.voice, .modes, .chat, .job, .settings])
+    func testDisplayOrderIsHomeModesJobsHistorySettings() {
+        XCTAssertEqual(MainTab.displayOrder, [.voice, .modes, .job, .chat, .settings])
     }
 
-    /// The bar as everybody without Field Assist sees it: the four tabs that shipped, in the order
-    /// they shipped in. Inserting `.job` must not have moved any of them relative to each other.
-    func testWithoutTheJobTabTheBarIsExactlyWhatItAlwaysWas() {
+    /// The bar as everybody without Field Assist sees it: the same order with the Job tab left out.
+    func testWithoutTheJobTabTheBarIsTheOtherFourInOrder() {
         XCTAssertEqual(MainTab.visibleOrder(showingJob: false), [.voice, .modes, .chat, .settings])
     }
 
@@ -81,7 +80,8 @@ final class MainTabTests: XCTestCase {
             XCTAssertFalse(tab.title.isEmpty, "\(tab) has no name to read out")
             XCTAssertFalse(tab.systemImage.isEmpty, "\(tab) has no symbol")
         }
-        XCTAssertEqual(MainTab.job.title, "Job")
+        XCTAssertEqual(MainTab.job.title, "Jobs")
+        XCTAssertEqual(MainTab.chat.title, "History")
     }
 
     func testTheHomeTabCarriesTheAppsNameAndMark() {

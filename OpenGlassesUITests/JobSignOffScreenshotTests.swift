@@ -101,7 +101,7 @@ final class JobSignOffScreenshotTests: AccessibilityAuditCase {
     static let ax5 = "UICTContentSizeCategoryAccessibilityXXXL"
 
     private func openJobTab(_ app: XCUIApplication) {
-        let tab = app.tabBars.buttons["Job"]
+        let tab = app.tabBars.buttons["Jobs"]
         if !tab.waitForExistence(timeout: 90) {
             app.terminate()
             app.launch()

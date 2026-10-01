@@ -65,29 +65,28 @@ struct MainView: View {
                 // The Field Assist edition hides the other modes and chat from the technician
                 // (Plan CT 3b, `EditionPresentation.hiddenTabs`); an administrator session shows them.
                 if !restricted {
-                    Tab("Modes", systemImage: "person.2.fill", value: MainTab.modes) {
+                    Tab(MainTab.modes.title, systemImage: MainTab.modes.systemImage, value: MainTab.modes) {
                         NavigationStack {
                             PersonaPickerTab(appState: appState)
                         }
                     }
                 }
 
-                if !restricted {
-                    Tab("Chat", systemImage: "bubble.left.and.bubble.right", value: MainTab.chat) {
-                        ChatListView()
-                    }
-                }
-
                 // Field Assist only, and only once the entitlement is a real answer — see
-                // `jobTabPresence`. It sits here rather than at the end because Settings is the
-                // drawer everything else is kept out of, and the job is content.
+                // `jobTabPresence`. The work sits beside the modes that shape it, ahead of history.
                 if jobTabPresence.showsTab {
                     Tab(MainTab.job.title, systemImage: MainTab.job.systemImage, value: MainTab.job) {
                         JobTab()
                     }
                 }
 
-                Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
+                if !restricted {
+                    Tab(MainTab.chat.title, systemImage: MainTab.chat.systemImage, value: MainTab.chat) {
+                        ChatListView()
+                    }
+                }
+
+                Tab(MainTab.settings.title, systemImage: MainTab.settings.systemImage, value: MainTab.settings) {
                     NavigationStack {
                         SettingsView(appState: appState)
                     }
