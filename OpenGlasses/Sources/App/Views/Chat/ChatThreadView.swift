@@ -24,6 +24,8 @@ struct ChatThreadView: View {
     /// Raised when making this thread the live one would take the technician out of an open job.
     @State private var pendingLeaveJob: JobThreadQuestion?
 
+    @ObservedObject private var weatherThreads = WeatherAttributionThreads.shared
+
     private let bottomAnchor = "chat-bottom"
 
     private var store: ConversationStore { appState.conversationStore }
@@ -117,6 +119,12 @@ struct ChatThreadView: View {
                         StreamingBubble(text: streamingText)
                     } else if isThinking {
                         TypingIndicator()
+                    }
+                    // A weather answer in this thread came from WeatherKit, and Apple requires its
+                    // credit wherever that data is displayed.
+                    if weatherThreads.contains(threadId) {
+                        WeatherAttributionView()
+                            .padding(.top, 4)
                     }
                     Color.clear.frame(height: 1).id(bottomAnchor)
                 }

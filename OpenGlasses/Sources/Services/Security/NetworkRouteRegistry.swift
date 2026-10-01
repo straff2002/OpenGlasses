@@ -133,7 +133,9 @@ enum NetworkRoute: String, CaseIterable, Sendable {
 
     // MARK: Tools
     case webSearch
-    case weatherLookup
+    // Weather itself is WeatherKit's own request (no transport of ours, so no route — the same
+    // rule as MusicKit and MapKit search); only the attribution-mark download is ours.
+    case weatherAttributionMark
     case newsHeadlines
     case currencyRates
     case aircraftOverhead
@@ -202,7 +204,7 @@ extension NetworkRoute {
         case .providerModelCatalog: return "List the models a configured provider key may use."
         case .conversationRecallSummary: return "Summarize retrieved past conversation turns into a cited answer."
         case .webSearch: return "Run a web search for a query the wearer or the model produced."
-        case .weatherLookup: return "Fetch a forecast for the device's coarse location or a named place."
+        case .weatherAttributionMark: return "Download the Apple Weather mark shown beside weather data, as Apple requires; the request names a fixed image and nothing about the wearer."
         case .newsHeadlines: return "Fetch news headlines for a topic."
         case .currencyRates: return "Fetch published exchange rates."
         case .aircraftOverhead: return "Fetch aircraft positions near the device's coarse location."
@@ -265,9 +267,9 @@ extension NetworkRoute {
             return [.transcript, .healthFact]
         case .webSearch, .newsHeadlines:
             return [.promptText]
-        case .weatherLookup, .aircraftOverhead, .aedDirectory:
+        case .aircraftOverhead, .aedDirectory:
             return [.location]
-        case .currencyRates, .clawHubCatalog, .vaultPackCatalog:
+        case .currencyRates, .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark:
             return [.telemetryFree]
         case .playbookHTTPStep:
             return [.promptText]
@@ -321,9 +323,9 @@ extension NetworkRoute {
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
              .asrModelDownload, .fingerspellingModelDownload, .localizationCatalogDownload,
-             .clawHubCatalog, .vaultPackCatalog:
+             .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark:
             return .firstPartyCloud
-        case .webSearch, .weatherLookup, .newsHeadlines, .currencyRates,
+        case .webSearch, .newsHeadlines, .currencyRates,
              .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession,
@@ -387,7 +389,7 @@ extension NetworkRoute {
         case .providerModelCatalog: return ["ModelFetcher"]
         case .conversationRecallSummary: return []
         case .webSearch: return ["WebSearchTool"]
-        case .weatherLookup: return ["WeatherTool"]
+        case .weatherAttributionMark: return ["WeatherAttributionMarkLoader"]
         case .newsHeadlines: return ["NewsTool"]
         case .currencyRates: return ["CurrencyTool"]
         case .aircraftOverhead: return ["AircraftOverheadTool"]

@@ -192,6 +192,18 @@ struct AppleIntegrationsSettingsScreen: View {
             } footer: {
                 Text("These use the apps already on your iPhone, so there is nothing to sign into. iOS asks for permission the first time you switch one on, and you can change your mind in iOS Settings at any point. Destructive actions still ask before they happen.")
             }
+
+            Section {
+                NavigationLink {
+                    WeatherDataAboutView()
+                } label: {
+                    Label("About Weather Data", systemImage: "cloud.sun")
+                }
+            } header: {
+                Text("Weather")
+            } footer: {
+                Text("Weather answers and the weather in My Day come from Apple Weather.")
+            }
         }
         .navigationTitle("Works with your iPhone")
         .ogFormStyle()

@@ -19,8 +19,8 @@
   transmission is user-directed app functionality sent under the user's own API
   keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
   / etc. for LLM + vision, ElevenLabs for TTS, Perplexity / Tavily / Brave /
-  SearXNG (user-configured) / DuckDuckGo for search, open-meteo / adsb.fi for
-  weather + flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
+  SearXNG (user-configured) / DuckDuckGo for search, Apple WeatherKit for weather,
+  adsb.fi for flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
   cross-app/-developer tracking — so every type below is Linked=false,
   Tracking=false, purpose = App Functionality.
 
@@ -37,6 +37,12 @@
       No SDK is linked for it (MusicKit is a system framework; the developer
       token comes from the App ID's MusicKit App Service). Declared under
       SearchHistory, AppFunctionality, not linked, not tracking.
+    - Weather comes from Apple's WeatherKit (get_weather, My Day). No SDK is
+      linked for it (WeatherKit is a system framework, authorised by the
+      com.apple.developer.weatherkit entitlement and the App ID's WeatherKit App
+      Service). Coordinates rounded to ~1 km, or a named place geocoded on the
+      phone, are sent to Apple. Declared under PreciseLocation, AppFunctionality,
+      not linked, not tracking. Blocked under Medical Local Only.
     - "Linked=false" assumes no account system is added later. If Avenkin ever
       gains sign-in or a first-party backend, revisit every Linked flag.
 -->
@@ -87,7 +93,7 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- lat/lon sent to weather (open-meteo), flights (adsb.fi), maps, and into LLM context -->
+		<!-- lat/lon sent to weather (Apple WeatherKit, rounded to ~1 km), flights (adsb.fi), maps, and into LLM context -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
