@@ -332,6 +332,11 @@ struct AIPersonalitySettingsScreen: View {
                     isOn: $userMemoryEnabled,
                     info: "Remembers facts you share across conversations — your name, preferences, routines, dietary needs, etc. This context is included in future conversations so the AI can personalise responses. Memory is stored locally on your device."
                 )
+                NavigationLink {
+                    MemoryView(model: appState.memoryFacts.makeScreenModel())
+                } label: {
+                    Label("What Avenkin Remembers", systemImage: "brain.head.profile")
+                }
                 InfoToggle(
                     title: "Conversation History",
                     isOn: $conversationPersistenceEnabled,

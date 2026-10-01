@@ -253,6 +253,6 @@ struct MeetingSummaryTool: NativeTool {
 
         // Feed the knowledge graph: typed edges from the summary, plus mentioned_in
         // edges linking known people to this meeting.
-        BrainStore.shared.ingest(text: content, sourceRef: title, sourceKind: "meeting")
+        BrainStore.shared.ingest(text: content, sourceRef: title, sourceKind: "meeting", origin: .fromMeeting)
     }
 }

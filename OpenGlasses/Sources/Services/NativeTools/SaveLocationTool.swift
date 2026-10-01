@@ -178,3 +178,69 @@ final class ListSavedLocationsTool: NativeTool, @unchecked Sendable {
         return response
     }
 }
+
+/// Read and change the saved places these two tools keep, one at a time — for the Memory screen
+/// (Plan GG). Same preference key and the same encoding as the tools, so nothing migrates.
+final class SavedLocationStore {
+    static let shared = SavedLocationStore()
+    private static let storageKey = "saved_locations"
+
+    /// Injectable so tests use a throwaway preference domain.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    struct SavedLocation: Codable, Equatable {
+        let label: String
+        let latitude: Double
+        let longitude: Double
+        let address: String?
+        let timestamp: Date
+
+        /// Stable identity: when it was saved, to the millisecond. Labels repeat; instants do not.
+        var recordID: String { String(Int64((timestamp.timeIntervalSince1970 * 1000).rounded())) }
+    }
+
+    func all() -> [SavedLocation] {
+        guard let data = defaults.data(forKey: Self.storageKey),
+              let locations = try? JSONDecoder().decode([SavedLocation].self, from: data) else { return [] }
+        return locations
+    }
+
+    func add(_ location: SavedLocation) {
+        persist(all() + [location])
+    }
+
+    func place(recordID: String) -> SavedLocation? {
+        all().first { $0.recordID == recordID }
+    }
+
+    @discardableResult
+    func delete(recordID: String) -> Bool {
+        let before = all()
+        let kept = before.filter { $0.recordID != recordID }
+        guard kept.count != before.count else { return false }
+        persist(kept)
+        return true
+    }
+
+    /// Rename a saved place, keeping where and when. Returns its (unchanged) record id.
+    func relabel(recordID: String, to label: String) -> String? {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        var locations = all()
+        guard !trimmed.isEmpty, let index = locations.firstIndex(where: { $0.recordID == recordID }) else {
+            return nil
+        }
+        let old = locations[index]
+        locations[index] = SavedLocation(label: trimmed, latitude: old.latitude, longitude: old.longitude,
+                                         address: old.address, timestamp: old.timestamp)
+        persist(locations)
+        return recordID
+    }
+
+    private func persist(_ locations: [SavedLocation]) {
+        if let data = try? JSONEncoder().encode(locations) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
+    }
+}

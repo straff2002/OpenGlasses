@@ -112,7 +112,7 @@ struct BrainTool: NativeTool {
             }
             brain.addEdge(srcKind: "person", srcName: src, relation: normalizedRelation,
                           dstKind: RelationOntology.destinationKind(for: normalizedRelation),
-                          dstName: dst, sourceRef: "told directly")
+                          dstName: dst, sourceRef: "told directly", origin: .toldMe)
             return "Linked: \(src) \(RelationOntology.phrase(for: normalizedRelation)) \(dst)."
 
         case "encounters", "sightings":

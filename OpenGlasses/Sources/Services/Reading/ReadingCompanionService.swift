@@ -125,7 +125,7 @@ final class ReadingCompanionService: ObservableObject {
                 latitude: nil, longitude: nil, locationName: nil, createdAt: Date()))
         }
         self.ingestBrainFact = { fact, book in
-            BrainStore.shared.ingest(text: fact, sourceRef: book, sourceKind: "book")
+            BrainStore.shared.ingest(text: fact, sourceRef: book, sourceKind: "book", origin: .fromScan)
         }
     }
 

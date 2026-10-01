@@ -103,7 +103,8 @@ final class MemoryLoopService: ObservableObject {
             brain.addEdge(srcKind: relation.srcKind, srcName: relation.src,
                           relation: relation.relation, dstKind: relation.dstKind,
                           dstName: relation.dst, sessionID: sessionID,
-                          confidence: brain.policy.provisionalConfidence, state: .provisional)
+                          confidence: brain.policy.provisionalConfidence, state: .provisional,
+                          origin: .inferred)
         }
         PrivacyLog.store(.brain, .ingested, count: relations.count,
                          detail: PrivacyToken("enrichment"))
@@ -144,8 +145,10 @@ final class MemoryLoopService: ObservableObject {
         for action in actions {
             switch action {
             case .saveFact(let payload):
+                // Saved without asking (agent mode), so the assistant's inference (Plan GG).
                 BrainStore.shared.ingest(text: payload, sourceRef: "memory-loop", sourceKind: "fact",
-                                         sessionID: conversationStore?.activeThreadId)
+                                         sessionID: conversationStore?.activeThreadId,
+                                         origin: .inferred)
             case .saveSkill(let trigger, let instruction):
                 VoiceSkillStore.shared.save(VoiceSkill(id: UUID().uuidString, trigger: trigger,
                                                        instruction: instruction, createdAt: Date()))

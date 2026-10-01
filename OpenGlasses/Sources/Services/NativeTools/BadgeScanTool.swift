@@ -86,7 +86,7 @@ struct BadgeScanTool: NativeTool {
         }
 
         await MainActor.run {
-            BrainStore.shared.ingest(text: record, subject: personName, sourceKind: "badge_scan")
+            BrainStore.shared.ingest(text: record, subject: personName, sourceKind: "badge_scan", origin: .fromScan)
         }
 
         var reply = "Saved \(personName)"

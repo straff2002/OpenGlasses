@@ -8,6 +8,8 @@ enum ErasureSubject: Equatable {
     case conversationThread(id: String)
     /// One ingested document.
     case document(id: String)
+    /// One remembered fact the wearer asked to forget (Plan GG), with what was confirmed.
+    case memoryFact(MemoryFactErasure)
 
     /// The text an unstructured store has to be searched for. A person is only ever findable in
     /// free prose by their name, and saying so plainly is better than a delete that looks more
@@ -17,7 +19,17 @@ enum ErasureSubject: Equatable {
         case .person(let name): return name.trimmingCharacters(in: .whitespacesAndNewlines)
         case .conversationThread(let id): return id
         case .document(let id): return id
+        case .memoryFact(let fact): return fact.id.rendered
         }
+    }
+
+    /// Whether the ledger should keep this erasure to replay it if a store comes back. A fact is
+    /// not: the wearer may tell it again tomorrow, and a replay would then delete what they asked
+    /// to keep. What stops a forgotten fact returning is its tombstone, which yields to the
+    /// wearer's own word.
+    var isLedgerReplayable: Bool {
+        if case .memoryFact = self { return false }
+        return true
     }
 
     var kindLabel: String {
@@ -25,8 +37,19 @@ enum ErasureSubject: Equatable {
         case .person: return "person"
         case .conversationThread: return "thread"
         case .document: return "document"
+        case .memoryFact: return "memoryFact"
         }
     }
+}
+
+/// What forgetting one fact reaches, fixed when the wearer confirmed it.
+struct MemoryFactErasure: Equatable {
+    let id: MemoryFactID
+    /// Exact lines of the assistant's notes to remove: the ones the wearer was shown and chose,
+    /// plus the fact's own line when the fact *is* a line.
+    var noteLines: [String] = []
+    /// The key a gateway copy was stored under, when the fact may have been sent to one.
+    var gatewayKey: String?
 }
 
 /// What one store did about one subject.
@@ -160,6 +183,11 @@ final class SubjectErasureCoordinator {
         var remotePending = false
 
         for store in Self.order {
+            if case .memoryFact(let fact) = subject {
+                let receipt = eraseMemoryFact(fact, from: store, remotePending: &remotePending, now: now)
+                receipts.append(receipt)
+                continue
+            }
             let receipt: ErasureReceipt
             switch store {
             case .stagedExports:
@@ -230,7 +258,7 @@ final class SubjectErasureCoordinator {
         PrivacyLog.store(.subjectErasure, .cleared,
                          count: receipts.filter(\.localComplete).count,
                          total: receipts.count)
-        if recordInLedger, let ledger {
+        if recordInLedger, subject.isLedgerReplayable, let ledger {
             // Logical coverage, and it says why: the walk unlinks files and deletes rows, and only
             // the two classes with a scoped key of their own can claim more than that.
             ledger.record(
@@ -254,6 +282,92 @@ final class SubjectErasureCoordinator {
         if pending { text += " A copy on a connected peer is queued for deletion and not confirmed yet." }
         if blocked > 0 { text += " \(blocked) store(s) cannot be erased by subject; see the receipt." }
         return text
+    }
+
+    // MARK: - One remembered fact
+
+    /// The walk for one fact. Most stores do not hold remembered facts, and say so with an empty
+    /// completed receipt; the transcript is the honest exception — the fact is still in the
+    /// conversation where it was said, and that is not this walk's to delete.
+    private func eraseMemoryFact(_ fact: MemoryFactErasure, from store: SensitiveStore,
+                                 remotePending: inout Bool, now: Date) -> ErasureReceipt {
+        let id = fact.id
+        switch store {
+        case .stagedExports:
+            // A staged archive is a copy of memory; revoke it rather than search inside it.
+            return eraseStagedExports()
+
+        case .brainGraph:
+            guard [.brainEdge, .brainNeed, .projectNote].contains(id.store) else { return .complete(store) }
+            guard let brain = stores.brain else {
+                return .unsupported(store, "no brain store was supplied")
+            }
+            switch id.store {
+            case .brainEdge: return .complete(store, removed: brain.forgetEdge(id: id.recordID))
+            case .brainNeed: return .complete(store, removed: brain.deleteNeed(id: id.recordID) ? 1 : 0)
+            default: return .complete(store, removed: brain.deleteProjectMemory(id: id.recordID) ? 1 : 0)
+            }
+
+        case .semanticMemory:
+            guard [.semantic, .diary].contains(id.store) else { return .complete(store) }
+            guard let memory = stores.semanticMemory else {
+                return .unsupported(store, "no memory store was supplied")
+            }
+            if id.store == .diary {
+                let existed = memory.diaryEntry(id: id.recordID) != nil
+                guard memory.deleteDiary(id: id.recordID) else {
+                    return .unsupported(store, "the observation could not be deleted; it is still saved")
+                }
+                return .complete(store, removed: existed ? 1 : 0)
+            }
+            let existed = memory.entry(id: id.recordID) != nil
+            guard memory.forgetFact(entryID: id.recordID) else {
+                return .unsupported(store, "the fact could not be deleted; it is still saved")
+            }
+            // The remember path copies facts to a connected gateway, which has no delete. The
+            // queue below carries a deletion request and the receipt says it is unconfirmed.
+            remotePending = existed && fact.gatewayKey != nil
+            return ErasureReceipt(store: store, localComplete: true, remotePending: remotePending,
+                                  removed: existed ? 1 : 0, unsupported: nil)
+
+        case .objectMemory:
+            guard id.store == .object else { return .complete(store) }
+            guard let objects = stores.objectMemory else {
+                return .unsupported(store, "no object memory was supplied")
+            }
+            return .complete(store, removed: objects.delete(id.recordID) ? 1 : 0)
+
+        case .agentDocuments:
+            guard !fact.noteLines.isEmpty else { return .complete(store) }
+            guard let documents = stores.agentDocuments else {
+                return .unsupported(store, "no agent document store was supplied")
+            }
+            return .complete(store, removed: documents.removeMemoryLines(exactly: fact.noteLines))
+
+        case .conversationThreads:
+            return .unsupported(store, "a conversation is not memory; the fact is still in the "
+                                + "conversation where it was said, and deleting that is offered separately")
+
+        case .offlineQueue:
+            guard remotePending, let key = fact.gatewayKey else { return .complete(store) }
+            guard let queue = stores.offlineQueue else {
+                return .unsupported(store, "no offline queue was supplied")
+            }
+            // The gateway was given the fact under its key; that is what it needs to delete it.
+            queue.enqueue(QueuedOp.make(
+                kind: .subjectErasure,
+                sessionId: "erasure",
+                json: ["subjectKind": "memoryFact",
+                       "subject": key,
+                       "requestedAt": now.timeIntervalSince1970]))
+            return ErasureReceipt(store: store, localComplete: true, remotePending: true,
+                                  removed: 0, unsupported: nil)
+
+        default:
+            // Recall indexes, documents, faces, recordings and the rest are not where a remembered
+            // fact is kept.
+            return .complete(store)
+        }
     }
 
     // MARK: - Per-store
@@ -286,7 +400,7 @@ final class SubjectErasureCoordinator {
         case .conversationThread(let id):
             index.delete(threadID: id)
             return .complete(.conversationRecallIndex)
-        case .person, .document:
+        case .person, .document, .memoryFact:
             // The index is full-text, so the honest reach is the same one recall itself uses:
             // find the turns that mention the subject, then delete exactly those rows.
             let hits = index.search(phrase: subject.searchToken, limit: 500)
@@ -325,7 +439,7 @@ final class SubjectErasureCoordinator {
                 .map(\.documentId))
             ids.forEach { documents.forget(documentId: $0) }
             return .complete(.ragDocuments, removed: ids.count)
-        case .conversationThread:
+        case .conversationThread, .memoryFact:
             return .complete(.ragDocuments)
         }
     }
@@ -343,12 +457,12 @@ final class SubjectErasureCoordinator {
         guard let memory = stores.semanticMemory else {
             return .unsupported(.semanticMemory, "no memory store was supplied")
         }
-        // Memories are key/value and the value is free prose, so both halves have to be searched.
-        let token = subject.searchToken.lowercased()
-        let doomed = memory.memories.filter {
-            $0.key.lowercased().contains(token) || $0.value.lowercased().contains(token)
-        }
-        doomed.keys.forEach { _ = memory.forget($0) }
+        // Memories are key/value and the value is free prose, so both halves have to be searched —
+        // in every namespace. This used to scan only the shared cache and delete through
+        // `forget(_:)`, which deletes from the *active persona's* namespace: under a persona the
+        // shared row survived, and no persona's own facts were ever reached at all.
+        let doomed = memory.entries(mentioning: subject.searchToken)
+        doomed.forEach { memory.forget(key: $0.keyName, namespace: $0.namespace) }
         // The remember path copies to a connected gateway; this device cannot confirm that copy is
         // gone, so the receipt says pending and the queue below carries the request.
         return ErasureReceipt(store: .semanticMemory, localComplete: true, remotePending: true,
@@ -429,7 +543,7 @@ final class SubjectErasureCoordinator {
         case .conversationThread(let id):
             conversations.deleteThread(id)
             return .complete(.conversationThreads, removed: 1)
-        case .person, .document:
+        case .person, .document, .memoryFact:
             // A thread is not about one person, so deleting whole threads because a name appears
             // in them would erase the wearer's own record of unrelated conversations. The turns
             // that mention the subject are already gone from the recall index above; the thread

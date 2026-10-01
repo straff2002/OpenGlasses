@@ -348,6 +348,41 @@ final class SubjectErasureTests: XCTestCase {
                       "a retry resurrected the subject in: \(survivors.keys.sorted().joined(separator: ", "))")
     }
 
+    // MARK: - Persona namespaces
+
+    /// A person erased while a persona is selected must leave no global fact behind. The walk used
+    /// to pick keys from the global cache and delete them through `forget(_:)`, which deletes from
+    /// the *active persona's* namespace — so the global row it had just found survived.
+    func testGlobalFactErasedWhilePersonaActive() async throws {
+        XCTAssertTrue(memory.rememberGlobal("colleague", value: "\(canary) prefers morning meetings"))
+        memory.activePersonaId = "docent"
+
+        _ = await SubjectErasureCoordinator(stores: makeStores()).erase(.person(canary))
+
+        reopenFromDisk()
+        XCTAssertFalse(memory.memories.values.contains { $0.contains(canary) },
+                       "a global fact naming the subject survived an erasure made under a persona")
+        XCTAssertNil(memory.systemPromptContext(query: canary)?.range(of: canary))
+    }
+
+    /// The same erasure reaches persona-scoped facts — the active persona's and any other's.
+    func testPersonaScopedFactsAreErasedWhicheverPersonaIsActive() async throws {
+        memory.activePersonaId = "coach"
+        XCTAssertTrue(memory.remember("gym buddy", value: "\(canary) spots on Tuesdays"))
+        memory.activePersonaId = "docent"
+        XCTAssertTrue(memory.remember("guide", value: "\(canary) runs the Thursday tour"))
+
+        let receipts = await SubjectErasureCoordinator(stores: makeStores()).erase(.person(canary))
+        XCTAssertEqual(try XCTUnwrap(receipts.first { $0.store == .semanticMemory }).removed, 2)
+
+        reopenFromDisk()
+        for persona in ["coach", "docent"] {
+            memory.activePersonaId = persona
+            XCTAssertFalse(memory.personaMemories.values.contains { $0.contains(canary) },
+                           "a fact in persona '\(persona)' survived")
+        }
+    }
+
     // MARK: - Other subject kinds
 
     func testErasingAThreadRemovesItAndItsIndexRows() async throws {

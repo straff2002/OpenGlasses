@@ -248,6 +248,34 @@ class AgentDocumentStore: ObservableObject {
         return removed
     }
 
+    /// Remove exactly these lines from the memory document — whole-line matches only, every copy —
+    /// and return how many went. The per-fact forget (Plan GG) uses this with lines the wearer was
+    /// shown, so nothing is removed that they did not see.
+    @discardableResult
+    func removeMemoryLines(exactly doomed: [String]) -> Int {
+        let targets = Set(doomed)
+        guard !targets.isEmpty else { return 0 }
+        let lines = memory.components(separatedBy: "\n")
+        let kept = lines.filter { !targets.contains($0) }
+        guard kept.count != lines.count else { return 0 }
+        save(.memory, content: kept.joined(separator: "\n"))
+        return lines.count - kept.count
+    }
+
+    /// Replace one whole line of the memory document. False when the line is not there.
+    @discardableResult
+    func replaceMemoryLine(_ old: String, with new: String) -> Bool {
+        var lines = memory.components(separatedBy: "\n")
+        guard let index = lines.firstIndex(of: old) else { return false }
+        lines[index] = new
+        save(.memory, content: lines.joined(separator: "\n"))
+        return true
+    }
+
+    /// False when the memory document exists but could not be read this launch — its content is
+    /// then the default, not the wearer's, and must not be listed as what the assistant knows.
+    var isMemoryReadable: Bool { !unreadable.contains(.memory) }
+
     // MARK: - File Paths
 
     private func path(for document: DocumentType) -> URL {

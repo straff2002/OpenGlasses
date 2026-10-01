@@ -73,7 +73,7 @@ final class ParkingTool: NativeTool {
                 return try await appState.walkingRoute.start(to: coordinate, label: label)
             },
             showPin: { line in AppStateProvider.shared?.glassesDisplay.showNavigation(line) },
-            ingest: { text in BrainStore.shared.ingest(text: text, sourceRef: "parking", sourceKind: "place") }
+            ingest: { text in BrainStore.shared.ingest(text: text, sourceRef: "parking", sourceKind: "place", origin: .toldMe) }
         ))
     }
 
