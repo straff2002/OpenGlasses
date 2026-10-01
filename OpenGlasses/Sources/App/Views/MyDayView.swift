@@ -246,10 +246,16 @@ struct MyDayView: View {
 /// Compact home-screen expression of My Day. It replaces the decorative voice waveline with
 /// information that is useful before a conversation starts, while keeping the complete review and
 /// action surface one tap away.
+///
+/// Drawn only while My Day is on *and* placed on the home screen (`MyDayHomePlacement`) — there is
+/// no set-up card standing in for it when it is off. The card can take itself off the home screen
+/// from its context menu; Settings and the home screen's editor put it back.
 struct MyDayHomeView: View {
     @ObservedObject var service: MyDayService
-    @Binding var isEnabled: Bool
     let compact: Bool
+    /// Takes the card off the home screen. The caller owns the placement flag and animates the
+    /// change, so the panel below takes the height back on the same curve.
+    var onRemoveFromHome: () -> Void = {}
 
     @Environment(\.appAccent) private var accent
     @Environment(\.openURL) private var openURL
@@ -274,16 +280,18 @@ struct MyDayHomeView: View {
     @State private var actionMessage: String?
 
     var body: some View {
-        Group {
-            if isEnabled {
-                enabledCard
-            } else {
-                setupCard
+        enabledCard
+        // The long press every home-screen card answers. "Remove" rather than "Turn off": the
+        // briefings, the tool and the alerts keep running — only the card leaves.
+        .contextMenu {
+            Button(role: .destructive) {
+                onRemoveFromHome()
+            } label: {
+                Label("Remove from Home", systemImage: "minus.circle")
             }
         }
         .padding(.horizontal, 16)
-        .task(id: isEnabled) {
-            guard isEnabled else { return }
+        .task {
             if case .idle = service.state { _ = await service.refresh() }
         }
         // The card is meant to be current, and until now nothing made it so: `nextRefreshAt` only
@@ -329,7 +337,6 @@ struct MyDayHomeView: View {
     /// Only when the snapshot has aged past the interval it advertises — coming back to the app for
     /// five seconds should not re-hit EventKit.
     private func refreshIfStale() {
-        guard isEnabled else { return }
         if case .loaded(let snapshot) = service.state,
            let next = snapshot.nextRefreshAt, Date() < next { return }
         refreshInBackground()
@@ -338,38 +345,9 @@ struct MyDayHomeView: View {
     /// `channel: nil` — this is the card keeping itself current, not the wearer asking for a
     /// briefing, and the metrics should not read as though they did.
     private func refreshInBackground() {
-        guard isEnabled else { return }
         // EventKit posts its change notification in bursts; a refresh already in flight is enough.
         if case .loading = service.state { return }
         Task { _ = await service.refresh(channel: nil) }
-    }
-
-    private var setupCard: some View {
-        OGCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("My Day", systemImage: "sun.max.fill")
-                    .font(.headline)
-                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-
-                Text("Put what matters next here instead of an animation.")
-                    .font(.body.weight(.semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Uses Calendar, Reminders, and Weather only after you choose to set it up.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button("Set Up My Day") {
-                    MyDayMetricsStore.shared.record(.optedIn, at: Date())
-                    isEnabled = true
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: OGMetrics.minTouchTarget)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-        }
     }
 
     private var enabledCard: some View {
@@ -403,6 +381,9 @@ struct MyDayHomeView: View {
                 .font(.headline)
                 .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .layoutPriority(1)
+                // The context menu's one item, reachable without the long press VoiceOver keeps
+                // for itself.
+                .accessibilityAction(named: "Remove from Home") { onRemoveFromHome() }
 
             if isCollapsed, let headline = collapsedHeadline {
                 Text(headline)

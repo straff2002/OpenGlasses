@@ -14,6 +14,9 @@ struct StatusIndicator: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     /// The assistant's chosen name (Plan FE P6) — empty when the wearer never set one.
     @AppStorage("assistantDisplayName") private var storedAssistantName = ""
+    /// Push-to-talk — the same key `Config.silentMode` writes. When it is on, the wake phrase being
+    /// off is the wearer's choice and the card does not mention it.
+    @AppStorage("silentMode") private var pushToTalk = false
     @State private var showDisconnectConfirm = false
 
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
@@ -109,6 +112,13 @@ struct StatusIndicator: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spokenStatus)
             .accessibilityAddTraits(.updatesFrequently)
+
+            // The wake phrase switched off somewhere else — Lock Screen, Control Center, a widget,
+            // Siri — while the card would otherwise still say "Ready" (`SessionCardWakeWordNotice`).
+            if SessionCardWakeWordNotice.shows(listeningEnabled: appState.listeningEnabled,
+                                               pushToTalk: pushToTalk) {
+                wakeWordOffNotice
+            }
 
             // Tool call / reconnecting
             if isGemini && session.toolCallStatus.isActive {
@@ -550,6 +560,27 @@ struct StatusIndicator: View {
     }
 
     // MARK: - Helpers
+
+    private var wakeWordOffNotice: some View {
+        Button {
+            appState.setListeningEnabled(true)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.slash")
+                    .accessibilityHidden(true)
+                Text(SessionCardWakeWordNotice.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(OGTheme.warnLabel)
+            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18)
+        .accessibilityLabel(SessionCardWakeWordNotice.accessibilityLabel)
+        .accessibilityHint(SessionCardWakeWordNotice.accessibilityHint)
+    }
 
     private var reconnectingLabel: some View {
         Text("Reconnecting...")

@@ -16,7 +16,11 @@ struct VoiceTab: View {
     @State private var showPersonaPicker = false
     @State private var showChatInput = false
     @State private var captionsActive = false
-    @AppStorage("myDayEnabled") private var myDayEnabled = false
+    @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
+    /// The card's placement, separate from My Day being on — see `MyDayHomePlacement`. The same key
+    /// Settings and the home screen's editor write, so the three can never disagree.
+    @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
+        = MyDayHomePlacement.onHomeDefault
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
 
     /// What the surface above the dock actually drew — the recording badge, the status card, My Day
@@ -186,12 +190,18 @@ struct VoiceTab: View {
                 StatusIndicator(session: session, openAISession: openAISession,
                                 openClawBridge: appState.openClawBridge)
 
-                if HomeSurfaceVisibility.showsMyDay(state: voiceState,
+                if HomeSurfaceVisibility.showsMyDay(enabled: myDayEnabled,
+                                                    onHome: myDayOnHome,
+                                                    state: voiceState,
                                                     captionsActive: captionsActive) {
                     MyDayHomeView(
                         service: appState.myDayService,
-                        isEnabled: $myDayEnabled,
-                        compact: voiceState == .listening
+                        compact: voiceState == .listening,
+                        onRemoveFromHome: {
+                            // The card leaving is the motion; the panel tracks the measured
+                            // height and its rows per page recompute from it on the same frame.
+                            withAnimation(DockGridMetrics.heightSettle) { myDayOnHome = false }
+                        }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
@@ -283,6 +293,14 @@ enum HomeSurfaceVisibility {
     static func showsMyDay(state: VoiceVisualState, captionsActive: Bool) -> Bool {
         guard !captionsActive else { return false }
         return state != .thinking && state != .speaking
+    }
+
+    /// The whole rule: placed on the home screen (`MyDayHomePlacement`), and not yielding the zone
+    /// to a turn or to captions. With My Day off there is no card at all — not a set-up card.
+    static func showsMyDay(enabled: Bool, onHome: Bool,
+                           state: VoiceVisualState, captionsActive: Bool) -> Bool {
+        MyDayHomePlacement.isShown(enabled: enabled, onHome: onHome)
+            && showsMyDay(state: state, captionsActive: captionsActive)
     }
 
     /// Whether the content tiles belong in the dock's grid at all.

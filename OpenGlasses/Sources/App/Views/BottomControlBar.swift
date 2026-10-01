@@ -7,12 +7,14 @@ import PhotosUI
 ///                     control reached most often and by far the largest target, so it sits at the
 ///                     bottom of the reach rather than on top of a grid of small ones. It never
 ///                     pages, which is what keeps "stop" reachable at every moment of a turn.
-///   Panel (above):    three pages behind one fixed, row-snapped frame — conversation, the grid,
-///                     and the grid's editor — swiped like a home screen, with dots to say where
-///                     you are.
+///   Panel (above):    pages behind one fixed frame — the conversation, then the grid cut into as
+///                     many pages as its tiles need — swiped like a home screen, with dots to say
+///                     where you are.
 ///
-/// The grid is the middle page and the home one, so the conversation is a swipe left and editing a
-/// swipe right, and neither is more than one gesture away. The panel flips itself to the
+/// Grid page 1 is the home page, so the conversation is a swipe back and the next page of tiles a
+/// swipe onward. The layout editor is not a page: it is a sheet behind the cog on the dots row, so
+/// no swipe can land in it by accident (`HomeGridPaging` holds the paging maths, `DockPagerPolicy`
+/// the flips). The panel flips itself to the
 /// conversation when a turn starts and when the reply arrives, and after that it does as it is
 /// told: `DockPagerPolicy` holds those rules, and holds the promise that a swipe is never argued
 /// with. The content tiles used to *disappear* while the assistant worked; the flip replaces that,
@@ -59,9 +61,8 @@ struct BottomControlBar: View {
 
     @State private var runningActionId: String?
     @State private var pager = DockPagerState()
-    /// The last page this view wrote itself. Anything else arriving on the selection binding came
-    /// from a finger, which is the only way to tell a swipe from our own flip.
-    @State private var lastProgrammaticPage: DockPage = .home
+    /// The home screen's editor, presented from the cog (or the long press on the grid's gaps).
+    @State private var showEditor = false
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
 
@@ -116,8 +117,8 @@ struct BottomControlBar: View {
     /// Three glass keys across at every standard text size — see `DockGridMetrics.columns`. At
     /// accessibility sizes a tile lays its glyph beside its label and needs the width of a phrase,
     /// and even two across cut every caption to a letter and an ellipsis by AX4, so it is one
-    /// column there — the grid already scrolls vertically inside its bounded height. The
-    /// accessibility audit reports each of those cuts as clipped text.
+    /// column there — the grid simply runs to more pages. The accessibility audit reports each of
+    /// those cuts as clipped text.
     private var columnCount: Int {
         typeSize.isAccessibilitySize ? 1 : DockGridMetrics.columns
     }
@@ -130,20 +131,30 @@ struct BottomControlBar: View {
     @ScaledMetric(relativeTo: .footnote) private var tileCaptionLine: CGFloat
         = DockGridMetrics.tileCaptionLine
 
-    /// What a tile actually measured, once one has been laid out.
-    @State private var measuredTileHeight: CGFloat?
+    /// What a tile's *content* — glyph and caption, without the key's padding — actually measured,
+    /// once one has been laid out. The content, not the key: a key is drawn at the height the page
+    /// gives it, so measuring the key would feed the page's choice back into itself.
+    @State private var measuredTileContent: CGFloat?
 
-    /// A row's height. The composed estimate is only the first frame's answer: a prediction of a
-    /// tile's height is a prediction of a font's line height, and being a point or two short of it
-    /// is exactly how the last row ends up sliced. Once a real tile has reported its size the panel
-    /// snaps to *that*, so the arithmetic stops depending on guessing what `.caption` renders at.
-    private var tileHeight: CGFloat {
-        if let measuredTileHeight, measuredTileHeight > 0 { return measuredTileHeight }
-        let content = typeSize.isAccessibilitySize
+    /// The tile's content height. The composed estimate is only the first frame's answer: a
+    /// prediction of a tile is a prediction of a font's line height, and being a point or two short
+    /// of it is how a row ends up sliced. Once a real tile has reported, the grid works from *that*.
+    private var tileContentHeight: CGFloat {
+        if let measuredTileContent, measuredTileContent > 0 { return measuredTileContent }
+        return typeSize.isAccessibilitySize
             ? max(tileGlyphBox, tileCaptionLine)
             : tileGlyphBox + DockGridMetrics.tileStackSpacing + tileCaptionLine
-        return max(DockGridMetrics.tileMinHeight,
-                   content + DockGridMetrics.tileVerticalPadding * 2)
+    }
+
+    /// A tile with its full padding — what it draws when the page has room.
+    private var naturalTileHeight: CGFloat {
+        HomeGridPaging.naturalTileHeight(contentHeight: tileContentHeight)
+    }
+
+    /// The smallest a tile is squeezed to fit another row: its content at this text size, with
+    /// only the minimum padding. Rows are counted in these.
+    private var minimumTileHeight: CGFloat {
+        HomeGridPaging.minimumTileHeight(contentHeight: tileContentHeight)
     }
 
     /// The capsule's glyph box, for the one frame before a real capsule has reported its height.
@@ -182,20 +193,37 @@ struct BottomControlBar: View {
         DockGridMetrics.panelPagesHeight(
             availableHeight: availableHeight,
             reservedHeight: heightAboveDock.map { $0 + dockChromeHeight },
-            rowHeight: tileHeight)
+            rowHeight: minimumTileHeight)
     }
 
-    /// What a page has above the dots — the room the grid's viewport is snapped inside.
+    /// What a page has above the dots — the room the grid page fits its whole rows inside.
     private var pageBodyHeight: CGFloat {
         max(0, pagesHeight - DockGridMetrics.pageIndicatorHeight)
     }
 
-    /// The grid's scroll viewport: whole rows, and never the fraction of one that the glass now
-    /// keeps as empty space beneath it. This is P8's no-sliced-tile rule, at the edge that clips.
-    private var gridViewportHeight: CGFloat {
-        let rows = DockGridMetrics.viewportRows(availableHeight: pageBodyHeight,
-                                                rowHeight: tileHeight)
-        return DockGridMetrics.gridHeight(rows: rows, tileHeight: tileHeight)
+    /// What gates a control's tile right now — applied before paging, so every page holds exactly
+    /// the tiles it draws.
+    private var tilePresence: HomeGridTilePresence {
+        HomeGridTilePresence(
+            previewAvailable: previewVisible,
+            canType: showChatInput != nil,
+            assistiveAvailable: Config.accessibilityModeEnabled,
+            connected: appState.isConnected,
+            localModelActive: appState.llmService.localLLMService != nil
+                && Config.activeModel?.llmProvider == .local)
+    }
+
+    /// The tiles the grid draws, in the one arranged order.
+    private var gridTiles: [HomeGridTile] { tilePresence.tiles(for: slots) }
+
+    /// Rows per grid page and the height every tile on it is drawn at: as many rows of minimum
+    /// tiles as fit the page above the dots, one to four, then the tiles stretched to fill it
+    /// (`HomeGridPaging.fit`). The content is the measured one, so larger text fits fewer rows
+    /// rather than smaller type; and the page body is what the surface above left, so a card
+    /// expanding drops a row and the rest share its room.
+    private var gridFit: HomeGridPaging.TileFit {
+        HomeGridPaging.fit(height: pageBodyHeight, minimumTileHeight: minimumTileHeight,
+                           naturalTileHeight: naturalTileHeight)
     }
 
     var body: some View {
@@ -212,63 +240,64 @@ struct BottomControlBar: View {
 
     // MARK: - Panel
 
-    /// One frame, three pages, and the frame is simply what the screen has left. Every page is the
+    /// One frame, every page, and the frame is simply what the screen has left. Every page is the
     /// same size whatever it holds, and the panel never resizes under a swipe.
     ///
     /// The glass absorbs the remainder rather than snapping to whole rows. Snapping the frame put
     /// up to a row of leftover *between* the card and the panel, sitting next to gaps that are all
     /// 16 pt — a rhythm broken by arithmetic. Now every module gap is the rhythm and the leftover
     /// lands inside the glass, under the last row, where it reads as calm space. The whole-row rule
-    /// moved to the grid's scroll viewport, which is the edge a tile could actually be sliced at.
+    /// lives in `HomeGridPaging.rowsThatFit`, which decides how many rows a grid page holds.
     ///
     /// Deliberately *not* a per-page height: the tall frame is the panel's, and the conversation
     /// inherits it by sharing the frame. Only the surface above changing height and the existing
     /// state-driven yields move it, and both animate outside the pager, so a swipe still lands on a
-    /// frame that has not moved. My Day expanding or collapsing moves it the same way a caption
-    /// arriving does: by changing the measurement, not by naming a share.
+    /// frame that has not moved. My Day expanding, collapsing or leaving moves it the same way a
+    /// caption arriving does: by changing the measurement, not by naming a share — and the rows per
+    /// page follow, with the panel staying on the page that holds the tile that was first on screen.
     private var panel: some View {
         let pageHeight = pagesHeight
+        let tiles = gridTiles
+        let tileIDs = tiles.map(\.id)
+        let fit = gridFit
+        let paging = HomeGridPaging(tileCount: tiles.count, columns: columnCount, rows: fit.rows)
+        let current = paging.panelIndex(for: pager, tileIDs: tileIDs)
+        let currentGridPage = paging.gridPage(forPanelIndex: current)
 
-        return TabView(selection: pageSelection) {
+        return TabView(selection: pageSelection(paging: paging, tileIDs: tileIDs)) {
             conversationPage
                 .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
                 // Off-screen pages stay in the hierarchy under a paging TabView, so VoiceOver
-                // would otherwise walk two pages the user cannot see.
-                .accessibilityHidden(pager.page != .conversation)
-                .tag(DockPage.conversation)
+                // would otherwise walk pages the user cannot see.
+                .accessibilityHidden(current != HomeGridPaging.conversationIndex)
+                .tag(HomeGridPaging.conversationIndex)
 
-            gridPage
-                .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
-                .accessibilityHidden(pager.page != .actions)
-                .tag(DockPage.actions)
-
-            DockLayoutEditPage()
-                .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
-                .accessibilityHidden(pager.page != .edit)
-                .tag(DockPage.edit)
+            ForEach(Array(0..<paging.pageCount), id: \.self) { gridPage in
+                gridPageView(gridPage, tiles: tiles, paging: paging, tileHeight: fit.tileHeight)
+                    .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
+                    .accessibilityHidden(currentGridPage != gridPage)
+                    .tag(paging.panelIndex(forGridPage: gridPage))
+            }
         }
+        // One whole page per swipe, snapping: a short or slow drag springs back, a flick or a drag
+        // past half commits. That is the page style's own physics, which is why the grid pages
+        // here rather than scrolling.
         .tabViewStyle(.page(indexDisplayMode: .always))
         // The dots sit on a translucent panel over an animating ambience, where a bare dot has no
         // reliable ground. `.always` gives them their own, in both themes.
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .frame(height: pageHeight)
-        // The visible way into the editor and back out of it. A swipe reaches both, but a swipe
-        // leaves no mark on the screen, and the long press on the grid's gaps is a gesture nobody
-        // finds — so the corner the page dots leave free holds a cog on the grid and a Done on
-        // the editor, in the same place, so the way out is where the way in was.
+        // The one way into the editor a sighted user can see: a cog in the corner the page dots
+        // leave free, on every grid page. The editor is a sheet with its own Done, so there is
+        // nothing to swipe to and nothing to swipe back from.
         .overlay(alignment: .bottomTrailing) {
-            switch pager.page {
-            case .actions:
-                cornerButton(icon: "gearshape.fill", to: .edit,
-                             label: DockPage.edit.showActionName,
-                             hint: "Add, remove and reorder the tiles on this grid.")
-                    .transition(.opacity)
-            case .edit:
-                cornerButton(icon: "checkmark", to: .actions, label: "Done",
-                             hint: "Returns to the actions grid.")
-                    .transition(.opacity)
-            case .conversation:
-                EmptyView()
+            if currentGridPage != nil {
+                cornerButton(icon: "gearshape.fill",
+                             label: DockPanelActionName.editHomeScreen,
+                             hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.") {
+                    showEditor = true
+                }
+                .transition(.opacity)
             }
         }
         // **Deliberately not animated here.** The frame tracks the measurement directly, and that
@@ -283,14 +312,34 @@ struct BottomControlBar: View {
         // measurement, a caption arriving — carry `DockGridMetrics.heightSettle` at their source
         // instead, so they settle without ever being animated twice.
         // The page control is an adjustable element, which is a poor way to reach a named
-        // destination. Every page is also one named action from wherever focus happens to be.
+        // destination. Every destination is also one named action from wherever focus happens to be.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Dock")
-        .accessibilityValue(pager.page.spokenName)
+        .accessibilityValue(spokenPosition(gridPage: currentGridPage, paging: paging))
         .accessibilityActions {
-            ForEach(DockPage.allCases) { page in
-                Button(page.showActionName) { move(to: page) }
+            Button(DockPage.conversation.showActionName) {
+                move { DockPagerPolicy.userMoved(pager, to: .conversation) }
             }
+            // The remembered grid page — the one the wearer was on before a turn flipped the panel
+            // to the conversation — rather than walking them back through every page.
+            Button(DockPage.actions.showActionName) {
+                move { DockPagerPolicy.userMoved(pager, to: .actions) }
+            }
+            if let page = currentGridPage, page + 1 < paging.pageCount {
+                Button(DockPanelActionName.nextGridPage) {
+                    move { DockPagerPolicy.userMoved(
+                        pager, toGridPageStartingWith: paging.anchor(forGridPage: page + 1,
+                                                                     in: tileIDs)) }
+                }
+            }
+            if let page = currentGridPage, page > 0 {
+                Button(DockPanelActionName.previousGridPage) {
+                    move { DockPagerPolicy.userMoved(
+                        pager, toGridPageStartingWith: paging.anchor(forGridPage: page - 1,
+                                                                     in: tileIDs)) }
+                }
+            }
+            Button(DockPanelActionName.editHomeScreen) { showEditor = true }
         }
         .padding(DockGridMetrics.panelInset)
         .glassEffect(in: .rect(cornerRadius: 28))
@@ -298,22 +347,46 @@ struct BottomControlBar: View {
         .onChange(of: voiceState) { previous, next in
             let advanced = DockPagerPolicy.advance(pager, from: previous, to: next)
             guard advanced != pager else { return }
-            withAnimation(.easeInOut(duration: 0.25)) { apply(advanced) }
+            withAnimation(.easeInOut(duration: 0.25)) { pager = advanced }
         }
+        .sheet(isPresented: $showEditor) { editorSheet }
     }
 
-    /// The corner button on the dots row: the cog into the editor, Done back out. Same move as a
-    /// swipe — the editor is a page of the pager, not a sheet — so it takes the same "a deliberate
-    /// move is not argued with" promise.
+    /// The home screen's editor, on a sheet with room to work at any panel height.
+    private var editorSheet: some View {
+        NavigationStack {
+            DockLayoutEditPage()
+                .padding(.horizontal, 16)
+                .navigationTitle("Edit Home Screen")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showEditor = false }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .environment(\.appAccent, accent)
+        .environmentObject(appState)
+    }
+
+    /// "Conversation", or "Actions" with the page when there is more than one.
+    private func spokenPosition(gridPage: Int?, paging: HomeGridPaging) -> String {
+        guard let gridPage else { return DockPage.conversation.spokenName }
+        guard paging.pageCount > 1 else { return DockPage.actions.spokenName }
+        return "\(DockPage.actions.spokenName), page \(gridPage + 1) of \(paging.pageCount)"
+    }
+
+    /// The cog on the dots row.
     ///
     /// 44 pt square for the fingertip, though the dots row is only 40 tall: the overlay sits
     /// outside the pages' frame, so the spare points reach down into the panel's own inset rather
     /// than up over the last row of keys.
-    private func cornerButton(icon: String, to page: DockPage,
-                              label: String, hint: String) -> some View {
+    private func cornerButton(icon: String, label: String, hint: String,
+                              action: @escaping () -> Void) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            move(to: page)
+            action()
         } label: {
             Image(systemName: icon)
                 .font(.body.weight(.semibold))
@@ -329,34 +402,30 @@ struct BottomControlBar: View {
         .accessibilityHint(hint)
     }
 
-    /// The selection binding. A write that did not come from `apply` came from a finger, and a
-    /// finger's choice stands for the rest of the turn.
-    private var pageSelection: Binding<DockPage> {
+    /// The selection binding. The index shown is *derived* from the pager state under today's
+    /// paging, so a reflow needs no handler of its own. A write equal to it is the pager echoing
+    /// us; anything else came from a finger (a swipe or the dots), and a finger's choice stands for
+    /// the rest of the turn.
+    private func pageSelection(paging: HomeGridPaging, tileIDs: [String]) -> Binding<Int> {
         Binding(
-            get: { pager.page },
+            get: { paging.panelIndex(for: pager, tileIDs: tileIDs) },
             set: { newValue in
-                guard newValue != pager.page else { return }
-                if newValue == lastProgrammaticPage {
-                    pager.page = newValue
+                guard newValue != paging.panelIndex(for: pager, tileIDs: tileIDs) else { return }
+                if let gridPage = paging.gridPage(forPanelIndex: newValue) {
+                    pager = DockPagerPolicy.userMoved(
+                        pager, toGridPageStartingWith: paging.anchor(forGridPage: gridPage,
+                                                                     in: tileIDs))
                 } else {
-                    pager = DockPagerPolicy.userMoved(pager, to: newValue)
+                    pager = DockPagerPolicy.userMoved(pager, to: .conversation)
                 }
             }
         )
     }
 
-    private func apply(_ state: DockPagerState) {
-        lastProgrammaticPage = state.page
-        pager = state
-    }
-
     /// A named accessibility action, which is a deliberate move like a swipe — so it takes the
     /// same "do not argue with me afterwards" promise.
-    private func move(to page: DockPage) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            pager = DockPagerPolicy.userMoved(pager, to: page)
-            lastProgrammaticPage = page
-        }
+    private func move(_ next: () -> DockPagerState) {
+        withAnimation(.easeInOut(duration: 0.25)) { pager = next() }
     }
 
     // MARK: - Pages
@@ -373,72 +442,83 @@ struct BottomControlBar: View {
         }
     }
 
-    /// The one grid: controls and content actions, wrapping into rows and scrolling vertically past
-    /// what fits. Nothing is ever cut off — a tile past the last visible row is a scroll away,
-    /// never a sliver at the viewport's edge, and VoiceOver walks the same order either way.
+    /// One page of the grid: its slice of the one order, as explicit rows of `columns` keys.
     ///
-    /// The scroll view takes a **row-snapped** height rather than the whole page, and the space
-    /// under it is where the glass's remainder now lives. That is the whole of the P8 rule: the
-    /// edge a tile is clipped against is its scroll view's, so that is the edge that must land on a
-    /// row boundary. A short grid simply draws its tiles at the top and leaves the rest calm.
-    private var gridPage: some View {
-        VStack(spacing: 0) {
-            ScrollView(.vertical) {
-                // One container for every key, so their glass is sampled in one pass and a press
-                // reads as the same material as its neighbours. The spacing is the merge distance:
-                // keys further apart than the row gap stay separate shapes.
-                GlassEffectContainer(spacing: DockGridMetrics.rowSpacing) {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(),
-                                                           spacing: DockGridMetrics.rowSpacing),
-                                       count: columnCount),
-                        spacing: DockGridMetrics.rowSpacing
-                    ) {
-                        // Slots render in the user's arranged order (Settings → Quick Actions → Bar
-                        // Layout); contextual ones still gate themselves.
-                        ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
-                            dockView(for: slot)
-                                // One tile reports its height and the viewport snaps to it.
-                                // Measuring the first is enough: a row is as tall as its tallest
-                                // tile, and every tile in this grid is the same `BarButton` with a
-                                // one-line caption.
-                                .background(index == 0 ? tileHeightReader : nil)
+    /// Rows are drawn rather than left to a lazy grid so the page draws exactly what
+    /// `HomeGridPaging` says it holds — row-major, a short last row keeping its column widths with
+    /// empty cells, and nothing past the last row. The page is top-aligned and the glass under the
+    /// last row is the panel's remainder: calm space, never a sliced tile.
+    private func gridPageView(_ page: Int, tiles: [HomeGridTile],
+                              paging: HomeGridPaging, tileHeight: CGFloat) -> some View {
+        let range = paging.tileRange(onPage: page)
+        let rows = paging.rowsDrawn(onPage: page)
+        let columns = paging.columns
+
+        return VStack(spacing: 0) {
+            // One container for every key on the page, so their glass is sampled in one pass and a
+            // press reads as the same material as its neighbours. The spacing is the merge
+            // distance: keys further apart than the row gap stay separate shapes.
+            GlassEffectContainer(spacing: DockGridMetrics.rowSpacing) {
+                VStack(spacing: DockGridMetrics.rowSpacing) {
+                    ForEach(Array(0..<rows), id: \.self) { row in
+                        let start = range.lowerBound + row * columns
+                        let end = min(range.upperBound, start + columns)
+                        let rowTiles = Array(tiles[start..<end])
+                        HStack(spacing: DockGridMetrics.rowSpacing) {
+                            ForEach(rowTiles) { tile in
+                                tileView(tile)
+                            }
+                            // A short last row keeps the column widths of the rows above it.
+                            ForEach(Array(0..<(columns - rowTiles.count)), id: \.self) { _ in
+                                Color.clear
+                                    .frame(maxWidth: .infinity, maxHeight: 0)
+                                    .accessibilityHidden(true)
+                            }
                         }
                     }
-                    // Room at the sides for a pressed key: interactive glass swells a little under
-                    // the finger, and the outer column would otherwise clip on the scroll edge.
-                    .padding(.horizontal, 4)
                 }
+                // Room at the sides for a pressed key: interactive glass swells a little under
+                // the finger, and the outer column would otherwise clip on the page edge.
+                .padding(.horizontal, 4)
+                // Every key on the page at the one height the page chose — squeezed into its
+                // padding to fit another row, or stretched to fill the page.
+                .environment(\.dockTileHeight, tileHeight)
             }
-            .frame(height: gridViewportHeight, alignment: .top)
-            // Short grids should not become scroll views: bouncing a grid that already fits reads
-            // as the panel coming loose from the tab.
-            .scrollBounceBehavior(.basedOnSize)
 
-            // The sub-row remainder, and the rows a short grid does not need. Calm empty glass
+            // The sub-row remainder, and the rows a short page does not need. Calm empty glass
             // under the tiles — which is where a leftover belongs, rather than between two cards.
             Spacer(minLength: 0)
         }
-        .onPreferenceChange(DockTileHeightKey.self) { height in
-            guard let height, height > 0, height != measuredTileHeight else { return }
+        // Every key reports its content and the tallest wins — a caption that wraps at an
+        // accessibility size is the one the rows have to fit.
+        .onPreferenceChange(DockTileContentHeightKey.self) { height in
+            guard let height, height > 0, height != measuredTileContent else { return }
             // The opening guess giving way to a real tile: a height change with no motion of its
             // own, so it settles here rather than being chased by the frame.
-            withAnimation(DockGridMetrics.heightSettle) { measuredTileHeight = height }
+            withAnimation(DockGridMetrics.heightSettle) { measuredTileContent = height }
         }
-        // The sighted shortcut to the edit page, on the page's *background* — behind the tiles, so
-        // it answers a press on the gaps and never fires alongside a tile's action. On the whole
-        // page rather than the viewport, so the empty glass under a short grid answers it too. It
-        // flips the pager rather than presenting a sheet now that editing is a page of its own.
+        // A text-size change starts the measurement again, so a smaller size is not held to the
+        // tallest content a larger one drew.
+        .onChange(of: typeSize) { _, _ in measuredTileContent = nil }
+        // The sighted shortcut to the editor, on the page's *background* — behind the tiles, so it
+        // answers a press on the gaps and never fires alongside a tile's action. The same sheet
+        // the cog opens; it is not a page, so no swipe reaches it.
         .background(
             Color.clear
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.6) { move(to: .edit) }
+                .onLongPressGesture(minimumDuration: 0.6) { showEditor = true }
         )
     }
 
-    private var tileHeightReader: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: DockTileHeightKey.self, value: proxy.size.height)
+    @ViewBuilder
+    private func tileView(_ tile: HomeGridTile) -> some View {
+        switch tile {
+        case .slot(let slot):
+            dockView(for: slot)
+        case .localModel:
+            if let local = appState.llmService.localLLMService, let active = Config.activeModel {
+                LocalModelTile(service: local, modelConfig: active)
+            }
         }
     }
 
@@ -527,18 +607,15 @@ struct BottomControlBar: View {
 
     // MARK: - Dock items
 
-    /// One arrangeable slot of the scrolling row. Contextual gating lives with
-    /// the item, so moving a slot never changes WHEN it appears — only where.
+    /// One arrangeable slot of the grid. Contextual gating is `HomeGridTilePresence`'s, applied
+    /// before paging so a page never grows a hole; moving a slot never changes WHEN it appears —
+    /// only where.
     @ViewBuilder
     private func dockView(for item: DockItem) -> some View {
         switch item {
         case .model:
-            // Contextual: on-device model chip rides just before the picker —
-            // the two model controls read as one group wherever they're placed.
-            if let local = appState.llmService.localLLMService,
-               let active = Config.activeModel, active.llmProvider == .local {
-                LocalModelTile(service: local, modelConfig: active)
-            }
+            // The on-device model's load key rides just before the picker as a tile of its own
+            // (`HomeGridTile.localModel`), so the two model controls read as one group.
             let provider = Config.activeModel?.llmProvider ?? .custom
             BarButton(
                 icon: DockLayout.modelTileGlyph(for: provider),
@@ -553,21 +630,17 @@ struct BottomControlBar: View {
             cameraButton
 
         case .preview:
-            if previewVisible {
-                BarButton(
-                    icon: "eye",
-                    label: "Preview",
-                    isActive: appState.videoRecorder.isRecording
-                ) {
-                    showPreview = true
-                }
+            BarButton(
+                icon: "eye",
+                label: "Preview",
+                isActive: appState.videoRecorder.isRecording
+            ) {
+                showPreview = true
             }
 
         case .type:
-            if let chatBinding = showChatInput {
-                BarButton(icon: "keyboard", label: "Type") {
-                    chatBinding.wrappedValue = true
-                }
+            BarButton(icon: "keyboard", label: "Type") {
+                showChatInput?.wrappedValue = true
             }
 
         case .micMode:
@@ -585,23 +658,19 @@ struct BottomControlBar: View {
             .accessibilityLabel(pushToTalk ? "Switch to wake word listening" : "Switch to push to talk")
 
         case .assistive:
-            if Config.accessibilityModeEnabled {
-                BarButton(
-                    icon: assistive.isActive ? "eye.fill" : "eye",
-                    label: assistive.isActive ? "Assistive On" : "Assistive",
-                    isActive: assistive.isActive
-                ) {
-                    appState.toggleAssistiveMode()
-                }
+            BarButton(
+                icon: assistive.isActive ? "eye.fill" : "eye",
+                label: assistive.isActive ? "Assistive On" : "Assistive",
+                isActive: assistive.isActive
+            ) {
+                appState.toggleAssistiveMode()
             }
 
         case .disconnect:
-            if appState.isConnected {
-                // "Sleep" undersold what this does — it disconnects the glasses
-                // session outright (stops speech, wake word, camera, live sessions).
-                BarButton(icon: "moon.fill", label: "Disconnect") {
-                    appState.disconnectGlasses()
-                }
+            // "Sleep" undersold what this does — it disconnects the glasses
+            // session outright (stops speech, wake word, camera, live sessions).
+            BarButton(icon: "moon.fill", label: "Disconnect") {
+                appState.disconnectGlasses()
             }
         }
     }
@@ -832,17 +901,21 @@ private struct ActionCapsule: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        // `children: .ignore` is what makes the element *be* the capsule. Left to itself, SwiftUI
-        // took the union of the label's children — a 17pt glyph and a line of 15pt text — so the
-        // element VoiceOver focused, and the target an audit measures, was 18pt tall inside a
-        // 50pt control the whole screen is built around.
-        .accessibilityElement(children: .ignore)
-        // The mute badge is a 9pt glyph tucked behind the icon — the only thing distinguishing a
-        // muted session from a live one, so it has to be spoken, not just drawn. As a *value*
-        // rather than glued to the label, so it is re-read when it changes under a held focus.
-        .accessibilityLabel(spokenLabel ?? label)
-        .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
-        .accessibilityAddTraits(.isButton)
+        // The capsule reaches VoiceOver as exactly one button, the size of the capsule, by its
+        // spoken name. A *representation* rather than `.accessibilityElement(children: .ignore)`
+        // over the `Button`: that wrapper made a new element around the button but left the
+        // button in the tree beneath it, still named by its drawn copy ("Tap & Talk") — the
+        // instruction to a finger this capsule's spoken name exists to replace. Before it, SwiftUI
+        // took the union of the label's children — a 17pt glyph and a line of text — so the
+        // element focused, and the target an audit measures, was 18pt tall inside a 50pt control.
+        .accessibilityRepresentation {
+            Button(spokenLabel ?? label, action: action)
+                // The mute badge is a 9pt glyph tucked behind the icon — the only thing
+                // distinguishing a muted session from a live one, so it has to be spoken, not just
+                // drawn. As a *value* rather than glued to the label, so it is re-read when it
+                // changes under a held focus.
+                .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
+        }
     }
 }
 
@@ -884,6 +957,9 @@ private struct BarButton: View {
     private let minTileHeight = DockGridMetrics.tileMinHeight
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 10
     @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
+    /// The height the grid page chose for its keys, when there is one. The content is centred in
+    /// it: squeezing takes the padding, never the glyph or the caption.
+    @Environment(\.dockTileHeight) private var pageTileHeight
 
     private var foreground: Color {
         // Disabled reads as the audited quiet grey rather than as everything at
@@ -974,11 +1050,21 @@ private struct BarButton: View {
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
             }
+            // The content alone, for the grid to count rows from (`DockTileContentHeightKey`).
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: DockTileContentHeightKey.self,
+                                           value: proxy.size.height)
+                }
+            )
             .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 6)
-            .padding(.vertical, DockGridMetrics.tileVerticalPadding)
+            .padding(.vertical, pageTileHeight == nil ? DockGridMetrics.tileVerticalPadding : 0)
             // The key fills its column, so three keys read as a row of equal buttons rather than
-            // three captions each wearing a different-width border.
-            .frame(maxWidth: .infinity, minHeight: minTileHeight,
+            // three captions each wearing a different-width border. On a grid page it is exactly
+            // the page's tile height; elsewhere its own padding over the `tileMinHeight` floor.
+            .frame(maxWidth: .infinity,
+                   minHeight: pageTileHeight ?? minTileHeight,
+                   maxHeight: pageTileHeight,
                    alignment: typeSize.isAccessibilitySize ? .leading : .center)
             .frame(minWidth: minTileWidth)
             .contentShape(.rect(cornerRadius: DockGridMetrics.tileCornerRadius))
@@ -1030,15 +1116,29 @@ private struct LocalModelTile: View {
     }
 }
 
-// MARK: - Measured row height
+// MARK: - Measured tile content, and the height a page draws its tiles at
 
-/// One tile's measured height, so the panel snaps rows to what was drawn rather than to a
-/// prediction of it.
-private struct DockTileHeightKey: PreferenceKey {
+/// The tallest tile content on a page — glyph and caption without the key's padding — so the grid
+/// counts rows from what was drawn rather than from a prediction of it.
+private struct DockTileContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat? { nil }
 
     static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = value ?? nextValue()
+        guard let next = nextValue() else { return }
+        value = max(value ?? 0, next)
+    }
+}
+
+/// The height a grid page draws its keys at (`HomeGridPaging.fit`). `nil` outside the grid, where
+/// a key keeps its own padding and floor.
+private struct DockTileHeightEnvironmentKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    fileprivate var dockTileHeight: CGFloat? {
+        get { self[DockTileHeightEnvironmentKey.self] }
+        set { self[DockTileHeightEnvironmentKey.self] = newValue }
     }
 }
 

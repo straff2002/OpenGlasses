@@ -158,7 +158,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "447"
+        CURRENT_PROJECT_VERSION: "448"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -244,6 +244,8 @@ targets:
       # Shared with the main app — the widget stamps the deep-link trust token that the
       # app requires on any link that acts (capture, listen, quick action).
       - path: OpenGlasses/Sources/Shared/DeepLinkTrust.swift
+      # Shared with the main app's tests — the Lock Screen row's layout and height budget.
+      - path: OpenGlasses/Sources/Shared/LockScreenActivityLayout.swift
     entitlements:
       path: GlassesActivityWidget/GlassesActivityWidget.entitlements
       properties:
@@ -261,7 +263,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "447"
+        CURRENT_PROJECT_VERSION: "448"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -299,7 +301,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "447"
+        CURRENT_PROJECT_VERSION: "448"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic

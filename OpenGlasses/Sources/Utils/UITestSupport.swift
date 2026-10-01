@@ -158,6 +158,7 @@ enum UITestSupport {
             // The opt-in the setup card writes. The card's *content* is seeded at runtime below;
             // this is only the switch that decides which card is drawn.
             UserDefaults.standard.set(true, forKey: "myDayEnabled")
+            UserDefaults.standard.set(true, forKey: "myDayOnHome")
             UserDefaults.standard.set(false, forKey: "myDayCollapsed")
         }
 

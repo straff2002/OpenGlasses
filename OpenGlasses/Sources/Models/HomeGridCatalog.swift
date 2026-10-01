@@ -293,6 +293,15 @@ enum DockGridMetrics {
     /// Padding above and below a tile's content, inside its glass. Part of the row height, so it
     /// lives here with the parts the panel composes its first-frame estimate from.
     static let tileVerticalPadding: CGFloat = 12
+    /// The least padding a tile keeps above and below its content when a page compresses its tiles
+    /// to fit another row (`HomeGridPaging.minimumTileHeight`). Six points is the most that can go
+    /// before the glyph and caption read as touching the key's edge; the content itself — glyph box
+    /// and caption line at the current text size — is never squeezed.
+    static let tileMinVerticalPadding: CGFloat = 6
+    /// How far past its natural height a tile may stretch to fill a page
+    /// (`HomeGridPaging.fit`). Enough to absorb most of a row's worth of leftover across a few
+    /// rows; not so much that a one-row page draws keys half again as tall as their content needs.
+    static let tileStretchCap: CGFloat = 1.25
     /// The tile's glass corner. Concentric with the panel's 28 pt corner across its 14 pt inset,
     /// rounded up so a key reads as a key rather than as a card.
     static let tileCornerRadius: CGFloat = 20
