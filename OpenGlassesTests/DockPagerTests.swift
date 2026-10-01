@@ -80,23 +80,56 @@ final class DockPagerTests: XCTestCase {
         XCTAssertFalse(state.userMovedThisTurn, "A new turn did not clear the override")
     }
 
-    /// The same promise for the edit page: a wearer who went to arrange their tiles is not dragged
-    /// out of it by their own last question finishing.
-    func testTheEditPageIsNotYankedAwayEither() {
+    /// The same promise across the grid's pages: a swipe to grid page 2 mid-turn is a finger's
+    /// choice, and the reply arriving does not take it away.
+    func testASwipeToALaterGridPageIsNotOverruledEither() {
         var state = DockPagerPolicy.advance(DockPagerState(), from: .idle, to: .thinking)
-        state = DockPagerPolicy.userMoved(state, to: .edit)
+        state = DockPagerPolicy.userMoved(state, toGridPageStartingWith: "t12")
         state = DockPagerPolicy.advance(state, from: .thinking, to: .speaking)
-        XCTAssertEqual(state.page, .edit)
+        XCTAssertEqual(state.page, .actions)
+        XCTAssertEqual(state.gridAnchor, "t12")
+    }
+
+    // MARK: - The auto-flip and the grid's pages
+
+    /// The flip only ever goes to the conversation, and it remembers the grid page the wearer was
+    /// on — "Show actions" (a move to `.actions` that names no page) goes back to it.
+    func testTheFlipRemembersTheGridPageAndShowActionsReturnsToIt() {
+        var state = DockPagerPolicy.userMoved(DockPagerState(), toGridPageStartingWith: "t12")
+        state = DockPagerPolicy.advance(state, from: .speaking, to: .idle)
+        state = DockPagerPolicy.advance(state, from: .idle, to: .thinking)
+        XCTAssertEqual(state.page, .conversation)
+        XCTAssertEqual(state.gridAnchor, "t12", "The flip forgot which grid page the wearer was on")
+
+        state = DockPagerPolicy.userMoved(state, to: .actions)
+        XCTAssertEqual(state, DockPagerState(page: .actions, gridAnchor: "t12",
+                                             userMovedThisTurn: true))
+
+        let paging = HomeGridPaging(tileCount: 18, columns: 3, rows: 4)
+        let tiles = (0..<18).map { "t\($0)" }
+        XCTAssertEqual(paging.panelIndex(for: state, tileIDs: tiles), 2,
+                       "Show actions did not return to grid page 2")
+    }
+
+    /// A swipe onward from the conversation is a move to the page the pager physically reaches —
+    /// grid page 1 — and records it, so nothing sends the wearer anywhere they did not swipe to.
+    func testASwipeFromTheConversationLandsOnGridPageOne() {
+        var state = DockPagerState(page: .conversation, gridAnchor: "t12")
+        let paging = HomeGridPaging(tileCount: 18, columns: 3, rows: 4)
+        let tiles = (0..<18).map { "t\($0)" }
+        state = DockPagerPolicy.userMoved(state, toGridPageStartingWith:
+                                            paging.anchor(forGridPage: 0, in: tiles))
+        XCTAssertEqual(paging.panelIndex(for: state, tileIDs: tiles), 1)
     }
 
     // MARK: - Shape
 
-    func testTheGridIsHomeAndSitsBetweenTheOtherTwo() {
+    /// The editor is not a page: no swipe can reach it. The conversation comes first, then the
+    /// grid (on as many pages as it needs), and the grid is home.
+    func testTheGridIsHomeAndTheEditorIsNotAPage() {
         XCTAssertEqual(DockPage.home, .actions)
-        XCTAssertEqual(DockPage.allCases, [.conversation, .actions, .edit])
-        // Order is the swipe order, so home being the middle raw value is what makes the
-        // conversation and the editor one gesture away each.
-        XCTAssertEqual(DockPage.actions.rawValue, 1)
+        XCTAssertEqual(DockPage.allCases, [.conversation, .actions])
+        XCTAssertEqual(DockPage.conversation.rawValue, HomeGridPaging.conversationIndex)
     }
 
     func testEveryPageIsNamedForVoiceOver() {
@@ -104,7 +137,10 @@ final class DockPagerTests: XCTestCase {
             XCTAssertFalse(page.showActionName.isEmpty, "\(page) has no named action")
             XCTAssertFalse(page.spokenName.isEmpty, "\(page) is not announced")
         }
-        XCTAssertEqual(Set(DockPage.allCases.map(\.showActionName)).count, DockPage.allCases.count)
+        let names = DockPage.allCases.map(\.showActionName)
+            + [DockPanelActionName.editHomeScreen, DockPanelActionName.nextGridPage,
+               DockPanelActionName.previousGridPage]
+        XCTAssertEqual(Set(names).count, names.count, "Two named actions share a name")
     }
 
     /// "The panel never resizes under a swipe" is round 4's promise, and after the reading-height
@@ -120,8 +156,9 @@ final class DockPagerTests: XCTestCase {
             XCTAssertTrue(moved.userMovedThisTurn)
             state = moved
         }
-        // The whole of what a page change carries: a page, and the "do not argue with me" flag.
-        XCTAssertEqual(state, DockPagerState(page: .edit, userMovedThisTurn: true))
+        // The whole of what a page change carries: a page, the remembered grid page, and the "do
+        // not argue with me" flag.
+        XCTAssertEqual(state, DockPagerState(page: .actions, userMovedThisTurn: true))
     }
 
     func testTurnActivityIsThinkingAndSpeakingOnly() {
@@ -144,7 +181,7 @@ final class DockPagerTests: XCTestCase {
                               quickActions: speedDial, showsActions: true)
     }
 
-    /// The in-panel page nudges with buttons and the full editor drags; both mean the same thing,
+    /// The home screen's editor nudges with buttons and the full editor drags; both mean the same thing,
     /// because both call this.
     func testNudgingMovesOneSlotAndClampsAtTheEnds() {
         let slots = resolved

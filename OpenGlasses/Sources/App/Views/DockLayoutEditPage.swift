@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// The dock panel's third page: arrange the grid in place, one swipe right of it.
+/// The home screen's editor: what is on the home screen, and the grid's one order.
+///
+/// Reached only from the cog on the dock's page-dots row (or the long press on the grid's gaps,
+/// which goes to the same place) and presented as a sheet. It used to be a third page of the dock's
+/// pager, one swipe onward from the grid — which is how wearers landed in it by accident — and at a
+/// one-row panel it would not have had the room to be usable anyway.
 ///
 /// The same arrangement and the same rules as the full-screen `DockLayoutEditorView` — both drive
-/// `DockArrangementEditor`, so an edit means the same thing wherever it is made. What differs is
-/// how: this page reorders with a pair of buttons rather than a drag.
-///
-/// That is deliberate, not a shortcut. A drag-to-reorder handle inside a horizontally-paging panel
-/// is two gestures competing for the same finger, and the failure mode — a reorder that sometimes
-/// turns into a page flip — is worse than a slightly slower control. Buttons are also the only form
-/// of reordering VoiceOver can drive at all. Settings → Quick Actions → Bar Layout keeps the drag,
-/// on a screen with no pager to fight.
+/// `DockArrangementEditor`, so an edit means the same thing wherever it is made. It edits the
+/// **order**, never pages: the grid cuts that order into pages to fit the screen
+/// (`HomeGridPaging`), so moving a tile never depends on how tall the screen is. Reordering is a
+/// pair of buttons rather than a drag, because buttons are the only form of reordering VoiceOver
+/// can drive; Settings → Quick Actions → Bar Layout keeps the drag.
 struct DockLayoutEditPage: View {
     /// The one arrangement the dock, this page and the full editor all read.
     @AppStorage("homeGridArrangement") private var storedArrangement = ""
@@ -24,6 +26,12 @@ struct DockLayoutEditPage: View {
     @AppStorage("quickActions") private var quickActionsBeacon = Data()
 
     @Environment(\.appAccent) private var accent
+
+    /// My Day's two facts — on at all, and placed on the home screen (`MyDayHomePlacement`). The
+    /// same keys Settings and the card's own "Remove from Home" write.
+    @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
+    @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
+        = MyDayHomePlacement.onHomeDefault
 
     @State private var editing: EditorTarget?
 
@@ -62,6 +70,11 @@ struct DockLayoutEditPage: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 6) {
+                sectionHeader("Cards")
+                myDayRow
+
+                sectionHeader("Tiles")
+                    .padding(.top, 6)
                 addRow
 
                 let slots = onGrid
@@ -70,9 +83,7 @@ struct DockLayoutEditPage: View {
                 }
 
                 if !available.isEmpty {
-                    Text("Available")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    sectionHeader("Available")
                         .padding(.top, 6)
 
                     ForEach(available) { slot in
@@ -95,6 +106,52 @@ struct DockLayoutEditPage: View {
                 onSave: SpeedDialWriter.save,
                 onDelete: target.action.map { _ in SpeedDialWriter.delete })
         }
+    }
+
+    // MARK: - Cards
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// My Day on the home screen. Turning it on here is the opt-in the old set-up card was — My Day
+    /// on, and its card placed. Turning it off only takes the card away: the briefings keep their
+    /// own settings.
+    private var myDayRow: some View {
+        Toggle(isOn: Binding(
+            get: { MyDayHomePlacement.isShown(enabled: myDayEnabled, onHome: myDayOnHome) },
+            set: { Config.setMyDayShownOnHome($0) }
+        )) {
+            HStack(spacing: 8) {
+                Image(systemName: "sun.max.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Color(.label))
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("My Day")
+                        .font(.footnote)
+                        .foregroundStyle(Color(.label))
+                    Text(myDayEnabled
+                         ? "Briefings keep their own settings."
+                         : "Uses Calendar, Reminders and Weather once you turn it on.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .tint(accent)
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
+        .frame(minHeight: OGMetrics.minTouchTarget)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(OGTheme.card)
+        )
     }
 
     // MARK: - Creating and editing

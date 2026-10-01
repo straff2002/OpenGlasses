@@ -65,15 +65,16 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         let app = launch([.configured])
         awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
-        for name in ["Meetings", "Tasks", "Photo → Event", "Photo → Task"] {
-            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 60),
-                          "The “\(name)” tile is not reachable by name on the home grid")
+        // The grid pages now, and a tile on a page that is not in front is hidden from VoiceOver
+        // like any off-screen page — so each is looked for by paging through the grid. The speed
+        // dial's live recording tile is among them, and must still say what it is rather than
+        // reading out a duration.
+        let names = ["Meetings", "Tasks", "Photo → Event", "Photo → Task", "Record meeting"]
+        let found = tilesReachedByPaging(names, in: app)
+        for name in names {
+            XCTAssertTrue(found.contains(name),
+                          "The “\(name)” tile is not reachable by name on any home grid page")
         }
-
-        // The speed-dial actions the dock used to draw are still on the surface, and the live
-        // recording tile still says what it is rather than reading out a duration.
-        XCTAssertTrue(app.buttons["Record meeting"].exists,
-                      "The record tile lost its spoken name in the move off the dock")
     }
 
     /// The panel is a pager now, and a pager with no page control is a surface whose second and
@@ -84,8 +85,30 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 
         XCTAssertTrue(app.pageIndicators.firstMatch.waitForExistence(timeout: 60),
-                      "The dock panel has no page control — its conversation and edit pages are "
-                      + "undiscoverable")
+                      "The dock panel has no page control — its conversation and later grid "
+                      + "pages are undiscoverable")
+    }
+
+    /// The editor is behind the cog and nowhere else: paging onward through every grid page never
+    /// lands in it, and the cog opens it.
+    func testTheEditorIsReachedByTheCogAndNeverBySwiping() {
+        let app = launch([.configured])
+        awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
+
+        let dock = app.otherElements["Dock"]
+        XCTAssertTrue(dock.waitForExistence(timeout: 60), "The dock panel never appeared")
+        let editorTitle = app.navigationBars["Edit Home Screen"]
+        for _ in 0..<6 {
+            dock.swipeLeft()
+            XCTAssertFalse(editorTitle.exists, "A swipe onward from the grid opened the editor")
+        }
+
+        let cog = app.buttons["Edit home screen"]
+        XCTAssertTrue(cog.waitForExistence(timeout: 10), "No cog on the grid's page-dots row")
+        cog.tap()
+        XCTAssertTrue(editorTitle.waitForExistence(timeout: 10), "The cog did not open the editor")
+        app.navigationBars["Edit Home Screen"].buttons["Done"].tap()
+        XCTAssertTrue(dock.waitForExistence(timeout: 10))
     }
 
     /// The capsule is the one control that never pages, which is what keeps "stop" reachable at
@@ -101,9 +124,12 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         ).firstMatch
         XCTAssertTrue(capsule.waitForExistence(timeout: 60))
 
-        // On the home page the grid's tiles are beside it; the capsule is not one of them.
-        XCTAssertTrue(app.buttons["Meetings"].exists)
-        XCTAssertGreaterThan(capsule.frame.minY, app.buttons["Meetings"].frame.minY,
+        // On the home page the grid's tiles are beside it; the capsule is not one of them. The
+        // model tile leads the grid, so it is on the first page at any row count.
+        let modelTile = app.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH 'Model: '")).firstMatch
+        XCTAssertTrue(modelTile.exists)
+        XCTAssertGreaterThan(capsule.frame.minY, modelTile.frame.minY,
                              "The capsule is no longer below the panel")
     }
 
@@ -128,11 +154,14 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         // The dock no longer takes its tiles away for anything. Captions are not a turn, so the
         // panel stays on its home page and both the content tiles and the controls are still
         // there — the conversation is a swipe away rather than a thing that displaces them.
-        XCTAssertTrue(app.buttons["Meetings"].exists,
-                      "A content tile vanished while captions ran — the dock is yielding again")
         let modelTile = app.buttons
             .matching(NSPredicate(format: "label BEGINSWITH 'Model: '")).firstMatch
         XCTAssertTrue(modelTile.exists, "A dock control vanished while captions ran")
+        XCTAssertTrue(tilesReachedByPaging(["Meetings"], in: app).contains("Meetings"),
+                      "A content tile vanished while captions ran — the dock is yielding again")
+        // Back to grid page 1 for the audit, which is the page the wearer rests on.
+        let dock = app.otherElements["Dock"]
+        for _ in 0..<6 where !modelTile.exists { dock.swipeRight() }
 
         audit(app, screen: "Session surface — captions overlay",
               deferring: [.contrastThroughGlass, .focusableCaptionHistory])
@@ -166,5 +195,23 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
                       "A caption from the history is not reachable on its own — the overlay has "
                       + "collapsed into a single element, and the last few lines cannot be "
                       + "swiped back through")
+    }
+
+    // MARK: - Paging the grid
+
+    /// The tiles among `names` that appear on some grid page, swiping onward through the grid.
+    /// Swiped a few more times than there are pages, since a paging `TabView` under a loaded
+    /// machine drops the occasional gesture.
+    private func tilesReachedByPaging(_ names: [String], in app: XCUIApplication) -> Set<String> {
+        let dock = app.otherElements["Dock"]
+        guard dock.waitForExistence(timeout: 60) else { return [] }
+        _ = app.buttons[names[0]].waitForExistence(timeout: 5)
+        var found = Set<String>()
+        for _ in 0..<8 {
+            for name in names where app.buttons[name].exists { found.insert(name) }
+            if found.count == names.count { break }
+            dock.swipeLeft()
+        }
+        return found
     }
 }

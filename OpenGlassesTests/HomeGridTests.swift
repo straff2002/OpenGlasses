@@ -46,6 +46,79 @@ final class HomeGridTests: XCTestCase {
         XCTAssertTrue(HomeSurfaceVisibility.showsActionTiles(mode: .direct))
     }
 
+    // MARK: - My Day on the home screen
+
+    /// With My Day off there is nothing of it on the home screen — no set-up card — and a card the
+    /// wearer removed stays removed while My Day keeps running.
+    func testMyDayIsOnTheHomeScreenOnlyWhenOnAndPlaced() {
+        for enabled in [false, true] {
+            for onHome in [false, true] {
+                XCTAssertEqual(MyDayHomePlacement.isShown(enabled: enabled, onHome: onHome),
+                               enabled && onHome)
+                for state in [VoiceVisualState.idle, .listening, .thinking, .speaking] {
+                    for captions in [false, true] {
+                        XCTAssertEqual(
+                            HomeSurfaceVisibility.showsMyDay(enabled: enabled, onHome: onHome,
+                                                             state: state, captionsActive: captions),
+                            enabled && onHome
+                                && HomeSurfaceVisibility.showsMyDay(state: state,
+                                                                    captionsActive: captions),
+                            "enabled \(enabled), onHome \(onHome), \(state), captions \(captions)")
+                    }
+                }
+            }
+        }
+        XCTAssertTrue(MyDayHomePlacement.onHomeDefault,
+                      "Turning My Day on for the first time should put its card on the home screen")
+    }
+
+    /// What the editor's switch writes. Off only takes the card away — My Day, and so its
+    /// briefings, tool and alerts, stays on. On is an opt-in when My Day was off.
+    func testTheHomeSwitchWritesPlacementAndOnlyOptsInWhenOff() {
+        let removed = MyDayHomePlacement.settingShown(false, enabled: true)
+        XCTAssertTrue(removed.enabled, "Removing the card turned My Day off")
+        XCTAssertFalse(removed.onHome)
+        XCTAssertFalse(removed.optedIn)
+
+        let fresh = MyDayHomePlacement.settingShown(true, enabled: false)
+        XCTAssertTrue(fresh.enabled && fresh.onHome)
+        XCTAssertTrue(fresh.optedIn)
+
+        let back = MyDayHomePlacement.settingShown(true, enabled: true)
+        XCTAssertTrue(back.enabled && back.onHome)
+        XCTAssertFalse(back.optedIn, "Putting the card back is not a second opt-in")
+
+        let offAlready = MyDayHomePlacement.settingShown(false, enabled: false)
+        XCTAssertFalse(offAlready.enabled)
+        XCTAssertFalse(MyDayHomePlacement.isShown(enabled: offAlready.enabled,
+                                                  onHome: offAlready.onHome))
+    }
+
+    /// One source of truth: the Settings switch, the card's "Remove from Home" and the editor all
+    /// read and write the same `UserDefaults` keys, so a write through `Config` is what every one
+    /// of them reads back.
+    func testThePlacementFlagIsOneStoredKey() {
+        let defaults = UserDefaults.standard
+        let savedEnabled = defaults.object(forKey: MyDayHomePlacement.enabledKey)
+        let savedOnHome = defaults.object(forKey: MyDayHomePlacement.onHomeKey)
+        defer {
+            defaults.set(savedEnabled, forKey: MyDayHomePlacement.enabledKey)
+            defaults.set(savedOnHome, forKey: MyDayHomePlacement.onHomeKey)
+        }
+
+        defaults.removeObject(forKey: MyDayHomePlacement.onHomeKey)
+        XCTAssertTrue(Config.myDayOnHome, "An unset placement is on the home screen")
+
+        defaults.set(true, forKey: MyDayHomePlacement.enabledKey)
+        Config.setMyDayShownOnHome(false)
+        XCTAssertFalse(defaults.bool(forKey: MyDayHomePlacement.onHomeKey))
+        XCTAssertTrue(Config.myDayEnabled, "Removing the card from the home screen turned My Day off")
+
+        Config.setMyDayShownOnHome(true)
+        XCTAssertTrue(defaults.bool(forKey: MyDayHomePlacement.onHomeKey))
+        XCTAssertTrue(Config.myDayOnHome)
+    }
+
     // MARK: - P1/P2: the catalog
 
     /// The ids are what the arrangement persists, so renaming one silently empties somebody's grid.
@@ -530,7 +603,7 @@ final class HomeGridTests: XCTestCase {
     /// can change the frame. Round 4's promise, and pure subtraction makes it stronger rather than
     /// weaker — there is no longer a term in the expression a page could reach.
     func testTheFrameCannotDependOnThePage() {
-        let heights = DockPage.allCases.map { _ in
+        let heights = (0..<5).map { _ in
             DockGridMetrics.panelPagesHeight(availableHeight: 874, reservedHeight: 400,
                                              rowHeight: 52)
         }

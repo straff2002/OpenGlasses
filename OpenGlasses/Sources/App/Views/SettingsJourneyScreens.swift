@@ -46,7 +46,11 @@ struct AppleIntegrationsSettingsScreen: View {
     @State private var disabledTools: Set<String> = Config.disabledTools
     @State private var permissionDeniedTool: String?
     @State private var didResetMyDayHistory = false
-    @AppStorage("myDayEnabled") private var myDayEnabled = false
+    @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
+    /// The card's placement — the same key the card's "Remove from Home" and the home screen's
+    /// editor write, so this switch always says what the home screen shows.
+    @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
+        = MyDayHomePlacement.onHomeDefault
     @AppStorage("myDayCalendarIncluded") private var myDayCalendarIncluded = true
     @AppStorage("myDayRemindersIncluded") private var myDayRemindersIncluded = true
     @AppStorage("myDayWeatherIncluded") private var myDayWeatherIncluded = true
@@ -74,10 +78,14 @@ struct AppleIntegrationsSettingsScreen: View {
                         Config.setMyDayEnabled(enabled)
                     }
 
+                if myDayEnabled {
+                    Toggle("Show on Home Screen", isOn: $myDayOnHome)
+                }
+
             } header: {
                 Text("Everyday Briefing")
             } footer: {
-                Text("Adds a phone and spoken briefing of what matters next. My Day keeps an ephemeral read model and does not save a separate copy of your day.")
+                Text("Adds a phone and spoken briefing of what matters next. My Day keeps an ephemeral read model and does not save a separate copy of your day. Taking the card off the Home screen keeps the briefings.")
             }
 
             if myDayEnabled {

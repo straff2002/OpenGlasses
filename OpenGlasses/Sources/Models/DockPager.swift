@@ -1,14 +1,13 @@
 import Foundation
 
-/// The pages of the dock panel, in the order they are swiped through.
+/// The two kinds of page the dock panel shows, in swipe order: the conversation, then the grid —
+/// which itself spans as many pages as its tiles need (`HomeGridPaging`).
 ///
-/// The grid is the middle page and the home one: the conversation is a swipe left of it and the
-/// editor a swipe right, so neither is more than one gesture from where the user rests. Raw values
-/// are the page order and are what the pager's selection binding carries.
+/// The layout editor used to be a third page here, one swipe onward from the grid, which is how a
+/// wearer reached it by accident. It is a sheet behind the cog now, and nothing a swipe can reach.
 enum DockPage: Int, CaseIterable, Identifiable, Hashable {
     case conversation = 0
     case actions = 1
-    case edit = 2
 
     var id: Int { rawValue }
 
@@ -22,7 +21,6 @@ enum DockPage: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .conversation: return "Show conversation"
         case .actions: return "Show actions"
-        case .edit: return "Edit actions"
         }
     }
 
@@ -31,14 +29,24 @@ enum DockPage: Int, CaseIterable, Identifiable, Hashable {
         switch self {
         case .conversation: return "Conversation"
         case .actions: return "Actions"
-        case .edit: return "Edit actions"
         }
     }
+}
+
+/// The panel's named accessibility actions that are not a page of their own.
+enum DockPanelActionName {
+    static let editHomeScreen = "Edit home screen"
+    static let nextGridPage = "Next page of actions"
+    static let previousGridPage = "Previous page of actions"
 }
 
 /// Everything the pager remembers between state changes.
 struct DockPagerState: Equatable {
     var page: DockPage = .home
+    /// The first tile of the grid page the user last chose — `nil` for grid page 1. Kept while the
+    /// conversation is in front, so the grid can be returned to where it was, and never rewritten
+    /// by a reflow (see `HomeGridPaging.gridPage(anchoredAt:in:fallback:)`).
+    var gridAnchor: String? = nil
     /// Set the moment the user moves the pager themselves, cleared when a new turn begins. It is
     /// the whole of the "never fight the user" rule: within one turn, their swipe is final.
     var userMovedThisTurn = false
@@ -78,6 +86,9 @@ enum DockPagerPolicy {
     /// A turn *ending* moves nothing: the reply stays on screen until the user swipes away or the
     /// next turn arrives. There is deliberately no idle timer — a panel that slides out from under
     /// someone still reading is the same failure as one that fights their swipe, only on a delay.
+    ///
+    /// The flip only ever goes to the conversation, and it keeps `gridAnchor`: the grid page the
+    /// wearer was on is remembered for "Show actions" to return to.
     static func advance(_ state: DockPagerState,
                         from previous: VoiceVisualState,
                         to next: VoiceVisualState) -> DockPagerState {
@@ -93,17 +104,24 @@ enum DockPagerPolicy {
     }
 
     /// The user swiped, or took one of the pager's named accessibility actions. Their choice stands
-    /// for the rest of the turn.
+    /// for the rest of the turn. Moving to a page kind keeps the remembered grid page.
     static func userMoved(_ state: DockPagerState, to page: DockPage) -> DockPagerState {
-        DockPagerState(page: page, userMovedThisTurn: true)
+        DockPagerState(page: page, gridAnchor: state.gridAnchor, userMovedThisTurn: true)
+    }
+
+    /// The user moved to a particular grid page, recorded by the tile that page starts with.
+    static func userMoved(_ state: DockPagerState,
+                          toGridPageStartingWith anchor: String?) -> DockPagerState {
+        DockPagerState(page: .actions, gridAnchor: anchor, userMovedThisTurn: true)
     }
 }
 
 // MARK: - Arrangement editing
 
 /// The arrangement mutations both editing surfaces perform, as pure functions over the stored
-/// record — the in-panel edit page and the full-screen editor differ only in how they are driven,
-/// and nothing about *what* an edit means should depend on which one the user reached for.
+/// record — the home screen's editor sheet and the full-screen editor in Settings differ only in
+/// how they are driven, and nothing about *what* an edit means should depend on which one the user
+/// reached for.
 ///
 /// Every mutation writes the **resolved** order back rather than the stored one. An arrangement is
 /// allowed to leave slots unmentioned — that is how a new control or a newly added speed-dial
@@ -124,9 +142,9 @@ enum DockArrangementEditor {
         return next
     }
 
-    /// Nudge one slot by `delta` places, clamped to the ends. This is what the in-panel page offers
-    /// instead of a drag: a drag inside a horizontally-paging panel is a gesture argument waiting
-    /// to happen, and a pair of buttons is also the only form of reordering VoiceOver can drive.
+    /// Nudge one slot by `delta` places, clamped to the ends. This is what the home screen's editor
+    /// offers instead of a drag: a pair of buttons is the only form of reordering VoiceOver can
+    /// drive.
     static func moving(_ arrangement: HomeGridArrangement, resolved: [DockSlot],
                        id: String, by delta: Int) -> HomeGridArrangement {
         var next = materialised(arrangement, resolved: resolved)
