@@ -82,7 +82,10 @@ final class OGDesignContrastTests: XCTestCase {
                          "success label on card", "error label on canvas",
                          "media label on black", "media secondary on black",
                          "media tertiary on black", "media attention label on black",
-                         "media error label on black", "badge label on badge"] {
+                         "media error label on black", "badge label on badge",
+                         "widget title on widget surface", "widget caption on widget surface",
+                         "widget chip label on widget surface",
+                         "widget button label on accent"] {
             XCTAssertTrue(names.contains(expected), "audit lost the \"\(expected)\" pair")
         }
     }
@@ -493,6 +496,52 @@ final class JobChipContrastTests: XCTestCase {
         let orange = SRGBColor(hex: AccentColors.aiAccentDarkHex)
         XCTAssertGreaterThan(orange.red, orange.green)
         XCTAssertGreaterThan(orange.green, orange.blue)
+    }
+
+    // MARK: - The Home Screen widget
+
+    /// The widget's filled button paints the label `AccentColors.onAiCoral` hands out, which is
+    /// the app's `onAccentLabel` rule read from the one place it is written. Measured here on the
+    /// colour the widget actually renders, not on a restated constant.
+    func testTheWidgetButtonLabelIsTheAppsLabelOnTheAccent() {
+        for scheme in OGColorScheme.allCases {
+            let accent = OGTheme.resolved(AccentColors.aiCoral, for: scheme)
+            XCTAssertEqual(accent.hex, OGTheme.Token.accent.value(for: scheme).hex)
+            let label = OGTheme.resolved(AccentColors.onAiCoral, for: scheme)
+            XCTAssertEqual(label.hex, OGTheme.onAccentLabelToken.value(for: scheme).hex,
+                           "the widget's button label left the app's rule in \(scheme)")
+            XCTAssertEqual(label.hex, OGTheme.widgetOnAccentLabelToken.value(for: scheme).hex)
+            let ratio = ContrastRatio.ratio(label, accent)
+            XCTAssertTrue(ContrastRatio.meetsAA(ratio, size: .normal),
+                          "widget button label measures \(String(format: "%.2f", ratio)):1 in \(scheme)")
+        }
+        // The shipped orange wants white in light mode and black in dark.
+        XCTAssertEqual(OGTheme.widgetOnAccentLabelToken.light.hex, 0xFFFFFF)
+        XCTAssertEqual(OGTheme.widgetOnAccentLabelToken.dark.hex, 0x000000)
+    }
+
+    /// The shared rule in `AccentColors` carries its own luminance maths (the widget targets do
+    /// not compile `ContrastRatio`); it must pick the same pole `ContrastRatio` rates higher, for
+    /// every preset in both schemes.
+    func testTheSharedLabelRuleAgreesWithContrastRatio() {
+        for preset in AppAccent.presets {
+            for scheme in OGColorScheme.allCases {
+                let accent = OGTheme.resolved(preset.color, for: scheme)
+                let expected: SRGBColor =
+                    ContrastRatio.ratio(.white, accent) >= ContrastRatio.ratio(.black, accent) ? .white : .black
+                XCTAssertEqual(SRGBColor(hex: AccentColors.onAccentLabelHex(onAccent: accent.hex)), expected,
+                               "\(preset.name) in \(scheme)")
+            }
+        }
+    }
+
+    /// A solid accent button is a non-text boundary on the widget surface: it needs 3:1.
+    func testTheWidgetAccentButtonStandsOffTheWidgetSurface() {
+        for scheme in OGColorScheme.allCases {
+            let ratio = ContrastRatio.ratio(OGTheme.Token.accent.value(for: scheme),
+                                            OGTheme.widgetSurfaceToken.value(for: scheme))
+            XCTAssertGreaterThanOrEqual(ratio, 3, "accent on widget surface in \(scheme)")
+        }
     }
 
     func testTheDefaultPresetKeepsItsStoredIdAndIsCalledOrange() {

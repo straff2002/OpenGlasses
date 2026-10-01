@@ -19,6 +19,8 @@ struct ListeningControlWidget: ControlWidget {
                     LogoIcon(size: 18)
                 }
             }
+            // The on-state tint: the brand accent, not the system default.
+            .tint(AccentColors.aiCoral)
         }
         .displayName("Avenkin Listen")
         .description("Toggle wake-word listening in Avenkin.")

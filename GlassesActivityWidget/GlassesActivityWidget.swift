@@ -47,17 +47,19 @@ struct GlassesActivityWidget: Widget {
                         if context.state.isConnected {
                             actionButtons(for: context.state, compact: true)
                         } else {
+                            // The one primary action while disconnected: a solid accent fill,
+                            // labelled the way the app's primary button is.
                             Link(destination: DeepLinkTrust.signedURL("openglasses://connect")!) {
                                 Label {
                                     Text("Connect")
                                 } icon: {
                                     LogoIcon(size: 12)
                                 }
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.white)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AccentColors.onAiCoral)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 4)
-                                .background(.green.opacity(0.3), in: RoundedRectangle(cornerRadius: 6))
+                                .background(AccentColors.aiCoral, in: RoundedRectangle(cornerRadius: 6))
                             }
                         }
                     }
@@ -153,7 +155,7 @@ struct GlassesActivityWidget: Widget {
                 chunkyLink(label: "Connect Glasses",
                            icon: "antenna.radiowaves.left.and.right",
                            url: DeepLinkTrust.signedURL("openglasses://connect")!,
-                           tint: .green, strong: true)
+                           tint: AccentColors.aiCoral, strong: true, filled: true)
             }
         }
         .padding(12)
@@ -241,8 +243,11 @@ struct GlassesActivityWidget: Widget {
     }
 
     /// Shared full-width, ~44pt-tall capsule button (used by quick actions and Connect).
+    /// `filled` is the primary-action form: a solid `tint` ground with the app's on-accent label
+    /// rule, rather than a wash of the tint under white text.
     @ViewBuilder
-    private func chunkyLink(label: String, icon: String, url: URL, tint: Color, strong: Bool) -> some View {
+    private func chunkyLink(label: String, icon: String, url: URL, tint: Color, strong: Bool,
+                            filled: Bool = false) -> some View {
         Link(destination: url) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
@@ -252,12 +257,12 @@ struct GlassesActivityWidget: Widget {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(filled ? AccentColors.onAiCoral : .white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .padding(.horizontal, 10)
-            .background(tint.opacity(strong ? 0.30 : 0.16), in: Capsule())
-            .overlay(Capsule().strokeBorder(tint.opacity(strong ? 0.55 : 0.18), lineWidth: 1))
+            .background(filled ? tint : tint.opacity(strong ? 0.30 : 0.16), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(filled ? 0 : (strong ? 0.55 : 0.18)), lineWidth: 1))
         }
     }
 

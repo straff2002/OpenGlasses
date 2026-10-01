@@ -7,32 +7,11 @@ struct OpenGlassesHomeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: HomeWidgetProvider()) { entry in
             HomeWidgetView(entry: entry)
-                .containerBackground(for: .widget) {
-                    HomeWidgetBackground()
-                }
+                .containerBackground(AccentColors.widgetSurface, for: .widget)
         }
         .configurationDisplayName("Avenkin")
         .description("Glasses status and a quick Listen toggle.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
-    }
-}
-
-/// Adaptive widget background — warm tinted gradient that switches with the
-/// system appearance. Dark mode keeps the original coffee tones; light mode
-/// uses a soft cream that lets `.primary` text stay legible.
-private struct HomeWidgetBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        LinearGradient(
-            colors: colorScheme == .dark
-                ? [Color(red: 0.14, green: 0.09, blue: 0.07),
-                   Color(red: 0.06, green: 0.05, blue: 0.04)]
-                : [Color(red: 0.99, green: 0.96, blue: 0.93),
-                   Color(red: 0.95, green: 0.91, blue: 0.86)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 }
 
@@ -60,6 +39,8 @@ struct HomeWidgetView: View {
     let entry: HomeWidgetEntry
     @Environment(\.widgetFamily) private var family
 
+    /// The brand orange. Filled controls paint it solid and label it with
+    /// `AccentColors.onAiCoral` — the same rule as the app's primary button.
     private var accent: Color { AccentColors.aiCoral }
 
     var body: some View {
@@ -91,10 +72,10 @@ struct HomeWidgetView: View {
                     Text(entry.isListening ? "Stop" : "Listen")
                         .font(.caption.weight(.semibold))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(AccentColors.onAiCoral)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
-                .background(accent.opacity(0.85), in: Capsule())
+                .background(accent, in: Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -125,9 +106,9 @@ struct HomeWidgetView: View {
                         Text(entry.isListening ? "Stop" : "Listen")
                             .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AccentColors.onAiCoral)
                     .frame(width: 96, height: 70)
-                    .background(accent.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+                    .background(accent, in: RoundedRectangle(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
                 Link(destination: DeepLinkTrust.signedURL("openglasses://action/photo")!) {
@@ -166,10 +147,10 @@ struct HomeWidgetView: View {
                     Text(entry.isListening ? "Stop Listening" : "Start Listening")
                         .font(.headline)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(AccentColors.onAiCoral)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(accent.opacity(0.85), in: RoundedRectangle(cornerRadius: 18))
+                .background(accent, in: RoundedRectangle(cornerRadius: 18))
             }
             .buttonStyle(.plain)
             HStack(spacing: 8) {

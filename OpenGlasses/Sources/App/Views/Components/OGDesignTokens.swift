@@ -55,10 +55,11 @@ enum OGTheme {
     /// The palette, as measurable values. `OGTheme`'s `Color` properties below
     /// are what views use; these are what the contrast tests read.
     enum Token {
-        /// Screen background — warm off-white in light, warm near-black in dark.
-        static let canvas = OGColorToken(light: 0xF5F3F0, dark: 0x151413)
-        /// Card / row fill, one step above the canvas.
-        static let card = OGColorToken(light: 0xFFFFFF, dark: 0x201E1C)
+        /// Screen background — off-white in light, near-black in dark. Read from `AccentColors`,
+        /// which every target compiles, so the widgets paint the same surfaces the app does.
+        static let canvas = OGColorToken(light: AccentColors.canvasLightHex, dark: AccentColors.canvasDarkHex)
+        /// Card / row fill, one step above the canvas. Also the Home Screen widget's ground.
+        static let card = OGColorToken(light: AccentColors.cardLightHex, dark: AccentColors.cardDarkHex)
         /// Hero-card chrome, always dark — the accent glow carries the warmth.
         static let ink = OGColorToken(fixed: 0x1C1B1A)
         /// Text on ink.
@@ -223,8 +224,9 @@ extension OGTheme {
 
     /// `onAccentLabel`'s choice, on plain values — the tests measure this for
     /// every accent preset.
+    /// The rule itself lives in `AccentColors` so the widget targets share it.
     static func onAccentLabelValue(_ accent: SRGBColor) -> SRGBColor {
-        ContrastRatio.ratio(.white, accent) >= ContrastRatio.ratio(.black, accent)
+        AccentColors.prefersWhiteLabel(red: accent.red, green: accent.green, blue: accent.blue)
             ? .white
             : .black
     }
@@ -445,7 +447,25 @@ extension OGTheme {
         .init("media attention label on black", foreground: mediaWarnLabelToken, on: Token.media),
         .init("media error label on black", foreground: mediaErrorLabelToken, on: Token.media),
         .init("badge label on badge", foreground: Token.onInk, on: Token.badge),
+        // The Home Screen widget: the app's card surface, a solid accent button, and the
+        // neutral quick-action chips (the label at 10% over the surface).
+        .init("widget title on widget surface", foreground: Token.label, on: widgetSurfaceToken),
+        .init("widget caption on widget surface", foreground: Token.label,
+              opacity: Opacity.secondaryLabel, on: widgetSurfaceToken),
+        .init("widget chip label on widget surface", foreground: Token.label, on: widgetSurfaceToken,
+              wash: (Token.label, 0.1)),
+        .init("widget button label on accent", foreground: widgetOnAccentLabelToken, on: Token.accent),
     ]
+
+    /// The Home Screen widget's ground, as the widget target renders it (`AccentColors.widgetSurface`).
+    static let widgetSurfaceToken = OGColorToken(light: AccentColors.cardLightHex, dark: AccentColors.cardDarkHex)
+
+    /// The label on the widget's filled accent button, as the widget target renders it
+    /// (`AccentColors.onAiCoral`).
+    static let widgetOnAccentLabelToken = OGColorToken(
+        light: AccentColors.onAccentLabelHex(onAccent: AccentColors.aiAccentLightHex),
+        dark: AccentColors.onAccentLabelHex(onAccent: AccentColors.aiAccentDarkHex)
+    )
 
     /// The label a filled accent button paints with the shipped Coral preset.
     /// Every other preset is held to the same bar at render time by
