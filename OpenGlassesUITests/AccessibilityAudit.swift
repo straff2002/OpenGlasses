@@ -302,7 +302,7 @@ class AccessibilityAuditCase: XCTestCase {
     /// having gone. The old text wait is kept ahead of it as a belt, for any build where the splash
     /// is still in the tree.
     private func waitForLaunchScreenToClear(_ app: XCUIApplication) {
-        let splash = app.staticTexts["Voice-Powered AI Assistant"]
+        let splash = app.staticTexts["Voice & Vision AI Assistant"]
         if splash.exists {
             let gone = expectation(for: NSPredicate(format: "exists == false"),
                                    evaluatedWith: splash)
