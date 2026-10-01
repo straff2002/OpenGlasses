@@ -662,9 +662,10 @@ struct OpenGlassesApp: App {
 /// Global application state
 @MainActor
 class AppState: ObservableObject, AppStateProtocol {
-    /// Whether the glasses' link is up — `glassesPhase == .connected`, mirrored from
-    /// `glassesService.phase` by `applyGlassesPhase(_:)`, its only writer. Registration and the
-    /// SDK's device list mean glasses are *added*, never that they are connected.
+    /// Whether the app may use the glasses now: their link is up (`glassesPhase == .connected`)
+    /// and the wearer has not disconnected the app from them (`glassesStoodDown`). Folded by
+    /// `GlassesUse`; written only by `applyGlassesUse()`. Registration and the SDK's device list
+    /// mean glasses are *added*, never that they are connected.
     @Published private(set) var isConnected: Bool = false {
         didSet {
             speechService.glassesConnected = isConnected
@@ -723,21 +724,57 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
     }
-    /// Where the glasses are: never added, added but away, connecting, connected. Mirrors
-    /// `glassesService.phase`; `isConnected` is `glassesPhase.isConnected`.
+    /// The glasses' link as the SDK reports it: never added, added but away, connecting,
+    /// connected. Mirrors `glassesService.phase`. Unaffected by the wearer's Disconnect — that is
+    /// `glassesStoodDown`.
     @Published private(set) var glassesPhase: GlassesConnectionPhase = .noGlassesAdded
+    /// The wearer disconnected the app from glasses whose link is still up (Disconnect, auto-sleep).
+    /// Cleared by an explicit connect and whenever the link leaves `.connected`.
+    @Published private(set) var glassesStoodDown = false
+    /// Link connected but stood down — "Connected · paused" rather than "Not connected".
+    var glassesPaused: Bool { glassesUse.isPaused }
+    private var glassesUse = GlassesUse()
     /// Whether glasses are part of this person's setup — added now (registered or listed by the
     /// SDK) or at any time before (`Config.glassesAdded`). Not whether they are reachable.
     var glassesAdded: Bool { glassesPhase.glassesAdded || Config.glassesAdded }
 
-    /// The one writer of `glassesPhase` and `isConnected`.
+    /// A new link phase from `glassesService`.
     private func applyGlassesPhase(_ phase: GlassesConnectionPhase) {
-        guard phase != glassesPhase || phase.isConnected != isConnected else { return }
+        guard phase != glassesUse.link else { return }
         addDebugEvent("Glasses: \(phase)")
         // Registered or listed glasses are glasses this person uses (Plan FY P2), connected or not.
         if phase.glassesAdded { Config.glassesAdded = true }
-        glassesPhase = phase
-        if isConnected != phase.isConnected { isConnected = phase.isConnected }
+        glassesUse.linkChanged(phase)
+        applyGlassesUse()
+    }
+
+    /// The wearer's Disconnect: stop using glasses whose link stays up. No-op unless connected.
+    private func standDownGlasses() {
+        glassesUse.standDown()
+        applyGlassesUse()
+    }
+
+    /// An explicit connect: lift a stand-down. Glasses whose link is up are in use again at once.
+    func resumeGlasses() {
+        guard glassesUse.stoodDown else { return }
+        glassesUse.resume()
+        applyGlassesUse()
+    }
+
+    /// The one writer of `glassesPhase`, `glassesStoodDown` and `isConnected`. Each is assigned
+    /// only on change, so the `isConnected` transitions (teardown, smart connect) run once each.
+    private func applyGlassesUse() {
+        if glassesPhase != glassesUse.link { glassesPhase = glassesUse.link }
+        if glassesStoodDown != glassesUse.stoodDown { glassesStoodDown = glassesUse.stoodDown }
+        if isConnected != glassesUse.inUse { isConnected = glassesUse.inUse }
+    }
+
+    /// Connect the glasses on the wearer's say-so: lift a stand-down, and register only when the
+    /// link is not already up (registering a registered app is a round trip to Meta AI for nothing).
+    func connectGlasses() async {
+        resumeGlasses()
+        guard !isConnected else { return }
+        await glassesService.connect()
     }
 
     /// Stop everything that needs the glasses' audio or camera: the wake word, live sessions, the
@@ -2718,7 +2755,8 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(glassesPhaseToken)
         // The camera asks the same question before trusting the glasses with a capture: a
         // registered pair with no link would otherwise be tried, and fail, instead of falling back.
-        cameraService.isGlassesLinkUp = { [glassesService] in glassesService.isConnected }
+        // Stood down counts as away too: the wearer disconnected, so a capture uses the phone.
+        cameraService.isGlassesLinkUp = { [weak self] in self?.isConnected ?? false }
 
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
@@ -4771,7 +4809,7 @@ class AppState: ObservableObject, AppStateProtocol {
     private func configurePresence() {
         // Signal sources (cheap, on-device): DAT connectivity, scene-phase foreground (MLX is
         // foreground-only), live voice activity, and the last explicit command timestamp.
-        presenceMonitor.connected = { [weak self] in self?.glassesService.isConnected ?? false }
+        presenceMonitor.connected = { [weak self] in self?.isConnected ?? false }
         presenceMonitor.foreground = { [weak self] in self?.isForegroundActive ?? true }
         presenceMonitor.voiceActive = { [weak self] in self?.wakeWordService.isListening ?? false }
         presenceMonitor.lastInteraction = { [weak self] in self?.lastInteractionAt ?? Date() }
@@ -6482,7 +6520,7 @@ class AppState: ObservableObject, AppStateProtocol {
             deviceStatus: { [weak self] in
                 guard let self else { return [:] }
                 return [
-                    "glasses_connected": String(self.glassesService.isConnected),
+                    "glasses_connected": String(self.isConnected),
                     "device_name": self.glassesService.deviceName ?? "none",
                     "battery": self.glassesService.batteryLevel.map(String.init) ?? "unknown",
                     "listening": String(self.isListening),
@@ -6496,11 +6534,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return [:] }
                 // What is *currently* true, not what the app theoretically has.
                 return [
-                    "camera": String(self.glassesService.isConnected),
+                    "camera": String(self.isConnected),
                     "display": String(self.glassesDisplay.deviceSupportsDisplay()),
                     "speak": "true",
                     "audio_recording": "true",
-                    "video_recording": String(self.glassesService.isConnected),
+                    "video_recording": String(self.isConnected),
                     "transcription": "true",
                     "translation": "true",
                     "notes": "true",
@@ -6750,6 +6788,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// One-tap reconnect — connect glasses and immediately start listening.
     /// Used by hero capsule, widget, watch, and Dynamic Island reconnect actions.
     func connectAndListen() async {
+        // An explicit connect lifts a Disconnect: glasses whose link is still up are in use again.
+        resumeGlasses()
         guard !isConnected else {
             // Already connected — just start listening
             wakeWordService.stopListening()
@@ -6804,30 +6844,24 @@ class AppState: ObservableObject, AppStateProtocol {
         autoSleepTask = nil
     }
 
-    /// Tear down all glasses-dependent services in one tap.
-    /// Stops mic, TTS, camera and realtime sessions. The link stays whatever the SDK says it is.
+    /// Tear down all glasses-dependent services in one tap, and stand the app down from the
+    /// glasses until the wearer connects again or the link drops. Also what auto-sleep calls.
     /// OpenClaw bridge and agent tasks continue running server-side.
     func disconnectGlasses() {
         guard isConnected else { return }
 
-        // Stop all active interactions
-        speechService.stopSpeaking()
-        wakeWordService.stopListening()
-        isListening = false
-        inConversation = false
-        glassesIdle = false
-
-        // Stop realtime sessions. Plan FF P1/PR3: cancel a startup still in flight too — there is
-        // nothing to start into a disconnect. Not a *user stop* of the assistant, though: the
-        // wearer put the glasses down, they did not ask the assistant to stay down, so this does
-        // not latch.
+        // Plan FF P1/PR3: cancel a live-session startup still in flight — there is nothing to
+        // start into a disconnect. Not a *user stop* of the assistant, though: the wearer put the
+        // glasses down, they did not ask the assistant to stay down, so this does not latch.
         liveActivator.noteSessionEndedExternally()
-        if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
-        if openAIRealtimeSession.isActive { openAIRealtimeSession.stopSession() }
-        releaseFramePin(trigger: .sessionStop)   // Plan CE
 
-        // Stop camera + recording
-        Task { await cameraService.stopStreaming() }
+        // Stand down. The link is not ours to drop — the SDK has no app-side disconnect — so the
+        // wearer's request is kept beside it (`GlassesUse`), and `isConnected` goes false here.
+        // Its didSet runs the hardware teardown once: speech, wake word, live sessions, the frame
+        // pin, the camera stream. An explicit connect, or the link dropping, lifts it.
+        standDownGlasses()
+
+        // Beyond the hardware teardown: recording, ambient features, the conversation thread.
         if videoRecorder.isRecording {
             Task { _ = await videoRecorder.stopRecording() }
         }
@@ -6841,10 +6875,6 @@ class AppState: ObservableObject, AppStateProtocol {
         // mid-job is not finishing the job, and the thread the technician comes back to has to be
         // the same one (Plan FO P1).
         guidedJobFlow.endThreadForDisconnect()
-
-        // The glasses' link itself is not ours to drop — the SDK has no app-side disconnect, and
-        // `isConnected` keeps reporting the link truthfully. What stands down is everything this
-        // app was running on it, above.
 
         // Update live activity
         liveActivityManager.end()
@@ -6909,8 +6939,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// of the launch, so every end-of-turn re-arm skipped as `disconnected`. It is now the SDK's
     /// link state and cannot latch; the route is still asked as well, because a Bluetooth mic can
     /// be there before the link reports in.
+    ///
+    /// Never while stood down: the wearer disconnected, and an unmute, a listening toggle or an
+    /// end-of-turn re-arm must not bring the wake word back on the glasses' mic behind their back.
     func glassesConnectionIsLive() -> Bool {
-        isConnected || wakeWordService.hasBluetoothAudioRoute()
+        guard !glassesStoodDown else { return false }
+        return isConnected || wakeWordService.hasBluetoothAudioRoute()
     }
 
     /// Open the wake-word listener, reporting failure the way the wearer can act on.

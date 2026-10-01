@@ -314,6 +314,7 @@ struct SettingsView: View {
 
     /// The hero card's glasses status, from the link's phase.
     private var glassesStatus: String {
+        if appState.glassesPaused { return "Connected · paused" }
         switch appState.glassesPhase {
         case .connected: return "Connected"
         case .connecting: return "Connecting…"
@@ -327,6 +328,7 @@ struct SettingsView: View {
         case CapabilityCatalog.voice: return "“\(displayedWakePhrase)”"
         case CapabilityCatalog.intelligence: return displayedActiveModelName
         case CapabilityCatalog.glasses:
+            if appState.glassesPaused { return "Paused" }
             switch appState.glassesPhase {
             case .connected: return "Connected"
             case .connecting: return "Connecting…"

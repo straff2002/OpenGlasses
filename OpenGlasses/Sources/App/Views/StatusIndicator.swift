@@ -172,13 +172,14 @@ struct StatusIndicator: View {
             : (phoneIsTheDevice ? OGTheme.secondaryLabel : OGTheme.errorLabel)
         let label = connected ? (appState.glassesService.deviceName ?? "Glasses")
             : (phoneIsTheDevice ? "Not added"
-                : (appState.glassesPhase.isConnecting ? "Connecting" : "Disconnected"))
+                : (appState.glassesPaused ? "Paused"
+                    : (appState.glassesPhase.isConnecting ? "Connecting" : "Disconnected")))
 
         return Button {
             if connected {
                 showDisconnectConfirm = true
             } else {
-                Task { await appState.glassesService.connect() }
+                Task { await appState.connectGlasses() }
             }
         } label: {
             HStack(spacing: 5) {

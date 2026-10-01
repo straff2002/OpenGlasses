@@ -176,3 +176,39 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
         return state(of: id).charging
     }
 }
+
+/// The SDK's link × the wearer's own Disconnect → whether the app may use the glasses now.
+///
+/// The link is the SDK's truth and stays it: Disconnect cannot drop it (the SDK has no app-side
+/// disconnect), so the wearer's request is kept as a separate *stand-down* and the two are folded
+/// here. Rules:
+/// - In use only when the link is connected and the app is not stood down.
+/// - Standing down takes effect only while the link is connected; otherwise there is nothing in
+///   use to stand down, and it is a no-op.
+/// - An explicit connect (`resume()`) clears it.
+/// - The link leaving `.connected` (case, off, out of range, or merely reconnecting) clears it, so
+///   the next real connection — the glasses put back on — is live again without another tap.
+struct GlassesUse: Equatable, Sendable {
+    private(set) var link: GlassesConnectionPhase = .noGlassesAdded
+    private(set) var stoodDown = false
+
+    /// Whether the app may use the glasses now — what `AppState.isConnected` reports.
+    var inUse: Bool { link.isConnected && !stoodDown }
+
+    /// Connected, but the wearer disconnected the app from them.
+    var isPaused: Bool { link.isConnected && stoodDown }
+
+    mutating func linkChanged(_ phase: GlassesConnectionPhase) {
+        link = phase
+        if !phase.isConnected { stoodDown = false }
+    }
+
+    mutating func standDown() {
+        guard link.isConnected else { return }
+        stoodDown = true
+    }
+
+    mutating func resume() {
+        stoodDown = false
+    }
+}
