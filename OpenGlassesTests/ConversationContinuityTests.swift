@@ -90,10 +90,9 @@ final class ConversationContinuityTests: XCTestCase {
 
     // MARK: New conversation
 
-    /// The defect this page had: after a reply the voice session ends its thread, so the next
-    /// turn silently opened a *new* one and there was no way to say which conversation you were
-    /// in. Ending explicitly leaves no active thread — and the next turn's fresh thread is a new
-    /// id, not the one just ended.
+    /// New conversation is the explicit way out of a conversation (voice turns no longer end
+    /// theirs — see `JobThreadPolicy`). Ending explicitly leaves no active thread — and the next
+    /// turn's fresh thread is a new id, not the one just ended.
     func testNewConversationEndsTheCurrentThreadAndTheNextTurnStartsAFreshOne() {
         let (_, newer) = seedTwoThreads()
         var cleared = 0
@@ -110,15 +109,14 @@ final class ConversationContinuityTests: XCTestCase {
         XCTAssertTrue(fresh.messages.isEmpty)
     }
 
-    /// The reported defect, as a state: a finished voice turn ends its thread, so nothing is
-    /// active and the conversation on screen is one the next turn would not join. The page offers
-    /// it back, and taking the offer makes the next turn continue it with full context.
-    func testAFinishedVoiceTurnLeavesTheConversationResumable() {
+    /// After a conversation has ended — New conversation, or the idle gap — nothing is active, and
+    /// the page offers the most recent one back; taking the offer makes the next turn continue it
+    /// with full context.
+    func testAnEndedConversationIsResumable() {
         let (_, newer) = seedTwoThreads()
         XCTAssertNil(ConversationContinuity.resumableThread(in: store),
                      "Nothing to carry on with while a thread is still active")
 
-        // What `AppState.returnToWakeWord` does once the reply has been spoken.
         store.endThread()
         XCTAssertNil(store.activeThreadId)
         XCTAssertEqual(ConversationContinuity.resumableThread(in: store)?.id, newer)
@@ -149,6 +147,54 @@ final class ConversationContinuityTests: XCTestCase {
         ConversationContinuity.resume(older, in: store) { _ in }
         XCTAssertEqual(ConversationContinuity.headerTitle(for: store),
                        store.threads.first { $0.id == older }?.title)
+    }
+
+    // MARK: Filing a reply, and activity
+
+    /// A reply is filed in the thread its question went into, whatever is active by the time it
+    /// arrives — and never dropped because nothing is.
+    func testAReplyIsFiledWithItsQuestionWhateverIsActiveNow() {
+        let (older, newer) = seedTwoThreads()
+        store.appendMessage(role: "user", content: "and the fence posts?")
+
+        ConversationContinuity.resume(older, in: store) { _ in }
+        store.appendMessage(role: "assistant", content: "Treated pine.", toThread: newer)
+        XCTAssertEqual(store.threads.first { $0.id == newer }?.messages.last?.content, "Treated pine.")
+        XCTAssertEqual(store.threads.first { $0.id == older }?.messages.count, 2)
+
+        store.endThread()
+        store.appendMessage(role: "assistant", content: "Galvanised nails.", toThread: newer)
+        XCTAssertEqual(store.threads.first { $0.id == newer }?.messages.last?.content,
+                       "Galvanised nails.")
+        XCTAssertNil(store.activeThreadId, "filing a reply does not reopen anything")
+    }
+
+    func testActivityFollowsTheActiveThread() {
+        XCTAssertNil(store.activeThreadLastActivityAt)
+        let (older, newer) = seedTwoThreads()
+        let newerUpdated = store.threads.first { $0.id == newer }?.updatedAt
+        XCTAssertEqual(store.activeThreadLastActivityAt, newerUpdated)
+
+        // A reply filed into another thread is not activity on the open one.
+        let before = store.activeThreadLastActivityAt
+        store.appendMessage(role: "assistant", content: "late reply", toThread: older)
+        XCTAssertEqual(store.activeThreadLastActivityAt, before)
+
+        store.endThread()
+        XCTAssertNil(store.activeThreadLastActivityAt)
+    }
+
+    /// Choosing the conversation that is already open is still choosing it: the idle gap counts
+    /// from the choice, not from the last message.
+    func testResumingTheOpenConversationCountsAsActivity() {
+        let (_, newer) = seedTwoThreads()
+        let longAgo = Date().addingTimeInterval(-3 * 60 * 60)
+        store.noteActiveThreadActivity(at: longAgo)
+        XCTAssertEqual(store.activeThreadLastActivityAt, longAgo)
+
+        ConversationContinuity.resume(newer, in: store) { _ in }
+        XCTAssertGreaterThan(store.activeThreadLastActivityAt ?? .distantPast,
+                             Date().addingTimeInterval(-60))
     }
 
     // MARK: Deletion

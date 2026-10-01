@@ -79,6 +79,21 @@ class ConversationStore: ObservableObject {
     @Published var activeThreadId: String?
     @Published var isLocked: Bool = false
 
+    /// When the active thread was last touched — a message, a start, or a resume (opening it is
+    /// choosing to carry on with it). Feeds the idle-gap rule in `JobThreadPolicy`; nil whenever
+    /// no thread is active.
+    ///
+    /// In memory, and deliberately not `updatedAt` alone: bumping that on a resume would reorder
+    /// the history list just because a thread was looked at. Keyed by thread so a stale stamp can
+    /// never be read against a different thread; with no stamp for the active one (a launch
+    /// restore, say) the thread's own `updatedAt` is the answer.
+    var activeThreadLastActivityAt: Date? {
+        guard let id = activeThreadId else { return nil }
+        if let lastActivity, lastActivity.threadId == id { return lastActivity.at }
+        return threads.first { $0.id == id }?.updatedAt
+    }
+    private var lastActivity: (threadId: String, at: Date)?
+
     private let maxThreads = 200
     private let storageURL: URL
     private let encryption = ConversationEncryptionService.shared
@@ -168,6 +183,7 @@ class ConversationStore: ObservableObject {
         let thread = ConversationThread(mode: mode, personaId: personaId)
         threads.insert(thread, at: 0)
         activeThreadId = thread.id
+        lastActivity = (thread.id, thread.createdAt)
         if trimOldThreads() {
             saveAndProject(.storeReplaced)
         } else {
@@ -203,14 +219,22 @@ class ConversationStore: ObservableObject {
         return (prompt, msgs[assistantIdx].content)
     }
 
-    /// Append a message to the active thread.
+    /// Append a message to the active thread — or, with `threadId`, to that thread whichever one
+    /// is active now.
+    ///
+    /// The second form is how a reply follows its question: a turn captures the thread its
+    /// question went into and files the answer there, so nothing that moves the active thread
+    /// while the model is thinking (a push-to-talk release, New conversation, a switch) can send
+    /// the answer to another conversation or drop it on the floor.
     func appendMessage(role: String, content: String, imageAttached: Bool = false,
-                       answeredOnDevice: Bool = false) {
-        guard let idx = threads.firstIndex(where: { $0.id == activeThreadId }) else { return }
+                       answeredOnDevice: Bool = false, toThread threadId: String? = nil) {
+        let target = threadId ?? activeThreadId
+        guard let idx = threads.firstIndex(where: { $0.id == target }) else { return }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
                                       answeredOnDevice: answeredOnDevice)
         threads[idx].messages.append(msg)
-        threads[idx].updatedAt = Date()
+        threads[idx].updatedAt = msg.timestamp
+        if threads[idx].id == activeThreadId { lastActivity = (threads[idx].id, msg.timestamp) }
         if let turn = indexedTurn(msg, threadID: threads[idx].id) {
             saveAndProject(.messageUpsert(turn))
         } else {
@@ -312,10 +336,18 @@ class ConversationStore: ObservableObject {
     func resumeThread(_ threadId: String) -> ConversationThread? {
         guard let thread = threads.first(where: { $0.id == threadId }) else { return nil }
         activeThreadId = threadId
+        noteActiveThreadActivity()
         PrivacyLog.conversation(.conversations, .threadResumed,
                                 thread: PrivateIdentifier(threadId),
                                 count: thread.messages.count)
         return thread
+    }
+
+    /// Count this moment as activity on the active thread — the wearer chose it (a resume, or
+    /// re-opening the one already active), so the idle-gap rule measures from here.
+    func noteActiveThreadActivity(at now: Date = Date()) {
+        guard let id = activeThreadId else { return }
+        lastActivity = (id, now)
     }
 
     /// Get messages for replay — returns (role, content) pairs for rebuilding LLM context.
