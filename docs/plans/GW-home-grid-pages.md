@@ -1,8 +1,30 @@
 # Plan GW — Home Grid Pages, Editor Behind the Cog, My Day Removable
 
-**Status:** 📋 Planned 2026-10-02 — one PR: the layout editor leaves the pager (A1), the grid pages
-horizontally with rows that fit the room left (A3), and My Day can be taken off the home screen
-(A2).
+**Status:** ✅ Shipped 2026-10-02 — P0 + P1 in one PR: `HomeGridPaging` (rows that fit, one order
+across pages, page/slot mapping, dots, keep-first-visible-tile on reflow), `HomeGridTilePresence`
+(gates applied before paging), the anchored `DockPagerState`, the editor as a sheet behind the cog
+(and the long press), `MyDayHomePlacement` + `myDayOnHome` with the card's "Remove from Home",
+Settings' "Show on Home Screen" and the editor's Cards section; plus the session card's
+wake-word-off line (below). **Owed (P2, device):** swipe feel, rows at Large and AX sizes with My
+Day open, collapsed and removed.
+
+**As built — where the code differs from the draft below:**
+- The first grid page records no anchor (`nil`), so it stays the first page whatever is put in
+  front of its first tile; later pages record their first tile.
+- The view's tile gates moved into a pure `HomeGridTilePresence`, and the on-device model key is
+  its own `HomeGridTile.localModel` in front of Model — a paged grid has to know exactly which
+  tiles each page holds.
+- **Small extra — the wake word off, said on the card.** The master "Listen for Wake Phrase" switch
+  (`listeningEnabled`) can be turned off from the Lock Screen Live Activity, Control Center, the
+  widget, the Action Button or Siri, and the session card kept saying "Ready". The card now shows
+  "Wake word off — tap to turn on" under its status row when the switch is off and push-to-talk
+  (`silentMode`) is not the wearer's choice; tapping it calls `setListeningEnabled(true)`. The rule
+  is `SessionCardWakeWordNotice` beside the card's other presentation types; there is no separate
+  push-to-talk-only setting beyond `silentMode`.
+- Screenshots on the simulator (iPhone 17 Pro): with the seeded My Day open the page holds one row
+  of three (seven dots); removed, four rows (three dots). At XXXL the same, captions truncating as
+  in #601; at AX-L one column, one row per page with My Day open (a long run of dots), three rows
+  with it removed.
 
 **Related:** PR #601 (three glass keys across, the cog on the dots row), `DockPagerPolicy` (the
 auto-flip and its "a finger is never overruled" promise), `DockGridMetrics` (the panel's measured
@@ -74,6 +96,7 @@ One value built from `tileCount`, `columns` and `rows`, plus the static fitting 
 | `conversationIndex` (0), `panelIndex(forGridPage:)`, `gridPage(forPanelIndex:)` | the pager's indices: conversation first, then the grid pages |
 | `dotCount` | `1 + pageCount` |
 | `gridPage(anchoredAt:in:fallback:)` | the page holding the anchor tile; a vanished anchor falls back to the clamped page |
+| `anchor(forGridPage:in:)`, `panelIndex(for:tileIDs:)` | the anchor a move to a page records (`nil` for page 1), and the pager index a state shows |
 
 ### Where the pager is — `DockPagerState`
 
@@ -168,6 +191,7 @@ and keeps `gridAnchor`. Coming back:
 | Columns | 3; 1 at accessibility sizes (unchanged from #601) |
 | My Day "remove from home" flag | Separate `myDayOnHome`; `myDayEnabled` keeps the briefings, tool and alerts |
 | My Day off | Nothing on the home screen (the set-up card is removed) |
+| Wake word off elsewhere | The session card says so and a tap turns it back on — unless push-to-talk is chosen |
 
 ## Out of scope
 
