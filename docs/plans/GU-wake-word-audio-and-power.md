@@ -1,6 +1,6 @@
 # Plan GU — Wake Word Without the Call-Quality Link (phone-mic listening, speech gate, clean hand-back)
 
-**Status:** 📋 Planned 2026-10-01 — nothing built.
+**Status:** 🚧 Core shipped 2026-10-02 (build 447) — P0 deterministic core and P1 wiring built; "Reply audio" (§4, P3 per Greig's answer 4) built as a setting with its routing, default *Call quality*; speech gate wired behind `Config.wakeSpeechGateEnabled`, default off. **Owed (device):** the whole P2 script below, including the full-quality reply routing and the gate. Not built: the reserve-posture Home card (§6). See *Implementation notes* for deviations.
 **Depends on:** the glasses link-state PR (branch `fix/glasses-true-link-state`, read at `65eb417e`):
 `GlassesConnectionPhase`, `GlassesUse` (`inUse`, `stoodDown`, `voiceInputAvailable`), worn state on
 `GlassesConnectionSnapshot`, `GlassesSleepPolicy`, `GlassesAudioHandoffPolicy`, `TalkEntryPolicy`,
@@ -328,6 +328,83 @@ toggle, until P2 shows no missed wakes.
 
 **P3 — Optional, after P2.** Replies over A2DP (§4) behind a Developer flag; a second-stage
 classifier if pocket rustle dominates gate opens; Silero as the scorer when CU P2 PR2 lands.
+
+**P2 additions (device test script for what P1 built).** Capture the debug log for each step; every
+line named here is a `PrivacyLog` audio event (counts, routes and milliseconds only).
+10. **Reply audio = Full quality** (Settings → Hardware & Privacy, top of the glasses section): 5
+    conversations with a podcast paused. Does the reply play in full quality? Is the first part of the
+    reply clipped or on the call link before the switch (`replyRouteSelected` then playback)? Say "stop"
+    towards the phone mid-reply — does it stop? Ask a follow-up — how long from the end of the reply to
+    the tone (`turnMicLive` ms on the re-take)?
+11. **Reply audio = Automatic:** after step 8's ten conversations, is the measured median under the
+    0.7 s default? Does Automatic choose full quality only then (`replyRouteSelected` present/absent)?
+    Move the Switch time limit slider across the measured value and repeat once each side.
+12. **Idle consumers:** wake word on, idle on the iPhone; start live captions — does the idle session
+    move to the glasses mic (`idlePlanSelected route=glasses`) and back to the phone when captions stop?
+    Same with a glasses video recording.
+13. **Interruptions:** idle on the iPhone, take a phone call, hang up — does the wake word answer again
+    without touching the app (`interruptionEnded detail=phone`)?
+14. **Hand-back with temple taps on** (Settings → Temple Taps): after a conversation, does the podcast
+    resume? (The temple-tap claim is a coexisting rider, so the hand-back reconfigures in place instead of
+    deactivating — `handBackDeferred detail=rider-mediaTrigger`; if the podcast stays paused, that is why.)
+15. **Speech gate** (Developer → Wake Word → Speech gate on): repeat steps 1 and 2; count misses against
+    the gate-off run, and read the hourly `gateOpened`/`gateClosed` counts.
+16. **Glasses off, link up** (answer 2): idle on the iPhone, take the glasses off for over 30 s — the app
+    must not stand down; say the wake phrase — the turn records on the phone (`turnMicLive route=phone`
+    immediately, no wait) and replies on the phone speaker.
+
+## Implementation notes (2026-10-02)
+
+What shipped, by phase:
+- **P0:** `WakeListenPolicy` (+ `WakeListenMic`, `IdleAudioPlan`), `MicRoutePolicy.idleCategoryOptions` /
+  `conversationCategoryOptions`, `TurnMicHandoff`, `TurnAudioRelease`, `HandBackDecision`,
+  `TurnEngineOwnership`, `RouteSwitchGeneration` + `SelfRouteChangeFilter`, `EnergySpeechScorer`,
+  `WakeSpeechGate` (+ `SpeechActivityGate.Configuration.wakeIdle`), `PreRollBuffer` + `GatedTapRouter`,
+  `ListenerPauseReason.speechGateClosed`, `PowerPosture.prefersStrictWakeGate` / `prefersPhoneWakeMic`,
+  `ReplyRoutePolicy` + `ReplyAudioMode` + `SwitchTimeLedger`. Tests as named in P0, plus
+  `ReplyRoutePolicyTests`; `ExplicitTurnEngineTests` drives `WakeWordService` through seams with a
+  fresh coordinator over a fake session.
+- **P1:** idle configure from the plan (phone mic, mixable, A2DP; the invalid notify-on-activate is gone);
+  the `handOffMic` stage (route, then live frames, 2 s phone fallback, `turnMicLive`/`turnMicFellBack`);
+  `AudioSessionCoordinator.handBack` (a real deactivate with notify) and the `returnToWakeWord` order
+  through `TurnAudioRelease`; an `AVAudioEngineConfigurationChange` observer that rebuilds on the live
+  format; own-switch route-change filtering; interruption `.ended` per the idle plan; push-to-talk and
+  listening-off turns on the shared consumer engine, released at the end; silence no longer stops a
+  phone-mic listener; the settings rows; the Developer gate toggle; the switch-time measurement
+  (rolling median of 7 per device, keyed by a hash of the port UID) feeding `ReplyRoutePolicy`.
+- **Greig's answer 2:** `GlassesSleepPolicy`'s doff and silence rules now run only while the idle listener
+  holds the glasses' own mic (`holdsGlassesMic`); the wearer's Disconnect still closes voice input.
+
+Deviations and decisions made while building:
+1. **"Glasses not in use → phone directly"** is read as *stood down*, *taken off* (`worn == false`), or *the
+   route's port is not there* — not `GlassesUse.inUse`, which is the Meta link: glasses that pair only as
+   a Bluetooth headset are never "in use" by it and would have lost their mic.
+2. **`idleCategoryOptions(for:)`** is the phone-listening shape for every conversation route (A2DP, no HFP);
+   a Bluetooth idle hold (Same as Microphone, or a consumer) keeps today's `categoryOptions(mixWithOthers:
+   true)`.
+3. **Wearer-voice consumers** (`WakeListenPolicy.wearerAudioConsumerIDs`) are captions, the teleprompter
+   and the capture router (glasses video recording and broadcast). Memory rewind and meeting recording
+   capture the room and stay on the phone mic — so a meeting recording started with listening off now
+   uses the phone mic rather than the Microphone setting. Starting or stopping a wearer-voice consumer
+   while idle re-applies the idle plan.
+4. **Reply audio** (answer 4) is built now rather than in P3: the setting, `ReplyRoutePolicy`, the
+   measurement, and the routing (`applyReplyRoute` releases HFP for A2DP output and moves the engine to
+   the phone mic for the stop listener; `retakeConversationMicIfReleased` re-takes the link before a
+   follow-up records). The default stays *Call quality*. **Device-pending:** the release runs in the stop
+   listener's task alongside the reply's start, so the first part of a full-quality reply may play on
+   the call link (step 10); barge-in on the phone mic while the glasses play the reply; the follow-up
+   re-take time.
+5. **Sleep policy scope:** the doff/silence rules key off the glasses' own mic, so a headset held idle via
+   Same as Microphone no longer triggers a glasses stand-down either.
+6. **Hand-back with a rider:** while the temple-tap claim's silent loop (or a live TTS) rides the session,
+   the hand-back reconfigures in place to the idle shape instead of deactivating — paused apps are not
+   notified then (step 14). Shared consumers (rewind, a recording) likewise keep the session running.
+7. **Idle announcements** (TTS outside a conversation) take the conversation mic like a reply and hand back
+   afterwards, restarting the idle listener; the idle listener is down while such an announcement plays.
+8. **`highQualityRecordingSupport`** is logged when a turn's Bluetooth mic goes live, not on connect — the
+   capability is only readable on an active Bluetooth input.
+9. **Not built:** the reserve-posture Home card suggesting push-to-talk (§6). The posture flags exist and the
+   phone-mic override is wired; the card waits for P2's battery numbers.
 
 ## Risks
 
