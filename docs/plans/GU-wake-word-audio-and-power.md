@@ -193,11 +193,22 @@ their own sessions and, when they release, wake word re-arms into the idle plan.
 
 **P1: hold the conversation mic for the whole conversation** — replies and follow-ups stay on HFP as
 today: one switch in, one hand-back out. Barge-in and the stop phrase keep working as now.
-**P3 (device-gated, Developer flag): replies over A2DP** — release HFP before a reply, run the
+**P3 (device-gated): replies over A2DP, as a user setting** — release HFP before a reply, run the
 stop/barge-in listener on the phone mic (the glasses' speakers are at the ear, so the phone hears
 little of the reply — less self-interruption than the open-speaker case `BargeInPolicy` already
-guards), and re-take HFP only when a follow-up starts. Worth it only if P2 measures the switch well
-under a second, since each follow-up pays it twice.
+guards), and re-take HFP only when a follow-up starts. Each follow-up pays the switch twice, so
+the choice is the wearer's, decided by a pure `ReplyRoutePolicy` (inputs: setting, measured switch
+time, threshold, Display/realtime/CarPlay exclusions → `.holdCallLink` / `.fullQuality`):
+
+- **"Reply audio"** (glasses section, under the wake-word mic row):
+  - *Call quality, always interruptible* — today's behaviour and the **P1 default**: the glasses
+    mic stays open through the reply, so barge-in and the stop phrase always work.
+  - *Full quality* — replies over A2DP every time; interrupting uses the phone mic.
+  - *Automatic* — full quality only when the measured switch time (rolling median of the last
+    N switches on this pair, persisted per device) is under the threshold; otherwise call quality.
+- **"Switch time limit"** (shown only for *Automatic*): a slider, 0.3–2.0 s, default **0.7 s**.
+- The default stays *Call quality* until P2 measures the switch on Greig's glasses; P3 may change
+  the default to *Automatic* if the measurement supports it.
 
 ### 5. Speech gate — `WakeSpeechGate`
 
@@ -352,8 +363,9 @@ classifier if pocket rustle dominates gate opens; Silero as the scorer when CU P
    wearer's own Disconnect still closes voice input. Update `GlassesSleepPolicy` and its tests in P1.
 3. **Speech gate:** off until tuned; on by default only after the P2 battery comparison shows a clear
    saving and no missed wakes.
-4. **Replies in full quality (P3):** only if P2 measures a median switch under ~0.7 s; otherwise the
-   whole conversation stays on the call link.
+4. **Replies in full quality (P3):** configurable, not fixed — "Reply audio" = *Call quality, always
+   interruptible* (default) / *Full quality* / *Automatic* with a tunable "Switch time limit"
+   (0.3–2.0 s, default 0.7 s). See §4.
 5. **Phone-only users:** the always-on wake word follows the Listening switch (shipped in the
    link-state PR); the gate's default flips for them at the same time as for glasses wearers.
 
