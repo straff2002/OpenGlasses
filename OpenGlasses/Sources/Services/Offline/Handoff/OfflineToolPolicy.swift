@@ -60,6 +60,7 @@ enum OfflineToolPolicy {
         "manual_figure": .local,
         "manual_lookup": .local,
         "memory_search": .local,
+        "my_memory": .local,
         "network_calc": .local,
         "new_topic": .local,
         "notes_vault": .local,
