@@ -39,6 +39,7 @@ final class EscalationCoordinatorTests: XCTestCase {
     override func tearDown() {
         coordinator.reset()
         coordinator.notifier = StubExpertNotifier()
+        coordinator.bridge = PendingExpertBridge()
         coordinator.sessionService = .shared
         try? FileManager.default.removeItem(at: tempRoot)
         UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled")
@@ -160,5 +161,27 @@ final class EscalationCoordinatorTests: XCTestCase {
         // A new session should clear any leftover escalation state.
         _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
         XCTAssertEqual(coordinator.state, .idle)
+    }
+
+    /// Bridge that reports a live connection, standing in for a configured relay.
+    private struct ConnectedBridge: ExpertBridge {
+        var isConnected: Bool { true }
+        func connect(sessionId: String, expertId: String?) async throws {}
+        func disconnect() async {}
+    }
+
+    func testLiveViewSummaryNeverClaimsVideoWhenTheBridgeIsDown() async throws {
+        _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
+        _ = await coordinator.requestExpert(reason: "x")
+        let summary = coordinator.liveViewSummary()
+        XCTAssertTrue(summary.contains("didn't start"), summary)
+        XCTAssertFalse(summary.contains("being shared"), summary)
+    }
+
+    func testLiveViewSummaryReportsSharingWhenTheBridgeIsUp() async throws {
+        coordinator.bridge = ConnectedBridge()
+        _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
+        _ = await coordinator.requestExpert(reason: "x")
+        XCTAssertTrue(coordinator.liveViewSummary().contains("being shared"))
     }
 }

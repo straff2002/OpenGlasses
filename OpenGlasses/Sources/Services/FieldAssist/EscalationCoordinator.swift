@@ -110,6 +110,14 @@ final class EscalationCoordinator: ObservableObject {
 
     // MARK: - Status
 
+    /// One sentence on whether the expert can see the technician's view, so the tools never
+    /// promise live video that didn't come up.
+    func liveViewSummary() -> String {
+        bridge.isConnected
+            ? "The live view is being shared with the expert."
+            : "Live view didn't start (no live-view relay is set up, or it couldn't be reached), so the expert has the job record."
+    }
+
     /// Human-readable one-line status for tool results / UI.
     func statusSummary() -> String {
         switch state {

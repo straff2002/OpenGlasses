@@ -446,9 +446,13 @@ final class FieldSessionTool: NativeTool {
         }
         let reason = (args["reason"] as? String) ?? "Technician requested human expert."
         // Route through the EscalationCoordinator so the state machine + audit logging stay in one
-        // place. The live expert bridge is Phase 5; for now this records + notifies (stub).
-        _ = await EscalationCoordinator.shared.requestExpert(reason: reason)
-        return "Escalation logged. The expert pool has been notified. Reason: \(reason)"
+        // place, and so both escalation paths report the live view the same way.
+        let coordinator = EscalationCoordinator.shared
+        let state = await coordinator.requestExpert(reason: reason)
+        if case .failed(let message) = state {
+            return "Escalation recorded, but paging had an issue: \(message)"
+        }
+        return "Escalation logged. The expert pool has been notified. \(coordinator.liveViewSummary()) Reason: \(reason)"
     }
 
     private func exportSession(args: [String: Any], service: FieldSessionService) async -> String {

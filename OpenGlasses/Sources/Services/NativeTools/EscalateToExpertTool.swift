@@ -2,10 +2,11 @@ import Foundation
 
 /// Native tool for the AI → human-expert escalation flow within a Field Assist session.
 ///
-/// Phase 3 is architecture-only: requesting an expert records the escalation and pages the pool
-/// (stub), but the live video bridge lands in Phase 5. The tool exposes the full state machine so
-/// the conversational flow is in place now. For a quick one-shot escalation, `field_session` with
-/// action 'escalate' routes through the same coordinator.
+/// Requesting an expert records the escalation, starts the live view when the organisation has set
+/// up a transport (Settings → Field Assist; the app ships no relay), and pages the pool. The
+/// 'request' result says whether the live view came up, so the model never promises video it can't
+/// see. For a quick one-shot escalation, `field_session` with action 'escalate' routes through the
+/// same coordinator.
 @MainActor
 final class EscalateToExpertTool: NativeTool {
     let name = "escalate_to_expert"
@@ -13,7 +14,9 @@ final class EscalateToExpertTool: NativeTool {
     Escalate the active Field Assist session to a human expert when the AI cannot safely resolve the \
     issue or the technician asks for a person. Actions: 'request' (page an expert with a reason), \
     'status' (current escalation state), 'resolve' (the issue is handled), 'cancel' (stand down). \
-    Live expert video is not available yet — escalation is logged and the expert pool is notified.
+    If the organisation has set up a live-view relay, the technician's camera view is shared with the \
+    expert; otherwise the escalation is logged and the expert pool is notified with the job record. \
+    The 'request' result says which happened — don't promise live video beyond it.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -54,7 +57,7 @@ final class EscalateToExpertTool: NativeTool {
             if case .failed(let message) = state {
                 return "Escalation recorded, but paging had an issue: \(message)"
             }
-            return "Escalation logged and the expert pool has been notified. \(coordinator.statusSummary())"
+            return "Escalation logged and the expert pool has been notified. \(coordinator.liveViewSummary()) \(coordinator.statusSummary())"
         case "status":
             return coordinator.statusSummary()
         case "resolve":
