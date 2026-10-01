@@ -159,6 +159,18 @@ struct MainView: View {
                 onCancel: { appState.phoneCameraRequest = nil }
             )
         }
+        // Plan GV: a camera tool waiting on the user's phone photo. From the root, like the manual
+        // figure below, because a spoken turn can ask for it on any tab. A swipe-down is a cancel.
+        .sheet(item: Binding(get: { appState.toolPhotoRequest },
+                             set: { if $0 == nil { appState.dismissToolPhotoRequest() } })) { request in
+            PhoneCameraView(
+                prompt: "",
+                hint: request.hint,
+                onCapture: { appState.phonePhotos.fulfil(request.id, data: $0) },
+                onCancel: { appState.phonePhotos.cancel(request.id) },
+                onPresented: { appState.phonePhotos.notePresented(request.id) }
+            )
+        }
         .sheet(item: $appState.pendingSiriContent) { link in
             SiriContentDetailView(link: link)
         }

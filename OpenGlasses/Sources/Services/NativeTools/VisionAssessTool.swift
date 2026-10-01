@@ -13,7 +13,7 @@ final class VisionAssessTool: NativeTool {
         let available = AssessmentSchemaRegistry.shared.kinds
         let list = available.isEmpty ? "instrument_reading" : available.joined(separator: ", ")
         return """
-        Run a structured visual assessment of what the glasses camera sees and show a result card. \
+        Run a structured visual assessment of what the camera (the glasses when connected, otherwise the phone) sees and show a result card. \
         `kind` selects the assessment type (available: \(list)). Use 'instrument_reading' to read a \
         number off a gauge, thermometer, refractometer, scale, or meter. Optional `note` adds context.
         """
@@ -54,7 +54,7 @@ final class VisionAssessTool: NativeTool {
             }
             return response
         } catch StructuredVisionError.noFrame {
-            return "I couldn't get a camera frame. Make sure the glasses camera is streaming and the subject is in view."
+            return "I couldn't get a picture from the camera. Make sure the subject is in view and try again."
         } catch StructuredVisionError.analysisFailed {
             return "The visual assessment didn't return a usable result. Try again with a clearer, steadier view."
         } catch {

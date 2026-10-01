@@ -30,7 +30,7 @@ struct BarcodeScannerTool: NativeTool {
         // scope passes the pixels through — but the still comes from the chokepoint like every
         // other (W04.1).
         guard let frame = await cameraService.filteredStill(for: .onDeviceVision).image else {
-            return "No camera frame available. Make sure the glasses are connected and the camera is active."
+            return "No picture from the camera. Point it at the code and try again."
         }
 
         guard let cgImage = frame.cgImage else {

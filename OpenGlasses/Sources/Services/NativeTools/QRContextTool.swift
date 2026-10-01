@@ -63,7 +63,7 @@ struct QRContextTool: NativeTool {
         // Scan QR from camera — on-device Vision, emits the payload string only (W04.1).
         guard let frame = await cameraService.filteredStill(for: .onDeviceVision).image,
               let cgImage = frame.cgImage else {
-            return "No camera frame available. Make sure the glasses are connected and pointed at the QR code."
+            return "No picture from the camera. Point it at the QR code and try again."
         }
 
         let request = VNDetectBarcodesRequest()
