@@ -5,7 +5,7 @@ import XCTest
 /// the glasses' arrival from reconfiguring audio under a turn in progress.
 final class GlassesSleepPolicyTests: XCTestCase {
 
-    private let on = true   // alwaysOnListening
+    private let on = true   // holdsGlassesMic
 
     // MARK: - Mode: what is held open
 
@@ -20,33 +20,77 @@ final class GlassesSleepPolicyTests: XCTestCase {
         for worn: Bool? in [true, false, nil] {
             for option in [true, false] {
                 XCTAssertFalse(GlassesSleepPolicy.shouldArmSilenceSleep(
-                    alwaysOnListening: false, autoSleepMinutes: 5, worn: worn,
+                    holdsGlassesMic: false, autoSleepMinutes: 5, worn: worn,
                     sleepWhenQuietWhileWorn: option))
                 XCTAssertFalse(GlassesSleepPolicy.silenceSleepFires(
-                    alwaysOnListening: false, idle: true, inUse: true, worn: worn,
+                    holdsGlassesMic: false, idle: true, inUse: true, worn: worn,
                     sleepWhenQuietWhileWorn: option))
             }
-            XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: false,
+            XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: false,
                                                                worn: worn, inUse: true),
                            "nothing held open: taking them off does not stand down")
         }
     }
 
+    // MARK: - Idle listening on the phone (Plan GU, Greig's answer 2)
+
+    func testTheListenerHoldsTheGlassesMicOnlyWhenItWaitsOnThem() {
+        XCTAssertTrue(GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true, idleListensOnGlasses: true))
+        XCTAssertFalse(GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true, idleListensOnGlasses: false),
+                       "listening on the iPhone holds nothing on the glasses")
+        XCTAssertFalse(GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: false, idleListensOnGlasses: true))
+    }
+
+    /// Taken off with the link up, idle listening on the iPhone: the wake word keeps listening on
+    /// the phone — no doff stand-down, no silence countdown.
+    func testDoffingWithIdleListeningOnThePhoneNeverStandsDown() {
+        let plan = WakeListenPolicy.decide(.init(listeningEnabled: true, silentMode: false,
+                                                 wakeListenMic: .iPhone, micRoute: .glasses))
+        let holds = GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true,
+                                                       idleListensOnGlasses: plan.holdsGlassesMic)
+        XCTAssertFalse(holds)
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true))
+        XCTAssertFalse(GlassesSleepPolicy.shouldArmSilenceSleep(
+            holdsGlassesMic: holds, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: true))
+        XCTAssertTrue(GlassesUse().voiceInputAvailable, "voice input stays open")
+    }
+
+    /// "Same as Microphone" with the glasses as the Microphone keeps today's rules.
+    func testIdleListeningOnTheGlassesKeepsTheDoffStandDown() {
+        let plan = WakeListenPolicy.decide(.init(listeningEnabled: true, silentMode: false,
+                                                 wakeListenMic: .sameAsMicrophone, micRoute: .glasses))
+        let holds = GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true,
+                                                       idleListensOnGlasses: plan.holdsGlassesMic)
+        XCTAssertTrue(holds)
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true))
+    }
+
+    /// The wearer's own Disconnect still closes voice input whatever the idle mic.
+    func testTheWearersDisconnectStillClosesVoiceInput() {
+        var use = connectedUse()
+        use.standDown(.user)
+        XCTAssertFalse(use.voiceInputAvailable)
+        let plan = WakeListenPolicy.decide(.init(listeningEnabled: true, silentMode: false,
+                                                 voiceInputAvailable: use.voiceInputAvailable,
+                                                 wakeListenMic: .iPhone, micRoute: .glasses))
+        XCTAssertEqual(plan.listen, .off, "stood down: no idle session at all")
+    }
+
     // MARK: - Taken off
 
     func testTakenOffWithTheLinkUpStartsTheGrace() {
-        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: on, worn: false, inUse: true))
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: true))
         XCTAssertEqual(GlassesSleepPolicy.doffGraceSeconds, 30)
     }
 
     func testPutBackOnWithinTheGraceCancelsIt() {
         // The grace is re-checked at its end; worn again means it does not fire.
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: on, worn: true, inUse: true))
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: on, worn: nil, inUse: true))
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: true, inUse: true))
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: nil, inUse: true))
     }
 
     func testNoGraceForGlassesNotInUse() {
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(alwaysOnListening: on, worn: false, inUse: false),
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: false),
                        "already stood down, or the link is gone: nothing to time")
     }
 
@@ -54,44 +98,44 @@ final class GlassesSleepPolicyTests: XCTestCase {
 
     func testWornNeverSleepsForSilenceByDefault() {
         XCTAssertFalse(GlassesSleepPolicy.shouldArmSilenceSleep(
-            alwaysOnListening: on, autoSleepMinutes: 5, worn: true, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, autoSleepMinutes: 5, worn: true, sleepWhenQuietWhileWorn: false))
         XCTAssertFalse(GlassesSleepPolicy.silenceSleepFires(
-            alwaysOnListening: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: false))
     }
 
     func testTheOptionLetsWornGlassesSleepForSilence() {
         XCTAssertTrue(GlassesSleepPolicy.shouldArmSilenceSleep(
-            alwaysOnListening: on, autoSleepMinutes: 5, worn: true, sleepWhenQuietWhileWorn: true))
+            holdsGlassesMic: on, autoSleepMinutes: 5, worn: true, sleepWhenQuietWhileWorn: true))
         XCTAssertTrue(GlassesSleepPolicy.silenceSleepFires(
-            alwaysOnListening: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: true))
+            holdsGlassesMic: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: true))
     }
 
     func testUnknownWornStateFallsBackToTheSilenceRule() {
         for option in [true, false] {
             XCTAssertTrue(GlassesSleepPolicy.shouldArmSilenceSleep(
-                alwaysOnListening: on, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: option))
+                holdsGlassesMic: on, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: option))
             XCTAssertTrue(GlassesSleepPolicy.silenceSleepFires(
-                alwaysOnListening: on, idle: true, inUse: true, worn: nil, sleepWhenQuietWhileWorn: option))
+                holdsGlassesMic: on, idle: true, inUse: true, worn: nil, sleepWhenQuietWhileWorn: option))
         }
     }
 
     func testPuttingThemOnDuringTheSilenceCountdownStopsIt() {
         XCTAssertTrue(GlassesSleepPolicy.shouldArmSilenceSleep(
-            alwaysOnListening: on, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: false))
         XCTAssertFalse(GlassesSleepPolicy.silenceSleepFires(
-            alwaysOnListening: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, idle: true, inUse: true, worn: true, sleepWhenQuietWhileWorn: false))
     }
 
     func testSilenceFiresOnlyForIdleGlassesStillInUse() {
         XCTAssertFalse(GlassesSleepPolicy.silenceSleepFires(
-            alwaysOnListening: on, idle: false, inUse: true, worn: nil, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, idle: false, inUse: true, worn: nil, sleepWhenQuietWhileWorn: false))
         XCTAssertFalse(GlassesSleepPolicy.silenceSleepFires(
-            alwaysOnListening: on, idle: true, inUse: false, worn: nil, sleepWhenQuietWhileWorn: false))
+            holdsGlassesMic: on, idle: true, inUse: false, worn: nil, sleepWhenQuietWhileWorn: false))
     }
 
     func testZeroMinutesNeverArms() {
         XCTAssertFalse(GlassesSleepPolicy.shouldArmSilenceSleep(
-            alwaysOnListening: on, autoSleepMinutes: 0, worn: nil, sleepWhenQuietWhileWorn: true))
+            holdsGlassesMic: on, autoSleepMinutes: 0, worn: nil, sleepWhenQuietWhileWorn: true))
     }
 
     func testTheOptionDefaultsOff() {

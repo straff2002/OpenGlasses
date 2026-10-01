@@ -250,13 +250,17 @@ struct GlassesUse: Equatable, Sendable {
 /// When the app stands down from idle glasses on its own, and when it comes back.
 ///
 /// An automatic stand-down exists only to release the expensive thing: the always-on wake-word
-/// listener, which holds the glasses' hands-free mic open and runs recognition continuously. The
-/// link itself costs the app nothing. The old rule — sustained silence marks the glasses idle, and
-/// `Config.autoSleepMinutes` later the app stands down — existed because the app could not see
-/// whether the glasses were linked or worn. It now can, so:
-/// 0. **No always-on listener** (listening switched off, or push-to-talk: `alwaysOnListening`
-///    false) → nothing is held open, so nothing sleeps: no silence countdown, no doff stand-down.
-///    The app stays connected and talking is instant.
+/// listener **holding the glasses' hands-free mic** open. The link itself costs the app nothing.
+/// Since Plan GU the idle listener waits on the phone's own mic by default (`WakeListenPolicy`),
+/// so in the default setup there is nothing on the glasses to release, and none of the rules
+/// below run (Greig, 2026-10-01: glasses off the face with the link up keep the wake word
+/// listening on the phone, replies to the phone speaker). The wearer's own Disconnect still
+/// closes voice input — that is `GlassesUse`, not this policy.
+///
+/// The rules, all gated on `holdsGlassesMic`:
+/// 0. **The idle listener is not on the glasses' mic** — listening off, push-to-talk, or idle
+///    listening on the iPhone (the default) → nothing sleeps: no silence countdown, no doff
+///    stand-down. The app stays connected and talking is instant.
 /// 1. **Taken off** (doffed) with the link up → stand down automatically after
 ///    `doffGraceSeconds`; put back on within the grace, nothing happens.
 /// 2. **Put back on** after an automatic stand-down → resume at once, no tap (`GlassesUse.donned()`).
@@ -276,9 +280,16 @@ enum GlassesSleepPolicy {
         listeningEnabled && !silentMode
     }
 
+    /// Whether the always-on listener holds the glasses' own mic open: it runs, and its idle plan
+    /// is the glasses' hands-free mic (`IdleAudioPlan.holdsGlassesMic` — "Same as Microphone" with
+    /// the glasses as the Microphone, or a consumer that wants the wearer's voice).
+    static func holdsGlassesMic(alwaysOnListening: Bool, idleListensOnGlasses: Bool) -> Bool {
+        alwaysOnListening && idleListensOnGlasses
+    }
+
     /// Whether glasses taken off should start (or, at its end, complete) the grace towards a stand-down.
-    static func doffGraceApplies(alwaysOnListening: Bool, worn: Bool?, inUse: Bool) -> Bool {
-        alwaysOnListening && worn == false && inUse
+    static func doffGraceApplies(holdsGlassesMic: Bool, worn: Bool?, inUse: Bool) -> Bool {
+        holdsGlassesMic && worn == false && inUse
     }
 
     /// Whether the silence rule covers these glasses: always unless they are worn, and while worn
@@ -288,17 +299,17 @@ enum GlassesSleepPolicy {
     }
 
     /// Whether to start the silence countdown when the glasses go idle.
-    static func shouldArmSilenceSleep(alwaysOnListening: Bool, autoSleepMinutes: Int, worn: Bool?,
+    static func shouldArmSilenceSleep(holdsGlassesMic: Bool, autoSleepMinutes: Int, worn: Bool?,
                                       sleepWhenQuietWhileWorn: Bool) -> Bool {
-        alwaysOnListening && autoSleepMinutes > 0
+        holdsGlassesMic && autoSleepMinutes > 0
             && silenceRuleApplies(worn: worn, sleepWhenQuietWhileWorn: sleepWhenQuietWhileWorn)
     }
 
     /// Re-checked when the silence countdown ends: they may have put the glasses on, or switched
     /// listening off, during it.
-    static func silenceSleepFires(alwaysOnListening: Bool, idle: Bool, inUse: Bool, worn: Bool?,
+    static func silenceSleepFires(holdsGlassesMic: Bool, idle: Bool, inUse: Bool, worn: Bool?,
                                   sleepWhenQuietWhileWorn: Bool) -> Bool {
-        alwaysOnListening && idle && inUse
+        holdsGlassesMic && idle && inUse
             && silenceRuleApplies(worn: worn, sleepWhenQuietWhileWorn: sleepWhenQuietWhileWorn)
     }
 }
