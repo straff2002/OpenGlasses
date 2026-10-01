@@ -363,12 +363,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             return outcome
         }
 
-        // Route to speaker when glasses aren't connected (in playAndRecord sessions)
-        if !glassesConnected {
-            let session = AVAudioSession.sharedInstance()
-            if session.category == .playAndRecord {
-                try? session.overrideOutputAudioPort(.speaker)
-            }
+        // In a playAndRecord session with nothing better attached, speak from the loudspeaker
+        // rather than the earpiece. Never over a real output: AirPods, headphones, a car or the
+        // glasses are where the reply belongs, glasses connected or not.
+        let session = AVAudioSession.sharedInstance()
+        if session.category == .playAndRecord,
+           MicRoutePolicy.shouldOverrideToSpeaker(outputs: session.currentRoute.outputs.map(\.portType)) {
+            try? session.overrideOutputAudioPort(.speaker)
         }
 
         // Whatever was speaking is about to be replaced. Record that first — synchronously, so

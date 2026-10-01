@@ -335,10 +335,9 @@ class WakeWordService: NSObject, ObservableObject {
                                            glassesWorn: glasses.worn, routePortAvailable: available)
         turnMicRoute = target
         // Cheap, non-blocking route hints stay inline.
-        let onBluetooth = session.currentRoute.outputs.contains {
-            [.bluetoothHFP, .bluetoothA2DP, .bluetoothLE].contains($0.portType)
+        if MicRoutePolicy.shouldOverrideToSpeaker(outputs: session.currentRoute.outputs.map(\.portType)) {
+            try? session.overrideOutputAudioPort(.speaker)
         }
-        if !onBluetooth { try? session.overrideOutputAudioPort(.speaker) }
         if target == .phone {
             preferBuiltInMic(session)
         } else {
@@ -1078,13 +1077,16 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
-    /// The deadline passed: move this turn to the phone mic (conversation shape, no Bluetooth).
+    /// The deadline passed: move this turn to the phone mic (conversation shape, no hands-free
+    /// link). A2DP output stays allowed, so a reply still plays in the wearer's AirPods or glasses.
     private func fallBackToPhoneMic(_ session: AVAudioSession) async {
         try? await sessionCoordinator().reconfigure(
             category: .playAndRecord, mode: .default,
             options: MicRoutePolicy.conversationCategoryOptions(for: .phone))
         preferBuiltInMic(session)
-        try? session.overrideOutputAudioPort(.speaker)
+        if MicRoutePolicy.shouldOverrideToSpeaker(outputs: session.currentRoute.outputs.map(\.portType)) {
+            try? session.overrideOutputAudioPort(.speaker)
+        }
         rebuildHandOffEngine()
     }
 
