@@ -21,10 +21,26 @@ Day open, collapsed and removed.
   (`silentMode`) is not the wearer's choice; tapping it calls `setListeningEnabled(true)`. The rule
   is `SessionCardWakeWordNotice` beside the card's other presentation types; there is no separate
   push-to-talk-only setting beyond `silentMode`.
-- Screenshots on the simulator (iPhone 17 Pro): with the seeded My Day open the page holds one row
-  of three (seven dots); removed, four rows (three dots). At XXXL the same, captions truncating as
-  in #601; at AX-L one column, one row per page with My Day open (a long run of dots), three rows
-  with it removed.
+- **Compressible tiles (review round).** The first cut counted rows in natural tiles, and with My
+  Day open a page held one row over most of a row of empty glass. Rows are now counted in
+  *minimum* tiles — the measured glyph and caption at the current text size with 6 pt of padding
+  (`HomeGridPaging.minimumTileHeight`) — and every tile on the page then stretches to share it,
+  capped at 1.25 × its natural height (`HomeGridPaging.fit`). The grid measures each tile's
+  *content*, not the key, so the page's choice of height never feeds back into the measurement.
+- Screenshots on the simulator (iPhone 17 Pro, default text size): seeded My Day open — two rows
+  of three, four dots; My Day collapsed to its one-line header — four rows, three dots, filling the
+  panel. (The first cut showed one row with My Day open and four with it removed; at XXXL the same
+  shape, captions truncating as in #601; at AX-L one column.)
+- **Small extra — the Lock Screen Live Activity fits its slot.** Its 2 × 2 grid of capsules lost
+  its bottom row to the Lock Screen's height limit on a phone. It is one row now: up to four
+  buttons, a glyph over a one-line caption (beside it for one or two), Connect taking a place in
+  the row when disconnected, the status text one line, and the presentation's text size capped at
+  xLarge. `LockScreenActivityLayout` (shared with the widget) holds the plan and the height
+  budget, tested to leave at least 12 pt of the 160 pt slot at xLarge. Simulator Lock Screen:
+  Connect (filled accent), Describe, Record, Translate Sign in one row under the header.
+- **Small extra — the talk capsule is one VoiceOver element.** `ActionCapsule` uses an
+  accessibility representation; the ignore-children wrapper had left the `Button` beneath it
+  named by its drawn copy.
 
 **Related:** PR #601 (three glass keys across, the cog on the dots row), `DockPagerPolicy` (the
 auto-flip and its "a finger is never overruled" promise), `DockGridMetrics` (the panel's measured
@@ -89,6 +105,7 @@ One value built from `tileCount`, `columns` and `rows`, plus the static fitting 
 | API | Meaning |
 |---|---|
 | `static rowsThatFit(height:rowHeight:)` | `1...maxRows` (4): whole rows (tile + gap) in the page body; never 0 |
+| `static naturalTileHeight(contentHeight:)`, `minimumTileHeight(contentHeight:)`, `fit(height:minimumTileHeight:naturalTileHeight:)` | the tile's padded and squeezed heights, and the rows + stretched tile height a page is drawn at |
 | `tilesPerPage` | `rows × columns` |
 | `pageCount` | `⌈tileCount / tilesPerPage⌉`, at least 1 (an empty grid still has its page) |
 | `page(ofTile:)`, `position(ofTile:)` | page, row, column of tile *i* — order is row-major, no gaps |
@@ -136,10 +153,11 @@ and keeps `gridAnchor`. Coming back:
 - Each grid page draws its slice as explicit rows of `columns` cells (empty cells in a short last
   row keep the column widths), inside one `GlassEffectContainer`, top-aligned, with the panel's
   remainder under it as calm glass — the whole-row rule now lives in `rowsThatFit`.
-- **Row-fit rule (decision).** `rows = clamp(⌊(bodyHeight + gap) / (tileHeight + gap)⌋, 1, 4)`,
-  where `bodyHeight` is the page's height above the dots and `tileHeight` is the measured tile (its
-  composed estimate before the first measurement, never below `tileMinHeight`). Dynamic Type grows
-  the tile, so it fits fewer rows. Columns stay 3, or 1 at accessibility sizes (a three-across
+- **Row-fit rule (decision, revised in review).** `rows = clamp(⌊(bodyHeight + gap) / (minTile +
+  gap)⌋, 1, 4)`, where `bodyHeight` is the page's height above the dots and `minTile` is the
+  measured content with 6 pt of padding (at least 44 pt); the tiles then stretch to `(bodyHeight −
+  (rows − 1) · gap) / rows`, capped at 1.25 × natural. Dynamic Type grows the content, so it fits
+  fewer rows — squeezing only ever takes padding. Columns stay 3, or 1 at accessibility sizes (a three-across
   caption is cut to a letter there — #601's rule).
 - The editor edits the single order (`homeGridArrangement`), so moving a tile never depends on the
   screen's height.
@@ -187,7 +205,7 @@ and keeps `gridAnchor`. Coming back:
 | How is the editor presented? | A sheet from the cog. Not a page, so no swipe reaches it, and it has room at a one-row panel |
 | Long press on the grid's gaps? | Kept — opens the same sheet as the cog |
 | Return after the auto-flip | A swipe lands on grid page 1; "Show actions" returns to the remembered page (anchored by tile) |
-| Rows per page | 1–4, whole rows of the measured tile in the page body; fewer at large text |
+| Rows per page | 1–4, counted in minimum tiles, then stretched to fill (cap 1.25 × natural); fewer at large text |
 | Columns | 3; 1 at accessibility sizes (unchanged from #601) |
 | My Day "remove from home" flag | Separate `myDayOnHome`; `myDayEnabled` keeps the briefings, tool and alerts |
 | My Day off | Nothing on the home screen (the set-up card is removed) |
