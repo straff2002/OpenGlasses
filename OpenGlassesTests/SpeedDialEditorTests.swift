@@ -66,6 +66,16 @@ final class SpeedDialEditorTests: XCTestCase {
         XCTAssertEqual(next.last?.label, "Tea")
     }
 
+    /// The Field Assist job tiles are injected the same way, so a save must strip them too.
+    func testSavingNeverPersistsTheInjectedFieldAssistJobActions() {
+        let resolved = QuickAction.fieldAssistActions + [mine]
+        let next = SpeedDialEditor.applying(draft(name: "Tea", prompt: "Make tea"), to: resolved)
+        let injected = Set(QuickAction.fieldAssistActions.map(\.id))
+        XCTAssertFalse(next.contains { injected.contains($0.id) })
+        XCTAssertEqual(next.map(\.id).first, mine.id)
+        XCTAssertEqual(next.count, 2)
+    }
+
     // MARK: Edit
 
     func testEditingKeepsTheIdSoTheTileKeepsItsPlaceAndItsExposure() {
@@ -95,7 +105,7 @@ final class SpeedDialEditorTests: XCTestCase {
     }
 
     func testAppManagedSpeedDialActionsAreImmune() {
-        for action in [QuickAction.fieldAssist, QuickAction.recordMeeting]
+        for action in QuickAction.fieldAssistActions + [QuickAction.recordMeeting]
             + QuickAction.travelTemplates {
             XCTAssertFalse(SpeedDialEditor.isEditable(action), "\(action.id) is editable")
             XCTAssertFalse(SpeedDialEditor.isDeletable(action), "\(action.id) is deletable")

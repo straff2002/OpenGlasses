@@ -18,10 +18,12 @@ import PhotosUI
 /// with. The content tiles used to *disappear* while the assistant worked; the flip replaces that,
 /// so nothing is taken away — it is just no longer the page in front.
 ///
-/// The PANEL is the glass; tiles and transcript cards are flat on it. One blur layer instead of a
-/// stack of per-tile blurs — deliberately cheaper to composite over the animating ambience. The
-/// capsule carries its own capsule-shaped glass, which is what it always drew; stacking that inside
-/// the panel's rectangle was glass on glass, and separating them is what lets the two swap places.
+/// The PANEL is the glass the pages sit on; transcript cards are flat on it. The grid's tiles are
+/// glass keys of their own — three across, each one a pressable lens — drawn inside a single
+/// `GlassEffectContainer`, so the keys share one sampling pass rather than each blurring the
+/// animating ambience separately. The capsule carries its own capsule-shaped glass, which is what
+/// it always drew; stacking that inside the panel's rectangle was glass on glass, and separating
+/// them is what lets the two swap places.
 struct BottomControlBar: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
@@ -111,24 +113,21 @@ struct BottomControlBar: View {
             .filter { !EditionPresentation.hidesDockSlot($0, restricted: restricted) }
     }
 
-    /// Four tiles at their floor width need ~268 pt, which every supported width provides — at the
-    /// default text size. Above it the captions grow and the column does not, so a caption that
-    /// fits at Large ("Push-Talk") is cut to "Push-T…" by xxxLarge; three across gives each one
-    /// the room back. At accessibility sizes a tile lays its glyph beside its label and needs the
-    /// width of a phrase, and even two across cut every caption to a letter and an ellipsis by
-    /// AX4, so it is one column there — the grid already scrolls vertically inside its bounded
-    /// height. The accessibility audit reports each of those cuts as clipped text.
+    /// Three glass keys across at every standard text size — see `DockGridMetrics.columns`. At
+    /// accessibility sizes a tile lays its glyph beside its label and needs the width of a phrase,
+    /// and even two across cut every caption to a letter and an ellipsis by AX4, so it is one
+    /// column there — the grid already scrolls vertically inside its bounded height. The
+    /// accessibility audit reports each of those cuts as clipped text.
     private var columnCount: Int {
-        if typeSize.isAccessibilitySize { return 1 }
-        return typeSize > .large ? 3 : 4
+        typeSize.isAccessibilitySize ? 1 : DockGridMetrics.columns
     }
 
     /// The two scaled parts a tile is made of, so the panel snaps to the height the tile actually
     /// draws rather than to a constant that happens to match at one text size. `BarButton` composes
     /// its glyph box and its single caption line from exactly these.
-    @ScaledMetric(relativeTo: .callout) private var tileGlyphBox: CGFloat
+    @ScaledMetric(relativeTo: .title2) private var tileGlyphBox: CGFloat
         = DockGridMetrics.tileGlyphBox
-    @ScaledMetric(relativeTo: .caption) private var tileCaptionLine: CGFloat
+    @ScaledMetric(relativeTo: .footnote) private var tileCaptionLine: CGFloat
         = DockGridMetrics.tileCaptionLine
 
     /// What a tile actually measured, once one has been laid out.
@@ -143,7 +142,8 @@ struct BottomControlBar: View {
         let content = typeSize.isAccessibilitySize
             ? max(tileGlyphBox, tileCaptionLine)
             : tileGlyphBox + DockGridMetrics.tileStackSpacing + tileCaptionLine
-        return max(DockGridMetrics.tileMinHeight, content)
+        return max(DockGridMetrics.tileMinHeight,
+                   content + DockGridMetrics.tileVerticalPadding * 2)
     }
 
     /// The capsule's glyph box, for the one frame before a real capsule has reported its height.
@@ -252,6 +252,25 @@ struct BottomControlBar: View {
         // reliable ground. `.always` gives them their own, in both themes.
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .frame(height: pageHeight)
+        // The visible way into the editor and back out of it. A swipe reaches both, but a swipe
+        // leaves no mark on the screen, and the long press on the grid's gaps is a gesture nobody
+        // finds — so the corner the page dots leave free holds a cog on the grid and a Done on
+        // the editor, in the same place, so the way out is where the way in was.
+        .overlay(alignment: .bottomTrailing) {
+            switch pager.page {
+            case .actions:
+                cornerButton(icon: "gearshape.fill", to: .edit,
+                             label: DockPage.edit.showActionName,
+                             hint: "Add, remove and reorder the tiles on this grid.")
+                    .transition(.opacity)
+            case .edit:
+                cornerButton(icon: "checkmark", to: .actions, label: "Done",
+                             hint: "Returns to the actions grid.")
+                    .transition(.opacity)
+            case .conversation:
+                EmptyView()
+            }
+        }
         // **Deliberately not animated here.** The frame tracks the measurement directly, and that
         // is what makes the card growing and the panel giving way one motion instead of two.
         //
@@ -281,6 +300,33 @@ struct BottomControlBar: View {
             guard advanced != pager else { return }
             withAnimation(.easeInOut(duration: 0.25)) { apply(advanced) }
         }
+    }
+
+    /// The corner button on the dots row: the cog into the editor, Done back out. Same move as a
+    /// swipe — the editor is a page of the pager, not a sheet — so it takes the same "a deliberate
+    /// move is not argued with" promise.
+    ///
+    /// 44 pt square for the fingertip, though the dots row is only 40 tall: the overlay sits
+    /// outside the pages' frame, so the spare points reach down into the panel's own inset rather
+    /// than up over the last row of keys.
+    private func cornerButton(icon: String, to page: DockPage,
+                              label: String, hint: String) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            move(to: page)
+        } label: {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 34, height: 34)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .offset(y: (OGMetrics.minTouchTarget - DockGridMetrics.pageIndicatorHeight) / 2 + 2)
+        .accessibilityLabel(label)
+        .accessibilityHint(hint)
     }
 
     /// The selection binding. A write that did not come from `apply` came from a finger, and a
@@ -338,23 +384,31 @@ struct BottomControlBar: View {
     private var gridPage: some View {
         VStack(spacing: 0) {
             ScrollView(.vertical) {
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(),
-                                                       spacing: DockGridMetrics.rowSpacing),
-                                   count: columnCount),
-                    spacing: DockGridMetrics.rowSpacing
-                ) {
-                    // Slots render in the user's arranged order (Settings → Quick Actions → Bar
-                    // Layout); contextual ones still gate themselves.
-                    ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
-                        dockView(for: slot)
-                            // One tile reports its height and the viewport snaps to it. Measuring
-                            // the first is enough: a row is as tall as its tallest tile, and every
-                            // tile in this grid is the same `BarButton` with a one-line caption.
-                            .background(index == 0 ? tileHeightReader : nil)
+                // One container for every key, so their glass is sampled in one pass and a press
+                // reads as the same material as its neighbours. The spacing is the merge distance:
+                // keys further apart than the row gap stay separate shapes.
+                GlassEffectContainer(spacing: DockGridMetrics.rowSpacing) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(),
+                                                           spacing: DockGridMetrics.rowSpacing),
+                                       count: columnCount),
+                        spacing: DockGridMetrics.rowSpacing
+                    ) {
+                        // Slots render in the user's arranged order (Settings → Quick Actions → Bar
+                        // Layout); contextual ones still gate themselves.
+                        ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
+                            dockView(for: slot)
+                                // One tile reports its height and the viewport snaps to it.
+                                // Measuring the first is enough: a row is as tall as its tallest
+                                // tile, and every tile in this grid is the same `BarButton` with a
+                                // one-line caption.
+                                .background(index == 0 ? tileHeightReader : nil)
+                        }
                     }
+                    // Room at the sides for a pressed key: interactive glass swells a little under
+                    // the finger, and the outer column would otherwise clip on the scroll edge.
+                    .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 4)
             }
             .frame(height: gridViewportHeight, alignment: .top)
             // Short grids should not become scroll views: bouncing a grid that already fits reads
@@ -641,11 +695,10 @@ struct BottomControlBar: View {
 
     @ViewBuilder
     private var cameraButton: some View {
-        if !appState.isConnected {
-            BarButton(icon: "AvenkinMark", label: "Connect") {
-                Task { await appState.glassesService.connect() }
-            }
-        } else if isRealtime {
+        // No "Connect" tile: the app is not glasses-first any more, and a tile that only means
+        // something to a wearer was the first thing a phone-only user met on the grid. Without
+        // glasses this is the phone's camera; connecting stays on the capsule and in Settings.
+        if isRealtime && appState.isConnected {
             // FD P0: the label is the readiness phase, not the stream flag. `isStreaming` stayed
             // true across a doff-induced pause and across a decoder that had stopped producing
             // pictures, so this button said **Streaming** over a frozen preview — the one state
@@ -694,8 +747,16 @@ struct BottomControlBar: View {
                 isActive: appState.cameraService.isCaptureInProgress,
                 isDisabled: appState.cameraService.isCaptureInProgress || photoDisabledForLocalModel
             ) {
-                if !photoDisabledForLocalModel {
-                    Task { await appState.captureAndAnalyzePhoto() }
+                guard !photoDisabledForLocalModel else { return }
+                Task {
+                    if appState.isConnected {
+                        await appState.captureAndAnalyzePhoto()
+                    } else {
+                        // Straight to the phone camera. `captureAndAnalyzePhoto` first spends up
+                        // to five seconds trying to reconnect glasses, which is right for a wearer
+                        // whose link dropped and a dead pause for someone who has none.
+                        await appState.capturePhotoAndSend(prompt: "Describe what you see in this image.")
+                    }
                 }
             }
             .accessibilityHint(
@@ -794,8 +855,10 @@ private struct ActionCapsule: View {
 
 // MARK: - Bar Button (the dock's single tile idiom)
 
-/// The dock tile — every control in the utility row uses this one idiom. Flat on the dock's
-/// glass (no per-tile blur); active state = a soft tint wash behind the tile.
+/// The dock tile — every control in the grid uses this one idiom: a glass key, three across, with
+/// the glyph over a one-line caption. Interactive glass, so a press answers under the finger the
+/// way a system control does; the active state tints the key's own glass rather than washing a
+/// shape behind it, and a disabled key keeps its glass but stops answering.
 private struct BarButton: View {
     let icon: String
     var label: String = ""
@@ -813,15 +876,14 @@ private struct BarButton: View {
 
     @Environment(\.appAccent) private var accent
     @Environment(\.dynamicTypeSize) private var typeSize
-    @ScaledMetric(relativeTo: .callout) private var glyph: CGFloat = 18
+    @ScaledMetric(relativeTo: .title2) private var glyph: CGFloat = 24
     /// A bundled brand mark's square — see `DockGridMetrics.markGlyphBox` for why it is not `glyph`.
-    @ScaledMetric(relativeTo: .callout) private var markGlyph: CGFloat
+    @ScaledMetric(relativeTo: .title2) private var markGlyph: CGFloat
         = DockGridMetrics.markGlyphBox
-    @ScaledMetric(relativeTo: .callout) private var tileWidth: CGFloat = 32
-    /// The parts the dock panel also measures, so the height it snaps its rows to is the height
-    /// this tile draws. Shared bases, not literals: the panel showing a sliver of a fourth row is
-    /// exactly what these two drifting apart looks like.
-    @ScaledMetric(relativeTo: .callout) private var tileHeight: CGFloat
+    /// The glyph box — square, and one of the parts the dock panel also measures, so the height it
+    /// snaps its rows to is the height this tile draws. A shared base, not a literal: the panel
+    /// showing a sliver of the next row is exactly what these two drifting apart looks like.
+    @ScaledMetric(relativeTo: .title2) private var glyphBox: CGFloat
         = DockGridMetrics.tileGlyphBox
     /// Floors, not scaled metrics: the tile's glyph box and its caption grow on
     /// their own, and these only stop a tile being smaller than a fingertip.
@@ -836,6 +898,17 @@ private struct BarButton: View {
         if isDisabled { return OGTheme.secondaryLabel }
         if let tint, isActive { return OGTheme.tintedAccentLabel(tint) }
         return .primary
+    }
+
+    /// The key's glass. Active tints it with the tile's own hue — accent when it has none, so an
+    /// untinted toggle that is on still reads as on. Only an enabled key is interactive: the press
+    /// response is a promise that something will happen.
+    private var keyGlass: Glass {
+        var glass = Glass.regular
+        if isActive {
+            glass = glass.tint((tint ?? accent).opacity(OGTheme.Opacity.accentFill))
+        }
+        return glass.interactive(!(isDisabled || isBusy))
     }
 
     /// Glyph over label, or beside it at accessibility sizes. See the note at the call site.
@@ -880,7 +953,7 @@ private struct BarButton: View {
                             .foregroundStyle(foreground)
                     } else {
                         Image(systemName: icon)
-                            .font(.callout.weight(.medium))
+                            .font(.title2.weight(.medium))
                             .foregroundStyle(foreground)
                     }
 
@@ -894,13 +967,13 @@ private struct BarButton: View {
                             .offset(x: badgeOffsetX, y: -badgeOffsetY)
                     }
                 }
-                .frame(width: tileWidth, height: tileHeight)
+                .frame(width: glyphBox, height: glyphBox)
 
                 if !label.isEmpty {
                     Text(label)
-                        .font(.caption.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(foreground)   // .secondary was illegible over the ambience tint
-                        // One line under the glyph, where the grid is three or four across. Beside the
+                        // One line under the glyph, where the grid is three across. Beside the
                         // glyph at accessibility sizes the caption has a whole row, so a phrase
                         // wraps at its spaces there instead of losing its end to an ellipsis.
                         .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
@@ -908,15 +981,17 @@ private struct BarButton: View {
                         .truncationMode(truncateLabel ? .middle : .tail)
                 }
             }
-            .padding(.horizontal, typeSize.isAccessibilitySize ? 8 : 0)
-            .frame(minWidth: minTileWidth, minHeight: minTileHeight)
-            .padding(.horizontal, 2)
-            .background(
-                (tint ?? Color.primary).opacity(isActive ? OGTheme.Opacity.accentPillFill : 0),
-                in: RoundedRectangle(cornerRadius: 12)
-            )
-            .contentShape(Rectangle())
+            .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 6)
+            .padding(.vertical, DockGridMetrics.tileVerticalPadding)
+            // The key fills its column, so three keys read as a row of equal buttons rather than
+            // three captions each wearing a different-width border.
+            .frame(maxWidth: .infinity, minHeight: minTileHeight,
+                   alignment: typeSize.isAccessibilitySize ? .leading : .center)
+            .frame(minWidth: minTileWidth)
+            .contentShape(.rect(cornerRadius: DockGridMetrics.tileCornerRadius))
+            .glassEffect(keyGlass, in: .rect(cornerRadius: DockGridMetrics.tileCornerRadius))
         }
+        .buttonStyle(.plain)
         .disabled(isDisabled || isBusy)
         // Deliberately no blanket `.opacity(0.4)` on a disabled tile. It applied
         // to the label as well as the glyph, so a disabled caption rendered at

@@ -90,7 +90,7 @@ enum SpeedDialEditor {
     /// — so they are built-ins here in exactly the sense the shipped grid actions are.
     static var managedIds: Set<String> {
         var ids = Set(QuickAction.travelTemplates.map(\.id))
-        ids.insert(QuickAction.fieldAssist.id)
+        ids.formUnion(QuickAction.fieldAssistActions.map(\.id))
         ids.insert(QuickAction.recordMeeting.id)
         return ids
     }
@@ -200,6 +200,7 @@ enum SpeedDialEditor {
     /// Strip the entries that are injected per read rather than stored, so a save never writes a
     /// copy of one back into the persisted list.
     private static func persistable(_ actions: [QuickAction]) -> [QuickAction] {
-        actions.filter { $0.id != QuickAction.fieldAssist.id }
+        let injected = Set(QuickAction.fieldAssistActions.map(\.id))
+        return actions.filter { !injected.contains($0.id) }
     }
 }

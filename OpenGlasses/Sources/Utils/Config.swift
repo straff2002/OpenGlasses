@@ -2016,12 +2016,15 @@ struct Config {
         return withFieldAssistAction(base)
     }
 
-    /// Surface the built-in Field Assist quick action (first) when the feature is active.
-    /// Recomputed each read so it tracks the entitlement/toggle: any stale/persisted copy is
-    /// stripped, then re-added only when active — so it never lingers after a lapsed license.
+    /// Surface the built-in Field Assist quick actions — the job starter first, then its job
+    /// tiles — when the feature is active. Recomputed each read so they track the
+    /// entitlement/toggle: any stale/persisted copy is stripped, then re-added only when active —
+    /// so none of them lingers after a lapsed license.
     private static func withFieldAssistAction(_ actions: [QuickAction]) -> [QuickAction] {
-        let base = actions.filter { $0.id != QuickAction.fieldAssist.id }
-        return fieldAssistActive ? [QuickAction.fieldAssist] + base : base
+        let injected = QuickAction.fieldAssistActions
+        let injectedIds = Set(injected.map(\.id))
+        let base = actions.filter { !injectedIds.contains($0.id) }
+        return fieldAssistActive ? injected + base : base
     }
 
     static func setQuickActions(_ actions: [QuickAction]) {
