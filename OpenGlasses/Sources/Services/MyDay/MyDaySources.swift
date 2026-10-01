@@ -92,50 +92,47 @@ extension EventKitDayStore: RemindersDaySource {
 @MainActor
 final class NativeWeatherDaySource: WeatherDaySource {
     private let weatherTool: WeatherTool
+    private let now: () -> Date
 
-    init(weatherTool: WeatherTool) {
+    init(weatherTool: WeatherTool, now: @escaping () -> Date = Date.init) {
         self.weatherTool = weatherTool
+        self.now = now
     }
 
+    /// Reads the report itself rather than matching words in the spoken sentence: decision
+    /// relevance comes from the data (alerts, rain in the next hour, the condition), and a failure
+    /// is a failure whatever its wording.
     func loadWeather() async -> MyDaySourceLoad<MyDayWeather?> {
-        do {
-            let summary = try await weatherTool.execute(args: [:])
-            guard !Self.looksUnavailable(summary) else {
-                return .init(
-                    value: nil,
-                    state: .unavailable(.weather, message: "Weather is unavailable.")
-                )
-            }
+        switch await weatherTool.lookUp(args: [:]) {
+        case .answered(let summary, let report):
             return .init(
                 value: MyDayWeather(
                     summary: summary,
-                    isDecisionRelevant: Self.isDecisionRelevant(summary)
+                    isDecisionRelevant: WeatherPhraser.isDecisionRelevant(report, now: now())
                 ),
                 state: .available(.weather)
             )
-        } catch {
+        case .refused:
             return .init(
                 value: nil,
-                state: .unavailable(.weather, message: "Weather is unavailable.")
+                state: .unavailable(.weather, message: "Weather is off while Medical Local Only is on.")
+            )
+        case .failed(let failure):
+            return .init(
+                value: nil,
+                state: .unavailable(.weather, message: Self.unavailableMessage(failure))
             )
         }
     }
 
-    static func isDecisionRelevant(_ summary: String) -> Bool {
-        let text = summary.lowercased()
-        let decisionWords = [
-            "drizzle", "rain", "snow", "sleet", "hail", "thunderstorm", "storm",
-            "freezing", "fog", "warning", "hazard", "high wind", "strong wind"
-        ]
-        return decisionWords.contains { text.contains($0) }
-    }
-
-    static func looksUnavailable(_ summary: String) -> Bool {
-        let text = summary.lowercased()
-        return text.contains("can't get the weather")
-            || text.contains("weather service is temporarily unavailable")
-            || text.contains("failed to build weather")
-            || text.contains("couldn't parse weather")
-            || text.contains("couldn't read weather")
+    static func unavailableMessage(_ failure: WeatherFetchFailure) -> String {
+        switch failure {
+        case .noLocation, .placeNotFound:
+            return "Weather needs your location."
+        case .offline:
+            return "Weather needs a connection."
+        case .serviceUnavailable:
+            return "Apple Weather is unavailable right now."
+        }
     }
 }

@@ -1,11 +1,16 @@
-import Foundation
 import CoreLocation
+import Foundation
 
-/// Fetches current weather from the free Open-Meteo API.
-/// Uses LocationService for default coordinates; supports optional lat/lon override.
+/// Weather from Apple's WeatherKit: current conditions, today's high and low, rain starting or
+/// stopping within the next hour (where the region has a minute forecast), active severe-weather
+/// alerts, and the next two days.
+///
+/// The sentence is built by the pure `WeatherPhraser` from a `WeatherReport`; the provider, the
+/// location fix, the geocoder, the units and the Medical Local Only check are all injected, so the
+/// whole tool runs headless in tests without a request leaving the machine.
 final class WeatherTool: NativeTool, @unchecked Sendable {
     let name = "get_weather"
-    let description = "Get current weather and 3-day forecast for the user's location or a specified location."
+    let description = "Get the weather from Apple Weather for the user's current location or a named place: current conditions, today's high and low, whether rain starts or stops within the next hour (where available), any active severe-weather alerts, and the next two days. Use this for any weather, rain, umbrella or what-to-wear question."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -19,138 +24,141 @@ final class WeatherTool: NativeTool, @unchecked Sendable {
             ],
             "location": [
                 "type": "string",
-                "description": "Location name for context (optional)"
+                "description": "A place name to get the weather for, e.g. 'Paris' (optional; omit for the user's current location)"
             ]
         ],
         "required": [] as [String]
     ]
 
-    private let locationService: LocationService
+    /// Everything the tool reaches outside itself.
+    struct Dependencies {
+        var provider: any WeatherProviding
+        /// A fresh fix, or nil. Awaits briefly: a nil fix is usually transient.
+        var currentLocation: @MainActor () async -> CLLocation?
+        /// Apple's geocoder, on the phone.
+        var geocode: (String) async -> CLLocation?
+        /// "Wellington", for the answer's "in …".
+        var placeName: (CLLocation) async -> String?
+        var units: () -> WeatherUnits
+        var now: () -> Date
+        /// False under Medical Local Only: the location would leave the phone.
+        var isAllowed: () -> Bool
+        /// Told when an answer reaches the conversation, so the chat thread can carry Apple's
+        /// attribution. Not called for My Day, which draws its own.
+        var onAnswered: @MainActor () -> Void
+    }
 
-    init(locationService: LocationService) {
-        self.locationService = locationService
+    /// What one look-up produced.
+    enum Lookup {
+        case answered(text: String, report: WeatherReport)
+        /// Medical Local Only.
+        case refused(String)
+        case failed(WeatherFetchFailure)
+    }
+
+    private let dependencies: Dependencies
+
+    init(dependencies: Dependencies) {
+        self.dependencies = dependencies
+    }
+
+    convenience init(locationService: LocationService,
+                     provider: any WeatherProviding = WeatherKitProvider(),
+                     onAnswered: @escaping @MainActor () -> Void = {}) {
+        self.init(dependencies: Dependencies(
+            provider: provider,
+            currentLocation: { await locationService.awaitFix(timeout: 2.0) },
+            geocode: { await GeocodingHelper.geocodeAddress($0) },
+            placeName: { location in
+                guard let place = await GeocodingHelper.reverseGeocode(location) else { return nil }
+                return place.cityState ?? place.fullAddress
+            },
+            units: { WeatherUnits.forLocale(.autoupdatingCurrent) },
+            now: { Date() },
+            isAllowed: { !MedicalEgressGuard.currentMode().isEnforcing },
+            onAnswered: onAnswered
+        ))
     }
 
     func execute(args: [String: Any]) async throws -> String {
-        guard MedicalEgressGuard.allows(.weatherLookup) else { return MedicalEgressRefusal.userMessage }
-        let (lat, lon) = await resolveCoordinates(args: args)
-
-        guard let lat, let lon else {
-            return "I can't get the weather right now because your location isn't available. Please make sure location services are enabled."
+        switch await lookUp(args: args) {
+        case .answered(let text, _):
+            await dependencies.onAnswered()
+            return text
+        case .refused(let message):
+            return message
+        case .failed(let failure):
+            return failure.spokenMessage
         }
-
-        let urlString = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=3"
-
-        guard let url = URL(string: urlString) else {
-            return "Failed to build weather request URL."
-        }
-
-        let (data, response) = try await URLSession.shared.data(from: url)
-
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            return "Weather service is temporarily unavailable."
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return "Couldn't parse weather data."
-        }
-
-        // Reverse geocode for location name
-        let locationName = await reverseGeocode(lat: lat, lon: lon) ?? args["location"] as? String
-
-        return formatWeather(json: json, locationName: locationName)
     }
 
-    // MARK: - Private
+    /// The look-up without the conversation side effects — My Day's entry point.
+    func lookUp(args: [String: Any]) async -> Lookup {
+        guard dependencies.isAllowed() else { return .refused(MedicalEgressRefusal.userMessage) }
 
-    @MainActor
-    private func resolveCoordinates(args: [String: Any]) async -> (Double?, Double?) {
-        if let lat = args["latitude"] as? Double, let lon = args["longitude"] as? Double {
-            return (lat, lon)
+        let target: (location: CLLocation, namedPlace: String?)
+        switch await resolveLocation(args: args) {
+        case .success(let resolved): target = resolved
+        case .failure(let failure): return .failed(failure)
         }
-        // A nil fix is usually transient (cold launch, backgrounded when-in-use permission) —
-        // await a fresh one briefly instead of erroring; the model relays this tool's error
-        // verbatim ("location not found") when we give up too fast.
-        if let location = await locationService.awaitFix(timeout: 2.0) {
-            return (location.coordinate.latitude, location.coordinate.longitude)
+
+        let coarse = WeatherLocationPrecision.coarsen(
+            latitude: target.location.coordinate.latitude,
+            longitude: target.location.coordinate.longitude
+        )
+        let location = CLLocation(latitude: coarse.latitude, longitude: coarse.longitude)
+
+        let report: WeatherReport
+        do {
+            report = try await dependencies.provider.report(for: location)
+        } catch {
+            return .failed(WeatherFetchFailure.classify(error))
         }
-        return (nil, nil)
+
+        let placeName: String?
+        if let namedPlace = target.namedPlace {
+            placeName = namedPlace
+        } else {
+            placeName = await dependencies.placeName(location)
+        }
+        let text = WeatherPhraser.answer(report, placeName: placeName,
+                                         units: dependencies.units(), now: dependencies.now())
+        return .answered(text: text, report: report)
     }
 
-    private func reverseGeocode(lat: Double, lon: Double) async -> String? {
-        guard let place = await GeocodingHelper.reverseGeocode(latitude: lat, longitude: lon) else { return nil }
-        return place.cityState ?? place.fullAddress
+    // MARK: - Location
+
+    private func resolveLocation(args: [String: Any]) async
+        -> Result<(location: CLLocation, namedPlace: String?), WeatherFetchFailure> {
+        if let lat = Self.number(args["latitude"]), let lon = Self.number(args["longitude"]),
+           (-90...90).contains(lat), (-180...180).contains(lon) {
+            let label = (args["location"] as? String).flatMap(Self.cleanPlace)
+            return .success((CLLocation(latitude: lat, longitude: lon), label))
+        }
+        if let place = (args["location"] as? String).flatMap(Self.cleanPlace) {
+            guard let found = await dependencies.geocode(place) else { return .failure(.placeNotFound(place)) }
+            return .success((found, place))
+        }
+        guard let fix = await dependencies.currentLocation() else { return .failure(.noLocation) }
+        return .success((fix, nil))
     }
 
-    private func formatWeather(json: [String: Any], locationName: String?) -> String {
-        guard let current = json["current"] as? [String: Any],
-              let daily = json["daily"] as? [String: Any] else {
-            return "Couldn't read weather data."
+    /// A model may send numbers as numbers or as strings.
+    static func number(_ value: Any?) -> Double? {
+        switch value {
+        case let double as Double: return double
+        case let int as Int: return Double(int)
+        case let number as NSNumber: return number.doubleValue
+        case let string as String: return Double(string.trimmingCharacters(in: .whitespaces))
+        default: return nil
         }
-
-        let useFahrenheit = Locale.current.region?.identifier == "US"
-
-        let temp = current["temperature_2m"] as? Double ?? 0
-        let feelsLike = current["apparent_temperature"] as? Double ?? 0
-        let weatherCode = current["weather_code"] as? Int ?? 0
-        let windSpeed = current["wind_speed_10m"] as? Double ?? 0
-        let humidity = current["relative_humidity_2m"] as? Int ?? 0
-
-        let maxTemps = daily["temperature_2m_max"] as? [Double] ?? []
-        let minTemps = daily["temperature_2m_min"] as? [Double] ?? []
-        let dailyCodes = daily["weather_code"] as? [Int] ?? []
-
-        let condition = Self.weatherDescription(code: weatherCode)
-        let locationStr = locationName.map { " in \($0)" } ?? ""
-
-        func formatTemp(_ celsius: Double) -> String {
-            if useFahrenheit {
-                let f = celsius * 9.0 / 5.0 + 32
-                return "\(Int(round(f)))F"
-            }
-            return "\(Int(round(celsius)))C"
-        }
-
-        func formatWind(_ kmh: Double) -> String {
-            if useFahrenheit {
-                let mph = kmh * 0.621371
-                return "\(Int(round(mph))) mph"
-            }
-            return "\(Int(round(kmh))) km/h"
-        }
-
-        var result = "Currently \(formatTemp(temp)) (feels like \(formatTemp(feelsLike))), \(condition)\(locationStr). Wind \(formatWind(windSpeed)), humidity \(humidity)%."
-
-        if maxTemps.count >= 1 && minTemps.count >= 1 {
-            result += " Today's high \(formatTemp(maxTemps[0])), low \(formatTemp(minTemps[0]))."
-        }
-        if maxTemps.count >= 2 && minTemps.count >= 2 && dailyCodes.count >= 2 {
-            let tomorrowCondition = Self.weatherDescription(code: dailyCodes[1])
-            result += " Tomorrow: \(tomorrowCondition), \(formatTemp(maxTemps[1]))/\(formatTemp(minTemps[1]))."
-        }
-
-        return result
     }
 
-    /// Map WMO weather codes to human-readable descriptions
-    static func weatherDescription(code: Int) -> String {
-        switch code {
-        case 0: return "clear sky"
-        case 1: return "mainly clear"
-        case 2: return "partly cloudy"
-        case 3: return "overcast"
-        case 45, 48: return "foggy"
-        case 51, 53, 55: return "drizzle"
-        case 56, 57: return "freezing drizzle"
-        case 61, 63, 65: return "rain"
-        case 66, 67: return "freezing rain"
-        case 71, 73, 75: return "snow"
-        case 77: return "snow grains"
-        case 80, 81, 82: return "rain showers"
-        case 85, 86: return "snow showers"
-        case 95: return "thunderstorm"
-        case 96, 99: return "thunderstorm with hail"
-        default: return "unknown conditions"
-        }
+    /// A usable place name, or nil for blanks and for phrases that mean "where I am".
+    static func cleanPlace(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let hereWords: Set<String> = ["here", "current location", "my location", "current", "near me", "where i am"]
+        return hereWords.contains(trimmed.lowercased()) ? nil : trimmed
     }
 }

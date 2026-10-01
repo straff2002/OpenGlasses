@@ -177,7 +177,7 @@ final class MyDayP4ServiceHardeningTests: XCTestCase {
         XCTAssertFalse(snapshot.items.contains { $0.kind == .leaveBy || $0.kind == .weather })
         XCTAssertEqual(snapshot.sourceStates.first { $0.source == .travel }?.availability, .unavailable)
         XCTAssertEqual(snapshot.sourceStates.first { $0.source == .weather }?.availability, .unavailable)
-        XCTAssertTrue(NativeWeatherDaySource.looksUnavailable("I can't get the weather right now."))
+        XCTAssertEqual(NativeWeatherDaySource.unavailableMessage(.offline), "Weather needs a connection.")
     }
 
     func testMissingLocationDoesNotAttemptRoutingOrMarkTravelUnavailable() async {

@@ -124,6 +124,11 @@ struct MyDayView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // Apple requires its Weather credit wherever WeatherKit data is displayed.
+                if item.kind == .weather {
+                    WeatherAttributionView()
+                        .padding(.top, 2)
+                }
             }
             Spacer(minLength: 8)
             actionButton(for: item)
@@ -562,6 +567,14 @@ struct MyDayHomeView: View {
                             }
                         }
                     }
+                }
+
+                // Apple requires its Weather credit wherever WeatherKit data is displayed. The
+                // compact card draws titles only, so the forecast itself is not on screen there.
+                // Outside the rows, because a link inside a row's button could not be tapped.
+                if !compact, visibleItems.contains(where: { $0.kind == .weather }) {
+                    WeatherAttributionView()
+                        .padding(.leading, 30)
                 }
 
                 // Counts the whole day, not the capped list. It used to count `items`, which is

@@ -150,6 +150,12 @@ ensure_personal_capabilities() {
   if ! "$buddy" -c "Print :com.apple.developer.healthkit.access" "$file" >/dev/null 2>&1; then
     "$buddy" -c "Add :com.apple.developer.healthkit.access array" "$file"
   fi
+  # WeatherKit: without it every WeatherService request fails in a signed build, so weather
+  # answers and My Day's weather say the service is unavailable.
+  if ! "$buddy" -c "Print :com.apple.developer.weatherkit" "$file" >/dev/null 2>&1; then
+    "$buddy" -c "Add :com.apple.developer.weatherkit bool true" "$file"
+    echo "  Added com.apple.developer.weatherkit to $file"
+  fi
 }
 
 if [[ "${1:-}" == "--from-commit" ]]; then

@@ -21,7 +21,11 @@ final class NativeToolRegistry {
          travelTimeSource: (any TravelTimeDaySource)? = nil,
          guidedJobFlow: GuidedJobFlow? = nil) {
         let eventKitStore = eventKitStore ?? EventKitDayStore()
-        let weatherTool = WeatherTool(locationService: locationService)
+        // Apple requires its Weather attribution wherever WeatherKit data is displayed; a weather
+        // answer lands in the active chat thread, so the thread is recorded to carry the credit.
+        let weatherTool = WeatherTool(locationService: locationService) { [weak conversationStore] in
+            WeatherAttributionThreads.shared.record(conversationStore?.activeThreadId)
+        }
         let travelTimeSource = travelTimeSource
             ?? MapKitTravelTimeDaySource(locationService: locationService)
         let newsTool = NewsTool()

@@ -32,6 +32,11 @@ if [[ -f project.local.yml ]] && [[ -f "$personal_entitlements" ]] \
   echo "warning: $personal_entitlements lacks com.apple.developer.healthkit — Apple Health" >&2
   echo "         access will fail on device. Run ./Scripts/setup-local-dev.sh to add it." >&2
 fi
+if [[ -f project.local.yml ]] && [[ -f "$personal_entitlements" ]] \
+  && ! grep -q "com.apple.developer.weatherkit" "$personal_entitlements"; then
+  echo "warning: $personal_entitlements lacks com.apple.developer.weatherkit — weather" >&2
+  echo "         requests will fail on device. Run ./Scripts/setup-local-dev.sh to add it." >&2
+fi
 
 spec_file=.xcodegen-spec.yml
 {

@@ -146,6 +146,10 @@ targets:
         # signed build. The App ID must carry the HealthKit capability before an archive signs.
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
+        # get_weather, My Day's weather and the rain/alert answers come from WeatherKit. Without
+        # the key every WeatherService request fails in a signed build. The App ID must carry the
+        # WeatherKit capability and App Service before an archive signs.
+        com.apple.developer.weatherkit: true
         com.apple.developer.carplay-voice-based-conversation: true
         com.apple.developer.kernel.increased-memory-limit: true
         com.apple.security.application-groups:
