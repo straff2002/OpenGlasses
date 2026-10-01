@@ -66,6 +66,157 @@ enum SessionCardGlassesHeadline {
     }
 }
 
+// MARK: - Session card: mode dot
+
+/// The reduced shape of `GeminiConnectionState` / `OpenAIRealtimeConnectionState` the mode dot
+/// needs. Both realtime services declare the same five cases; this drops the server-supplied
+/// `.error` payload (user-content class, and the dot only needs to know a failure happened), so
+/// `SessionCardModeDot` stays free of either module and is testable on its own.
+enum SessionCardRealtimePhase: Equatable {
+    case disconnected, connecting, settingUp, ready, error
+}
+
+/// A semantic colour tier for a session-card indicator — pure so the mapping is testable without
+/// touching `OGTheme`. The view is the only place a tier becomes a `Color`.
+enum SessionCardTint: Equatable {
+    /// Green — the thing described is fine, live, or simply available.
+    case ok
+    /// Amber — in progress (a link coming up), or a quiet condition worth a glance.
+    case warn
+    /// Red — failed.
+    case error
+    /// Grey — not right now, and nothing is wrong.
+    case quiet
+}
+
+/// The colour tier for the dot beside "Mode: <persona>", and (so the row stays internally
+/// consistent — its own existing comment calls the dot and the name "the same state, two roles")
+/// the "Mode:"/"Active mode:" prefix and the name's colour beside it.
+///
+/// Before this type the row read `AppState.isConnected` — whether the *glasses* are linked — so it
+/// went grey and said "Mode: Avenkin" the instant the wearer took the glasses off mid-conversation,
+/// and green and "Active mode:" the instant they put them back on: a sentence that never mentions
+/// glasses, driven entirely by them.
+///
+/// The fixed mapping, independent of hardware:
+/// - **`.active`** (green, "Active mode:") — Avenkin is available to talk to or is in the middle of
+///   it: ready for the next turn, listening, thinking (processing a turn, or a realtime link
+///   connecting/setting up), or speaking. This is the common case the row exists to report — "can I
+///   talk to Avenkin right now", not "is a call in progress".
+/// - **`.muted`** — the wearer muted the mic. The session is fine; the input is deliberately off.
+/// - **`.error`** — a realtime session reported an error.
+/// - **`.offline`** — a realtime session the wearer started has dropped the link and is not
+///   retrying. Direct (on-device) voice has no such state: there is no persistent link to lose.
+enum SessionCardModeDot: Equatable {
+    case active, muted, error, offline
+
+    var tint: SessionCardTint {
+        switch self {
+        case .active: return .ok
+        case .muted: return .warn
+        case .error: return .error
+        case .offline: return .quiet
+        }
+    }
+
+    /// Whether the row's prefix reads "Active mode:" rather than "Mode:".
+    var readsAsActiveMode: Bool { self == .active }
+
+    /// Gemini Live / OpenAI Realtime.
+    ///
+    /// - Parameter sessionActive: `session.isActive` — before a turn starts, or after a clean stop,
+    ///   this is `false` and the card's own headline already reads "Ready", so the dot matches it.
+    static func realtime(sessionActive: Bool, phase: SessionCardRealtimePhase, muted: Bool,
+                         reconnecting: Bool) -> SessionCardModeDot {
+        if muted { return .muted }
+        guard sessionActive else { return .active }
+        switch phase {
+        case .ready, .connecting, .settingUp: return .active
+        case .error: return .error
+        // Reconnecting is still trying — the row already reads "Reconnecting…"; a second
+        // grey/alarm signal beside it would only repeat the sentence it sits next to.
+        case .disconnected: return reconnecting ? .active : .offline
+        }
+    }
+
+    /// Direct (on-device) voice: no persistent link to go offline from or error out of, so a mute is
+    /// the only thing that ever leaves `.active` — listening, speaking and thinking
+    /// (`AppState.isProcessing`) all read the same as idle-ready.
+    static func direct(muted: Bool) -> SessionCardModeDot {
+        muted ? .muted : .active
+    }
+}
+
+// MARK: - Session card: glasses pill
+
+/// What the glasses pill shows and does — link phase × stand-down × ever-added — decoupled from
+/// `AppState.connectGlasses()`, which exists for a different request (see its own doc comment):
+/// registering a pair that has never linked.
+///
+/// The accidental-tap bug this replaces: tapping the pill while the glasses were simply away ran
+/// `connectGlasses()`, which waits up to 15 s and then surfaces the SDK's own text ("Glasses
+/// registered but no device appeared (state 3)…") as an *error* — alarming, for a tap that only
+/// ever meant "where are my glasses?". The pill now says what is actually true (attached,
+/// connecting, paused, away) and, away, offers a plain hint instead of a wait and an error.
+enum SessionCardGlassesPill {
+
+    /// What the pill does on a tap.
+    enum Action: Equatable {
+        /// Ask to disconnect — today's confirmation dialog.
+        case disconnect
+        /// Lift the wearer's own stand-down. The link is already up; nothing to wait for.
+        case resume
+        /// Away, not connecting: show a plain hint, never `connectGlasses()`'s 15 s wait.
+        case hint
+        /// Connecting: nothing to do but wait.
+        case none
+    }
+
+    struct Presentation: Equatable {
+        /// The visible word (and, per the accessibility rule below, the label VoiceOver reads).
+        let word: String
+        let tint: SessionCardTint
+        /// A second, filled dot beside the symbol — only while the glasses are in active use.
+        let showsLiveDot: Bool
+        let action: Action
+        /// VoiceOver label matches the visible word exactly; the hint names the tap action.
+        var accessibilityLabel: String { word }
+        let accessibilityHint: String
+    }
+
+    /// `nil` when glasses have never been added (Plan FY P2) — the pill does not appear at all. A
+    /// pair nobody has ever added is not news.
+    static func presentation(link: GlassesConnectionPhase, stoodDown: Bool,
+                             everAdded: Bool) -> Presentation? {
+        guard everAdded else { return nil }
+
+        if link.isConnected {
+            if stoodDown {
+                return Presentation(word: "Glasses paused", tint: .quiet, showsLiveDot: false,
+                                    action: .resume,
+                                    accessibilityHint: "Double-tap to resume the glasses.")
+            }
+            return Presentation(word: "Glasses attached", tint: .ok, showsLiveDot: true,
+                                action: .disconnect,
+                                accessibilityHint: "Double-tap to disconnect the glasses.")
+        }
+        if link.isConnecting {
+            return Presentation(word: "Connecting…", tint: .warn, showsLiveDot: false,
+                                action: .none,
+                                accessibilityHint: "Glasses are linking up.")
+        }
+        // `.addedDisconnected`, or `.noGlassesAdded` reached only through `Config.glassesAdded`
+        // (glasses that connected once, now unregistered) — either way: added, just not reachable.
+        return Presentation(word: "Glasses away", tint: .quiet, showsLiveDot: false,
+                            action: .hint,
+                            accessibilityHint: "Double-tap for help reconnecting the glasses.")
+    }
+
+    /// The hint shown on a tap while the glasses are away — a plain, immediate notice (`NoticeCenter`,
+    /// `.advisory`), never the 15 s `connectGlasses()` wait or its SDK-flavoured error text.
+    static let awayHint = "Glasses aren't connected — put them on, or check the Meta AI app."
+}
+
 /// Whether bringing the wake word up on launch or foreground has to wait for glasses registration.
 ///
 /// The wait exists because Bluetooth route churn while a registration is negotiating has been seen

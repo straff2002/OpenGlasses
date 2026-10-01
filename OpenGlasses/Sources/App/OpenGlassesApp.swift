@@ -693,6 +693,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
                 speechService.playConnectTone()
                 PrivacyLog.device(.glasses, .connected)
+                // The link that just came up is the fix for the one error class the app can watch
+                // resolve itself — "Connect glasses first", the SDK's own registered-but-no-device
+                // text. Any other error (a failed photo, a chat request) is untouched: the flag is
+                // only ever true for this class (see `errorMessage`'s own `didSet`).
+                if errorMessageIsGlassesConnection { errorMessage = nil }
                 // Glasses that have connected are glasses this person uses (Plan FY P2): from now
                 // on a missing pair is news on the session card, not the phone's normal state.
                 Config.glassesAdded = true
@@ -814,6 +819,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
         errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
                                                               configStatus: configStatus)
+        errorMessageIsGlassesConnection = true
         addDebugEvent("connectGlasses gave up: registrationState=\(stateRaw), config=\(configStatus)")
     }
 
@@ -869,7 +875,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// supports it (on-device models today). The Chat thread renders this as a live bubble, then
     /// swaps it for the persisted message on completion. Nil when no reply is streaming.
     @Published var streamingTurn: StreamingTurn?
-    @Published var errorMessage: String?
+    /// Resets to `false` on every assignment — including from outside this type (the camera button,
+    /// recording, a chat failure) — so only the three glasses-connection call sites that re-affirm
+    /// it right after can leave it `true`. A glasses link coming up clears `errorMessage`
+    /// automatically only while this is set — never an unrelated failure.
+    @Published private(set) var errorMessageIsGlassesConnection = false
+    @Published var errorMessage: String? {
+        didSet { errorMessageIsGlassesConnection = false }
+    }
     @Published var currentMode: AppMode = Config.appMode
     @Published var activePersona: Persona? {
         // Mirrored into `Config` as well as memory: the static prompt assembly resolves the
@@ -4635,6 +4648,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func captureAndSharePhoto() async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
+            errorMessageIsGlassesConnection = true
             return
         }
         do {
@@ -4712,6 +4726,7 @@ class AppState: ObservableObject, AppStateProtocol {
     func capturePhotoFromGlasses(glassesOnly: Bool = false) async {
         guard isConnected else {
             errorMessage = "Connect glasses first"
+            errorMessageIsGlassesConnection = true
             return
         }
         do {
