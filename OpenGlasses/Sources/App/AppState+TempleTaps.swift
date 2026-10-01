@@ -74,6 +74,14 @@ extension AppState: TempleActionPerforming {
         case .quickAction(let id):
             guard let action = Config.quickActions.first(where: { $0.id == id }) else { return }
             await executeQuickAction(action)
+        case .musicPlayPause:
+            // Same routing as "pause" by voice: the provider that is playing, else the default.
+            // The earcon confirmed the tap; only an answer the wearer needs is spoken.
+            let result = await MusicControlEnvironment.live().execute(
+                MusicToolRequest.parse(action: "toggle", args: [:]))
+            if result.outcome != .done {
+                await speechService.speak(result.spoken)
+            }
         }
     }
 

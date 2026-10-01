@@ -193,7 +193,7 @@
 		</dict>
 	</dict>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Avenkin plays music and controls playback hands-free, by voice.</string>
+	<string>Avenkin plays music from your library or the Apple Music catalogue, adds music to your library when you ask, and controls playback hands-free, by voice.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

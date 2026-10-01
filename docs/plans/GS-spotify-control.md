@@ -1,12 +1,21 @@
-# Plan GS — Spotify Playback Control and "What's Playing"
+# Plan GS — Music Providers: Apple Music (with the MusicKit Catalogue) and Home Assistant Speakers
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built. **Blocked for the App Store
-build by Spotify's developer policy (Decision 1)**; the shippable part is a music-provider layer
-with Apple Music and Home Assistant providers.
-**Extends:** `music_control` (`NativeTools/MusicControlTool.swift`, Apple Music via MediaPlayer).
+**Status:** ✅ Shipped 2026-10-01 — P0, P1, P2 and the MusicKit phase (P2a) in one PR: a `MusicProvider`
+layer behind the unchanged `music_control` tool; Apple Music plays from the whole catalogue through
+MusicKit for subscribers and from the library otherwise; any Home Assistant media player can be the
+default provider; Settings → Services → Music; a "Play or pause music" temple-tap action in the GJ set.
+**P3 (Spotify Web API) stays blocked** by Spotify's developer policy (Decision 1, accepted) and is not
+to be built unless that changes. **Owed:** device checks — catalogue playback with and without a
+subscription, the first-use access prompt, playback with the phone locked and Avenkin backgrounded,
+temple taps with Apple Music playing and with music on a Home Assistant (Spotify Connect) speaker,
+add to library. MusicKit App Service is enabled on the App ID (no entitlement key needed).
+**Extends:** `music_control` (`NativeTools/MusicControlTool.swift`).
 **Related:** Plan [CH](CH-media-button-trigger.md) / Plan [GJ](GJ-remappable-temple-gestures.md)
 (temple taps), Plan [GF](GF-recipe-add-ons.md) (not a viable route), Plan [GR](GR-android-tv-control.md)
-(shares the Home Assistant service-data change), `ShazamTool`.
+(shares the Home Assistant service-data allowlist, which this plan added), `ShazamTool`.
+
+The file keeps its original name; the plan began as "Spotify playback control", and the Spotify
+policy finding below is why it became a music-provider plan.
 
 ---
 
@@ -48,17 +57,24 @@ written permission or the policy changes.
 `http` steps have no OAuth flow, so a recipe cannot hold a Spotify user token — and the policy would
 bind the add-on author the same way. The app will not ship or promote one.
 
-## Outcome (what can ship)
+## Outcome (shipped)
 
-- A **default music provider** setting: Apple Music (today's behaviour) or a **Home Assistant media
-  player** (which may be a Spotify Connect speaker, a Sonos, or HA's own Spotify entity — HA holds
-  its own Spotify credentials under its own arrangement; Avenkin never calls Spotify).
-- "Play / pause / skip / previous / volume" go to the default provider; "on the kitchen speaker"
-  picks a specific HA media player.
-- "What's playing?" answers from the provider that is playing (Apple Music now-playing item; HA's
-  `media_title`/`media_artist`), and says honestly when it cannot see another app's playback.
-- When the wearer names Spotify and no route exists, one clear sentence: Avenkin can't control
-  the Spotify app directly; the glasses' temple controls still work on whatever is playing, and a
+- A **default music provider** setting: Apple Music (the default for new installs and for everyone
+  upgrading — unchanged behaviour) or a **Home Assistant media player** (a Sonos, a smart speaker, or
+  a speaker Home Assistant plays a streaming service on under its own account link; Avenkin never
+  calls a streaming service).
+- **Apple Music by name, from the whole catalogue.** With Apple Music access allowed and a
+  subscription that can play catalogue content, "play Rumours by Fleetwood Mac", "play the album …",
+  "play my … playlist", "play jazz radio" and "play some songs by …" search the Apple Music catalogue
+  and play the best match. Without a subscription it plays from the wearer's library, exactly as
+  before; when neither has it, one sentence says why. "Add this to my library" (and "like", its
+  honest nearest thing — apps cannot love a song).
+- "Play / pause / skip / previous / volume" go to the provider that is playing, else the default;
+  "on the kitchen speaker" picks a specific Home Assistant media player.
+- "What's playing?" answers from the provider that is playing — title, artist, album and year, and
+  how far in — and says honestly when it cannot see another app's playback.
+- When the wearer names Spotify (or another service with no route), one generic sentence: Avenkin
+  can't control it directly; the glasses' temple controls still work on whatever's playing, and a
   Home Assistant speaker can be set as the music provider. Copy never names plan letters.
 
 ## What exists today (verified 2026-10-01)
@@ -115,6 +131,53 @@ ambient sound.
 **Modes.** Phone-only identical. HIPAA/Medical Local Only: HA provider follows
 `homeAssistantCommand`'s policy. Not agentic — no Agent Mode gate. CarPlay: spoken answers only.
 
+## Design — Apple Music catalogue through MusicKit (P2a, added 2026-10-01)
+
+Greig asked for Apple Music access; the MusicKit App Service is enabled on the App ID
+`com.openglasses.app`. MusicKit is a system framework: no SDK is linked, the developer token comes
+from the App Service, and no key ships. API shapes were checked against the iOS 27 SDK
+`MusicKit.swiftinterface`.
+
+- **Access.** `MusicAuthorization` reuses `NSAppleMusicUsageDescription` (reworded to mention the
+  catalogue and adding to the library). The prompt is only shown while Avenkin is in the foreground
+  (a locked phone cannot show it): from the glasses the first time, the answer is "open Avenkin on
+  your phone once and allow access"; Settings → Services → Music has an "Allow Apple Music Access"
+  button. Denied → one sentence pointing to iPhone Settings.
+- **Catalogue or library.** `MusicSubscription.current.canPlayCatalogContent` decides. True →
+  `MusicCatalogSearchRequest` over the kinds the request allows, ranked, played. False → the library
+  (MediaPlayer). Unknown (offline) → the library. A catalogue miss or error falls through to the
+  library; only when both miss does the answer explain (subscription needed, access off, Medical
+  Local Only, or "couldn't find it"). Never a dead end.
+- **Player: `SystemMusicPlayer`, not `ApplicationMusicPlayer`.** The system player plays in the Music
+  app's process, so playback survives Avenkin being backgrounded or killed and the phone locking,
+  with no background-audio work of Avenkin's own. An application player would put the wearer's music
+  on Avenkin's audio session — the wake-word listener's, speech output's and the temple-tap claim's —
+  where every reply and listening turn would duck or interrupt it, and where
+  `MediaTriggerPolicy` would see no "other audio" and could claim Now Playing over the wearer's own
+  music. With the system player the Music app owns Now Playing, the policy stands down, the glasses'
+  temple controls go straight to Music, and `music_control` still posts
+  `MediaTriggerService.userPlaybackRequested` before every command. It is also the player the library
+  path drives, so pause/skip/"what's playing" behave the same whichever path started the music.
+- **Pure core.** `MusicRequestParser` (kind hints — "the album", "playlist", "radio"/"station",
+  "songs by" — a "<title> by <artist>" reading kept alongside the whole phrase because "Stand by Me"
+  is a title, and trailing targets such as "on the kitchen speaker" / "on Spotify");
+  `MusicCatalogRanker` (an explicit kind filters; exact title beats contains; a named artist that
+  matches is a strong bonus and one that does not a strong penalty; edition tags like "(Remastered
+  2009)" ignored; popularity only breaks ties; nothing below a threshold plays); `MusicPhraser`. The
+  library path ranks its own matches through the same ranker. MusicKit sits behind
+  `MusicCatalogServing` (production `MusicKitCatalog`), MediaPlayer behind `MusicLibraryPlaying`
+  (production `MediaPlayerLibrary`); tests never reach either.
+- **Artists** are not playable in MusicKit: their top songs are queued shuffled, else their station.
+- **Add to library** uses `MusicLibrary.shared.add` on a searched item, or on what is playing (its
+  catalogue id is the now-playing item's `playbackStoreID`); "already in your library" is reported
+  as such. It needs a subscription.
+- **Privacy.** Catalogue search terms go to Apple. The privacy page's Apple row and the Apple Music
+  permission line say so; `PrivacyInfo.xcprivacy` already declares `SearchHistory` (App
+  Functionality, not linked) and its notes now name the MusicKit egress; Settings → Services → Music
+  says it in-app. There is no `NetworkRoute` for it because Avenkin owns no transport — like MapKit
+  search and ShazamKit, the request is the system framework's — so Medical Local Only is enforced in
+  `AppleMusicProvider` instead: under it only the library is searched and nothing is added.
+
 ## Design (blocked phase — Spotify Web API provider)
 
 Specified so the work is ready if Decision 1 changes; **not to be built otherwise.**
@@ -139,23 +202,50 @@ Specified so the work is ready if Decision 1 changes; **not to be built otherwis
   switch to it — device-unverified — and it adds a closed binary that would need the MWDAT-style
   telemetry `strings` review and disclosure).
 
-## Phases (one PR each)
+## Phases
 
-**P0 — Provider layer (pure + Apple Music move).** `MusicProvider`, `AppleMusicProvider` (behaviour
-unchanged), `MusicCommandRouter`, `NowPlayingSummary` phrasing. Tests: `MusicCommandRouterTests`
-(named speaker wins; "on Spotify" without a route → refusal line; playing provider beats default),
-`AppleMusicProviderTests` over an injected player seam, `MusicControlToolTests` regression (same
-actions, `userPlaybackRequested` still posted).
+All of P0–P2a shipped in one PR (2026-10-01).
 
-**P1 — Home Assistant provider.** HA client service-data support (shared with GR P2 — whichever
-lands first adds it), `HomeAssistantMusicProvider`, settings, `devices` action. Tests:
-`HomeAssistantMusicProviderTests` (request bodies, attribute parsing, unsupported `play_media`),
-`HomeAssistantServiceDataTests` (allowlist rejects other keys).
+**P0 — Provider layer. ✅** `MusicProvider`, `AppleMusicProvider` (transport behaviour unchanged),
+`MusicCommandRouter`, `NowPlayingSummary` phrasing. Tests: `MusicCommandRouterTests` (named speaker
+wins; "on Spotify" without a route → refusal line; playing provider beats default; unusable Home
+Assistant falls back to Apple Music; "what's playing" never asks which speaker),
+`AppleMusicProviderTests` over injected seams, `MusicControlToolTests` regression (same name and
+actions; `userPlaybackRequested` still posted for commands, not for reads or speaker commands).
 
-**P2 — Surfaces.** Settings → Music, GJ tap action, refusal copy, device checks (owed): HA with a
-Spotify Connect speaker, phone locked, Spotify playing on the phone with temple taps.
+**P1 — Home Assistant provider. ✅** `HomeAssistantServiceData` (allowlist: `media_content_id`,
+`media_content_type`, `volume_level`, `source`; typed and range-checked; also accepted by the
+`home_assistant` tool's `call_service` as `data`), `HomeAssistantRESTClient` on the
+`homeAssistantCommand` route, `HomeAssistantMediaPlayer` parsing, `HomeAssistantMusicProvider`
+(transport, volume — step service or `volume_set` ± 10 %, `play_media` only when advertised,
+now-playing from attributes), `devices` action. Tests: `HomeAssistantMusicProviderTests`,
+`HomeAssistantServiceDataTests`.
 
-**P3 — Spotify Web API provider (blocked by Decision 1).**
+**P2 — Surfaces. ✅** Settings → Services → Music (default provider, Apple Music access and
+catalogue status, speakers to make available, default speaker, "Ask Which Speaker When Unsure"),
+the GJ tap action "Play or pause music" (standby only; routed like a spoken "pause"; speaks only an
+answer the wearer needs), generic refusal copy.
+
+**P2a — Apple Music catalogue (MusicKit). ✅** As designed above. Tests: `MusicRequestParserTests`,
+`MusicCatalogRankerTests`, `MusicPhraserTests`, plus the catalogue cases in
+`AppleMusicProviderTests`.
+
+**Device checks owed:** catalogue play with and without a subscription; first-use prompt from the
+phone and the glasses; playback with the phone locked and Avenkin backgrounded; temple taps with
+Apple Music playing (they go to Music) and with a Home Assistant Spotify Connect speaker playing
+(the music tap action); add to library; a Home Assistant speaker's `play_media` by name.
+
+**P3 — Spotify Web API provider (blocked by Decision 1).** Not built; not to be built unless Spotify
+gives written permission or the policy changes.
+
+**Where the draft was wrong or moved.** The draft said MusicKit would not change "like": MusicKit has
+no rating API for apps either, so "like" adds to the library and says so. It planned to list
+speakers from `HomeAssistantEntityCache`, which keeps no attributes (`supported_features`, media
+titles), so the provider reads `/api/states` through its own client on the same route. The Music
+screen sits under Services beside Parking rather than as a top-level section. "Otherwise the
+provider that is playing, else the default" is applied to transport only; play-by-name goes to the
+default provider. The draft's "no telemetry, `PrivacyInfo.xcprivacy` untouched" held for P0–P2; the
+MusicKit phase adds an Apple egress, disclosed as above.
 
 ## Risks
 
@@ -164,20 +254,18 @@ Spotify Connect speaker, phone locked, Spotify playing on the phone with temple 
 - **HA dependency.** The HA route helps only HA users; everyone else keeps temple controls and the
   Spotify app itself.
 
-## Decisions for Greig
+## Decisions (Greig, 2026-10-01)
 
-1. **Accept the policy finding: no Spotify Platform integration in the App Store build**
-   (recommended), or approach Spotify for written permission before any P3 work. A personal
-   Development Mode build is still a voice-enabled SDA under section III, so it is not a loophole.
-2. **Default provider** for new installs: Apple Music (recommended, unchanged behaviour).
-3. **MusicKit for Apple Music** (catalogue search, "add to library") as a follow-up plan, or not.
-4. **Refusal wording** that mentions the glasses' built-in assistant (which may have its own Spotify
-   link, region-dependent) or stays generic. *Recommend generic.*
+1. **Accepted:** no Spotify Platform integration in the App Store build. A personal Development Mode
+   build is still a voice-enabled SDA under section III, so it is not a loophole.
+2. **Default provider:** Apple Music for new installs (unchanged behaviour).
+3. **MusicKit: yes, in this PR** (catalogue search and play, add to library) — the P2a phase.
+4. **Refusal wording:** generic — it does not mention the glasses' built-in assistant.
 
 ## Out of scope
 
 Spotify Platform integration (unless Decision 1 changes), podcasts, playlist editing, lyrics,
-Apple Music catalogue search, and other streaming services' APIs.
+rating ("love") — not in MusicKit's app API — and other streaming services' APIs.
 
 ## References
 

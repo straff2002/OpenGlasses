@@ -346,6 +346,17 @@ struct ServicesSettingsView: View {
                 Text("\u{201C}Where did I park?\u{201D} — the level, space and a way back, saved by voice, from a sign photo, or when a drive ends.")
             }
 
+            // MARK: Music
+            Section {
+                NavigationLink {
+                    MusicSettingsView()
+                } label: {
+                    Label("Music", systemImage: "music.note")
+                }
+            } footer: {
+                Text("Apple Music or a Home Assistant speaker — \u{201C}play Rumours on the kitchen speaker.\u{201D}")
+            }
+
             // MARK: Notification Digest
             Section {
                 NavigationLink {

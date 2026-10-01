@@ -106,6 +106,7 @@ final class TempleGestureDispatcher: ObservableObject {
             case .readDigest: return "readDigest"
             case .toggleRecording(let starting): return starting ? "recordingStarted" : "recordingStopped"
             case .askAgent: return "askAgent"
+            case .musicPlayPause: return "musicPlayPause"
             case .quickAction: return "quickAction"
             }
         }

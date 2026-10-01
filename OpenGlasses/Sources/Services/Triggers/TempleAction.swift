@@ -15,6 +15,9 @@ enum TempleAction: Hashable, Identifiable {
     case photoToCameraRoll
     case readDigest
     case toggleRecording
+    /// Play or pause music on the default music provider (Plan GS) — for music on a Home
+    /// Assistant speaker, where the phone is silent and the taps would otherwise not reach it.
+    case musicPlayPause
     /// Hand the next thing the wearer says straight to their agent. Agent Mode only.
     case askAgent
     /// Run a saved Quick Action by id.
@@ -25,7 +28,7 @@ enum TempleAction: Hashable, Identifiable {
     /// Every assignable action that is not a Quick Action, in picker order.
     static let builtIns: [TempleAction] = [
         .startTalking, .hangUp, .mute, .photoDescribe, .photoToCameraRoll,
-        .readDigest, .toggleRecording, .askAgent, .nothing,
+        .readDigest, .toggleRecording, .musicPlayPause, .askAgent, .nothing,
     ]
 
     /// Persisted form. Stable — never rename a case's value.
@@ -39,6 +42,7 @@ enum TempleAction: Hashable, Identifiable {
         case .photoToCameraRoll: return "photoToCameraRoll"
         case .readDigest: return "readDigest"
         case .toggleRecording: return "toggleRecording"
+        case .musicPlayPause: return "musicPlayPause"
         case .askAgent: return "askAgent"
         case .quickAction(let id): return Self.quickActionPrefix + id
         }
@@ -70,6 +74,7 @@ enum TempleAction: Hashable, Identifiable {
         case .photoToCameraRoll: return String(localized: "Photo to camera roll")
         case .readDigest: return String(localized: "Read my digest")
         case .toggleRecording: return String(localized: "Start or stop recording")
+        case .musicPlayPause: return String(localized: "Play or pause music")
         case .askAgent: return String(localized: "Ask my agent")
         case .quickAction: return String(localized: "Quick Action")
         }
