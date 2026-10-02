@@ -12,8 +12,13 @@ enum EditionPresentation {
 
     // MARK: - Tabs
 
-    /// Tabs the technician does not see: the other modes, and chat with them.
-    static let hiddenTabs: Set<MainTab> = [.modes, .chat]
+    /// Tabs the technician does not see: chat.
+    ///
+    /// The Modes slot used to be here too. Since Plan HB it is drawn as the Field Assist tab under
+    /// the edition — the edition *is* Field Assist — with the other modes hidden inside it
+    /// (`ModesTabPresentation.fieldAssist(otherModes: .hidden)`), so personas are still not the
+    /// technician's to choose. An edition with no licence in force draws no slot at all.
+    static let hiddenTabs: Set<MainTab> = [.chat]
 
     /// The bar as built, given the Job rule and whether the technician's view is in force.
     static func tabs(showingJob: Bool, restricted: Bool) -> [MainTab] {

@@ -65,6 +65,10 @@ enum UITestSupport {
         /// goes through the shipping `recordDebrief` and the queue through the shipping store, so
         /// what is seeded is what a real drive writes. Nothing is sent: a staged send is staged.
         case seedFieldSends = "-OGUITestSeedFieldSends"
+        /// A modifier for Plan HB: two jobs ahead scheduled later today and one tomorrow, so the
+        /// home screen's job-day card and the day view have a day to show. Written through the
+        /// shipping upcoming-job store; nothing is started.
+        case seedFieldDay = "-OGUITestSeedFieldDay"
         /// A **narrowing** modifier on the Field Assist flags (Plan FS): the entitlement becomes
         /// the retired one-time unlock instead of the internal grant, so screens render the state
         /// a grandfathered owner sees — the bundled vaults, and the import button explaining that
@@ -114,7 +118,7 @@ enum UITestSupport {
     static var wantsFieldAssist: Bool {
         isSet(.fieldAssist) || isSet(.seedFieldHistory) || isSet(.seedFieldJob)
             || isSet(.seedFieldPhotos) || isSet(.seedFieldClips) || isSet(.seedFieldSignOff)
-            || isSet(.seedFieldSends)
+            || isSet(.seedFieldSends) || isSet(.seedFieldDay)
     }
 
     static var isActive: Bool { arguments.contains(activation) }
@@ -283,6 +287,10 @@ enum UITestSupport {
             // that "launched" and has no UI. The tab itself does not wait on this: its visibility
             // comes from the switch and the entitlement, both already set.
             Task { @MainActor in seedFieldJobs(appState) }
+        }
+
+        if isSet(.seedFieldDay) {
+            seedFieldDay(appState)
         }
 
         if isSet(.seedCaptions) {
@@ -508,6 +516,31 @@ enum UITestSupport {
         attachClip(sessions, caption: "Compressor short-cycling", seconds: 12, bytes: 640_000)
         attachClip(sessions, caption: "Fan wobble at full speed", seconds: 28,
                    bytes: 21 * 1024 * 1024)
+    }
+
+    /// Plan HB: a day for the job-day card — two jobs ahead later today, one tomorrow. Times are
+    /// placed relative to now (clamped inside today), so the card reads the same whatever hour
+    /// the run starts at.
+    @MainActor
+    private static func seedFieldDay(_ appState: AppState) {
+        let store = appState.upcomingJobs
+        store.removeAll()
+        let calendar = Calendar.current
+        let now = Date()
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let soon = min(now.addingTimeInterval(90 * 60), endOfToday.addingTimeInterval(-40 * 60))
+        let later = min(now.addingTimeInterval(4 * 3600), endOfToday.addingTimeInterval(-20 * 60))
+        let tomorrow = calendar.date(bySettingHour: 9, minute: 0, second: 0,
+                                     of: endOfToday) ?? endOfToday.addingTimeInterval(9 * 3600)
+        store.add(UpcomingJob(jobReference: "1006",
+                              site: JobSite(customer: "Smith & Co", address: "14 Smith Street"),
+                              scheduledFor: soon, origin: .typed))
+        store.add(UpcomingJob(jobReference: "1007",
+                              site: JobSite(customer: "Harbour Cold Stores", address: "2 Wharf Road"),
+                              scheduledFor: later, origin: .typed))
+        store.add(UpcomingJob(jobReference: "1008",
+                              site: JobSite(customer: "Acme Bakery", address: "9 Mill Lane"),
+                              scheduledFor: tomorrow, origin: .typed))
     }
 
     /// One saved debrief on the finished job (Plan FO P3b).

@@ -1452,6 +1452,22 @@ class AppState: ObservableObject, AppStateProtocol {
     /// second copy of it, so nothing else can be left holding a stale idea of which tab is up.
     @Published var requestedTab: MainTab?
 
+    /// A settings category another surface asked to open — the Modes tab's Field Assist row, so far
+    /// (Plan HB). `MainView` switches to Settings; `SettingsView` pushes the category (through the
+    /// same lock wrapper as its hub row, and never past the Lock Settings cover) and clears it.
+    @Published var requestedSettingsCategory: SettingsCategoryID?
+
+    /// The job-day card's facts (Plan HB). Held here rather than by the card, because the card yields
+    /// its place to every turn and the full-screen day view it opens must not go with it.
+    lazy var jobDayFeed = JobDayFeed(sessions: FieldSessionService.shared, flow: guidedJobFlow,
+                                     upcoming: upcomingJobs, sends: jobSends, myDay: myDayService)
+
+    /// Open one settings category, from wherever the wearer is.
+    func openSettings(_ category: SettingsCategoryID) {
+        requestedSettingsCategory = category
+        requestedTab = .settings
+    }
+
     /// A saved conversation the Chat tab should open when it next appears. Consumed and cleared by
     /// `ChatListView`, which is the only thing that knows how to push onto its own stack.
     ///
