@@ -120,11 +120,15 @@ final class DeliverReportTool: NativeTool {
                     for: channel,
                     canSendAttachments: channel == .messages
                         ? ReportComposerAvailability.messagesCanAttach : true,
-                    sessionId: endedSessionId)
+                    sessionId: endedSessionId,
+                    recipients: recipients)
+                // Spoken, so the send sheet's defaults: the transcript stays in the JSON only for
+                // the office, and no transcript PDF unless the organisation attaches one (Plan HD).
                 let request = DeliveryRequest.make(
                     record: record, channel: channel, recipients: recipients,
                     attachments: delivery.attachments,
-                    clipPlan: delivery.clipPlan, clipItems: delivery.clipItems)
+                    clipPlan: delivery.clipPlan, clipItems: delivery.clipItems,
+                    transcript: delivery.transcript)
                 session.stageDelivery(request)
                 return request.confirmation
             }

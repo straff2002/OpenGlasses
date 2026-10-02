@@ -182,6 +182,33 @@ enum JobTranscriptExport {
         .sorted { $0.timestamp < $1.timestamp }
     }
 
+    /// A job's lines from its own log: what the technician said and what the assistant replied,
+    /// in time order (Plan HD).
+    ///
+    /// The log rather than the conversation thread, because the log is the job's record: it is
+    /// what the work order printed under "Transcript" until that section was removed, so the
+    /// internal transcript PDF built from it carries nothing the report did not already carry. The
+    /// app's own prompts are left out by the same rule every transcript reader follows.
+    static func logLines(from events: [SessionLogger.Event]) -> [Line] {
+        events.enumerated().compactMap { index, event -> (Int, Line)? in
+            let speaker: Speaker
+            if TranscriptOriginClassifier.isTechnicianLine(event) {
+                speaker = .technician
+            } else if event.kind == .assistantMessage {
+                speaker = .assistant
+            } else {
+                return nil
+            }
+            guard let text = event.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return nil }
+            return (index, Line(timestamp: event.timestamp, speaker: speaker, text: text,
+                                imageAttached: false))
+        }
+        // Stable: two lines logged in the same instant keep the order they were written in.
+        .sorted { $0.1.timestamp == $1.1.timestamp ? $0.0 < $1.0 : $0.1.timestamp < $1.1.timestamp }
+        .map(\.1)
+    }
+
     /// A job's lines: its conversation when that is still on the phone, and otherwise the
     /// technician's words from its job log.
     ///

@@ -19,11 +19,15 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case organizationJobSigningKey
     case organizationJobReportChannel
     case organizationReportRecipients
+    /// Transcripts in reports to the office: `always` or `never` (Plan HD).
+    case organizationReportTranscriptInternal
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
     case organizationRequiresSignedJobFiles
     case organizationRequiresCustomerSignOff
+    /// Only the office addresses the organisation set up may receive a transcript (Plan HD).
+    case organizationForbidsCustomerTranscript
 
     // Capability ceilings — tighten only.
     case privacyFilterEnabled
@@ -57,14 +61,15 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
 
     var kind: Kind {
         switch self {
-        case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel:
+        case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
+             .organizationReportTranscriptInternal:
             return .profileOwned(.string)
         case .organizationReportRecipients:
             return .profileOwned(.strings)
         case .organizationAllowsUnsignedVaults:
             return .ceiling(pinnedTo: false)
         case .organizationRequiresSignedJobFiles, .organizationRequiresCustomerSignOff,
-             .privacyFilterEnabled:
+             .organizationForbidsCustomerTranscript, .privacyFilterEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled:
@@ -93,6 +98,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return nil
         case (.organizationJobReportChannel, .string(let raw)):
             return DeliveryChannel(rawValue: raw) == nil ? "not a delivery channel this build knows" : nil
+        case (.organizationReportTranscriptInternal, .string(let raw)):
+            // Deny by default: a value this build does not know is a named drop, never a guess.
+            return ReportTranscriptPolicy.InternalRule(rawValue: raw) == nil
+                ? "not one of always or never" : nil
         case (.organizationReportRecipients, .strings(let recipients)):
             if recipients.isEmpty { return "no recipients" }
             if recipients.count > 20 { return "more than 20 recipients" }

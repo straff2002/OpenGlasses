@@ -24,7 +24,15 @@ struct SessionExport: Codable, Equatable {
     let minutesPerBillingUnit: Int?
     let billableUnits: Int?
     let location: Location?
+    /// What was said on the job (Plan HD). **Always present**, so a reader that decoded it before
+    /// still decodes it — and empty when the report went to a customer, or the organisation keeps
+    /// transcripts out: `transcriptIncluded` and `transcriptOmittedReason` say which.
     let transcript: [TranscriptEntry]
+    /// Whether `transcript` carries the conversation (Plan HD). Nil on a record written before
+    /// this existed — which always carried it.
+    var transcriptIncluded: Bool? = nil
+    /// Why it does not: `customer_destination` or `organisation_policy`. Nil when it does.
+    var transcriptOmittedReason: String? = nil
     let photos: [PhotoRef]
     /// The job's clips (Plan FO P2b), with what the technician decided about each and how it
     /// travelled. **Optional** for the reason every other field added to this record is: an audit
@@ -274,6 +282,8 @@ struct SessionExport: Codable, Equatable {
         case minutesPerBillingUnit = "minutes_per_unit"
         case billableUnits = "billable_units"
         case location, transcript, photos, clips
+        case transcriptIncluded = "transcript_included"
+        case transcriptOmittedReason = "transcript_omitted_reason"
         case proceduresRun = "procedures_run"
         case captures, citations, escalations
         case workRecord = "work_record"

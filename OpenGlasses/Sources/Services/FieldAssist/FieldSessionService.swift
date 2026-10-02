@@ -1035,6 +1035,10 @@ final class FieldSessionService: ObservableObject {
     /// without rendering a PDF, and so a caller that has already exported does not export twice.
     var reportAttachmentsProvider: (() -> [DeliveryRequest.Attachment])?
 
+    /// What the device and the organisation have set up for transcripts (Plan HD). Read through
+    /// `Config` in the app; a test hands in its own.
+    var reportTranscriptContext: () -> ReportTranscriptPolicy.Context = { .current() }
+
     /// Everything a report needs to be staged on one channel: its files, its clip partition, and
     /// the clips themselves (Plan FO P2b).
     struct ReportDelivery {
@@ -1043,6 +1047,8 @@ final class FieldSessionService: ObservableObject {
         /// Every clip the technician included, attached or not — the share-sheet fallback needs
         /// the ones that did not fit, and the report names all of them.
         var clipItems: [JobMediaItem] = []
+        /// Who the report is for and what of the conversation it carries (Plan HD).
+        var transcript: ReportTranscriptPolicy.Decision?
     }
 
     /// The report's files for a chosen channel, with the clips partitioned before anything opens.
@@ -1053,9 +1059,17 @@ final class FieldSessionService: ObservableObject {
     /// PDF's own size would depend on a file it is printed into. The allowance is stated rather
     /// than measured for the same reason the image budget is: the same job on the same channel has
     /// to produce the same report twice, or a re-send is not a re-send.
+    ///
+    /// Who the report is for is decided here too (Plan HD), from the recipients it is prepared
+    /// for and what the technician chose on the send sheet: whether the JSON keeps the transcript,
+    /// and whether the separate transcript PDF goes. That PDF is a report file, so its stated
+    /// allowance is reserved before any clip — the same job, channel and choice partition the same
+    /// way every time.
     func reportDelivery(for channel: DeliveryChannel,
                         canSendAttachments: Bool = true,
-                        sessionId: String? = nil) -> ReportDelivery {
+                        sessionId: String? = nil,
+                        recipients: [String] = [],
+                        transcriptChoice: ReportTranscriptPolicy.Choice = .standard) -> ReportDelivery {
         let record: WorkRecord?
         if let sessionId, activeSession?.id != sessionId {
             record = workRecord(sessionId: sessionId)
@@ -1066,14 +1080,19 @@ final class FieldSessionService: ObservableObject {
 
         let clips = record.includedClips
         let budget = AttachmentBudget.standard(for: channel, canSendAttachments: canSendAttachments)
-        let partition = budget.partition(clips: clips, reservedBytes: Self.reportFileReserveBytes)
+        let transcript = ReportTranscriptPolicy.decide(
+            channel: channel, recipients: recipients, carriesFiles: budget.carriesFiles,
+            context: reportTranscriptContext(), choice: transcriptChoice)
+        let reserved = Self.reportFileReserveBytes
+            + (transcript.attachesTranscriptPDF ? Self.transcriptFileReserveBytes : 0)
+        let partition = budget.partition(clips: clips, reservedBytes: reserved)
         let plan = ClipDeliveryPlan(channel: channel, partition: partition)
 
-        var delivery = ReportDelivery(clipPlan: plan, clipItems: clips)
+        var delivery = ReportDelivery(clipPlan: plan, clipItems: clips, transcript: transcript)
         if let reportAttachmentsProvider {
             delivery.attachments = reportAttachmentsProvider()
         } else if let leases = try? exportSession(id: sessionId, formats: [.json, .pdf],
-                                                  clipPlan: plan) {
+                                                  clipPlan: plan, transcript: transcript) {
             delivery.attachments = leases.compactMap { lease in
                 switch lease.fileURL.pathExtension.lowercased() {
                 case "pdf": return DeliveryRequest.Attachment(url: lease.fileURL, kind: .pdf,
@@ -1082,6 +1101,14 @@ final class FieldSessionService: ObservableObject {
                                                                filename: record.reportFileStem + ".json")
                 default: return nil
                 }
+            }
+            if transcript.attachesTranscriptPDF,
+               let lease = try? SessionExporter.exportTranscriptPDF(
+                   sessionDir: sessionDirectory(sessionId: sessionId ?? record.sessionId),
+                   record: record) {
+                delivery.attachments.append(DeliveryRequest.Attachment(
+                    url: lease.fileURL, kind: .transcriptPDF,
+                    filename: record.reportFileStem + "-transcript.pdf"))
             }
         }
         let directory = photosDirectory(sessionId: sessionId ?? record.sessionId)
@@ -1102,6 +1129,12 @@ final class FieldSessionService: ObservableObject {
     /// an over-tight reserve is merely shared separately, while one squeezed in past a real limit
     /// is a report that silently fails to arrive.
     static let reportFileReserveBytes = 3_000_000
+
+    /// The room the internal transcript PDF is given, on top of the report's own, when it goes
+    /// (Plan HD). Stated rather than measured for the reason the reserve above is: a text-only PDF
+    /// of a long day is well under it, and a stated figure is what makes a re-send reproduce the
+    /// partition.
+    static let transcriptFileReserveBytes = 500_000
 
     /// What a clip is called when it arrives: the job, not the device's uuid.
     static func clipFilename(record: WorkRecord, clip: JobMediaItem, index: Int) -> String {
@@ -1175,6 +1208,12 @@ final class FieldSessionService: ObservableObject {
             "attachments": AnyCodable(request.attachments.map(\.kind.rawValue)),
             "parts_requests": AnyCodable(request.partsRequestIds.count)
         ]
+        // Who the report was for, and which files carried what was said (Plan HD) — the fact an
+        // audit needs when a customer asks whether they were sent the conversation.
+        if let transcript = request.transcript {
+            payload["audience"] = AnyCodable(transcript.audience.rawValue)
+            payload["transcript"] = AnyCodable(transcript.auditTranscript)
+        }
         // The addresses themselves are not written down — how many there were is what an audit
         // needs, and a work order that leaks a customer's inbox is a different problem.
         if case .failed(let reason) = outcome { payload["error"] = AnyCodable(reason) }
@@ -2516,9 +2555,13 @@ final class FieldSessionService: ObservableObject {
     /// Defaults to the active session, falling back to the most recent. Returns one protected
     /// staging lease per artifact; holding a lease is what keeps its file.
     @discardableResult
+    ///
+    /// - Parameter transcript: who the record is for (Plan HD). Nil is an export taken for the
+    ///   record — the office's, under the organisation's policy.
     func exportSession(id: String? = nil,
                        formats: Set<SessionExporter.Format> = [.json, .pdf],
-                       clipPlan: ClipDeliveryPlan = .undecided) throws -> [StagedExportLease] {
+                       clipPlan: ClipDeliveryPlan = .undecided,
+                       transcript: ReportTranscriptPolicy.Decision? = nil) throws -> [StagedExportLease] {
         guard let sessionId = id ?? activeSession?.id ?? history.first?.id else {
             throw FieldSessionError.noActiveSession
         }
@@ -2527,7 +2570,9 @@ final class FieldSessionService: ObservableObject {
         let leases = try SessionExporter.export(sessionDir: dir, formats: formats,
                                                 sessionOverride: liveSnapshot,
                                                 clipPlan: clipPlan,
-                                                reportAlreadySent: reportWasSent(sessionId: sessionId))
+                                                reportAlreadySent: reportWasSent(sessionId: sessionId),
+                                                transcript: transcript
+                                                    ?? .archive(context: reportTranscriptContext()))
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
         // The op records which formats were produced, never their paths: a staged artifact's path

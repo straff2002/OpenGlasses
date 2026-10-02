@@ -825,6 +825,7 @@ extension SettingKey {
         case .organizationAllowsUnsignedVaults: return "Vaults from a link must be signed"
         case .organizationRequiresSignedJobFiles: return "Job files must be signed by your organisation"
         case .organizationRequiresCustomerSignOff: return "Every job asks for the customer's signature"
+        case .organizationForbidsCustomerTranscript: return "Transcripts go only to the office addresses it set up"
         case .privacyFilterEnabled: return "Bystander face blur is always on"
         case .remoteInvokeObserveEnabled: return "Remote status requests are off"
         case .remoteInvokeOutputEnabled: return "Remote speak-and-display requests are off"
@@ -842,6 +843,7 @@ extension SettingKey {
         case .organizationJobSigningKey: return "The key its job files are signed with"
         case .organizationJobReportChannel: return "Where a spoken \"send it\" goes"
         case .organizationReportRecipients: return "Who job reports are addressed to"
+        case .organizationReportTranscriptInternal: return "Whether reports to the office carry the transcript"
         default: return rawValue
         }
     }
