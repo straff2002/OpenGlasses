@@ -1,7 +1,7 @@
 # Plan HD — Who Receives the Job Transcript
 
-**Status:** 🚧 In progress — P0 (pure policy) + P1 (exporter, delivery, send sheet, organisation keys)
-in one PR. **Owed (device):** a report to the office address and one to a customer address through
+**Status:** ✅ Shipped 2026-10-02 — P0 (pure policy) + P1 (exporter, delivery, send sheet,
+organisation keys) in one PR. **Owed (device):** a report to the office address and one to a customer address through
 the real Mail composer, with the attachments opened on a Mac; the send sheet with VoiceOver.
 
 **Related:** Plan [EM](EM-work-record-and-parts.md) (the job report, `DeliveryChannel`,
@@ -158,4 +158,32 @@ transcript goes to whoever is added.
 
 ## As built
 
-(Filled in when the PR lands.)
+- `ReportTranscriptPolicy` (`Sources/Services/FieldAssist/`) holds the audience rule, the decision
+  table, the sheet copy and the audit labels; `ReportTranscriptPolicy.Context.current()` is the one
+  adapter that reads `Config` (device Job reports recipients + the profile's report recipients and
+  its two keys). `FieldSessionService.reportTranscriptContext` is the seam tests replace.
+- `reportDelivery(for:canSendAttachments:sessionId:recipients:transcriptChoice:)` decides, reserves,
+  partitions, exports and — when chosen — appends the transcript PDF as
+  `DeliveryRequest.Attachment.Kind.transcriptPDF` (`job-<ref>-transcript.pdf`). `ReportDelivery` and
+  `DeliveryRequest` carry the decision; the confirmation adds "The transcript goes with it, for the
+  office." and the `report_sent` audit payload gains `audience` and `transcript` (`["json","pdf"]`
+  or empty) — never addresses.
+- The transcript PDF is `SessionExporter.writeTranscriptPDF`, built from
+  `JobTranscriptExport.logLines(from:)` — the job log's technician (via
+  `TranscriptOriginClassifier`) and assistant lines, the same ones the work order used to print.
+  Not the conversation thread: that can be locked or deleted, and the log is the job's record.
+- `exportSession(transcript:)` defaults to `ReportTranscriptPolicy.archive(context:)`, so the
+  field-session tool's export and the records owed on leaving an organisation follow the profile.
+- The send sheet is `ReportSendSheet` (`App/Views/Job/`), opened by "Send report…" on the open job
+  (Field Assist settings) and on a past job; the composer is staged from the sheet's `onDismiss`.
+  The Job tab UI audit now opens and audits it.
+- `privacy.html`'s Field Assist row says what a report carries of the conversation (effective date
+  2 October 2026).
+- Tests: `ReportTranscriptPolicyTests` (15), `ReportTranscriptProfileTests` (4),
+  `ReportTranscriptDeliveryTests` (10 — PDFKit text of the work order and the transcript PDF, the
+  JSON keys, an old record decoding, the reserve before clips and its reproducibility, the audit).
+  Full unit suite on the simulator: 8,747 tests, 0 failures (13 skipped).
+  `JobTabAccessibilityTests.testJobTabPastJobsAndOnePastJobPage` opens, audits and cancels the
+  send sheet.
+- The device fallback rebuilds only a report that carries transcript content, so a report that
+  carries none keeps today's clip partition when Mail is missing.

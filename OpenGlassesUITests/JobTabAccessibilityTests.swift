@@ -149,7 +149,8 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         audit(app, screen: "Job tab — sending a past job's report", deferring: formDeferrals)
 
         app.buttons["Cancel"].tap()
-        XCTAssertTrue(send.waitForExistence(timeout: 5), "cancelling the sheet sends nothing")
+        XCTAssertTrue(transcriptToggle.waitForNonExistence(timeout: 10),
+                      "Cancel closes the sheet")
     }
 
     // MARK: - A job in progress
