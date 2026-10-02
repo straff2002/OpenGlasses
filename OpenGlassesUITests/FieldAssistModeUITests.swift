@@ -86,12 +86,14 @@ final class FieldAssistModeUITests: AccessibilityAuditCase {
     // MARK: - The job-day card
 
     func testTheJobDayCardAndTheDayBehindIt() {
-        let app = launch([.configured, .seedFieldHistory, .seedFieldSends, .seedFieldDay])
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSends, .seedFieldDay, .seedMyDay])
         openTab("Avenkin", in: app)
 
         let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Today,")).firstMatch
         awaitScreen(card, named: "The job-day card", timeout: 90)
         save(app, named: "hb-job-day-collapsed")
+        XCTAssertFalse(app.buttons["Expand My Day"].exists || app.buttons["Collapse My Day"].exists,
+                       "with Field Assist on, My Day's own card gives way to the job-day card")
 
         let expand = app.buttons["Expand today's jobs"]
         if expand.exists {
@@ -104,6 +106,14 @@ final class FieldAssistModeUITests: AccessibilityAuditCase {
         awaitScreen(app.navigationBars["Today"], named: "The day view")
         save(app, named: "hb-job-day-view")
         audit(app, screen: "Job day view", deferring: formDeferrals)
+        // My Day is on in this launch, so its items are folded in below the job admin — one card,
+        // not two.
+        let myDay = app.staticTexts.matching(NSPredicate(format: "label IN %@", ["My Day", "MY DAY"])).firstMatch
+        // A section header is in the tree but not hittable, so this checks presence after a swipe
+        // rather than reach.
+        app.swipeUp()
+        XCTAssertTrue(myDay.waitForExistence(timeout: 10), "My Day's items are not folded into the day")
+        save(app, named: "hb-job-day-view-my-day")
 
         app.navigationBars["Today"].buttons["Done"].tap()
         awaitScreen(card, named: "The card, after Done")

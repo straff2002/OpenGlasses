@@ -24,8 +24,9 @@ struct JobDayHomeCard: View {
     @AppStorage("jobDayCollapsed") private var isCollapsed = true
 
     /// How much of the day the open card draws before "Open your day" carries the rest.
-    private static let cardJobs = 4
-    private static let cardTodos = 3
+    /// Kept small: the open card shares the zone with the grid, and the full day is one tap away.
+    private static let cardJobs = 3
+    private static let cardTodos = 2
     private static let cardPersonal = 2
 
     private var day: JobDay { feed.day }

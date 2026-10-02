@@ -419,9 +419,11 @@ struct FieldAssistTabRow: View {
                     .foregroundStyle(Color(.label))
                     .fixedSize(horizontal: false, vertical: true)
                 if let subtitle {
+                    // Explicit rather than `.secondary`: inside a `Menu` label the hierarchical
+                    // style picks up the tint, and the quieter line read as a link.
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color(.secondaryLabel))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
