@@ -289,18 +289,18 @@ its on-phone drafting now overlap the office's — see open question 4; GY is no
   trim after acknowledgement — and it is a change in posture that the consent sheet must state.
 - **Storage.** An hour of video is large; the caps and the refusal wording matter.
 
-## Open questions for Greig
+## Answered by Greig (2026-10-02)
 
-1. **Caps and retention defaults** — 2 GB a session, 8 GB unsynced in total, media trimmed 7 days
-   after acknowledgement, expiry prompt at 30 days. *Recommended as written; make all four
-   organisation-settable later.*
-2. **Blur at the phone by default for any tier?** *Recommended:* no — off unless the organisation
-   requires it; and the global privacy-filter switch should not silently change it either way.
-3. **HIPAA mode:** disabled (recommended) or allowed with blur required?
-4. **GY's phone review screen** — drop it in favour of the office, keeping GY's pure core and
-   draft store? *Recommended:* yes for organisations with an office; decide when GY is scheduled.
-5. **Does FX own items 1–5 in §4, or does this plan?** *Recommended:* FX owns the transport and
-   guard; HE owns the bundle contract and the phone state machine.
+1. **Caps and retention defaults:** 2 GB a session, 8 GB unsynced in total, media trimmed 7 days
+   after acknowledgement, expiry prompt at 30 days; nothing unacknowledged is ever deleted
+   automatically. Proposed numbers, to be measured in P4; organisation-settable later.
+2. **Blur at the phone:** off unless the organisation requires it. The global privacy-filter switch
+   does not change it either way, and the consent sheet says the footage goes to the office.
+3. **HIPAA mode:** job recording is disabled.
+4. **GY's phone review screen:** dropped in favour of the office for organisations that have one,
+   keeping GY's pure core and draft store. Settled when GY is scheduled; GY is not edited here.
+5. **Ownership of the five FX items (§4):** FX owns the transport and the outbound guard; this plan
+   owns the bundle contract and the phone's sync state machine.
 
 ## Out of scope
 
