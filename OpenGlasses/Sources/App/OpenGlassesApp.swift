@@ -238,19 +238,14 @@ struct OpenGlassesApp: App {
         // previous behaviour exactly intact.
         LocalModelSelection.store().migrateIfNeeded()
         // Put the enrolled organisation profile's ceiling in force (Plan CT PR 2) before anything
-        // reads a setting it may lock — the journey signals below among them. The stored document
-        // is re-verified here, never trusted from storage.
+        // reads a setting it may lock. The stored document is re-verified here, never trusted
+        // from storage.
         MainActor.assumeIsolated {
             OrgProfileManager.shared.loadAtLaunch()
         }
-        // Establish the settings-journey state before anything can change it, and in
-        // particular before onboarding runs (Plan DE): "has this app been used before"
-        // is only answerable at launch — once a first-time user finishes onboarding they
-        // look exactly like an upgrader, and an upgrader must never lose a visible
-        // setting. Runs once per install; a migrated device does no work here.
-        MainActor.assumeIsolated {
-            SettingsJourneyStore.shared.migrateIfNeeded(signals: SettingsJourneySignals.detect())
-        }
+        // The settings hub no longer folds categories away (Plan HA), so the journey state it kept
+        // — which rows were unfolded, which suggestions were spent — has no reader. Retire it.
+        UserDefaults.standard.removeObject(forKey: "settingsJourneyState")
         // Mint the deep-link trust token before any URL can be delivered, so a first-party link
         // is never rejected because the app hadn't got round to creating one.
         DeepLinkTrust.ensureToken()

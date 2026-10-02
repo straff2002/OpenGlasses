@@ -8,7 +8,6 @@ import XCTest
 enum LaunchState: String {
     case freshInstall = "-OGUITestFreshInstall"
     case configured = "-OGUITestConfigured"
-    case showAllSettings = "-OGUITestShowAllSettings"
     case seedCaptions = "-OGUITestSeedCaptions"
     case seedConversations = "-OGUITestSeedConversations"
     case reinstall = "-OGUITestReinstall"

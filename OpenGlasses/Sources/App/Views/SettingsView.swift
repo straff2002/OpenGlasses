@@ -4,10 +4,6 @@ import MWDATCore
 
 struct SettingsView: View {
     @ObservedObject var appState: AppState
-    /// The journey state (Plan DE): which categories are unfolded, and which
-    /// Discover card — if any — is currently being suggested. Visibility only:
-    /// nothing here gates a capability or changes a setting.
-    @ObservedObject private var journey = SettingsJourneyStore.shared
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The locked-settings lock glyph is decorative and drawn well past body size — scale it
@@ -15,14 +11,14 @@ struct SettingsView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var lockGlyphSize: CGFloat = 44
 
     @State private var simpleModeEnabled = Config.simpleModeEnabled
-    /// Plan CT 3b: the Field Assist edition's short list, lifted by an administrator session.
+    /// Plan CT 3b / HA C2: the Field Assist edition's lockdown, lifted by an administrator session.
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var orgProfile = OrgProfileManager.shared
-    private var restricted: Bool { adminGate.isRestricted }
     @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
     @AppStorage("activeModelId") private var activeModelId = ""
     @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
+    @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled = false
 
     // Owner gate (BM P10): Simple-Mode exit always asks; Settings entry asks when the flag is on.
     @State private var settingsOwnerGateEnabled = Config.settingsOwnerGateEnabled
@@ -30,49 +26,43 @@ struct SettingsView: View {
     @State private var exitGate = OwnerGateMachine()
     @State private var entryGate = OwnerGateMachine()
 
-    // The individual settings sections live in per-category screens (SettingsScreens.swift
-    // and SettingsJourneyScreens.swift); this view is the hub: the categories the user
-    // has, the ones they haven't met yet, plus the always-visible Simple Mode and About
-    // sections.
+    // The individual settings live in per-category screens (SettingsScreens.swift and
+    // SettingsCategoryScreens.swift); this view is the hub (Plan HA): the hero device card,
+    // every category in `SettingsCatalog` order, then Simple Mode and About.
     //
-    // Which categories are rows and which are Discover cards is decided entirely by
-    // `CapabilityCatalog` + `SettingsJourneyState` (Plan DE) — folded is never locked,
-    // there is no gate of any kind, and the accessibility surface is structurally
-    // incapable of being folded away. Simple Mode is orthogonal and untouched: it hides
-    // the owner-only configuration surface for handing the device to someone else, and
-    // unfolding a card never changes what it hides.
+    // Every category is always a row. Simple Mode filters the owner-configuration rows out; an
+    // organisation's lockdown (`SettingsLockPolicy`) never removes a row — it marks it read-only
+    // with the organisation named, and an administrator session unlocks it.
 
-    private var visibleCategories: [CapabilityCategory] {
-        EditionPresentation.categories(journey.state.visibleCategories(simpleMode: simpleModeEnabled),
-                                       restricted: restricted)
+    private var visibleCategories: [SettingsCategory] {
+        SettingsCatalog.visible(simpleMode: simpleModeEnabled)
     }
 
-    private var discoverCards: [CapabilityCategory] {
-        journey.state.discoverCards(simpleMode: simpleModeEnabled)
+    private var organization: String { ManagedLockReason.organization }
+
+    private var heroDevice: SettingsHeroDevice {
+        SettingsHeroDevice.resolve(phase: appState.glassesPhase, glassesAdded: appState.glassesAdded)
     }
 
     var body: some View {
-        // The hub is an OGDesign page (Plan CL): hero device card, then one
-        // grouped card of category rows, each with a live value summary, then the
-        // Discover section for everything still folded.
+        // The hub is an OGDesign page (Plan CL): hero device card, then one grouped card of
+        // category rows, each with a live value summary.
         OGScrollPage {
-            // The device in use (Plan FY P2): the glasses once they are added, and this phone
-            // until then — a phone-only hub never opens on a pair of glasses that are "Not
-            // connected". Glasses are added under Devices & Privacy → Hardware & Privacy.
-            if OnboardingFlow.phoneIsTheDevice(glassesConnected: appState.isConnected,
-                                               glassesAdded: appState.glassesAdded) {
+            // The device in use (Plan HA C3): the glasses while they are attached — connected,
+            // paused or connecting — and this iPhone otherwise. Glasses settings stay one row away
+            // under Devices & Privacy › Glasses whichever card is showing.
+            switch heroDevice {
+            case .phone:
                 OGHeroDeviceCard(
                     title: "This iPhone",
-                    status: "In use",
+                    status: heroDevice.phoneStatus ?? "In use",
                     dot: OGTheme.ok,
                     chips: [("Voice", true), ("Chat", true), ("Camera", true)],
                     symbol: "iphone"
                 )
-            } else {
+            case .glasses:
                 OGHeroDeviceCard(
                     title: appState.glassesService.deviceName ?? "Meta Glasses",
-                    // The link's own state: a pair in its case is "Not connected", and its battery
-                    // (nil unless the link is up) is not shown as though it were live.
                     status: glassesStatus,
                     dot: appState.isConnected ? OGTheme.ok
                         : (appState.glassesPhase.isConnecting ? OGTheme.warn : Color.secondary),
@@ -92,56 +82,13 @@ struct SettingsView: View {
             OGSection {
                 ForEach(Array(visibleCategories.enumerated()), id: \.element.id) { index, category in
                     if index > 0 { OGDivider() }
-                    categoryLink(destination: destination(for: category)) {
-                        OGRow(
-                            category.title,
-                            icon: category.icon,
-                            mutedIcon: category.mutedIcon,
-                            subtitle: category.subtitle,
-                            value: summary(for: category),
-                            alwaysStacksValue: true
-                        )
-                    }
+                    categoryRow(category)
                 }
             }
 
-            // The edition keeps Language, which otherwise lives inside Look & Feel.
-            if restricted {
-                OGSection {
-                    categoryLink(destination: LanguageSettingsView()) {
-                        OGRow("Language", icon: "globe")
-                    }
-                }
-            }
-
-            // Discover, Show everything and Simple Mode are the owner's configuration surface: the
-            // edition hides them behind the administrator with everything else.
-            if !restricted {
-                discoverSection
-            }
-
-            // MARK: Simple Mode (always visible outside the edition, so the owner can leave it — behind the owner gate)
-            if !restricted {
-                OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
-                    OGRow(
-                        "Simple Mode",
-                        isOn: Binding(
-                            get: { simpleModeEnabled },
-                            set: { requestSimpleModeChange(to: $0) }
-                        ),
-                        icon: "dial.low"
-                    )
-                    OGDivider()
-                    OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
-                        .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
-                    if exitGate.lastFailed {
-                        OGDivider()
-                        OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                    }
-                }
-            }
+            // MARK: Simple Mode (the owner's hand-off switch, behind the owner gate). Under an
+            // organisation's edition it is locked with everything else the owner configures.
+            simpleModeSection
 
             OGSection(
                 header: "About",
@@ -198,119 +145,75 @@ struct SettingsView: View {
         }
         .onAppear {
             if settingsLocked { authenticateSettingsEntry() }
-            // One of the four unlock moments is answerable from the hub itself:
-            // whether the connected glasses have a display. No service needs to
-            // report it, and the policy still spends the moment exactly once.
-            if appState.glassesDisplay.hasDisplayCapability {
-                journey.record(.displayGlassesConnected)
-            }
-        }
-        // The unlock moment is a highlight that *arrives* — a card further down the page grows a
-        // coral border and a sentence, sometimes while the user is already reading elsewhere on
-        // this screen. Unfolding it was announced from the start; the moment it appeared was not,
-        // which made the one thing the whole mechanism exists for the one thing a VoiceOver user
-        // could only find by accident. Keyed off the pending set, so it says its piece exactly
-        // once per moment — the store's `deliveredMoments` guard means a moment cannot re-enter.
-        .onChange(of: journey.state.pendingMoments) { old, new in
-            announceNewSuggestions(added: new.subtracting(old))
         }
     }
 
-    /// Say what just lit up in Discover, and that it can be waved away.
-    private func announceNewSuggestions(added: Set<String>) {
-        guard !added.isEmpty else { return }
-        let lines = discoverCards.compactMap { category -> String? in
-            guard let suggestion = journey.pendingSuggestion(forCategory: category.id),
-                  added.contains(suggestion.moment.rawValue) else { return nil }
-            // The notes are written as display copy and don't all end in a full stop — spoken,
-            // that runs the pitch straight into the next sentence.
-            let note = suggestion.note.hasSuffix(".") ? suggestion.note : suggestion.note + "."
-            return "\(category.title). \(note)"
-        }
-        guard let first = lines.first else { return }
-        SessionAnnouncer.say("New in Discover: \(first) Dismiss it from the card.")
-    }
+    // MARK: - Simple Mode
 
-    // MARK: - Discover (Plan DE)
+    private var ownerControlsLocked: Bool { adminGate.isLocked(.ownerControls) }
 
-    /// Folded capabilities, pitched rather than listed, plus the one switch that
-    /// opens the lot. Absent entirely once there is nothing left to discover.
-    @ViewBuilder
-    private var discoverSection: some View {
-        if !discoverCards.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("DISCOVER")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 20)
-                    .accessibilityLabel("Discover")
-                    .accessibilityAddTraits(.isHeader)
-
-                ForEach(discoverCards) { category in
-                    let suggestion = journey.pendingSuggestion(forCategory: category.id)
-                    OGDiscoverCard(
-                        title: category.title,
-                        pitch: category.pitch,
-                        icon: category.icon,
-                        suggestion: suggestion?.note,
-                        unfold: { unfold(category) },
-                        dismissSuggestion: suggestion.map { s in { journey.dismiss(s.moment) } }
-                    )
-                }
-
-                // On a managed phone "nothing here is locked" stops being true (Plan CT PR 2).
-                Group {
-                    if PolicyEnvelope.isManaged {
-                        Text("Tap one to add it to Settings for good. This list only decides what is shown — settings your organisation locks stay locked wherever they appear.")
-                    } else {
-                        Text("Tap one to add it to Settings for good. Nothing here is locked — this only decides what the list shows.")
-                    }
-                }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 2)
+    private var simpleModeSection: some View {
+        OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, Field Assist and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
+            OGRow(
+                "Simple Mode",
+                isOn: Binding(
+                    get: { simpleModeEnabled },
+                    set: { requestSimpleModeChange(to: $0) }
+                ),
+                icon: "dial.low"
+            )
+            .disabled(ownerControlsLocked)
+            OGDivider()
+            OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
+                .disabled(ownerControlsLocked)
+                .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
+            if ownerControlsLocked {
+                OGDivider()
+                ManagedLockNote(organization: organization)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            }
+            if exitGate.lastFailed {
+                OGDivider()
+                OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
             }
         }
-
-        if !discoverCards.isEmpty || journey.state.showsEverything {
-            OGSection(
-                footer: "Shows every category at once, including the ones you haven't opened yet."
-            ) {
-                OGRow(
-                    "Show everything",
-                    isOn: Binding(
-                        get: { journey.state.showsEverything },
-                        set: { on in
-                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                                journey.setShowsEverything(on)
-                            }
-                        }
-                    ),
-                    icon: "square.grid.2x2"
-                )
-            }
-        }
-    }
-
-    /// One tap, permanent, no gate. The announcement matters because the change
-    /// is a card *becoming* a row further up the page — a sighted user sees the
-    /// list grow, and VoiceOver otherwise would not.
-    ///
-    /// It says *where*, not just *what*: the card the user was standing on disappears in the
-    /// same beat, so "added to Settings" left them holding a focus that no longer exists with no
-    /// idea which direction the row went.
-    private func unfold(_ category: CapabilityCategory) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
-            journey.unfold(category.id)
-        }
-        AccessibilityNotification
-            .Announcement("\(category.title) added to the Settings list above.")
-            .post()
     }
 
     // MARK: - Category rendering
+
+    /// One hub row. A category the organisation locked is still a row: its value says so, and its
+    /// screen opens read-only (or with its locked rows read-only) under a "Managed by" banner.
+    @ViewBuilder
+    private func categoryRow(_ category: SettingsCategory) -> some View {
+        let lock = adminGate.lock(category.id)
+        categoryLink(destination: lockedDestination(for: category.id, lock: lock)) {
+            OGRow(
+                category.title,
+                icon: category.icon,
+                mutedIcon: category.mutedIcon,
+                subtitle: category.subtitle,
+                value: lock.isLocked ? "Managed" : summary(for: category.id),
+                alwaysStacksValue: true
+            )
+        }
+        .accessibilityHint(lock.isLocked ? Text("Managed by \(organization). Opens read only.") : Text(""))
+    }
+
+    @ViewBuilder
+    private func lockedDestination(for id: SettingsCategoryID, lock: CategoryLock) -> some View {
+        switch lock {
+        case .open:
+            destination(for: id)
+        case .readOnly:
+            destination(for: id).managedReadOnly(organization)
+        case .partlyOpen:
+            // The screen locks its own rows (it asks `AdminGate` per area); the banner says why.
+            destination(for: id).managedPartlyLocked(organization)
+        }
+    }
 
     /// The hero card's glasses status, from the link's phase.
     private var glassesStatus: String {
@@ -323,54 +226,55 @@ struct SettingsView: View {
     }
 
     /// The live value summary beside a category row, where one is worth showing.
-    private func summary(for category: CapabilityCategory) -> String? {
-        switch category.id {
-        case CapabilityCatalog.voice: return "“\(displayedWakePhrase)”"
-        case CapabilityCatalog.intelligence: return displayedActiveModelName
-        case CapabilityCatalog.glasses:
+    private func summary(for id: SettingsCategoryID) -> String? {
+        switch id {
+        case .voice: return "“\(displayedWakePhrase)”"
+        case .intelligence: return displayedActiveModelName
+        case .devices:
             if appState.glassesPaused { return "Paused" }
             switch appState.glassesPhase {
             case .connected: return "Connected"
             case .connecting: return "Connecting…"
             case .noGlassesAdded, .addedDisconnected: return nil
             }
-        case CapabilityCatalog.lookAndFeel: return appearance.capitalized
-        case CapabilityCatalog.accessibility: return Config.accessibilityModeEnabled ? "On" : nil
-        case CapabilityCatalog.display: return glassesDisplayEnabled ? "On" : nil
-        case CapabilityCatalog.advanced: return "Test panel"
-        default: return nil
+        case .fieldAssist: return fieldAssistEnabled ? "On" : nil
+        case .lookAndFeel: return appearance.capitalized
+        case .accessibility: return Config.accessibilityModeEnabled ? "On" : nil
+        case .display: return glassesDisplayEnabled ? "On" : nil
+        case .advanced: return "Test panel"
+        case .tools, .connections, .capture, .diagnostics: return nil
         }
     }
 
+    /// Every category's screen. Exhaustive on purpose: a category added to `SettingsCategoryID`
+    /// does not compile until it has somewhere to go.
     @ViewBuilder
-    private func destination(for category: CapabilityCategory) -> some View {
-        switch category.id {
-        case CapabilityCatalog.voice:
-            VoiceTriggersSettingsScreen(appState: appState)
-        case CapabilityCatalog.appleIntegrations:
-            AppleIntegrationsSettingsScreen()
-        case CapabilityCatalog.accessibility:
-            AccessibilitySettingsView().environmentObject(appState)
-        case CapabilityCatalog.glasses:
-            GlassesPrivacySettingsScreen(appState: appState)
-        case CapabilityCatalog.lookAndFeel:
-            LookFeelSettingsScreen()
-        case CapabilityCatalog.diagnostics:
-            DiagnosticsSupportView(appState: appState)
-        case CapabilityCatalog.capture:
-            CaptureStreamingSettingsScreen(appState: appState)
-        case CapabilityCatalog.display:
-            DisplayHUDSettingsScreen(appState: appState)
-        case CapabilityCatalog.intelligence:
+    private func destination(for id: SettingsCategoryID) -> some View {
+        switch id {
+        case .intelligence:
             AIPersonalitySettingsScreen(appState: appState)
-        case CapabilityCatalog.tools:
+        case .voice:
+            VoiceTriggersSettingsScreen(appState: appState)
+        case .devices:
+            GlassesPrivacySettingsScreen(appState: appState)
+        case .accessibility:
+            AccessibilitySettingsView().environmentObject(appState)
+        case .fieldAssist:
+            FieldAssistSettingsView().environmentObject(appState)
+        case .lookAndFeel:
+            LookFeelSettingsScreen()
+        case .tools:
             ToolsActionsSettingsScreen(appState: appState)
-        case CapabilityCatalog.advanced:
-            AdvancedSettingsScreen(appState: appState)
-        case CapabilityCatalog.connections:
+        case .connections:
             ConnectionsSettingsScreen(appState: appState)
-        default:
-            EmptyView()
+        case .capture:
+            CaptureStreamingSettingsScreen(appState: appState)
+        case .display:
+            DisplayHUDSettingsScreen(appState: appState)
+        case .advanced:
+            AdvancedSettingsScreen(appState: appState)
+        case .diagnostics:
+            DiagnosticsSupportView(appState: appState)
         }
     }
 
@@ -771,169 +675,15 @@ struct HardwarePrivacyView: View {
     @State private var historyRetentionDays = Config.historyRetentionDays
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
-    @State private var glassesUpdateError: String?
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
-    // Plan GU — where the wake word waits, and how replies play.
-    @State private var wakeListenMic = Config.wakeListenMic
-    @State private var replyAudioMode = Config.replyAudioMode
-    @State private var replySwitchTimeLimit = Config.replySwitchTimeLimit
-
-    /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
-    /// swallowed: the whole point is that the user could not find this screen on their own, so a
-    /// button that silently does nothing is worse than the copy it replaced.
-    @MainActor
-    private func openGlassesAppUpdate() async {
-        glassesUpdateError = nil
-        guard WearablesBootstrap.ensureConfigured() else {
-            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
-            return
-        }
-        do { try await Wearables.shared.openDATGlassesAppUpdate() }
-        catch { glassesUpdateError = "Couldn't open the update screen: \(error.localizedDescription)" }
-    }
-
-    @MainActor
-    private func openGlassesFirmwareUpdate() async {
-        glassesUpdateError = nil
-        guard WearablesBootstrap.ensureConfigured() else {
-            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
-            return
-        }
-        do { try await Wearables.shared.openFirmwareUpdate() }
-        catch { glassesUpdateError = "Couldn't open the firmware screen: \(error.localizedDescription)" }
-    }
 
     private var displayedDisplayBackendName: String {
         DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
     }
 
-    /// Plan CQ P0: what class of device is connected, resolved from the three things that
-    /// actually determine it. Re-read on each render — this view is cheap and the answer
-    /// changes when glasses connect or drop.
-    private var connectedTier: GlassesTier? {
-        GlassesTierPolicy.resolve(
-            cameraCapabilities: appState.cameraService.activeCapabilities,
-            displayBackendActive: appState.glassesDisplay.isDisplayActive,
-            audioPortNames: (AVAudioSession.sharedInstance().availableInputs ?? []).map(\.portName)
-        )
-    }
-
-    /// What the chosen "Reply audio" means, in the wearer's terms.
-    private var replyAudioFootnote: String {
-        switch replyAudioMode {
-        case .callQuality:
-            return "Replies play over the glasses' call link, so you can always interrupt by speaking or saying stop."
-        case .fullQuality:
-            return "Replies play in full quality. To interrupt one, speak towards your iPhone — the glasses' mic is off while it plays. Each follow-up waits a moment longer while the glasses switch back."
-        case .automatic:
-            return "Full quality when your glasses switch fast enough, measured on these glasses; otherwise call quality. Until the switch has been measured, replies use call quality."
-        }
-    }
-
     var body: some View {
         Form {
-            // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
-            // Any glasses that pair as a Bluetooth headset already run the whole voice loop, so
-            // say what the connected pair CAN do rather than letting the user find the limits
-            // one failed feature at a time.
-            Section {
-                // Plan GU: first in the glasses section, so it can be flipped per situation —
-                // phone in a bag → the glasses.
-                Picker("Listen for the wake word on", selection: $wakeListenMic) {
-                    ForEach(WakeListenMic.allCases) { mic in
-                        Text(mic.label).tag(mic)
-                    }
-                }
-                .onChange(of: wakeListenMic) { _, newValue in
-                    Config.setWakeListenMic(newValue)
-                    appState.restartWakeWordIfDirect()
-                }
-                Text("iPhone keeps music and podcasts on your glasses in full quality and saves their battery. Choose Same as Microphone if your phone is usually in a bag.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("Reply audio", selection: $replyAudioMode) {
-                    ForEach(ReplyAudioMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .onChange(of: replyAudioMode) { _, newValue in
-                    Config.setReplyAudioMode(newValue)
-                }
-                if replyAudioMode == .automatic {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Switch time limit")
-                            Spacer()
-                            Text(String(format: "%.1f s", replySwitchTimeLimit))
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        Slider(value: $replySwitchTimeLimit,
-                               in: ReplyRoutePolicy.thresholdRange, step: 0.1)
-                            .accessibilityLabel("Switch time limit")
-                            .accessibilityValue(String(format: "%.1f seconds", replySwitchTimeLimit))
-                            .onChange(of: replySwitchTimeLimit) { _, newValue in
-                                Config.setReplySwitchTimeLimit(newValue)
-                            }
-                    }
-                }
-                Text(replyAudioFootnote)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if let tier = connectedTier {
-                    LabeledContent("Device class", value: tier.label)
-                    Text(tier.summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    LabeledContent(
-                        "Camera",
-                        value: CameraFeatureGate.summary(given: appState.cameraService.capabilities)
-                    )
-                    let blocked = CameraFeatureGate.unavailableFeatures(
-                        given: appState.cameraService.activeCapabilities ?? .unavailable
-                    )
-                    if !blocked.isEmpty {
-                        Text("Unavailable on these glasses: "
-                             + blocked.map(\.displayName).joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("No glasses detected. Pair them in iOS Settings — any glasses that "
-                         + "connect as a Bluetooth headset can run the voice features.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                // Device-traced 2026-08-23: streaming was refused with
-                // `datAppOnTheGlassesUpdateRequired`, and our copy said "install the pending
-                // update" — but Meta AI's update screen showed none, because the glasses-side DAT
-                // app is not the same artefact as the firmware or the phone app. The SDK has
-                // deep links straight to both flows; we were telling people to go looking instead
-                // of taking them there.
-                InfoToggle(
-                    title: "Sleep When Quiet, Even While Worn",
-                    isOn: Binding(
-                        get: { Config.sleepWhenQuietWhileWorn },
-                        set: { Config.sleepWhenQuietWhileWorn = $0 }
-                    ),
-                    info: "Only while the wake word listens on the glasses' own mic (Listen for the wake word on: Same as Microphone, with Glasses Mic) — that is what keeps their mic open. Listening on the iPhone holds nothing open on the glasses, so they never sleep and the wake word keeps listening on the phone when you take them off. Glasses you take off sleep after 30 seconds and wake when you put them back on. Glasses you're wearing stay awake however quiet it gets, unless this is on: then they also sleep after \(Config.autoSleepMinutes) minutes of silence, and wake when you take them off and put them on again, or tap to talk. Glasses that can't tell whether they're worn always sleep after that much silence. With push-to-talk, or listening off, nothing is held open and the glasses never sleep."
-                )
-                Button("Update Glasses App") { Task { await openGlassesAppUpdate() } }
-                Button("Update Glasses Firmware") { Task { await openGlassesFirmwareUpdate() } }
-                if let glassesUpdateError {
-                    Text(glassesUpdateError)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } header: {
-                Text("Connected Glasses")
-            } footer: {
-                Text("The glasses run their own companion app for developer access, updated separately from the firmware and from the Meta AI app on your phone. If streaming is refused as needing an update, this is usually the one to open.")
-            }
-
             // Plan CL P3: unified capture route. Headset mode exists because the
             // glasses' hands-free mic link makes Display glasses put their call
             // screen over the lens HUD — earbuds carry mic + voice, lens stays free.
@@ -944,7 +694,7 @@ struct HardwarePrivacyView: View {
                     }
                 }
             } footer: {
-                Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, at the top of this page.")
+                Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, under Devices & Privacy › Glasses.")
             }
 
             Section {
@@ -1202,6 +952,176 @@ struct HardwarePrivacyView: View {
             }
         }
         .navigationTitle("Hardware & Privacy")
+    }
+}
+
+// MARK: - Glasses Sub-View
+
+/// Devices & Privacy › Glasses (Plan HA C3): the settings that belong to the glasses themselves —
+/// where the wake word waits, how replies play, sleep, and the glasses-side updates. Reachable
+/// whether or not the glasses are attached, and open on an organisation's locked phone, where a
+/// technician still has to get the glasses working.
+struct GlassesSettingsView: View {
+    @ObservedObject var appState: AppState
+    @State private var glassesUpdateError: String?
+    // Plan GU — where the wake word waits, and how replies play.
+    @State private var wakeListenMic = Config.wakeListenMic
+    @State private var replyAudioMode = Config.replyAudioMode
+    @State private var replySwitchTimeLimit = Config.replySwitchTimeLimit
+
+    /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
+    /// swallowed: the whole point is that the user could not find this screen on their own, so a
+    /// button that silently does nothing is worse than the copy it replaced.
+    @MainActor
+    private func openGlassesAppUpdate() async {
+        glassesUpdateError = nil
+        guard WearablesBootstrap.ensureConfigured() else {
+            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
+            return
+        }
+        do { try await Wearables.shared.openDATGlassesAppUpdate() }
+        catch { glassesUpdateError = "Couldn't open the update screen: \(error.localizedDescription)" }
+    }
+
+    @MainActor
+    private func openGlassesFirmwareUpdate() async {
+        glassesUpdateError = nil
+        guard WearablesBootstrap.ensureConfigured() else {
+            glassesUpdateError = "Meta SDK unavailable — connect the glasses first."
+            return
+        }
+        do { try await Wearables.shared.openFirmwareUpdate() }
+        catch { glassesUpdateError = "Couldn't open the firmware screen: \(error.localizedDescription)" }
+    }
+
+    /// Plan CQ P0: what class of device is connected, resolved from the three things that
+    /// actually determine it. Re-read on each render — this view is cheap and the answer
+    /// changes when glasses connect or drop.
+    private var connectedTier: GlassesTier? {
+        GlassesTierPolicy.resolve(
+            cameraCapabilities: appState.cameraService.activeCapabilities,
+            displayBackendActive: appState.glassesDisplay.isDisplayActive,
+            audioPortNames: (AVAudioSession.sharedInstance().availableInputs ?? []).map(\.portName)
+        )
+    }
+
+    /// What the chosen "Reply audio" means, in the wearer's terms.
+    private var replyAudioFootnote: String {
+        switch replyAudioMode {
+        case .callQuality:
+            return "Replies play over the glasses' call link, so you can always interrupt by speaking or saying stop."
+        case .fullQuality:
+            return "Replies play in full quality. To interrupt one, speak towards your iPhone — the glasses' mic is off while it plays. Each follow-up waits a moment longer while the glasses switch back."
+        case .automatic:
+            return "Full quality when your glasses switch fast enough, measured on these glasses; otherwise call quality. Until the switch has been measured, replies use call quality."
+        }
+    }
+
+    var body: some View {
+        Form {
+            // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
+            // Any glasses that pair as a Bluetooth headset already run the whole voice loop, so
+            // say what the connected pair CAN do rather than letting the user find the limits
+            // one failed feature at a time.
+            Section {
+                // Plan GU: first in the glasses section, so it can be flipped per situation —
+                // phone in a bag → the glasses.
+                Picker("Listen for the wake word on", selection: $wakeListenMic) {
+                    ForEach(WakeListenMic.allCases) { mic in
+                        Text(mic.label).tag(mic)
+                    }
+                }
+                .onChange(of: wakeListenMic) { _, newValue in
+                    Config.setWakeListenMic(newValue)
+                    appState.restartWakeWordIfDirect()
+                }
+                Text("iPhone keeps music and podcasts on your glasses in full quality and saves their battery. Choose Same as Microphone if your phone is usually in a bag.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Reply audio", selection: $replyAudioMode) {
+                    ForEach(ReplyAudioMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .onChange(of: replyAudioMode) { _, newValue in
+                    Config.setReplyAudioMode(newValue)
+                }
+                if replyAudioMode == .automatic {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Switch time limit")
+                            Spacer()
+                            Text(String(format: "%.1f s", replySwitchTimeLimit))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $replySwitchTimeLimit,
+                               in: ReplyRoutePolicy.thresholdRange, step: 0.1)
+                            .accessibilityLabel("Switch time limit")
+                            .accessibilityValue(String(format: "%.1f seconds", replySwitchTimeLimit))
+                            .onChange(of: replySwitchTimeLimit) { _, newValue in
+                                Config.setReplySwitchTimeLimit(newValue)
+                            }
+                    }
+                }
+                Text(replyAudioFootnote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let tier = connectedTier {
+                    LabeledContent("Device class", value: tier.label)
+                    Text(tier.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LabeledContent(
+                        "Camera",
+                        value: CameraFeatureGate.summary(given: appState.cameraService.capabilities)
+                    )
+                    let blocked = CameraFeatureGate.unavailableFeatures(
+                        given: appState.cameraService.activeCapabilities ?? .unavailable
+                    )
+                    if !blocked.isEmpty {
+                        Text("Unavailable on these glasses: "
+                             + blocked.map(\.displayName).joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No glasses detected. Pair them in iOS Settings — any glasses that "
+                         + "connect as a Bluetooth headset can run the voice features.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Device-traced 2026-08-23: streaming was refused with
+                // `datAppOnTheGlassesUpdateRequired`, and our copy said "install the pending
+                // update" — but Meta AI's update screen showed none, because the glasses-side DAT
+                // app is not the same artefact as the firmware or the phone app. The SDK has
+                // deep links straight to both flows; we were telling people to go looking instead
+                // of taking them there.
+                InfoToggle(
+                    title: "Sleep When Quiet, Even While Worn",
+                    isOn: Binding(
+                        get: { Config.sleepWhenQuietWhileWorn },
+                        set: { Config.sleepWhenQuietWhileWorn = $0 }
+                    ),
+                    info: "Only while the wake word listens on the glasses' own mic (Listen for the wake word on: Same as Microphone, with Glasses Mic) — that is what keeps their mic open. Listening on the iPhone holds nothing open on the glasses, so they never sleep and the wake word keeps listening on the phone when you take them off. Glasses you take off sleep after 30 seconds and wake when you put them back on. Glasses you're wearing stay awake however quiet it gets, unless this is on: then they also sleep after \(Config.autoSleepMinutes) minutes of silence, and wake when you take them off and put them on again, or tap to talk. Glasses that can't tell whether they're worn always sleep after that much silence. With push-to-talk, or listening off, nothing is held open and the glasses never sleep."
+                )
+                Button("Update Glasses App") { Task { await openGlassesAppUpdate() } }
+                Button("Update Glasses Firmware") { Task { await openGlassesFirmwareUpdate() } }
+                if let glassesUpdateError {
+                    Text(glassesUpdateError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Connected Glasses")
+            } footer: {
+                Text("The glasses run their own companion app for developer access, updated separately from the firmware and from the Meta AI app on your phone. If streaming is refused as needing an update, this is usually the one to open.")
+            }
+
+        }
+        .navigationTitle("Glasses")
     }
 }
 

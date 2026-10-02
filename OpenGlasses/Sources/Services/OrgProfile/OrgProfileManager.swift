@@ -117,8 +117,9 @@ struct OrgProfileReview: Identifiable, Equatable {
         guard let policy = result.adminPolicy else { return [] }
         var lines: [String]
         switch policy.edition {
-        case .fieldAssist: lines = ["Shows only Field Assist, Job and a short Settings list"]
+        case .fieldAssist: lines = ["Shows Field Assist, Job and Settings, with most settings locked"]
         }
+        lines.append(contentsOf: policy.lockdown.reviewLines)
         switch policy.credentials.method {
         case .card: lines.append("Administrator settings open with your organisation's admin card")
         case .passcode: lines.append("Administrator settings open with your organisation's passcode")

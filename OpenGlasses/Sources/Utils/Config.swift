@@ -4542,12 +4542,22 @@ struct Config {
 
     // MARK: - Disabled Tools
 
+    /// The tools switched off, as every reader sees them: the person's own list plus any tool an
+    /// organisation's edition closed (Plan HA C2). Clamped on read — the stored list is theirs.
     static var disabledTools: Set<String> {
+        SettingsLockPolicy.effectiveDisabledTools(stored: storedDisabledTools, lockdown: PolicyEnvelope.lockdown)
+    }
+
+    private static var storedDisabledTools: Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: "disabledTools") ?? [])
     }
 
+    /// Writes the person's list. A list read through the clamp carries the closed tools; they keep
+    /// whatever the person had stored for them, so lifting the lockdown restores their own choice.
     static func setDisabledTools(_ tools: Set<String>) {
-        UserDefaults.standard.set(Array(tools), forKey: "disabledTools")
+        let storable = SettingsLockPolicy.storableDisabledTools(
+            written: tools, previouslyStored: storedDisabledTools, lockdown: PolicyEnvelope.lockdown)
+        UserDefaults.standard.set(Array(storable), forKey: "disabledTools")
     }
 
     static func isToolEnabled(_ name: String) -> Bool {

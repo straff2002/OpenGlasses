@@ -540,8 +540,8 @@ direction each may move, is in *Delivery order* below.
 **Two families are settable in the pin-*on* direction only, and one of those is a correction to this
 plan's own first cut.** The assistive surface may be turned on by a profile and never off — the
 decision was already recorded here, and it is now enforced in code:
-[`CapabilityCatalog`](../../OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift)
-builds the Accessibility category through `pinnedAssistive`, a constructor that deliberately exposes
+[`CapabilityCatalog`](../../OpenGlasses/Sources/Services/SettingsHub/SettingsCatalog.swift)
+(now `SettingsCatalog`, Plan [HA](HA-settings-hub-and-org-lockdown.md)) builds the Accessibility category through `pinnedAssistive`, a constructor that deliberately exposes
 no placement and no Simple Mode parameter, with the reason written above it. **The fingerspelling
 family is part of that surface**, not a general capability: `FingerspellingSettingsView` is presented
 from inside `AccessibilitySettingsView`, so listing it beside `mcpServerEnabled`, as the draft did,

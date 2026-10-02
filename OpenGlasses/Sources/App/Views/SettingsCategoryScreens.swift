@@ -1,15 +1,14 @@
 import SwiftUI
 
-// The category screens the settings journey introduces (Plan DE P2).
+// Category screens the settings hub links to (first written for Plan DE P2; the hub itself is
+// Plan HA's fixed list).
 //
-// None of these invent capability logic. Each one *presents* settings that
-// already exist — the same `Config` values, written through the same setters,
-// with the same permission prompt — so that a capability the hub now names has
-// somewhere to land without a single setting being moved.
+// None of these invent capability logic. Each one *presents* settings that already exist — the
+// same `Config` values, written through the same setters, with the same permission prompt.
 
 // MARK: - Works with your iPhone
 
-/// The Apple-app integrations, as an Everyday surface.
+/// The Apple-app integrations and My Day — Connections › Works with your iPhone (Plan HA).
 ///
 /// "Turn off the lights", "what's on my calendar", "remind me to…" are day-one
 /// voice-assistant expectations and the Apple set needs no configuration: iOS's
@@ -232,6 +231,12 @@ struct AppleIntegrationsSettingsScreen: View {
     }
 
     private func integrationRow(_ integration: Integration) -> some View {
+        integrationToggle(integration)
+            // Plan HA C2: a tool the organisation closed stays listed, off.
+            .disabled(SettingsLockPolicy.isToolClosed(integration.id, lockdown: PolicyEnvelope.lockdown))
+    }
+
+    private func integrationToggle(_ integration: Integration) -> some View {
         Toggle(isOn: Binding(
             get: { !disabledTools.contains(integration.id) },
             set: { setEnabled($0, for: integration.id) }

@@ -1,7 +1,8 @@
 import Foundation
 
-/// Plan CT 3b — what the Field Assist edition hides from the technician, as pure rules the views
-/// read and the tests pin.
+/// Plan CT 3b — the surfaces the Field Assist edition closes on the technician's phone (tabs and
+/// the model switcher), as pure rules the views read and the tests pin. Settings are locked rather
+/// than hidden — see `SettingsLockPolicy` (Plan HA C2).
 ///
 /// **Hidden is not forbidden.** These rules decide what is *drawn*; nothing here changes a setting
 /// or a ceiling, and the administrator session (`AdminGate`) lifts all of them. The kept lists are
@@ -27,19 +28,10 @@ enum EditionPresentation {
 
     // MARK: - Settings
 
-    /// The hub rows a technician keeps. Accessibility is here and also guaranteed below: it is the
-    /// pinned assistive surface, which no organisation profile may withhold.
-    static let keptCategoryIds: Set<String> = [
-        CapabilityCatalog.accessibility,
-        CapabilityCatalog.glasses,
-        CapabilityCatalog.diagnostics,
-    ]
-
-    /// The hub's rows under the edition.
-    static func categories(_ categories: [CapabilityCategory], restricted: Bool) -> [CapabilityCategory] {
-        guard restricted else { return categories }
-        return categories.filter { keptCategoryIds.contains($0.id) || $0.id == CapabilityCatalog.accessibility }
-    }
+    // The edition no longer hides settings categories: since Plan HA every category is a row on
+    // every phone, and the edition marks the ones it locks read-only, with the organisation named
+    // (`ManagedLockdown`, `SettingsLockPolicy`). A locked setting is visible; hiding it is how a
+    // technician ends up not knowing why the phone behaves as it does.
 
     // MARK: - The Voice tab
 

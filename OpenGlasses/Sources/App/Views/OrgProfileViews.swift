@@ -240,12 +240,8 @@ struct ManagedByOrganisationSection: View {
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
             OGSection(header: "Organisation") {
-                OGRow(
-                    "Managed by \(profile.organizationName)",
-                    icon: "building.2",
-                    subtitle: subtitle(profile: profile, record: record),
-                    showsChevron: false
-                ) { EmptyView() }
+                ManagedByOrganisationRow(organization: profile.organizationName,
+                                         subtitle: subtitle(profile: profile, record: record))
                 if let notice = leaseNotice(profile: profile, record: record) {
                     OGDivider()
                     OGNotice(text: notice.text, systemImage: notice.icon)
@@ -501,13 +497,7 @@ struct ManagedSettingNote: View {
 
     var body: some View {
         if PolicyEnvelope.isLocked(key), let name = PolicyEnvelope.organizationName {
-            Label {
-                Text("Set by \(name)")
-            } icon: {
-                Image(systemName: "lock.fill")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            ManagedLockNote(organization: name)
         }
     }
 }

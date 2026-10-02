@@ -1,8 +1,8 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan CT 3b — what the Field Assist edition hides from the technician. Hidden is not forbidden:
-/// these are drawing rules, lifted whole by an administrator session.
+/// Plan CT 3b — what the Field Assist edition closes for the technician (tabs, the model switcher).
+/// Hidden is not forbidden: these are drawing rules, lifted whole by an administrator session.
 final class EditionPresentationTests: XCTestCase {
 
     // MARK: - Tabs
@@ -32,29 +32,12 @@ final class EditionPresentationTests: XCTestCase {
 
     // MARK: - Settings
 
-    func testTheShortListIsAccessibilityGlassesAndDiagnostics() {
-        let everything = SettingsJourneyState(showsEverything: true).visibleCategories()
-        let kept = EditionPresentation.categories(everything, restricted: true).map(\.id)
-        XCTAssertEqual(Set(kept), [CapabilityCatalog.accessibility, CapabilityCatalog.glasses,
-                                   CapabilityCatalog.diagnostics])
-        XCTAssertFalse(kept.contains(CapabilityCatalog.voice), "Voice & Triggers is the administrator's")
-        XCTAssertEqual(EditionPresentation.categories(everything, restricted: false), everything)
-    }
-
-    func testAccessibilityIsNeverWithheld() {
-        for showsEverything in [false, true] {
-            for simpleMode in [false, true] {
-                let rows = SettingsJourneyState(showsEverything: showsEverything)
-                    .visibleCategories(simpleMode: simpleMode)
-                XCTAssertTrue(EditionPresentation.categories(rows, restricted: true)
-                    .contains { $0.id == CapabilityCatalog.accessibility })
-            }
-        }
-    }
-
-    func testAFeatureAddedLaterIsHiddenFromTechniciansByDefault() {
-        let later = CapabilityCategory.everyday(id: "brand-new", title: "New", icon: "sparkles", subtitle: "sub")
-        XCTAssertTrue(EditionPresentation.categories([later], restricted: true).isEmpty)
+    /// Since Plan HA the edition hides no settings category: locked rows stay rows, read-only.
+    func testTheEditionLocksSettingsRatherThanHidingThem() {
+        let rows = SettingsCatalog.visible(simpleMode: false)
+        XCTAssertEqual(rows.count, SettingsCategoryID.allCases.count)
+        XCTAssertTrue(rows.contains { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true) == .readOnly })
+        XCTAssertTrue(rows.contains { $0.id == .accessibility })
     }
 
     // MARK: - The Voice tab

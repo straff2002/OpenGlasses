@@ -73,8 +73,6 @@ final class DataStoreRegistryTests: XCTestCase {
             "a timer's start time and length",
         "OpenGlasses/Sources/Services/MyDay/MyDayDismissals.swift":
             "which cards the wearer dismissed today",
-        "OpenGlasses/Sources/Services/SettingsJourney/SettingsJourneyStore.swift":
-            "onboarding progress flags",
         "OpenGlasses/Sources/Services/ShortcutsCatalog.swift":
             "the app's own shortcut definitions, not the wearer's data",
 

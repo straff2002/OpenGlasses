@@ -35,6 +35,9 @@ import CoreImage
 //   revokedEnrolmentIds [..], settings {<SettingKey>: {value, disposition}},
 //   aiModel {provider, model, baseURL, name}  (the provider and model only — never a key),
 //   edition ("fieldAssist"), adminCard (the digest `admin-card` printed),
+//   lockdown {open: [category], lock: [category], closedTools: [tool]} (with an edition only;
+//     categories as in `settingsCategoryIds` below — everything not pinned open or opened is
+//     locked on the technician's phone),
 //   officeAuthority {organizationID, administratorPublicKey, transportPolicy}              optional
 //   officeAuthority emits schema 2. Older profiles remain schema 1. `transportPolicy` is
 //   `privateLan` or `automatic`; it is never a relay URL or a private key.
@@ -163,8 +166,22 @@ struct Input: Codable {
     let aiModel: AIModel?
     let edition: String?
     let adminCard: String?
+    let lockdown: LockdownSpec?
     let officeAuthority: OfficeAuthority?
 }
+
+/// Plan HA C2 — mirrors `ConfigProfile.LockdownSpec`.
+struct LockdownSpec: Codable {
+    let open: [String]?
+    let lock: [String]?
+    let closedTools: [String]?
+}
+
+/// `SettingsCategoryID` raw values, in hub order. Must stay identical to the app's enum.
+let settingsCategoryIds = ["intelligence", "voice", "devices", "accessibility", "field-assist", "look-and-feel",
+                           "tools", "connections", "capture", "display", "advanced", "diagnostics"]
+/// `ManagedLockdown.pinnedOpen` — never locked by an organisation.
+let pinnedOpenCategoryIds: Set<String> = ["accessibility", "look-and-feel", "diagnostics"]
 
 struct ConfigProfile: Codable {
     let format: String
@@ -185,6 +202,7 @@ struct ConfigProfile: Codable {
     let edition: String?
     let adminPasscode: PasscodeVerifier?
     let adminCard: String?
+    let lockdown: LockdownSpec?
     let officeAuthority: OfficeAuthority?
     let settings: [String: RawSetting]
 }
@@ -250,6 +268,21 @@ func check(_ input: Input) {
     }
     if input.edition == nil && (input.adminCard != nil || adminPasscodeRequested) {
         fail("error: an admin card or passcode only applies with an edition")
+    }
+    if let lockdown = input.lockdown {
+        if input.edition == nil { fail("error: a lockdown only applies with an edition") }
+        for id in (lockdown.open ?? []) + (lockdown.lock ?? []) where !settingsCategoryIds.contains(id) {
+            fail("error: lockdown names \(id), which is not a settings category (\(settingsCategoryIds.joined(separator: ", ")))")
+        }
+        for id in lockdown.lock ?? [] where pinnedOpenCategoryIds.contains(id) {
+            fail("error: \(id) is never locked by an organisation")
+        }
+        for tool in lockdown.closedTools ?? [] {
+            guard !tool.isEmpty, tool.count <= 64,
+                  tool.unicodeScalars.allSatisfy({ ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" }) else {
+                fail("error: lockdown.closedTools: \(tool) is not a tool name")
+            }
+        }
     }
     if let authority = input.officeAuthority {
         let id = authority.organizationID
@@ -475,6 +508,7 @@ case "make":
         edition: input.edition,
         adminPasscode: adminPasscodeRequested ? AdminSecrets.verifier(for: promptPasscode()) : nil,
         adminCard: input.adminCard?.lowercased(),
+        lockdown: input.lockdown,
         officeAuthority: input.officeAuthority,
         settings: input.settings ?? [:])
     guard let payload = try? encoder.encode(profile) else { fail("error: could not encode the profile") }

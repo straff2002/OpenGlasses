@@ -1,5 +1,9 @@
 # Plan DE — Settings Capability Journey
 
+> **Retired 2026-10-02 by Plan [HA](HA-settings-hub-and-org-lockdown.md):** the hub lists every
+> category in one fixed order; the folding, the Discover shelf, the unlock moments and the journey
+> store are removed.
+
 **Status:** ✅ **Shipped 2026-08-26** — P1 (pure core + invariants), P2 (hub + Discover) and P3
 (four contextual moments) landed in one PR, carrying DG P3's settings remainder with them.
 

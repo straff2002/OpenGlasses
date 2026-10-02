@@ -222,8 +222,13 @@ struct ToolsSettingsView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
+                                    // Plan HA C2: a tool the organisation closed stays listed, off.
+                                    if SettingsLockPolicy.isToolClosed(tool.name, lockdown: PolicyEnvelope.lockdown) {
+                                        ManagedLockNote(organization: ManagedLockReason.organization)
+                                    }
                                 }
                             }
+                            .disabled(SettingsLockPolicy.isToolClosed(tool.name, lockdown: PolicyEnvelope.lockdown))
                         }
                     }
                 }

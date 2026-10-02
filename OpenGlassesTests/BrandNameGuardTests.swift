@@ -231,7 +231,8 @@ final class BrandNameGuardTests: XCTestCase {
             Surface(path: "OpenGlasses/Sources/App/Views/SettingsView.swift",
                     from: "struct SettingsView: View {", upTo: "// MARK: - Tier Model Picker"),
             Surface(path: "OpenGlasses/Sources/App/Views/SettingsScreens.swift"),
-            Surface(path: "OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift"),
+            Surface(path: "OpenGlasses/Sources/Services/SettingsHub/SettingsCatalog.swift"),
+            Surface(path: "OpenGlasses/Sources/Services/SettingsHub/SettingsHeroDevice.swift"),
             Surface(path: "OpenGlasses/Sources/App/Views/ModelFormView.swift"),
             Surface(path: "OpenGlasses/Sources/App/Views/PromptInspectorView.swift"),
         ]
@@ -260,9 +261,21 @@ final class BrandNameGuardTests: XCTestCase {
             Allowed(path: "OpenGlasses/Sources/App/Views/SettingsView.swift",
                     snippet: "or hands-free with glasses.\\n\\nAvenkin ©",
                     reason: "The owner's device line (P2.1), verbatim, in the About footer."),
-            Allowed(path: "OpenGlasses/Sources/Services/SettingsJourney/CapabilityCatalog.swift",
-                    snippet: "static let glasses = \"glasses\"",
-                    reason: "A category id the hub routes on, never shown."),
+            Allowed(path: "OpenGlasses/Sources/Services/SettingsHub/SettingsCatalog.swift",
+                    snippet: "subtitle: \"Glasses, hardware, privacy, and medical compliance\"",
+                    reason: "Devices & Privacy is where the glasses' own settings live (Plan HA), so "
+                        + "its row names them first among the devices it holds."),
+            Allowed(path: "OpenGlasses/Sources/Services/SettingsHub/SettingsHeroDevice.swift",
+                    snippet: "\"In use · Glasses not connected\"",
+                    reason: "The iPhone card's status for someone whose setup includes glasses that "
+                        + "are not attached (Plan HA C3). A phone-only user sees \"In use\"."),
+            Allowed(path: "OpenGlasses/Sources/App/Views/SettingsScreens.swift",
+                    snippet: "Label(\"Glasses\", systemImage: \"eyeglasses\")",
+                    reason: "Devices & Privacy › Glasses: the row that opens the glasses' own settings "
+                        + "(Plan HA C3)."),
+            Allowed(path: "OpenGlasses/Sources/App/Views/SettingsScreens.swift",
+                    snippet: "updates for the glasses themselves.",
+                    reason: "The footer of the Glasses row, which is about the glasses."),
         ]
 
         /// Offsets of "glasses" standing as a word (any case) inside `range`. Glued to an

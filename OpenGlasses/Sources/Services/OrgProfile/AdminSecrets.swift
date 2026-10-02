@@ -4,8 +4,8 @@ import CommonCrypto
 
 /// Plan CT 3b — the single-purpose presentations a profile can name.
 enum ProfileEdition: String, Equatable, Sendable {
-    /// The technician sees Field Assist, Job and a short Settings list; the rest waits behind the
-    /// organisation's administrator gate.
+    /// The technician sees Field Assist, Job and Settings, with most settings locked read-only
+    /// (`ManagedLockdown`); changing them waits behind the organisation's administrator gate.
     case fieldAssist
 }
 
@@ -50,6 +50,8 @@ struct AdminCredentials: Equatable, Sendable {
 struct AdminPolicy: Equatable, Sendable {
     let edition: ProfileEdition
     let credentials: AdminCredentials
+    /// Plan HA C2 — what the edition locks on the technician's phone, and the tools it closes.
+    var lockdown: ManagedLockdown = .standard
 }
 
 /// Plan CT 3b — the cryptography behind the passcode verifier and the admin card, shared with

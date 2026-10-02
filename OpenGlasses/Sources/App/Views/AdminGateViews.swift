@@ -51,7 +51,7 @@ struct OrgAdministratorSection: View {
         if gate.keptCardIsStale {
             return "\(organization) has replaced its admin card. Scan the new one to make this an administrator phone again."
         }
-        return "Opens the settings \(organization) keeps out of the technician's view. Its locks still apply to everyone."
+        return "Unlocks the settings \(organization) manages on this phone, and the tabs it closes. Its fixed limits still apply to everyone."
     }
 
     /// Plan CT 3b: a supervisor's phone that kept the card. Never mistaken for a technician's.

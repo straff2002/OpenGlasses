@@ -1,47 +1,46 @@
 import XCTest
 
-/// The settings hub in both of its shapes, the accessibility category, and the model editor
+/// The settings hub, the accessibility category, and the model editor
 /// (Plan DF P4) — ranks 4 and 5 on the plan's checklist, plus the one long-tail screen a user is
 /// most likely to have to operate without sight: the editor for the model they talk to.
 final class SettingsAccessibilityTests: AccessibilityAuditCase {
 
-    // MARK: The hub, folded
+    // MARK: The hub
 
-    /// The first-run shape: Everyday categories as rows, everything else pitched as a Discover
-    /// card. Folded is never locked, and the accessibility category is structurally incapable of
-    /// being folded away — which is worth a gate of its own, below.
+    /// The hub's one shape (Plan HA): every category as a row, in a fixed order, no Discover shelf.
     ///
     /// There is deliberately no settle wait before the audit here. This case failed on the
     /// nightly of 2026-09-22 (run 35739123389) with 14 Dynamic Type "partially unsupported"
-    /// findings — one per title, subtitle and value of the seven category rows on screen, nothing
+    /// findings — one per title, subtitle and value of the category rows on screen, nothing
     /// else — and its screen recording shows the hub unchanged for the full five seconds between
-    /// the tab appearing and the audit starting. Nothing on this screen was moving; there is
-    /// nothing for `awaitStableFrame` to sample. The movement that produced the findings is the
+    /// the tab appearing and the audit starting. The movement that produced the findings is the
     /// audit's own Dynamic Type sweep, which reflows the whole page a dozen times in a few
     /// seconds and occasionally reads a step before the reflow lands. `audit(_:screen:)` now
     /// measures such a result a second time before believing it — see
     /// `AuditConfirmationPolicy` for the evidence and the rule.
-    func testSettingsHubFoldedPassesAccessibilityAudit() {
+    func testSettingsHubPassesAccessibilityAudit() {
         let app = launch([.configured])
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
-        awaitScreen(app.staticTexts["Discover"], named: "The Discover section")
-        audit(app, screen: "Settings hub — folded",
+        XCTAssertFalse(app.staticTexts["Discover"].exists, "the Discover shelf is gone (Plan HA)")
+        audit(app, screen: "Settings hub",
               deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 
-    /// The whole surface at once, which is a different tree: every foldable category becomes a row
-    /// and the Discover cards go away.
-    func testSettingsHubShowingEverythingPassesAccessibilityAudit() {
-        let app = launch([.configured, .showAllSettings])
+    /// Every category is a reachable row, whatever the phone has been used for.
+    func testEveryCategoryIsARow() {
+        let app = launch([.configured])
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
-        audit(app, screen: "Settings hub — showing everything",
-              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
+        for title in ["AI & Personality", "Voice & Triggers", "Devices & Privacy", "Accessibility",
+                      "Field Assist", "Look & Feel", "Tools & Actions", "Connections",
+                      "Capture & Streaming", "Display & HUD", "Advanced", "Diagnostics & Support"] {
+            XCTAssertTrue(scrollUntilFound(labelStartingWith: title, in: app).exists,
+                          "\(title) is not a row on the settings hub")
+        }
     }
 
-    /// Pinned, in both shapes. The one category a user reaching for assistive features must be
-    /// able to find is the one the journey must never be able to hide.
+    /// Pinned. The one category a user reaching for assistive features must be able to find.
     func testAccessibilityCategoryIsAlwaysAReachableRow() {
         let app = launch([.configured])
         openTab("Settings", in: app)
@@ -50,7 +49,7 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         let row = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label BEGINSWITH 'Accessibility'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 60),
-                      "The Accessibility category is not a row in the folded hub")
+                      "The Accessibility category is not a row in the hub")
     }
 
     // MARK: The accessibility category
@@ -185,9 +184,9 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
 
     // MARK: The model editor
 
-    /// Reached through a folded category, so the walk also exercises unfolding.
+    /// Reached through AI & Personality, the first row of the hub.
     func testModelEditorPassesAccessibilityAudit() {
-        let app = launch([.configured, .showAllSettings])
+        let app = launch([.configured])
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
 
@@ -201,91 +200,5 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
         awaitScreen(app.navigationBars["Edit Model"], named: "The model editor")
         audit(app, screen: "Settings — Model editor",
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry])
-    }
-
-    // MARK: Unfold, and where focus goes
-
-    /// Unfolding a Discover card moves the category from the bottom of the page to a row near the
-    /// top — the card the user is standing on disappears in the same beat.
-    ///
-    /// P2 deferred the focus question to a running UI, and this is it: what the test measures is
-    /// whether the unfolded category is *reachable as a row* immediately afterwards, which is the
-    /// precondition for handing focus to it. Where VoiceOver focus actually lands is not
-    /// observable from XCUITest — it reports the accessibility tree, not the screen reader's
-    /// cursor — so the plan records the measured limit rather than claiming a pass.
-    func testUnfoldingADiscoverCardMovesTheCategoryIntoTheList() {
-        let app = launch([.configured])
-        openTab("Settings", in: app)
-        awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
-        awaitScreen(app.staticTexts["Discover"], named: "The Discover section")
-
-        let unfold = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] 'AI & Personality'")
-        ).firstMatch
-        XCTAssertTrue(unfold.waitForExistence(timeout: 60),
-                      "The AI & Personality Discover card is not reachable")
-        unfold.tap()
-
-        let row = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label BEGINSWITH 'AI & Personality'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10),
-                      "The unfolded category never appeared as a row — there is nothing for "
-                      + "VoiceOver focus to be handed to")
-
-        // Hold the hub still before measuring it.
-        //
-        // Unfolding is an animated replacement: the card animates out of Discover while the row
-        // animates into the list above it. Two things follow from that, and both were measured
-        // rather than guessed — this case failed on CI in 3 runs out of 5 on an unchanged tree.
-        //
-        // The card sits under the finger when it is replaced, so the same tap can land a second
-        // time on the row that took its place, pushing the category screen. The audit then
-        // measures that screen instead of the hub: the findings came back as 'AI Models',
-        // 'Personality', 'How It Behaves' — the category's own copy, none of it this case's
-        // subject. So assert the hub is still what is on screen.
-        //
-        // And the audit must not run while the list is still moving. Waiting for the card's pitch
-        // to disappear was not enough, for two reasons. The old wait was guarded by
-        // `if pitch.exists`, so when the pitch had already gone at that instant it did not wait
-        // at all. And the pitch leaving only means the card has left the tree; the row taking its
-        // place is still animating into the list. After #475 the case still failed twice in seven
-        // main runs (6f08dfe2, 8de36b08 attempt 1), each time with the same 17 Dynamic Type
-        // findings on the hub's own category titles and subtitles. The hub was on screen, the
-        // runner image was the same as on the passes, and the failing runs were the slow ones
-        // (55 s and 63 s against 32–44 s). The audit was measuring text in mid-animation.
-        //
-        // So: wait for the card to be gone unconditionally, then for the unfolded row to stop
-        // moving, then for an anchor below both the list and Discover to stop moving. That
-        // anchor's position depends on the row being added above it and the card being removed
-        // above it, so it settles only when the whole page has.
-        //
-        // Those waits do their job, and the case still failed once more after #484 — PR run
-        // 35828512230 attempt 1 (2026-09-23), the same 17 Dynamic Type findings on the row copy
-        // and Discover pitches. Its timeline shows three identical frame samples on the row and
-        // three on the switch, and its screen recording shows the scrolled hub unchanged for the
-        // seven seconds before the audit began. The movement in the recording is all *after*
-        // that: the audit's own Dynamic Type sweep reflowing and re-scrolling the page at every
-        // size step, which is what the findings measure when a step is read before the reflow
-        // lands. That is not something this case can wait out, because the audit causes it. The
-        // remedy lives in `audit(_:screen:)`: a Dynamic-Type-only result is measured a second time
-        // on the still screen, and the second pass decides (`AuditConfirmationPolicy`).
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10),
-                      "Unfolding left the settings hub, so the audit would measure the pushed "
-                      + "category screen rather than the list the card moved into")
-
-        let pitch = app.staticTexts["Choose the model and give it a character."]
-        XCTAssertTrue(pitch.waitForNonExistence(timeout: 10),
-                      "The AI & Personality Discover card never left the page")
-
-        // With the card gone, this query can only resolve to the unfolded row.
-        awaitStableFrame(of: row, named: "The unfolded AI & Personality row")
-        awaitStableFrame(of: app.switches["Show everything"],
-                         named: "The Show everything switch below Discover")
-
-        XCTAssertTrue(app.navigationBars["Settings"].exists,
-                      "The settings hub was replaced while waiting for it to settle")
-
-        audit(app, screen: "Settings hub — after unfolding a category",
-              deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 }
