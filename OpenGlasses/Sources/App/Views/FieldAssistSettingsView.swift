@@ -48,6 +48,10 @@ struct FieldAssistSettingsView: View {
     @State private var readBack: [String]?
     /// Why a report could not be staged, in the policy's own words.
     @State private var deliveryError: String?
+    /// The send sheet, while it is up (Plan HD), and what was chosen on it. The report is staged
+    /// from the sheet's `onDismiss`, so the composer never tries to open under it.
+    @State private var sendPlan: ReportSendPlan?
+    @State private var chosenSend: (plan: ReportSendPlan, choice: ReportTranscriptPolicy.Choice)?
     /// How many of this job's records the queue is still holding. Read on appearance and when a
     /// delivery finishes rather than from the view body — the queue is SQLite, and the body is
     /// re-evaluated on every published change the session makes.
@@ -497,6 +501,15 @@ struct FieldAssistSettingsView: View {
         }
         .onChange(of: sessionService.lastDeliveryCancelled) { _, _ in refreshUnsentCount() }
         .onChange(of: sessionService.activeSession?.id) { _, _ in refreshUnsentCount() }
+        .sheet(item: $sendPlan, onDismiss: stageChosenReport) { plan in
+            ReportSendSheet(
+                plan: plan,
+                onContinue: { choice in
+                    chosenSend = (plan, choice)
+                    sendPlan = nil
+                },
+                onCancel: { sendPlan = nil })
+        }
         .sheet(item: $shareItem) { item in
             ShareSheet(items: item.items)
         }
@@ -718,7 +731,7 @@ struct FieldAssistSettingsView: View {
     /// Stage the default delivery — the same route the spoken "send the job report" takes, so the
     /// button and the sentence cannot end up doing different things.
     private func sendReport() {
-        guard let record = sessionService.workRecord() else { return }
+        guard sessionService.workRecord() != nil else { return }
         let policy = DeliveryPolicy(settings: Config.deliverySettings)
         guard let channel = policy.defaultChannel else {
             deliveryError = "No channel is allowed for job reports. Set one up under Job Reports above."
@@ -728,15 +741,26 @@ struct FieldAssistSettingsView: View {
         case .refused(let reason):
             deliveryError = reason
         case .allowed(let recipients):
-            let delivery = sessionService.reportDelivery(
-                for: channel,
-                canSendAttachments: channel == .messages
-                    ? ReportComposerAvailability.messagesCanAttach : true)
-            sessionService.stageDelivery(DeliveryRequest.make(
-                record: record, channel: channel, recipients: recipients,
-                attachments: delivery.attachments,
-                clipPlan: delivery.clipPlan, clipItems: delivery.clipItems))
+            // Who it is for and whether the conversation goes with it, first (Plan HD).
+            sendPlan = ReportSendPlan.make(channel: channel, recipients: recipients)
         }
+    }
+
+    /// The send sheet has gone: stage the report with what was chosen on it, if anything was.
+    private func stageChosenReport() {
+        guard let chosen = chosenSend else { return }
+        chosenSend = nil
+        guard let record = sessionService.workRecord() else { return }
+        let delivery = sessionService.reportDelivery(
+            for: chosen.plan.channel,
+            canSendAttachments: chosen.plan.canSendAttachments,
+            recipients: chosen.plan.recipients,
+            transcriptChoice: chosen.choice)
+        sessionService.stageDelivery(DeliveryRequest.make(
+            record: record, channel: chosen.plan.channel, recipients: chosen.plan.recipients,
+            attachments: delivery.attachments,
+            clipPlan: delivery.clipPlan, clipItems: delivery.clipItems,
+            transcript: delivery.transcript))
     }
 
     // MARK: - Equipment (the machine the session is working on)

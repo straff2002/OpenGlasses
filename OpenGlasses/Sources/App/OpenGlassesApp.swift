@@ -1173,12 +1173,14 @@ class AppState: ObservableObject, AppStateProtocol {
                         for: channel,
                         canSendAttachments: channel == .messages
                             ? ReportComposerAvailability.messagesCanAttach : true,
-                        sessionId: sessionId)
+                        sessionId: sessionId,
+                        recipients: recipients)
                     return DeliveryRequest.make(record: record, channel: channel,
                                                 recipients: recipients,
                                                 attachments: delivery.attachments,
                                                 clipPlan: delivery.clipPlan,
-                                                clipItems: delivery.clipItems)
+                                                clipItems: delivery.clipItems,
+                                                transcript: delivery.transcript)
                 }
             },
             deliverImmediately: { [weak self] request in
@@ -4037,10 +4039,30 @@ class AppState: ObservableObject, AppStateProtocol {
     /// account cannot show a mail composer, and the honest fallback is the share sheet with both
     /// files rather than a composer that never appears. Whatever happens, `completeDelivery` is
     /// what the record follows — a dismissed composer leaves it queued.
-    func presentDelivery(_ request: DeliveryRequest) {
+    func presentDelivery(_ staged: DeliveryRequest) {
         let session = FieldSessionService.shared
         session.clearStagedDelivery()
-        let resolution = ReportComposerAvailability.resolveOnDevice(request.channel)
+        let resolution = ReportComposerAvailability.resolveOnDevice(staged.channel)
+        // A report prepared for the office that has to leave by the share sheet instead is rebuilt
+        // for the share sheet (Plan HD): the technician picks where it goes there, so the audience
+        // follows the route it actually takes. Their own "going to my office" is carried over.
+        let request: DeliveryRequest
+        if resolution.channel != staged.channel, let transcript = staged.transcript,
+           transcript.carriesTranscript {
+            let delivery = session.reportDelivery(for: resolution.channel,
+                                                  sessionId: staged.sessionId,
+                                                  recipients: staged.recipients,
+                                                  transcriptChoice: transcript.choice)
+            request = DeliveryRequest.make(record: staged.record, channel: resolution.channel,
+                                           recipients: staged.recipients,
+                                           attachments: delivery.attachments,
+                                           partsRequestIds: staged.partsRequestIds,
+                                           clipPlan: delivery.clipPlan,
+                                           clipItems: delivery.clipItems,
+                                           transcript: delivery.transcript)
+        } else {
+            request = staged
+        }
         if let note = resolution.note {
             addDebugEvent(note)
             Task { await speechService.speak(note) }

@@ -2491,6 +2491,24 @@ struct Config {
         }
     }
 
+    /// What the organisation's profile says about transcripts in reports to the office (Plan HD):
+    /// `always` attaches the transcript PDF, `never` keeps the transcript out of both files. Nil —
+    /// no profile, or one that does not say — leaves it to the technician. Written only by a
+    /// profile; there is no setter on purpose.
+    static var organizationReportTranscriptInternal: ReportTranscriptPolicy.InternalRule? {
+        let stored = UserDefaults.standard.string(forKey: "organizationReportTranscriptInternal") ?? ""
+        let raw = PolicyEnvelope.string(.organizationReportTranscriptInternal, stored: stored)
+        return ReportTranscriptPolicy.InternalRule(rawValue: raw)
+    }
+
+    /// Whether only the office addresses the organisation set up may receive a transcript (Plan
+    /// HD) — the technician's "this is going to my office" withdrawn. A ceiling pinned on; false
+    /// on a phone without a profile.
+    static var organizationForbidsCustomerTranscript: Bool {
+        PolicyEnvelope.bool(.organizationForbidsCustomerTranscript,
+                            stored: UserDefaults.standard.bool(forKey: "organizationForbidsCustomerTranscript"))
+    }
+
     // MARK: - Directions (Plan FO P3c)
 
     /// The maps app directions are handed to, chosen once in Settings. Apple Maps by default —

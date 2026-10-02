@@ -17,10 +17,13 @@ struct DeliveryRequest: Identifiable, Equatable {
             /// file of its own — where the channel can take it. Which clips those are is decided
             /// by `AttachmentBudget` before the composer opens, never by the composer failing.
             case video
+            /// The separate transcript PDF a report to the office may carry (Plan HD). Its own kind
+            /// so the confirmation, the audit line and a test can tell it from the work order.
+            case transcriptPDF = "transcript_pdf"
 
             var mimeType: String {
                 switch self {
-                case .pdf: return "application/pdf"
+                case .pdf, .transcriptPDF: return "application/pdf"
                 case .json: return "application/json"
                 case .video: return "video/mp4"
                 }
@@ -29,7 +32,7 @@ struct DeliveryRequest: Identifiable, Equatable {
             /// The UTI the Messages composer wants, which is not the MIME type.
             var uti: String {
                 switch self {
-                case .pdf: return "com.adobe.pdf"
+                case .pdf, .transcriptPDF: return "com.adobe.pdf"
                 case .json: return "public.json"
                 case .video: return "public.mpeg-4"
                 }
@@ -71,6 +74,9 @@ struct DeliveryRequest: Identifiable, Equatable {
     /// The clips themselves, so the share-sheet fallback can name and find the ones that did not
     /// fit. Empty for a job with no clips, which is every job before this phase.
     let clipItems: [JobMediaItem]
+    /// Who the report is for and what of the conversation it carries (Plan HD). Nil for a
+    /// document that is not the report itself — an addendum, or the summary on its own.
+    let transcript: ReportTranscriptPolicy.Decision?
 
     /// How many clips the technician has to share another way.
     var clipsSharedSeparately: Int { clipPlan.overBudget.count }
@@ -91,7 +97,8 @@ struct DeliveryRequest: Identifiable, Equatable {
          record: WorkRecord,
          partsRequestIds: [String] = [],
          clipPlan: ClipDeliveryPlan = .undecided,
-         clipItems: [JobMediaItem] = []) {
+         clipItems: [JobMediaItem] = [],
+         transcript: ReportTranscriptPolicy.Decision? = nil) {
         self.id = id
         self.channel = channel
         self.recipients = recipients
@@ -103,6 +110,7 @@ struct DeliveryRequest: Identifiable, Equatable {
         self.partsRequestIds = partsRequestIds
         self.clipPlan = clipPlan
         self.clipItems = clipItems
+        self.transcript = transcript
     }
 
     var sessionId: String { record.sessionId }
@@ -113,7 +121,8 @@ struct DeliveryRequest: Identifiable, Equatable {
     static func make(record: WorkRecord, channel: DeliveryChannel, recipients: [String],
                      attachments: [Attachment], partsRequestIds: [String]? = nil,
                      clipPlan: ClipDeliveryPlan = .undecided,
-                     clipItems: [JobMediaItem] = []) -> DeliveryRequest {
+                     clipItems: [JobMediaItem] = [],
+                     transcript: ReportTranscriptPolicy.Decision? = nil) -> DeliveryRequest {
         DeliveryRequest(
             channel: channel,
             recipients: recipients,
@@ -126,7 +135,8 @@ struct DeliveryRequest: Identifiable, Equatable {
             partsRequestIds: partsRequestIds
                 ?? record.partsRequests.filter { $0.status == .requested }.map(\.id),
             clipPlan: clipPlan,
-            clipItems: clipItems)
+            clipItems: clipItems,
+            transcript: transcript)
     }
 
     /// What the technician is told is about to happen, before anybody taps anything.
@@ -142,6 +152,9 @@ struct DeliveryRequest: Identifiable, Equatable {
         case 1: line += " The \(attachments[0].kind.rawValue.uppercased()) is attached."
         default:
             line += " The work order PDF and the JSON record are attached."
+        }
+        if attachments.contains(where: { $0.kind == .transcriptPDF }) {
+            line += " The transcript goes with it, for the office."
         }
         // A clip that did not fit is named out loud before anybody taps anything: the one thing
         // that must never happen is a technician believing a clip went with a report it did not.

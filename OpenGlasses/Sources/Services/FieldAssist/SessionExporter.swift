@@ -47,7 +47,8 @@ enum SessionExporter {
                        provenance: AIProvenance? = nil,
                        sessionOverride: FieldSession? = nil,
                        clipPlan: ClipDeliveryPlan = .undecided,
-                       reportAlreadySent: Bool = false) throws -> [StagedExportLease] {
+                       reportAlreadySent: Bool = false,
+                       transcript: ReportTranscriptPolicy.Decision = defaultTranscript) throws -> [StagedExportLease] {
         let coordinator = coordinator ?? .fieldSession
         // Audited export is a team capability; the session log itself stays on the device whatever
         // the entitlement. Manuals are not in it either way: an export carries citations, not text.
@@ -59,7 +60,7 @@ enum SessionExporter {
         }
         guard let document = buildExport(sessionDir: sessionDir, provenance: provenance,
                                          sessionOverride: sessionOverride,
-                                         clipPlan: clipPlan) else {
+                                         clipPlan: clipPlan, transcript: transcript) else {
             throw ExportError.metadataUnreadable
         }
         var leases: [StagedExportLease] = []
@@ -98,10 +99,19 @@ enum SessionExporter {
 
     // MARK: - Reconstruction
 
+    /// What an export carries when nobody says otherwise: the office audience with no profile —
+    /// the archive export the record has always been.
+    nonisolated static let defaultTranscript = ReportTranscriptPolicy.archive(context: .init())
+
     /// Reconstruct the consolidated export from the session metadata + append-only event log.
+    ///
+    /// - Parameter transcript: who the record is for (Plan HD). A record that is not the office's
+    ///   keeps its `transcript` key, empty, and loses the assistant's words from its citations —
+    ///   the citation, its source and whether it was opened all stay.
     static func buildExport(sessionDir: URL, provenance: AIProvenance? = nil,
                             sessionOverride: FieldSession? = nil,
-                            clipPlan: ClipDeliveryPlan = .undecided) -> SessionExport? {
+                            clipPlan: ClipDeliveryPlan = .undecided,
+                            transcript decision: ReportTranscriptPolicy.Decision = defaultTranscript) -> SessionExport? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let session: FieldSession
@@ -198,6 +208,15 @@ enum SessionExporter {
             }
         }
 
+        if !decision.jsonIncludesTranscript {
+            transcript = []
+            citations = citations.map {
+                SessionExport.Citation(timestamp: $0.timestamp, source: $0.source, claim: nil,
+                                       opened: $0.opened, origin: $0.origin,
+                                       verifiedAgainst: $0.verifiedAgainst)
+            }
+        }
+
         let proceduresRun: [SessionExport.ProcedureRun] = procOrder.map { id in
             .init(procedureId: id, stepsCompleted: procStepIds[id]?.count ?? 0, outcome: procOutcome[id])
         }
@@ -235,6 +254,8 @@ enum SessionExporter {
                 : nil,
             location: session.startLocation.map { .init(latitude: $0.latitude, longitude: $0.longitude) },
             transcript: transcript,
+            transcriptIncluded: decision.jsonIncludesTranscript,
+            transcriptOmittedReason: decision.omittedReason?.rawValue,
             photos: photos,
             clips: clipRefs(session: session, plan: clipPlan),
             proceduresRun: proceduresRun,
@@ -419,13 +440,9 @@ enum SessionExporter {
                 for line in citationLines(document) { layout.body("• \(line)") }
             }
 
-            if !document.transcript.isEmpty {
-                layout.section("Transcript")
-                for entry in document.transcript {
-                    let who = entry.role == "technician" ? "Technician" : "Assistant"
-                    layout.body("[\(Self.time(entry.timestamp))] \(who): \(entry.text)")
-                }
-            }
+            // No transcript, whoever the report is for (Plan HD): the work order may become an
+            // invoice, so it is the customer's document. What was said travels, to the office
+            // only, in the JSON record or the separate transcript PDF.
 
             layout.section("Provenance")
             layout.body(document.provenance?.footerLine
@@ -557,6 +574,69 @@ enum SessionExporter {
             layout.body(provenance?.footerLine
                         ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
         }
+    }
+
+    // MARK: - Internal transcript (Plan HD)
+
+    static let transcriptTitle = "Job transcript — for the office"
+    static let transcriptLede = """
+        What the technician said, as the phone's speech-to-text heard it, and what the assistant \
+        replied. Nobody has checked it: words can be misheard and the assistant can be wrong. \
+        Internal — not part of the work order, and not for the customer.
+        """
+    static let transcriptEmptyLine = "Nothing said on this job is in its log."
+
+    /// The separate transcript PDF a report to the office may carry: who said what, and when,
+    /// labelled as unchecked speech-to-text. Built from the job's own log — the lines the work
+    /// order used to print — so it carries nothing the report did not already carry.
+    static func writeTranscriptPDF(record: WorkRecord, lines: [JobTranscriptExport.Line],
+                                   to url: URL, provenance: AIProvenance? = nil) throws {
+        let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = provenance?.pdfDocumentInfo ?? [
+            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
+            kCGPDFContextSubject as String: "Internal job transcript: unchecked speech-to-text and AI-generated replies. Model not recorded.",
+        ]
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
+        let layout = PDFLayout(pageRect: pageRect, margin: 50)
+        try renderer.writePDF(to: url) { context in
+            layout.begin(context)
+            layout.heading(transcriptTitle)
+            layout.body(record.reportSubject)
+            layout.body("Started \(dateTime(record.startedAt))"
+                        + (record.endedAt.map { " · Ended \(dateTime($0))" } ?? " · Still open"))
+            layout.spacer(4)
+            layout.caption(transcriptLede)
+            layout.section("Who said what")
+            if lines.isEmpty { layout.body(transcriptEmptyLine) }
+            for line in lines {
+                layout.body("[\(Self.time(line.timestamp))] \(line.speaker.rawValue): \(line.text)")
+            }
+            layout.section("Provenance")
+            layout.body(provenance?.footerLine
+                        ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
+        }
+    }
+
+    /// Render the transcript PDF for a session into protected staging. Entitled exactly as the
+    /// report's other files are.
+    static func exportTranscriptPDF(sessionDir: URL, record: WorkRecord,
+                                    coordinator: StagedExportCoordinator? = nil,
+                                    provenance: AIProvenance? = nil) throws -> StagedExportLease {
+        let coordinator = coordinator ?? .fieldSession
+        guard FieldAssistEntitlement.shared.has(.auditedExport) else { throw ExportError.notEntitled }
+        guard FileManager.default.fileExists(atPath: sessionDir.path) else {
+            throw ExportError.sessionNotFound(sessionDir)
+        }
+        let lines = JobTranscriptExport.logLines(from: SessionLogger.readEvents(at: sessionDir))
+        let stated = provenance ?? AIProvenance.forActiveModel(
+            promptSources: [FieldAssistProvenance.promptIdentity])
+        let lease = try coordinator.makeLease(
+            fileExtension: "pdf", displayName: "transcript.pdf", fallbackName: "transcript.pdf") {
+                try writeTranscriptPDF(record: record, lines: lines, to: $0, provenance: stated)
+            }
+        PrivacyLog.transfer(.fieldSessionExport, .exported, count: 1)
+        return lease
     }
 
     /// "3 pictures and one clip selected by the technician." — the sentence under the heading.

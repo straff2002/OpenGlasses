@@ -23,6 +23,10 @@ struct PastJobView: View {
     @State private var canStillSign = false
     /// The debrief sheet, while one is being taken on the phone (Plan FO P3b).
     @State private var showingDebrief = false
+    /// The send sheet, while it is up (Plan HD), and what was chosen on it. The composer opens
+    /// from the sheet's `onDismiss`: nothing can be presented from under a sheet that is still up.
+    @State private var sendPlan: ReportSendPlan?
+    @State private var chosenSend: (plan: ReportSendPlan, choice: ReportTranscriptPolicy.Choice)?
 
     private var job: JobTabModel.PastJob? { model.pastJob(id: sessionId) }
 
@@ -71,6 +75,15 @@ struct PastJobView: View {
                         showingDebrief = false
                     })
             }
+        }
+        .sheet(item: $sendPlan, onDismiss: continueSend) { plan in
+            ReportSendSheet(
+                plan: plan,
+                onContinue: { choice in
+                    chosenSend = (plan, choice)
+                    sendPlan = nil
+                },
+                onCancel: { sendPlan = nil })
         }
         .sheet(item: $signOffStep) { step in
             JobSignOffStepView(
@@ -353,7 +366,9 @@ struct PastJobView: View {
     }
 
     /// Re-send: the same policy, the same request shape and the same composer the job's own
-    /// "send the report" uses — with this session's files rather than the active one's.
+    /// "send the report" uses — with this session's files rather than the active one's. The send
+    /// sheet comes first (Plan HD), so the technician sees who the report is for and whether the
+    /// conversation goes with it.
     private func sendReport(_ job: JobTabModel.PastJob) {
         let policy = DeliveryPolicy(settings: Config.deliverySettings)
         guard let channel = policy.defaultChannel else {
@@ -364,20 +379,29 @@ struct PastJobView: View {
         case .refused(let reason):
             problem = reason
         case .allowed(let recipients):
-            // One call builds the files *and* the clip partition, so the PDF's lines, the body's
-            // note and the attachments cannot disagree about which clips travelled.
-            let delivery = FieldSessionService.shared.reportDelivery(
-                for: channel,
-                canSendAttachments: channel == .messages
-                    ? ReportComposerAvailability.messagesCanAttach : true,
-                sessionId: job.sessionId)
-            let request = DeliveryRequest.make(record: job.record, channel: channel,
-                                               recipients: recipients,
-                                               attachments: delivery.attachments,
-                                               clipPlan: delivery.clipPlan,
-                                               clipItems: delivery.clipItems)
-            appState.presentDelivery(request)
+            sendPlan = ReportSendPlan.make(channel: channel, recipients: recipients)
         }
+    }
+
+    /// The send sheet has gone: open the composer with what was chosen on it, if anything was.
+    private func continueSend() {
+        guard let chosen = chosenSend, let job else { return }
+        chosenSend = nil
+        // One call builds the files *and* the clip partition, so the PDF's lines, the body's
+        // note and the attachments cannot disagree about which clips travelled.
+        let delivery = FieldSessionService.shared.reportDelivery(
+            for: chosen.plan.channel,
+            canSendAttachments: chosen.plan.canSendAttachments,
+            sessionId: job.sessionId,
+            recipients: chosen.plan.recipients,
+            transcriptChoice: chosen.choice)
+        let request = DeliveryRequest.make(record: job.record, channel: chosen.plan.channel,
+                                           recipients: chosen.plan.recipients,
+                                           attachments: delivery.attachments,
+                                           clipPlan: delivery.clipPlan,
+                                           clipItems: delivery.clipItems,
+                                           transcript: delivery.transcript)
+        appState.presentDelivery(request)
     }
 
 }
