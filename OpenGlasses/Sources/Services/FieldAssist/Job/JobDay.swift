@@ -39,8 +39,10 @@ struct JobDaySession: Equatable {
     var isOpen: Bool { endedAt == nil && !cancelled }
 
     /// "Job 1005", or "No job number" — never invented, never reformatted.
-    var label: String {
-        jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" } ?? JobTabModel.noJobNumber
+    var label: String { Self.label(reference: jobReference) }
+
+    static func label(reference: String?) -> String {
+        reference.flatMap { $0.isEmpty ? nil : "Job \($0)" } ?? JobTabModel.noJobNumber
     }
 }
 
@@ -157,6 +159,8 @@ struct JobDay: Equatable {
         let title: String
         let detail: String?
         let destination: JobDayDestination
+        /// The job it is owed on, so the Jobs list can badge that job's row (Plan HC).
+        var sessionId: String?
 
         var spoken: String { [title, detail].compactMap { $0 }.joined(separator: ", ") }
     }
@@ -206,7 +210,10 @@ enum JobDayComposer {
                     + relevantSessions.map { sessionRow($0, inputs: inputs) })
             .sorted(by: jobOrder)
 
-        let todos = composeTodos(inputs, sessions: relevantSessions, isToday: isToday)
+        let todos = owed(sessions: relevantSessions,
+                         finishedInScope: relevantSessions.filter { !$0.isOpen && ($0.endedAt.map(isToday) ?? false) },
+                         queue: inputs.queue, debrief: inputs.debrief,
+                         signOffRequired: inputs.signOffRequired, now: inputs.now)
 
         let next: JobDay.Next? = jobs.isEmpty ? nextJob(inputs, after: startOfTomorrow) : nil
 
@@ -272,52 +279,62 @@ enum JobDayComposer {
 
     // MARK: - Still to do
 
-    private static func composeTodos(_ inputs: JobDayInputs, sessions: [JobDaySession],
-                                     isToday: (Date) -> Bool) -> [JobDay.Todo] {
+    /// The job admin still owed, over sessions the caller has scoped — the card's own rules, shared
+    /// with the Jobs list's badges (Plan HC) so the two cannot disagree about what is owed.
+    ///
+    /// - `sessions`: the jobs in view; parts requests are read off these, and a to-do on the open
+    ///   one routes to it.
+    /// - `finishedInScope`: the finished jobs whose report and sign-off are checked — today's for
+    ///   the card, the recent ones for the list. Their `reportSent` must have been read.
+    /// - The send queue is scoped by itself: waiting and staged entries, and failures from the last
+    ///   `failedSendWindow` not superseded by a later send.
+    static func owed(sessions: [JobDaySession], finishedInScope: [JobDaySession], queue: [QueuedSend],
+                     debrief: JobDayDebrief?, signOffRequired: Bool, now: Date) -> [JobDay.Todo] {
         var todos: [JobDay.Todo] = []
         let byId = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func route(_ sessionId: String) -> JobDayDestination {
             byId[sessionId]?.isOpen == true ? .openJob : .pastJob(sessionId: sessionId)
         }
 
-        if let debrief = inputs.debrief {
+        if let debrief {
             todos.append(.init(id: "debrief-\(debrief.sessionId)", kind: .debrief,
                                title: "Finish the debrief",
                                detail: "\(debrief.label) — not saved yet",
-                               destination: route(debrief.sessionId)))
+                               destination: route(debrief.sessionId), sessionId: debrief.sessionId))
         }
 
-        let failed = owedFailures(inputs.queue, now: inputs.now)
+        let failed = owedFailures(queue, now: now)
         todos += failed.map { entry in
             let reason = entry.failureReason.map { " — \($0)" } ?? ""
             return .init(id: "send-\(entry.id)", kind: .reportFailed, title: "Report didn't send",
                          detail: "\(entry.documentKind.label) · \(entry.jobNumber)\(reason)",
-                         destination: .send(queuedId: entry.id))
+                         destination: .send(queuedId: entry.id), sessionId: entry.sessionId)
         }
 
-        let staged = inputs.queue.filter { $0.state == .staged }.sorted { $0.createdAt < $1.createdAt }
+        let staged = queue.filter { $0.state == .staged }.sorted { $0.createdAt < $1.createdAt }
         todos += staged.map { entry in
             .init(id: "send-\(entry.id)", kind: .reportStaged, title: "Report ready to send",
-                  detail: entry.summaryLine, destination: .send(queuedId: entry.id))
+                  detail: entry.summaryLine, destination: .send(queuedId: entry.id),
+                  sessionId: entry.sessionId)
         }
 
         // A job whose report is already in the queue — waiting or failed — is covered by that row.
-        let queued = Set(inputs.queue.filter { $0.state.isWaiting }.map(\.sessionId))
+        let queued = Set(queue.filter { $0.state.isWaiting }.map(\.sessionId))
             .union(failed.map(\.sessionId))
-        let finishedToday = sessions.filter { !$0.isOpen && ($0.endedAt.map(isToday) ?? false) }
+        let finished = finishedInScope.filter { !$0.isOpen }
 
-        todos += finishedToday
+        todos += finished
             .filter { !$0.reportSent && !queued.contains($0.id) }
             .map { .init(id: "unsent-\($0.id)", kind: .reportNotSent, title: "Report not sent",
-                         detail: $0.label, destination: .pastJob(sessionId: $0.id)) }
+                         detail: $0.label, destination: .pastJob(sessionId: $0.id), sessionId: $0.id) }
 
-        if inputs.signOffRequired {
+        if signOffRequired {
             // Sign-off closes when the report goes: a signature added after the work order left
             // would describe a document nobody holds (`signOffIsStillOpen`).
-            todos += finishedToday
+            todos += finished
                 .filter { !$0.signedOff && !$0.reportSent }
                 .map { .init(id: "signoff-\($0.id)", kind: .signOff, title: "Customer sign-off owed",
-                             detail: $0.label, destination: .pastJob(sessionId: $0.id)) }
+                             detail: $0.label, destination: .pastJob(sessionId: $0.id), sessionId: $0.id) }
         }
 
         todos += sessions
@@ -326,7 +343,7 @@ enum JobDayComposer {
                 let count = session.openPartsRequests
                 return .init(id: "parts-\(session.id)", kind: .parts,
                              title: count == 1 ? "Parts request waiting" : "\(count) parts requests waiting",
-                             detail: session.label, destination: route(session.id))
+                             detail: session.label, destination: route(session.id), sessionId: session.id)
             }
 
         // Stable within a kind: the order each kind was gathered in.

@@ -255,15 +255,13 @@ struct VoiceTab: View {
     private func leaveJobDay() {
         guard let destination = jobDayLeavingTo else { return }
         jobDayLeavingTo = nil
-        switch destination {
-        case .openJob:
-            appState.requestedTab = .job
-        case .send(let id):
-            if let entry = appState.jobSends.queue.queue.entry(id: id) {
-                appState.jobSends.present(entry)
-            }
-        case .upcomingJob, .pastJob:
-            break
+        // A job's page opens over the Jobs list (Plan HC), so Back from it is the list; a report
+        // opens its composer here.
+        if let request = JobListRequest(destination) {
+            appState.openJobs(request)
+        } else if case .send(let id) = destination,
+                  let entry = appState.jobSends.queue.queue.entry(id: id) {
+            appState.jobSends.present(entry)
         }
     }
 

@@ -95,7 +95,7 @@ final class UpcomingJobStore: ObservableObject {
     // MARK: - Order
 
     /// Scheduled jobs first, soonest first; then unscheduled ones in the order they arrived.
-    static func ordered(_ jobs: [UpcomingJob]) -> [UpcomingJob] {
+    nonisolated static func ordered(_ jobs: [UpcomingJob]) -> [UpcomingJob] {
         jobs.sorted { lhs, rhs in
             switch (lhs.scheduledFor, rhs.scheduledFor) {
             case let (l?, r?): return l == r ? lhs.createdAt < rhs.createdAt : l < r
