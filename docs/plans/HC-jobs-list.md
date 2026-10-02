@@ -161,4 +161,27 @@ the list.
 
 ## Tests (as run)
 
-See the PR description.
+New: `JobListComposerTests` (20), `JobListRoutingTests` (11), `ProviderMarkArtworkTests` (3 — it
+fails on main's artwork: OpenAI at 50% of its square, Gemini a sliver). Focused classes (the new
+three plus `JobDayComposerTests`, `JobTabModelTests`, `JobTabPresenceTests`, `GuidedJobFlowTests`,
+`JobFlowPolicyTests`, `FieldSessionServiceTests`, `FieldAssistModeTests`, `EditionPresentationTests`,
+`MainTabTests`, `DockLayoutTests`, `DockPagerTests`, `HomeGridPagingTests`, `HomeGridTests`,
+`JobAheadTests`, `JobAheadFlowTests`, `JobFileTests`) green, then the whole `OpenGlassesTests` suite:
+8718 tests, 0 failures, 13 skipped. UI: `JobTabAccessibilityTests` (15, incl. the two new list
+tests), `FieldAssistModeUITests` (4, incl. the day-view row), `JobSignOffScreenshotTests` (10),
+`JobDebriefScreenshotTests` (7) — 36 green (three fixed and re-run: a navigation title now also
+says "Job 1005", the empty-list assertion depended on what earlier runs left in the simulator's
+session store, and the list's rows under a tall send card are not built until scrolled to).
+
+**Simulator (iPhone 17 Pro, default text):** the list reads Open job (Job 1005 · In progress ·
+"Started 4:19 PM · Refrigeration Service"), Add new job, Scheduled (Jobs 1006/1007 "Today …", 1008
+"Sat, 3 Oct at 9:00 AM"), Recent (Job 1004 · Resolved · "Report not sent", footer "1 still has
+something to do"), then Send today's conversations and Export a day. Add new job with 1005 open
+raises "Job 1005 is still open" with Resume / Finish Job 1005… / Schedule a job for later; Resume
+pushes the job's page (title "Job 1005") and Back returns to the list with the job still in
+progress. A finished job's page opens from Recent with Back to the list. Fresh install: "No jobs
+yet" with the voice hint and a prominent Add new job; Add opens "New job" (vault, number, Start
+job, Schedule a job for later). From the day view, Job 1006 opens its page in the Jobs tab (tab
+selected) and Back lands on the list. Model tile: before, OpenAI's mark drew at about half the
+camera's size and Gemini's as a small sliver; after, OpenAI, Anthropic, Gemini and xAI all draw at
+the camera and keyboard symbols' size.

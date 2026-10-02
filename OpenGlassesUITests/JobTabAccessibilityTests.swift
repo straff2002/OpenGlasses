@@ -81,13 +81,14 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let app = launch([.configured, .fieldAssist])
         openJobTab(in: app)
 
-        // No job of any kind: the list says so, and offers the one thing to do (Plan HC).
+        // No job open: the list, with Add new job (Plan HC). Whether it is *empty* depends on
+        // what earlier runs left in the simulator's session store, which the launch flags do not
+        // wipe — `JobListComposerTests` owns the empty state; this audits the screen.
         let add = app.buttons["Add new job"]
-        awaitScreen(add, named: "The Jobs list, empty")
-        XCTAssertTrue(app.staticTexts["No jobs yet"].exists)
-        save(app, named: "hc-jobs-empty")
+        awaitScreen(add, named: "The Jobs list with no job open")
+        save(app, named: "hc-jobs-no-open-job")
 
-        audit(app, screen: "Jobs list — empty",
+        audit(app, screen: "Jobs list — no job open",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
 
         // Add new job opens what the tab used to show with no job: the vault and Start job.
@@ -229,7 +230,8 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         openJobTab(in: app)
         openTheOpenJob(in: app)
 
-        let number = app.staticTexts["Job 1005"]
+        // The page's own number row, not the navigation title that now carries it as well.
+        let number = app.collectionViews.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job at AX5")
         awaitStableFrame(of: number, named: "The job number at AX5")
 
