@@ -802,10 +802,13 @@ final class PrivacyLogTests: XCTestCase {
     /// `PersonaPickerSheet` printed the Field Assist **vault id** (which names a customer),
     /// `CarPlaySceneDelegate` printed a persona, a thread id, a playbook name and a tool result,
     /// and `BroadcastService` printed the RTMP destination and a prefix of the **stream key**.
+    /// Plan HB moved the scenario start — and its one typed event — out of `PersonaPickerSheet`
+    /// into `FieldAssistModeTab`, so the sanity check follows the event there; the picker is still
+    /// held to the no-direct-calls and forbidden-values checks below.
     private static let batchFiveFiles = [
         "OpenGlasses/Sources/App/OpenGlassesApp.swift",
         "OpenGlasses/Sources/App/CarPlaySceneDelegate.swift",
-        "OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift",
+        "OpenGlasses/Sources/App/Views/FieldAssistModeTab.swift",
         "OpenGlasses/Sources/App/Views/OnboardingView.swift",
         "OpenGlasses/Sources/App/Views/BottomControlBar.swift",
         "OpenGlasses/Sources/App/Views/AgenticFeaturesView.swift",
@@ -1112,6 +1115,8 @@ final class PrivacyLogTests: XCTestCase {
              ["output", "url.host", "absoluteString"]),
             ("OpenGlasses/Sources/App/Views/PersonaPickerSheet.swift",
              ["persona.name", "procedure.id", "vaultName", "soulText"]),
+            ("OpenGlasses/Sources/App/Views/FieldAssistModeTab.swift",
+             ["proc.id", "proc.title", "current.name", "manual.title", "question"]),
             ("OpenGlasses/Sources/App/CarPlaySceneDelegate.swift",
              ["persona.name", "playbook.name", "result"]),
             ("OpenGlasses/Sources/Services/WatchConnectivityManager.swift",

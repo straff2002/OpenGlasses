@@ -146,6 +146,27 @@ struct SettingsView: View {
         .onAppear {
             if settingsLocked { authenticateSettingsEntry() }
         }
+        // A category another surface asked for (Plan HB — the Modes tab's Field Assist row). Opened
+        // through the same lock wrapper its hub row uses, and held while the Lock Settings cover is
+        // up: the cover sits over this view, not over what is pushed on top of it.
+        .navigationDestination(item: $openedCategory) { id in
+            lockedDestination(for: id, lock: adminGate.lock(id))
+        }
+        .onChange(of: appState.requestedSettingsCategory, initial: true) { _, _ in
+            openRequestedCategory()
+        }
+        .onChange(of: settingsLocked) { _, _ in openRequestedCategory() }
+    }
+
+    @State private var openedCategory: SettingsCategoryID?
+
+    private func openRequestedCategory() {
+        guard !settingsLocked, let requested = appState.requestedSettingsCategory else { return }
+        appState.requestedSettingsCategory = nil
+        // Simple Mode hides the owner's configuration from the hub; a shortcut is not a way round
+        // that. The hub itself is where the request lands instead.
+        guard visibleCategories.contains(where: { $0.id == requested }) else { return }
+        openedCategory = requested
     }
 
     // MARK: - Simple Mode

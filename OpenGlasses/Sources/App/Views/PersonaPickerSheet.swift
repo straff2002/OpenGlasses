@@ -133,97 +133,30 @@ struct PersonaPickerSheet: View {
 /// Full-screen persona browser for the Modes tab.
 struct PersonaPickerTab: View {
     @ObservedObject var appState: AppState
+    /// Plan HB: the way to Settings › Field Assist while Field Assist is off, or nil when there is
+    /// nothing to offer (or the entitlement has not answered yet). With Field Assist on, this tab is
+    /// `FieldAssistModeTab` instead.
+    var fieldAssistShortcut: ModesTabPresentation.FieldAssistShortcut? = nil
 
     @State private var editingPersona: Persona? = nil
-    @AppStorage("fieldAssistEnabled") private var faEnabled: Bool = false
-    @AppStorage("fieldAssistDefaultVaultId") private var faVaultId: String = "refrigeration"
-    @State private var pendingProcedure: Procedure?   // scenario tapped, awaiting confirm
-    @State private var sessionError: String?
-    @ScaledMetric(relativeTo: .body) private var infoTapTarget: CGFloat = 44
 
     var body: some View {
         List {
-            // Field Assist sits above the personas — its own mode for field engineers.
-            fieldAssistSection
-
-            let personas = Config.enabledPersonas
-
-            if personas.isEmpty {
-                ContentUnavailableView(
-                    "No Personas",
-                    systemImage: "person.2",
-                    description: Text("Browse and install AI modes below, or add custom personas in Settings.")
-                )
-            } else {
+            // Field Assist sits above the personas: its own mode for field engineers, switched on
+            // in one place — Settings › Field Assist.
+            if let fieldAssistShortcut {
                 Section {
-                    ForEach(personas) { persona in
-                        HStack(spacing: 0) {
-                            Button {
-                                activatePersona(persona)
-                            } label: {
-                                PersonaRow(
-                                    persona: persona,
-                                    isActive: appState.activePersona?.id == persona.id
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            Spacer()
-
-                            Button {
-                                editingPersona = persona
-                            } label: {
-                                Image(systemName: "info.circle")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 8)
-                                    .frame(minWidth: infoTapTarget, minHeight: infoTapTarget)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Details for \(persona.name)")
-                        }
+                    FieldAssistShortcutRow(shortcut: fieldAssistShortcut) {
+                        appState.openSettings(.fieldAssist)
                     }
                 } header: {
-                    Text("Active Personas")
-                }
-            }
-
-            let installed = Set(Config.savedPersonas.map(\.id))
-            let available = Config.builtInPersonaTemplates().filter { !installed.contains($0.id) }
-
-            if !available.isEmpty {
-                Section {
-                    ForEach(available) { template in
-                        NavigationLink {
-                            ModeTemplatePreview(template: template, appState: appState) {
-                                installAndActivate(template)
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: template.icon ?? "sparkles")
-                                    .font(.title3)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 32)
-                                    .accessibilityHidden(true)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(template.name)
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(Color(.label))
-                                    Text("Say \"\(template.wakePhrase)\"")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .accessibilityLabel("\(template.name). Say \(template.wakePhrase)")
-                    }
-                } header: {
-                    Text("Available Modes")
+                    Text("Field Assist")
                 } footer: {
-                    Text("Tap to preview a mode before installing. Each mode has its own wake phrase, system prompt, and camera behavior.")
+                    Text(fieldAssistShortcut.footer)
                 }
             }
+
+            PersonaModeSections(appState: appState) { editingPersona = $0 }
         }
         .navigationTitle("Modes")
         .listStyle(.insetGrouped)
@@ -232,216 +165,147 @@ struct PersonaPickerTab: View {
             PersonaDetailView(persona: persona, appState: appState)
         }
     }
+}
 
-    // MARK: - Field Assist mode
+/// The Modes tab's Field Assist row: opens Settings › Field Assist, where the switch (and, when
+/// not entitled, the paywall) lives.
+struct FieldAssistShortcutRow: View {
+    let shortcut: ModesTabPresentation.FieldAssistShortcut
+    let onOpen: () -> Void
 
-    /// Field Assist as a first-class mode, shown above the personas. Links to the
-    /// Field Assist screen (license/paywall, master toggle, vault picker, sessions).
-    @ViewBuilder
-    private var fieldAssistSection: some View {
-        if !Config.fieldAssistUnlocked {
-            Section {
-                fieldAssistLink(subtitle: "Unlock for grounded field-engineer guidance", locked: true)
-            } header: {
-                Text("Field Assist")
-            } footer: {
-                Text("Hands-free, domain-grounded guidance for field engineers — load a knowledge vault and run grounded, audited sessions.")
-            }
-        } else if !faEnabled {
-            Section {
-                fieldAssistLink(subtitle: "Tap to enable", locked: false)
-            } header: {
-                Text("Field Assist")
-            }
-        } else {
-            fieldAssistActivePanel
-        }
-    }
-
-    /// Header row that opens the full Field Assist screen.
-    @ViewBuilder
-    private func fieldAssistLink(subtitle: String, locked: Bool) -> some View {
-        NavigationLink {
-            FieldAssistSettingsView()
-        } label: {
+    var body: some View {
+        Button(action: onOpen) {
             HStack(spacing: 12) {
-                Image(systemName: "wrench.and.screwdriver.fill")
+                Image(systemName: ModesTabPresentation.fieldAssistSymbol)
                     .font(.title3)
                     .foregroundStyle(AccentColors.aiCoral)
                     .frame(width: 32)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Field Assist")
+                    Text(shortcut.title)
                         .font(.body.weight(.medium))
                         .foregroundStyle(Color(.label))
-                    Text(subtitle)
+                    Text(shortcut.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                if locked {
+                Spacer(minLength: 8)
+                if shortcut.showsLock {
                     Image(systemName: "lock.fill")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
+            .frame(minHeight: OGMetrics.minTouchTarget)
+            .contentShape(Rectangle())
         }
-        .accessibilityLabel("Field Assist. \(subtitle)")
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(shortcut.spoken)
+        .accessibilityHint("Opens Field Assist in Settings.")
+        .accessibilityAddTraits(.isButton)
     }
+}
 
-    /// Active panel: quick vault switcher + the selected vault's scenarios (procedures).
-    @ViewBuilder
-    private var fieldAssistActivePanel: some View {
-        let unlockedVaults = VaultRegistry.shared.allManifests.filter { VaultRegistry.shared.isUnlocked($0) }
-        let current = VaultRegistry.shared.manifest(id: faVaultId)
+/// The persona picker's sections — installed personas, then the modes that can be added. Shared by
+/// the Modes tab and the Field Assist tab's Other modes accordion (Plan HB), so the two are the same
+/// picker and picking a persona does the same thing from either.
+struct PersonaModeSections: View {
+    @ObservedObject var appState: AppState
+    /// Opens a persona's details. The sheet belongs to the list that hosts these sections.
+    let onShowDetails: (Persona) -> Void
 
-        Section {
-            // Quick vault switcher
-            Menu {
-                ForEach(unlockedVaults, id: \.id) { manifest in
-                    Button {
-                        faVaultId = manifest.id
-                    } label: {
-                        if faVaultId == manifest.id {
-                            Label(manifest.name, systemImage: "checkmark")
-                        } else {
-                            Text(manifest.name)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                        .font(.title3)
-                        .foregroundStyle(AccentColors.aiCoral)
-                        .frame(width: 32)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Field Assist")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Color(.label))
-                        Text(current?.name ?? "Choose a vault")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
-            }
-            .accessibilityLabel("Active vault: \(current?.name ?? "none"). Tap to switch.")
+    @ScaledMetric(relativeTo: .body) private var infoTapTarget: CGFloat = 44
 
-            // Per-vault model — this vault remembers its model; switching vaults applies it.
-            Picker("Model for this vault", selection: Binding(
-                get: { Config.fieldAssistVaultModelId(for: faVaultId) ?? "" },
-                set: { newId in
-                    // Just link the model to the vault — it's applied only while a
-                    // session is running (see AppState.applyFieldSessionModel).
-                    Config.setFieldAssistVaultModelId(newId.isEmpty ? nil : newId, for: faVaultId)
-                }
-            )) {
-                Text("Use current model").tag("")
-                ForEach(Config.savedModels) { model in
-                    Text(model.name).tag(model.id)
-                }
-            }
+    var body: some View {
+        let personas = Config.enabledPersonas
 
-            NavigationLink {
-                FieldAssistSettingsView()
-            } label: {
-                Label("Manage Field Assist", systemImage: "gearshape")
-            }
-        } header: {
-            Text("Field Assist")
-        } footer: {
-            Text("Switch the active knowledge vault. Each vault can link its own model, used only while a session is running. Tap Manage for license, vault editing, and sessions.")
-        }
-
-        if let current {
-            let procedures = ProcedureLibrary(store: VaultRegistry.shared.store(for: current)).all
+        if personas.isEmpty {
+            ContentUnavailableView(
+                "No Personas",
+                systemImage: "person.2",
+                description: Text("Browse and install AI modes below, or add custom personas in Settings.")
+            )
+        } else {
             Section {
-                if procedures.isEmpty {
-                    Text("No guided scenarios in this vault — the assistant still answers grounded questions from its reference files.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(procedures) { proc in
+                ForEach(personas) { persona in
+                    HStack(spacing: 0) {
                         Button {
-                            pendingProcedure = proc
+                            activatePersona(persona)
                         } label: {
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(proc.title)
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(Color(.label))
-                                    if let desc = proc.description, !desc.isEmpty {
-                                        Text(desc)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                    Text("\(proc.steps.count) step\(proc.steps.count == 1 ? "" : "s")")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "play.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(AccentColors.aiCoral)
-                            }
-                            .contentShape(Rectangle())
-                            .padding(.vertical, 2)
+                            PersonaRow(
+                                persona: persona,
+                                isActive: appState.activePersona?.id == persona.id
+                            )
                         }
                         .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Button {
+                            onShowDetails(persona)
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 8)
+                                .frame(minWidth: infoTapTarget, minHeight: infoTapTarget)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Details for \(persona.name)")
                     }
                 }
             } header: {
-                Text("Scenarios — \(current.name)")
+                Text("Active Personas")
+            }
+        }
+
+        let installed = Set(Config.savedPersonas.map(\.id))
+        let available = Config.builtInPersonaTemplates().filter { !installed.contains($0.id) }
+
+        if !available.isEmpty {
+            Section {
+                ForEach(available) { template in
+                    NavigationLink {
+                        ModeTemplatePreview(template: template, appState: appState) {
+                            installAndActivate(template)
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: template.icon ?? "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 32)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(template.name)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(Color(.label))
+                                Text("Say \"\(template.wakePhrase)\"")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityLabel("\(template.name). Say \(template.wakePhrase)")
+                }
+            } header: {
+                Text("Available Modes")
             } footer: {
-                Text("Tap a scenario to start a Field Assist session running that guided procedure.")
-            }
-            .confirmationDialog(
-                "Start session?",
-                isPresented: Binding(get: { pendingProcedure != nil }, set: { if !$0 { pendingProcedure = nil } }),
-                presenting: pendingProcedure
-            ) { proc in
-                Button("Start \(proc.title)") { startFieldSession(procedure: proc, vaultName: current.name) }
-                Button("Cancel", role: .cancel) { pendingProcedure = nil }
-            } message: { proc in
-                Text("Start a Field Assist session on \(current.name) and run \u{201C}\(proc.title)\u{201D}.")
-            }
-            .alert(
-                "Couldn't start session",
-                isPresented: Binding(get: { sessionError != nil }, set: { if !$0 { sessionError = nil } })
-            ) {
-                Button("OK", role: .cancel) { sessionError = nil }
-            } message: {
-                Text(sessionError ?? "")
+                Text("Tap to preview a mode before installing. Each mode has its own wake phrase, system prompt, and camera behavior.")
             }
         }
     }
 
-    /// Start a Field Assist session on the active vault and launch the chosen procedure.
-    private func startFieldSession(procedure: Procedure, vaultName: String) {
-        let svc = FieldSessionService.shared
-        do {
-            if svc.isSessionActive {
-                _ = try? svc.endSession()
-            }
-            _ = try svc.startSession(vaultId: faVaultId, assetId: nil)
-            _ = try svc.startProcedure(id: procedure.id)
-            // A vault id names the customer whose procedures are loaded, and a procedure id is
-            // that customer's own document catalogue — so the vault is fingerprinted (enough to
-            // tell two sessions apart) and the procedure is not logged at all.
-            PrivacyLog.app(.fieldSessionStarted, item: PrivateIdentifier(faVaultId))
-        } catch {
-            sessionError = error.localizedDescription
-        }
-        pendingProcedure = nil
-    }
-
+    // Picking a persona never touches Field Assist (Plan HB): personas choose the model, prompt and
+    // wake phrase; Field Assist is switched in Settings › Field Assist and nowhere else.
     private func activatePersona(_ persona: Persona) {
         appState.activePersona = persona
         Config.setActiveModelId(persona.modelId)

@@ -22,6 +22,14 @@ struct VoiceTab: View {
     @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
         = MyDayHomePlacement.onHomeDefault
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
+    /// Field Assist mode's facts (Plan HB) — the home screen shows the job-day card while it is on.
+    @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled = false
+    @ObservedObject private var store = StoreKitService.shared
+    @ObservedObject private var adminGate = AdminGate.shared
+    /// The full-screen day behind the job-day card, and where one of its rows asked to go once it
+    /// is out of the way — a composer or another tab cannot be presented from under a cover.
+    @State private var showingJobDay = false
+    @State private var jobDayLeavingTo: JobDayDestination?
 
     /// What the surface above the dock actually drew — the recording badge, the status card, My Day
     /// in whatever state the wearer left it, and the captions and notices held down against the
@@ -127,6 +135,13 @@ struct VoiceTab: View {
             LivePreviewView()
                 .environmentObject(appState)
         }
+        .fullScreenCover(isPresented: $showingJobDay, onDismiss: leaveJobDay) {
+            JobDayView(appState: appState, feed: appState.jobDayFeed) { destination in
+                jobDayLeavingTo = destination
+                showingJobDay = false
+            }
+            .environmentObject(appState)
+        }
         .sheet(isPresented: $showModelPicker) {
             ModelPickerSheet(appState: appState)
         }
@@ -190,10 +205,17 @@ struct VoiceTab: View {
                 StatusIndicator(session: session, openAISession: openAISession,
                                 openClawBridge: appState.openClawBridge)
 
-                if HomeSurfaceVisibility.showsMyDay(enabled: myDayEnabled,
-                                                    onHome: myDayOnHome,
-                                                    state: voiceState,
-                                                    captionsActive: captionsActive) {
+                // One day card (Plan HB): the job-day card whenever Field Assist mode is on — My
+                // Day's switch then only governs the personal items folded into it — and My Day's
+                // own card otherwise. Never both.
+                let card = dayCard(voiceState)
+                if case .jobDay(let showsPersonal) = card {
+                    JobDayHomeCard(appState: appState, feed: appState.jobDayFeed,
+                                   showsPersonal: showsPersonal,
+                                   compact: voiceState == .listening,
+                                   onOpenDay: { showingJobDay = true })
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else if card == .myDay {
                     MyDayHomeView(
                         service: appState.myDayService,
                         compact: voiceState == .listening,
@@ -226,6 +248,37 @@ struct VoiceTab: View {
         }
         .padding(.top, Self.conversationZoneTopPadding)
         .background(surfaceHeightReader)
+    }
+
+    /// What a row of the day view asked for, once the view has gone: the Jobs tab, or a report's
+    /// composer (which the root presents).
+    private func leaveJobDay() {
+        guard let destination = jobDayLeavingTo else { return }
+        jobDayLeavingTo = nil
+        switch destination {
+        case .openJob:
+            appState.requestedTab = .job
+        case .send(let id):
+            if let entry = appState.jobSends.queue.queue.entry(id: id) {
+                appState.jobSends.present(entry)
+            }
+        case .upcomingJob, .pastJob:
+            break
+        }
+    }
+
+    /// Which day card the zone draws — the whole rule is `HomeDayCard`'s.
+    private func dayCard(_ voiceState: VoiceVisualState) -> HomeDayCard {
+        HomeDayCard.resolve(
+            fieldAssistOn: FieldAssistMode.isOn(.init(
+                switchOn: fieldAssistEnabled,
+                entitled: Config.fieldAssistUnlocked,
+                entitlementChecked: store.hasCheckedEntitlements,
+                restricted: adminGate.isRestricted)),
+            myDayEnabled: myDayEnabled,
+            myDayOnHome: myDayOnHome,
+            personalLocked: adminGate.lock(.connections).isLocked,
+            surfaceFree: HomeSurfaceVisibility.showsMyDay(state: voiceState, captionsActive: captionsActive))
     }
 
     private var surfaceHeightReader: some View {

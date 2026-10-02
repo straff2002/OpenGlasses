@@ -7,8 +7,14 @@ final class EditionPresentationTests: XCTestCase {
 
     // MARK: - Tabs
 
-    func testTheTechnicianSeesVoiceJobAndSettings() {
-        XCTAssertEqual(EditionPresentation.tabs(showingJob: true, restricted: true), [.voice, .job, .settings])
+    /// Since Plan HB the Modes slot stays on the technician's bar — drawn as the Field Assist tab,
+    /// with the other modes hidden inside it — and only Chat is closed.
+    func testTheTechnicianSeesVoiceFieldAssistJobAndSettings() {
+        XCTAssertEqual(EditionPresentation.tabs(showingJob: true, restricted: true),
+                       [.voice, .modes, .job, .settings])
+        XCTAssertEqual(ModesTabPresentation.resolve(.init(entitled: true, entitlementChecked: true,
+                                                          restricted: true)),
+                       .fieldAssist(otherModes: .hidden))
         XCTAssertEqual(EditionPresentation.tabs(showingJob: true, restricted: false), MainTab.displayOrder,
                        "an administrator session, or no edition, is the full bar")
         XCTAssertEqual(EditionPresentation.tabs(showingJob: false, restricted: false),
@@ -25,7 +31,8 @@ final class EditionPresentationTests: XCTestCase {
     func testAHiddenTabFallsBackToVoice() {
         XCTAssertEqual(EditionPresentation.tab(.chat, restricted: true), .voice,
                        "the Job tab's Open conversation must not land on a tab that is not there")
-        XCTAssertEqual(EditionPresentation.tab(.modes, restricted: true), .voice)
+        XCTAssertEqual(EditionPresentation.tab(.modes, restricted: true), .modes,
+                       "the Modes slot is the technician's Field Assist tab")
         XCTAssertEqual(EditionPresentation.tab(.job, restricted: true), .job)
         XCTAssertEqual(EditionPresentation.tab(.chat, restricted: false), .chat)
     }

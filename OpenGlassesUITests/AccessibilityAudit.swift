@@ -30,6 +30,10 @@ enum LaunchState: String {
     /// queue, so the past job's Debrief section and the Job tab's send card both have something
     /// on screen (Plan FO P3b). Staged, never sent.
     case seedFieldSends = "-OGUITestSeedFieldSends"
+    /// Two jobs ahead later today and one tomorrow, for the job-day card (Plan HB).
+    case seedFieldDay = "-OGUITestSeedFieldDay"
+    /// My Day on and loaded with a full card's worth of rows.
+    case seedMyDay = "-OGUITestSeedMyDay"
     /// Plan FS PR2 — the vault-link review sheet, signed and unverified, and a vault already
     /// received from a link so its row shows the badge.
     case vaultLinkSigned = "-OGUITestVaultLinkSigned"

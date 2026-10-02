@@ -54,6 +54,17 @@ struct MainView: View {
             hasOpenJob: sessions.activeSession.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false))
     }
 
+    /// What the Modes slot is right now (Plan HB): the persona picker, or — with Field Assist mode
+    /// on — the Field Assist tab. Read live from the same facts as the Job rule, so a switch turned
+    /// off, an entitlement that lapsed or an edition removed reverts it on the next render.
+    private var modesPresentation: ModesTabPresentation {
+        ModesTabPresentation.resolve(.init(
+            switchOn: fieldAssistEnabled,
+            entitled: Config.fieldAssistUnlocked,
+            entitlementChecked: store.hasCheckedEntitlements,
+            restricted: restricted))
+    }
+
     var body: some View {
         ZStack {
             TabView(selection: $selectedTab) {
@@ -63,13 +74,25 @@ struct MainView: View {
                     VoiceTab()
                 }
 
-                // The Field Assist edition hides the other modes and chat from the technician
-                // (Plan CT 3b, `EditionPresentation.hiddenTabs`); an administrator session shows them.
-                if !restricted {
-                    Tab(MainTab.modes.title, systemImage: MainTab.modes.systemImage, value: MainTab.modes) {
+                // Modes, or Field Assist when Field Assist mode is on (Plan HB) — the same slot, so
+                // the selection and the privacy log's token stay "modes". The edition shows it as
+                // Field Assist with the other modes hidden (`ModesTabPresentation`).
+                if modesPresentation.showsTab {
+                    Tab(modesPresentation.title, systemImage: modesPresentation.systemImage,
+                        value: MainTab.modes) {
                         NavigationStack {
-                            PersonaPickerTab(appState: appState)
+                            switch modesPresentation {
+                            case .fieldAssist(let otherModes):
+                                FieldAssistModeTab(appState: appState, showsOtherModes: otherModes == .accordion)
+                            case .modes(let shortcut):
+                                PersonaPickerTab(appState: appState, fieldAssistShortcut: shortcut)
+                            case .hidden:
+                                EmptyView()
+                            }
                         }
+                        // A different tab, not the same one restyled: nothing pushed inside Field
+                        // Assist survives it being turned off, and the reverse.
+                        .id(modesPresentation.isFieldAssist)
                     }
                 }
 
@@ -139,6 +162,10 @@ struct MainView: View {
         .onChange(of: restricted) { _, isRestricted in
             selectedTab = EditionPresentation.tab(selectedTab, restricted: isRestricted)
         }
+        // …and for the Modes slot, which only goes away under an edition with no licence in force.
+        .onChange(of: modesPresentation) { _, presentation in
+            selectedTab = ModesTabPresentation.selection(selectedTab, after: presentation)
+        }
         // An administrator session idles out after ten minutes; this is what notices.
         .onReceive(adminIdleTick) { _ in
             adminGate.refresh()
@@ -147,7 +174,8 @@ struct MainView: View {
         // here, so nothing is left holding a request that has already been honoured.
         .onChange(of: appState.requestedTab) { _, requested in
             guard let requested else { return }
-            selectedTab = EditionPresentation.tab(requested, restricted: restricted)
+            selectedTab = ModesTabPresentation.selection(
+                EditionPresentation.tab(requested, restricted: restricted), after: modesPresentation)
             appState.requestedTab = nil
         }
         .environment(\.appAccent, accent)
