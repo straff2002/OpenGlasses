@@ -314,6 +314,13 @@ enum DockGridMetrics {
     /// it reads visibly lighter and, on device, simply too small to recognise. It takes most of the
     /// tile's glyph box instead — roughly 1.25× the symbol beside it, which is what makes the two
     /// read at one weight in the same row, and still inside the box so the badge overlay clears it.
+    ///
+    /// **The artwork has to keep its side of this** (Plan HC): a mark's ink fills its own viewBox,
+    /// with no clear space baked in, and its path parses on iOS. The OpenAI/ChatGPT marks carried
+    /// the brand's clear space inside the box (half the square was margin, so they drew at about
+    /// 14 pt) and seven marks wrote their arc flags run together, which the system renderer cannot
+    /// read (Gemini drew as a sliver). Both are fixed in the files; `ProviderMarkArtworkTests`
+    /// renders every bundled mark and measures its ink, so a new one cannot regress either.
     static let markGlyphBox: CGFloat = 28
 
     /// Room the page control needs under the pages it indexes, so no tile or transcript line sits

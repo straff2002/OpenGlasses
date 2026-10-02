@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// Where a technician goes to see the job they are on (Plan FO P2).
+/// Where a technician goes to see their jobs (Plan FO P2; a list since Plan HC).
 ///
 /// The thing a service technician thinks in is *the job*, and until now the job was invisible
-/// unless you asked the assistant about it out loud. This tab gives it a home: what is open, what
-/// number it is filed under, how long it has been running, which machine it is on, what was
-/// recommended and decided, and — when it is over — where to find it again.
+/// unless you asked the assistant about it out loud. This tab gives it a home: every job on the
+/// phone — the one open, the ones scheduled, the ones finished with what is still owed on them —
+/// and, pushed over that list, one job's own page: what number it is filed under, how long it has
+/// been running, which machine it is on, what was recommended and decided, and when it is over,
+/// its record and Send report.
 ///
 /// **It is not a second chat surface.** The Voice tab stays the way work is captured and the
 /// capsule stays primary; there is no wake-word row here (that lives in Field Assist settings,
@@ -19,34 +21,42 @@ struct JobTab: View {
         // The flow publishes the change-of-unit question and the debrief; the send service
         // publishes the queue. `AppState` does not republish its children, so the content view
         // observes both directly.
-        JobTabContent(flow: appState.guidedJobFlow, sends: appState.jobSends,
+        JobTabContent(appState: appState, flow: appState.guidedJobFlow, sends: appState.jobSends,
                       upcoming: appState.upcomingJobs)
     }
 }
 
-/// Where a page inside the tab goes. One enum so the stack is a value the views can push onto
-/// without knowing about each other.
-enum JobRoute: Hashable {
-    case pastJob(sessionId: String)
-    case transcript(threadId: String)
-    /// A job ahead (Plan FO P3c): its details, its brief, directions and Start.
-    case upcomingJob(id: String)
-}
-
 private struct JobTabContent: View {
-    @EnvironmentObject private var appState: AppState
+    @ObservedObject var appState: AppState
     @ObservedObject var flow: GuidedJobFlow
     @ObservedObject var sends: JobSendService
     /// Jobs ahead (Plan FO P3c). Observed here because a job file accepted from Mail, or a job
     /// said out loud, has to appear on this screen without a navigation.
     @ObservedObject var upcoming: UpcomingJobStore
     @StateObject private var sessions = FieldSessionService.shared
+    /// The list's facts, composed (Plan HC).
+    @StateObject private var feed: JobListFeed
     @State private var addingUpcoming = false
+
+    init(appState: AppState, flow: GuidedJobFlow, sends: JobSendService, upcoming: UpcomingJobStore) {
+        self.appState = appState
+        self.flow = flow
+        self.sends = sends
+        self.upcoming = upcoming
+        _feed = StateObject(wrappedValue: JobListFeed(sessions: .shared, flow: flow, upcoming: upcoming,
+                                                      sends: sends))
+    }
 
     @State private var path: [JobRoute] = []
     /// The number being typed, either to start a job with or to record on the open one.
     @State private var typedReference = ""
     @State private var search = ""
+    /// A link that could not land on the job it named (Plan HC).
+    @State private var notice: String?
+    /// "Add new job" with a job open: the question (Plan HC).
+    @State private var openJobPrompt: OpenJobPrompt?
+    /// "Finish Job 1005…" was the answer: begin the close once the job's page is up.
+    @State private var closeWhenShown = false
     /// The read-back, on screen as well as in the ear — a technician confirms what they can see.
     @State private var readBack: [String]?
     /// Raised by "Start a separate chat", never by a view body: the flow writes the question into
@@ -92,60 +102,28 @@ private struct JobTabContent: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                switch model.state {
-                case .noJob(let empty):
-                    NoActiveJobView(empty: empty, model: model, search: $search,
-                                    typedReference: $typedReference,
-                                    onStart: startJob,
-                                    onOpenPastJob: { path.append(.pastJob(sessionId: $0)) },
-                                    sendCard: sendCard,
-                                    upcoming: UpcomingJobsSection(
-                                        rows: UpcomingJobsModel.rows(upcoming.jobs),
-                                        onOpen: { path.append(.upcomingJob(id: $0)) },
-                                        onAdd: { addingUpcoming = true }),
-                                    onExportDay: exportDay,
-                                    onReportDay: { appState.openSupportReport(.day($0)) },
-                                    onSendToday: { appState.openSupportReport(.day(Date())) })
-                case .running(let job), .paused(let job):
-                    ActiveJobView(job: job, model: model,
-                                  typedReference: $typedReference,
-                                  leaveThread: $leaveThread,
-                                  unitQuestion: model.unitQuestion,
-                                  evidence: model.evidenceReview,
-                                  evidenceSelection: liveSelection,
-                                  onAnswerUnit: { action in Task { await model.answer(action) } },
-                                  onPauseResume: pauseOrResume,
-                                  onAddPhoto: addPhoto,
-                                  clips: appState.jobClips,
-                                  onRecordClip: recordClip,
-                                  onStopClip: stopClip,
-                                  onSharePhotos: shareSelectedPhotos,
-                                  onOpenPrivacySettings: { appState.requestedTab = .settings },
-                                  onOpenConversation: openConversation,
-                                  onReadBack: readBackTheJob,
-                                  onClose: startClosing,
-                                  sendCard: sendCard,
-                                  onSendToday: { appState.openSupportReport(.day(Date())) })
+            JobListView(list: feed.list,
+                        sendCard: sendCard,
+                        notice: $notice,
+                        search: $search,
+                        openJobPrompt: $openJobPrompt,
+                        onOpen: { path.append($0) },
+                        onAdd: addNewJob,
+                        onAnswer: answer,
+                        transcriptDays: model.transcriptDays,
+                        onExportDay: exportDay,
+                        onReportDay: { appState.openSupportReport(.day($0)) },
+                        onSendToday: { appState.openSupportReport(.day(Date())) })
+                .navigationTitle("Jobs")
+                .navigationDestination(for: JobRoute.self) { route in
+                    destination(route)
                 }
-            }
-            .navigationTitle("Job")
-            .navigationDestination(for: JobRoute.self) { route in
-                switch route {
-                case .pastJob(let id):
-                    PastJobView(sessionId: id, model: model,
-                                onOpenTranscript: { path.append(.transcript(threadId: $0)) })
-                case .transcript(let id):
-                    JobTranscriptView(threadId: id)
-                case .upcomingJob(let id):
-                    UpcomingJobView(store: upcoming, flow: flow, jobId: id,
-                                    jobOpen: model.state.active != nil,
-                                    vaultName: noJobVault.name,
-                                    vaultUnlocked: noJobVault.unlocked,
-                                    onStarted: { _ in path = [] })
-                }
-            }
         }
+        .onChange(of: search) { _, query in feed.query = query }
+        // A link from elsewhere — the job-day card, a notification, the Field Assist tab — lands
+        // here, against what is on the phone now (`JobListRouting`).
+        .onAppear(perform: takeRequest)
+        .onChange(of: appState.jobListRequest) { _, _ in takeRequest() }
         // The elapsed line is minute-grained, so it is re-read on the minute rather than on every
         // published change. A VoiceOver user focused on the row hears a value that settles.
         .onReceive(JobClock.tick) { clock = $0 }
@@ -235,6 +213,100 @@ private struct JobTabContent: View {
         } message: {
             Text(problem ?? "")
         }
+    }
+
+    // MARK: - Pages
+
+    @ViewBuilder
+    private func destination(_ route: JobRoute) -> some View {
+        switch route {
+        case .currentJob:
+            currentJobPage
+        case .pastJob(let id):
+            PastJobView(sessionId: id, model: model,
+                        onOpenTranscript: { path.append(.transcript(threadId: $0)) })
+        case .transcript(let id):
+            JobTranscriptView(threadId: id)
+        case .upcomingJob(let id):
+            UpcomingJobView(store: upcoming, flow: flow, jobId: id,
+                            jobOpen: model.state.active != nil,
+                            vaultName: noJobVault.name,
+                            vaultUnlocked: noJobVault.unlocked,
+                            // Started: this page is the job now, and Back is still the list.
+                            onStarted: { _ in path = [.currentJob] })
+        }
+    }
+
+    /// The open job, or — with none open — the page that starts one. One page for both, so Start
+    /// turns it into the job in place, as the tab always did.
+    @ViewBuilder
+    private var currentJobPage: some View {
+        switch model.state {
+        case .noJob(let empty):
+            NewJobView(empty: empty, typedReference: $typedReference,
+                       onStart: startJob, onSchedule: { addingUpcoming = true })
+                .navigationTitle("New job")
+                .navigationBarTitleDisplayMode(.inline)
+        case .running(let job), .paused(let job):
+            ActiveJobView(job: job, model: model,
+                          typedReference: $typedReference,
+                          leaveThread: $leaveThread,
+                          unitQuestion: model.unitQuestion,
+                          evidence: model.evidenceReview,
+                          evidenceSelection: liveSelection,
+                          onAnswerUnit: { action in Task { await model.answer(action) } },
+                          onPauseResume: pauseOrResume,
+                          onAddPhoto: addPhoto,
+                          clips: appState.jobClips,
+                          onRecordClip: recordClip,
+                          onStopClip: stopClip,
+                          onSharePhotos: shareSelectedPhotos,
+                          onOpenPrivacySettings: { appState.requestedTab = .settings },
+                          onOpenConversation: openConversation,
+                          onReadBack: readBackTheJob,
+                          onClose: startClosing,
+                          sendCard: sendCard,
+                          onSendToday: { appState.openSupportReport(.day(Date())) })
+                .navigationTitle(job.jobNumber.map { "Job \($0)" } ?? "Open job")
+                .navigationBarTitleDisplayMode(.inline)
+                // "Finish Job 1005…" from the open-job question: the job's own close, once its
+                // page is up — the same confirmation, review and sign-off as its Close job button.
+                .task {
+                    guard closeWhenShown else { return }
+                    closeWhenShown = false
+                    try? await Task.sleep(for: .milliseconds(400))
+                    startClosing()
+                }
+        }
+    }
+
+    // MARK: - The list's own actions
+
+    /// Take a request another surface left for this tab, and land where it means (Plan HC).
+    private func takeRequest() {
+        guard let request = appState.jobListRequest else { return }
+        appState.jobListRequest = nil
+        let outcome = JobListRouting.resolve(request, feed.routingFacts)
+        path = outcome.path
+        notice = outcome.notice
+        openJobPrompt = outcome.prompt
+    }
+
+    /// Add new job: the start page, or — with a job open — the question (`JobListAdd`).
+    private func addNewJob() {
+        notice = nil
+        switch JobListAdd.decide(openJobLabel: feed.routingFacts.openJobLabel) {
+        case .startNew: path = [.currentJob]
+        case .jobOpen(let prompt): openJobPrompt = prompt
+        }
+    }
+
+    private func answer(_ answer: OpenJobPrompt.Answer) {
+        openJobPrompt = nil
+        let step = OpenJobPrompt.step(answer)
+        closeWhenShown = step.beginsClose
+        if !step.path.isEmpty { path = step.path }
+        if step.schedules { addingUpcoming = true }
     }
 
     // MARK: - Actions
@@ -332,8 +404,8 @@ private struct JobTabContent: View {
             typedReference = ""
             // Straight to the finished job: its record, its conversation, and Send report. The
             // close, the export and the delivery are the shipped ones — nothing here re-implements
-            // any of them.
-            path.append(.pastJob(sessionId: closed.session.id))
+            // any of them. It replaces the open job's page, so Back is the list (Plan HC).
+            path = [.pastJob(sessionId: closed.session.id)]
         } catch {
             problem = error.localizedDescription
         }

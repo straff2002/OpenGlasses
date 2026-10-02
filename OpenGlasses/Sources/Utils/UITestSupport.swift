@@ -121,6 +121,9 @@ enum UITestSupport {
             || isSet(.seedFieldSends) || isSet(.seedFieldDay)
     }
 
+    /// The launch value naming the active model's provider (`-OGUITestModelProvider openai`).
+    static let modelProviderKey = "OGUITestModelProvider"
+
     static var isActive: Bool { arguments.contains(activation) }
 
     static func isSet(_ flag: Flag) -> Bool { isActive && arguments.contains(flag.rawValue) }
@@ -151,6 +154,17 @@ enum UITestSupport {
         Config.setSavedModels(isSet(.reinstall)
                               ? [Config.appleIntelligenceDefault, keyedModelThatSurvivedTheDelete]
                               : [Config.appleIntelligenceDefault])
+
+        // `-OGUITestModelProvider <provider>` (a value, read off the launch arguments' defaults
+        // domain): a keyless model of that provider, active — so the home grid's Model tile wears
+        // that provider's mark for a screenshot or an audit. Keyless, so nothing can be sent with it.
+        if let raw = UserDefaults.standard.string(forKey: modelProviderKey),
+           let provider = LLMProvider(rawValue: raw) {
+            let model = ModelConfig(id: "uitest-\(raw)", name: raw, provider: raw, apiKey: "",
+                                    model: provider.defaultModel, baseURL: provider.defaultBaseURL)
+            Config.setSavedModels([model, Config.appleIntelligenceDefault])
+            Config.setActiveModelId(model.id)
+        }
 
         if isSet(.freshInstall) {
             Config.setHasCompletedOnboarding(false)

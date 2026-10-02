@@ -118,4 +118,38 @@ final class FieldAssistModeUITests: AccessibilityAuditCase {
         app.navigationBars["Today"].buttons["Done"].tap()
         awaitScreen(card, named: "The card, after Done")
     }
+
+    /// A job in the day view opens over the Jobs list (Plan HC): the Jobs tab is selected, the
+    /// job's page is up, and Back is the list of every job.
+    func testAJobInTheDayOpensOverTheJobsList() {
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSends, .seedFieldDay, .seedMyDay])
+        openTab("Avenkin", in: app)
+
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Today,")).firstMatch
+        if !card.waitForExistence(timeout: 90) {
+            // First launch of a run, cold: the seeded day occasionally never lands. One clean
+            // restart, as the Job tab's own tests do.
+            app.terminate()
+            app.launch()
+            openTab("Avenkin", in: app)
+        }
+        awaitScreen(card, named: "The job-day card", timeout: 90)
+        card.tap()
+        awaitScreen(app.navigationBars["Today"], named: "The day view")
+
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1006")).firstMatch
+        awaitScreen(row, named: "Job 1006 in the day")
+        row.tap()
+
+        let page = app.navigationBars["Job 1006"]
+        awaitScreen(page, named: "Job 1006's page in the Jobs tab")
+        XCTAssertTrue(app.tabBars.buttons["Jobs"].isSelected, "the Jobs tab is the one showing")
+        save(app, named: "hc-day-row-opens-job")
+
+        page.buttons["Jobs"].tap()
+        // The list's own bar; the staged reports this launch seeds sit first on it and can push
+        // its rows below the fold, where a `List` has not built them yet.
+        awaitScreen(app.navigationBars["Jobs"], named: "The Jobs list, after Back")
+        save(app, named: "hc-day-row-back-to-list")
+    }
 }
