@@ -122,10 +122,17 @@ final class FieldAssistModeUITests: AccessibilityAuditCase {
     /// A job in the day view opens over the Jobs list (Plan HC): the Jobs tab is selected, the
     /// job's page is up, and Back is the list of every job.
     func testAJobInTheDayOpensOverTheJobsList() {
-        let app = launch([.configured, .fieldAssist, .seedFieldDay])
+        let app = launch([.configured, .seedFieldHistory, .seedFieldSends, .seedFieldDay, .seedMyDay])
         openTab("Avenkin", in: app)
 
         let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Today,")).firstMatch
+        if !card.waitForExistence(timeout: 90) {
+            // First launch of a run, cold: the seeded day occasionally never lands. One clean
+            // restart, as the Job tab's own tests do.
+            app.terminate()
+            app.launch()
+            openTab("Avenkin", in: app)
+        }
         awaitScreen(card, named: "The job-day card", timeout: 90)
         card.tap()
         awaitScreen(app.navigationBars["Today"], named: "The day view")

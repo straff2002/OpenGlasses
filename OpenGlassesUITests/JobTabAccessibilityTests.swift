@@ -85,6 +85,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let add = app.buttons["Add new job"]
         awaitScreen(add, named: "The Jobs list, empty")
         XCTAssertTrue(app.staticTexts["No jobs yet"].exists)
+        save(app, named: "hc-jobs-empty")
 
         audit(app, screen: "Jobs list — empty",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
@@ -97,6 +98,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
                       "the start page should say which vault a new job would run against")
         XCTAssertTrue(app.navigationBars["New job"].buttons["Jobs"].exists,
                       "the start page goes back to the list")
+        save(app, named: "hc-new-job")
 
         audit(app, screen: "Job tab — no job open",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
