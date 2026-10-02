@@ -1,6 +1,31 @@
 # Plan HB — Field Assist Mode and the Job-Day Card
 
-**Status:** 📋 Planned 2026-10-02 — P0 (pure types) + P1 (views) in one PR.
+**Status:** ✅ Shipped 2026-10-02 — P0 (pure types) + P1 (views) in one PR. **Owed (device):** the
+Field Assist tab and the job-day card with a real day of jobs, VoiceOver on the Other modes accordion
+and the card's two targets, Quick Look on an imported manufacturer PDF.
+
+**As built — where the code differs from, or adds to, the decisions below:**
+- The day feed (`JobDayFeed`) lives on `AppState` and the full-screen day view is presented by the
+  home tab, not by the card: the card yields its place to every turn, and a view presented from it
+  would have been torn down with it.
+- A row that leaves the day view (the Jobs tab, a report's composer) is acted on in the cover's
+  `onDismiss`, because nothing can be presented from under a full-screen cover.
+- The open card shows at most three jobs, two to-dos and two My Day items, then "Open your day
+  (N more)" — open, it still pushes the grid down to one row, and the whole day is one tap away.
+  My Day's weather rows carry the WeatherKit credit in the card and the day view.
+- The Settings request is ignored (the hub shows instead) while Simple Mode hides Field Assist.
+- The privacy-log ledger's sanity check moved from `PersonaPickerSheet` (which no longer logs) to
+  `FieldAssistModeTab`, which now emits the scenario's `fieldSessionStarted`.
+- `JobTabModel.noJobNumber` is `nonisolated` so the composer (and the send queue's decoder, which
+  already warned) can name it off the main actor.
+- Simulator (iPhone 17 Pro, default text): Modes shows the Field Assist row with a lock and the
+  upsell footer, and tapping it lands on Settings › Field Assist with Back to Settings; with Field
+  Assist on the bar reads Avenkin · Field Assist · Jobs · History · Settings, the tab lists Start a
+  job, the vault, three refrigeration scenarios, Manuals ("No manuals yet…" on the bundled vaults),
+  Field Assist settings and Other modes collapsed, which expands into the persona picker; the home
+  card collapsed reads "Today 3 jobs · next 4:05 PM Smith & Co — 3 reports to send", open it lists
+  the jobs and the reports, and the day view lists Jobs, Still to do and My Day (no My Day card of
+  its own).
 
 **Related:** Plan [F](F-field-assist.md) (Field Assist, vaults, procedures), Plan
 [FO](FO-guided-job-flow-and-job-tab.md) (the Job tab, upcoming jobs, debriefs, the send queue,
@@ -170,7 +195,9 @@ org-forced), `FieldAssistScenarioStartTests`, `FieldAssistManualShelfTests`, `Ho
 `JobDayComposerTests` (ordering, statuses, overdue, the to-do kinds and their scoping, routes,
 summary line and empty day), `EditionPresentationTests` updated for the reconciled tab set.
 
-## Owed (device)
+## Tests (as run)
 
-The Field Assist tab and the job-day card on a phone with a real day of jobs; VoiceOver on the
-accordion and the card's two targets; Quick Look on an imported manufacturer PDF.
+New: `FieldAssistModeTests` (18), `FieldAssistManualShelfTests` (7), `JobDayComposerTests` (19);
+updated `EditionPresentationTests`, `PrivacyLogTests`. UI: `FieldAssistModeUITests` (3 — the Modes
+shortcut into Settings, the Field Assist tab with the accordion both ways and an audit, the job-day
+card collapsed/open, the day view with an audit and My Day folded in).
