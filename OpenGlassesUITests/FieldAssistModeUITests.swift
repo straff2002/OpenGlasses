@@ -118,4 +118,30 @@ final class FieldAssistModeUITests: AccessibilityAuditCase {
         app.navigationBars["Today"].buttons["Done"].tap()
         awaitScreen(card, named: "The card, after Done")
     }
+
+    /// A job in the day view opens over the Jobs list (Plan HC): the Jobs tab is selected, the
+    /// job's page is up, and Back is the list of every job.
+    func testAJobInTheDayOpensOverTheJobsList() {
+        let app = launch([.configured, .fieldAssist, .seedFieldDay])
+        openTab("Avenkin", in: app)
+
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Today,")).firstMatch
+        awaitScreen(card, named: "The job-day card", timeout: 90)
+        card.tap()
+        awaitScreen(app.navigationBars["Today"], named: "The day view")
+
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1006")).firstMatch
+        awaitScreen(row, named: "Job 1006 in the day")
+        row.tap()
+
+        let page = app.navigationBars["Job 1006"]
+        awaitScreen(page, named: "Job 1006's page in the Jobs tab")
+        XCTAssertTrue(app.tabBars.buttons["Jobs"].isSelected, "the Jobs tab is the one showing")
+        save(app, named: "hc-day-row-opens-job")
+
+        page.buttons["Jobs"].tap()
+        awaitScreen(app.buttons["Add new job"], named: "The Jobs list, after Back")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1006,"))
+            .firstMatch.exists, "the job is on the list it came back to")
+    }
 }

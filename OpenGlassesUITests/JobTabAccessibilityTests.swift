@@ -32,6 +32,30 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         tab.tap()
     }
 
+    /// A screenshot as an attachment, and — when `OG_SHOT_DIR` names a directory — a PNG there.
+    private func save(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        let environment = ProcessInfo.processInfo.environment
+        guard let directory = environment["OG_SHOT_DIR"] ?? environment["TEST_RUNNER_OG_SHOT_DIR"],
+              !directory.isEmpty else { return }
+        let url = URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent("\(name).png")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? app.screenshot().pngRepresentation.write(to: url)
+    }
+
+    /// The open job's page, pushed from the list (Plan HC). The open job's row leads the list.
+    private func openTheOpenJob(_ label: String = "Job 1005", in app: XCUIApplication,
+                                file: StaticString = #filePath, line: UInt = #line) {
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label + ",")).firstMatch
+        awaitScreen(row, named: "The open job's row", file: file, line: line)
+        row.tap()
+    }
+
     /// The audit's own deferrals, plus the two that apply to any `Form`-shaped screen in this app.
     private var formDeferrals: [AuditDeferral] {
         [.systemFormChrome, .secondaryCopyContrast, .singleLineTextEntry]
@@ -57,10 +81,22 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let app = launch([.configured, .fieldAssist])
         openJobTab(in: app)
 
+        // No job of any kind: the list says so, and offers the one thing to do (Plan HC).
+        let add = app.buttons["Add new job"]
+        awaitScreen(add, named: "The Jobs list, empty")
+        XCTAssertTrue(app.staticTexts["No jobs yet"].exists)
+
+        audit(app, screen: "Jobs list — empty",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        // Add new job opens what the tab used to show with no job: the vault and Start job.
+        add.tap()
         let start = app.buttons["Start job"]
-        awaitScreen(start, named: "The Job tab's empty state")
+        awaitScreen(start, named: "The new job page")
         XCTAssertTrue(app.staticTexts["Vault in use"].exists,
-                      "the empty state should say which vault a new job would run against")
+                      "the start page should say which vault a new job would run against")
+        XCTAssertTrue(app.navigationBars["New job"].buttons["Jobs"].exists,
+                      "the start page goes back to the list")
 
         audit(app, screen: "Job tab — no job open",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
@@ -79,7 +115,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
             NSPredicate(format: "label CONTAINS %@", "Job 1004")).firstMatch
         reachThePastJobs(pastJob, in: app)
 
-        audit(app, screen: "Job tab — past jobs",
+        audit(app, screen: "Jobs list — recent jobs",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
 
         pastJob.tap()
@@ -106,6 +142,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testJobTabWithAJobOpen() {
         let app = launch([.configured, .seedFieldJob])
         openJobTab(in: app)
+        openTheOpenJob(in: app)
 
         // The number leads the screen, so it is what says the job is open. The controls are down
         // the page and a `List` does not build a row until it is near the viewport, so they are
@@ -126,12 +163,69 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
     }
 
+    // MARK: - The list (Plan HC)
+
+    /// The open job first, then Add new job, the jobs scheduled and the finished one with what is
+    /// still owed on it; a job's page pushed over it, and Back to the list.
+    func testTheJobsListWithOpenScheduledAndFinishedJobs() {
+        let app = launch([.configured, .seedFieldJob, .seedFieldDay])
+        openJobTab(in: app)
+
+        let open = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1005,")).firstMatch
+        awaitScreen(open, named: "The Jobs list")
+        XCTAssertTrue(app.buttons["Add new job"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1006,"))
+            .firstMatch.exists, "a job scheduled today is on the list")
+        save(app, named: "hc-jobs-list")
+        audit(app, screen: "Jobs list — open, scheduled and finished",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        let finished = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1004,")).firstMatch
+        scrollUntilVisible(finished, in: app, named: "The finished job")
+        XCTAssertTrue(finished.label.contains("Report not sent"),
+                      "a recent job whose report never went says so: \(finished.label)")
+        save(app, named: "hc-jobs-list-recent")
+
+        finished.tap()
+        awaitScreen(app.staticTexts["Work record"], named: "The finished job's page")
+        save(app, named: "hc-past-job-from-list")
+        app.navigationBars.buttons["Jobs"].firstMatch.tap()
+        awaitScreen(app.buttons["Add new job"], named: "The list, after Back")
+    }
+
+    /// With a job open, Add new job asks — and nothing is closed by asking (Plan HC).
+    func testAddNewJobWithAJobOpenAsksFirst() {
+        let app = launch([.configured, .seedFieldJob])
+        openJobTab(in: app)
+
+        let add = app.buttons["Add new job"]
+        awaitScreen(add, named: "The Jobs list")
+        add.tap()
+
+        let resume = app.buttons["Resume Job 1005"]
+        awaitScreen(resume, named: "The open-job question")
+        XCTAssertTrue(app.buttons["Finish Job 1005…"].exists)
+        XCTAssertTrue(app.buttons["Schedule a job for later"].exists)
+        save(app, named: "hc-add-with-open-job")
+
+        resume.tap()
+        awaitScreen(app.staticTexts["Time on the job"], named: "The open job, resumed")
+        save(app, named: "hc-open-job-from-list")
+        app.navigationBars.buttons["Jobs"].firstMatch.tap()
+
+        // Still open: the question changed nothing.
+        let open = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1005,")).firstMatch
+        awaitScreen(open, named: "The list, with the job still open")
+        XCTAssertTrue(open.label.contains("In progress") || open.label.contains("Paused"), open.label)
+    }
+
     /// Nothing on this screen may clip or become unreachable at the largest accessibility size —
     /// least of all the job number, which is the one thing the whole record is filed under.
     func testJobTabAtTheLargestAccessibilitySize() {
         let app = launch([.configured, .seedFieldJob], contentSizeCategory: Self.ax5)
         // Five tabs at AX5: the bar keeps every label, so the tab is still addressed by name.
         openJobTab(in: app)
+        openTheOpenJob(in: app)
 
         let number = app.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job at AX5")
@@ -150,6 +244,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testTheJobPhotosSectionAndTheCloseReview() {
         let app = launch([.configured, .seedFieldJob, .seedFieldPhotos])
         openJobTab(in: app)
+        openTheOpenJob(in: app)
 
         let number = app.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job with photos")
@@ -193,6 +288,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testTheJobPhotosSectionAndReviewWithAClipOnTheJob() {
         let app = launch([.configured, .seedFieldJob, .seedFieldPhotos, .seedFieldClips])
         openJobTab(in: app)
+        openTheOpenJob(in: app)
 
         let number = app.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job with a clip")
@@ -231,6 +327,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testTheCloseReviewAtTheLargestAccessibilitySize() {
         let app = launch([.configured, .seedFieldJob, .seedFieldPhotos], contentSizeCategory: Self.ax5)
         openJobTab(in: app)
+        openTheOpenJob(in: app)
 
         let number = app.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job with photos at AX5")
@@ -260,6 +357,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testTheSignOffStepAndTheHandOverSheet() {
         let app = launch([.configured, .seedFieldJob])
         openJobTab(in: app)
+        openTheOpenJob(in: app)
         awaitScreen(app.staticTexts["Job 1005"], named: "The open job")
 
         let close = app.buttons["Close job"]
@@ -292,6 +390,7 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     func testTheHandOverSheetAtTheLargestAccessibilitySize() {
         let app = launch([.configured, .seedFieldJob], contentSizeCategory: Self.ax5)
         openJobTab(in: app)
+        openTheOpenJob(in: app)
         awaitScreen(app.staticTexts["Job 1005"], named: "The open job at AX5")
 
         let close = app.buttons["Close job"]
@@ -420,15 +519,15 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     /// A `List` builds its rows lazily, so a control below the fold is not merely off-screen — it
     /// does not exist yet. Existence alone would therefore assert nothing about a long screen at a
     /// large text size, which is the case this is here to cover.
-    /// Bring a past job's row into reach on the no-job screen.
+    /// Bring a past job's row into reach on the Jobs list.
     ///
-    /// Past jobs are the last section, under the vault, Start job, the jobs ahead and Today. On a
-    /// short phone (CI's iPhone 16e) that puts the first row below the fold, and a `List` has not
-    /// built a row it has not reached, so waiting for it alone never succeeds. Wait for the screen
-    /// itself, then scroll to the row.
+    /// Finished jobs sit under the open job, Add new job and the scheduled ones. On a short phone
+    /// (CI's iPhone 16e) that can put the first row below the fold, and a `List` has not built a
+    /// row it has not reached, so waiting for it alone never succeeds. Wait for the list itself,
+    /// then scroll to the row.
     private func reachThePastJobs(_ row: XCUIElement, in app: XCUIApplication,
                                   file: StaticString = #filePath, line: UInt = #line) {
-        awaitScreen(app.buttons["Start job"], named: "The Job tab's empty state",
+        awaitScreen(app.buttons["Add new job"], named: "The Jobs list",
                     file: file, line: line)
         scrollUntilVisible(row, in: app, named: "A past job row", file: file, line: line)
     }

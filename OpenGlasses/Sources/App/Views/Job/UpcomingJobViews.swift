@@ -1,51 +1,5 @@
 import SwiftUI
 
-/// The Upcoming section of the Job tab (Plan FO §7, P3c): jobs ahead, soonest first, and a way to
-/// add one by typing. A job that arrived as a file says whether it was signed.
-struct UpcomingJobsSection: View {
-    let rows: [UpcomingJobsModel.Row]
-    let onOpen: (String) -> Void
-    let onAdd: () -> Void
-
-    var body: some View {
-        Section {
-            ForEach(rows) { row in
-                Button { onOpen(row.id) } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(row.title)
-                            .font(.headline)
-                            .foregroundStyle(Color.primary)
-                        if let detail = row.detail {
-                            Text(detail)
-                                .font(.subheadline)
-                                .foregroundStyle(Color.secondary)
-                        }
-                        if let provenance = row.provenance {
-                            Label(provenance, systemImage: row.isSigned ? "checkmark.seal" : "exclamationmark.triangle")
-                                .font(.caption)
-                                .foregroundStyle(row.isSigned ? Color.secondary : OGTheme.warnLabel)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(row.spoken)
-                .accessibilityHint("Opens the job's brief, directions and Start.")
-                .accessibilityAddTraits(.isButton)
-            }
-            Button(action: onAdd) {
-                Label("Add an upcoming job", systemImage: "plus")
-            }
-        } header: {
-            Text("Upcoming")
-        } footer: {
-            if rows.isEmpty {
-                Text("Jobs you haven't started yet. Add one here, say \u{201C}next job: 1007, no heat, Smith Street\u{201D}, or open a job file the office emailed you.")
-            }
-        }
-    }
-}
-
 /// One job ahead: what is known, the brief, directions, and Start (Plan FO §7).
 struct UpcomingJobView: View {
     @EnvironmentObject private var appState: AppState

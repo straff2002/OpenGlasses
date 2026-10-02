@@ -191,25 +191,23 @@ struct JobDayHomeCard: View {
     }
 }
 
-/// The whole day, full screen (Plan HB). Every row opens its own screen; Done comes back.
+/// The whole day, full screen (Plan HB). Done comes back.
+///
+/// Every row leaves it (Plan HC): a job's page opens over the Jobs list — one place for a job's
+/// page, so Back from it is the list of every job, with this day's admin flagged on it — and a
+/// report opens its composer.
 struct JobDayView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var feed: JobDayFeed
-    /// A row that leaves this view — the Jobs tab, or a report's composer.
+    /// A row that leaves this view — a job in the Jobs tab, or a report's composer.
     let onLeave: (JobDayDestination) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [Route] = []
-
-    private enum Route: Hashable {
-        case destination(JobDayDestination)
-        case transcript(threadId: String)
-    }
 
     private var day: JobDay { feed.day }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             List {
                 if day.isEmptyDay {
                     Section {
@@ -282,41 +280,11 @@ struct JobDayView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .navigationDestination(for: Route.self) { route in
-                destinationView(route)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func destinationView(_ route: Route) -> some View {
-        switch route {
-        case .destination(.upcomingJob(let id)):
-            let vaultId = Config.fieldAssistDefaultVaultId
-            UpcomingJobView(store: appState.upcomingJobs, flow: appState.guidedJobFlow, jobId: id,
-                            jobOpen: FieldSessionService.shared.activeSession.map {
-                                $0.endedAt == nil && $0.outcome != .cancelled } ?? false,
-                            vaultName: VaultRegistry.shared.manifest(id: vaultId)?.name ?? vaultId,
-                            vaultUnlocked: VaultRegistry.shared.isUnlocked(vaultId),
-                            onStarted: { _ in onLeave(.openJob) })
-        case .destination(.pastJob(let sessionId)):
-            PastJobView(sessionId: sessionId,
-                        model: JobTabModel(host: FieldSessionService.shared, flow: appState.guidedJobFlow),
-                        onOpenTranscript: { path.append(.transcript(threadId: $0)) })
-        case .transcript(let threadId):
-            JobTranscriptView(threadId: threadId)
-        case .destination(.openJob), .destination(.send):
-            EmptyView()
         }
     }
 
     private func go(_ destination: JobDayDestination) {
-        switch destination {
-        case .upcomingJob, .pastJob:
-            path.append(.destination(destination))
-        case .openJob, .send:
-            onLeave(destination)
-        }
+        onLeave(destination)
     }
 
     private func row(symbol: String, title: String, detail: String?, status: String? = nil,

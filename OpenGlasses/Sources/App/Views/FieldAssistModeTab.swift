@@ -89,7 +89,8 @@ struct FieldAssistModeTab: View {
     private var jobSection: some View {
         Section {
             Button {
-                appState.requestedTab = .job
+                // The open job's page, or the start page — over the Jobs list (Plan HC).
+                appState.openJobs(openSession == nil ? .newJob : .currentJob)
             } label: {
                 FieldAssistTabRow(
                     symbol: openSession == nil ? "play.circle.fill" : "briefcase.fill",
@@ -284,7 +285,7 @@ struct FieldAssistModeTab: View {
                 problem = reason
                 return
             }
-            appState.requestedTab = .job
+            appState.openJobs(.currentJob)
         } catch {
             problem = error.localizedDescription
         }

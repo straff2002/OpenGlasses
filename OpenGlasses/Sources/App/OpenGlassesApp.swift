@@ -292,7 +292,7 @@ struct OpenGlassesApp: App {
                         get: { appState.jobFiles.stage != .idle },
                         set: { if !$0 { appState.jobFiles.dismiss() } })) {
                         JobFileReviewSheet(service: appState.jobFiles) {
-                            appState.requestedTab = .job
+                            appState.openJobs(.list)
                         }
                     }
 
@@ -1196,10 +1196,10 @@ class AppState: ObservableObject, AppStateProtocol {
             log: { kind, sessionId, payload in
                 FieldSessionService.shared.logDebrief(kind, sessionId: sessionId, payload: payload)
             }))
-        // A tap on that notification lands on the Job tab. The router answers only `didReceive`,
-        // so every other notification in the app behaves exactly as it did.
+        // A tap on that notification lands on the Jobs list, where the send card is (Plan HC). The
+        // router answers only `didReceive`, so every other notification behaves exactly as it did.
         jobSendNotificationRouter = JobSendNotificationRouter { [weak self] tab in
-            self?.requestedTab = tab
+            if tab == .job { self?.openJobs(.list) } else { self?.requestedTab = tab }
         }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
     }
@@ -1481,6 +1481,18 @@ class AppState: ObservableObject, AppStateProtocol {
     func openChatThread(_ threadId: String) {
         chatThreadToOpen = threadId
         requestedTab = .chat
+    }
+
+    /// A place in the Jobs tab it should show when it next appears (Plan HC) — the list, the open
+    /// job, the start page, or one job. Consumed and cleared by the tab, which decides against what
+    /// is on the phone at that moment where it lands (`JobListRouting`).
+    @Published var jobListRequest: JobListRequest?
+
+    /// Show the Jobs tab at `request`. Every surface that sends the wearer to a job comes through
+    /// here, so a job's page is always pushed over the list and Back always returns to it.
+    func openJobs(_ request: JobListRequest) {
+        jobListRequest = request
+        requestedTab = .job
     }
 
     /// DK: owns the disposable, lock-scoped in-memory conversation recall projection.

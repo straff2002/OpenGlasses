@@ -115,6 +115,10 @@ final class JobSignOffScreenshotTests: AccessibilityAuditCase {
     /// does not.
     private func openTheSignOffStep(_ app: XCUIApplication) {
         openJobTab(app)
+        // The open job's page is pushed from its row on the Jobs list (Plan HC).
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Job 1005,")).firstMatch
+        awaitScreen(row, named: "The open job's row")
+        row.tap()
         awaitScreen(app.staticTexts["Job 1005"], named: "The open job")
         let close = app.buttons["Close job"]
         scrollUntilVisible(close, in: app, named: "Close job")
