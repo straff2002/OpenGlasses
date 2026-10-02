@@ -341,8 +341,9 @@ struct JobTabModel {
         let record: WorkRecord
     }
 
-    /// The blank a past job's value cannot be.
-    static let noJobNumber = "No job number"
+    /// The blank a past job's value cannot be. A constant, so readable off the main actor (the send
+    /// queue's decoder and the job-day composer both name it).
+    nonisolated static let noJobNumber = "No job number"
 
     // MARK: - Construction
 
