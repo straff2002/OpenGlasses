@@ -99,6 +99,18 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
 
         audit(app, screen: "Job tab — a past job's photos and actions",
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+
+        // The send sheet comes before any composer: who the report is for, and whether the
+        // conversation goes with it.
+        send.tap()
+        let transcriptToggle = app.switches["Include transcript (internal)"]
+        awaitScreen(transcriptToggle, named: "The send sheet")
+        XCTAssertTrue(app.buttons["Continue"].exists)
+
+        audit(app, screen: "Job tab — sending a past job's report", deferring: formDeferrals)
+
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "cancelling the sheet sends nothing")
     }
 
     // MARK: - A job in progress

@@ -2572,7 +2572,7 @@ final class FieldSessionService: ObservableObject {
                                                 clipPlan: clipPlan,
                                                 reportAlreadySent: reportWasSent(sessionId: sessionId),
                                                 transcript: transcript
-                                                    ?? .archive(context: reportTranscriptContext()))
+                                                    ?? ReportTranscriptPolicy.archive(context: reportTranscriptContext()))
         // Plan T: store-and-forward the audit — enqueue an op so the export syncs to a backend
         // when one exists (no-op locally beyond a queued tombstone until a networked sink lands).
         // The op records which formats were produced, never their paths: a staged artifact's path
