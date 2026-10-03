@@ -20,7 +20,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: managed-probe id HOME | connect HOME OFFICE_ID ADDRESS STATUS_FILE STOP_FILE")
+		return fmt.Errorf("usage: managed-probe id HOME | connect HOME OFFICE_ID ADDRESS STATUS_FILE STOP_FILE | connect-route HOME OFFICE_ID POLICY HINT|- STATUS_FILE STOP_FILE")
 	}
 	client, err := mobilecore.NewClient(args[1])
 	if err != nil {
@@ -30,14 +30,31 @@ func run(args []string) error {
 		fmt.Println(client.DeviceID())
 		return nil
 	}
-	if args[0] != "connect" || len(args) != 6 {
+	var files []string
+	wait := 25 * time.Second
+	switch {
+	case args[0] == "connect" && len(args) == 6:
+		err = client.StartManagedOffice(args[2], args[3])
+		files = args[4:]
+	case args[0] == "connect-route" && len(args) == 7:
+		// POLICY is privateLan or automatic; "-" stands for no LAN hint.
+		hint := args[4]
+		if hint == "-" {
+			hint = ""
+		}
+		err = client.StartManagedOfficeRoute(args[2], args[3], hint)
+		files = args[5:]
+		// Discovery keeps a failed lookup for a minute, so an office that announces after the
+		// phone's first lookup is found on the next one.
+		wait = 150 * time.Second
+	default:
 		return fmt.Errorf("invalid managed-probe arguments")
 	}
-	if err := client.StartManagedOffice(args[2], args[3]); err != nil {
+	if err != nil {
 		return err
 	}
 	defer client.Stop()
-	deadline := time.Now().Add(25 * time.Second)
+	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		raw, err := client.Snapshot()
 		if err != nil {
@@ -55,11 +72,11 @@ func run(args []string) error {
 			if !status.ManagedOffice || status.SharedFolders != 0 {
 				return fmt.Errorf("connected with unexpected managed policy: %s", raw)
 			}
-			if err := os.WriteFile(args[4], []byte(raw), 0600); err != nil {
+			if err := os.WriteFile(files[0], []byte(raw), 0600); err != nil {
 				return err
 			}
 			for time.Now().Before(deadline) {
-				if _, err := os.Stat(args[5]); err == nil {
+				if _, err := os.Stat(files[1]); err == nil {
 					return nil
 				} else if !os.IsNotExist(err) {
 					return err
@@ -70,5 +87,5 @@ func run(args []string) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("managed phone did not connect within 25 seconds")
+	return fmt.Errorf("managed phone did not connect within %v", wait)
 }

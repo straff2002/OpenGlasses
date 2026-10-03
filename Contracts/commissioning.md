@@ -5,7 +5,9 @@ redemption the phone answers with, the comparison code both screens show, and th
 approval or refusal.
 
 **Status:** contract, reference implementation, bootstrap connection and golden fixtures. The
-office helper and the phone bridge expose the connection; neither app calls it yet. Adopted from
+office helper and the phone bridge expose the connection, and both apps use it: the office
+desktop's commissioning screens through the helper, and the phone's scanner in its opt-in
+office-transport build (`AVENKIN_OFFICE_TRANSPORT`). Adopted from
 the office's proposal (`avenkin-office` `docs/proposals/commissioning-contract-v1.md`) with the
 changes listed under [Changes from the proposal](#changes-from-the-proposal).
 
@@ -115,7 +117,7 @@ base32 characters (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`) in three groups of four, 
 | `profileDocument` | The vendor-signed schema-2 profile, unchanged (at most 32,768 bytes) |
 | `licenceCode` | The vendor-signed licence for the same organisation and profile, unchanged (at most 16,384 bytes) |
 | `peerBinding` | The administrator-signed peer-binding envelope, unchanged, naming `enrolmentID` (at most 32,768 bytes) |
-| `officeAddress` | The office sync engine's listener, `a.b.c.d:port` on a private IPv4 network, where the phone connects once enrolled (with `tcp://` in front, it is the address the phone's managed connection takes). A route hint, never authority: the engine pins the office transport identity the peer binding names |
+| `officeAddress` | The office sync engine's listener, `a.b.c.d:port` on a private IPv4 network, where the phone connects once enrolled (with `tcp://` in front, it is the address the phone's managed connection takes). A route hint, never authority: the engine pins the office transport identity the peer binding names. Under `automatic` the phone also finds the office through discovery; this address is the LAN shortcut |
 | `issuedAt` | Office clock |
 
 ### 2.5 Refusal (office → phone)

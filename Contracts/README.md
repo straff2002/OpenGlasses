@@ -93,6 +93,23 @@ after issuing its binding, also without creating a managed folder. This tests a 
 it cannot transfer a managed job/manual or establish background delivery. Actual phone-to-desktop
 connectivity remains to be verified with a signed organisation setup on the physical device.
 
+**Managed office connection.** The phone bridge's `Client.StartManagedOfficeRoute(officeTransportID,
+policy, lanHint)` takes its policy only from the vendor-signed profile's
+`officeAuthority.transportPolicy`, read again on every connect; the peer binding carries none, and
+a QR code, an approval or a typed address cannot widen it. `lanHint` is empty or
+`tcp://a.b.c.d:port` on a private IPv4 network (an approval's `officeAddress` with `tcp://` in
+front); anything else is refused. Under either policy the phone only dials: no listener, no shared
+folder, no introducer or auto-accepted folder, and the engine pins the office transport identity
+the binding names. Under `privateLan` the hint is required and is the only address dialled; no
+public service is contacted. Under `automatic` the hint is optional and listed first, then the
+phone looks the office up in Syncthing's global discovery and dials what it returns, directly or,
+as a relay client, through the office's community relay. The phone announces nothing (it has no
+listener) and uses no local discovery, NAT mapping or STUN. A lookup shows the discovery server
+the phone's IP address and the office ID it asked for; a relay sees both devices' IP addresses and
+IDs, timing and byte counts, while the content stays TLS end to end between the pinned identities.
+`StartManagedOffice(officeTransportID, address)` is the `privateLan` form. The connection still
+carries no job or manual.
+
 ## Managed job transport reference — draft v1
 
 `manageddelivery.Job` in Go and `OfficeManagedJob` in Swift now verify the same fictional fixture
