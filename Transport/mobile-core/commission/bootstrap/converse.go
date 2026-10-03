@@ -30,12 +30,15 @@ package bootstrap
 //
 // After the redemption event the desktop writes one decision line:
 //
-//	{"op":"approve","profileDocument":"<vendor-signed schema-2 profile>","licenceCode":"…"}
+//	{"op":"approve","profileDocument":"<vendor-signed schema-2 profile>","licenceCode":"…",
+//	 "officeAddress":"a.b.c.d:port"}     the office sync engine's listener, private IPv4 (required)
 //	{"op":"refuse","reason":"refused_by_person"|"wrong_organisation"|"policy"}
 //
 // "approve" issues the administrator-signed peer binding for the redemption's enrolment and the
-// phone's identities and this office's transport identity, then signs the approval. If either
-// fails the helper writes an error event and the invitation stays live for another decision.
+// phone's identities and this office's transport identity, then signs the approval, which
+// carries officeAddress so the phone can reach the sync engine without anyone typing it. If
+// either fails the helper writes an error event and the invitation stays live for another
+// decision.
 //
 // The helper closes the listener and exits when stdin closes or cannot be read (the desktop
 // cancelled the slot or quit: "cancelled"), at expiresAt ("expired"), or Linger (10 s) after
@@ -49,6 +52,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"avenkin.dev/mobilecore/commission"
 )
 
 // Linger is how long the listener stays after its decision was delivered, for a phone whose
@@ -67,6 +72,7 @@ type Decision struct {
 	Op              string `json:"op"`
 	ProfileDocument string `json:"profileDocument"`
 	LicenceCode     string `json:"licenceCode"`
+	OfficeAddress   string `json:"officeAddress"`
 	Reason          string `json:"reason"`
 }
 
@@ -166,6 +172,9 @@ func decide(server *Server, issue Issuer, now func() int64, line []byte) error {
 		if len(d.ProfileDocument) == 0 || len(d.LicenceCode) == 0 {
 			return errors.New("an approval needs the profile document and the licence code")
 		}
+		if !commission.PrivateAddress(d.OfficeAddress) {
+			return errors.New("an approval needs the office sync address as a.b.c.d:port on a private IPv4 network")
+		}
 		if issue == nil {
 			return errors.New("this office cannot issue peer bindings")
 		}
@@ -174,7 +183,7 @@ func decide(server *Server, issue Issuer, now func() int64, line []byte) error {
 		if e != nil {
 			return errors.New("peer binding: " + e.Error())
 		}
-		_, e = server.Approve(d.ProfileDocument, d.LicenceCode, binding)
+		_, e = server.Approve(d.ProfileDocument, d.LicenceCode, binding, d.OfficeAddress)
 		return e
 	case "refuse":
 		_, e := server.Refuse(d.Reason)

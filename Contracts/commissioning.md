@@ -115,6 +115,7 @@ base32 characters (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`) in three groups of four, 
 | `profileDocument` | The vendor-signed schema-2 profile, unchanged (at most 32,768 bytes) |
 | `licenceCode` | The vendor-signed licence for the same organisation and profile, unchanged (at most 16,384 bytes) |
 | `peerBinding` | The administrator-signed peer-binding envelope, unchanged, naming `enrolmentID` (at most 32,768 bytes) |
+| `officeAddress` | The office sync engine's listener, `a.b.c.d:port` on a private IPv4 network, where the phone connects once enrolled (with `tcp://` in front, it is the address the phone's managed connection takes). A route hint, never authority: the engine pins the office transport identity the peer binding names |
 | `issuedAt` | Office clock |
 
 ### 2.5 Refusal (office → phone)
@@ -207,6 +208,9 @@ COMMISSION_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./co
   rather than an approval-shaped message with a status.
 - **Digests are over the envelope bytes**, for the invitation and the redemption alike, so the
   comparison code also covers both signatures.
+- **The approval carries `officeAddress`.** The invitation's address is the bootstrap listener,
+  and the office's sync port is chosen when its engine starts, so without it someone would type
+  the office's address into the phone.
 - **Decided:** the QR is text with a prefix, not a registered URL scheme; the comparison code is
   twelve characters; the bootstrap connection is TLS pinned to the office transport identity.
 - **Still open:** whether the approval later carries a first organisation overlay; lease renewal,

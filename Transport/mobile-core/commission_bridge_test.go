@@ -152,15 +152,21 @@ func TestThePhoneCommissionsOverThePinnedBootstrapConnection(t *testing.T) {
 	if e != nil || log.find("redemption")["comparison"] != comparison {
 		t.Fatal("the two screens show different codes", comparison, log.find("redemption"))
 	}
-	approval, e := office.Approve("profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`)
+	approval, e := office.Approve("profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, "192.168.1.24:22000")
 	if e != nil {
 		t.Fatal(e)
 	}
 	got := decoded(t)(CommissionExchange(invitation, redemption))
 	if got["status"] != "approved" || got["enrolmentID"] != "enrolment-7" || got["profileDocument"] != "profile.signature" ||
 		got["licenceCode"] != "licence.signature" || got["peerBinding"] != `{"payload":"e30=","signature":"AA=="}` ||
-		got["decisionEnvelope"] != approval {
+		got["officeAddress"] != "192.168.1.24:22000" || got["decisionEnvelope"] != approval {
 		t.Fatal("approval not returned", got)
+	}
+	// The documented transformation is exactly what StartManagedOffice accepts.
+	raw, _ := json.Marshal(binding{DeviceID: office.OfficeTransportID(), Address: "tcp://" + got["officeAddress"].(string),
+		Mode: "lan", RequiredNetwork: "any"})
+	if _, _, e = parseBinding(string(raw)); e != nil {
+		t.Fatal("StartManagedOffice would refuse tcp:// + officeAddress:", e)
 	}
 	if log.find("delivered") == nil {
 		t.Fatal("office did not see the delivery")

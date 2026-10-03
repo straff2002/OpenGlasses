@@ -163,7 +163,7 @@ func TestAPhoneRedeemsWaitsAndIsApproved(t *testing.T) {
 		got["enrolmentID"] != "phone-enrolment" || got["existingEnrolment"] != "" || got["appBuild"] != "412" {
 		t.Fatal("redemption event does not describe the redemption", got)
 	}
-	approval, e := s.Approve("profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`)
+	approval, e := s.Approve("profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, "192.168.1.24:22000")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -230,7 +230,7 @@ func TestASecondRedemptionIsAlreadyUsedAndAnUnexpectedUse(t *testing.T) {
 		t.Fatal("the exchange is no longer the first phone's")
 	}
 	// After the decision the intruder is still refused, and nothing is delivered to it.
-	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e != nil {
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e != nil {
 		t.Fatal(e)
 	}
 	if a := exchange(t, s, second); a.Decision.Refusal == nil || a.Decision.Refusal.Reason != "already_used" {
@@ -254,7 +254,7 @@ func TestAnExpiredInvitationIsRefusedAndCannotBeDecided(t *testing.T) {
 	if first.Decision.Refusal == nil || first.Decision.Refusal.Reason != "expired" {
 		t.Fatal("expired invitation not refused as expired", first)
 	}
-	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e == nil {
 		t.Fatal("approved after the phone was told the invitation expired")
 	}
 	if _, e := s.Refuse("refused_by_person"); e == nil {
@@ -265,7 +265,7 @@ func TestAnExpiredInvitationIsRefusedAndCannotBeDecided(t *testing.T) {
 	if e := s.Decidable(); e == nil {
 		t.Fatal("decidable after the phone was told the invitation expired")
 	}
-	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e == nil {
 		t.Fatal("approved after the clock stepped back")
 	}
 	again := exchange(t, s, red)
@@ -283,7 +283,7 @@ func TestNobodyDecidesAfterExpiry(t *testing.T) {
 	s := start(t, clock, &recorder{})
 	exchange(t, s, redeem(t, s.Invitation(), "phone"))
 	clock.Add(900)
-	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e == nil {
 		t.Fatal("approved after expiry")
 	}
 }
@@ -294,7 +294,7 @@ func TestADecisionMadeInTimeIsServedAfterExpiry(t *testing.T) {
 	s := start(t, clock, &recorder{})
 	red := redeem(t, s.Invitation(), "phone")
 	exchange(t, s, red)
-	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e != nil {
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e != nil {
 		t.Fatal(e)
 	}
 	clock.Add(900)
@@ -319,7 +319,7 @@ func TestABlockedEventReceiverStopsNothingElse(t *testing.T) {
 		t.Fatal("not awaiting")
 	}
 	exchange(t, s, redeem(t, s.Invitation(), "intruder"))
-	if _, e = s.Approve("profile.signature", "licence.signature", "binding"); e != nil {
+	if _, e = s.Approve("profile.signature", "licence.signature", "binding", "192.168.1.24:22000"); e != nil {
 		t.Fatal(e)
 	}
 	if exchange(t, s, red).Decision.Approval == nil {

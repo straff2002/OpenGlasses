@@ -40,7 +40,7 @@ func redemption(invitationEnvelope string) Redemption {
 }
 func approval(invitationEnvelope, redemptionEnvelope string) Approval {
 	return Approval{1, ApprovalKind, Digest(invitationEnvelope), Digest(redemptionEnvelope), "a1b2c3d4", transport("phone"),
-		public(phoneKey), "profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, now + 20}
+		public(phoneKey), "profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, "192.168.1.24:22000", now + 20}
 }
 func must[T any](v T, e error) T {
 	if e != nil {
@@ -250,6 +250,12 @@ func TestADecisionIsForOneExchangeOnePhoneAndOneOffice(t *testing.T) {
 		"no licence":              change(func(a *Approval) { a.LicenceCode = "" }),
 		"no binding":              change(func(a *Approval) { a.PeerBinding = "" }),
 		"oversized profile":       change(func(a *Approval) { a.ProfileDocument = strings.Repeat("p", maximumProfile+1) }),
+		"no office address":       change(func(a *Approval) { a.OfficeAddress = "" }),
+		"public office address":   change(func(a *Approval) { a.OfficeAddress = "8.8.8.8:22000" }),
+		"office address no port":  change(func(a *Approval) { a.OfficeAddress = "192.168.1.24" }),
+		"office address as URL":   change(func(a *Approval) { a.OfficeAddress = "tcp://192.168.1.24:22000" }),
+		"office address by name":  change(func(a *Approval) { a.OfficeAddress = "office.local:22000" }),
+		"loopback office address": change(func(a *Approval) { a.OfficeAddress = "127.0.0.1:22000" }),
 	} {
 		if _, e := ReadDecision(reseal(t, ApprovalDomain, bad, officeKey), inv, red); e == nil {
 			t.Fatalf("read an approval with %s", name)

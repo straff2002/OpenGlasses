@@ -92,14 +92,16 @@ func CommissionComparison(invitationEnvelope, redemptionEnvelope string) (string
 // pinned to the invitation's officeTransportID, and returns its answer:
 //
 //	{"status":"awaiting"}
-//	{"status":"approved","enrolmentID","profileDocument","licenceCode","peerBinding","decisionEnvelope"}
+//	{"status":"approved","enrolmentID","profileDocument","licenceCode","peerBinding","officeAddress","decisionEnvelope"}
 //	{"status":"refused","reason"}
 //
 // A decision is returned only after it is checked against this invitation and this redemption.
 // The caller repeats the call with the same arguments about every two seconds while it is
 // awaiting, until expiresAt. An approval's profile, licence and peer binding are not verified
 // here: verify them with the existing setup-file and binding checks, show the review, then
-// apply. An error (no route, a certificate that is not the office's, an answer that does not
+// apply. officeAddress is the office sync engine's `a.b.c.d:port` on a private IPv4 network, a
+// route hint: pass "tcp://" + officeAddress as the address of Client.StartManagedOffice, with the
+// office transport identity from the verified peer binding. An error (no route, a certificate that is not the office's, an answer that does not
 // verify) decides nothing; the caller may try again until expiresAt.
 func CommissionExchange(invitationEnvelope, redemptionEnvelope string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -114,7 +116,7 @@ func CommissionExchange(invitationEnvelope, redemptionEnvelope string) (string, 
 	case answer.Decision.Approval != nil:
 		a := answer.Decision.Approval
 		return stringJSON(map[string]string{"status": "approved", "enrolmentID": a.EnrolmentID,
-			"profileDocument": a.ProfileDocument, "licenceCode": a.LicenceCode, "peerBinding": a.PeerBinding,
+			"profileDocument": a.ProfileDocument, "licenceCode": a.LicenceCode, "peerBinding": a.PeerBinding, "officeAddress": a.OfficeAddress,
 			"decisionEnvelope": answer.Envelope})
 	case answer.Decision.Refusal != nil:
 		return stringJSON(map[string]string{"status": "refused", "reason": answer.Decision.Refusal.Reason})

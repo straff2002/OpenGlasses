@@ -109,7 +109,7 @@ func TestTheConversationRunsOneInvitationToDelivery(t *testing.T) {
 		t.Fatal("invitation event does not describe the invitation", invitation)
 	}
 
-	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s"}`)
+	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s","officeAddress":"192.168.77.10:22000"}`)
 	if !strings.Contains(c.next("error")["message"].(string), "no phone has redeemed") {
 		t.Fatal("approved before a redemption")
 	}
@@ -127,12 +127,22 @@ func TestTheConversationRunsOneInvitationToDelivery(t *testing.T) {
 	c.next("error")
 	c.write(`{"op":"refuse","reason":"already_used"}`)
 	c.next("error")
-	c.write(`{"op":"approve","profileDocument":"unauthorised.profile","licenceCode":"l.s"}`)
+	c.write(`{"op":"approve","profileDocument":"unauthorised.profile","licenceCode":"l.s","officeAddress":"192.168.77.10:22000"}`)
 	if !strings.Contains(c.next("error")["message"].(string), "not authorised") {
 		t.Fatal("binding failure not reported")
 	}
-	// The invitation is still live after the failure; the next approval goes through.
-	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s"}`)
+	issuedBefore := len(issued)
+	for _, address := range []string{"", "8.8.8.8:22000", "192.168.77.10", "tcp://192.168.77.10:22000"} {
+		c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s","officeAddress":"` + address + `"}`)
+		if !strings.Contains(c.next("error")["message"].(string), "office sync address") {
+			t.Fatalf("approved with office address %q", address)
+		}
+	}
+	if len(issued) != issuedBefore {
+		t.Fatal("a peer binding was issued for an approval without a usable office address")
+	}
+	// The invitation is still live after the failures; the next approval goes through.
+	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s","officeAddress":"192.168.77.10:22000"}`)
 	ready := c.next("approval-ready")
 	if ready["peerBinding"] != `{"payload":"YmluZGluZw==","signature":"AA=="}` {
 		t.Fatal("approval-ready does not carry the binding")
@@ -142,7 +152,8 @@ func TestTheConversationRunsOneInvitationToDelivery(t *testing.T) {
 		t.Fatal("binding issued for other identities", issued)
 	}
 	a, e = Exchange(context.Background(), toLoopback, invitationEnvelope, red)
-	if e != nil || a.Decision.Approval == nil || a.Decision.Approval.LicenceCode != "l.s" {
+	if e != nil || a.Decision.Approval == nil || a.Decision.Approval.LicenceCode != "l.s" ||
+		a.Decision.Approval.OfficeAddress != "192.168.77.10:22000" {
 		t.Fatal("phone did not get the approval", e)
 	}
 	c.next("delivered")
@@ -212,7 +223,7 @@ func TestNoBindingIsIssuedAfterExpiry(t *testing.T) {
 	}
 	c.next("redemption")
 	clock.Add(900)
-	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s"}`)
+	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s","officeAddress":"192.168.77.10:22000"}`)
 	if !strings.Contains(c.next("error")["message"].(string), "expired") {
 		t.Fatal("approval after expiry not refused as expired")
 	}

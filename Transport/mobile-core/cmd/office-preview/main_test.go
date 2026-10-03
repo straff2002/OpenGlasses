@@ -167,7 +167,7 @@ func TestCommissionServeRunsOneInvitation(t *testing.T) {
 	}
 	// A real office issues the binding only for a profile signed by a production vendor key
 	// that names this computer's administrator key.
-	s.write(`{"op":"approve","profileDocument":"e30=.AAAA","licenceCode":"l.s"}`)
+	s.write(`{"op":"approve","profileDocument":"e30=.AAAA","licenceCode":"l.s","officeAddress":"192.168.77.10:22000"}`)
 	if message := s.next("error")["message"].(string); !strings.HasPrefix(message, "peer binding: ") {
 		t.Fatal(message)
 	}

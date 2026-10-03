@@ -234,8 +234,9 @@ func (s *Server) Decided() bool {
 
 // Approve signs the approval for the redeemed phone and serves it from now on. The three
 // artefacts are carried unchanged; the peer binding must name the redemption's enrolment and
-// identities, which the phone checks.
-func (s *Server) Approve(profileDocument, licenceCode, peerBinding string) (string, error) {
+// identities, which the phone checks. officeAddress is the office sync engine's listener,
+// `a.b.c.d:port` on a private IPv4 network: where the phone connects once it is enrolled.
+func (s *Server) Approve(profileDocument, licenceCode, peerBinding, officeAddress string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e := s.decidable(); e != nil {
@@ -245,7 +246,7 @@ func (s *Server) Approve(profileDocument, licenceCode, peerBinding string) (stri
 	approval, e := commission.SignApproval(commission.Approval{Version: 1, Kind: commission.ApprovalKind,
 		InvitationSHA256: s.invitationSHA256, RedemptionSHA256: commission.Digest(s.redemption),
 		EnrolmentID: r.EnrolmentID, PhoneTransportID: r.PhoneTransportID, PhoneApplicationKey: r.PhoneApplicationKey,
-		ProfileDocument: profileDocument, LicenceCode: licenceCode, PeerBinding: peerBinding, IssuedAt: s.cfg.Now()}, s.cfg.OfficeKey)
+		ProfileDocument: profileDocument, LicenceCode: licenceCode, PeerBinding: peerBinding, OfficeAddress: officeAddress, IssuedAt: s.cfg.Now()}, s.cfg.OfficeKey)
 	if e != nil {
 		return "", e
 	}
