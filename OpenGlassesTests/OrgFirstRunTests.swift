@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan CT 3a — the decisions behind the first-run "My company gave me a key or code" branch.
+/// Plan CT 3a — the decisions behind the first-run "Set up with my company" branch.
 final class OrgFirstRunTests: XCTestCase {
 
     private func licence(profile: String?) -> LicenseService.LicensePayload {
@@ -54,5 +54,21 @@ final class OrgFirstRunTests: XCTestCase {
     func testAFormattedKeyStillReadsAsTheSameKey() {
         let key = ActivationKey.generate()
         XCTAssertEqual(ActivationKey.read(OrgFirstRun.formatKeyEntry(key.canonical.lowercased())), .key(key))
+    }
+
+    func testTheCompanyRouteContinuesPastTheWelcomePageOnceTheProfileIsInForce() {
+        XCTAssertTrue(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: true, onWelcomePage: true,
+                                                       wasManaged: false, isManaged: true))
+        // A declined review or a refused enrolment leaves the phone unmanaged: nothing moves.
+        XCTAssertFalse(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: true, onWelcomePage: true,
+                                                        wasManaged: false, isManaged: false))
+        // Not from this route, or not from the welcome page.
+        XCTAssertFalse(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: false, onWelcomePage: true,
+                                                        wasManaged: false, isManaged: true))
+        XCTAssertFalse(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: true, onWelcomePage: false,
+                                                        wasManaged: false, isManaged: true))
+        // Only the change into a managed phone counts.
+        XCTAssertFalse(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: true, onWelcomePage: true,
+                                                        wasManaged: true, isManaged: true))
     }
 }

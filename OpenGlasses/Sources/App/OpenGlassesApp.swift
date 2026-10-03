@@ -275,6 +275,10 @@ struct OpenGlassesApp: App {
                 // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
                 OrgEnrolmentOverlay(service: appState.orgEnrolment)
 
+                // An office's code scanned in the app (Contracts/commissioning.md) — invisible until
+                // one is scanned. Nothing is applied before the organisation's own review.
+                OfficeCommissioningOverlay(service: appState.officeCommissioning)
+
                 // A vault link scanned outside the app (Plan FS PR2). Nothing is fetched or
                 // installed from the link itself — this raises the review flow and no more.
                 Color.clear
@@ -524,6 +528,7 @@ struct OpenGlassesApp: App {
             case .background:
                 appState.skillPackSideload.handleBackground()
                 appState.orgEnrolment.handleBackground()
+                appState.officeCommissioning.handleBackground()
                 // Plan CT 3b: an administrator session never outlives the app leaving the screen.
                 AdminGate.shared.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
@@ -1414,6 +1419,24 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var orgEnrolment = OrgEnrolmentService(
         manager: OrgProfileManager.shared,
         modelDidChange: { [weak self] in self?.llmService.refreshActiveModel() })
+
+    /// Joining an Avenkin office by scanning its code (Contracts/commissioning.md). What it applies
+    /// lives in `OrgProfileManager.shared` and the office approval stores, as for a setup file.
+    lazy var officeCommissioning: OfficeCommissioningService = {
+        var seams = OfficeCommissioningService.Seams()
+        seams.modelDidChange = { [weak self] in self?.llmService.refreshActiveModel() }
+        return OfficeCommissioningService(manager: OrgProfileManager.shared, seams: seams)
+    }()
+
+    /// A code read by the in-app scanner: an office's code joins that office; anything else is an
+    /// organisation enrolment code, as before.
+    func openScannedOrganisationCode(_ code: String) {
+        if OfficeCommissioning.isCommissioningCode(code) {
+            officeCommissioning.start(qrText: code)
+        } else {
+            orgEnrolment.openScanned(code)
+        }
+    }
 
     /// Human-in-the-loop confirmation for high-impact / irreversible tool calls (prompt-injection backstop).
     let toolConfirmationCoordinator = ToolConfirmationCoordinator()

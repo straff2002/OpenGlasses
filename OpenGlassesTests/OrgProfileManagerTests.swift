@@ -239,4 +239,45 @@ final class OrgProfileManagerTests: XCTestCase {
         XCTAssertTrue(review.carriesLicence)
         XCTAssertTrue(review.dropLines.isEmpty)
     }
+
+    // MARK: - An enrolment identifier chosen up front (joining an office by its code)
+
+    func testAPresetEnrolmentIdentifierIsTheOneRecorded() throws {
+        let manager = makeManager()
+        XCTAssertEqual(manager.enrolmentIDForCommissioning(), "enrol123", "a new phone gets a new identifier")
+        let review = try manager.review(document: try document(), source: .link).get()
+        try manager.apply(review, enrolmentID: "chosen-before").get()
+        XCTAssertEqual(manager.record?.enrolmentId, "chosen-before")
+        XCTAssertEqual(storedRecord?.enrolmentId, "chosen-before")
+        XCTAssertEqual(manager.enrolmentIDForCommissioning(), "chosen-before",
+                       "an enrolled phone keeps its identifier")
+    }
+
+    func testAPresetThatIsNotThisPhonesEnrolmentChangesNothing() throws {
+        let code = try licence()
+        let manager = makeManager()
+        try enrol(manager, try document(licenceCode: code))
+        let before = storedRecord
+        activations = []
+        let renewal = try manager.review(document: try document(licenceCode: code), source: .link).get()
+        guard case .failure(.enrolmentChanged) = manager.apply(renewal, enrolmentID: "someone-else") else {
+            return XCTFail("expected enrolmentChanged")
+        }
+        XCTAssertEqual(storedRecord, before)
+        XCTAssertEqual(activations, [], "refused before the licence is touched")
+        // The enrolment in force is accepted as the preset.
+        try manager.apply(renewal, enrolmentID: "enrol123").get()
+        XCTAssertEqual(manager.record?.enrolmentId, "enrol123")
+    }
+
+    func testAPresetMustBeASafeIdentifier() throws {
+        let manager = makeManager()
+        let review = try manager.review(document: try document(), source: .link).get()
+        for bad in ["", "..", "has space", String(repeating: "a", count: 81)] {
+            guard case .failure(.enrolmentChanged) = manager.apply(review, enrolmentID: bad) else {
+                return XCTFail("expected a refusal for \(bad)")
+            }
+        }
+        XCTAssertNil(storedRecord)
+    }
 }

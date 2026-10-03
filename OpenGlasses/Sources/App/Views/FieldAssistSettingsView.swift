@@ -160,7 +160,7 @@ struct FieldAssistSettingsView: View {
                     Button("Scan an Organisation Code") { showingOrgScanner = true }
                     Button("Import Avenkin Office Setup File") { showingOfficeSetupImporter = true }
                 } footer: {
-                    Text("Scan your organisation's code or import its signed Avenkin Office setup file. You'll review the settings before anything changes.")
+                    Text("Scan your organisation's code, or the code Avenkin Office shows when it adds a device, or import its signed setup file. You'll review the settings before anything changes.")
                 }
             }
             #if AVENKIN_OFFICE_TRANSPORT
@@ -466,7 +466,7 @@ struct FieldAssistSettingsView: View {
         .sheet(isPresented: $showingOrgScanner, onDismiss: {
             if let code = scannedOrgCode {
                 scannedOrgCode = nil
-                appState.orgEnrolment.openScanned(code)
+                appState.openScannedOrganisationCode(code)
             }
         }) {
             OrgCodeScannerView { code in scannedOrgCode = code }

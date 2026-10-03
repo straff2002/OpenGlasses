@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// Plan CT 3a — "My company gave me a key or code", from the welcome page.
+/// Plan CT 3a — "Set up with my company", from the welcome page.
 ///
-/// One field takes the short activation key (grouped in fours as it is typed) or a full licence
-/// code, and the scanner beside it reads either, or an enrolment link. A key is checked locally and
+/// Two ways in, side by side: scan the code on the office screen (or one the organisation sent),
+/// or type a key. The field takes the short activation key (grouped in fours as it is typed) or a
+/// full licence code; the scanner reads an office's code, an enrolment link, or either key. A key is checked locally and
 /// looked up once before this sheet closes; what it resolves to is handed back and acted on only
 /// after the sheet has gone, so the organisation's review sheet is never asked to present over it.
 struct OrgKeyEntrySheet: View {
     enum Outcome: Equatable {
         /// A licence code, typed or resolved from an activation key.
         case licence(String)
-        /// An enrolment link or profile address read by the scanner.
+        /// An enrolment link, profile address or office code read by the scanner.
         case scanned(String)
     }
 
@@ -28,6 +29,17 @@ struct OrgKeyEntrySheet: View {
         NavigationStack {
             List {
                 Section {
+                    Button {
+                        scanning = true
+                    } label: {
+                        Label("Scan the code on the office screen", systemImage: "qrcode.viewfinder")
+                    }
+                    .disabled(isLookingUp)
+                } footer: {
+                    Text("Avenkin Office shows a code when it adds this phone. A code your organisation sent you scans the same way.")
+                }
+
+                Section {
                     TextField("K7Q3-X9PD-M2VA-8RTN", text: $text, axis: .vertical)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
@@ -39,7 +51,7 @@ struct OrgKeyEntrySheet: View {
                         }
                         .accessibilityLabel("Licence key")
                 } header: {
-                    Text("Licence key")
+                    Text("Or type a key")
                 } footer: {
                     Text("The activation key your company gave you, or the full licence code. Looking up an activation key needs the internet once.")
                 }
@@ -61,11 +73,9 @@ struct OrgKeyEntrySheet: View {
                         }
                     }
                     .disabled(isLookingUp || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button("Scan a code instead") { scanning = true }
-                        .disabled(isLookingUp)
                 }
             }
-            .navigationTitle("Your Company's Key")
+            .navigationTitle("Set Up with Your Company")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -103,6 +113,12 @@ struct OrgKeyEntrySheet: View {
     /// A scanned enrolment link or profile address goes to the link's path; anything else is a key
     /// or a code, put in the field and looked up as if typed.
     private func handleScan(_ code: String) {
+        // An office's code is passed on exactly as scanned: the office transport checks the text.
+        if OfficeCommissioning.isCommissioningCode(code) {
+            finish(.scanned(code))
+            dismiss()
+            return
+        }
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
         if lowered.hasPrefix("openglasses:") || lowered.hasPrefix("https:") {
