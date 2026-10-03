@@ -119,11 +119,17 @@ struct OfficeCommissioningSheet: View {
                             submit: { service.submitModelKey($0) },
                             later: { service.deferModelKey() })
 
-        case .paired(let name):
+        case .paired(let name, officeConnected: true):
             OfficeCommissioningOutcome(
                 systemImage: "building.2",
                 title: Text(verbatim: name),
                 detail: Text("This phone is now managed by \(name) and paired with its office. Settings it locks show its name, and the device owner can remove the profile from Settings."))
+
+        case .paired(let name, officeConnected: false):
+            OfficeCommissioningOutcome(
+                systemImage: "building.2",
+                title: Text(verbatim: name),
+                detail: Text("This phone is now managed by \(name) and paired with its office, but it couldn't reach the office yet. On the office's network, open Field Assist settings, then Pair with Avenkin Office, and use Test office connection."))
 
         case .failed(let failure):
             OfficeCommissioningOutcome(systemImage: "exclamationmark.triangle",

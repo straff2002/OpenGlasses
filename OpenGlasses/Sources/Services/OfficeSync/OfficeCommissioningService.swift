@@ -31,7 +31,9 @@ final class OfficeCommissioningService: ObservableObject {
         case pairing
         /// Joined, and the organisation's AI model still needs its key (Plan CT 3a).
         case modelKey(OrgAIModel, organization: String)
-        case paired(String)
+        /// Joined and paired. `officeConnected` is false when the managed connection could not be
+        /// started yet; the pairing is kept either way.
+        case paired(String, officeConnected: Bool)
         case failed(OfficeCommissioningFlow.Failure)
 
         var isBusy: Bool {
@@ -60,6 +62,11 @@ final class OfficeCommissioningService: ObservableObject {
         var appBuild: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
         /// Tells the app the active model changed, so what it shows follows.
         var modelDidChange: @MainActor () -> Void = {}
+        /// Starts the managed connection from the saved approval, as the pairing sheet's
+        /// "Test office connection" does.
+        var connectOffice: @MainActor (OfficePairingService, String) async throws -> Void = {
+            try await $0.connectToApprovedOffice(lanAddress: $1)
+        }
     }
 
     /// Everything about one exchange that must not change once the redemption is sent: a retry
@@ -81,6 +88,8 @@ final class OfficeCommissioningService: ObservableObject {
     private var seams: Seams
     private var exchange: Exchange?
     private var work: Task<Void, Never>?
+    /// Whether the managed connection started after pairing, for the outcome after the key page.
+    private var officeConnected = false
 
     init(manager: OrgProfileManager, seams: Seams = Seams()) {
         self.manager = manager
@@ -322,13 +331,24 @@ final class OfficeCommissioningService: ObservableObject {
             stage = .failed(.bindingNotKept)
             return
         }
-        // The office connection itself is started the way a binding file's is, from the saved
-        // approval; the approval carries no office sync address to dial (see Plan FX).
+        // The managed connection, from the saved approval as the pairing sheet starts it. The
+        // approval's address is only a route hint: a non-private one is not dialled, and a
+        // connection that fails leaves the pairing kept, to be tried again from the pairing sheet.
+        officeConnected = false
+        if let address = OfficeCommissioningFlow.managedOfficeAddress(approval.officeAddress) {
+            do {
+                try await seams.connectOffice(pairing, address)
+                officeConnected = true
+            } catch {
+                officeConnected = false
+            }
+        }
+        guard !Task.isCancelled else { return }
         seams.modelDidChange()
         if manager.needsModelSetup, let model = manager.organizationModel {
             stage = .modelKey(model, organization: review.organizationName)
         } else {
-            stage = .paired(review.organizationName)
+            stage = .paired(review.organizationName, officeConnected: officeConnected)
         }
     }
 
@@ -338,13 +358,13 @@ final class OfficeCommissioningService: ObservableObject {
         if model.access == .key, let problem = model.keyProblem(key) { return problem }
         guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
         seams.modelDidChange()
-        stage = .paired(organization)
+        stage = .paired(organization, officeConnected: officeConnected)
         return nil
     }
 
     func deferModelKey() {
         guard case .modelKey(_, let organization) = stage else { return }
-        stage = .paired(organization)
+        stage = .paired(organization, officeConnected: officeConnected)
     }
 
     // MARK: - Leaving
@@ -366,6 +386,7 @@ final class OfficeCommissioningService: ObservableObject {
         work?.cancel()
         work = nil
         exchange = nil
+        officeConnected = false
     }
 
     private func currentEnrolment() -> OfficeCommissioningFlow.CurrentEnrolment {

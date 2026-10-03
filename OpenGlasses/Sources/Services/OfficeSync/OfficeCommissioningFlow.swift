@@ -156,6 +156,32 @@ enum OfficeCommissioningFlow {
         profileOrganizationID == invitation.organizationID
     }
 
+    // MARK: - The office connection
+
+    /// The address the managed connection dials, from the approval's `officeAddress`: exactly
+    /// `a.b.c.d:port`, no scheme, on a private IPv4 network (10/8, 172.16/12, 192.168/16),
+    /// returned as `tcp://a.b.c.d:port` — the URL form the managed-office engine requires and the
+    /// pairing sheet's typed field already uses. A route hint only: the engine still pins the
+    /// office's certificate to the approved binding. Nil for anything else, which is not dialled.
+    static func managedOfficeAddress(_ hint: String) -> String? {
+        let hostAndPort = hint.split(separator: ":", omittingEmptySubsequences: false)
+        guard hostAndPort.count == 2 else { return nil }
+        func decimal(_ part: Substring, max: Int) -> Int? {
+            guard !part.isEmpty, part.count <= 5, part.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  part == "0" || part.first != "0", let value = Int(part), value <= max else { return nil }
+            return value
+        }
+        let octets = hostAndPort[0].split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4 else { return nil }
+        let values = octets.compactMap { decimal($0, max: 255) }
+        guard values.count == 4, let port = decimal(hostAndPort[1], max: 65_535), port >= 1 else { return nil }
+        let isPrivate = values[0] == 10
+            || (values[0] == 172 && (16...31).contains(values[1]))
+            || (values[0] == 192 && values[1] == 168)
+        guard isPrivate else { return nil }
+        return "tcp://\(hostAndPort[0]):\(port)"
+    }
+
     // MARK: - The comparison code
 
     private static let crockford = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ")

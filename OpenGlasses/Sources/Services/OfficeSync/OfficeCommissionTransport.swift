@@ -32,7 +32,8 @@ protocol OfficeCommissionTransport: Sendable {
 
     /// `CommissionExchange`: one request to the office, pinned to the invitation's office
     /// transport identity. Returns `{"status":"awaiting"}`, an approval or a refusal, already
-    /// checked against this invitation and redemption. The caller repeats it until decided.
+    /// checked against this invitation and redemption. The caller repeats it until decided. It
+    /// takes no clock and may block for about fifteen seconds.
     func exchange(invitationEnvelope: String, redemptionEnvelope: String) async throws -> String
 }
 
@@ -78,6 +79,9 @@ enum OfficeCommissioning {
         let licenceCode: String
         let peerBinding: String
         let decisionEnvelope: String
+        /// The office's sync listener on its private network, exactly `a.b.c.d:port`. A route hint for
+        /// the managed connection, never authority; empty when the office gave none.
+        let officeAddress: String
     }
 
     /// The closed set of reasons an office may give (contract §2.5).
@@ -121,6 +125,7 @@ enum OfficeCommissioning {
             let licenceCode: String?
             let peerBinding: String?
             let decisionEnvelope: String?
+            let officeAddress: String?
             let reason: String?
         }
         guard let answer = try? JSONDecoder().decode(Answer.self, from: Data(json.utf8)) else {
@@ -133,12 +138,13 @@ enum OfficeCommissioning {
             guard let enrolmentID = answer.enrolmentID, let profileDocument = answer.profileDocument,
                   let licenceCode = answer.licenceCode, let peerBinding = answer.peerBinding,
                   let decisionEnvelope = answer.decisionEnvelope,
+                  let officeAddress = answer.officeAddress,
                   !profileDocument.isEmpty, !licenceCode.isEmpty, !peerBinding.isEmpty else {
                 throw DecodingFailure.malformed
             }
             return .approved(Approval(enrolmentID: enrolmentID, profileDocument: profileDocument,
                                       licenceCode: licenceCode, peerBinding: peerBinding,
-                                      decisionEnvelope: decisionEnvelope))
+                                      decisionEnvelope: decisionEnvelope, officeAddress: officeAddress))
         case "refused":
             guard let reason = answer.reason.flatMap(RefusalReason.init(rawValue:)) else {
                 throw DecodingFailure.malformed

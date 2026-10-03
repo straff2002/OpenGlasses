@@ -132,10 +132,11 @@ final class OfficeCommissioningFlowTests: XCTestCase {
         XCTAssertEqual(try OfficeCommissioning.decodeDecision(#"{"status":"awaiting"}"#), .awaiting)
         let approved = try OfficeCommissioning.decodeDecision("""
         {"status":"approved","enrolmentID":"fixture-enrolment","profileDocument":"P.S",
-         "licenceCode":"L.S","peerBinding":"{}","decisionEnvelope":"{}"}
+         "licenceCode":"L.S","peerBinding":"{}","decisionEnvelope":"{}","officeAddress":"192.168.1.24:22000"}
         """)
         XCTAssertEqual(approved, .approved(.init(enrolmentID: "fixture-enrolment", profileDocument: "P.S",
-                                                 licenceCode: "L.S", peerBinding: "{}", decisionEnvelope: "{}")))
+                                                 licenceCode: "L.S", peerBinding: "{}", decisionEnvelope: "{}",
+                                                 officeAddress: "192.168.1.24:22000")))
         for reason in OfficeCommissioning.RefusalReason.allCases {
             XCTAssertEqual(try OfficeCommissioning.decodeDecision(
                 #"{"status":"refused","reason":"\#(reason.rawValue)"}"#), .refused(reason))
@@ -148,6 +149,7 @@ final class OfficeCommissioningFlowTests: XCTestCase {
         for bad in [#"{"status":"refused","reason":"because"}"#,
                     #"{"status":"approved","enrolmentID":"x","profileDocument":"","licenceCode":"L","peerBinding":"{}","decisionEnvelope":"{}"}"#,
                     #"{"status":"approved","enrolmentID":"x"}"#,
+                    #"{"status":"approved","enrolmentID":"x","profileDocument":"P","licenceCode":"L","peerBinding":"{}","decisionEnvelope":"{}"}"#,
                     #"{"status":"maybe"}"#, "not json"] {
             XCTAssertThrowsError(try OfficeCommissioning.decodeDecision(bad), bad)
         }
@@ -155,12 +157,14 @@ final class OfficeCommissioningFlowTests: XCTestCase {
 
     func testAnApprovalForAnotherEnrolmentIsRefusedByThePhone() {
         let approval = OfficeCommissioning.Approval(enrolmentID: "someone-else", profileDocument: "P",
-                                                    licenceCode: "L", peerBinding: "B", decisionEnvelope: "D")
+                                                    licenceCode: "L", peerBinding: "B", decisionEnvelope: "D",
+                                                    officeAddress: "")
         XCTAssertEqual(OfficeCommissioningFlow.afterAnswer(.approved(approval), chosenEnrolmentID: "phone-one",
                                                            expiresAt: now + 900, now: now),
                        .failed(.approvalForAnotherPhone))
         let mine = OfficeCommissioning.Approval(enrolmentID: "phone-one", profileDocument: "P",
-                                                licenceCode: "L", peerBinding: "B", decisionEnvelope: "D")
+                                                licenceCode: "L", peerBinding: "B", decisionEnvelope: "D",
+                                                officeAddress: "192.168.1.24:22000")
         XCTAssertEqual(OfficeCommissioningFlow.afterAnswer(.approved(mine), chosenEnrolmentID: "phone-one",
                                                            expiresAt: now + 900, now: now),
                        .approved(mine))
@@ -195,5 +199,22 @@ final class OfficeCommissioningFlowTests: XCTestCase {
                                                                       invitation: invitation()))
         XCTAssertFalse(OfficeCommissioningFlow.setupMatchesInvitation(profileOrganizationID: nil,
                                                                       invitation: invitation()))
+    }
+
+    // MARK: - The office connection
+
+    func testOnlyAPrivateIPv4AddressIsDialledInTheEnginesForm() {
+        XCTAssertEqual(OfficeCommissioningFlow.managedOfficeAddress("192.168.1.24:22000"), "tcp://192.168.1.24:22000")
+        XCTAssertEqual(OfficeCommissioningFlow.managedOfficeAddress("10.0.0.5:1"), "tcp://10.0.0.5:1")
+        XCTAssertEqual(OfficeCommissioningFlow.managedOfficeAddress("172.31.255.255:65535"), "tcp://172.31.255.255:65535")
+        XCTAssertEqual(OfficeCommissioningFlow.managedOfficeAddress("172.16.0.1:22000"), "tcp://172.16.0.1:22000")
+        for refused in ["", "8.8.8.8:22000", "172.32.0.1:22000", "192.169.1.1:22000", "127.0.0.1:22000",
+                        "169.254.1.1:22000", "192.168.1.24", "192.168.1.24:0", "192.168.1.24:65536",
+                        "192.168.1.024:22000", "192.168.1.24:022000", "192.168.1:22000", "office.local:22000",
+                        "[fd00::1]:22000", "relay://192.168.1.24:22000", "tcp://192.168.1.24:22000",
+                        "tcp://192.168.1.24:22000/x",
+                        "192.168.1.24:22000:1", " 192.168.1.24:22000"] {
+            XCTAssertNil(OfficeCommissioningFlow.managedOfficeAddress(refused), refused)
+        }
     }
 }
