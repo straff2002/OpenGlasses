@@ -65,16 +65,29 @@ final class PortableOfficePairingGateTests: XCTestCase {
         }
         let before = try await highWater.read(organizationID: "northbridge", enrolmentID: "phone-one")
         XCTAssertNil(before)
-        let accepted = try await service.approve(signed("transport-phone-one"), reviewedOffice: reviewed)
+        let accepted = try await service.approve(signed("transport-phone-one"), reviewedOffice: reviewed,
+                                                 lanHint: "192.168.1.2:22000")
         XCTAssertEqual(accepted.binding.payload.phoneTransportID, "transport-phone-one")
         let retained = try await highWater.read(organizationID: "northbridge", enrolmentID: "phone-one")
         XCTAssertEqual(retained?.generation, 1)
         let reopened = try await service.currentApprovedPeer()
-        XCTAssertEqual(reopened.payload.officeTransportID, "transport-office-one")
-        try await service.connectToApprovedOffice(lanAddress: "tcp://192.168.1.2:22000")
-        let started = await OfficeTransportIdentity.shared.isRunning()
-        XCTAssertTrue(started)
+        XCTAssertEqual(reopened.binding.payload.officeTransportID, "transport-office-one")
+        // The policy comes from the vendor-signed profile; the address only from the saved approval.
+        XCTAssertEqual(reopened.transportPolicy, .privateLan)
+        XCTAssertEqual(reopened.lanHint, "tcp://192.168.1.2:22000")
+        try await service.connectToApprovedOffice()
+        let started = await OfficeTransportIdentity.shared.started()
+        XCTAssertEqual(started, .init(transportID: "transport-office-one", policy: .privateLan,
+                                      lanHint: "tcp://192.168.1.2:22000"))
         await OfficeTransportIdentity.shared.stop()
+        do {
+            try await service.connectToApprovedOffice(lanHint: "tcp://203.0.113.9:22000")
+            XCTFail("an address off the private network was dialled")
+        } catch {
+            XCTAssertEqual(error as? OfficePairingService.Refusal, .noOfficeAddress)
+        }
+        let notStarted = await OfficeTransportIdentity.shared.isRunning()
+        XCTAssertFalse(notStarted)
 
         manager.status = .lapsed
         do {
@@ -84,7 +97,7 @@ final class PortableOfficePairingGateTests: XCTestCase {
             XCTAssertEqual(error as? OfficePairingService.Refusal, .inactiveLease)
         }
         do {
-            try await service.connectToApprovedOffice(lanAddress: "tcp://192.168.1.2:22000")
+            try await service.connectToApprovedOffice()
             XCTFail("lapsed management lease opened a connection")
         } catch {
             XCTAssertEqual(error as? OfficePairingService.Refusal, .inactiveLease)
