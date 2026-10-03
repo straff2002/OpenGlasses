@@ -5,10 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
+	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
+	"github.com/syncthing/syncthing/lib/config"
+	"github.com/syncthing/syncthing/lib/events"
 	"github.com/syncthing/syncthing/lib/protocol"
 )
 
@@ -42,6 +46,208 @@ func TestManagedOfficeConfigurationHasNoListenerOrSharedFolders(t *testing.T) {
 	}
 	if err := xml.Unmarshal(conf, &configuration); err != nil || len(configuration.Folders) != 0 || len(configuration.Options.Listen) != 0 {
 		t.Fatal("managed engine created a listener or shared folder", err)
+	}
+}
+
+func managedPeer(t *testing.T, conf config.Configuration, office protocol.DeviceID) config.DeviceConfiguration {
+	t.Helper()
+	var found []config.DeviceConfiguration
+	for _, d := range conf.Devices {
+		if d.DeviceID == office {
+			found = append(found, d)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatal("expected exactly one office peer", conf.Devices)
+	}
+	return found[0]
+}
+
+func TestManagedOfficeAutomaticConfigurationOnlyDials(t *testing.T) {
+	self, office := protocol.NewDeviceID([]byte("phone")), protocol.NewDeviceID([]byte("office"))
+	for hint, addresses := range map[string][]string{
+		"tcp://192.168.1.2:22000": {"tcp://192.168.1.2:22000", "dynamic"},
+		"":                        {"dynamic"},
+	} {
+		conf, err := managedOfficeConfig(self, office, "automatic", hint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opt := conf.Options
+		if len(opt.RawListenAddresses) != 0 || len(conf.Folders) != 0 {
+			t.Fatal("automatic managed connection listens or shares", opt.RawListenAddresses, conf.Folders)
+		}
+		if !opt.GlobalAnnEnabled || !reflect.DeepEqual(opt.RawGlobalAnnServers, managedDiscoveryServers) {
+			t.Fatal("automatic managed connection cannot look the office up", opt.RawGlobalAnnServers)
+		}
+		if !opt.RelaysEnabled || opt.RelayReconnectIntervalM != 1 {
+			t.Fatal("automatic managed connection cannot dial the office's relay")
+		}
+		if opt.LocalAnnEnabled || opt.NATEnabled || len(opt.RawStunServers) != 0 || opt.StunKeepaliveStartS != 0 {
+			t.Fatal("automatic managed connection broadcasts or maps a port")
+		}
+		if conf.GUI.Enabled || opt.CREnabled || opt.URAccepted != -1 || opt.AutoUpgradeIntervalH != 0 || opt.UpgradeToPreReleases || opt.StartBrowser {
+			t.Fatal("automatic managed connection has management or telemetry on")
+		}
+		peers := 0
+		for _, d := range conf.Devices {
+			if d.DeviceID != self {
+				peers++
+			}
+		}
+		peer := managedPeer(t, conf, office)
+		if peers != 1 || !reflect.DeepEqual(peer.Addresses, addresses) || peer.Introducer || peer.AutoAcceptFolders || peer.Name != "Avenkin approved office" {
+			t.Fatal("automatic managed connection has an unexpected peer", conf.Devices)
+		}
+	}
+}
+
+func TestManagedOfficePrivateLanConfigurationIsUnchanged(t *testing.T) {
+	self, office := protocol.NewDeviceID([]byte("phone")), protocol.NewDeviceID([]byte("office"))
+	hint := "tcp://192.168.1.2:22000"
+	// The configuration StartManagedOffice built before transport policies.
+	legacy := networkConfig(self, "lan")
+	legacy.Options.RawListenAddresses = []string{}
+	device := legacy.Defaults.Device.Copy()
+	device.DeviceID, device.Name, device.Addresses = office, "Avenkin approved office", []string{hint}
+	device.Introducer, device.AutoAcceptFolders = false, false
+	legacy.SetDevice(device)
+	conf, err := managedOfficeConfig(self, office, "privateLan", hint)
+	// config.New draws a random API key for the GUI, which stays disabled.
+	conf.GUI.APIKey = legacy.GUI.APIKey
+	if err != nil || !reflect.DeepEqual(conf, legacy) {
+		t.Fatal("office network only configuration changed", err)
+	}
+}
+
+func TestManagedOfficeRouteRefusesUnsignedWidening(t *testing.T) {
+	self, office := protocol.NewDeviceID([]byte("phone")), protocol.NewDeviceID([]byte("office"))
+	malformed := []string{"dynamic", "tcp://8.8.8.8:22000", "tcp://100.64.0.1:22000", "tcp://127.0.0.1:22000",
+		"192.168.1.2:22000", "quic://192.168.1.2:22000", "relay://192.168.1.2:22067", "tcp://192.168.1.2",
+		"tcp://192.168.1.2:0", "tcp://192.168.1.2:65536", "tcp://192.168.1.2:022000", "tcp://192.168.1.2:22000/",
+		"tcp://user@192.168.1.2:22000", "tcp://[fd00::1]:22000", "tcp://localhost:22000", " tcp://192.168.1.2:22000",
+		"TCP://192.168.1.2:22000", "tcp://192.168.1.2:22000?x=1"}
+	for _, hint := range append([]string{""}, malformed...) {
+		if _, err := managedOfficeConfig(self, office, "privateLan", hint); err == nil {
+			t.Errorf("office network only accepted %q", hint)
+		}
+	}
+	for _, hint := range malformed {
+		if _, err := managedOfficeConfig(self, office, "automatic", hint); err == nil {
+			t.Errorf("automatic accepted %q", hint)
+		}
+	}
+	for _, policy := range []string{"", "lan", "PrivateLan", "private-lan", "Automatic", "forced-relay", "relay"} {
+		if _, err := managedOfficeConfig(self, office, policy, "tcp://192.168.1.2:22000"); err == nil {
+			t.Errorf("accepted policy %q", policy)
+		}
+	}
+	for _, ok := range []string{"tcp://10.0.0.1:1", "tcp://172.16.5.4:65535", "tcp://192.168.1.2:22000"} {
+		for _, policy := range []string{"privateLan", "automatic"} {
+			if _, err := managedOfficeConfig(self, office, policy, ok); err != nil {
+				t.Errorf("%s refused %q: %v", policy, ok, err)
+			}
+		}
+	}
+	client, err := NewClient(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Stop)
+	if err := client.StartManagedOfficeRoute(office.String(), "privateLan", ""); err == nil || client.app != nil || engineActive.Load() {
+		t.Fatal("started an office network only connection without its address", err)
+	}
+}
+
+func TestManagedOfficeRouteAutomaticStartsWithoutListener(t *testing.T) {
+	closed, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := "https://" + closed.Addr().String() + "/v2/?noannounce"
+	closed.Close()
+	previous := managedDiscoveryServers
+	managedDiscoveryServers = []string{server}
+	t.Cleanup(func() { managedDiscoveryServers = previous })
+
+	client, err := NewClient(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(client.Stop)
+	office := protocol.NewDeviceID([]byte("managed office"))
+	if err := client.StartManagedOfficeRoute(office.String(), "automatic", ""); err != nil {
+		t.Fatal(err)
+	}
+	if client.guard == nil || client.guard.allowedFolder != "" {
+		t.Fatal("managed connection has no-export guard missing")
+	}
+	var status map[string]any
+	raw, err := client.Snapshot()
+	if err != nil || json.Unmarshal([]byte(raw), &status) != nil || status["managedOffice"] != true ||
+		status["sharedFolders"] != float64(0) || status["networkMode"] != "automatic" || status["running"] != true {
+		t.Fatal("automatic managed connection reported unexpected state", err, raw)
+	}
+	saved, err := os.ReadFile(filepath.Join(client.home, "config.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configuration struct {
+		Folders []struct{} `xml:"folder"`
+		Devices []struct {
+			ID        string   `xml:"id,attr"`
+			Addresses []string `xml:"address"`
+		} `xml:"device"`
+		Options struct {
+			Listen   []string `xml:"listenAddress"`
+			Announce []string `xml:"globalAnnounceServer"`
+			Global   bool     `xml:"globalAnnounceEnabled"`
+			Local    bool     `xml:"localAnnounceEnabled"`
+			Relays   bool     `xml:"relaysEnabled"`
+			NAT      bool     `xml:"natEnabled"`
+		} `xml:"options"`
+	}
+	if err := xml.Unmarshal(saved, &configuration); err != nil || len(configuration.Folders) != 0 || len(configuration.Options.Listen) != 0 {
+		t.Fatal("automatic managed engine created a listener or shared folder", err)
+	}
+	opt := configuration.Options
+	if !reflect.DeepEqual(opt.Announce, []string{server}) || !opt.Global || opt.Local || !opt.Relays || opt.NAT {
+		t.Fatal("automatic managed engine saved unexpected discovery options", opt)
+	}
+	found := false
+	for _, d := range configuration.Devices {
+		if d.ID == office.String() {
+			found = reflect.DeepEqual(d.Addresses, []string{"dynamic"})
+		}
+	}
+	if !found {
+		t.Fatal("office is not found through discovery", configuration.Devices)
+	}
+	client.noteRoute(events.Event{Type: events.DeviceConnected, Data: map[string]string{"id": office.String(), "type": "relay-client"}}, office.String())
+	client.Stop()
+	raw, err = client.Snapshot()
+	if err != nil || json.Unmarshal([]byte(raw), &status) != nil || status["observedConnectionType"] != "" || status["networkMode"] != "" || status["running"] != false {
+		t.Fatal("stopped connection still reports a route", err, raw)
+	}
+}
+
+func TestManagedOfficeRouteClearsOnDisconnect(t *testing.T) {
+	client := &Client{}
+	office := protocol.NewDeviceID([]byte("office")).String()
+	other := protocol.NewDeviceID([]byte("other")).String()
+	route := func() string { client.routeMu.Lock(); defer client.routeMu.Unlock(); return client.route }
+	client.noteRoute(events.Event{Type: events.DeviceConnected, Data: map[string]string{"id": office, "type": "relay-client"}}, office)
+	if route() != "relay-client" {
+		t.Fatal("connection route not kept", route())
+	}
+	client.noteRoute(events.Event{Type: events.DeviceConnected, Data: map[string]string{"id": office, "type": "tcp-client"}}, office)
+	client.noteRoute(events.Event{Type: events.DeviceDisconnected, Data: map[string]string{"id": other, "error": "closed"}}, office)
+	if route() != "tcp-client" {
+		t.Fatal("another device changed the office route", route())
+	}
+	client.noteRoute(events.Event{Type: events.DeviceDisconnected, Data: map[string]string{"id": office, "error": "closed"}}, office)
+	if route() != "" {
+		t.Fatal("route kept after the office disconnected", route())
 	}
 }
 

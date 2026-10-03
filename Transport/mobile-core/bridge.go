@@ -15,10 +15,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"avenkin.dev/mobilecore/commission"
 	"avenkin.dev/mobilecore/officepreview"
 
 	"github.com/syncthing/syncthing/lib/build"
@@ -140,26 +142,127 @@ func (c *Client) DeviceID() string { return c.id }
 // Start accepts one explicit desktop fingerprint and an explicit network mode.
 func (c *Client) Start(bindingJSON string) error { return c.start(bindingJSON, nil) }
 
+// The managed office connection's transport policies: the vendor-signed profile's
+// officeAuthority.transportPolicy.
+const (
+	managedPrivateLan = "privateLan"
+	managedAutomatic  = "automatic"
+)
+
+// managedDiscoveryServers are where a managed phone looks its office up under the automatic
+// policy. "default" is Syncthing's public global discovery. Tests point it at a closed port.
+var managedDiscoveryServers = []string{"default"}
+
 // StartManagedOffice opens only a certificate-pinned private-LAN connection. It creates no
 // folders and cannot receive a job or manual. The native phone caller must reverify its saved
-// vendor/administrator binding and live entitlement before invoking this method.
+// vendor/administrator binding and live entitlement before invoking this method. It is
+// StartManagedOfficeRoute(officeTransportID, "privateLan", address), keeping this method's
+// original address check.
 func (c *Client) StartManagedOffice(officeTransportID, address string) error {
-	raw, err := json.Marshal(binding{DeviceID: officeTransportID, Address: address,
-		Mode: "lan", RequiredNetwork: "any"})
-	if err != nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.startManagedLocked(officeTransportID, managedPrivateLan, address)
+}
+
+// StartManagedOfficeRoute opens the certificate-pinned managed connection under the
+// vendor-signed transport policy ("privateLan" | "automatic"). lanHint is "" or
+// "tcp://a.b.c.d:port" on a private IPv4 network; privateLan requires it. No folder,
+// no listener; the caller must re-verify the saved binding and live entitlement first.
+//
+// Under privateLan the phone dials only lanHint. Under automatic it dials lanHint first when
+// there is one, then the addresses global discovery returns for the office, direct or through
+// a community relay; it announces nothing and has no NAT mapping or local discovery.
+func (c *Client) StartManagedOfficeRoute(officeTransportID, policy, lanHint string) error {
+	if err := checkManagedRoute(policy, lanHint); err != nil {
 		return err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.startLocked(string(raw), nil, true)
+	return c.startManagedLocked(officeTransportID, policy, lanHint)
+}
+
+func (c *Client) startManagedLocked(officeTransportID, policy, lanHint string) error {
+	b := binding{DeviceID: officeTransportID, Address: lanHint, Mode: "lan", RequiredNetwork: "any"}
+	if policy == managedAutomatic {
+		b = binding{DeviceID: officeTransportID, Address: "dynamic", Mode: "automatic"}
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		return err
+	}
+	return c.startLocked(string(raw), nil, &managedRoute{policy: policy, lanHint: lanHint})
+}
+
+// managedRoute is a managed start's checked policy and LAN hint.
+type managedRoute struct{ policy, lanHint string }
+
+// checkManagedRoute accepts exactly the policies and hints StartManagedOfficeRoute documents.
+func checkManagedRoute(policy, lanHint string) error {
+	switch policy {
+	case managedPrivateLan:
+		if lanHint == "" {
+			return errors.New("an office network only connection needs the office's LAN address")
+		}
+	case managedAutomatic:
+		if lanHint == "" {
+			return nil
+		}
+	default:
+		return errors.New("unknown office transport policy")
+	}
+	if address, ok := strings.CutPrefix(lanHint, "tcp://"); !ok || !commission.PrivateAddress(address) {
+		return errors.New("office LAN address must be tcp://a.b.c.d:port on a private IPv4 network")
+	}
+	return nil
+}
+
+// managedOfficeConfig is the managed phone's whole engine configuration for one office under
+// one transport policy: no listener, no folder, one pinned peer.
+func managedOfficeConfig(self, office protocol.DeviceID, policy, lanHint string) (config.Configuration, error) {
+	if err := checkManagedRoute(policy, lanHint); err != nil {
+		return config.Configuration{}, err
+	}
+	return buildManagedOfficeConfig(self, office, policy, lanHint), nil
+}
+
+// buildManagedOfficeConfig assumes a checked route. StartManagedOffice reaches it with its own
+// original address check.
+func buildManagedOfficeConfig(self, office protocol.DeviceID, policy, lanHint string) config.Configuration {
+	conf := directConfig(self)
+	opt := &conf.Options
+	// The phone only dials: nothing to announce and no port for an office to dial back.
+	opt.RawListenAddresses = []string{}
+	addresses := []string{lanHint}
+	if policy == managedAutomatic {
+		// Look the office up and, if it is reachable only through its community relay, dial
+		// that relay as a client. No announcement (no listener), local discovery, NAT or STUN.
+		opt.GlobalAnnEnabled = true
+		opt.RawGlobalAnnServers = append([]string{}, managedDiscoveryServers...)
+		opt.RelaysEnabled, opt.RelayReconnectIntervalM = true, 1
+		opt.LocalAnnEnabled, opt.NATEnabled = false, false
+		opt.RawStunServers, opt.StunKeepaliveStartS = []string{}, 0
+		addresses = []string{"dynamic"}
+		if lanHint != "" {
+			addresses = []string{lanHint, "dynamic"}
+		}
+	}
+	device := conf.Defaults.Device.Copy()
+	device.DeviceID, device.Name, device.Addresses = office, "Avenkin approved office", addresses
+	device.Introducer, device.AutoAcceptFolders = false, false
+	conf.SetDevice(device)
+	return conf
 }
 
 func (c *Client) start(bindingJSON string, preview *officepreview.Phone) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.startLocked(bindingJSON, preview, false)
+	return c.startLocked(bindingJSON, preview, nil)
 }
-func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, managed bool) (err error) {
+
+// startLocked starts the lab or office preview engine, or, given a route, the managed office
+// connection with buildManagedOfficeConfig.
+func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, route *managedRoute) (err error) {
+	managed := route != nil
 	if c.app != nil {
 		return errors.New("engine already running")
 	}
@@ -198,20 +301,16 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, m
 	c.workers.Add(1)
 	go func() { defer c.workers.Done(); _ = logger.Serve(ctx) }()
 	self, _ := protocol.DeviceIDFromString(c.id)
-	conf := networkConfig(self, b.Mode)
+	var conf config.Configuration
 	if managed {
-		// The phone dials the reviewed office address. This stage has no incoming
-		// listener, discovery, relay or shared folder.
-		conf.Options.RawListenAddresses = []string{}
+		conf = buildManagedOfficeConfig(self, peer, route.policy, route.lanHint)
+	} else {
+		conf = networkConfig(self, b.Mode)
+		device := conf.Defaults.Device.Copy()
+		device.DeviceID, device.Name, device.Addresses = peer, "Avenkin synthetic office", []string{b.Address}
+		device.Introducer, device.AutoAcceptFolders = false, false
+		conf.SetDevice(device)
 	}
-	device := conf.Defaults.Device.Copy()
-	peerName := "Avenkin synthetic office"
-	if managed {
-		peerName = "Avenkin approved office"
-	}
-	device.DeviceID, device.Name, device.Addresses = peer, peerName, []string{b.Address}
-	device.Introducer, device.AutoAcceptFolders = false, false
-	conf.SetDevice(device)
 	folders := []struct {
 		id   string
 		mode config.FolderType
@@ -279,20 +378,14 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, m
 		database.Close()
 		return err
 	}
-	subscription := logger.Subscribe(events.DeviceConnected)
+	subscription := logger.Subscribe(events.DeviceConnected | events.DeviceDisconnected)
 	c.workers.Add(1)
 	go func() {
 		defer c.workers.Done()
 		defer subscription.Unsubscribe()
 		for ctx.Err() == nil {
-			event, err := subscription.Poll(time.Second)
-			if err != nil {
-				continue
-			}
-			if data, ok := event.Data.(map[string]string); ok && data["id"] == b.DeviceID {
-				c.routeMu.Lock()
-				c.route = data["type"]
-				c.routeMu.Unlock()
+			if event, err := subscription.Poll(time.Second); err == nil {
+				c.noteRoute(event, b.DeviceID)
 			}
 		}
 	}()
@@ -302,6 +395,22 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, m
 	}
 	c.app, c.cancel, c.peer, c.mode, c.manualLab, c.preview, c.managed = app, cancel, peer, b.Mode, b.ManualLab, preview, managed
 	return nil
+}
+
+// noteRoute keeps the office connection's type (tcp-/quic-/relay- with client/server) while it
+// is up. Syncthing sends DeviceDisconnected only when the device's last connection closes.
+func (c *Client) noteRoute(event events.Event, office string) {
+	data, ok := event.Data.(map[string]string)
+	if !ok || data["id"] != office {
+		return
+	}
+	route := ""
+	if event.Type == events.DeviceConnected {
+		route = data["type"]
+	}
+	c.routeMu.Lock()
+	c.route = route
+	c.routeMu.Unlock()
 }
 
 func networkConfig(id protocol.DeviceID, mode string) config.Configuration {
@@ -470,9 +579,12 @@ func (c *Client) Stop() {
 		c.cancel()
 		c.workers.Wait()
 		c.app, c.cancel = nil, nil
-		c.managed = false
+		c.managed, c.mode = false, ""
 		engineActive.Store(false)
 	}
+	c.routeMu.Lock()
+	c.route = ""
+	c.routeMu.Unlock()
 }
 
 // BeginOfficePairing proves the companion's application-key possession. Human
@@ -525,7 +637,7 @@ func (c *Client) StartOffice() error {
 	if e != nil {
 		return e
 	}
-	return c.startLocked(string(raw), p, false)
+	return c.startLocked(string(raw), p, nil)
 }
 func (c *Client) OfficePairingStatus() (string, error) {
 	c.mu.Lock()
