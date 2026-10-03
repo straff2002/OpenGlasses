@@ -74,6 +74,8 @@ final class OfficeFieldConnection: ObservableObject {
     private var generation = 0
     private var running = false
     private var notConnectedSince: Date?
+    /// When the engine was last started again to look the office up afresh (automatic only).
+    private var lastLookedAgain: Date?
     /// `restart()`'s caller, told how the run it asked for first started.
     private var firstStart: CheckedContinuation<Void, Error>?
 
@@ -155,6 +157,7 @@ final class OfficeFieldConnection: ObservableObject {
         let current = generation
         running = true
         notConnectedSince = seams.clock()
+        lastLookedAgain = nil
         work = Task { [weak self] in
             await previous?.value
             await self?.run(current)
@@ -209,35 +212,48 @@ final class OfficeFieldConnection: ObservableObject {
             failures = 0
             reportFirstStart(nil)
             // Running: watch it, and keep checking the approval it rests on.
-            guard await monitor(run, office: office) else { return }
-            // The engine stopped by itself, or the approval changed: start again after a pause.
-            failures += 1
-            guard await pause(run, failures: failures) else { return }
+            switch await monitor(run, office: office) {
+            case .ended:
+                return
+            case .lookAgain:
+                continue   // started again straight away, from the approval
+            case .startAgain:
+                // The engine stopped by itself, or the approval changed: start again after a pause.
+                failures += 1
+                guard await pause(run, failures: failures) else { return }
+            }
         }
     }
 
-    /// Returns true when the run should start again (the engine went away or the approval was
-    /// replaced by a newer one that verifies), false when it has ended.
-    private func monitor(_ run: Int, office: Approved) async -> Bool {
+    private enum AfterMonitoring {
+        /// Stopped, replaced, or the approval was refused.
+        case ended
+        /// The engine went away, or the approval was replaced by a newer one that verifies.
+        case startAgain
+        /// Still no office under `automatic`: start again now so discovery is asked afresh.
+        case lookAgain
+    }
+
+    private func monitor(_ run: Int, office: Approved) async -> AfterMonitoring {
         var lastApprovalCheck = seams.clock()
         while isCurrent(run) {
-            do { try await seams.sleep(UInt64(Policy.pollInterval * 1_000_000_000)) } catch { return false }
-            guard isCurrent(run) else { return false }
+            do { try await seams.sleep(UInt64(Policy.pollInterval * 1_000_000_000)) } catch { return .ended }
+            guard isCurrent(run) else { return .ended }
             if seams.clock().timeIntervalSince(lastApprovalCheck) >= Policy.approvalRecheckInterval {
                 do {
                     let latest = try await seams.approvedOffice()
-                    guard isCurrent(run) else { return false }
+                    guard isCurrent(run) else { return .ended }
                     lastApprovalCheck = seams.clock()
                     if latest != office {
                         await seams.stop()
-                        return isCurrent(run)
+                        return isCurrent(run) ? .startAgain : .ended
                     }
                 } catch {
-                    guard isCurrent(run) else { return false }
+                    guard isCurrent(run) else { return .ended }
                     switch Policy.afterFailure(error) {
                     case .stop(let reason):
                         await finish(run, reason)
-                        return false
+                        return .ended
                     case .retry:
                         break   // checked again on the next poll
                     }
@@ -249,22 +265,29 @@ final class OfficeFieldConnection: ObservableObject {
             } else {
                 observed = .notRunning
             }
-            guard isCurrent(run) else { return false }
+            guard isCurrent(run) else { return .ended }
             switch observed {
             case .connected(let route):
                 notConnectedSince = nil
+                lastLookedAgain = nil
                 state = .connected(route)
             case .waiting:
                 if notConnectedSince == nil { notConnectedSince = seams.clock() }
                 state = .waiting(office.transportPolicy)
+                if Policy.restartsToLookAgain(policy: office.transportPolicy, notConnectedSince: notConnectedSince,
+                                              lastLookedAgain: lastLookedAgain, now: seams.clock()) {
+                    lastLookedAgain = seams.clock()
+                    await seams.stop()
+                    return isCurrent(run) ? .lookAgain : .ended
+                }
             case .notRunning:
                 if notConnectedSince == nil { notConnectedSince = seams.clock() }
                 state = .waiting(office.transportPolicy)
                 await seams.stop()
-                return isCurrent(run)
+                return isCurrent(run) ? .startAgain : .ended
             }
         }
-        return false
+        return .ended
     }
 
     /// A failed approval check or start. Returns true to try again (after the backoff).

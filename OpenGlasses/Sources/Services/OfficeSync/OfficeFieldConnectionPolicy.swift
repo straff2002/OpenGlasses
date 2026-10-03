@@ -61,6 +61,27 @@ enum OfficeFieldConnectionPolicy {
         return now.timeIntervalSince(since) > networkRestartThreshold
     }
 
+    /// How long without the office, under `automatic`, before the engine is started again to look
+    /// the office up afresh, and how often after that while it is still not found.
+    static let rediscoveryFirstAfter: TimeInterval = 60
+    static let rediscoveryInterval: TimeInterval = 120
+
+    /// Whether to start the engine again so it asks discovery for the office again. Under
+    /// `automatic` the phone finds the office through global discovery, and the engine keeps a
+    /// lookup that found nothing for as long as the server says (about half an hour, measured):
+    /// a phone that looked before the office computer was on, or before it first announced, would
+    /// otherwise not look again until the engine restarts. So: once after a minute without the
+    /// office, then every two minutes until it is found. Never while connected, and not for
+    /// office-network-only, which dials the saved address and never asks discovery.
+    static func restartsToLookAgain(policy: OfficePairingService.TransportPolicy, notConnectedSince: Date?,
+                                    lastLookedAgain: Date?, now: Date) -> Bool {
+        guard policy == .automatic, let since = notConnectedSince else { return false }
+        if let last = lastLookedAgain, last >= since {
+            return now.timeIntervalSince(last) >= rediscoveryInterval
+        }
+        return now.timeIntervalSince(since) >= rediscoveryFirstAfter
+    }
+
     // MARK: - What the engine reports
 
     enum Observation: Equatable, Sendable {

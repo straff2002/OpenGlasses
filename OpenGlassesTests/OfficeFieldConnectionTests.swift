@@ -17,6 +17,8 @@ final class OfficeFieldConnectionTests: XCTestCase {
         var snapshot = World.snapshot(connected: false)
         var approvalChecks = 0
         var starts = 0
+        /// The fake clock at each engine start, in seconds after the test began.
+        var startTimes: [TimeInterval] = []
         var stops = 0
         /// Every pause the connection asked for, in seconds.
         var sleeps: [TimeInterval] = []
@@ -42,6 +44,7 @@ final class OfficeFieldConnectionTests: XCTestCase {
         seams.start = {
             if let failure = world.startFailure { throw failure }
             world.starts += 1
+            world.startTimes.append(world.now.timeIntervalSince1970 - 1_800_000_000)
         }
         seams.stop = { world.stops += 1 }
         seams.snapshot = { world.snapshot }
@@ -243,6 +246,54 @@ final class OfficeFieldConnectionTests: XCTestCase {
         connection.appEnteredBackground()
     }
 
+    // MARK: - Looking the office up again
+
+    func testFromAnywhereLooksTheOfficeUpAgainAfterAMinuteThenEveryTwo() async {
+        let connection = makeConnection()
+        connection.appBecameActive()
+        await waitUntil { world.starts == 3 }
+        connection.appEnteredBackground()
+        XCTAssertEqual(world.startTimes, [0, 60, 180])
+        XCTAssertFalse(world.sleeps.contains(2), "looking again is not a failure: no backoff")
+        XCTAssertEqual(connection.state, .paused)
+    }
+
+    func testAConnectedPhoneNeverRestartsToLookAgain() async {
+        world.snapshot = World.snapshot(connected: true, type: "relay-client")
+        let connection = makeConnection()
+        connection.appBecameActive()
+        await waitUntil { world.now.timeIntervalSince1970 - 1_800_000_000 > 400 }
+        XCTAssertEqual(connection.state, .connected(.relay))
+        XCTAssertEqual(world.starts, 1)
+        connection.appEnteredBackground()
+    }
+
+    func testOfficeNetworkOnlyDoesNotRestartToLookAgain() async {
+        world.approval = .success(.init(transportPolicy: .privateLan, lanHint: "tcp://192.168.1.24:22000",
+                                        bindingSHA256: "first"))
+        let connection = makeConnection()
+        connection.appBecameActive()
+        await waitUntil { world.now.timeIntervalSince1970 - 1_800_000_000 > 400 }
+        XCTAssertEqual(connection.state, .waiting(.privateLan))
+        XCTAssertEqual(world.starts, 1)
+        connection.appEnteredBackground()
+    }
+
+    func testLosingTheOfficeStartsTheMinuteAgain() async {
+        world.snapshot = World.snapshot(connected: true, type: "tcp-client")
+        let connection = makeConnection()
+        connection.appBecameActive()
+        await waitUntil { world.now.timeIntervalSince1970 - 1_800_000_000 >= 300 }
+        world.snapshot = World.snapshot(connected: false)
+        let lost = world.now.timeIntervalSince1970 - 1_800_000_000
+        await waitUntil { world.starts == 2 }
+        connection.appEnteredBackground()
+        XCTAssertEqual(world.startTimes.count, 2)
+        let gap = world.startTimes[1] - lost
+        XCTAssertGreaterThanOrEqual(gap, 60, "a minute after the office was lost, not two")
+        XCTAssertLessThanOrEqual(gap, 66)
+    }
+
     // MARK: - Others that need the engine
 
     func testSuspendingForThePairingScreenBlocksUntilResumed() async {
@@ -317,6 +368,24 @@ final class OfficeFieldConnectionTests: XCTestCase {
         XCTAssertEqual(Policy.observe(snapshot: World.snapshot(running: false, connected: false)), .notRunning)
         XCTAssertEqual(Policy.observe(snapshot: #"{"running":true,"managedOffice":false,"connected":true}"#), .notRunning)
         XCTAssertEqual(Policy.observe(snapshot: "not json"), .notRunning)
+    }
+
+    func testLookingAgainSchedule() {
+        let since = Date(timeIntervalSince1970: 1_000)
+        func looks(_ policy: OfficePairingService.TransportPolicy, after seconds: TimeInterval,
+                   lastLooked: TimeInterval? = nil) -> Bool {
+            Policy.restartsToLookAgain(policy: policy, notConnectedSince: since,
+                                       lastLookedAgain: lastLooked.map { since.addingTimeInterval($0) },
+                                       now: since.addingTimeInterval(seconds))
+        }
+        XCTAssertFalse(looks(.automatic, after: 59))
+        XCTAssertTrue(looks(.automatic, after: 60))
+        XCTAssertFalse(looks(.automatic, after: 179, lastLooked: 60))
+        XCTAssertTrue(looks(.automatic, after: 180, lastLooked: 60))
+        XCTAssertFalse(looks(.privateLan, after: 3_600))
+        XCTAssertFalse(Policy.restartsToLookAgain(policy: .automatic, notConnectedSince: nil,
+                                                  lastLookedAgain: nil, now: since.addingTimeInterval(3_600)),
+                       "connected: never")
     }
 
     func testBackoffSchedule() {
