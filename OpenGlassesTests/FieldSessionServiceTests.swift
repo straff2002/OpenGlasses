@@ -178,6 +178,16 @@ final class FieldSessionServiceTests: XCTestCase {
         XCTAssertTrue(prompt?.contains("Never fabricate") ?? false)
     }
 
+    /// The model is told a paused job is paused, and only while it is.
+    func testPromptContextSaysTheJobIsPausedOnlyWhilePaused() throws {
+        _ = try service.startSession(vaultId: "refrigeration", assetId: nil)
+        XCTAssertFalse(service.promptContext()?.contains(FieldSessionService.pausedJobPromptNote) ?? true)
+        _ = try service.pauseSession()
+        XCTAssertTrue(service.promptContext()?.contains(FieldSessionService.pausedJobPromptNote) ?? false)
+        _ = try service.resumeSession()
+        XCTAssertFalse(service.promptContext()?.contains(FieldSessionService.pausedJobPromptNote) ?? true)
+    }
+
     // MARK: - History persistence
 
     func testHistoryPersistsAcrossInstances() throws {

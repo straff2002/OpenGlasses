@@ -1290,8 +1290,23 @@ final class FieldSessionService: ObservableObject {
         if let manuals = manualPassagesContext(turn: turn, store: store) {
             context = (context.map { $0 + "\n\n" } ?? "") + manuals
         }
+        // A paused job claims no conversation, and the model has to know that too: shown a job
+        // with nothing saying it was paused, it read "you can end" in a chat about the weather as
+        // "end the job" and closed it.
+        if activeSession?.pausedAt != nil {
+            context = (context.map { $0 + "\n\n" } ?? "") + Self.pausedJobPromptNote
+        }
         return context
     }
+
+    /// What the model is told while the open job is paused.
+    static let pausedJobPromptNote = """
+        This job is PAUSED. The technician may be talking about something unrelated: answer \
+        normally and do not treat the conversation as work on the job. Do not start, end or \
+        change the job unless they name the job or ask for that. "End", "stop" or "that's all" \
+        on their own end the conversation, not the job. If they ask to carry on with the job, \
+        call field_session with action 'resume'.
+        """
 
     /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has no reference tier, nothing
     /// has been ingested for it, or there is no turn to retrieve against.
