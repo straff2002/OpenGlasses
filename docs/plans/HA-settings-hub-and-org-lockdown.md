@@ -10,6 +10,7 @@ only while they are attached (`SettingsHeroDevice`). **Owed (device):** the mana
 enrolled phone — banner placement, read-only screens scrolling, and VoiceOver on a locked row.
 **Revised 2026-10-04 (C4):** locked settings are now *hidden* from the technician, not drawn
 read-only, and "Remove Profile" moved off the hub to the bottom of the organisation's own page.
+**Revised again (C5):** the device owner's Face ID no longer opens administrator settings.
 **Owed (device):** the C4 hub, the organisation's page and Remove Profile on a real enrolled phone.
 
 **Related:** Plan [DE](DE-settings-capability-journey.md) (the journey this retires), Plan
@@ -213,6 +214,26 @@ none of them.
   settings-wide search; the tool list's search draws from the same filtered list, so it cannot
   surface a closed tool. Hidden rows are not built, so VoiceOver cannot reach them; a hidden
   category reached anyway (a session ending under an open screen) draws only a one-line notice.
+
+## C5 — The technician is not the administrator (2026-10-04)
+
+**Trigger.** Greig, on the same phone: *"the user can also unlock administrator settings."* A profile
+with the edition but neither an admin card nor a passcode (`AdminCredentials.Method.deviceOwner`)
+opened administrator settings with the device owner's Face ID or passcode — which the technician
+carrying the phone passes. Every hidden category, Simple Mode and Lock Settings came back.
+
+**The rule** (`AdministratorAccessPolicy`, `AdministratorAccessPolicyTests`): only the organisation's
+credential opens the administrator view — a scanned admin card checked against the profile's
+digest, or the passcode against its verifier. The device owner's authentication never does,
+prompted or not (`OwnerGatePolicy.grantWithoutPrompt` included). The method is now `.notIssued`,
+"Administrator Settings" is offered only when a card or passcode was issued, and the review says
+*"No admin card or passcode, so administrator settings don't open on this phone"*. An organisation
+that wants the administrator view issues a card (Avenkin Office prints one) and re-mints the
+profile. Nothing else changes: the owner gate still guards the person's own Lock Settings and Simple
+Mode where the organisation has not locked them, and removing the profile (kept owner-gated by
+decision); none of those can draw a hidden setting, because `SettingsVisibilityPolicy` decides what
+Settings shows whichever gate was passed. Unmanaged phones have no administrator view and are
+unchanged.
 
 ## Tests
 

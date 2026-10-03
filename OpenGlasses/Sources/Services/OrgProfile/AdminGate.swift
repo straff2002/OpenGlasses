@@ -14,6 +14,9 @@ import Combine
 ///   activity, whichever comes first; the phone then returns to the technician's view.
 /// - **No local reset.** A forgotten passcode or lost card is a re-minted profile, picked up at the
 ///   next renewal — a local reset would be a way round the gate.
+/// - **Only the organisation's credential opens it** (Plan HA C5). The device owner's Face ID or
+///   passcode belongs to whoever carries the phone — the technician — so it never starts a session,
+///   and a profile that issued neither a card nor a passcode has no administrator view on the phone.
 /// - **An administrator phone** is an ordinary enrolled phone that kept the card's secret, in the
 ///   Keychain and never in a backup. It shows the full view while the kept secret matches the
 ///   profile's current card; a renewal carrying a new card drops it back to the technician's view
@@ -179,12 +182,9 @@ final class AdminGate: ObservableObject {
         return attempt
     }
 
-    /// The device owner's own gate passed, on a phone whose profile issued neither a card nor a
-    /// passcode (the review sheet said so). The caller ran `OwnerGateAuth`, failing closed.
-    func deviceOwnerPassed() -> Attempt {
-        guard let policy, policy.credentials.method == .deviceOwner else { return .notApplicable }
-        startSession()
-        return .granted
+    /// Whether "Administrator Settings" is offered right now (`AdministratorAccessPolicy`).
+    var offersUnlock: Bool {
+        AdministratorAccessPolicy.offersUnlock(policy: policy, restricted: isRestricted)
     }
 
     private func settle(_ matched: Bool) -> Attempt {
