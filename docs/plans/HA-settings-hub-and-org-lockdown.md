@@ -9,7 +9,8 @@ read-side tool clamp and the administrator session as the override; the hero car
 only while they are attached (`SettingsHeroDevice`). **Owed (device):** the managed hub on a real
 enrolled phone — banner placement, read-only screens scrolling, and VoiceOver on a locked row.
 **Revised 2026-10-04 (C4):** locked settings are now *hidden* from the technician, not drawn
-read-only. **Owed (device):** the C4 hub and the organisation's page on a real enrolled phone.
+read-only, and "Remove Profile" moved off the hub to the bottom of the organisation's own page.
+**Owed (device):** the C4 hub, the organisation's page and Remove Profile on a real enrolled phone.
 
 **Related:** Plan [DE](DE-settings-capability-journey.md) (the journey this retires), Plan
 [CT](CT-org-configuration-profiles.md) (the profile, the edition, the administrator gate and the
@@ -205,6 +206,9 @@ none of them.
   shown."* Its "Managed by ⟨org⟩" row opens the organisation's page, which lists what is not shown on
   this phone, then everything the profile does in force now, in the enrolment review's words (Locks,
   starting values, what this phone shows, installs, supplies, not applied).
+- **Remove Profile moved** from the hub to the bottom of that page, under "Leave ⟨org⟩", with the
+  records panel, confirmation and device-owner gate of CT PR 4 unchanged. The MDM case still says it
+  can only be removed there.
 - **Unmanaged phones are unchanged** (every setting editable, the hub the catalogue). There is no
   settings-wide search; the tool list's search draws from the same filtered list, so it cannot
   surface a closed tool. Hidden rows are not built, so VoiceOver cannot reach them; a hidden

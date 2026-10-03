@@ -223,18 +223,12 @@ private struct OrgProfileReviewList: View {
     }
 }
 
-/// The persistent "Managed by …" section on the Settings hub (Plan CT PR 2), with removal behind the
-/// device owner. The row opens the organisation's page, where what it sets is listed (Plan HA C4).
+/// The persistent "Managed by …" section on the Settings hub (Plan CT PR 2). The row opens the
+/// organisation's page, where what it sets is listed and — at the bottom, out of the way — the
+/// profile can be removed (Plan HA C4).
 struct ManagedByOrganisationSection: View {
     @ObservedObject var manager: OrgProfileManager
     @State private var finishingModel = false
-    @State private var confirmingRemoval = false
-    @State private var removalError: String?
-    @EnvironmentObject private var appState: AppState
-    /// Plan CT PR 4: the step before removal that offers the firm its records.
-    @State private var leaving = false
-    @State private var recordsShare: ShareItem?
-    @State private var exportProblem: String?
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var departures = OrgDepartureService.shared
 
@@ -308,41 +302,6 @@ struct ManagedByOrganisationSection: View {
                     }
                     .buttonStyle(.plain)
                 }
-                OGDivider()
-                if record.source.isLocallyRemovable, leaving {
-                    leavingPanel(organization: profile.organizationName, record: record)
-                } else if record.source.isLocallyRemovable {
-                    Button(role: .destructive) {
-                        // Plan CT PR 4: removal is leaving the firm. Offer it its records first.
-                        if owedReports > 0 || !owedSessions(record).isEmpty {
-                            leaving = true
-                        } else {
-                            confirmingRemoval = true
-                        }
-                    } label: {
-                        OGRow("Remove Profile", icon: "xmark.circle", showsChevron: false) { EmptyView() }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    OGNotice(text: "Your organisation's device management applied this profile, so it can only be removed there.",
-                             systemImage: "info.circle")
-                        .padding(12)
-                }
-                if let removalError {
-                    OGDivider()
-                    OGStatusLabel(removalError, kind: .error)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                }
-            }
-            .confirmationDialog(
-                "Remove \(profile.organizationName)'s profile?",
-                isPresented: $confirmingRemoval,
-                titleVisibility: .visible
-            ) {
-                Button("Remove Profile", role: .destructive) { remove() }
-            } message: {
-                Text("Its locks lift, the settings it chose go back to yours, and a licence it brought is removed.")
             }
         } else if let problem = manager.loadProblem {
             OGSection(header: "Organisation") {
@@ -416,6 +375,143 @@ struct ManagedByOrganisationSection: View {
         return nil
     }
 
+}
+
+/// The organisation's page (Plan HA C4): everything its profile does to this phone, in the words
+/// the enrolment review used — so a setting hidden from the technician is never a secret — and, at
+/// the bottom, leaving: the records panel, the confirmation and the device owner's gate, unchanged
+/// from Plan CT PR 4.
+struct OrganisationProfilePage: View {
+    @ObservedObject var manager: OrgProfileManager
+    @State private var confirmingRemoval = false
+    @State private var removalError: String?
+    @ObservedObject private var adminGate = AdminGate.shared
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    /// Plan CT PR 4: the step before removal that offers the firm its records.
+    @State private var leaving = false
+    @State private var recordsShare: ShareItem?
+    @State private var exportProblem: String?
+
+    var body: some View {
+        OGScrollPage {
+            if let profile = manager.profile, let record = manager.record {
+                content(profile: profile, record: record)
+            }
+        }
+        .navigationTitle(manager.profile?.organizationName ?? "Organisation")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: manager.record == nil) { _, removed in
+            if removed { dismiss() }
+        }
+    }
+
+    @ViewBuilder
+    private func content(profile: ConfigProfile, record: OrgEnrolmentRecord) -> some View {
+        let organization = profile.organizationName
+        // What is in force now, not what the review once said: a renewal may have changed it, and a
+        // revocation lifts it.
+        let review = OrgProfileReview(document: record.document, source: record.source, profile: profile,
+                                      result: PolicyEnvelope.current, replacesCurrent: false,
+                                      licenceToActivate: record.activatedLicenceCode)
+        let hidden = SettingsVisibilityPolicy.hiddenSummary(in: adminGate.settingsContext)
+
+        OGSection {
+            ManagedByOrganisationRow(organization: organization,
+                                     subtitle: ManagedByOrganisationSection.subtitle(profile: profile, record: record))
+        }
+
+        if !hidden.isEmpty {
+            OGSection(header: "Not shown on this phone",
+                      footer: "\(organization) sets these, so they are left out of Settings. An administrator can open them from Administrator Settings.") {
+                lines(hidden)
+            }
+        }
+        if !review.lockLines.isEmpty {
+            OGSection(header: "Locks", footer: "Nobody on this phone can change these while the profile is in force.") {
+                lines(review.lockLines)
+            }
+        }
+        if !review.startingValueLines.isEmpty {
+            OGSection(header: "Set as a starting point", footer: "These can be changed on this phone.") {
+                lines(review.startingValueLines)
+            }
+        }
+        if !review.adminLines.isEmpty {
+            OGSection(header: "What this phone shows") {
+                lines(review.adminLines)
+            }
+        }
+        if let packId = review.packId {
+            OGSection(header: "Installs") {
+                lines([packId])
+            }
+        }
+        let supplies = review.organizationLines + (review.carriesLicence ? ["A Field Assist licence"] : [])
+            + review.aiModelLines
+        if !supplies.isEmpty {
+            OGSection(header: "Supplies") {
+                lines(supplies)
+            }
+        }
+        if !review.dropLines.isEmpty {
+            OGSection(header: "Not applied", footer: "This version of the app could not use these entries, so they are left out.") {
+                lines(review.dropLines)
+            }
+        }
+
+        // Leaving the organisation: last on the page, never on the hub (Plan HA C4).
+        OGSection(header: "Leave \(organization)") {
+            if record.source.isLocallyRemovable, leaving {
+                leavingPanel(organization: organization, record: record)
+            } else if record.source.isLocallyRemovable {
+                Button(role: .destructive) {
+                    // Plan CT PR 4: removal is leaving the firm. Offer it its records first.
+                    if owedReports > 0 || !owedSessions(record).isEmpty {
+                        leaving = true
+                    } else {
+                        confirmingRemoval = true
+                    }
+                } label: {
+                    OGRow("Remove Profile", icon: "xmark.circle", showsChevron: false) { EmptyView() }
+                }
+                .buttonStyle(.plain)
+            } else {
+                OGNotice(text: "Your organisation's device management applied this profile, so it can only be removed there.",
+                         systemImage: "info.circle")
+                    .padding(12)
+            }
+            if let removalError {
+                OGDivider()
+                OGStatusLabel(removalError, kind: .error)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            }
+        }
+        .confirmationDialog(
+            "Remove \(organization)'s profile?",
+            isPresented: $confirmingRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Profile", role: .destructive) { remove() }
+        } message: {
+            Text("Its locks lift, the settings it chose go back to yours, and a licence it brought is removed.")
+        }
+    }
+
+    /// One plain line per entry, as the enrolment review listed them.
+    @ViewBuilder
+    private func lines(_ entries: [String]) -> some View {
+        ForEach(Array(entries.enumerated()), id: \.offset) { index, line in
+            if index > 0 { OGDivider() }
+            Text(verbatim: line)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
+    }
 
     // MARK: - Leaving the firm (Plan CT PR 4)
 
@@ -507,93 +603,6 @@ struct ManagedByOrganisationSection: View {
             }
         }
     }
-}
-
-/// The organisation's page (Plan HA C4): everything its profile does to this phone, in the words
-/// the enrolment review used — so a setting hidden from the technician is never a secret.
-struct OrganisationProfilePage: View {
-    @ObservedObject var manager: OrgProfileManager
-    @ObservedObject private var adminGate = AdminGate.shared
-
-    var body: some View {
-        OGScrollPage {
-            if let profile = manager.profile, let record = manager.record {
-                content(profile: profile, record: record)
-            }
-        }
-        .navigationTitle(manager.profile?.organizationName ?? "Organisation")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    @ViewBuilder
-    private func content(profile: ConfigProfile, record: OrgEnrolmentRecord) -> some View {
-        let organization = profile.organizationName
-        // What is in force now, not what the review once said: a renewal may have changed it, and a
-        // revocation lifts it.
-        let review = OrgProfileReview(document: record.document, source: record.source, profile: profile,
-                                      result: PolicyEnvelope.current, replacesCurrent: false,
-                                      licenceToActivate: record.activatedLicenceCode)
-        let hidden = SettingsVisibilityPolicy.hiddenSummary(in: adminGate.settingsContext)
-
-        OGSection {
-            ManagedByOrganisationRow(organization: organization,
-                                     subtitle: ManagedByOrganisationSection.subtitle(profile: profile, record: record))
-        }
-
-        if !hidden.isEmpty {
-            OGSection(header: "Not shown on this phone",
-                      footer: "\(organization) sets these, so they are left out of Settings. An administrator can open them from Administrator Settings.") {
-                lines(hidden)
-            }
-        }
-        if !review.lockLines.isEmpty {
-            OGSection(header: "Locks", footer: "Nobody on this phone can change these while the profile is in force.") {
-                lines(review.lockLines)
-            }
-        }
-        if !review.startingValueLines.isEmpty {
-            OGSection(header: "Set as a starting point", footer: "These can be changed on this phone.") {
-                lines(review.startingValueLines)
-            }
-        }
-        if !review.adminLines.isEmpty {
-            OGSection(header: "What this phone shows") {
-                lines(review.adminLines)
-            }
-        }
-        if let packId = review.packId {
-            OGSection(header: "Installs") {
-                lines([packId])
-            }
-        }
-        let supplies = review.organizationLines + (review.carriesLicence ? ["A Field Assist licence"] : [])
-            + review.aiModelLines
-        if !supplies.isEmpty {
-            OGSection(header: "Supplies") {
-                lines(supplies)
-            }
-        }
-        if !review.dropLines.isEmpty {
-            OGSection(header: "Not applied", footer: "This version of the app could not use these entries, so they are left out.") {
-                lines(review.dropLines)
-            }
-        }
-    }
-
-    /// One plain line per entry, as the enrolment review listed them.
-    @ViewBuilder
-    private func lines(_ entries: [String]) -> some View {
-        ForEach(Array(entries.enumerated()), id: \.offset) { index, line in
-            if index > 0 { OGDivider() }
-            Text(verbatim: line)
-                .font(.body)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-        }
-    }
-
 }
 
 /// A caption under a control the organisation profile has locked, where it is still drawn — for an
