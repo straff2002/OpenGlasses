@@ -1,42 +1,24 @@
 import SwiftUI
 
-// Plan HA C2 — how a setting the organisation locked looks. Locked is never invisible: the
-// control stays on screen, read-only, with the organisation named as the reason.
+// Plan HA C4 — how a setting the organisation locked looks. In the technician's view it is not
+// drawn at all (`SettingsVisibilityPolicy`); the hub's Organisation section says so in one line, and
+// the organisation's page lists what is hidden. What is still drawn locked — an administrator's
+// view of a ceiling, or a protection in `SettingsVisibilityPolicy.alwaysShown` — is read-only with
+// the organisation named as the reason.
 
-/// The "Managed by ⟨org⟩" row: the hub's Organisation section and the banner on every locked
-/// settings screen are the same row.
+/// The "Managed by ⟨org⟩" row at the top of the hub's Organisation section.
 struct ManagedByOrganisationRow: View {
     let organization: String
     let subtitle: String
+    var showsChevron = false
 
     var body: some View {
         OGRow("Managed by \(organization)", icon: "building.2", subtitle: subtitle,
-              showsChevron: false) { EmptyView() }
+              showsChevron: showsChevron) { EmptyView() }
     }
 }
 
-/// The banner above a locked settings screen.
-struct ManagedLockBanner: View {
-    let organization: String
-    /// Some rows on the screen are still open (`CategoryLock.partlyOpen`).
-    var partly = false
-
-    var body: some View {
-        ManagedByOrganisationRow(
-            organization: organization,
-            subtitle: partly
-                ? "Locked rows are set by \(organization). An administrator can change them."
-                : "Read only — \(organization) sets these. An administrator can change them."
-        )
-        .background(OGTheme.card, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// A caption under one locked control, for locks that are not a `SettingKey` ceiling.
+/// A caption under one locked control that is still drawn.
 struct ManagedLockNote: View {
     let organization: String
 
@@ -51,31 +33,16 @@ struct ManagedLockNote: View {
     }
 }
 
-extension View {
-    /// A whole settings screen the organisation locked: every control read-only, the banner on top.
-    /// Nil leaves the screen as it is.
-    @ViewBuilder
-    func managedReadOnly(_ organization: String?) -> some View {
-        if let organization {
-            self
-                .disabled(true)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    ManagedLockBanner(organization: organization)
-                }
-        } else {
-            self
-        }
-    }
+/// What a hidden category's screen draws if it is ever reached anyway — an administrator session
+/// ending while the screen is open, or a link that outlived its row. None of the screen's own
+/// controls are built, so nothing of it reaches the screen or VoiceOver.
+struct ManagedHiddenScreen: View {
+    let organization: String
 
-    /// A screen with some rows locked: the banner on top, each locked row disables itself.
-    @ViewBuilder
-    func managedPartlyLocked(_ organization: String?) -> some View {
-        if let organization {
-            self.safeAreaInset(edge: .top, spacing: 0) {
-                ManagedLockBanner(organization: organization, partly: true)
-            }
-        } else {
-            self
+    var body: some View {
+        OGScrollPage {
+            OGNotice(text: "\(organization) sets these settings, so they aren't shown on this phone. Settings › Organisation lists what \(organization) sets.",
+                     systemImage: "building.2")
         }
     }
 }

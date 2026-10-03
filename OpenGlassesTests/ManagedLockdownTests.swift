@@ -40,7 +40,7 @@ final class ManagedLockdownTests: XCTestCase {
 
     func testLocksApplyOnlyInTheTechniciansView() {
         let lockdown = ManagedLockdown.standard
-        XCTAssertEqual(SettingsLockPolicy.lock(.intelligence, lockdown: lockdown, restricted: true), .readOnly)
+        XCTAssertEqual(SettingsLockPolicy.lock(.intelligence, lockdown: lockdown, restricted: true), .locked)
         XCTAssertEqual(SettingsLockPolicy.lock(.intelligence, lockdown: lockdown, restricted: false), .open,
                        "an administrator session (or an administrator phone) can change everything")
         XCTAssertEqual(SettingsLockPolicy.lock(.intelligence, lockdown: nil, restricted: true), .open,
@@ -72,17 +72,18 @@ final class ManagedLockdownTests: XCTestCase {
         XCTAssertNil(ManagedArea.ownerControls.category)
     }
 
-    /// A locked category is a row: the lockdown annotates the hub, it never filters it.
-    func testALockedCategoryIsNeverHidden() {
+    /// The catalogue still lists every category; it is `SettingsVisibilityPolicy` (Plan HA C4) that
+    /// leaves the wholly locked ones out of the technician's hub. Devices & Privacy is locked but
+    /// partly open, so it stays.
+    func testWhichCategoriesTheStandardSetLocksWhollyAndWhichPartly() {
         let everything = SettingsCatalog.visible(simpleMode: false)
         XCTAssertEqual(everything.count, SettingsCategoryID.allCases.count)
+        XCTAssertEqual(everything.filter { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true) == .locked }
+                           .map(\.id),
+                       [.intelligence, .voice, .tools, .connections, .capture, .display, .advanced])
         XCTAssertEqual(everything.filter { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true).isLocked }
                            .map(\.id),
                        [.intelligence, .voice, .devices, .tools, .connections, .capture, .display, .advanced])
-        let simple = SettingsCatalog.visible(simpleMode: true)
-        XCTAssertEqual(simple.filter { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true).isLocked }
-                           .map(\.id),
-                       [.voice, .devices])
     }
 
     // MARK: - The profile's adjustments
@@ -93,7 +94,7 @@ final class ManagedLockdownTests: XCTestCase {
         XCTAssertFalse(lockdown.lockedCategories.contains(.voice))
         XCTAssertFalse(lockdown.lockedCategories.contains(.devices))
         XCTAssertTrue(lockdown.lockedCategories.contains(.fieldAssist))
-        XCTAssertEqual(SettingsLockPolicy.lock(.fieldAssist, lockdown: lockdown, restricted: true), .readOnly,
+        XCTAssertEqual(SettingsLockPolicy.lock(.fieldAssist, lockdown: lockdown, restricted: true), .locked,
                        "its one open-able area is the switch, which is locked anyway")
         XCTAssertEqual(SettingsLockPolicy.lock(.devices, lockdown: lockdown, restricted: true), .open)
     }
@@ -198,13 +199,13 @@ final class ManagedLockdownGateTests: XCTestCase {
         seams.saveCardSecret = { _ in }
         let gate = AdminGate(seams: seams)
 
-        XCTAssertEqual(gate.lock(.tools), .readOnly)
+        XCTAssertEqual(gate.lock(.tools), .locked)
         XCTAssertEqual(gate.lock(.accessibility), .open)
         XCTAssertTrue(gate.isLocked(.ownerControls))
         XCTAssertEqual(gate.tryPasscode("correct horse"), .granted)
         XCTAssertEqual(gate.lock(.tools), .open)
         XCTAssertFalse(gate.isLocked(.ownerControls))
         gate.handleBackground()
-        XCTAssertEqual(gate.lock(.tools), .readOnly, "the session ends with the app in the background")
+        XCTAssertEqual(gate.lock(.tools), .locked, "the session ends with the app in the background")
     }
 }

@@ -30,12 +30,13 @@ struct SettingsView: View {
     // SettingsCategoryScreens.swift); this view is the hub (Plan HA): the hero device card,
     // every category in `SettingsCatalog` order, then Simple Mode and About.
     //
-    // Every category is always a row. Simple Mode filters the owner-configuration rows out; an
-    // organisation's lockdown (`SettingsLockPolicy`) never removes a row — it marks it read-only
-    // with the organisation named, and an administrator session unlocks it.
+    // Simple Mode filters the owner-configuration rows out. On a managed phone, a category the
+    // organisation locked whole is not shown to the technician either (Plan HA C4,
+    // `SettingsVisibilityPolicy`) — the Organisation section says so, and an administrator session
+    // shows it again.
 
     private var visibleCategories: [SettingsCategory] {
-        SettingsCatalog.visible(simpleMode: simpleModeEnabled)
+        SettingsVisibilityPolicy.hubCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext)
     }
 
     private var organization: String { ManagedLockReason.organization }
@@ -87,8 +88,11 @@ struct SettingsView: View {
             }
 
             // MARK: Simple Mode (the owner's hand-off switch, behind the owner gate). Under an
-            // organisation's edition it is locked with everything else the owner configures.
-            simpleModeSection
+            // organisation's edition it is locked with everything else the owner configures, so the
+            // technician is not shown it (Plan HA C4).
+            if ownerControls.isShown {
+                simpleModeSection
+            }
 
             OGSection(
                 header: "About",
@@ -163,15 +167,17 @@ struct SettingsView: View {
     private func openRequestedCategory() {
         guard !settingsLocked, let requested = appState.requestedSettingsCategory else { return }
         appState.requestedSettingsCategory = nil
-        // Simple Mode hides the owner's configuration from the hub; a shortcut is not a way round
-        // that. The hub itself is where the request lands instead.
+        // Simple Mode hides the owner's configuration from the hub, and an organisation's lockdown
+        // hides what it locked (Plan HA C4); a shortcut is not a way round either. The hub itself
+        // is where the request lands instead.
         guard visibleCategories.contains(where: { $0.id == requested }) else { return }
         openedCategory = requested
     }
 
     // MARK: - Simple Mode
 
-    private var ownerControlsLocked: Bool { adminGate.isLocked(.ownerControls) }
+    private var ownerControls: SettingPresentation { adminGate.presentation(.area(.ownerControls)) }
+    private var ownerControlsLocked: Bool { !ownerControls.isEditable }
 
     private var simpleModeSection: some View {
         OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, Field Assist and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
@@ -205,8 +211,8 @@ struct SettingsView: View {
 
     // MARK: - Category rendering
 
-    /// One hub row. A category the organisation locked is still a row: its value says so, and its
-    /// screen opens read-only (or with its locked rows read-only) under a "Managed by" banner.
+    /// One hub row. A category the organisation locked whole never gets here (`visibleCategories`);
+    /// a partly open one is a normal row, and its screen leaves out the rows that are locked.
     @ViewBuilder
     private func categoryRow(_ category: SettingsCategory) -> some View {
         let lock = adminGate.lock(category.id)
@@ -216,23 +222,22 @@ struct SettingsView: View {
                 icon: category.icon,
                 mutedIcon: category.mutedIcon,
                 subtitle: category.subtitle,
-                value: lock.isLocked ? "Managed" : summary(for: category.id),
+                value: summary(for: category.id),
                 alwaysStacksValue: true
             )
         }
-        .accessibilityHint(lock.isLocked ? Text("Managed by \(organization). Opens read only.") : Text(""))
     }
 
     @ViewBuilder
     private func lockedDestination(for id: SettingsCategoryID, lock: CategoryLock) -> some View {
         switch lock {
-        case .open:
+        case .open, .partlyOpen:
+            // A partly open screen asks `AdminGate` per row and leaves the locked ones out.
             destination(for: id)
-        case .readOnly:
-            destination(for: id).managedReadOnly(organization)
-        case .partlyOpen:
-            // The screen locks its own rows (it asks `AdminGate` per area); the banner says why.
-            destination(for: id).managedPartlyLocked(organization)
+        case .locked:
+            // Reached only when the lock changed under an open screen (an administrator session
+            // ending); the screen's own controls are never built.
+            ManagedHiddenScreen(organization: organization)
         }
     }
 
@@ -883,6 +888,9 @@ struct HardwarePrivacyView: View {
                     isOn: $privacyFilterEnabled,
                     info: "Uses Apple's on-device Vision framework to detect faces in the camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
                 )
+                // Plan HA C4: pinned on, this is drawn read-only rather than hidden, even for the
+                // technician — a bystander protection somebody on the phone must be able to see is
+                // on (`SettingsVisibilityPolicy.alwaysShown`).
                 .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
                 ManagedSettingNote(key: .privacyFilterEnabled)
                 // Apple Health: what is read, whether the AI may see it (the share toggle lives

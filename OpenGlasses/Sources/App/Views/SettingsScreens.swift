@@ -230,6 +230,8 @@ struct VoiceTriggersSettingsScreen: View {
 /// Models, personas, system prompt, and behaviour settings (owner-only; hidden in Simple Mode).
 struct AIPersonalitySettingsScreen: View {
     @ObservedObject var appState: AppState
+    /// Plan HA C4: a page whose only control the organisation pinned is not linked.
+    @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("activePromptPresetId") private var activePresetId = "preset-default"
     @AppStorage("savedPersonas") private var savedPersonasData = Data()
 
@@ -380,16 +382,20 @@ struct AIPersonalitySettingsScreen: View {
                     }
                 }
 
-                NavigationLink {
-                    AgenticFeaturesView(agentDocs: appState.agentDocs, localLLM: appState.localLLMService)
-                        .environmentObject(appState)
-                } label: {
-                    HStack {
-                        Label("Agentic Features", systemImage: "bolt.badge.automatic")
-                        Spacer()
-                        if Config.agentModeEnabled {
-                            Text("On")
-                                .foregroundStyle(.secondary)
+                // With Agent Mode pinned off, the page is its switch and nothing else (the rest of it
+                // needs Agent Mode on), so the technician is not given a link to an empty page.
+                if adminGate.presentation(.key(.agentModeEnabled)).isShown {
+                    NavigationLink {
+                        AgenticFeaturesView(agentDocs: appState.agentDocs, localLLM: appState.localLLMService)
+                            .environmentObject(appState)
+                    } label: {
+                        HStack {
+                            Label("Agentic Features", systemImage: "bolt.badge.automatic")
+                            Spacer()
+                            if Config.agentModeEnabled {
+                                Text("On")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -546,6 +552,8 @@ struct AIPersonalitySettingsScreen: View {
 /// Tools the AI can use (owner-only; hidden in Simple Mode).
 struct ToolsActionsSettingsScreen: View {
     @ObservedObject var appState: AppState
+    /// Plan HA C4: a page whose only control the organisation pinned is not linked.
+    @ObservedObject private var adminGate = AdminGate.shared
 
     var body: some View {
         Form {
@@ -631,7 +639,7 @@ struct ToolsActionsSettingsScreen: View {
                     Label("Siri & Search", systemImage: "mic.badge.plus")
                 }
 
-                if Config.agentModeEnabled {
+                if Config.agentModeEnabled, adminGate.presentation(.key(.mcpServerEnabled)).isShown {
                     NavigationLink {
                         MCPServerSettingsView()
                             .environmentObject(appState)
@@ -767,7 +775,7 @@ struct ConnectionsSettingsScreen: View {
 ///
 /// Under an organisation's edition this category is locked except for Glasses (a technician has to
 /// get the glasses working) and the routing disclosure (a description, not a setting): those two
-/// rows stay open and the rest are read-only (Plan HA C2).
+/// rows stay open and the rest are not shown to the technician (Plan HA C2, C4).
 struct GlassesPrivacySettingsScreen: View {
     @ObservedObject var appState: AppState
     @ObservedObject private var adminGate = AdminGate.shared
@@ -781,8 +789,11 @@ struct GlassesPrivacySettingsScreen: View {
     @State private var conversationEncryptionEnabled = Config.conversationEncryptionEnabled
     @State private var isTogglingEncryption = false
 
-    /// The rest of the category is locked; only the open areas are not.
-    private var restLocked: Bool { adminGate.lock(.devices).isLocked }
+    /// How the rows outside the open areas draw: hidden from the technician while the category is
+    /// locked (Plan HA C4).
+    private var rest: SettingPresentation { adminGate.presentation(.row(in: .devices)) }
+    private var glasses: SettingPresentation { adminGate.presentation(.area(.glasses)) }
+    private var requestRouting: SettingPresentation { adminGate.presentation(.area(.requestRouting)) }
 
     private var glassesStatus: String {
         if appState.glassesPaused { return "Paused" }
@@ -797,73 +808,80 @@ struct GlassesPrivacySettingsScreen: View {
     var body: some View {
         Form {
             // Plan HA C3: the glasses' own settings, one row away whatever the hero card shows.
-            Section {
-                NavigationLink {
-                    GlassesSettingsView(appState: appState)
-                } label: {
-                    HStack {
-                        Label("Glasses", systemImage: "eyeglasses")
-                        Spacer()
-                        Text(glassesStatus)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(adminGate.isLocked(.glasses))
-            } footer: {
-                Text("Where the wake word listens, how replies play, sleep, and updates for the glasses themselves.")
-            }
-
-            Section {
-                NavigationLink {
-                    HardwarePrivacyView(
-                        appState: appState,
-                        micRoute: $micRoute,
-                        privacyFilterEnabled: $privacyFilterEnabled,
-                        conversationEncryptionEnabled: $conversationEncryptionEnabled,
-                        isTogglingEncryption: $isTogglingEncryption
-                    )
-                } label: {
-                    Label("Hardware & Privacy", systemImage: "lock.shield")
-                }
-                .disabled(restLocked)
-
-                NavigationLink {
-                    MedicalCompliancePaywallView(
-                        hipaaService: appState.hipaaService,
-                        exportService: appState.medicalExportService
-                    )
-                } label: {
-                    HStack {
-                        Label("Medical Compliance", systemImage: "cross.case.fill")
-                        Spacer()
-                        if StoreKitService.shared.canAccessMedicalCompliance && hipaaMode {
-                            OGStatusLabel("Active", kind: .ok)
-                        } else if !StoreKitService.shared.canAccessMedicalCompliance {
-                            Text("Subscription")
-                                .font(.footnote)
+            if glasses.isShown {
+                Section {
+                    NavigationLink {
+                        GlassesSettingsView(appState: appState)
+                    } label: {
+                        HStack {
+                            Label("Glasses", systemImage: "eyeglasses")
+                            Spacer()
+                            Text(glassesStatus)
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .disabled(!glasses.isEditable)
+                } footer: {
+                    Text("Where the wake word listens, how replies play, sleep, and updates for the glasses themselves.")
                 }
-                .disabled(restLocked)
-            } header: {
-                Text("Devices & Privacy")
-            } footer: {
-                Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
             }
 
-            Section {
-                NavigationLink {
-                    ProcessingSummaryView()
-                } label: {
-                    Label("How Your Requests Are Processed", systemImage: "arrow.triangle.branch")
+            if rest.isShown {
+                Section {
+                    NavigationLink {
+                        HardwarePrivacyView(
+                            appState: appState,
+                            micRoute: $micRoute,
+                            privacyFilterEnabled: $privacyFilterEnabled,
+                            conversationEncryptionEnabled: $conversationEncryptionEnabled,
+                            isTogglingEncryption: $isTogglingEncryption
+                        )
+                    } label: {
+                        Label("Hardware & Privacy", systemImage: "lock.shield")
+                    }
+                    .disabled(!rest.isEditable)
+
+                    NavigationLink {
+                        MedicalCompliancePaywallView(
+                            hipaaService: appState.hipaaService,
+                            exportService: appState.medicalExportService
+                        )
+                    } label: {
+                        HStack {
+                            Label("Medical Compliance", systemImage: "cross.case.fill")
+                            Spacer()
+                            if StoreKitService.shared.canAccessMedicalCompliance && hipaaMode {
+                                OGStatusLabel("Active", kind: .ok)
+                            } else if !StoreKitService.shared.canAccessMedicalCompliance {
+                                Text("Subscription")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(!rest.isEditable)
+                } header: {
+                    Text("Devices & Privacy")
+                } footer: {
+                    Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
                 }
-                .accessibilityHint("Shows where the camera picture, what you say, the answer, the voice and remote tools each go.")
-                .disabled(adminGate.isLocked(.requestRouting))
-            } header: {
-                Text("Where Your Requests Go")
-            } footer: {
-                Text("One page for the camera picture, what you say, the answer, the voice you hear and any tools running on other machines — each with the destination your settings send it to. It names a mixed setup as mixed, and lists anything that still has to be downloaded before the app could work offline. It describes intended routing; Network Activity, under Advanced, is the separate record of requests the app actually observed.")
+            }
+
+            // A disclosure, not a setting: shown whoever is looking, and always openable
+            // (`SettingsVisibilityPolicy.alwaysShown`).
+            if requestRouting.isShown {
+                Section {
+                    NavigationLink {
+                        ProcessingSummaryView()
+                    } label: {
+                        Label("How Your Requests Are Processed", systemImage: "arrow.triangle.branch")
+                    }
+                    .accessibilityHint("Shows where the camera picture, what you say, the answer, the voice and remote tools each go.")
+                } header: {
+                    Text("Where Your Requests Go")
+                } footer: {
+                    Text("One page for the camera picture, what you say, the answer, the voice you hear and any tools running on other machines — each with the destination your settings send it to. It names a mixed setup as mixed, and lists anything that still has to be downloaded before the app could work offline. It describes intended routing; Network Activity, under Advanced, is the separate record of requests the app actually observed.")
+                }
             }
         }
         .navigationTitle("Devices & Privacy")

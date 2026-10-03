@@ -99,6 +99,22 @@ final class AdminGate: ObservableObject {
         SettingsLockPolicy.isLocked(area, lockdown: lockdown, restricted: isRestricted)
     }
 
+    // MARK: - What Settings shows (Plan HA C4)
+
+    /// The inputs `SettingsVisibilityPolicy` decides from, as they stand right now.
+    var settingsContext: ManagedSettingsContext {
+        let inForce = PolicyEnvelope.current
+        return ManagedSettingsContext(managed: PolicyEnvelope.isManaged,
+                                      lockdown: lockdown,
+                                      restricted: isRestricted,
+                                      lockedKeys: Set(SettingKey.allCases.filter(inForce.isLocked)))
+    }
+
+    /// How one setting is drawn right now: editable, read-only, or not at all.
+    func presentation(_ setting: ManagedSetting) -> SettingPresentation {
+        SettingsVisibilityPolicy.presentation(setting, in: settingsContext)
+    }
+
     // MARK: - The administrator phone
 
     /// This phone kept the organisation's current admin card: the full view, all the time.

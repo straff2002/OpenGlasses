@@ -8,6 +8,8 @@ Assist is a top-level row, and Devices & Privacy gained a Glasses row; the Field
 read-side tool clamp and the administrator session as the override; the hero card shows the glasses
 only while they are attached (`SettingsHeroDevice`). **Owed (device):** the managed hub on a real
 enrolled phone — banner placement, read-only screens scrolling, and VoiceOver on a locked row.
+**Revised 2026-10-04 (C4):** locked settings are now *hidden* from the technician, not drawn
+read-only. **Owed (device):** the C4 hub and the organisation's page on a real enrolled phone.
 
 **Related:** Plan [DE](DE-settings-capability-journey.md) (the journey this retires), Plan
 [CT](CT-org-configuration-profiles.md) (the profile, the edition, the administrator gate and the
@@ -175,6 +177,39 @@ close the ones the organisation names. Deny-by-default tools wait for the pilot'
 Glasses settings are reachable either way: Devices & Privacy › Glasses is always a row, with the
 link's state as its value, and open even on a locked phone.
 
+## C4 — Locked is hidden from the technician (2026-10-04)
+
+**Trigger.** Greig, after using an enrolled phone: *"You should also hide those settings that
+operators aren't allowed"*, and *"Why can I remove the Profile from the top of the settings?"*.
+C2's "locked is visible" put screens of greyed-out switches in front of a technician who could use
+none of them.
+
+**The rule, one place** (`SettingsVisibilityPolicy`, pure, `SettingsVisibilityPolicyTests`):
+
+- A setting the organisation has locked is **not shown to the technician**: no row; a category
+  whose every row is locked (`CategoryLock.locked`, renamed from `readOnly`) is not a hub row; a page
+  whose only control is pinned is not linked (Agentic Features with Agent Mode pinned off, the MCP
+  Server page with the server pinned off). A partly open category (Devices & Privacy) stays a row
+  and its screen leaves out the locked rows.
+- **The administrator sees everything.** What the lockdown locks is open in an administrator
+  session or on an administrator phone; what still binds them — ceilings and closed tools — is
+  drawn read-only with "Set by ⟨org⟩", as C2 drew it.
+- **A profile without an edition** has no administrator view, so whoever holds the phone is the
+  technician: its pinned switches are hidden too.
+- **Shown read-only, never hidden** (`alwaysShown`): Blur Bystander Faces pinned on — the protection
+  a bystander is relying on — and the routing disclosure. Everything else the person needs
+  regardless (Accessibility, Look & Feel, Diagnostics & Support, About, the Organisation section,
+  Glasses) is outside any lock already. The Field Assist screen's wake-word row stays as text when
+  the screen that owns the phrase is hidden: on a job it is the whole interface.
+- **Not concealed.** The hub's Organisation section says *"Some settings are set by ⟨org⟩ and aren't
+  shown."* Its "Managed by ⟨org⟩" row opens the organisation's page, which lists what is not shown on
+  this phone, then everything the profile does in force now, in the enrolment review's words (Locks,
+  starting values, what this phone shows, installs, supplies, not applied).
+- **Unmanaged phones are unchanged** (every setting editable, the hub the catalogue). There is no
+  settings-wide search; the tool list's search draws from the same filtered list, so it cannot
+  surface a closed tool. Hidden rows are not built, so VoiceOver cannot reach them; a hidden
+  category reached anyway (a session ending under an open screen) draws only a one-line notice.
+
 ## Tests
 
 `SettingsHubTests` (order, ids, Simple Mode, pinned accessibility, the script's id mirror, the
@@ -192,7 +227,8 @@ locked, not hidden), `AIPersonalitySettingsWordingTests` (moved), `BrandNameGuar
 2. "Works with your iPhone" → Connections; Field Assist leaves Tools & Actions; the Connected Glasses
    section becomes the Glasses screen. Services keeps a shortcut from Capture & Streaming.
 3. Simple Mode keeps the same five categories; Field Assist is owner configuration.
-4. The edition locks instead of hiding; locked rows open read-only.
+4. The edition locks instead of hiding; locked rows open read-only. **Superseded by C4
+   (2026-10-04): locked is hidden from the technician.**
 5. Pinned open: Accessibility, Look & Feel, Diagnostics & Support. Field Assist open by default with
    its master switch locked. Devices & Privacy locked with Glasses and the routing disclosure open.
 6. Tools close by name only, read-side, and an administrator session does not reopen them.

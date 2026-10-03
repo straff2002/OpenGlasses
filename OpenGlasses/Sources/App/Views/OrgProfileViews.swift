@@ -106,7 +106,7 @@ struct OrgEnrolmentSheet: View {
                         Image(systemName: "building.2")
                     }
                 } footer: {
-                    Text("This phone is now managed by this organisation. Settings it locks show its name, and the device owner can remove the profile from Settings.")
+                    Text("This phone is now managed by this organisation. Settings it locks aren't shown; Settings › Organisation lists what it sets, and that is also where the profile can be removed.")
                 }
             }
 
@@ -223,25 +223,41 @@ private struct OrgProfileReviewList: View {
     }
 }
 
-/// The persistent "Managed by …" row on the Settings hub, with removal behind the device owner.
+/// The persistent "Managed by …" section on the Settings hub (Plan CT PR 2), with removal behind the
+/// device owner. The row opens the organisation's page, where what it sets is listed (Plan HA C4).
 struct ManagedByOrganisationSection: View {
     @ObservedObject var manager: OrgProfileManager
+    @State private var finishingModel = false
     @State private var confirmingRemoval = false
     @State private var removalError: String?
-    @State private var finishingModel = false
-    @ObservedObject private var adminGate = AdminGate.shared
-    @ObservedObject private var departures = OrgDepartureService.shared
     @EnvironmentObject private var appState: AppState
     /// Plan CT PR 4: the step before removal that offers the firm its records.
     @State private var leaving = false
     @State private var recordsShare: ShareItem?
     @State private var exportProblem: String?
+    @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var departures = OrgDepartureService.shared
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
             OGSection(header: "Organisation") {
-                ManagedByOrganisationRow(organization: profile.organizationName,
-                                         subtitle: subtitle(profile: profile, record: record))
+                NavigationLink {
+                    OrganisationProfilePage(manager: manager)
+                } label: {
+                    ManagedByOrganisationRow(organization: profile.organizationName,
+                                             subtitle: Self.subtitle(profile: profile, record: record),
+                                             showsChevron: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Shows what \(profile.organizationName) sets on this phone."))
+                // Plan HA C4: what the organisation locked is not drawn for the technician, and this
+                // one line says so; the page above lists it.
+                if SettingsVisibilityPolicy.hidesSettings(in: adminGate.settingsContext) {
+                    OGDivider()
+                    OGNotice(text: "Some settings are set by \(profile.organizationName) and aren't shown.",
+                             systemImage: "eye.slash")
+                        .padding(12)
+                }
                 if let notice = leaseNotice(profile: profile, record: record) {
                     OGDivider()
                     OGNotice(text: notice.text, systemImage: notice.icon)
@@ -383,7 +399,8 @@ struct ManagedByOrganisationSection: View {
         }
     }
 
-    private func subtitle(profile: ConfigProfile, record: OrgEnrolmentRecord) -> String {
+
+    static func subtitle(profile: ConfigProfile, record: OrgEnrolmentRecord) -> String {
         var parts = ["Since \(record.enrolledAt.formatted(date: .abbreviated, time: .omitted))"]
         if let expiry = profile.policyExpiry {
             parts.append("ends \(expiry.formatted(date: .abbreviated, time: .omitted))")
@@ -391,6 +408,14 @@ struct ManagedByOrganisationSection: View {
         parts.append("enrolment \(record.enrolmentId)")
         return parts.joined(separator: " · ")
     }
+
+    private func finishModel(_ model: OrgAIModel, key: String) -> String? {
+        if model.access == .key, let problem = model.keyProblem(key) { return problem }
+        guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
+        finishingModel = false
+        return nil
+    }
+
 
     // MARK: - Leaving the firm (Plan CT PR 4)
 
@@ -467,13 +492,6 @@ struct ManagedByOrganisationSection: View {
         if !files.isEmpty { recordsShare = ShareItem(items: files) }
     }
 
-    private func finishModel(_ model: OrgAIModel, key: String) -> String? {
-        if model.access == .key, let problem = model.keyProblem(key) { return problem }
-        guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
-        finishingModel = false
-        return nil
-    }
-
     private func remove() {
         removalError = nil
         leaving = false
@@ -491,7 +509,95 @@ struct ManagedByOrganisationSection: View {
     }
 }
 
-/// A caption under a control the organisation profile has locked: the lock is never invisible.
+/// The organisation's page (Plan HA C4): everything its profile does to this phone, in the words
+/// the enrolment review used — so a setting hidden from the technician is never a secret.
+struct OrganisationProfilePage: View {
+    @ObservedObject var manager: OrgProfileManager
+    @ObservedObject private var adminGate = AdminGate.shared
+
+    var body: some View {
+        OGScrollPage {
+            if let profile = manager.profile, let record = manager.record {
+                content(profile: profile, record: record)
+            }
+        }
+        .navigationTitle(manager.profile?.organizationName ?? "Organisation")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func content(profile: ConfigProfile, record: OrgEnrolmentRecord) -> some View {
+        let organization = profile.organizationName
+        // What is in force now, not what the review once said: a renewal may have changed it, and a
+        // revocation lifts it.
+        let review = OrgProfileReview(document: record.document, source: record.source, profile: profile,
+                                      result: PolicyEnvelope.current, replacesCurrent: false,
+                                      licenceToActivate: record.activatedLicenceCode)
+        let hidden = SettingsVisibilityPolicy.hiddenSummary(in: adminGate.settingsContext)
+
+        OGSection {
+            ManagedByOrganisationRow(organization: organization,
+                                     subtitle: ManagedByOrganisationSection.subtitle(profile: profile, record: record))
+        }
+
+        if !hidden.isEmpty {
+            OGSection(header: "Not shown on this phone",
+                      footer: "\(organization) sets these, so they are left out of Settings. An administrator can open them from Administrator Settings.") {
+                lines(hidden)
+            }
+        }
+        if !review.lockLines.isEmpty {
+            OGSection(header: "Locks", footer: "Nobody on this phone can change these while the profile is in force.") {
+                lines(review.lockLines)
+            }
+        }
+        if !review.startingValueLines.isEmpty {
+            OGSection(header: "Set as a starting point", footer: "These can be changed on this phone.") {
+                lines(review.startingValueLines)
+            }
+        }
+        if !review.adminLines.isEmpty {
+            OGSection(header: "What this phone shows") {
+                lines(review.adminLines)
+            }
+        }
+        if let packId = review.packId {
+            OGSection(header: "Installs") {
+                lines([packId])
+            }
+        }
+        let supplies = review.organizationLines + (review.carriesLicence ? ["A Field Assist licence"] : [])
+            + review.aiModelLines
+        if !supplies.isEmpty {
+            OGSection(header: "Supplies") {
+                lines(supplies)
+            }
+        }
+        if !review.dropLines.isEmpty {
+            OGSection(header: "Not applied", footer: "This version of the app could not use these entries, so they are left out.") {
+                lines(review.dropLines)
+            }
+        }
+    }
+
+    /// One plain line per entry, as the enrolment review listed them.
+    @ViewBuilder
+    private func lines(_ entries: [String]) -> some View {
+        ForEach(Array(entries.enumerated()), id: \.offset) { index, line in
+            if index > 0 { OGDivider() }
+            Text(verbatim: line)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
+    }
+
+}
+
+/// A caption under a control the organisation profile has locked, where it is still drawn — for an
+/// administrator, or for a protection in `SettingsVisibilityPolicy.alwaysShown` (Plan HA C4).
 struct ManagedSettingNote: View {
     let key: SettingKey
 
