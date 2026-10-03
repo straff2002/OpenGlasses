@@ -180,8 +180,9 @@ stand-in phones have.
 In the [managed office folders](office-folders.md) the receipt is
 `records/receipts/<messageID>.envelope.json`. The golden fixture `managed-job-receipt-v1.json` is
 the receipt for `managed-job-v1.json`, signed by a fictional phone key whose public half is in
-`managed-job-fixture-keys.json`. **No phone build produces a receipt yet, and no Swift code
-reads or writes one.**
+`managed-job-fixture-keys.json`. The Go transport produces a receipt for each job it commits
+(`ManagedJobsPending`, `PublishManagedJobReceipt`); **no Swift code calls it yet, so no phone
+build gives one.**
 
 ## Inline desktop licence and profile
 

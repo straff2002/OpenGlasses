@@ -13,7 +13,10 @@ const manualFolder = "avenkin-fx0-phone-manual"
 // No denied request reaches the underlying model or its filesystem reads.
 type requestGuard struct {
 	model.Model
-	allowedFolder   string
+	allowedFolder string
+	// allowedName, when set, decides which names in allowedFolder may be served: the managed
+	// office connection's sealed outbound list. Unset, only the lab's one receipt may be.
+	allowedName     func(string) bool
 	denied          atomic.Uint64
 	temporaryDenied atomic.Uint64
 	manualDenied    atomic.Uint64
@@ -24,7 +27,13 @@ func (g *requestGuard) Request(conn protocol.Connection, req *protocol.Request) 
 	if allowed == "" {
 		allowed = reportFolder
 	}
-	if req == nil || req.Folder != allowed || req.Name != "receipt.json" || req.FromTemporary {
+	named := func(name string) bool {
+		if g.allowedName != nil {
+			return g.allowedName(name)
+		}
+		return name == "receipt.json"
+	}
+	if req == nil || req.Folder != allowed || req.FromTemporary || !named(req.Name) {
 		g.denied.Add(1)
 		if req != nil && req.FromTemporary {
 			g.temporaryDenied.Add(1)

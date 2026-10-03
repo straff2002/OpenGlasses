@@ -65,3 +65,34 @@ func TestPreviewGuardDelegatesOnlyItsCommittedReceipt(t *testing.T) {
 		t.Fatal("preview receipt blocked")
 	}
 }
+
+func TestManagedGuardServesOnlyTheSealedOutboundListInRecords(t *testing.T) {
+	spy := &requestSpy{}
+	records := managedFolderID("org-harbour", "phone-a", "office-1", roleRecords)
+	control := managedFolderID("org-harbour", "phone-a", "office-1", roleControl)
+	published := "receipts/0123456789abcdef0123456789abcdef.envelope.json"
+	g := &requestGuard{Model: spy, allowedFolder: records, allowedName: func(name string) bool { return name == published }}
+	for _, r := range []*protocol.Request{
+		{Folder: control, Name: "jobs/0123456789abcdef0123456789abcdef.envelope.json"},
+		{Folder: control, Name: published},
+		{Folder: records, Name: "receipts/ffffffffffffffffffffffffffffffff.envelope.json"},
+		{Folder: records, Name: "receipt.json"},
+		{Folder: records, Name: published, FromTemporary: true},
+		{Folder: reportFolder, Name: "receipt.json"},
+	} {
+		if response, err := g.Request(nil, r); response != nil || !errors.Is(err, protocol.ErrNoSuchFile) {
+			t.Fatalf("%s/%s was served", r.Folder, r.Name)
+		}
+	}
+	if spy.calls != 0 || g.denied.Load() != 6 {
+		t.Fatal("a request bypassed the managed guard")
+	}
+	if _, _ = g.Request(nil, &protocol.Request{Folder: records, Name: published}); spy.calls != 1 {
+		t.Fatal("the published receipt was not served")
+	}
+	// A managed connection with no folders serves nothing at all.
+	none := &requestGuard{Model: spy, allowedName: func(string) bool { return false }}
+	if _, err := none.Request(nil, &protocol.Request{Folder: reportFolder, Name: "receipt.json"}); !errors.Is(err, protocol.ErrNoSuchFile) || spy.calls != 1 {
+		t.Fatal("a handshake-only connection served a file")
+	}
+}

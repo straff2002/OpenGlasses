@@ -6,6 +6,7 @@ package mobilecore
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -44,6 +45,7 @@ type Client struct {
 	manualLab bool
 	managed   bool
 	preview   *officepreview.Phone
+	inbox     *managedInbox
 	mu        sync.Mutex
 	home      string
 	id        string
@@ -193,8 +195,104 @@ func (c *Client) startManagedLocked(officeTransportID, policy, lanHint string) e
 	return c.startLocked(string(raw), nil, &managedRoute{policy: policy, lanHint: lanHint})
 }
 
-// managedRoute is a managed start's checked policy and LAN hint.
-type managedRoute struct{ policy, lanHint string }
+// managedRoute is a managed start's checked policy and LAN hint, and, when the caller handed
+// over a verified binding, the inbox whose two folders the connection carries.
+type managedRoute struct {
+	policy, lanHint string
+	inbox           *managedInbox
+}
+
+// StartManagedOfficeFolders opens the managed connection as StartManagedOfficeRoute does, and
+// with it the two managed folders the binding calls for (Contracts/office-folders.md): control,
+// which this phone only receives, and records, which it only sends. Managed jobs that arrive in
+// control are verified against the binding and committed to private storage; nothing is served
+// to the office except receipts this phone has published.
+//
+// bindingJSON is a closed object with organizationID, enrolmentID, officeID, generation,
+// officeTransportID, officeApplicationKey and phoneApplicationKey (the keys base64). The native
+// caller must have re-verified the saved vendor and administrator binding and the live
+// entitlement first: nothing here verifies that chain, and a folder grants nothing by itself.
+func (c *Client) StartManagedOfficeFolders(bindingJSON, policy, lanHint string) error {
+	if err := checkManagedRoute(policy, lanHint); err != nil {
+		return err
+	}
+	trust, phoneKey, err := parseManagedBinding(bindingJSON, c.id)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.app != nil {
+		return errors.New("engine already running")
+	}
+	inbox, err := openManagedInbox(c.home, trust, phoneKey)
+	if err != nil {
+		return err
+	}
+	b := binding{DeviceID: trust.OfficeTransportID, Address: lanHint, Mode: "lan", RequiredNetwork: "any"}
+	if policy == managedAutomatic {
+		b = binding{DeviceID: trust.OfficeTransportID, Address: "dynamic", Mode: "automatic"}
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		return err
+	}
+	return c.startLocked(string(raw), nil, &managedRoute{policy: policy, lanHint: lanHint, inbox: inbox})
+}
+
+// ManagedJobsPending lists the managed jobs this phone has verified and committed and not yet
+// given a receipt for, as a JSON array of {messageID, sequence, jobSHA256, receiptPayload}.
+// receiptPayload is the exact bytes (base64) the phone application key must sign, after the
+// receipt signature domain.
+func (c *Client) ManagedJobsPending() (string, error) {
+	c.mu.Lock()
+	inbox := c.inbox
+	c.mu.Unlock()
+	if inbox == nil {
+		return "[]", nil
+	}
+	pending, err := inbox.pending()
+	if err != nil {
+		return "", err
+	}
+	return stringJSON(pending)
+}
+
+// ManagedJobFile returns the committed job-file bytes of one managed job, base64, for the app's
+// own job-file review. Committing a job is not accepting it.
+func (c *Client) ManagedJobFile(messageID string) (string, error) {
+	c.mu.Lock()
+	inbox := c.inbox
+	c.mu.Unlock()
+	if inbox == nil {
+		return "", errors.New("no managed office folders are open")
+	}
+	job, err := inbox.jobFile(messageID)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(job), nil
+}
+
+// PublishManagedJobReceipt publishes the receipt for one committed job. signatureBase64 is the
+// phone application key's signature over the receipt signature domain followed by the
+// receiptPayload ManagedJobsPending gave. A signature that is not this phone's publishes nothing.
+func (c *Client) PublishManagedJobReceipt(messageID, signatureBase64 string) error {
+	signature, err := base64.StdEncoding.Strict().DecodeString(signatureBase64)
+	if err != nil {
+		return errors.New("malformed receipt signature")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inbox == nil || c.app == nil {
+		return errors.New("no managed office folders are open")
+	}
+	if err = c.inbox.publishReceipt(messageID, signature); err != nil {
+		return err
+	}
+	t := c.inbox.trust
+	return c.app.Internals.ScanFolderSubdirs(managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords), nil)
+}
 
 // checkManagedRoute accepts exactly the policies and hints StartManagedOfficeRoute documents.
 func checkManagedRoute(policy, lanHint string) error {
@@ -311,6 +409,29 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 		device.Introducer, device.AutoAcceptFolders = false, false
 		conf.SetDevice(device)
 	}
+	// The managed folders: control is received, records is sent, and each has its own path.
+	type managedFolder struct {
+		id, label, path string
+		mode            config.FolderType
+	}
+	var managedFolders []managedFolder
+	if managed && route.inbox != nil {
+		t := route.inbox.trust
+		managedFolders = []managedFolder{
+			{managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleControl), roleControl, route.inbox.control, config.FolderTypeReceiveOnly},
+			{managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords), roleRecords, route.inbox.records, config.FolderTypeSendOnly},
+		}
+	}
+	for _, spec := range managedFolders {
+		folder := conf.Defaults.Folder.Copy()
+		folder.ID, folder.Label, folder.Path, folder.Type = spec.id, spec.label, spec.path, spec.mode
+		folder.FSWatcherEnabled, folder.IgnorePerms, folder.RescanIntervalS = false, true, 60
+		folder.Devices = []config.FolderDeviceConfiguration{{DeviceID: self}, {DeviceID: peer}}
+		if err = os.MkdirAll(filepath.Join(folder.Path, ".stfolder"), 0700); err != nil {
+			return err
+		}
+		conf.SetFolder(folder)
+	}
 	folders := []struct {
 		id   string
 		mode config.FolderType
@@ -367,6 +488,15 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 	}
 	app, err := syncthing.New(wrapper, database, logger, cert, syncthing.Options{NoUpgrade: true, ModelWrapper: func(m model.Model) model.Model {
 		c.guard = &requestGuard{Model: m}
+		if managed && route.inbox != nil {
+			// Only what this phone published in records may be served; nothing it received.
+			t := route.inbox.trust
+			c.guard.allowedFolder = managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords)
+			c.guard.allowedName = route.inbox.outbound
+		} else if managed {
+			// The handshake-only connection has no folder and serves nothing.
+			c.guard.allowedName = func(string) bool { return false }
+		}
 		if preview != nil {
 			i, _ := preview.Binding()
 			_, out, _ := officepreview.Folders(i.PairID)
@@ -394,6 +524,25 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 		return err
 	}
 	c.app, c.cancel, c.peer, c.mode, c.manualLab, c.preview, c.managed = app, cancel, peer, b.Mode, b.ManualLab, preview, managed
+	if managed && route.inbox != nil {
+		c.inbox = route.inbox
+		inbox := route.inbox
+		// Take in what has arrived. Arrival order means nothing; the inbox applies sequence.
+		c.workers.Add(1)
+		go func() {
+			defer c.workers.Done()
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					_, _ = inbox.sweep(time.Now().Unix())
+				}
+			}
+		}()
+	}
 	return nil
 }
 
@@ -494,6 +643,10 @@ func (c *Client) Snapshot() (string, error) {
 	}
 	if c.managed {
 		status["sharedFolders"] = 0
+		if c.inbox != nil {
+			status["sharedFolders"] = 2
+			status["managedJobsCommitted"], status["managedReceiptsPublished"] = c.inbox.counts()
+		}
 		return stringJSON(status)
 	}
 	jobPath := filepath.Join(c.home, controlFolder, "job.json")
@@ -579,7 +732,7 @@ func (c *Client) Stop() {
 		c.cancel()
 		c.workers.Wait()
 		c.app, c.cancel = nil, nil
-		c.managed, c.mode = false, ""
+		c.managed, c.mode, c.inbox = false, "", nil
 		engineActive.Store(false)
 	}
 	c.routeMu.Lock()
