@@ -37,6 +37,7 @@ REPO = Path(__file__).resolve().parent.parent
 OUTBOUND_HOSTS = {
     "github.com",       # the source repository, its issues and private vulnerability reporting
     "avenkin.com",      # the site's own canonical address
+    "testflight.apple.com",  # the public beta invitation
 }
 
 # privacy.html names each provider's own privacy policy, so its anchors are not held to the
