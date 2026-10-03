@@ -1,6 +1,6 @@
 # Plan FZ — The Avenkin Website (avenkin.com)
 
-**Status:** 🚧 P2 built 2026-10-03 (PR pending); P3–P5 not started. Drafted 2026-09-29. avenkin.com
+**Status:** 🚧 P2 shipped 2026-10-03 ([#626](https://github.com/straff2002/OpenGlasses/pull/626), live on avenkin.com); P5's vault guide page shipped with it; P3, P4 and the rest of P5 not started. Drafted 2026-09-29. avenkin.com
 already serves the Pages site and new builds read one base URL (`PublicSite`, Plan FY).
 **P2 as built:** the homepage at `/` with the sign-in hand-off kept inline and byte-for-byte as it
 was; `/auth/meta/` with the fixed-path hand-off; `/app/`, `/field-assist/`, `/office/`, `/pricing/`
@@ -16,7 +16,11 @@ P0 recorded no key names — so nothing may link to a fragment of the homepage, 
 enforces that; (3) the role addresses (`support@`, `security@`, …) are **not** used: avenkin.com has
 no mail records yet, so every page keeps the existing contact address; (4) the privacy policy gains
 a section on the website only — Avenkin Office is not covered yet; (5) the activation-gate fixture
-is not written. **Owed by the owner:** a Meta registration from a clean install via `/` and via
+is not written. **Also shipped:** the homepage and product pages redesigned; a TestFlight beta
+link; three app screenshots on `/field-assist/`; the vault guide as `/field-assist/vault-guide/`,
+converted with its PDF by `Scripts/build-vault-guide-page.py` and checked against the Markdown on
+every deploy; `.well-known/` published for the first time
+([#627](https://github.com/straff2002/OpenGlasses/pull/627)). **Owed by the owner:** a Meta registration from a clean install via `/` and via
 `/auth/meta/`, then the portal switch; legal review of `/terms/` (R10); mail for the domain.
 **Origin:** The owner bought **avenkin.com** on 2026-09-29, the day after the product was renamed
 (Plan FY: the phone app becomes **Avenkin**, the desktop app **Avenkin Office**). Decided the same

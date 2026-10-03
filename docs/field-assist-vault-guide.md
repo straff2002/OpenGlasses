@@ -36,7 +36,7 @@ The two kinds of content behave differently, and getting the split right is most
 
 ## Before you start
 
-1. Install the TestFlight build on the iPhone and pair the glasses.
+1. Install the TestFlight build on the iPhone, and pair the glasses if you use them.
 2. Open **Settings › Field Assist**. If your organisation issued a licence code, paste it and tap **Activate Licence** — the status card should show **Tier: Team**. A Field Assist subscription on the phone's own Apple ID does just as well for building vaults: vaults of your own and manual indexing come with a subscription or an organisation licence. The one-time unlock some early users hold covers the bundled vaults only; audited PDF export and organisation-issued configuration stay with a team licence.
 3. Turn on **Enable Field Assist** on the same screen.
 4. Have a way to get a folder onto the phone. iCloud Drive in the Files app is the simplest; AirDrop of the whole folder also works.
