@@ -4,14 +4,17 @@ How a phone joins an Avenkin office by scanning one code: the invitation the off
 redemption the phone answers with, the comparison code both screens show, and the office's
 approval or refusal.
 
-**Status:** contract, reference implementation and golden fixtures. Nothing in the phone app or
-the office calls it yet. Adopted from the office's proposal (`avenkin-office`
-`docs/proposals/commissioning-contract-v1.md`) with the changes listed under
-[Changes from the proposal](#changes-from-the-proposal).
+**Status:** contract, reference implementation, bootstrap connection and golden fixtures. The
+office helper and the phone bridge expose the connection; neither app calls it yet. Adopted from
+the office's proposal (`avenkin-office` `docs/proposals/commissioning-contract-v1.md`) with the
+changes listed under [Changes from the proposal](#changes-from-the-proposal).
 
 **Reference implementation:** `Transport/mobile-core/commission` (Go, messages only: it opens no
-connection, stores nothing and holds no key). **Fixtures:** `Contracts/fixtures/commission-*`,
-made by `commission.Fixtures()` and kept current by that package's tests.
+connection, stores nothing and holds no key) and `Transport/mobile-core/commission/bootstrap`
+(the connection in §3). The office runs it through the helper's `commission-serve` conversation
+(`cmd/office-preview`); the phone through the bridge's `Commission*` functions.
+**Fixtures:** `Contracts/fixtures/commission-*`, made by `commission.Fixtures()` and kept current
+by that package's tests.
 
 **Builds on, unchanged:** the vendor-signed schema-2 profile and licence pair, the
 administrator-signed peer binding (`README.md`, "Office authority and peer binding"), the
@@ -127,18 +130,31 @@ A refusal uses the approval's domain and key and carries no artefact.
 
 ## 3. The bootstrap connection
 
-Not implemented by this version of the reference package; stated here so both sides build the
-same thing.
+- The office listens on its private-LAN IPv4 address only while the invitation is live, and
+  refuses a loopback, wildcard, link-local or public address. One listener per invitation; it
+  closes when the invitation is cancelled, when it expires, or shortly after its decision has
+  been delivered. It serves no job, manual, signing or administration request.
+- TLS 1.3, with the office presenting its transport certificate. The phone refuses any
+  certificate whose device identity is not the invitation's `officeTransportID`; there is no CA
+  or host-name check. This stops someone on the same network reading an invitation off the wire
+  and redeeming it first. The phone dials only the invitation's address, through no proxy, and
+  follows no redirect.
+- One exchange, on one path:
 
-- The office listens on its private-LAN address only while at least one invitation is live, with
-  request, byte and time limits and one purpose. It serves no job, manual, signing or
-  administration request.
-- TLS, with the office presenting its transport certificate. The phone refuses any certificate
-  whose device identity is not the invitation's `officeTransportID`. This stops someone on the
-  same network reading an invitation off the wire and redeeming it first.
-- One exchange: the phone sends the redemption; the office answers "awaiting approval" and the
-  phone asks again on the same terms until the approval or refusal arrives or the invitation
-  expires. The phone opens no listener.
+  | Request | Answer |
+  |---|---|
+  | `POST /commission/v1/redemption`, body the redemption envelope exactly as sealed | `202` and `{"status":"awaiting"}` until a person decides; then `200` and the approval or refusal envelope as the body |
+
+  The phone repeats the identical request about every two seconds until it has a decision or
+  the invitation expires, and keeps the redemption's exact bytes for that: the first valid
+  redemption is the exchange, the same bytes again get the same answer, and any other valid
+  redemption of the invitation gets a signed `already_used` refusal and is shown at the office
+  as an unexpected use. After `expiresAt` a redemption gets a signed `expired` refusal. The
+  phone opens no listener.
+- Limits: the body is at most the redemption cap (4,096 bytes, else `413`); the answer at most
+  the decision cap. Any other path is `404`, any other method `405`, a body that is not a
+  redemption of this invitation `400`. The listener holds at most 8 connections at once and
+  answers at most 1,024 requests (then `429`), with short header, read, write and idle timeouts.
 - A network that blocks phone-to-computer traffic falls back to carrying the same three messages
   as files.
 
@@ -175,7 +191,7 @@ an artefact; unknown refusal reasons; extra, missing, duplicate, nested and frac
 and a message under another message's domain.
 
 ```
-go -C Transport/mobile-core test -tags noassets ./commission/
+go -C Transport/mobile-core test -tags noassets ./commission/...                 # messages and connection
 COMMISSION_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./commission/   # regenerate
 ```
 

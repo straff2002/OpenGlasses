@@ -1,12 +1,22 @@
 // Native-owned stdin helper. Signing keys never enter the desktop renderer.
+//
+// Every operation but one is one JSON request on stdin and one JSON reply on stdout. The
+// exception is "commission-serve": a long-running, line-delimited conversation for one
+// commissioning invitation, whose protocol is documented at the top of
+// commission/bootstrap/converse.go.
 package main
 
 import (
+	"avenkin.dev/mobilecore/commission/bootstrap"
 	p "avenkin.dev/mobilecore/officepreview"
+	"bufio"
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 )
@@ -27,19 +37,28 @@ type Request struct {
 	PhoneApplicationKey string     `json:"phoneApplicationKey"`
 }
 
-func run() (any, error) {
-	if len(os.Args) != 2 || !filepath.IsAbs(os.Args[1]) {
-		return nil, errors.New("native connection root required")
-	}
-	b, e := io.ReadAll(io.LimitReader(os.Stdin, p.MaximumEnvelope+1))
-	if e != nil || len(b) > p.MaximumEnvelope {
-		return nil, errors.New("request too large")
-	}
+// ServeRequest is the first line of a commissioning conversation.
+type ServeRequest struct {
+	Op             string `json:"op"`
+	Invitation     string `json:"invitation"`
+	OrganizationID string `json:"organizationID"`
+	Address        string `json:"address"`
+	IssuedAt       int64  `json:"issuedAt"`
+	ExpiresAt      int64  `json:"expiresAt"`
+	Certificate    string `json:"certificate"`
+	Key            string `json:"key"`
+}
+
+// listen is nil in the helper, which listens on the requested private address. Tests bind
+// loopback through it.
+var listen func(network, address string) (net.Listener, error)
+
+func run(root string, b []byte) (any, error) {
 	var r Request
-	if e = json.Unmarshal(b, &r); e != nil {
+	if e := json.Unmarshal(b, &r); e != nil {
 		return nil, e
 	}
-	o, e := p.OpenOffice(os.Args[1])
+	o, e := p.OpenOffice(root)
 	if e != nil {
 		return nil, e
 	}
@@ -79,16 +98,96 @@ func run() (any, error) {
 		return nil, errors.New("unknown native operation")
 	}
 }
-func main() {
-	v, e := run()
-	if e != nil {
-		b, _ := json.Marshal(map[string]string{"error": e.Error()})
-		fmt.Println(string(b))
-		os.Exit(1)
+
+// serve runs one commissioning invitation until it closes, and returns the exit status.
+func serve(root string, first []byte, in io.Reader, out io.Writer) int {
+	var r ServeRequest
+	decoder := json.NewDecoder(bytes.NewReader(first))
+	decoder.DisallowUnknownFields()
+	e := decoder.Decode(&r)
+	if e == nil && (!filepath.IsAbs(r.Certificate) || !filepath.IsAbs(r.Key)) {
+		e = errors.New("the transport certificate and key need absolute paths")
 	}
-	b, e := json.Marshal(v)
-	if e != nil {
-		os.Exit(1)
+	var o *p.Office
+	if e == nil {
+		o, e = p.OpenOffice(root)
 	}
-	fmt.Println(string(b))
+	var certificate tls.Certificate
+	if e == nil {
+		certificate, e = tls.LoadX509KeyPair(r.Certificate, r.Key)
+	}
+	if e != nil {
+		// A start-up failure, in the conversation's own terms.
+		for _, event := range []map[string]string{{"event": "error", "message": e.Error()}, {"event": "closed", "reason": "failed"}} {
+			b, _ := json.Marshal(event)
+			fmt.Fprintln(out, string(b))
+		}
+		return 1
+	}
+	cfg := bootstrap.Config{Invitation: r.Invitation, OrganizationID: r.OrganizationID, Address: r.Address,
+		IssuedAt: r.IssuedAt, ExpiresAt: r.ExpiresAt, Certificate: certificate, OfficeKey: o.Key, Listen: listen}
+	if bootstrap.Converse(cfg, o.IssuePeerBinding, in, out) != nil {
+		return 1
+	}
+	return 0
 }
+
+// firstLine reads up to the first newline, or to the end, and at most limit+1 bytes.
+func firstLine(in *bufio.Reader, limit int) ([]byte, error) {
+	var line []byte
+	for len(line) <= limit {
+		c, e := in.ReadByte()
+		if e == io.EOF {
+			return line, nil
+		}
+		if e != nil {
+			return nil, e
+		}
+		line = append(line, c)
+		if c == '\n' {
+			return line, nil
+		}
+	}
+	return line, nil
+}
+
+func fail(out io.Writer, e error) int {
+	b, _ := json.Marshal(map[string]string{"error": e.Error()})
+	fmt.Fprintln(out, string(b))
+	return 1
+}
+
+// helper is the program: one request and one reply, or a commissioning conversation when the
+// first line asks for one.
+func helper(args []string, stdin io.Reader, stdout io.Writer) int {
+	if len(args) != 2 || !filepath.IsAbs(args[1]) {
+		return fail(stdout, errors.New("native connection root required"))
+	}
+	in := bufio.NewReader(stdin)
+	b, e := firstLine(in, p.MaximumEnvelope)
+	if e != nil {
+		return fail(stdout, errors.New("request too large"))
+	}
+	var op struct {
+		Op string `json:"op"`
+	}
+	if json.Unmarshal(b, &op) == nil && op.Op == "commission-serve" {
+		return serve(args[1], b, in, stdout)
+	}
+	rest, e := io.ReadAll(io.LimitReader(in, int64(p.MaximumEnvelope+1-len(b))))
+	if b = append(b, rest...); e != nil || len(b) > p.MaximumEnvelope {
+		return fail(stdout, errors.New("request too large"))
+	}
+	v, e := run(args[1], b)
+	if e != nil {
+		return fail(stdout, e)
+	}
+	out, e := json.Marshal(v)
+	if e != nil {
+		return 1
+	}
+	fmt.Fprintln(stdout, string(out))
+	return 0
+}
+
+func main() { os.Exit(helper(os.Args, os.Stdin, os.Stdout)) }
