@@ -2,7 +2,9 @@ import SwiftUI
 import CoreImage
 
 /// Plan CT 3b — the row that opens what the Field Assist edition hides, and the banner while an
-/// administrator session is open. Shown only on a phone whose profile names an edition.
+/// administrator session is open. Shown only on a phone whose profile names an edition, and the row
+/// only when the profile issued an admin card or passcode (Plan HA C5): the technician's own Face ID
+/// is not the administrator's.
 struct OrgAdministratorSection: View {
     @ObservedObject var gate: AdminGate
     @ObservedObject var manager: OrgProfileManager
@@ -15,7 +17,7 @@ struct OrgAdministratorSection: View {
         if let policy = gate.policy {
             if gate.isAdministratorPhone {
                 administratorPhoneSection
-            } else if gate.isRestricted {
+            } else if gate.offersUnlock {
                 OGSection(footer: restrictedFooter) {
                     Button {
                         unlocking = true
@@ -27,7 +29,7 @@ struct OrgAdministratorSection: View {
                 .sheet(isPresented: $unlocking) {
                     AdminUnlockSheet(gate: gate, policy: policy)
                 }
-            } else {
+            } else if !gate.isRestricted {
                 OGSection {
                     OGNotice(text: "Administrator session. It ends when you leave the app, or after ten minutes without activity.",
                              systemImage: "person.badge.key")
@@ -172,8 +174,8 @@ struct AdminCardDisplay: View {
     }
 }
 
-/// Plan CT 3b — the unlock: scan the admin card, type the passcode, or — only when the profile
-/// issued neither — the device owner's own Face ID or passcode, failing closed.
+/// Plan CT 3b — the unlock: scan the admin card, or type the passcode. The device owner's Face ID
+/// or passcode is not offered: it is the technician's (Plan HA C5).
 struct AdminUnlockSheet: View {
     @ObservedObject var gate: AdminGate
     let policy: AdminPolicy
@@ -209,14 +211,6 @@ struct AdminUnlockSheet: View {
                             .disabled(passcode.isEmpty)
                     } header: {
                         Text("Passcode")
-                    }
-                }
-
-                if method == .deviceOwner {
-                    Section {
-                        Button("Unlock with Face ID or Passcode", action: unlockAsDeviceOwner)
-                    } footer: {
-                        Text("Your organisation issued no admin card or passcode, so anyone who can unlock this phone can open administrator settings.")
                     }
                 }
 
@@ -260,18 +254,6 @@ struct AdminUnlockSheet: View {
         let attempt = gate.tryPasscode(passcode)
         passcode = ""
         settle(attempt)
-    }
-
-    private func unlockAsDeviceOwner() {
-        OwnerGateAuth.authorize(reason: "Open administrator settings") { authorization in
-            Task { @MainActor in
-                if authorization.isGranted {
-                    settle(gate.deviceOwnerPassed())
-                } else {
-                    report("Couldn't verify it's you.")
-                }
-            }
-        }
     }
 
     private func settle(_ attempt: AdminGate.Attempt) {

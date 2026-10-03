@@ -7,6 +7,8 @@ struct AgenticFeaturesView: View {
     @ObservedObject var localLLM: LocalLLMService
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccent) private var accent
+    /// Plan HA C4: Agent Mode pinned by the organisation is not shown to the technician.
+    @ObservedObject private var adminGate = AdminGate.shared
     @State private var enabled = Config.agentModeEnabled
     @State private var visionAttachment = Config.agentVisionAttachmentEnabled
     @State private var editingDocument: AgentDocumentStore.DocumentType?
@@ -31,26 +33,28 @@ struct AgenticFeaturesView: View {
 
     var body: some View {
         List {
-            Section {
-                InfoToggle(
-                    title: "Agentic Features",
-                    isOn: $enabled,
-                    info: "Enables autonomous agent capabilities. The assistant can loop, branch, make decisions, and take multi-step actions without waiting for your input each time. Includes background tasks, a notification queue, scheduled actions, and persistent memory. Each persona can be an independent agent with its own soul, skills, and tools. Compatible with OpenClaw and NanoClaw gateways."
-                )
-                .disabled(PolicyEnvelope.isLocked(.agentModeEnabled))
-                .onChange(of: enabled) { _, on in
-                    Config.setAgentModeEnabled(on)
-                    if on {
-                        appState.agentScheduler.start()
-                    } else {
-                        appState.agentScheduler.stop()
+            if adminGate.presentation(.key(.agentModeEnabled)).isShown {
+                Section {
+                    InfoToggle(
+                        title: "Agentic Features",
+                        isOn: $enabled,
+                        info: "Enables autonomous agent capabilities. The assistant can loop, branch, make decisions, and take multi-step actions without waiting for your input each time. Includes background tasks, a notification queue, scheduled actions, and persistent memory. Each persona can be an independent agent with its own soul, skills, and tools. Compatible with OpenClaw and NanoClaw gateways."
+                    )
+                    .disabled(PolicyEnvelope.isLocked(.agentModeEnabled))
+                    .onChange(of: enabled) { _, on in
+                        Config.setAgentModeEnabled(on)
+                        if on {
+                            appState.agentScheduler.start()
+                        } else {
+                            appState.agentScheduler.stop()
+                        }
                     }
+                    ManagedSettingNote(key: .agentModeEnabled)
+                } header: {
+                    Text("Agentic Mode")
+                } footer: {
+                    Text("Off by default. Turn this on if you want the AI to act on its own — running background tasks, scheduling actions, looping through multi-step plans. Tap \(Image(systemName: "info.circle")) above for the full list of what it unlocks.")
                 }
-                ManagedSettingNote(key: .agentModeEnabled)
-            } header: {
-                Text("Agentic Mode")
-            } footer: {
-                Text("Off by default. Turn this on if you want the AI to act on its own — running background tasks, scheduling actions, looping through multi-step plans. Tap \(Image(systemName: "info.circle")) above for the full list of what it unlocks.")
             }
 
             if enabled {

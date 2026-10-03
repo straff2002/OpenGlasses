@@ -334,7 +334,9 @@ nobody it is meant to stop. So:
     ceiling forbids. It is also the organisation's phone for the lease, revocation and PR 4 erasure.
     Revoking its enrolment id is how an administrator who leaves loses it.
 - **A profile with the edition but neither a card nor a passcode** falls back to `OwnerGateAuth`, the device-owner
-  gate. The review sheet says *"Anyone who can unlock this phone can open administrator settings"*,
+  gate. **Superseded 2026-10-04 (Plan HA C5):** the technician carries the phone and passes its owner
+  gate, so such a profile now has no administrator view on the phone; the review says so. The text
+  below describes the original fallback. The review sheet says *"Anyone who can unlock this phone can open administrator settings"*,
   so the organisation knows before it confirms.
 - The passcode verifier is not a secret in the `SettingKey` sense, because it is not a credential to
   any service. But it rides a profile that should not be printed on a wall. It is one more reason the

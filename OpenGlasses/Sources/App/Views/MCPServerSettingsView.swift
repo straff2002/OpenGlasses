@@ -7,6 +7,8 @@ struct MCPServerSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var server = MCPGlassesServer.shared
     @AppStorage("mcpServerEnabled") private var enabled: Bool = false
+    /// Plan HA C4: the switch, pinned off by the organisation, is not shown to the technician.
+    @ObservedObject private var adminGate = AdminGate.shared
 
     private var agentModeOn: Bool { Config.agentModeEnabled }
     private var legacyTransportAvailable: Bool {
@@ -15,28 +17,30 @@ struct MCPServerSettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                // `@AppStorage` reads the stored preference, which an organisation ceiling does not
-                // overwrite (Plan CT) — so while it is locked the switch shows `Config`'s answer.
-                Toggle("Enable MCP Glasses Server",
-                       isOn: PolicyEnvelope.isLocked(.mcpServerEnabled) ? .constant(Config.mcpServerEnabled) : $enabled)
-                    .tint(AppAccent.color)
-                    .disabled(!agentModeOn || !legacyTransportAvailable || PolicyEnvelope.isLocked(.mcpServerEnabled))
-                ManagedSettingNote(key: .mcpServerEnabled)
-                    .onChange(of: enabled) { _, newValue in
-                        if newValue && agentModeOn {
-                            appState.startMCPServer()
-                        } else {
-                            MCPGlassesServer.shared.stop()
+            if adminGate.presentation(.key(.mcpServerEnabled)).isShown {
+                Section {
+                    // `@AppStorage` reads the stored preference, which an organisation ceiling does not
+                    // overwrite (Plan CT) — so while it is locked the switch shows `Config`'s answer.
+                    Toggle("Enable MCP Glasses Server",
+                           isOn: PolicyEnvelope.isLocked(.mcpServerEnabled) ? .constant(Config.mcpServerEnabled) : $enabled)
+                        .tint(AppAccent.color)
+                        .disabled(!agentModeOn || !legacyTransportAvailable || PolicyEnvelope.isLocked(.mcpServerEnabled))
+                    ManagedSettingNote(key: .mcpServerEnabled)
+                        .onChange(of: enabled) { _, newValue in
+                            if newValue && agentModeOn {
+                                appState.startMCPServer()
+                            } else {
+                                MCPGlassesServer.shared.stop()
+                            }
                         }
+                } footer: {
+                    if !legacyTransportAvailable {
+                        Text("Unavailable in production builds. Secure LAN pairing is not implemented yet; this cleartext server is limited to Debug development builds.")
+                    } else if agentModeOn {
+                        Text("Exposes the glasses camera and TTS to a Claude Code session on your network. Developer-only.")
+                    } else {
+                        Text("Requires Agent Mode. Enable Agent Mode first, then turn this on.")
                     }
-            } footer: {
-                if !legacyTransportAvailable {
-                    Text("Unavailable in production builds. Secure LAN pairing is not implemented yet; this cleartext server is limited to Debug development builds.")
-                } else if agentModeOn {
-                    Text("Exposes the glasses camera and TTS to a Claude Code session on your network. Developer-only.")
-                } else {
-                    Text("Requires Agent Mode. Enable Agent Mode first, then turn this on.")
                 }
             }
 

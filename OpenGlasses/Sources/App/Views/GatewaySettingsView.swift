@@ -5,6 +5,7 @@ import SwiftUI
 struct GatewaySettingsView: View {
     @ObservedObject var appState: AppState
     @Environment(\.appAccent) private var accent
+    @ObservedObject private var adminGate = AdminGate.shared
     @State private var gateways: [GatewayConfig] = Config.savedGateways
     @State private var editingGateway: GatewayConfig?
     @State private var showAddSheet = false
@@ -144,18 +145,26 @@ struct GatewaySettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Toggle("Status & capabilities (observe)", isOn: $remoteObserve)
-                .onChange(of: remoteObserve) { _, v in Config.remoteInvokeObserveEnabled = v }
-                .disabled(PolicyEnvelope.isLocked(.remoteInvokeObserveEnabled))
-            ManagedSettingNote(key: .remoteInvokeObserveEnabled)
-            Toggle("Speak & display (output)", isOn: $remoteOutput)
-                .onChange(of: remoteOutput) { _, v in Config.remoteInvokeOutputEnabled = v }
-                .disabled(PolicyEnvelope.isLocked(.remoteInvokeOutputEnabled))
-            ManagedSettingNote(key: .remoteInvokeOutputEnabled)
-            Toggle("Camera, recording & transcript (capture)", isOn: $remoteCapture)
-                .onChange(of: remoteCapture) { _, v in Config.remoteInvokeCaptureEnabled = v }
-                .disabled(PolicyEnvelope.isLocked(.remoteInvokeCaptureEnabled))
-            ManagedSettingNote(key: .remoteInvokeCaptureEnabled)
+            // Plan HA C4: a switch the organisation pinned is not shown to the technician; an
+            // administrator sees it read-only with the organisation named.
+            if adminGate.presentation(.key(.remoteInvokeObserveEnabled)).isShown {
+                Toggle("Status & capabilities (observe)", isOn: $remoteObserve)
+                    .onChange(of: remoteObserve) { _, v in Config.remoteInvokeObserveEnabled = v }
+                    .disabled(PolicyEnvelope.isLocked(.remoteInvokeObserveEnabled))
+                ManagedSettingNote(key: .remoteInvokeObserveEnabled)
+            }
+            if adminGate.presentation(.key(.remoteInvokeOutputEnabled)).isShown {
+                Toggle("Speak & display (output)", isOn: $remoteOutput)
+                    .onChange(of: remoteOutput) { _, v in Config.remoteInvokeOutputEnabled = v }
+                    .disabled(PolicyEnvelope.isLocked(.remoteInvokeOutputEnabled))
+                ManagedSettingNote(key: .remoteInvokeOutputEnabled)
+            }
+            if adminGate.presentation(.key(.remoteInvokeCaptureEnabled)).isShown {
+                Toggle("Camera, recording & transcript (capture)", isOn: $remoteCapture)
+                    .onChange(of: remoteCapture) { _, v in Config.remoteInvokeCaptureEnabled = v }
+                    .disabled(PolicyEnvelope.isLocked(.remoteInvokeCaptureEnabled))
+                ManagedSettingNote(key: .remoteInvokeCaptureEnabled)
+            }
             NavigationLink {
                 RemoteInvokeAuditView(service: appState.remoteInvoke)
             } label: {

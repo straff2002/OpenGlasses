@@ -8,9 +8,13 @@ struct ToolsSettingsView: View {
     @State private var offlineMode: Bool = Config.offlineModeEnabled
     @State private var searchText = ""
     @State private var permissionDeniedTool: String?
+    /// Plan HA C4: a tool the organisation closed is not listed for the technician — not in the
+    /// list, the counts or the search.
+    @ObservedObject private var adminGate = AdminGate.shared
 
     private var allTools: [(name: String, displayName: String, description: String, params: [String: Any])] {
         appState.nativeToolRouter.registry.allTools
+            .filter { adminGate.presentation(.tool($0.name)).isShown }
             .map { (name: $0.name, displayName: Self.displayName(for: $0.name), description: $0.description, params: $0.parametersSchema) }
             .sorted { $0.displayName < $1.displayName }
     }
@@ -222,13 +226,14 @@ struct ToolsSettingsView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
-                                    // Plan HA C2: a tool the organisation closed stays listed, off.
-                                    if SettingsLockPolicy.isToolClosed(tool.name, lockdown: PolicyEnvelope.lockdown) {
+                                    // Plan HA C4: only an administrator still sees a closed tool —
+                                    // off, read-only, with the organisation named.
+                                    if adminGate.presentation(.tool(tool.name)) == .readOnly {
                                         ManagedLockNote(organization: ManagedLockReason.organization)
                                     }
                                 }
                             }
-                            .disabled(SettingsLockPolicy.isToolClosed(tool.name, lockdown: PolicyEnvelope.lockdown))
+                            .disabled(!adminGate.presentation(.tool(tool.name)).isEditable)
                         }
                     }
                 }

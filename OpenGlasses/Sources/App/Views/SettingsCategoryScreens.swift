@@ -45,6 +45,8 @@ struct AppleIntegrationsSettingsScreen: View {
     @State private var disabledTools: Set<String> = Config.disabledTools
     @State private var permissionDeniedTool: String?
     @State private var didResetMyDayHistory = false
+    /// Plan HA C4: an app switch the organisation closed is not shown to the technician.
+    @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
     /// The card's placement — the same key the card's "Remove from Home" and the home screen's
     /// editor write, so this switch always says what the home screen shows.
@@ -190,14 +192,17 @@ struct AppleIntegrationsSettingsScreen: View {
                 }
             }
 
-            Section {
-                ForEach(Self.integrations) { integration in
-                    integrationRow(integration)
+            let shownIntegrations = Self.integrations.filter { adminGate.presentation(.tool($0.id)).isShown }
+            if !shownIntegrations.isEmpty {
+                Section {
+                    ForEach(shownIntegrations) { integration in
+                        integrationRow(integration)
+                    }
+                } header: {
+                    Text("Apple Apps")
+                } footer: {
+                    Text("These use the apps already on your iPhone, so there is nothing to sign into. iOS asks for permission the first time you switch one on, and you can change your mind in iOS Settings at any point. Destructive actions still ask before they happen.")
                 }
-            } header: {
-                Text("Apple Apps")
-            } footer: {
-                Text("These use the apps already on your iPhone, so there is nothing to sign into. iOS asks for permission the first time you switch one on, and you can change your mind in iOS Settings at any point. Destructive actions still ask before they happen.")
             }
 
             Section {
@@ -232,8 +237,8 @@ struct AppleIntegrationsSettingsScreen: View {
 
     private func integrationRow(_ integration: Integration) -> some View {
         integrationToggle(integration)
-            // Plan HA C2: a tool the organisation closed stays listed, off.
-            .disabled(SettingsLockPolicy.isToolClosed(integration.id, lockdown: PolicyEnvelope.lockdown))
+            // Plan HA C4: only an administrator still sees a closed tool here — off and read-only.
+            .disabled(!adminGate.presentation(.tool(integration.id)).isEditable)
     }
 
     private func integrationToggle(_ integration: Integration) -> some View {

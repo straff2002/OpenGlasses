@@ -124,7 +124,7 @@ struct OrgProfileReview: Identifiable, Equatable {
         case .card: lines.append("Administrator settings open with your organisation's admin card")
         case .passcode: lines.append("Administrator settings open with your organisation's passcode")
         case .cardOrPasscode: lines.append("Administrator settings open with the admin card or passcode")
-        case .deviceOwner: lines.append("Anyone who can unlock this phone can open administrator settings")
+        case .notIssued: lines.append("No admin card or passcode, so administrator settings don't open on this phone")
         }
         return lines
     }
