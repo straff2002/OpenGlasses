@@ -24,7 +24,7 @@ struct OrgCodeScannerView: View {
                         .accessibilityLabel(Text("Camera view"))
                     VStack {
                         Spacer()
-                        Text("Point the camera at your organisation's code.")
+                        Text("Point the camera at the code on the office screen, or the one your organisation sent.")
                             .font(.callout)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -37,7 +37,9 @@ struct OrgCodeScannerView: View {
                         Image(systemName: "camera.fill")
                             .font(.largeTitle)
                             .accessibilityHidden(true)
-                        Text("Camera access is off for Avenkin. Turn it on in Settings to scan a code, or open the code with the iPhone Camera app instead.")
+                        // No Camera-app suggestion: an office's code is plain text the system
+                        // camera does nothing with; only this scanner reads it.
+                        Text("Camera access is off for Avenkin. Turn it on in Settings to scan a code.")
                             .multilineTextAlignment(.center)
                         Button("Open Settings") {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
