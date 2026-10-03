@@ -133,3 +133,78 @@ func TestClosedSchemaAndLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSignPayloadSignsExactBytesForItsOwnOfficeOnly(t *testing.T) {
+	trust := fixtureTrust(t)
+	var envelope Envelope
+	if err := json.Unmarshal(fixture(t, "managed-job-v1.json"), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(envelope.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := sha256.Sum256([]byte("Avenkin public fixture office key v1"))
+	key := ed25519.NewKeyFromSeed(seed[:])
+	var p Job
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatal(err)
+	}
+	now := p.IssuedAt + 10
+
+	// The exact bytes are signed: the result is the fixture envelope, byte for byte.
+	signed, err := SignPayload(raw, key, trust.OfficeID, now)
+	if err != nil || string(signed) != strings.TrimSpace(string(fixture(t, "managed-job-v1.json"))) {
+		t.Fatalf("golden: %v\n%s", err, signed)
+	}
+	if _, err = Verify(signed, trust, now, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Bytes that mean the same but are spelt differently are signed as they are, not re-encoded.
+	spaced := []byte(strings.Replace(string(raw), `{"version":1,`, `{"version": 1,`, 1))
+	other, err := SignPayload(spaced, key, trust.OfficeID, now)
+	if err != nil || json.Unmarshal(other, &envelope) != nil {
+		t.Fatal(err)
+	}
+	if kept, _ := base64.StdEncoding.DecodeString(envelope.Payload); string(kept) != string(spaced) {
+		t.Fatal("payload bytes were re-encoded")
+	}
+
+	edit := func(change func(*Job)) []byte {
+		q := p
+		change(&q)
+		b, _ := json.Marshal(q)
+		return b
+	}
+	for name, c := range map[string]struct {
+		raw    []byte
+		office string
+		now    int64
+		want   error
+	}{
+		"another office":     {raw, "another-office", now, ErrAuthority},
+		"no office":          {raw, "", now, ErrAuthority},
+		"expired":            {raw, trust.OfficeID, p.ExpiresAt, ErrTime},
+		"issued far ahead":   {raw, trust.OfficeID, p.IssuedAt - MaximumIssueSkewSeconds - 1, ErrTime},
+		"unknown member":     {[]byte(strings.Replace(string(raw), "{", `{"extra":1,`, 1)), trust.OfficeID, now, ErrMalformed},
+		"duplicate member":   {[]byte(strings.Replace(string(raw), "{", `{"version":1,`, 1)), trust.OfficeID, now, ErrMalformed},
+		"not an object":      {[]byte("[]"), trust.OfficeID, now, ErrMalformed},
+		"empty":              {nil, trust.OfficeID, now, ErrMalformed},
+		"bad message id":     {edit(func(q *Job) { q.MessageID = "short" }), trust.OfficeID, now, ErrFields},
+		"another kind":       {edit(func(q *Job) { q.Kind = "avenkin.manual-assignment" }), trust.OfficeID, now, ErrFields},
+		"too long a window":  {edit(func(q *Job) { q.ExpiresAt = q.IssuedAt + 31*86400 }), trust.OfficeID, now, ErrFields},
+		"job too large":      {edit(func(q *Job) { q.JobBytes = MaximumJobBytes + 1 }), trust.OfficeID, now, ErrFields},
+		"non-canonical peer": {edit(func(q *Job) { q.PhoneTransportID = strings.ToLower(q.PhoneTransportID) }), trust.OfficeID, now, ErrFields},
+	} {
+		if _, err := SignPayload(c.raw, key, c.office, c.now); !errors.Is(err, c.want) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// Issued a little ahead of this clock is allowed: two processes on one computer.
+	if _, err := SignPayload(raw, key, trust.OfficeID, p.IssuedAt-MaximumIssueSkewSeconds); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SignPayload(raw, key[:10], trust.OfficeID, now); !errors.Is(err, ErrSignature) {
+		t.Fatal("short key accepted")
+	}
+}
