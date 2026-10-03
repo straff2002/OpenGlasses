@@ -369,6 +369,12 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.jobFiles.open(url) }
                         return
                     }
+                    // An Avenkin Office setup file. Only a carrier: both documents in it are
+                    // verified and the owner reviews them before anything is applied.
+                    if OfficeSetupPackage.isSetupFile(url) {
+                        Task { @MainActor in appState.orgEnrolment.openOfficePackageFile(at: url) }
+                        return
+                    }
 
                     // Handle shortcut x-callback-url results
                     if DeepLinkScheme.isApp(url),
