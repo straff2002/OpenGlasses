@@ -422,3 +422,20 @@ code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .statement { margin-top: 64px; padding: 64px 0; }
   .trio > div { padding-right: 0; }
 }
+
+/* Screens from the app, side by side. */
+.shots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 8px 0 12px; padding: 0; }
+.shots figure { margin: 0; }
+.shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+.shots figcaption { margin: 10px 2px 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+.shots figcaption b { display: block; color: var(--ink); }
+.prose.wide { max-width: 56rem; }
+.prose.wide > :not(.shots) { max-width: 44rem; }
+@media (max-width: 40rem) { .shots { grid-template-columns: 1fr; max-width: 20rem; margin-inline: auto; } }
