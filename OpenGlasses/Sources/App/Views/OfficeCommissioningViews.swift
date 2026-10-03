@@ -4,6 +4,8 @@ import SwiftUI
 /// Its own `@ObservedObject`, so a stage change repaints.
 struct OfficeCommissioningOverlay: View {
     @ObservedObject var service: OfficeCommissioningService
+    /// The phone's office connection, shown live once it is paired.
+    var field: OfficeFieldConnection?
 
     var body: some View {
         Color.clear
@@ -11,7 +13,7 @@ struct OfficeCommissioningOverlay: View {
             .sheet(isPresented: Binding(
                 get: { service.stage != .idle },
                 set: { if !$0 { service.dismiss() } })) {
-                OfficeCommissioningSheet(service: service)
+                OfficeCommissioningSheet(service: service, field: field)
             }
     }
 }
@@ -20,6 +22,7 @@ struct OfficeCommissioningOverlay: View {
 /// organisation's own review, then the outcome.
 struct OfficeCommissioningSheet: View {
     @ObservedObject var service: OfficeCommissioningService
+    var field: OfficeFieldConnection?
 
     var body: some View {
         NavigationStack {
@@ -123,18 +126,33 @@ struct OfficeCommissioningSheet: View {
             OfficeCommissioningOutcome(
                 systemImage: "building.2",
                 title: Text(verbatim: name),
-                detail: Text("This phone is now managed by \(name) and paired with its office. Settings it locks show its name, and the device owner can remove the profile from Settings."))
+                detail: Text("This phone is now managed by \(name) and paired with its office. Settings it locks show its name, and the device owner can remove the profile from Settings.")) {
+                fieldStatus
+            }
 
         case .paired(let name, officeConnected: false):
             OfficeCommissioningOutcome(
                 systemImage: "building.2",
                 title: Text(verbatim: name),
-                detail: Text("This phone is now managed by \(name) and paired with its office, but it couldn't reach the office yet. On the office's network, open Field Assist settings, then Pair with Avenkin Office, and use Test office connection."))
+                detail: Text("This phone is now managed by \(name) and paired with its office, but it couldn't reach the office yet. On the office's network, open Field Assist settings, then Pair with Avenkin Office, and use Test office connection.")) {
+                fieldStatus
+            }
 
         case .failed(let failure):
             OfficeCommissioningOutcome(systemImage: "exclamationmark.triangle",
                                        title: Text("This phone didn't join the office"),
                                        detail: Self.text(for: failure))
+        }
+    }
+
+    /// The office connection as it stands, in the words the Field Assist settings use.
+    @ViewBuilder private var fieldStatus: some View {
+        if let field, field.state != .unavailable {
+            OGCard {
+                OfficeFieldConnectionRow(connection: field)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
         }
     }
 

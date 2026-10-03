@@ -26,11 +26,23 @@ actor OfficeTransportIdentity {
         #endif
     }
 
-    /// Handshake-only: the embedded engine pins the office certificate and creates no folder.
-    /// The caller must reverify the saved organisation approval before invoking this method.
-    func startManagedOffice(transportID: String, lanAddress: String) throws {
+    /// Whether this build links the embedded engine at all.
+    static var isAvailable: Bool {
         #if AVENKIN_OFFICE_TRANSPORT
-        try preparedClient().startManagedOffice(transportID, address: lanAddress)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Handshake-only: the embedded engine pins the office certificate and creates no folder or
+    /// listener. `policy` is the vendor-signed profile's; `lanHint` is "" or a private-LAN
+    /// `tcp://a.b.c.d:port`, which `privateLan` requires. The caller must reverify the saved
+    /// organisation approval before invoking this method.
+    func startManagedOffice(transportID: String, policy: OfficePairingService.TransportPolicy,
+                            lanHint: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().startManagedOfficeRoute(transportID, policy: policy.rawValue, lanHint: lanHint)
         #else
         throw Refusal.unavailable
         #endif

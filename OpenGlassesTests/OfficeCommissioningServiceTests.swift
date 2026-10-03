@@ -145,7 +145,9 @@ final class OfficeCommissioningServiceTests: XCTestCase {
     private var connectionFails = false
 
     private func makeService(manager: OrgProfileManager, transport: FakeCommissionTransport?,
-                             pause: ((UInt64) async throws -> Void)? = nil) -> OfficeCommissioningService {
+                             pause: ((UInt64) async throws -> Void)? = nil,
+                             connectOffice: (@MainActor (OfficePairingService) async throws -> Void)? = nil)
+        -> OfficeCommissioningService {
         var seams = OfficeCommissioningService.Seams()
         seams.transport = { transport }
         seams.phoneTransportID = { [phoneTransportID] in phoneTransportID }
@@ -160,10 +162,12 @@ final class OfficeCommissioningServiceTests: XCTestCase {
         seams.pause = pause ?? { _ in await Task.yield() }
         seams.appVersion = "1.0.0"
         seams.appBuild = "100"
-        seams.connectOffice = { [unowned self] pairing, address in
-            // The saved approval must already verify when the connection is asked for.
-            _ = try await pairing.currentApprovedPeer()
-            self.dialled.append(address)
+        seams.connectOffice = connectOffice ?? { [unowned self] pairing in
+            // The saved approval must already verify when the connection is asked for, and the
+            // address dialled is the one kept with it, as `connectToApprovedOffice` uses it.
+            let office = try await pairing.currentApprovedPeer()
+            guard let hint = office.lanHint else { throw OfficePairingService.Refusal.noOfficeAddress }
+            self.dialled.append(hint)
             if self.connectionFails { throw FakeCommissionTransport.Failure.network }
         }
         return OfficeCommissioningService(manager: manager, seams: seams)
@@ -215,6 +219,7 @@ final class OfficeCommissioningServiceTests: XCTestCase {
         let approved = try await approvedStore.read(organizationID: "northbridge", enrolmentID: "phone-one")
         XCTAssertEqual(approved?.officeID, officeID)
         XCTAssertEqual(approved?.officeTransportID, officeTransportID)
+        XCTAssertEqual(approved?.lanHint, "tcp://192.168.1.24:22000", "the address is kept with the approval")
     }
 
     func testDecliningTheReviewAppliesNothing() async throws {
@@ -439,14 +444,16 @@ final class OfficeCommissioningServiceTests: XCTestCase {
 
     // MARK: - The office connection
 
-    private func pairedOutcome(officeAddress: String) async throws -> (OrgProfileManager, OfficeCommissioningService.Stage) {
+    private func pairedOutcome(officeAddress: String,
+                               connectOffice: (@MainActor (OfficePairingService) async throws -> Void)? = nil)
+        async throws -> (OrgProfileManager, OfficeCommissioningService.Stage) {
         let manager = makeManager()
         let phoneKey = try await phone.publicKey()
         let transport = FakeCommissionTransport(invitation: invitationJSON(), answers: [
             .success(try approval(setup: profileDocument(), binding: binding(phoneKey: phoneKey),
                                   officeAddress: officeAddress)),
         ])
-        let service = makeService(manager: manager, transport: transport)
+        let service = makeService(manager: manager, transport: transport, connectOffice: connectOffice)
         service.start(qrText: qr)
         await waitForStage(service) { if case .reviewing = $0 { return true }; return false }
         service.confirm()
@@ -470,11 +477,39 @@ final class OfficeCommissioningServiceTests: XCTestCase {
             let (_, stage) = try await pairedOutcome(officeAddress: address)
             XCTAssertEqual(stage, .paired("Northbridge", officeConnected: false), address)
             XCTAssertEqual(dialled, [], address)
+            let approved = try await approvedStore.read(organizationID: "northbridge", enrolmentID: "phone-one")
+            XCTAssertNotNil(approved, address)
+            XCTAssertNil(approved?.lanHint, "a non-private address is not kept: \(address)")
             for organization in ["northbridge"] {
                 let scope = try OfficePeerHighWaterStore.scopeID(organizationID: organization, enrolmentID: "phone-one")
                 try? KeychainService.deleteItem(highWaterPrefix + scope)
                 try? KeychainService.deleteItem(approvedPrefix + scope)
             }
         }
+    }
+
+    func testJoiningHandsTheConnectionToTheFieldConnection() async throws {
+        var starts = 0
+        var seams = OfficeFieldConnection.Seams()
+        seams.approvedOffice = { [unowned self] in
+            OfficeFieldConnection.Approved(transportPolicy: .privateLan, lanHint: "tcp://192.168.1.24:22000",
+                                           bindingSHA256: self.officeID)
+        }
+        seams.start = { starts += 1 }
+        seams.stop = {}
+        seams.snapshot = { #"{"running":true,"managedOffice":true,"connected":true,"observedConnectionType":"tcp-client"}"# }
+        seams.sleep = { _ in try await Task.sleep(nanoseconds: 1_000_000) }
+        let field = OfficeFieldConnection(enabled: true, seams: seams)
+        field.appBecameActive()
+        defer { field.appEnteredBackground() }
+
+        let (_, stage) = try await pairedOutcome(officeAddress: "192.168.1.24:22000",
+                                                 connectOffice: { _ in try await field.restart() })
+        XCTAssertEqual(stage, .paired("Northbridge", officeConnected: true))
+        XCTAssertGreaterThanOrEqual(starts, 1, "the field connection started the engine and owns it")
+        for _ in 0..<500 where field.state != .connected(.direct) {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertEqual(field.state, .connected(.direct))
     }
 }

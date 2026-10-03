@@ -16,6 +16,23 @@ final class OfficePairingService {
         let highWater: OfficePeerHighWaterStore.Decision
     }
 
+    /// The vendor-signed profile's routing policy (`officeAuthority.transportPolicy`), re-read
+    /// from the verified profile on every connection. The binding and the office carry none.
+    enum TransportPolicy: String, Sendable {
+        /// The office's own network only; the saved LAN address is the only address dialled.
+        case privateLan
+        /// Direct when possible, else a community relay; the LAN address is tried first.
+        case automatic
+    }
+
+    /// A saved approval that verified again just now, with how it may be reached.
+    struct ApprovedOffice: Sendable {
+        let binding: OfficePeerBinding.Verified
+        let transportPolicy: TransportPolicy
+        /// `tcp://a.b.c.d:port` on a private network, or nil. Unsigned: a shortcut, never trust.
+        let lanHint: String?
+    }
+
     enum Refusal: Error, Equatable {
         case noDesktopEnrolment
         case inactiveLease
@@ -23,6 +40,8 @@ final class OfficePairingService {
         case noApprovedOffice
         case approvalSuperseded
         case changedDuringApproval
+        /// The organisation connects on the office network only and no office address is saved.
+        case noOfficeAddress
     }
 
     private let manager: OrgProfileManager
@@ -34,6 +53,8 @@ final class OfficePairingService {
     private let profileKeys: [String: String]
     private let licenceKey: String
     private let clock: () -> Date
+    private let startManagedOffice: (String, TransportPolicy, String) async throws -> Void
+    private let stopManagedOffice: () async -> Void
 
     init(manager: OrgProfileManager? = nil,
          currentLicence: (() -> String?)? = nil,
@@ -43,7 +64,11 @@ final class OfficePairingService {
          approvedPeerStore: OfficeApprovedPeerStore = .shared,
          profileKeys: [String: String] = ProfileVerification.productionKeys,
          licenceKey: String = LicenseService.productionPublicKeyBase64,
-         clock: @escaping () -> Date = Date.init) {
+         clock: @escaping () -> Date = Date.init,
+         startManagedOffice: @escaping (String, TransportPolicy, String) async throws -> Void = {
+             try await OfficeTransportIdentity.shared.startManagedOffice(transportID: $0, policy: $1, lanHint: $2)
+         },
+         stopManagedOffice: @escaping () async -> Void = { await OfficeTransportIdentity.shared.stop() }) {
         self.manager = manager ?? .shared
         self.currentLicence = currentLicence ?? { LicenseService.shared.storedCode }
         self.transportID = transportID
@@ -53,9 +78,14 @@ final class OfficePairingService {
         self.profileKeys = profileKeys
         self.licenceKey = licenceKey
         self.clock = clock
+        self.startManagedOffice = startManagedOffice
+        self.stopManagedOffice = stopManagedOffice
     }
 
-    func approve(_ signedBinding: Data, reviewedOffice: ReviewedOffice) async throws -> Approval {
+    /// `lanHint` is the office's private-LAN address when one came with the approval, kept as a
+    /// route shortcut. Anything that is not a private IPv4 `a.b.c.d:port` is not kept.
+    func approve(_ signedBinding: Data, reviewedOffice: ReviewedOffice,
+                 lanHint: String? = nil) async throws -> Approval {
         guard let record = manager.record, record.source == .office,
               let profile = manager.profile else { throw Refusal.noDesktopEnrolment }
         guard manager.evaluateLease()?.isInForce == true, !manager.contentLocked,
@@ -89,7 +119,8 @@ final class OfficePairingService {
             signedBinding, organizationID: pair.root.organizationID,
             enrolmentID: record.enrolmentId, officeID: reviewedOffice.officeID,
             officeTransportID: reviewedOffice.transportID,
-            officeApplicationKey: reviewedOffice.applicationPublicKey)
+            officeApplicationKey: reviewedOffice.applicationPublicKey,
+            lanHint: lanHint.flatMap(OfficeApprovedPeerStore.lanHint))
         try recheck(record: record, code: code, at: clock())
         return Approval(binding: binding, highWater: decision)
     }
@@ -97,7 +128,7 @@ final class OfficePairingService {
     /// Re-evaluate the saved approval each time a connection is requested. Keychain storage is
     /// not proof of a current entitlement: the vendor and administrator signatures, live lease,
     /// actual phone keys and independent generation high-water all have to agree again.
-    func currentApprovedPeer() async throws -> OfficePeerBinding.Verified {
+    func currentApprovedPeer() async throws -> ApprovedOffice {
         guard let record = manager.record, record.source == .office,
               let profile = manager.profile else { throw Refusal.noDesktopEnrolment }
         guard manager.evaluateLease()?.isInForce == true, !manager.contentLocked,
@@ -131,24 +162,46 @@ final class OfficePairingService {
             throw Refusal.approvalSuperseded
         }
         try recheck(record: record, code: code, at: now)
-        return binding
+        // `validOfficeAuthority` admits only these two, so an unknown value means a changed profile.
+        guard let policy = TransportPolicy(rawValue: pair.root.transportPolicy) else {
+            throw OfficePeerBinding.Refusal.untrustedProfile
+        }
+        return ApprovedOffice(binding: binding, transportPolicy: policy, lanHint: saved.lanHint)
     }
 
-    /// Open only the certificate-pinned LAN handshake. The engine has no managed folders, so
-    /// a change during its async startup can be stopped before any content share exists.
-    func connectToApprovedOffice(lanAddress: String) async throws {
+    /// Open only the certificate-pinned managed connection, under the policy in the verified
+    /// profile. The engine has no managed folders, so a change during its async startup can be
+    /// stopped before any content share exists. `lanHint` replaces the saved address for one
+    /// connection test (the pairing sheet's typed address); it is not saved here.
+    func connectToApprovedOffice(lanHint override: String? = nil) async throws {
         let before = try await currentApprovedPeer()
-        try await OfficeTransportIdentity.shared.startManagedOffice(
-            transportID: before.payload.officeTransportID, lanAddress: lanAddress)
+        var hint = before.lanHint
+        if let override {
+            guard let checked = OfficeApprovedPeerStore.lanHint(override) else { throw Refusal.noOfficeAddress }
+            hint = checked
+        }
+        if before.transportPolicy == .privateLan, hint == nil { throw Refusal.noOfficeAddress }
+        try await startManagedOffice(before.binding.payload.officeTransportID,
+                                     before.transportPolicy, hint ?? "")
         do {
             let after = try await currentApprovedPeer()
-            guard after.payloadSHA256 == before.payloadSHA256 else {
+            guard after.binding.payloadSHA256 == before.binding.payloadSHA256,
+                  after.transportPolicy == before.transportPolicy else {
                 throw Refusal.approvalSuperseded
             }
         } catch {
-            await OfficeTransportIdentity.shared.stop()
+            await stopManagedOffice()
             throw error
         }
+    }
+
+    /// Keep a LAN address that has just reached the office, for the next connection. Only on
+    /// the approval that verifies now; a non-private address is refused.
+    func rememberLanHint(_ hint: String) async throws {
+        let current = try await currentApprovedPeer()
+        // A verified binding names this phone's organisation and enrolment.
+        try await approvedPeerStore.updateLanHint(hint, organizationID: current.binding.payload.organizationID,
+                                                  enrolmentID: current.binding.payload.enrolmentID)
     }
 
     private func licence(for record: OrgEnrolmentRecord, profile: ConfigProfile) -> String? {

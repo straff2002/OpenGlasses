@@ -5,7 +5,11 @@ import UIKit
 /// The phone side of the offline office ceremony. Public identity details can be copied to the
 /// desktop; the administrator-signed binding is checked only after the owner reviews the office
 /// shown there. This view cannot enable a Syncthing share or deliver content.
+///
+/// While it is open it has the app's one engine: the field connection is suspended for its own
+/// connection test and resumed when it closes.
 struct OfficePairingSheet: View {
+    let field: OfficeFieldConnection
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var manager = OrgProfileManager.shared
@@ -23,6 +27,8 @@ struct OfficePairingSheet: View {
     @State private var connecting = false
     @State private var connectionRunning = false
     @State private var connectionStatus: String?
+    /// The typed address of a test that started, kept for the field connection once it connects.
+    @State private var testedLanHint: String?
 
     var body: some View {
         NavigationStack {
@@ -107,10 +113,16 @@ struct OfficePairingSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
         .task {
+            await field.suspend()
             await loadIdentity()
             await monitorConnection()
         }
-        .onDisappear { Task { await OfficeTransportIdentity.shared.stop() } }
+        .onDisappear {
+            Task {
+                await OfficeTransportIdentity.shared.stop()
+                field.resume()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { Task { await stopConnection() } }
         }
@@ -180,11 +192,17 @@ struct OfficePairingSheet: View {
     }
 
     private func startConnection() async {
+        guard let hint = OfficeApprovedPeerStore.lanHint(lanAddress.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            connectionStatus = "Enter the office's address on its own network, like tcp://192.168.1.2:22000."
+            return
+        }
         connecting = true
         defer { connecting = false }
         do {
-            try await OfficePairingService().connectToApprovedOffice(
-                lanAddress: lanAddress.trimmingCharacters(in: .whitespacesAndNewlines))
+            // A test engine may still be running from an earlier try.
+            await OfficeTransportIdentity.shared.stop()
+            try await OfficePairingService().connectToApprovedOffice(lanHint: hint)
+            testedLanHint = hint
             await refreshConnection()
             if !connectionRunning { connectionStatus = "The office connection did not start. Check the LAN address." }
         } catch {
@@ -198,6 +216,7 @@ struct OfficePairingSheet: View {
 
     private func stopConnection() async {
         await OfficeTransportIdentity.shared.stop()
+        testedLanHint = nil
         connectionRunning = false
         connectionStatus = "Office connection stopped."
     }
@@ -228,6 +247,11 @@ struct OfficePairingSheet: View {
         }
         connectionRunning = true
         if fields["connected"] as? Bool == true {
+            // The address reached the office: the field connection uses it from now on.
+            if let hint = testedLanHint {
+                testedLanHint = nil
+                try? await OfficePairingService().rememberLanHint(hint)
+            }
             let route = fields["observedConnectionType"] as? String ?? "private LAN"
             connectionStatus = "Connected to approved office via \(route). No folders are shared."
         } else {
@@ -244,6 +268,7 @@ struct OfficePairingSheet: View {
             case .noApprovedOffice: return "Approve a signed office binding on this phone first."
             case .approvalSuperseded: return "This office approval was replaced. Import its newest signed binding."
             case .changedDuringApproval: return "The organisation setup changed while you were approving. Review it again."
+            case .noOfficeAddress: return "Enter the office's address on its own network, like tcp://192.168.1.2:22000."
             }
         }
         if let refusal = error as? OfficePeerBinding.Refusal {
