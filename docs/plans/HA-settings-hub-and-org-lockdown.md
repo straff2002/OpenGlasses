@@ -214,6 +214,13 @@ none of them.
   settings-wide search; the tool list's search draws from the same filtered list, so it cannot
   surface a closed tool. Hidden rows are not built, so VoiceOver cannot reach them; a hidden
   category reached anyway (a session ending under an open screen) draws only a one-line notice.
+- **An ended term is said, not acted on** (later the same day, Plan CT *The organisation's term has
+  ended*). Once the profile's `policyExpiry` has passed and no job is open, the hub's Organisation
+  section and the top of the organisation's page carry one `OGNotice`: *"⟨org⟩'s profile ended on
+  ⟨date⟩"* and where to remove it (Remove Profile under "Leave ⟨org⟩"), with "send its records
+  first" when any are owed. The hub's notice opens the page; the page's scrolls to "Leave ⟨org⟩".
+  Nothing is removed for the person, and the removal flow above is unchanged. **Owed (device):** both
+  notices on a real enrolled phone with an ended term.
 
 ## C5 — The technician is not the administrator (2026-10-04)
 
