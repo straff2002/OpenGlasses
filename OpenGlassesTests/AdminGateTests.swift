@@ -101,8 +101,8 @@ final class AdminGateTests: XCTestCase {
                                                    hash: passcodeHash.base64EncodedString())
         let result = apply(edition: "fieldAssist", passcode: cheap, card: "not-a-digest")
         XCTAssertEqual(Set(result.drops.map(\.key)), ["adminPasscode", "adminCard"])
-        XCTAssertEqual(result.adminPolicy?.credentials.method, .deviceOwner,
-                       "with neither usable, the device owner's gate is what is left — and the review says so")
+        XCTAssertEqual(result.adminPolicy?.credentials.method, .notIssued,
+                       "with neither usable there is no administrator view on the phone — and the review says so")
 
         XCTAssertEqual(Set(apply(edition: nil, card: cardDigestHex).drops.map(\.key)), ["adminCard"],
                        "a card with no edition opens nothing")
@@ -117,7 +117,7 @@ final class AdminGateTests: XCTestCase {
                                     replacesCurrent: false).adminLines
         }
         XCTAssertEqual(lines(apply(edition: "fieldAssist")).last,
-                       "Anyone who can unlock this phone can open administrator settings")
+                       "No admin card or passcode, so administrator settings don't open on this phone")
         XCTAssertEqual(lines(apply(edition: "fieldAssist", passcode: verifier)).last,
                        "Administrator settings open with your organisation's passcode")
         XCTAssertEqual(lines(apply(edition: nil)), [])
@@ -177,10 +177,14 @@ final class AdminGateTests: XCTestCase {
         policy = AdminPolicy(edition: .fieldAssist, credentials: try credentials(passcode: false))
         let gate = makeGate()
         XCTAssertEqual(gate.tryPasscode("correct horse"), .notApplicable, "card-only: no passcode verifier")
-        XCTAssertEqual(gate.deviceOwnerPassed(), .notApplicable, "the device owner is only the fallback")
+        XCTAssertTrue(gate.offersUnlock)
 
+        // Plan HA C5: a profile that issued neither has no administrator view on the phone — the
+        // device owner's Face ID used to open it, and the technician passes that.
         policy = AdminPolicy(edition: .fieldAssist, credentials: AdminCredentials())
-        XCTAssertEqual(gate.deviceOwnerPassed(), .granted)
+        XCTAssertFalse(gate.offersUnlock)
+        XCTAssertEqual(gate.tryPasscode("correct horse"), .notApplicable)
+        XCTAssertTrue(gate.isRestricted)
 
         policy = nil
         let unmanaged = makeGate()

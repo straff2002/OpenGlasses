@@ -4,8 +4,9 @@ import Foundation
 // functions — no `Config`, no `UserDefaults`, no views — so the order, the Simple Mode subset and
 // the guarantees below are asserted headlessly.
 //
-// Every category is always a row. There is no folding, no Discover shelf and no "Show everything":
-// the hub lists the whole surface, every time, in one fixed order.
+// There is no folding, no Discover shelf and no "Show everything": the hub lists the whole surface,
+// in one fixed order. Only two things leave a row out — Simple Mode (below), and on a managed phone
+// an organisation's lock on the whole category, which `SettingsVisibilityPolicy` applies (Plan HA C4).
 //
 // Two guarantees the types carry rather than a comment:
 //
@@ -47,7 +48,8 @@ struct SettingsCategory: Identifiable, Equatable, Hashable, Sendable {
     let subtitle: String
     /// Simple Mode (the caretaker switch, BM P10) hides the owner-configuration surface for
     /// handing the device to someone who just needs it to work. It is orthogonal to an
-    /// organisation's lockdown: Simple Mode filters rows, a lockdown makes rows read-only.
+    /// organisation's lockdown: Simple Mode filters rows here; a lockdown's filter is
+    /// `SettingsVisibilityPolicy.hubCategories`, applied on top.
     let shownInSimpleMode: Bool
 
     static func category(
@@ -86,7 +88,7 @@ enum SettingsCatalog {
 
     /// The rows the hub draws. Simple Mode keeps the everyday surface — Voice & Triggers, Devices &
     /// Privacy, Accessibility, Look & Feel, Diagnostics & Support — and hides the owner's
-    /// configuration. An organisation's lockdown never removes a row; it marks it read-only.
+    /// configuration. An organisation's lockdown is applied on top, by `SettingsVisibilityPolicy`.
     static func visible(simpleMode: Bool) -> [SettingsCategory] {
         all.filter { !simpleMode || $0.shownInSimpleMode }
     }

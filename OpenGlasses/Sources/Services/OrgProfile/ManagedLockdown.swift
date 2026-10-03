@@ -12,8 +12,11 @@ import Foundation
 /// - **Read-side.** Nothing is written. A lock is computed when a view asks, from the envelope in
 ///   force; removing the profile or opening an administrator session lifts it with nothing to put
 ///   back. Closed tools clamp `Config.disabledTools` on read and leave the person's own list alone.
-/// - **Locked is visible.** A locked category is still a row, read-only, with "Managed by ⟨org⟩"
-///   — never hidden, never silently changed.
+/// - **Locked is not shown to the technician** (Plan HA C4, reversing C2's "locked is visible"). A
+///   locked setting is not drawn in the technician's view at all; the hub says that some settings
+///   are set by ⟨org⟩ and aren't shown, and the organisation's page lists them, so nothing is
+///   concealed from the person. `SettingsVisibilityPolicy` is the one rule; this type only says
+///   what is locked. Nothing is ever silently changed.
 /// - **Hidden is not forbidden, and locked is not a ceiling.** An administrator session
 ///   (`AdminGate`) unlocks every category; ceilings (`SettingKey`) still clamp whoever holds the
 ///   phone. Closed tools are the exception: they are the profile's statement about what this
@@ -142,9 +145,9 @@ enum ManagedArea: String, CaseIterable, Sendable {
 enum CategoryLock: Equatable, Sendable {
     /// Everything can be changed.
     case open
-    /// The whole screen is read-only.
-    case readOnly
-    /// Locked, with these areas still open — the screen locks its other rows one by one.
+    /// Every row is locked: the technician is not shown the category at all (Plan HA C4).
+    case locked
+    /// Locked, with these areas still open — the screen shows those and hides its other rows.
     case partlyOpen(Set<ManagedArea>)
 
     var isLocked: Bool { self != .open }
@@ -160,7 +163,7 @@ enum SettingsLockPolicy {
         let open = Set(ManagedArea.allCases.filter {
             $0.category == category && !isLocked($0, lockdown: lockdown, restricted: restricted)
         })
-        return open.isEmpty ? .readOnly : .partlyOpen(open)
+        return open.isEmpty ? .locked : .partlyOpen(open)
     }
 
     static func isLocked(_ area: ManagedArea, lockdown: ManagedLockdown?, restricted: Bool) -> Bool {

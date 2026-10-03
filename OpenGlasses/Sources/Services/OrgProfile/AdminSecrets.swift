@@ -4,7 +4,7 @@ import CommonCrypto
 
 /// Plan CT 3b — the single-purpose presentations a profile can name.
 enum ProfileEdition: String, Equatable, Sendable {
-    /// The technician sees Field Assist, Job and Settings, with most settings locked read-only
+    /// The technician sees Field Assist, Job and Settings, with most settings locked and not shown
     /// (`ManagedLockdown`); changing them waits behind the organisation's administrator gate.
     case fieldAssist
 }
@@ -31,9 +31,12 @@ struct AdminCredentials: Equatable, Sendable {
         case card
         case passcode
         case cardOrPasscode
-        /// Neither was issued: the device owner's own Face ID or passcode, which anyone who can
-        /// unlock the phone passes. The review sheet says so before the profile is applied.
-        case deviceOwner
+        /// Neither was issued: administrator settings do not open on this phone (Plan HA C5). The
+        /// device owner's Face ID or passcode is the technician's own, so it is never accepted in
+        /// place of the organisation's credential. The review sheet says so before the profile is
+        /// applied; an organisation that wants the administrator view issues a card or passcode,
+        /// which the phone picks up with the re-minted profile.
+        case notIssued
     }
 
     var method: Method {
@@ -41,7 +44,7 @@ struct AdminCredentials: Equatable, Sendable {
         case (true, true): return .cardOrPasscode
         case (true, false): return .card
         case (false, true): return .passcode
-        case (false, false): return .deviceOwner
+        case (false, false): return .notIssued
         }
     }
 }

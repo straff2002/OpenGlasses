@@ -39,12 +39,16 @@ final class EditionPresentationTests: XCTestCase {
 
     // MARK: - Settings
 
-    /// Since Plan HA the edition hides no settings category: locked rows stay rows, read-only.
-    func testTheEditionLocksSettingsRatherThanHidingThem() {
-        let rows = SettingsCatalog.visible(simpleMode: false)
-        XCTAssertEqual(rows.count, SettingsCategoryID.allCases.count)
-        XCTAssertTrue(rows.contains { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true) == .readOnly })
-        XCTAssertTrue(rows.contains { $0.id == .accessibility })
+    /// Plan HA C4: what the edition locks whole is not shown to the technician; an administrator
+    /// session shows it again. Accessibility is there either way.
+    func testTheEditionHidesWhatItLocksFromTheTechnicianOnly() {
+        let technician = ManagedSettingsContext(managed: true, lockdown: .standard, restricted: true, lockedKeys: [])
+        let administrator = ManagedSettingsContext(managed: true, lockdown: .standard, restricted: false, lockedKeys: [])
+        let technicianRows = SettingsVisibilityPolicy.hubCategories(simpleMode: false, in: technician)
+        XCTAssertFalse(technicianRows.contains { $0.id == .intelligence })
+        XCTAssertTrue(technicianRows.contains { $0.id == .accessibility })
+        XCTAssertEqual(SettingsVisibilityPolicy.hubCategories(simpleMode: false, in: administrator).count,
+                       SettingsCategoryID.allCases.count)
     }
 
     // MARK: - The Voice tab

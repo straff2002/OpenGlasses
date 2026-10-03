@@ -20,8 +20,9 @@ struct FieldAssistSettingsView: View {
     @AppStorage("briefOnCarPlayConnect") private var briefOnCarPlayConnect: Bool = false
 
     @ObservedObject private var orgProfile = OrgProfileManager.shared
-    /// Plan HA C2: under an organisation's edition the master switch is locked — the edition is
-    /// Field Assist. The rest of this screen follows the organisation's per-key policy.
+    /// Plan HA C2/C4: under an organisation's edition the master switch is locked — the edition is
+    /// Field Assist — and so not shown to the technician. The rest of this screen follows the
+    /// organisation's per-key policy.
     @ObservedObject private var adminGate = AdminGate.shared
     @State private var showingOrgScanner = false
     @State private var showingOfficeSetupImporter = false
@@ -79,9 +80,15 @@ struct FieldAssistSettingsView: View {
         // On a job the wake word is the whole interface, so a switched-off listener is said here
         // rather than discovered at the customer's door.
         if !appState.listeningEnabled {
-            return "Listening is switched off, so this phrase won't start a turn. Turn on Listen "
-                + "for Wake Phrase in Settings › Voice."
+            return wakeWordEditable
+                ? "Listening is switched off, so this phrase won't start a turn. Turn on Listen "
+                    + "for Wake Phrase in Settings › Voice."
+                : "Listening is switched off, so this phrase won't start a turn. Your administrator "
+                    + "can turn it on."
         }
+        // The phrase is the technician's whole interface on a job, so it is always said; where the
+        // organisation set it, there is just nowhere to change it (Plan HA C4).
+        guard wakeWordEditable else { return "Say this to start a hands-free turn." }
         let global = Config.wakePhrase
         if let persona = governingPersona, persona.wakePhrase != global {
             return "Say this to start a hands-free turn. It belongs to the \(persona.name) persona; "
@@ -89,6 +96,20 @@ struct FieldAssistSettingsView: View {
         }
         return "Say this to start a hands-free turn. Tap to change it, or to add the spellings the "
             + "recogniser writes it down as — a short phrase is matched exactly."
+    }
+
+    /// The screen that owns the phrase — Personas or Voice & Triggers — is one the person may open.
+    private var wakeWordEditable: Bool {
+        adminGate.presentation(.row(in: governingPersona != nil ? .intelligence : .voice)).isShown
+    }
+
+    private var wakeWordLabel: some View {
+        HStack {
+            Label("Wake word", systemImage: "waveform")
+            Spacer()
+            Text("\u{201C}\(activeWakePhrase)\u{201D}")
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -103,15 +124,18 @@ struct FieldAssistSettingsView: View {
     var body: some View {
         Form {
             // ──────────────── Toggle
-            Section {
-                Toggle("Enable Field Assist", isOn: $enabled)
-                    .tint(AppAccent.color)
-                    .disabled(!Config.fieldAssistUnlocked || adminGate.isLocked(.fieldAssistSwitch))
-                if adminGate.isLocked(.fieldAssistSwitch) {
-                    ManagedLockNote(organization: ManagedLockReason.organization)
+            let fieldAssistSwitch = adminGate.presentation(.area(.fieldAssistSwitch))
+            if fieldAssistSwitch.isShown {
+                Section {
+                    Toggle("Enable Field Assist", isOn: $enabled)
+                        .tint(AppAccent.color)
+                        .disabled(!Config.fieldAssistUnlocked || !fieldAssistSwitch.isEditable)
+                    if fieldAssistSwitch == .readOnly {
+                        ManagedLockNote(organization: ManagedLockReason.organization)
+                    }
+                } footer: {
+                    Text("Field Assist, powered by Avenkin, gives service technicians hands-free, domain-grounded guidance. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
                 }
-            } footer: {
-                Text("Field Assist, powered by Avenkin, gives service technicians hands-free, domain-grounded guidance. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
             }
 
             // ──────────────── Entitlement (paywall when locked, status when unlocked)
@@ -219,15 +243,15 @@ struct FieldAssistSettingsView: View {
                 // both govern it. This row says what the glasses are listening for and opens the
                 // one that owns it.
                 Section {
-                    NavigationLink {
-                        wakeWordDestination
-                    } label: {
-                        HStack {
-                            Label("Wake word", systemImage: "waveform")
-                            Spacer()
-                            Text("\u{201C}\(activeWakePhrase)\u{201D}")
-                                .foregroundStyle(.secondary)
+                    if wakeWordEditable {
+                        NavigationLink {
+                            wakeWordDestination
+                        } label: {
+                            wakeWordLabel
                         }
+                    } else {
+                        wakeWordLabel
+                            .accessibilityElement(children: .combine)
                     }
                 } header: {
                     Text("Voice")
