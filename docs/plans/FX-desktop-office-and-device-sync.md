@@ -38,6 +38,19 @@ offline queue remains necessary when either endpoint is unavailable.
    transport connection or enabling any content share. A local address is a route hint, not
    authority. Replacement and revocation need a separately reviewed flow.
 
+**Scan to join (2026-10-03).** The phone side of the
+[commissioning contract](../../Contracts/commissioning.md): the in-app scanner recognises an
+office's `avenkin-commission:` code, the phone answers with a redemption signed by its
+application key (its own identities and an enrolment ID it chose, never values from the code),
+shows the comparison code until the office decides, and on approval runs the existing checks in
+the contract's order — the profile and licence pair, the owner's review, then the administrator's
+binding — before applying the profile under the chosen enrolment ID and keeping the binding
+through `OfficePairingService`. A phone enrolled to another organisation refuses before
+connecting. The pinned connection is the Go transport's, behind `OfficeCommissionTransport`; a
+build without the office transport says it cannot join this way. Open: the approval carries no
+office sync address, so the managed connection is still started as for a binding file; physical
+testing against the office.
+
 The current phone UI and services implement setup, binding review and a handshake-only managed
 connection. No production managed folder is enabled by that handshake. The earlier standalone
 Device Lab pairing is a separate feasibility protocol, not a substitute for vendor authority.

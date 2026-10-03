@@ -376,7 +376,7 @@ struct OnboardingView: View {
             orgEntryOutcome = nil
             switch outcome {
             case .licence(let code): startOrgLicence(code)
-            case .scanned(let code): appState.orgEnrolment.openScanned(code)
+            case .scanned(let code): appState.openScannedOrganisationCode(code)
             }
         }) {
             OrgKeyEntrySheet(service: appState.orgEnrolment) { orgEntryOutcome = $0 }

@@ -10,7 +10,7 @@ struct OrgKeyEntrySheet: View {
     enum Outcome: Equatable {
         /// A licence code, typed or resolved from an activation key.
         case licence(String)
-        /// An enrolment link or profile address read by the scanner.
+        /// An enrolment link, profile address or office code read by the scanner.
         case scanned(String)
     }
 
@@ -103,6 +103,12 @@ struct OrgKeyEntrySheet: View {
     /// A scanned enrolment link or profile address goes to the link's path; anything else is a key
     /// or a code, put in the field and looked up as if typed.
     private func handleScan(_ code: String) {
+        // An office's code is passed on exactly as scanned: the office transport checks the text.
+        if OfficeCommissioning.isCommissioningCode(code) {
+            finish(.scanned(code))
+            dismiss()
+            return
+        }
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
         if lowered.hasPrefix("openglasses:") || lowered.hasPrefix("https:") {

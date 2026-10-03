@@ -125,7 +125,7 @@ struct OrgEnrolmentSheet: View {
 }
 
 /// The review itself, split out so the sheet body stays one switch.
-private struct OrgProfileReviewList: View {
+struct OrgProfileReviewList: View {
     let review: OrgProfileReview
     let apply: () -> Void
 

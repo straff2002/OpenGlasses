@@ -160,6 +160,9 @@ final class OrgProfileManager: ObservableObject {
         case licence(String)
         case officePackage
         case notRemovable
+        /// Joining an office by its code chose an enrolment identifier before the profile arrived,
+        /// and this phone's enrolment no longer matches it.
+        case enrolmentChanged
 
         var errorDescription: String? {
             switch self {
@@ -171,6 +174,7 @@ final class OrgProfileManager: ObservableObject {
             case .licence(let message): return message
             case .officePackage: return "The office licence and profile do not verify as one organisation. Ask your organisation for a new setup package."
             case .notRemovable: return "Your organisation's device management applied this profile, so it can only be removed there."
+            case .enrolmentChanged: return "This phone's organisation setup changed while it was joining the office. Scan the office's code again."
             }
         }
     }
@@ -346,8 +350,25 @@ final class OrgProfileManager: ObservableObject {
                                          sourceURL: sourceURL, licenceToActivate: licenceToActivate))
     }
 
+    /// The enrolment identifier a phone joining an office by its code names in its redemption
+    /// (Contracts/commissioning.md §2.2), before the profile arrives: the enrolment in force, kept
+    /// across a renewal as `apply` keeps it, or a new one. The office's approval and its peer
+    /// binding must name this value; nothing they carry can choose it.
+    func enrolmentIDForCommissioning() -> String {
+        record?.enrolmentId ?? seams.newEnrolmentId()
+    }
+
     /// Apply a reviewed profile: licence first, then settings, then the ceiling.
-    func apply(_ review: OrgProfileReview) -> Result<Void, Refusal> {
+    ///
+    /// `enrolmentID` is the identifier chosen up front when an office was joined by its code
+    /// (`enrolmentIDForCommissioning`). It must still be this phone's own: an enrolment already in
+    /// force keeps its identifier, so a preset that differs from it is refused before anything is
+    /// written.
+    func apply(_ review: OrgProfileReview, enrolmentID preset: String? = nil) -> Result<Void, Refusal> {
+        if let preset {
+            guard OfficeManualAssignment.safeIdentifier(preset),
+                  record.map({ $0.enrolmentId == preset }) ?? true else { return .failure(.enrolmentChanged) }
+        }
         if review.source == .office {
             guard let officeLicence = review.licenceToActivate ?? review.profile.licenceCode,
                   (try? OfficeInlineEntitlement.verify(
@@ -393,7 +414,7 @@ final class OrgProfileManager: ObservableObject {
         var newRecord = OrgEnrolmentRecord(
             document: review.document,
             source: review.source,
-            enrolmentId: record?.enrolmentId ?? seams.newEnrolmentId(),
+            enrolmentId: record?.enrolmentId ?? preset ?? seams.newEnrolmentId(),
             enrolledAt: record?.enrolledAt ?? now,
             priorStartingValues: priors,
             wroteStartingKeys: wrote.sorted(),
