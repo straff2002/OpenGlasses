@@ -137,6 +137,15 @@ func (o *Office) Dispatch(jobRaw string, manuals []Manual, contentRoot string, n
 	if o.State.Pending != "" && o.State.Receipt == "" {
 		return "", errors.New("another delivery is still waiting for its verified receipt")
 	}
+	// An empty job sends the device's manuals again under the job it already holds: the
+	// companion replaces its manual list with each delivery, and a delivery always names a job.
+	if jobRaw == "" {
+		var last Delivery
+		if _, e = Verify(o.State.Pending, o.Key.Public().(ed25519.PublicKey), deliveryFields, &last); e != nil {
+			return "", errors.New("send a job to this device first; manuals travel with the job it holds")
+		}
+		jobRaw = last.JobJSON
+	}
 	if _, e = validateJob(jobRaw); e != nil {
 		return "", e
 	}
@@ -257,6 +266,15 @@ func (o *Office) Public() map[string]any {
 				var j Job
 				if json.Unmarshal([]byte(d.JobJSON), &j) == nil {
 					out["jobID"] = j.ID
+				}
+				// What the last delivery carried, so the office can tell which manuals the
+				// device holds and whether they are the current ones.
+				if ms, e := decodeManuals(d.ManualsJSON); e == nil {
+					held := make([]map[string]string, 0, len(ms))
+					for _, m := range ms {
+						held = append(held, map[string]string{"id": m.ID, "sourceSha256": m.SourceSHA256, "textSha256": m.TextSHA256})
+					}
+					out["manuals"] = held
 				}
 			}
 		}
