@@ -6,6 +6,8 @@
 // the key that signs and the clock. Nothing here is authority. An approval carries the
 // vendor-signed profile, the licence and the administrator-signed peer binding as opaque text,
 // and the phone verifies each of those with the code it already has.
+//
+// The connection that carries these messages is the sibling package commission/bootstrap.
 package commission
 
 import (
@@ -148,8 +150,17 @@ func sign(domain string, v any, key ed25519.PrivateKey, limit int) (string, erro
 	if e != nil {
 		return "", e
 	}
-	message := append(append([]byte(domain), 0), payload...)
-	out, e := json.Marshal(envelope{base64.StdEncoding.EncodeToString(payload), base64.StdEncoding.EncodeToString(ed25519.Sign(key, message))})
+	return seal(payload, ed25519.Sign(key, signingInput(domain, payload)), limit)
+}
+
+// signingInput is the exact bytes a message's signature covers: the domain, one zero byte, the
+// payload.
+func signingInput(domain string, payload []byte) []byte {
+	return append(append([]byte(domain), 0), payload...)
+}
+
+func seal(payload, signature []byte, limit int) (string, error) {
+	out, e := json.Marshal(envelope{base64.StdEncoding.EncodeToString(payload), base64.StdEncoding.EncodeToString(signature)})
 	if e != nil {
 		return "", e
 	}
@@ -322,6 +333,39 @@ func SignRedemption(r Redemption, phoneKey ed25519.PrivateKey) (string, error) {
 		return "", errors.New("invalid redemption")
 	}
 	return sign(RedemptionDomain, r, phoneKey, MaximumRedemption)
+}
+
+// RedemptionSigningInput is SignRedemption in two halves, for a phone whose application key
+// signs inside device storage and never reaches this code. It returns the redemption's payload
+// and the exact bytes the phone application key must sign (the redemption domain, one zero
+// byte, the payload); SealRedemption then makes the envelope. The envelope is byte-identical to
+// what SignRedemption makes with the same key.
+func RedemptionSigningInput(r Redemption) (payload, input []byte, err error) {
+	if !r.valid() {
+		return nil, nil, errors.New("invalid redemption")
+	}
+	payload, err = json.Marshal(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	return payload, signingInput(RedemptionDomain, payload), nil
+}
+
+// SealRedemption makes the redemption envelope from a payload of RedemptionSigningInput and the
+// phone's signature over its signing input, then reads it back exactly as the office will
+// against `invitationEnvelope`. Anything the office would refuse is refused here.
+func SealRedemption(payload, signature []byte, invitationEnvelope string) (string, error) {
+	if len(signature) != ed25519.SignatureSize {
+		return "", errors.New("invalid signature")
+	}
+	out, e := seal(payload, signature, MaximumRedemption)
+	if e != nil {
+		return "", e
+	}
+	if _, e = ReadRedemption(out, invitationEnvelope); e != nil {
+		return "", e
+	}
+	return out, nil
 }
 
 // ReadRedemption checks a redemption as the office does: well formed, signed by the phone key

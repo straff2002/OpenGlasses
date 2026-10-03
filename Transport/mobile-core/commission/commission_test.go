@@ -195,6 +195,41 @@ func TestARedemptionProvesThePhoneKeyAndAnswersOneInvitation(t *testing.T) {
 	}
 }
 
+// A phone whose key signs inside device storage makes the same envelope in two halves.
+func TestARedemptionSignedOutsideThisCodeIsTheSameEnvelope(t *testing.T) {
+	inv, red := exchange(t)
+	payload, input, e := RedemptionSigningInput(redemption(inv))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if string(input) != RedemptionDomain+"\x00"+string(payload) {
+		t.Fatal("signing input is not the domain, a zero byte and the payload")
+	}
+	if sealed := must(SealRedemption(payload, ed25519.Sign(phoneKey, input), inv)); sealed != red {
+		t.Fatal("sealed redemption differs from SignRedemption's")
+	}
+	otherInvitation := invitation()
+	otherInvitation.Invitation = base64.RawURLEncoding.EncodeToString(append(make([]byte, 31), 1))
+	other := must(SignInvitation(otherInvitation, officeKey))
+	for name, attempt := range map[string]func() (string, error){
+		"another key":        func() (string, error) { return SealRedemption(payload, ed25519.Sign(otherKey, input), inv) },
+		"short signature":    func() (string, error) { return SealRedemption(payload, make([]byte, 63), inv) },
+		"another invitation": func() (string, error) { return SealRedemption(payload, ed25519.Sign(phoneKey, input), other) },
+		"edited payload": func() (string, error) {
+			return SealRedemption(append([]byte(nil), payload[:len(payload)-1]...), ed25519.Sign(phoneKey, input), inv)
+		},
+	} {
+		if _, e := attempt(); e == nil {
+			t.Fatalf("sealed a redemption with %s", name)
+		}
+	}
+	bad := redemption(inv)
+	bad.EnrolmentID = "a/b"
+	if _, _, e := RedemptionSigningInput(bad); e == nil {
+		t.Fatal("made signing input for an invalid redemption")
+	}
+}
+
 func TestADecisionIsForOneExchangeOnePhoneAndOneOffice(t *testing.T) {
 	inv, red := exchange(t)
 	good := approval(inv, red)
