@@ -12,6 +12,7 @@
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
 <body>
+<div class="stage">
 <header class="site-header">
   <a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="30" height="30">Avenkin</a>
   <nav class="site-nav" aria-label="Main">
@@ -21,34 +22,89 @@
     <a href="/pricing/">Plans</a>
   </nav>
 </header>
+<section class="page-hero">
+  <p class="kicker">The app</p>
+  <h1>Avenkin for iPhone</h1>
+  <p class="lede">A private AI assistant on your phone, from your wrist, or hands-free with glasses.</p>
+  <div class="actions">
+    <a class="button" href="https://testflight.apple.com/join/1dcAytte">Join the beta on TestFlight</a>
+    <a class="button ghost" href="/docs/CAPABILITIES.md">Capability guide</a>
+  </div>
+</section>
+</div>
 <main>
-<div class="prose">
-<p class="eyebrow">The app</p>
-<h1>Avenkin for iPhone</h1>
-<p class="intro">A private AI assistant on your phone, from your wrist, or hands-free with glasses.</p>
-<p>Ask about what you see, translate a conversation, remember the details, and get things done. Buy once, with no subscription to us&mdash;a cloud AI provider you choose bills its own usage. With the on-device setup (local AI, speech recognition and voice), the conversation runs offline on your iPhone.</p>
+  <div class="wrap">
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">What it does</p>
+        <h2>Five things, one assistant.</h2>
+        <p>Ask about what you see, translate a conversation, remember the details, and get things done.</p>
+      </div>
+      <div class="tiles">
+        <article class="tile">
+          <p class="eyebrow">See</p>
+          <h3>See and understand</h3>
+          <p>Read a sign, ask about a piece of equipment, or turn a business card into a contact, with scene descriptions, text recognition and live visual coaching.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Talk</p>
+          <h3>Talk and translate</h3>
+          <p>Ask a quick question or settle into a live voice conversation, translate spoken language and follow along with captions.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Remember</p>
+          <h3>Remember</h3>
+          <p>Save where you parked, keep notes about people and places, and turn captured conversations into meeting notes you can ask about later.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Act</p>
+          <h3>Act</h3>
+          <p>Check your calendar, set a reminder, find directions, control your music or the lights, and connect Home Assistant, Siri Shortcuts and MCP tool servers.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Offline</p>
+          <h3>Keep going offline</h3>
+          <p>With the on-device setup (local AI, speech recognition and voice), the conversation runs offline on your iPhone.</p>
+        </article>
+      </div>
+      <p class="meta"><a href="/about.html">Read the full overview</a> or the <a href="/docs/CAPABILITIES.md">capability guide</a>.</p>
+    </section>
 
-<h2>What it does</h2>
-<ul>
-  <li><strong>See and understand.</strong> Read a sign, ask about a piece of equipment, or turn a business card into a contact, with scene descriptions, text recognition and live visual coaching.</li>
-  <li><strong>Talk and translate.</strong> Ask a quick question or settle into a live voice conversation, translate spoken language and follow along with captions.</li>
-  <li><strong>Remember.</strong> Save where you parked, keep notes about people and places, and turn captured conversations into meeting notes you can ask about later.</li>
-  <li><strong>Act.</strong> Check your calendar, set a reminder, find directions, control your music or the lights, and connect Home Assistant, Siri Shortcuts and MCP tool servers.</li>
-  <li><strong>Choose your AI.</strong> Use a cloud model, a model on your own server, or a local model on your iPhone, and pick speech recognition and voice separately.</li>
-</ul>
-<p><a href="/about.html">Read the full overview</a> or the <a href="/docs/CAPABILITIES.md">capability guide</a>.</p>
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">What you need</p>
+        <h2>Start with the phone in your pocket.</h2>
+      </div>
+      <div class="trio">
+        <div><p class="num">1</p><h3>An iPhone</h3><p>Running iOS 26 or later. That is enough on its own.</p></div>
+        <div><p class="num">2</p><h3>An Apple Watch, if you like</h3><p>The assistant from your wrist, without reaching for the phone.</p></div>
+        <div><p class="num">3</p><h3>Glasses, if you like</h3><p>Compatible Meta smart glasses add hands-free camera and audio.</p></div>
+      </div>
+    </section>
+  </div>
 
-<h2>What you need</h2>
-<p>An iPhone running iOS 26 or later&mdash;that is enough on its own. An Apple Watch gives you the assistant from your wrist, and compatible Meta smart glasses add hands-free camera and audio when you want them.</p>
+  <section class="statement">
+    <div class="wrap">
+      <p class="kicker">Your assistant, your choice</p>
+      <h2>Buy once. <span>Bring the AI you trust.</span></h2>
+      <p class="lede">No subscription to us&mdash;a cloud AI provider you choose bills its own usage. Pick the AI, speech recognition and spoken voice separately.</p>
+      <div class="trio">
+        <div><h3>A cloud model</h3><p>Use the provider you already have, with your own key.</p></div>
+        <div><h3>Your own server</h3><p>Point Avenkin at a model you run yourself.</p></div>
+        <div><h3>On your iPhone</h3><p>Compatible local models with Apple MLX or llama.cpp, with on-device speech and voice, for a conversation that needs no cloud API key.</p></div>
+      </div>
+    </div>
+  </section>
 
-<h2>Availability</h2>
-<div class="note">
-<p>Avenkin is coming to the App Store. Until then you can <a href="https://testflight.apple.com/join/1dcAytte">join the beta on TestFlight</a>, Apple's app for testing pre-release builds. The app's source is also published, so you can <a href="/docs/BUILDING.md">build it from source</a> on a Mac.</p>
-</div>
-
-<h2>Privacy</h2>
-<p>There is no Avenkin account, and the app has no analytics, advertising or tracking of its own. What it keeps is stored on your iPhone. <a href="/privacy.html">Read the privacy policy</a>.</p>
-</div>
+  <section class="closing">
+    <span class="pill">In beta</span>
+    <h2>Try it on your iPhone.</h2>
+    <p>Avenkin is coming to the App Store. Until then you can join the beta through TestFlight, Apple's app for testing pre-release builds. The app's source is also published, so you can <a href="/docs/BUILDING.md">build it from source</a> on a Mac.</p>
+    <div class="actions">
+      <a class="button" href="https://testflight.apple.com/join/1dcAytte">Join the beta on TestFlight</a>
+      <a class="button ghost" href="/privacy.html">Privacy policy</a>
+    </div>
+  </section>
 </main>
 <footer class="site-footer">
   <a href="/privacy.html">Privacy</a>

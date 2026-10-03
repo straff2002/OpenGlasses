@@ -439,3 +439,38 @@ code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .prose.wide { max-width: 56rem; }
 .prose.wide > :not(.shots) { max-width: 44rem; }
 @media (max-width: 40rem) { .shots { grid-template-columns: 1fr; max-width: 20rem; margin-inline: auto; } }
+
+/* ------------------------------------------------------------------------------------------------
+   Inner pages: the same dark stage as the homepage, with a page title in place of the hero, then
+   bands built from the homepage's pieces (tiles, trio, statement, closing).
+   ------------------------------------------------------------------------------------------------ */
+.page-hero { max-width: 68rem; margin: 0 auto; padding: 44px 20px 76px; }
+.page-hero h1 {
+  max-width: 13em;
+  margin: 0 0 18px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 6.4vw, 4.6rem);
+  line-height: 1.0;
+  letter-spacing: -0.03em;
+}
+.page-hero .lede { max-width: 34em; margin: 0 0 28px; color: var(--muted); font-size: 1.2rem; }
+.page-hero .actions { margin: 0; }
+.page-hero .pill { margin: 0 0 22px; }
+.stage.compact .page-hero { padding: 28px 20px 52px; }
+.stage.compact .page-hero h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); }
+.stage.compact .page-hero .lede { margin-bottom: 0; }
+.stage + main > .prose { padding-top: 40px; }
+.stage + main > .prose > h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+.section .body { max-width: 44rem; }
+.section .body p { margin: 0 0 16px; }
+.section .meta { margin: 12px 0 0; }
+.section .shots { max-width: 56rem; }
+.tile .big { margin: 0 0 8px; font-family: var(--display); font-weight: 600; font-size: 1.7rem; line-height: 1.15; }
+.tile p:last-child { margin-bottom: 0; }
+.statement .lede { max-width: 38em; margin: 18px 0 0; color: var(--muted); font-size: 1.12rem; }
+main > .wrap:last-of-type > .section:last-child { padding-bottom: 72px; }
+/* Utility pages: the text column lines up with the page title above it. */
+.stage + main > .prose { max-width: 68rem; }
+.stage + main > .prose > * { max-width: 44rem; }
