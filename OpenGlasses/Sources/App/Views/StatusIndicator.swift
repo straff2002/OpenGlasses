@@ -18,6 +18,9 @@ struct StatusIndicator: View {
     /// off is the wearer's choice and the card does not mention it.
     @AppStorage("silentMode") private var pushToTalk = false
     @State private var showDisconnectConfirm = false
+    /// The open Field Assist job, for the job pill. Observed so pausing, resuming or ending the
+    /// job from anywhere — the Job tab, a voice turn, a relaunch — redraws the card.
+    @ObservedObject private var fieldSessions = FieldSessionService.shared
 
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
     /// tile keeps its proportion to the two lines of text beside it at every
@@ -134,6 +137,18 @@ struct StatusIndicator: View {
             }
             if isOpenAI && openAISession.reconnecting {
                 reconnectingLabel.padding(.bottom, 10)
+            }
+
+            // An open job, running or paused (`SessionCardJobPill`). Its own row directly above
+            // the footer rather than inside it: the footer's one line is already spent at phone
+            // width — the mode badge and "Glasses attached" fill it between them — and a third
+            // capsule there would truncate the glasses pill's word or this one's, and "Job p…" is
+            // the one thing this pill must never be. Same capsule, same inset as the footer's
+            // pills, so it reads as one of them.
+            if jobPillPresentation != nil {
+                jobPill
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
             }
 
             // Bottom row: active mode + the connection pills (formerly a separate band above
@@ -260,6 +275,60 @@ struct StatusIndicator: View {
                                      source: .glasses)
         case .none:
             break
+        }
+    }
+
+    // MARK: - Job pill
+
+    /// `nil` with no Field Assist job open — the card then carries no job pill at all.
+    private var jobPillPresentation: SessionCardJobPill.Presentation? {
+        SessionCardJobPill.presentation(session: fieldSessions.activeSession)
+    }
+
+    /// The glasses pill's capsule, for the job. One difference: the word is never dropped at
+    /// accessibility sizes. The glasses pill can fall back to its symbol because "glasses" is all
+    /// the symbol has to say; here the word *is* the news — running or paused — and the row is its
+    /// own, so it wraps instead.
+    @ViewBuilder
+    private var jobPill: some View {
+        if let presentation = jobPillPresentation {
+            let color = labelColor(presentation.tint)
+
+            Button {
+                didTapJobPill(presentation.action)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: presentation.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(color)
+                    Text(presentation.word)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(in: .capsule)
+                // The same 44pt floor as the glasses pill, for the same reasons (see there).
+                .frame(minWidth: OGMetrics.minTouchTarget,
+                       minHeight: OGMetrics.minTouchTarget)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(presentation.accessibilityLabel)
+            .accessibilityHint(presentation.accessibilityHint)
+        }
+    }
+
+    /// `SessionCardJobPill.Action` → what actually happens. Through `AppState.openJobs`, the one
+    /// route every surface uses to send the wearer to a job, so the job's page is pushed over the
+    /// list and Back returns to it.
+    private func didTapJobPill(_ action: SessionCardJobPill.Action) {
+        switch action {
+        case .openJob:
+            appState.openJobs(.currentJob)
         }
     }
 

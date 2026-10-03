@@ -369,6 +369,10 @@ final class GuidedJobFlow: ObservableObject {
     /// This also repairs the plain case: a restored active thread with no job at all got its id
     /// back at launch and none of its history, so the wearer's first sentence after relaunching
     /// carried on a conversation the model had never seen.
+    ///
+    /// A restored job is almost always a paused one, and a paused job claims no conversation, so
+    /// in practice this replays whatever thread the store restored and the job's own thread comes
+    /// back on the first turn after the job is resumed (see `JobThreadPolicy`'s `.launchRestore`).
     func restoreOnLaunch() {
         switch JobThreadPolicy.resolve(.launchRestore, inputs()) {
         case .useBoundThread(let id):
@@ -470,18 +474,25 @@ final class GuidedJobFlow: ObservableObject {
 
     // MARK: - Applying a resolution
 
-    /// A **paused** job is still the job.
+    /// A **paused** job is still the job — but it holds no conversation while it is paused.
     ///
     /// `FieldSession.isActive` means "accepting input", which a paused session is not — and the
     /// launch restore pauses every recovered session on purpose, so reading the binding through
     /// `isActive` made a job that had survived a crash look like no job at all: its thread would
     /// have been orphaned by the first tap, and its outstanding job number forgotten. The binding,
     /// the intake and the change question all belong to a job that has not ended, paused or not.
+    ///
+    /// What a paused job does *not* do is claim a conversation (2026-10-03). So the pause travels
+    /// as its own fact beside `jobActive` rather than folded into it: folding it in would hand the
+    /// binding back to the "no job at all" rules, and those would idle-end the job's own thread
+    /// and forget it on launch. `JobThreadPolicy` reads the two together. `pausedAt` is the field
+    /// `pauseSession`, `resumeSession` and the launch restore all set and clear.
     private func inputs() -> JobThreadPolicy.Inputs {
         let session = sessions.activeSession
         let bound = session?.conversationThreadId
         return JobThreadPolicy.Inputs(
             jobActive: session.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false,
+            jobPaused: session?.pausedAt != nil,
             jobReference: session?.jobReference,
             boundThreadId: bound,
             boundThreadExists: bound.map { id in store.threads.contains { $0.id == id } } ?? false,

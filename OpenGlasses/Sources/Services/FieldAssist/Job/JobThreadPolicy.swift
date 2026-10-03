@@ -29,6 +29,21 @@ import Foundation
 /// one (New conversation on the page or CarPlay — `ConversationContinuity.startFresh`), or when the
 /// next voice turn starts after `conversationIdleGap` with nothing said. Like binding, that is
 /// decided lazily, at the start of the turn that would join the thread, never by a timer.
+///
+/// **A paused job claims nothing until it is resumed** (2026-10-03). Lazy binding made a job that
+/// had never had a conversation adopt the next one anybody started — and a job is paused far more
+/// often than it is abandoned, because closing the app pauses it and the next launch restores it
+/// paused. On a real phone that is exactly what happened: a procedure tap opened a job with no
+/// thread, the app closed, and hours later a question about the weather became that job's
+/// conversation, was written into its record, and "you can end" closed it with an audit log. A
+/// paused job is still the job — its number, its held question and its closing all still belong to
+/// it — but while it is paused it does not bind a thread, does not pull a turn back into the thread
+/// it already owns, does not ask before the wearer leaves that thread, and does not end anything at
+/// the end of a turn. Its turns are ordinary unbound turns, except that the thread it owns is never
+/// idle-ended (it is still the job's, and the job will want it back). Resuming the job puts all of
+/// the lazy binding above back exactly as it was: the next turn binds, or rejoins the job's thread.
+/// Turns made while it is paused are not recorded into the job's log either — that gate lives in
+/// `FieldSessionService.recordConversationTurn`, because the log is the service's, not a thread's.
 enum JobThreadPolicy {
 
     /// How long a conversation may sit untouched before the next voice turn starts a fresh one.
@@ -40,6 +55,10 @@ enum JobThreadPolicy {
     struct Inputs: Equatable {
         /// Whether a Field Assist job is running at all.
         var jobActive: Bool = false
+        /// Whether that job is paused — deliberately, or because the app closed and the launch
+        /// restore brought it back paused. A paused job is still `jobActive` (it has not ended),
+        /// but it claims no conversation until it is resumed. Meaningless with no job.
+        var jobPaused: Bool = false
         /// The job's number, for the question's wording. Nil while it is still outstanding.
         var jobReference: String?
         /// The thread the job owns, once it owns one.
@@ -195,7 +214,11 @@ enum JobThreadPolicy {
 
         case .turn(let source):
             guard inputs.persistenceEnabled else { return .proceedUnbound }
-            guard inputs.jobActive, !inputs.boundThreadDetached else {
+            // Paused, the job claims nothing: no adopting the open thread, no starting one, no
+            // pulling the turn back into the thread it already owns. This is the check whose
+            // absence turned a weather question into a job's conversation — the job had no thread
+            // yet, so the lazy bind below took the first one anybody started.
+            guard inputs.jobActive, !inputs.jobPaused, !inputs.boundThreadDetached else {
                 return unboundTurn(source, inputs)
             }
             guard let bound = inputs.boundThreadId else {
@@ -220,7 +243,11 @@ enum JobThreadPolicy {
             if let debrief = inputs.debrief, debrief.threadId == inputs.activeThreadId {
                 return .keepThread
             }
-            guard inputs.jobActive, !inputs.boundThreadDetached else { return .keepThread }
+            // A paused job pulls nobody back: the thread the wearer is in is theirs until the job
+            // is resumed, and the job's next turn after that rejoins its own thread lazily.
+            guard inputs.jobActive, !inputs.jobPaused, !inputs.boundThreadDetached else {
+                return .keepThread
+            }
             // A job is running. The open thread is the job's — either already bound, or about to
             // be by the next turn — unless the technician stepped into another one without
             // detaching, which closes here so the job's next turn is back in the job's thread.
@@ -257,16 +284,27 @@ enum JobThreadPolicy {
             guard !inputs.boundThreadDetached else { return .proceedUnbound }
             guard let bound = inputs.boundThreadId else { return .deferBinding }
             guard inputs.boundThreadExists else {
-                // Nothing to create at launch: no turn is happening. The next one rebinds.
+                // Nothing to create at launch: no turn is happening. The next one rebinds. Done
+                // paused or not — forgetting an id that points at nothing claims no conversation,
+                // it only stops the job's first turn after resuming from rebinding a deleted one.
                 return .clearBinding(reason: .boundThreadDeleted)
             }
+            // The launch restore pauses every job it recovers, so this is nearly always the paused
+            // case — and a paused job claims nothing, at launch as on any turn. The store has
+            // already restored whatever conversation was open when the app went away, if it was
+            // recent; that is the one the wearer's history is replayed into. When the job owned
+            // it, that is the job's thread anyway; when they had stepped somewhere else, a
+            // relaunch is no reason to drag them back. Resuming the job brings its thread back on the next turn, the two-step
+            // way, exactly as `.turn` does for a job that is running.
+            guard !inputs.jobPaused else { return .proceedUnbound }
             return .useBoundThread(id: bound)
         }
     }
 
     /// A turn no job claims: it joins the open conversation, unless that has gone quiet for the
     /// idle gap and this is a voice turn. A thread a job or debrief owns is never ended for being
-    /// idle — a detached job keeps the id, and a debrief carries on across a long drive.
+    /// idle — a detached job keeps the id, a paused job will want its thread back when it resumes,
+    /// and a debrief carries on across a long drive.
     private static func unboundTurn(_ source: TurnSource, _ inputs: Inputs) -> Resolution {
         guard source.isVoice, let active = inputs.activeThreadId,
               let idle = inputs.activeThreadIdleFor, idle >= conversationIdleGap else {
@@ -278,8 +316,15 @@ enum JobThreadPolicy {
     }
 
     /// Whether leaving the job's thread is what is being asked for. Only then is there a question.
+    ///
+    /// Never while the job is paused: the question exists so a technician mid-job is not walked
+    /// out of its conversation by a habitual tap, and a paused job is not mid-anything. Asking
+    /// "keep this in the job?" of someone who put the job down hours ago is the app arguing with
+    /// a decision they already made. Leaving its thread then is not a detach — the job keeps the
+    /// binding, and resuming it brings the thread back.
     private static func shouldAsk(_ inputs: Inputs) -> Bool {
-        guard inputs.jobActive, inputs.persistenceEnabled, !inputs.boundThreadDetached else { return false }
+        guard inputs.jobActive, !inputs.jobPaused, inputs.persistenceEnabled,
+              !inputs.boundThreadDetached else { return false }
         guard let bound = inputs.boundThreadId else { return false }
         return bound == inputs.activeThreadId
     }

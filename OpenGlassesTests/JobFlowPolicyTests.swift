@@ -271,6 +271,105 @@ final class JobThreadPolicyTests: XCTestCase {
                        .clearBinding(reason: .boundThreadDeleted))
     }
 
+    // MARK: A paused job claims nothing
+
+    private func paused(_ inputs: JobThreadPolicy.Inputs) -> JobThreadPolicy.Inputs {
+        var inputs = inputs
+        inputs.jobPaused = true
+        return inputs
+    }
+
+    /// The device record: a job with no conversation yet, paused when the app closed, adopted the
+    /// next conversation anybody started. Paused, it binds nothing — neither the open thread nor a
+    /// new one.
+    func testAPausedJobWithNoThreadBindsNoTurn() {
+        for source in [JobThreadPolicy.TurnSource.wakeWord, .tapToTalk, .typed] {
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source),
+                                                   paused(jobInputs(bound: nil, exists: false, active: other))),
+                           .proceedUnbound, "\(source) must not hand the open thread to a paused job")
+            XCTAssertEqual(JobThreadPolicy.resolve(.turn(source),
+                                                   paused(jobInputs(bound: nil, exists: false, active: nil))),
+                           .proceedUnbound, "\(source) must not start a thread for a paused job")
+        }
+    }
+
+    func testAPausedJobDoesNotPullATurnBackIntoItsThread() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), paused(jobInputs(active: other))),
+                       .proceedUnbound)
+        // A deleted thread is not rebound while paused either: rebinding creates a thread.
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               paused(jobInputs(exists: false, active: other))),
+                       .proceedUnbound)
+    }
+
+    /// Unbound is not ownerless: the thread the paused job owns is still never idle-ended, because
+    /// the job will want it back. Any other quiet conversation ends as usual.
+    func testAPausedJobsThreadIsNeverIdleEnded() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), paused(jobInputs(idle: minutes(180)))),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord),
+                                               paused(jobInputs(active: other, idle: minutes(180)))),
+                       .endIdleThread, "a conversation that is not the job's is an ordinary one")
+    }
+
+    func testLeavingAPausedJobsThreadIsNotAQuestion() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.newChat(confirmed: false), paused(jobInputs())),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.resumeThread(id: other, confirmed: false),
+                                               paused(jobInputs())),
+                       .proceedUnbound)
+        // Opening the job's own thread is still just opening it.
+        XCTAssertEqual(JobThreadPolicy.resolve(.resumeThread(id: bound, confirmed: false),
+                                               paused(jobInputs(active: other))),
+                       .useBoundThread(id: bound))
+    }
+
+    func testTheEndOfATurnEndsNothingForAPausedJob() {
+        for request in [JobThreadPolicy.Request.returnToWakeWord, .disconnect] {
+            XCTAssertEqual(JobThreadPolicy.resolve(request, paused(jobInputs(active: other))),
+                           .keepThread, "\(request) must not close the wearer's thread for a paused job")
+            XCTAssertEqual(JobThreadPolicy.resolve(request, paused(jobInputs())), .keepThread)
+        }
+    }
+
+    /// The launch restore pauses what it recovers, so a restored job does not reopen its thread —
+    /// the store's own restored conversation is replayed and the job's comes back on resume. A
+    /// dangling id is still forgotten: that claims nothing.
+    func testARestoredPausedJobLeavesTheRestoredConversationAlone() {
+        XCTAssertEqual(JobThreadPolicy.resolve(.launchRestore, paused(jobInputs(active: nil))),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.launchRestore, paused(jobInputs(active: other))),
+                       .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.launchRestore,
+                                               paused(jobInputs(exists: false, active: nil))),
+                       .clearBinding(reason: .boundThreadDeleted))
+        XCTAssertEqual(JobThreadPolicy.resolve(.launchRestore,
+                                               paused(jobInputs(bound: nil, exists: false, active: nil))),
+                       .deferBinding)
+    }
+
+    /// Resumed, every rule is back exactly as it was.
+    func testResumingTheJobRestoresLazyBinding() {
+        let noThread = jobInputs(bound: nil, exists: false, active: other)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), paused(noThread)), .proceedUnbound)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), noThread), .bindActiveThread(id: other))
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.wakeWord), jobInputs(active: other)),
+                       .useBoundThread(id: bound))
+        XCTAssertEqual(JobThreadPolicy.resolve(.returnToWakeWord, jobInputs(active: other)), .endThread)
+        XCTAssertNotEqual(JobThreadPolicy.resolve(.newChat(confirmed: false), jobInputs()), .proceedUnbound)
+    }
+
+    func testADebriefIsUnaffectedByAPausedJob() {
+        var inputs = paused(jobInputs(active: other))
+        inputs.debrief = JobThreadPolicy.DebriefBinding(jobId: "job-1004", threadId: "thread-debrief",
+                                                        threadExists: true)
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.debrief(jobId: "job-1004")), inputs),
+                       .useBoundThread(id: "thread-debrief"))
+        inputs.debrief = JobThreadPolicy.DebriefBinding(jobId: "job-1004")
+        XCTAssertEqual(JobThreadPolicy.resolve(.turn(.debrief(jobId: "job-1004")), inputs),
+                       .bindNewThread(reason: .debriefStarted))
+    }
+
     func testTheQuestionStillReadsWithoutAJobNumber() {
         guard case .askFirst(let question) =
                 JobThreadPolicy.resolve(.newChat(confirmed: false), jobInputs(reference: nil)) else {

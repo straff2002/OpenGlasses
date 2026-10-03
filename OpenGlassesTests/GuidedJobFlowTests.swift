@@ -920,7 +920,11 @@ final class GuidedJobFlowTests: XCTestCase {
     /// A **paused** job is still the job. The launch restore pauses every recovered session, so
     /// reading the binding through `FieldSession.isActive` made a crash-restored job look like no
     /// job at all — its conversation orphaned by the first tap, its outstanding number forgotten.
-    func testAPausedJobStillOwnsItsConversationAndItsQuestions() async throws {
+    ///
+    /// What it no longer does while paused is hold the conversation (2026-10-03): leaving its
+    /// thread is not a question, and is not a detach either — the job keeps the thread, and the
+    /// first turn after resuming is back in it. (This test used to assert the question was asked.)
+    func testAPausedJobStillOwnsItsThreadAndQuestionsButDoesNotHoldTheWearerInIt() async throws {
         _ = try startJob()
         await turn("looking at it now")
         let threadId = try XCTUnwrap(service.activeSession?.conversationThreadId)
@@ -930,18 +934,154 @@ final class GuidedJobFlowTests: XCTestCase {
         _ = try service.pauseSession()
         XCTAssertFalse(service.isSessionActive, "paused is not accepting input…")
 
-        // …but the job still holds everything.
+        // …but the job still holds everything that is the job's.
         XCTAssertEqual(flow.intakeState, .asked(attempts: 1))
         XCTAssertNotNil(flow.pendingUnitQuestion)
         flow.endThreadForVoiceReturn()
         XCTAssertEqual(store.activeThreadId, threadId, "…and its conversation is not closed")
-        XCTAssertNotNil(flow.requestNewChat(), "…and cannot be walked out of silently")
+        XCTAssertNil(flow.requestNewChat(), "…but leaving it is not a question while paused")
+        XCTAssertNil(store.activeThreadId)
+        XCTAssertEqual(service.activeSession?.conversationThreadId, threadId, "the job keeps its thread")
+        XCTAssertEqual(service.activeSession?.conversationThreadDetached, false, "and it is not a detach")
 
         _ = try service.resumeSession()
         await turn("1005")
         await turn("yes")
         XCTAssertEqual(service.activeSession?.jobReference, "1005")
+        await turn("back on the unit")
+        XCTAssertEqual(store.activeThreadId, threadId, "resumed, the job's turn is back in its thread")
         XCTAssertEqual(store.threads.count, 1)
+    }
+
+    // MARK: - A paused job claims nothing (2026-10-03)
+
+    /// A turn the way the app makes one: thread first, then both sides of the exchange written to
+    /// the open job's log by the service's own recorders.
+    private func loggedTurn(_ user: String, assistant: String = "Right you are.",
+                            source: JobThreadPolicy.TurnSource = .wakeWord) async {
+        if await flow.handleUtterance(user) { return }
+        flow.prepareThreadForTurn(source)
+        if store.activeThreadId == nil { store.startThread(mode: AppMode.direct.rawValue) }
+        let sourceID = UUID().uuidString
+        store.appendMessage(role: "user", content: user)
+        service.recordConversationTurn(user, sourceID: sourceID)
+        store.appendMessage(role: "assistant", content: assistant)
+        service.recordAssistantReply(assistant, sourceID: sourceID)
+        await flow.speakPendingQuestionIfDue()
+        flow.endThreadForVoiceReturn()
+    }
+
+    /// The device record, end to end. A procedure tap opened a job before anybody had said
+    /// anything; the app closed, which paused it; the next launch restored it paused; and hours
+    /// later a brand-new conversation about the weather became the job's conversation and was
+    /// written into its record. Now the paused job takes neither.
+    func testAPausedJobDoesNotAdoptTheNextConversationOrRecordIt() async throws {
+        _ = try startJob()
+        XCTAssertNil(service.activeSession?.conversationThreadId, "nothing to bind yet")
+
+        relaunch()
+        XCTAssertNotNil(service.activeSession?.pausedAt, "the restore pauses what it recovers")
+        let before = auditKinds()
+
+        await loggedTurn("what's the weather tomorrow", assistant: "Sunny, twenty-two degrees.")
+        await loggedTurn("and the weekend?", assistant: "Showers on Sunday.")
+
+        XCTAssertNil(service.activeSession?.conversationThreadId,
+                     "the weather is not the job's conversation")
+        XCTAssertEqual(store.threads.count, 1, "it is an ordinary conversation of its own")
+        let after = auditKinds()
+        XCTAssertFalse(after.contains(.userMessage), "nothing the wearer said reached the job's log")
+        XCTAssertFalse(after.contains(.assistantMessage))
+        XCTAssertFalse(after.contains(.jobThreadBound))
+        XCTAssertEqual(after, before, "the paused job's record is exactly as the restore left it")
+    }
+
+    /// Resumed, lazy binding is exactly what it was: the next turn adopts the open conversation,
+    /// and from then on the job's turns are recorded.
+    func testResumingAPausedJobBindsAndRecordsAgain() async throws {
+        _ = try startJob(reference: "1005")
+        relaunch()
+        await loggedTurn("what's the weather tomorrow")
+        let open = try XCTUnwrap(store.activeThreadId)
+        XCTAssertNil(service.activeSession?.conversationThreadId)
+
+        _ = try service.resumeSession()
+        await loggedTurn("right, back to the unit")
+
+        XCTAssertEqual(service.activeSession?.conversationThreadId, open)
+        XCTAssertEqual(auditKinds().filter { $0 == .userMessage }.count, 1,
+                       "only the turn made after resuming")
+        XCTAssertEqual(auditKinds().filter { $0 == .assistantMessage }.count, 1)
+    }
+
+    /// Paused with a thread of its own: a turn is not pulled back into it, the end of a turn does
+    /// not close the thread the wearer is in, and the job's own thread is never idle-ended.
+    func testAPausedJobNeitherPullsATurnBackNorLetsItsThreadGoIdle() async throws {
+        _ = try startJob(reference: "1005")
+        await turn("first look")
+        let jobThread = try XCTUnwrap(service.activeSession?.conversationThreadId)
+        _ = try service.pauseSession()
+
+        clockOffset = 3 * 60 * 60
+        await turn("what's the weather")
+        XCTAssertEqual(store.activeThreadId, jobThread, "the job's own thread is never idle-ended")
+        XCTAssertEqual(clearHistoryCalls, 0)
+        clockOffset = 0
+
+        XCTAssertNil(flow.requestNewChat())
+        await turn("and the weekend")
+        let elsewhere = try XCTUnwrap(store.activeThreadId)
+        XCTAssertNotEqual(elsewhere, jobThread)
+        await turn("and next week")
+        XCTAssertEqual(store.activeThreadId, elsewhere,
+                       "not pulled back into the job's thread, and not closed at the turn's end")
+        XCTAssertEqual(service.activeSession?.conversationThreadId, jobThread)
+        XCTAssertTrue(store.threads.contains { $0.id == jobThread })
+
+        _ = try service.resumeSession()
+        await turn("back to the unit")
+        XCTAssertEqual(store.activeThreadId, jobThread, "resumed, the job takes its turn back")
+    }
+
+    func testLeavingAPausedJobsConversationAsksNothingAndRecordsNothing() async throws {
+        _ = store.startThread(mode: AppMode.direct.rawValue)
+        store.appendMessage(role: "user", content: "an older conversation")
+        let older = try XCTUnwrap(store.activeThreadId)
+        store.endThread()
+        _ = try startJob(reference: "1005")
+        await turn("on the job")
+        _ = try service.pauseSession()
+        let asked = auditKinds().filter { $0 == .jobQuestionAsked }.count
+
+        XCTAssertNil(flow.leaveJobThreadQuestion())
+        XCTAssertNil(flow.leaveJobThreadQuestion(switchingTo: older))
+        XCTAssertNil(flow.requestResume(threadId: older))
+        XCTAssertEqual(store.activeThreadId, older)
+        XCTAssertEqual(service.activeSession?.conversationThreadDetached, false)
+        XCTAssertEqual(auditKinds().filter { $0 == .jobQuestionAsked }.count, asked,
+                       "no question was put, so none is recorded")
+    }
+
+    /// The record's edges. The turn that pauses the job was made while it ran, so its answer is
+    /// kept beside it; what is said while paused is not; and "resume the job", which arrives
+    /// paused, still makes the record when the next tool round re-records it after the resume.
+    func testOnlyTheTurnsAJobIsRunningForReachItsRecord() throws {
+        _ = try startJob(reference: "1005")
+        service.recordConversationTurn("pause the job", sourceID: "t1")
+        _ = try service.pauseSession()
+        service.recordAssistantReply("Paused.", sourceID: "t1")
+
+        service.recordConversationTurn("what's the weather", sourceID: "t2")
+        service.recordAssistantReply("Sunny.", sourceID: "t2")
+        XCTAssertEqual(auditKinds().filter { $0 == .userMessage }.count, 1)
+        XCTAssertEqual(auditKinds().filter { $0 == .assistantMessage }.count, 1)
+
+        service.recordConversationTurn("resume the job", sourceID: "t3")
+        _ = try service.resumeSession()
+        service.recordConversationTurn("resume the job", sourceID: "t3")
+        service.recordAssistantReply("Resumed.", sourceID: "t3")
+        XCTAssertEqual(auditKinds().filter { $0 == .userMessage }.count, 2)
+        XCTAssertEqual(auditKinds().filter { $0 == .assistantMessage }.count, 2)
     }
 
     /// Every route that sets equipment writes the unit onto the job — a spoken correction and a tap

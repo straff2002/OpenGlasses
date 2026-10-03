@@ -238,6 +238,71 @@ enum SessionCardGlassesPill {
     static let awayHint = "Glasses aren't connected — put them on, or check the Meta AI app."
 }
 
+// MARK: - Session card: job pill
+
+/// Whether a Field Assist job is open, said on the session card — "Job running" or "Job paused" —
+/// and a tap that goes to it.
+///
+/// A job can be open without anybody having decided to open one on that screen: a procedure tap
+/// opens one silently, and closing the app pauses it and the next launch restores it. On a real
+/// phone exactly that left a paused job sitting unseen for hours while its owner talked about the
+/// weather, until "you can end" closed it. The Job tab already had Resume and End; what was missing
+/// was any sign on the home screen that there was something there to resume or end. So whenever a
+/// job is open the card says so, and a tap takes the wearer to the job's own page in the Job tab.
+///
+/// `nil` with no job open — and so for everyone without Field Assist, who can never have one. The
+/// Job tab is drawn whenever a job is open (`JobTabPresence` — an open job outranks a lapsed
+/// licence), so the tap always has somewhere to land.
+enum SessionCardJobPill {
+
+    /// What the pill does on a tap.
+    enum Action: Equatable {
+        /// Show the open job's page in the Job tab (`AppState.openJobs(.currentJob)`), where its
+        /// Pause/Resume and End controls are.
+        case openJob
+    }
+
+    struct Presentation: Equatable {
+        /// The visible word (and the label VoiceOver reads).
+        let word: String
+        /// The SF Symbol beside it. Different for the two states, so running and paused differ
+        /// in shape as well as colour — at accessibility sizes the colour is not the only signal.
+        let systemImage: String
+        let tint: SessionCardTint
+        let action: Action
+        /// VoiceOver label matches the visible word exactly; the hint names the tap action.
+        var accessibilityLabel: String { word }
+        let accessibilityHint: String
+    }
+
+    /// - Parameters:
+    ///   - jobOpen: a job that has not ended and was not cancelled — running *or* paused, the same
+    ///     test the Job tab's presence uses.
+    ///   - paused: whether that job is paused (`FieldSession.pausedAt`), deliberately or because
+    ///     the app closed.
+    static func presentation(jobOpen: Bool, paused: Bool) -> Presentation? {
+        guard jobOpen else { return nil }
+        if paused {
+            // Amber, not grey: grey says "not right now, and nothing is wrong", which is how a
+            // paused job went unnoticed. A paused job is a quiet condition worth a glance — the
+            // tier `SessionCardTint.warn` already names — not a failure.
+            return Presentation(word: "Job paused", systemImage: "pause.circle", tint: .warn,
+                                action: .openJob,
+                                accessibilityHint: "Double-tap to open the job, where you can resume or end it.")
+        }
+        return Presentation(word: "Job running", systemImage: "checklist", tint: .ok,
+                            action: .openJob,
+                            accessibilityHint: "Double-tap to open the job, where you can pause or end it.")
+    }
+
+    /// The same, read straight off the field service's open session.
+    static func presentation(session: FieldSession?) -> Presentation? {
+        guard let session else { return nil }
+        return presentation(jobOpen: session.endedAt == nil && session.outcome != .cancelled,
+                            paused: session.pausedAt != nil)
+    }
+}
+
 /// Whether bringing the wake word up on launch or foreground has to wait for glasses registration.
 ///
 /// The wait exists because Bluetooth route churn while a registration is negotiating has been seen
