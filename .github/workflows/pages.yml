@@ -71,5 +71,9 @@ jobs:
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site
+          # The artifact action leaves out dot-files and dot-directories unless told otherwise,
+          # which dropped .well-known/ (security.txt and the app association file) from the
+          # published site. Everything in _site is already allowlisted by the stage script.
+          include-hidden-files: true
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
