@@ -11,8 +11,14 @@ final class OfficePairingServiceTests: XCTestCase {
     private let administrator = Curve25519.Signing.PrivateKey()
     private let office = Curve25519.Signing.PrivateKey()
     private let phone = Curve25519.Signing.PrivateKey()
+    private lazy var clock = CommissionTestClock(now)
+    private var keychainItems: [String] = []
 
-    private func enrolledManager() throws -> (OrgProfileManager, String, String) {
+    override func tearDown() async throws {
+        for item in keychainItems { try? KeychainService.deleteItem(item) }
+    }
+
+    private func enrolledManager(transportPolicy: String = "privateLan") throws -> (OrgProfileManager, String, String) {
         let code = try LicenseService.makeCode(payload: .init(
             feature: "field_assist", licensee: "Northbridge", issued: now.addingTimeInterval(-60),
             expires: now.addingTimeInterval(86_400), organizationID: "northbridge",
@@ -24,11 +30,11 @@ final class OfficePairingServiceTests: XCTestCase {
             leaseDays: 30, licenceCode: code, officeAuthority: .init(
                 organizationID: "northbridge",
                 administratorPublicKey: administrator.publicKey.rawRepresentation.base64EncodedString(),
-                transportPolicy: "privateLan"), schemaVersion: 2)
+                transportPolicy: transportPolicy), schemaVersion: 2)
         let document = try ProfileVerification.makeDocument(profile,
             privateKeyBase64: vendor.rawRepresentation.base64EncodedString())
         var seams = OrgProfileManager.Seams()
-        seams.now = { [now] in now }
+        seams.now = { [clock] in clock.now }
         seams.verificationKeys = ["vendor-test": vendor.publicKey.rawRepresentation.base64EncodedString()]
         seams.licenceKey = licensor.publicKey.rawRepresentation.base64EncodedString()
         seams.resolvableVaultIds = { [] }
@@ -101,6 +107,182 @@ final class OfficePairingServiceTests: XCTestCase {
         let retained = try await highWater.read(organizationID: "northbridge", enrolmentID: "phone-one")
         XCTAssertEqual(retained?.generation, 1)
         let reopened = try await service.currentApprovedPeer()
-        XCTAssertEqual(reopened.payload.officeID, "office-one")
+        XCTAssertEqual(reopened.binding.payload.officeID, "office-one")
+        XCTAssertEqual(reopened.transportPolicy, .privateLan, "the policy is the vendor-signed profile's")
+        XCTAssertNil(reopened.lanHint)
+    }
+
+    // MARK: - The managed connection
+
+    private struct Started: Equatable {
+        let transportID: String
+        let policy: OfficePairingService.TransportPolicy
+        let lanHint: String
+    }
+
+    private var started: [Started] = []
+    private var stops = 0
+    private var onStart: () -> Void = {}
+
+    /// A phone enrolled under `transportPolicy`, its pairing service (whose engine calls are
+    /// recorded) and the store the approval is kept in.
+    private func pairedService(transportPolicy: String = "privateLan")
+        throws -> (OfficePairingService, OfficeApprovedPeerStore) {
+        let (manager, code, _) = try enrolledManager(transportPolicy: transportPolicy)
+        let highWaterPrefix = "office.pairing.service.tests.\(UUID().uuidString)."
+        let approvedPrefix = "office.pairing.approved.tests.\(UUID().uuidString)."
+        let scope = try OfficePeerHighWaterStore.scopeID(organizationID: "northbridge", enrolmentID: "phone-one")
+        keychainItems += [highWaterPrefix + scope, approvedPrefix + scope]
+        let approvedStore = OfficeApprovedPeerStore(keyPrefix: approvedPrefix)
+        let service = OfficePairingService(
+            manager: manager, currentLicence: { code },
+            transportID: { "transport-phone-one" },
+            phoneApplicationKey: { [phone] in phone.publicKey.rawRepresentation },
+            highWater: OfficePeerHighWaterStore(keyPrefix: highWaterPrefix), approvedPeerStore: approvedStore,
+            profileKeys: ["vendor-test": vendor.publicKey.rawRepresentation.base64EncodedString()],
+            licenceKey: licensor.publicKey.rawRepresentation.base64EncodedString(),
+            clock: { [clock] in clock.now },
+            startManagedOffice: { [unowned self] id, policy, hint in
+                self.started.append(Started(transportID: id, policy: policy, lanHint: hint))
+                self.onStart()
+            },
+            stopManagedOffice: { [unowned self] in self.stops += 1 })
+        return (service, approvedStore)
+    }
+
+    private var reviewed: OfficePairingService.ReviewedOffice {
+        .init(officeID: "office-one", transportID: "transport-office-one",
+              applicationPublicKey: office.publicKey.rawRepresentation)
+    }
+
+    func testTheApprovalsPrivateAddressIsKeptAndDialledUnderTheProfilesPolicy() async throws {
+        let (service, _) = try pairedService()
+        _ = try await service.approve(binding(), reviewedOffice: reviewed, lanHint: "192.168.1.24:22000")
+        let approved = try await service.currentApprovedPeer()
+        XCTAssertEqual(approved.lanHint, "tcp://192.168.1.24:22000")
+        try await service.connectToApprovedOffice()
+        XCTAssertEqual(started, [Started(transportID: "transport-office-one", policy: .privateLan,
+                                         lanHint: "tcp://192.168.1.24:22000")])
+        XCTAssertEqual(stops, 0)
+    }
+
+    func testOfficeNetworkOnlyWithNoAddressNeverStarts() async throws {
+        let (service, _) = try pairedService()
+        _ = try await service.approve(binding(), reviewedOffice: reviewed)
+        do {
+            try await service.connectToApprovedOffice()
+            XCTFail("an office-network-only organisation needs the office's address")
+        } catch {
+            XCTAssertEqual(error as? OfficePairingService.Refusal, .noOfficeAddress)
+        }
+        XCTAssertEqual(started, [])
+    }
+
+    func testFromAnywhereStartsWithOrWithoutTheAddress() async throws {
+        let (service, store) = try pairedService(transportPolicy: "automatic")
+        _ = try await service.approve(binding(), reviewedOffice: reviewed)
+        try await service.connectToApprovedOffice()
+        try await service.rememberLanHint("10.1.2.3:22000")
+        let saved = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+        XCTAssertEqual(saved?.lanHint, "tcp://10.1.2.3:22000")
+        try await service.connectToApprovedOffice()
+        XCTAssertEqual(started, [
+            Started(transportID: "transport-office-one", policy: .automatic, lanHint: ""),
+            Started(transportID: "transport-office-one", policy: .automatic, lanHint: "tcp://10.1.2.3:22000"),
+        ])
+    }
+
+    func testAnAddressOffThePrivateNetworkIsNeverKeptOrDialled() async throws {
+        let (service, store) = try pairedService(transportPolicy: "automatic")
+        _ = try await service.approve(binding(), reviewedOffice: reviewed, lanHint: "8.8.8.8:22000")
+        let saved = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+        XCTAssertNotNil(saved)
+        XCTAssertNil(saved?.lanHint)
+        do {
+            try await service.rememberLanHint("tcp://8.8.8.8:22000")
+            XCTFail("a public address is not kept")
+        } catch {
+            XCTAssertEqual(error as? OfficeApprovedPeerStore.Refusal, .corruptState)
+        }
+        do {
+            try await service.connectToApprovedOffice(lanHint: "office.example.com:22000")
+            XCTFail("a typed address that is not private is not dialled")
+        } catch {
+            XCTAssertEqual(error as? OfficePairingService.Refusal, .noOfficeAddress)
+        }
+        XCTAssertEqual(started, [])
+    }
+
+    func testATypedAddressIsTriedOnceAndKeptOnlyWhenRemembered() async throws {
+        let (service, store) = try pairedService()
+        _ = try await service.approve(binding(), reviewedOffice: reviewed, lanHint: "192.168.1.24:22000")
+        try await service.connectToApprovedOffice(lanHint: "tcp://192.168.7.9:22000")
+        XCTAssertEqual(started.last?.lanHint, "tcp://192.168.7.9:22000")
+        var saved = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+        XCTAssertEqual(saved?.lanHint, "tcp://192.168.1.24:22000", "a test alone changes nothing saved")
+        try await service.rememberLanHint("tcp://192.168.7.9:22000")
+        saved = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+        XCTAssertEqual(saved?.lanHint, "tcp://192.168.7.9:22000")
+    }
+
+    func testAPairingThatExpiresWhileStartingIsStoppedAgain() async throws {
+        let (service, _) = try pairedService()
+        _ = try await service.approve(binding(), reviewedOffice: reviewed, lanHint: "192.168.1.24:22000")
+        // The binding is valid for an hour: it lapses while the engine starts.
+        onStart = { [clock] in clock.now = clock.now.addingTimeInterval(3_600) }
+        do {
+            try await service.connectToApprovedOffice()
+            XCTFail("the approval is checked again after the engine starts")
+        } catch {
+            XCTAssertEqual(error as? OfficePeerBinding.Refusal, .notCurrentlyValid)
+        }
+        XCTAssertEqual(started.count, 1)
+        XCTAssertEqual(stops, 1, "the engine is stopped when the approval no longer verifies")
+        XCTAssertEqual(OfficeFieldConnectionPolicy.afterFailure(OfficePeerBinding.Refusal.notCurrentlyValid),
+                       .stop(.pairingExpired))
+    }
+
+    // MARK: - The saved route hint
+
+    func testARecordSavedBeforeTheAddressExistedReadsWithNone() async throws {
+        let prefix = "office.pairing.approved.tests.\(UUID().uuidString)."
+        let scope = try OfficePeerHighWaterStore.scopeID(organizationID: "northbridge", enrolmentID: "phone-one")
+        keychainItems.append(prefix + scope)
+        struct Earlier: Encodable {
+            let version: Int, scopeID: String, officeID: String, officeTransportID: String
+            let officeApplicationKey: Data, signedBinding: Data
+        }
+        let earlier = Earlier(version: 1, scopeID: scope, officeID: "office-one",
+                              officeTransportID: "transport-office-one",
+                              officeApplicationKey: office.publicKey.rawRepresentation, signedBinding: try binding())
+        try KeychainService.upsertDataAtomically(JSONEncoder().encode(earlier), for: prefix + scope,
+                                                 accessibility: .afterFirstUnlockThisDeviceOnly)
+        let store = OfficeApprovedPeerStore(keyPrefix: prefix)
+        let read = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+        XCTAssertEqual(read?.officeID, "office-one")
+        XCTAssertNil(read?.lanHint)
+    }
+
+    func testASavedAddressThatIsNotPrivateIsRefusedOnRead() async throws {
+        let prefix = "office.pairing.approved.tests.\(UUID().uuidString)."
+        let scope = try OfficePeerHighWaterStore.scopeID(organizationID: "northbridge", enrolmentID: "phone-one")
+        keychainItems.append(prefix + scope)
+        let record = OfficeApprovedPeerStore.Stored(
+            version: 1, scopeID: scope, officeID: "office-one", officeTransportID: "transport-office-one",
+            officeApplicationKey: office.publicKey.rawRepresentation, signedBinding: try binding(),
+            lanHint: "tcp://8.8.8.8:22000")
+        try KeychainService.upsertDataAtomically(JSONEncoder().encode(record), for: prefix + scope,
+                                                 accessibility: .afterFirstUnlockThisDeviceOnly)
+        let store = OfficeApprovedPeerStore(keyPrefix: prefix)
+        do {
+            _ = try await store.read(organizationID: "northbridge", enrolmentID: "phone-one")
+            XCTFail("only a private address is ever saved")
+        } catch {
+            XCTAssertEqual(error as? OfficeApprovedPeerStore.Refusal, .corruptState)
+        }
+        XCTAssertEqual(OfficeApprovedPeerStore.lanHint("192.168.1.24:22000"), "tcp://192.168.1.24:22000")
+        XCTAssertEqual(OfficeApprovedPeerStore.lanHint("tcp://10.0.0.1:22000"), "tcp://10.0.0.1:22000")
+        XCTAssertNil(OfficeApprovedPeerStore.lanHint("quic://10.0.0.1:22000"))
+        XCTAssertNil(OfficeApprovedPeerStore.lanHint("tcp://172.32.0.1:22000"))
     }
 }

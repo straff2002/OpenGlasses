@@ -61,12 +61,21 @@ struct OrgEnrolmentRecord {
     func evaluateLease() -> ProfileLease.Status? { status }
 }
 actor OfficeTransportIdentity {
+    struct Started: Equatable, Sendable {
+        let transportID: String
+        let policy: OfficePairingService.TransportPolicy
+        let lanHint: String
+    }
     static let shared = OfficeTransportIdentity()
-    private var running = false
+    private var running: Started?
     func deviceID() throws -> String { "unused" }
-    func startManagedOffice(transportID: String, lanAddress: String) throws { running = true }
-    func stop() { running = false }
-    func isRunning() -> Bool { running }
+    func startManagedOffice(transportID: String, policy: OfficePairingService.TransportPolicy,
+                            lanHint: String) throws {
+        running = Started(transportID: transportID, policy: policy, lanHint: lanHint)
+    }
+    func stop() { running = nil }
+    func isRunning() -> Bool { running != nil }
+    func started() -> Started? { running }
 }
 actor OfficePhoneIdentity {
     static let shared = OfficePhoneIdentity()
@@ -90,15 +99,29 @@ actor OfficeApprovedPeerStore {
         let officeTransportID: String
         let officeApplicationKey: Data
         let signedBinding: Data
+        var lanHint: String?
     }
+    enum Refusal: Error, Equatable { case corruptState }
     static let shared = OfficeApprovedPeerStore()
     private var state: Stored?
     func save(_ signedBinding: Data, organizationID: String, enrolmentID: String,
-              officeID: String, officeTransportID: String, officeApplicationKey: Data) throws {
+              officeID: String, officeTransportID: String, officeApplicationKey: Data,
+              lanHint: String? = nil) throws {
+        if let lanHint, Self.lanHint(lanHint) != lanHint { throw Refusal.corruptState }
         state = Stored(officeID: officeID, officeTransportID: officeTransportID,
-                       officeApplicationKey: officeApplicationKey, signedBinding: signedBinding)
+                       officeApplicationKey: officeApplicationKey, signedBinding: signedBinding,
+                       lanHint: lanHint)
+    }
+    func updateLanHint(_ lanHint: String, organizationID: String, enrolmentID: String) throws {
+        guard let hint = Self.lanHint(lanHint) else { throw Refusal.corruptState }
+        state?.lanHint = hint
     }
     func read(organizationID: String, enrolmentID: String) throws -> Stored? { state }
+    /// The real check is OfficeCommissioningFlow.managedOfficeAddress (private IPv4 only), covered
+    /// by the app's unit tests. This stand-in accepts only the one office address the gate test uses.
+    static func lanHint(_ text: String) -> String? {
+        ["192.168.1.2:22000", "tcp://192.168.1.2:22000"].contains(text) ? "tcp://192.168.1.2:22000" : nil
+    }
 }
 """
         )

@@ -62,10 +62,11 @@ final class OfficeCommissioningService: ObservableObject {
         var appBuild: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
         /// Tells the app the active model changed, so what it shows follows.
         var modelDidChange: @MainActor () -> Void = {}
-        /// Starts the managed connection from the saved approval, as the pairing sheet's
-        /// "Test office connection" does.
-        var connectOffice: @MainActor (OfficePairingService, String) async throws -> Void = {
-            try await $0.connectToApprovedOffice(lanAddress: $1)
+        /// Starts the managed connection from the saved approval. The app hands this to its
+        /// field connection (`OfficeFieldConnection.restart()`), which then keeps it running
+        /// while the app is open; the engine is never left running with no owner.
+        var connectOffice: @MainActor (OfficePairingService) async throws -> Void = {
+            try await $0.connectToApprovedOffice()
         }
     }
 
@@ -325,23 +326,22 @@ final class OfficeCommissioningService: ObservableObject {
             phoneApplicationKey: seams.phoneApplicationKey, highWater: seams.highWater,
             approvedPeerStore: seams.approvedPeerStore, profileKeys: seams.profileKeys,
             licenceKey: seams.licenceKey, clock: seams.now)
+        // The approval's address is only a route hint, kept with the approval: a non-private one
+        // is not kept, so it is never dialled.
+        let lanHint = OfficeCommissioningFlow.managedOfficeAddress(approval.officeAddress)
         do {
-            _ = try await pairing.approve(binding, reviewedOffice: office)
+            _ = try await pairing.approve(binding, reviewedOffice: office, lanHint: lanHint)
         } catch {
             stage = .failed(.bindingNotKept)
             return
         }
-        // The managed connection, from the saved approval as the pairing sheet starts it. The
-        // approval's address is only a route hint: a non-private one is not dialled, and a
-        // connection that fails leaves the pairing kept, to be tried again from the pairing sheet.
-        officeConnected = false
-        if let address = OfficeCommissioningFlow.managedOfficeAddress(approval.officeAddress) {
-            do {
-                try await seams.connectOffice(pairing, address)
-                officeConnected = true
-            } catch {
-                officeConnected = false
-            }
+        // The managed connection, from the saved approval under the organisation's policy. One
+        // that fails leaves the pairing kept, and the connection keeps trying while the app is open.
+        do {
+            try await seams.connectOffice(pairing)
+            officeConnected = true
+        } catch {
+            officeConnected = false
         }
         guard !Task.isCancelled else { return }
         seams.modelDidChange()

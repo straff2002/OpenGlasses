@@ -166,6 +166,7 @@ struct FieldAssistSettingsView: View {
             #if AVENKIN_OFFICE_TRANSPORT
             if orgProfile.record?.source == .office {
                 Section {
+                    OfficeFieldConnectionRow(connection: appState.officeField)
                     Button("Pair with Avenkin Office") { showingOfficePairing = true }
                 } footer: {
                     Text("Review the desktop identity and verify its administrator-signed binding before this phone can connect.")
@@ -472,7 +473,7 @@ struct FieldAssistSettingsView: View {
             OrgCodeScannerView { code in scannedOrgCode = code }
         }
         #if AVENKIN_OFFICE_TRANSPORT
-        .sheet(isPresented: $showingOfficePairing) { OfficePairingSheet() }
+        .sheet(isPresented: $showingOfficePairing) { OfficePairingSheet(field: appState.officeField) }
         #endif
         .fileImporter(isPresented: $showingOfficeSetupImporter,
                       allowedContentTypes: [UTType(exportedAs: OfficeSetupPackage.typeIdentifier), .json]) { result in

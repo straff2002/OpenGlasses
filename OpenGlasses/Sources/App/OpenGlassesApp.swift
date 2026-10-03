@@ -277,7 +277,7 @@ struct OpenGlassesApp: App {
 
                 // An office's code scanned in the app (Contracts/commissioning.md) — invisible until
                 // one is scanned. Nothing is applied before the organisation's own review.
-                OfficeCommissioningOverlay(service: appState.officeCommissioning)
+                OfficeCommissioningOverlay(service: appState.officeCommissioning, field: appState.officeField)
 
                 // A vault link scanned outside the app (Plan FS PR2). Nothing is fetched or
                 // installed from the link itself — this raises the review flow and no more.
@@ -326,6 +326,8 @@ struct OpenGlassesApp: App {
                         .zIndex(999)
                 }
             }
+            // Also once at launch, in case the first activation came before this view; idempotent.
+            .task { if scenePhase != .background { appState.officeField.appBecameActive() } }
             .onAppear {
                 AppStateProvider.shared = appState
                 #if DEBUG
@@ -529,6 +531,7 @@ struct OpenGlassesApp: App {
                 appState.skillPackSideload.handleBackground()
                 appState.orgEnrolment.handleBackground()
                 appState.officeCommissioning.handleBackground()
+                appState.officeField.appEnteredBackground()
                 // Plan CT 3b: an administrator session never outlives the app leaving the screen.
                 AdminGate.shared.handleBackground()
                 // Don't end Live Activity here — it should persist on the Lock Screen.
@@ -551,6 +554,8 @@ struct OpenGlassesApp: App {
             case .active:
                 PrivacyLog.app(.becameActive)
                 appState.restoreFromBackground()
+                // A paired phone reconnects to its office whenever the app is open.
+                appState.officeField.appBecameActive()
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
                 // brought back — but it runs the same gate, so a session the wearer stopped stays
                 // stopped and a repeated activation does not stack a second start on the first.
@@ -1425,8 +1430,19 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var officeCommissioning: OfficeCommissioningService = {
         var seams = OfficeCommissioningService.Seams()
         seams.modelDidChange = { [weak self] in self?.llmService.refreshActiveModel() }
+        #if AVENKIN_OFFICE_TRANSPORT
+        // The field connection owns the engine once the phone is paired, and keeps it running.
+        seams.connectOffice = { [weak self] _ in
+            guard let self else { return }
+            try await self.officeField.restart()
+        }
+        #endif
         return OfficeCommissioningService(manager: OrgProfileManager.shared, seams: seams)
     }()
+
+    /// A paired phone's connection to its office while the app is open. Without the office
+    /// transport in the build it never runs and shows nothing.
+    lazy var officeField = OfficeFieldConnection()
 
     /// A code read by the in-app scanner: an office's code joins that office; anything else is an
     /// organisation enrolment code, as before.
@@ -2106,6 +2122,12 @@ class AppState: ObservableObject, AppStateProtocol {
             self?.connectivityHandoff.noteCloudAttempt(error: error)
         }
         syncEngine.bind(to: reachability)        // chains the affordance above, then flushes on reconnect
+        // A paired phone's office connection starts again when the network comes back.
+        let afterReachability = reachability.onChange
+        reachability.onChange = { [weak self] online in
+            afterReachability?(online)
+            if online { self?.officeField.networkBecameAvailable() }
+        }
         syncEngine.onConflict = { [weak self] _, reason in
             Task { @MainActor in await self?.speechService.speak("Heads up — \(reason).") }
         }
