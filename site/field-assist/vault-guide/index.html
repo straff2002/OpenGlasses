@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Vault guide · Field Assist · Avenkin</title>
+<meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
+<!-- Converted from docs/field-assist-vault-guide.md. That file is the source: change the guide
+     there and convert it again, rather than editing this page. -->
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="stage compact">
+<header class="site-header">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="30" height="30">Avenkin</a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/app/">The app</a>
+    <a href="/field-assist/" aria-current="page">Field Assist</a>
+    <a href="/office/">Office</a>
+    <a href="/pricing/">Plans</a>
+  </nav>
+</header>
+<section class="page-hero">
+  <p class="kicker">Field Assist guide</p>
+  <h1>Building a Field Assist vault from your own manuals</h1>
+  <p class="lede">Turn your own manuals into a vault the assistant can search and cite.</p>
+</section>
+</div>
+<main>
+<div class="prose">
+<p class="meta">Field Assist, powered by Avenkin · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text</p>
+<p class="meta">Also available as a <a href="/docs/field-assist-vault-guide.pdf">PDF</a>.</p>
+<nav class="contents" aria-label="Contents">
+<ol>
+  <li><a href="#what-you-are-building">What you are building</a></li>
+  <li><a href="#before-you-start">Before you start</a></li>
+  <li><a href="#step-1-prepare-the-manuals">Step 1 · Prepare the manuals</a></li>
+  <li><a href="#step-2-write-the-core-files">Step 2 · Write the core files</a></li>
+  <li><a href="#step-3-write-the-manifest">Step 3 · Write the manifest</a></li>
+  <li><a href="#step-4-procedures-optional">Step 4 · Procedures (optional)</a></li>
+  <li><a href="#step-5-import-on-the-iphone">Step 5 · Import on the iPhone</a></li>
+  <li><a href="#step-6-test-the-loop">Step 6 · Test the loop</a></li>
+  <li><a href="#step-7-send-the-job-report">Step 7 · Send the job report</a></li>
+  <li><a href="#sending-the-technician-their-next-job">Sending the technician their next job</a></li>
+  <li><a href="#updating-a-vault">Updating a vault</a></li>
+  <li><a href="#removing-one-manual-on-the-phone">Removing one manual on the phone</a></li>
+  <li><a href="#if-the-import-refuses">If the import refuses</a></li>
+  <li><a href="#receiving-a-vault-from-a-link-or-a-qr-code">Receiving a vault from a link or a QR code</a></li>
+  <li><a href="#publishing-a-vault">Publishing a vault</a></li>
+  <li><a href="#sharing-a-vault-three-situations">Sharing a vault: three situations</a></li>
+  <li><a href="#checklist-before-you-send-a-vault-to-a-customer">Checklist before you send a vault to a customer</a></li>
+</ol>
+</nav>
+<p>A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.</p>
+<p>For an example with selectable procedures, see the <a href="https://github.com/straff2002/OpenGlasses/blob/main/examples/vaults/aviation-operations/README.md">aviation operations workflow discovery vault</a>. It contains seven proposed draft workflows for organisational adaptation, not operator-approved aviation procedures or a live integration.</p>
+<h2 id="what-you-are-building">What you are building</h2>
+<p>Every vault has the same shape. The names in <code>manifest.json</code> have to match the files exactly, but the file names themselves are yours to choose.</p>
+<pre><code>rtu-service-vault/
+├── manifest.json               names everything below
+├── safety.md                   core: always in context
+├── error_codes.md              core: fault codes by model
+├── models.md                   core: nameplate quick reference
+├── documents/                  reference: retrieved per question
+│   ├── RTU-500-service-manual.pdf
+│   ├── RTU-500-wiring.pdf
+│   └── RTU-700-install-guide.pdf
+└── procedures/                 optional: step-by-step flows
+    └── low_pressure_diagnostic.json
+</code></pre>
+<p>The two kinds of content behave differently, and getting the split right is most of the work.</p>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Core files</th>
+<th>Documents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>When read</strong></td>
+<td>Into the assistant's context on every single question</td>
+<td>Only the passages relevant to a question, retrieved at that moment</td>
+</tr>
+<tr>
+<td><strong>Size</strong></td>
+<td>Keep the total under about 32 KB; the importer warns above that</td>
+<td>No practical limit; a 300-page manual is fine</td>
+</tr>
+<tr>
+<td><strong>Right for</strong></td>
+<td>Safety rules, fault-code tables, model and refrigerant quick references</td>
+<td>Full service manuals, wiring guides, installation and commissioning documents</td>
+</tr>
+<tr>
+<td><strong>Citations</strong></td>
+<td>Source file name</td>
+<td>Manual title and page number</td>
+</tr>
+<tr>
+<td><strong>Editable on the phone</strong></td>
+<td>Yes; edits are kept separately from your originals</td>
+<td>No; re-import to change</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="before-you-start">Before you start</h2>
+<ol>
+<li>Install the TestFlight build on the iPhone and pair the glasses.</li>
+<li>Open <strong>Settings › Field Assist</strong>. If your organisation issued a licence code, paste it and tap <strong>Activate Licence</strong> — the status card should show <strong>Tier: Team</strong>. A Field Assist subscription on the phone's own Apple ID does just as well for building vaults: vaults of your own and manual indexing come with a subscription or an organisation licence. The one-time unlock some early users hold covers the bundled vaults only; audited PDF export and organisation-issued configuration stay with a team licence.</li>
+<li>Turn on <strong>Enable Field Assist</strong> on the same screen.</li>
+<li>Have a way to get a folder onto the phone. iCloud Drive in the Files app is the simplest; AirDrop of the whole folder also works.</li>
+</ol>
+<h2 id="step-1-prepare-the-manuals">Step 1 · Prepare the manuals</h2>
+<p>The importer reads the text layer of a PDF. Open each manual on your computer and try to select a sentence with the cursor. If the text highlights, the page imports as-is. If nothing selects, the page is a scanned image. Scans still import; you have three ways to handle them, and you can mix them per manual.</p>
+<p><strong>Route A · Let the phone read it.</strong> Nothing to install. Import the scanned PDF like any other. The app reads scanned pages itself during import, page by page, on the device. A 300-page scan takes minutes; keep the app open, and if it is interrupted the import resumes where it stopped. The vault row afterwards shows how many pages were read this way and how many came out low confidence, so you know which manual to replace with a better copy. Any answer drawn from a recognised page carries a note to verify figures against the printed page, because numbers are where recognition fails quietly.</p>
+<p><strong>Route B · Add a text layer on any computer (recommended for anything you will reuse).</strong> Run the scan through an OCR tool that writes a searchable PDF, then import that PDF. The pages stay the same, so citations still match the printed book, and the phone does no recognition at all. Free, works on Windows, Mac and Linux:</p>
+<pre><code>ocrmypdf --language eng RTU-500-service-manual-scan.pdf RTU-500-service-manual.pdf
+</code></pre>
+<p>OCRmyPDF is at ocrmypdf.readthedocs.io; on Windows install it through the instructions there (it runs under Python, with Tesseract as the recognition engine). Adobe Acrobat's "Recognize Text" does the same job if you already have it, and so do most scanner drivers' "searchable PDF" settings if you are scanning the book yourself. Whatever tool you use, open the result and select a sentence to confirm the text layer is there before you copy it into <code>documents/</code>.</p>
+<p><strong>Route C · The repository's extractor, on a Mac.</strong> If you have a Mac, the app's repository includes a script that does the same per-page read and writes Markdown with a <code>Page N</code> line before each page, which lets you open the text and correct a misread figure before anyone relies on it. It is not in the app; download it from the public repository:</p>
+<pre><code>curl -O https://raw.githubusercontent.com/straff2002/OpenGlasses/main/Scripts/extract-manual-text.swift
+swift extract-manual-text.swift RTU-500-service-manual.pdf
+</code></pre>
+<p>It needs Apple's command-line developer tools (<code>xcode-select --install</code>). It writes <code>RTU-500-service-manual.md</code> beside the PDF and prints how many pages were recognised and how many came out low confidence. Put the <code>.md</code> in <code>documents/</code> instead of the PDF and give it the same title.</p>
+<p>The script also reads the manual's <strong>structure from its type</strong> and writes it into the Markdown: a
+line set in bold at the manual's body size becomes a <code>## Heading</code>, a bold <code>FIGURE 58</code> or <code>TABLE 16</code>
+caption becomes a <code>### Figure 58 — …</code> line, and a page that is mostly small labels with no sentences
+in it — a wiring diagram, a dimensions drawing, a table page — is tagged <code>&lt;!-- page: diagram --&gt;</code>.
+The closing summary says how many of each it found. That is what makes a citation read <em>page 62,
+§Turning Off Gas to Unit</em> rather than naming whatever line happened to be in capitals, and it is
+also how a wiring question reaches the wiring page. Everything the marks describe stays in the text,
+so the file is still yours to read and correct; if the extractor marked something wrongly, edit the
+line. Importing the PDF itself gets the same treatment inside the app, so the two are interchangeable
+— what Route C buys you is the chance to look first.</p>
+<p>It also warns, per page, when a manual prints its own page number at the top of the page and that number disagrees with the page's position in the PDF — usually an unnumbered cover or roman-numeral front matter shifting everything by a page or two — and counts them in the closing summary. Citations always name the physical page, the one you reach by counting from the front, so either fix the PDF (delete or add the front matter until the numbers line up) or accept the offset and tell your technicians about it. Zero warnings means a citation reads exactly as the page is printed.</p>
+<p><strong>Import the PDF rather than the extracted text when you want the drawings.</strong> Both routes give the same citations and the same answers, but only the PDF keeps the <em>pages</em>: when a question reaches a wiring diagram, the app opens that page on the technician's phone — the real drawing, zoomable — and sends it to the assistant as a picture, so the answer is read off the diagram rather than off the list of terminal labels underneath it. A manual imported as extracted text still cites its figures correctly; it simply has no page to show, and the app says so when a technician asks to see one. Route C is for looking at what the extractor read and correcting it; if the drawings matter, import the PDF once you have.</p>
+<p><strong>Bundle the original beside the extracted text for anything a manufacturer requires as an SOP.</strong> If you take Route C — or receive a manual as text from anyone — put the manufacturer's PDF in <code>documents/</code> beside it and name it in the manifest as that document's <code>source</code>. It is copied into the vault and hashed, and it is never indexed, so the text stays what gets searched and your corrections to it still count. What it buys is the page itself: a technician who taps a citation sees the manufacturer's own page, and the header says so and says whether the file is still byte-for-byte the one you imported. Without it the same citation opens the extracted text and says, in as many words, that the original is not in this vault — which is exactly what a compliance reviewer will ask.</p>
+<p>Page numbers are preserved automatically either way, so a citation reads <em>RTU-500 Service Manual, page 42</em> and the technician can open the paper copy to it. That only works if the PDF's pages match the printed pages, which is true of nearly every OEM PDF.</p>
+<p>A few habits that pay off:</p>
+<ul>
+<li><strong>One file per manual, one manual per model family.</strong> A combined 900-page binder still works, but a technician hears the title in every citation, so shorter, specific titles read better.</li>
+<li><strong>Trim what does not help in the field.</strong> Warranty terms, ordering forms and marketing pages add index time and add nothing to answers. Delete those pages before you copy the file in.</li>
+<li><strong>Keep fault-code tables in the core too.</strong> The manual's fault-code chapter is retrieved fine, but a code that also sits in <code>error_codes.md</code> is found instantly by the nameplate lookup without a search at all.</li>
+</ul>
+<h2 id="step-2-write-the-core-files">Step 2 · Write the core files</h2>
+<p>Markdown, plain text, any editor. Two conventions matter because the app relies on them.</p>
+<h3 id="headings-define-lookup-sections">Headings define lookup sections</h3>
+<p>When a technician says <em>"look up fault T02"</em> or points the glasses at a display, the app splits each core file at <code>##</code> and <code>###</code> headings and returns the whole section that contains an exact match for the code. So group codes under a heading per manufacturer or model, and put the code in a table row or at the start of a line. A section that runs on for pages will be read back in full, so keep sections tight.</p>
+<pre><code class="language-markdown"># Fault Codes
+
+## Acme RTU-500 (Series 5 controller)
+
+| Code | Meaning                     | First check                                |
+|------|-----------------------------|--------------------------------------------|
+| ZX9  | Low refrigerant charge      | Sight glass, then subcooling before adding |
+| ZX3  | Condenser fan failure       | Fan capacitor, fan relay                   |
+| ZX1  | Discharge line sensor fault | Sensor resistance vs. table on page 61     |
+
+## Acme RTU-700 (Series 7 controller)
+
+| Code | Meaning                     | First check                                |
+|------|-----------------------------|--------------------------------------------|
+| F12  | High pressure lockout       | Condenser coil, fan staging                |
+</code></pre>
+<h3 id="a-safety-file-the-assistant-repeats-before-risky-steps">A safety file the assistant repeats before risky steps</h3>
+<p>The assistant is instructed by the manifest to remind the technician of safety steps before opening electrical panels or the refrigerant circuit. Put the reminders you want spoken in <code>safety.md</code>, in your own words and to your own site rules. Lockout, PPE, recovery before opening the circuit, gas isolation for furnaces, and anything specific to Manitoba code belong here.</p>
+<h3 id="a-nameplate-reference">A nameplate reference</h3>
+<p><code>models.md</code> is where model and serial patterns live: what the numbers on the plate mean, refrigerant per model, nominal charge, controller type. When the camera reads a plate, the model number is matched against these sections the same way a fault code is.</p>
+<p><strong>Put every spelling of a model in that model's own heading.</strong> Manuals and nameplates rarely agree — <code>SLP99UH090XV60CK</code> on the plate, <code>SLP99UHXV-090-60C</code> in the parts list, <code>090XV60C</code> in a table. A lookup returns whole <code>##</code> sections in file order and stops at three, so a spelling that appears anywhere earlier in the file — an introduction, a summary table, a compatibility note — spends one of those three slots and can push the model's own section out of the answer. A heading that carries all the spellings costs nothing and cannot be crowded out:</p>
+<pre><code class="language-markdown">## SLP99UH090XV60CK (SLP99UHXV-090-60C, 090XV60C, SLP99UH090V60CK)
+</code></pre>
+<h3 id="parts-so-a-number-the-assistant-says-can-be-checked">Parts, so a number the assistant says can be checked</h3>
+<p>A part number is the one thing on a job report that somebody else acts on: base orders against it.
+So the app never writes a number down without looking it up first, and a number it cannot find is
+recorded and spoken as <strong>unverified</strong> rather than quietly trusted.</p>
+<p>Give it something to look up. Add a <code>parts.md</code> core file — or a <code>## Parts</code> section in any core file —
+with a table whose first two columns are <code>Part</code> and <code>Description</code>. <code>Fits</code> and <code>Supersedes</code> are
+optional, and <code>Supersedes</code> is what lets a technician read the old number off a component and get
+the one to order:</p>
+<pre><code class="language-markdown">## Conversion kits
+
+| Part  | Description                                | Fits                | Supersedes |
+|-------|--------------------------------------------|---------------------|------------|
+| 65W77 | LP/propane changeover kit, 0-10,000 ft      | 070, 110, 135       |            |
+| 20A26 | LP/propane changeover kit, 0-4,500 ft       | 090 models          | 20A11      |
+</code></pre>
+<p>Only <code>parts.md</code> is read as parts throughout; in any other core file, only the tables under a
+<code>## Parts</code> heading count — so a specifications table that happens to have a "Part" column cannot
+leak in. Put the file in <code>files</code> in the manifest like any other core file, and keep the core inside
+its 32 KB budget: a full price book belongs in <code>documents</code>, not here.</p>
+<p>A number that is not in the table is still checked against the manuals as a whole word, and the page
+it is found on is what the record cites. A vault with no parts table is not broken — every number is
+simply verified against the manuals alone, and a vault with neither records them unverified, which
+is the honest answer.</p>
+<h2 id="step-3-write-the-manifest">Step 3 · Write the manifest</h2>
+<p>This is the whole file for the folder above.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;acme_rtu&quot;,
+  &quot;name&quot;: &quot;Acme RTU Service&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;files&quot;: [&quot;safety.md&quot;, &quot;error_codes.md&quot;, &quot;models.md&quot;],
+  &quot;documents_dir&quot;: &quot;documents&quot;,
+  &quot;documents&quot;: [
+    { &quot;file&quot;: &quot;RTU-500-service-manual.pdf&quot;, &quot;title&quot;: &quot;RTU-500 Service Manual&quot;, &quot;kind&quot;: &quot;service_manual&quot; },
+    { &quot;file&quot;: &quot;RTU-500-wiring.pdf&quot;,         &quot;title&quot;: &quot;RTU-500 Wiring&quot;,         &quot;kind&quot;: &quot;wiring&quot; },
+    { &quot;file&quot;: &quot;RTU-700-install-guide.pdf&quot;,  &quot;title&quot;: &quot;RTU-700 Install Guide&quot;,  &quot;kind&quot;: &quot;install_guide&quot; },
+    { &quot;file&quot;: &quot;RTU-900-service-manual.md&quot;,  &quot;title&quot;: &quot;RTU-900 Service Manual&quot;,  &quot;kind&quot;: &quot;service_manual&quot;,
+      &quot;source&quot;: &quot;RTU-900-service-manual.pdf&quot;,
+      &quot;source_url&quot;: &quot;https://example.com/manuals/RTU-900-service-manual.pdf&quot; }
+  ],
+  &quot;procedures_dir&quot;: &quot;procedures&quot;,
+  &quot;gating&quot;: { &quot;iap&quot;: &quot;enterprise&quot; },
+  &quot;prompt_rules&quot;: [
+    &quot;Never fabricate equipment data, fault codes, refrigerant properties, or procedures.&quot;,
+    &quot;Use only the vault contents, the retrieved manual passages, and the technician's stated observations.&quot;,
+    &quot;Cite the source file or manual page on every factual claim.&quot;,
+    &quot;If the manuals do not cover the question, say so and recommend escalation rather than guessing.&quot;,
+    &quot;Remind the technician of the relevant safety steps before any action that opens an electrical panel, the gas train, or the refrigerant circuit.&quot;
+  ],
+  &quot;source_attribution_format&quot;: &quot;Source: {files}&quot;,
+  &quot;source_attribution_required&quot;: true
+}
+</code></pre>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Lowercase, no spaces. Never change it after the first import; updates match on it.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>What technicians hear: <em>"start a session in Acme RTU Service"</em>.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Bump it when you re-import.</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>The core files, in the order you want them read.</td>
+</tr>
+<tr>
+<td><code>documents_dir</code> / <code>documents</code></td>
+<td>The manuals. <code>title</code> is what the technician hears in a citation; <code>kind</code> is a free-text label.</td>
+</tr>
+<tr>
+<td><code>source</code> (per document)</td>
+<td>Optional. The manufacturer's own PDF, sitting in the same folder, for a document you imported as extracted text. Copied and hashed at import, never indexed. Tapping a citation can then show the manufacturer's page rather than the transcription of it.</td>
+</tr>
+<tr>
+<td><code>source_url</code> (per document)</td>
+<td>Optional. Where the manufacturer publishes this manual, as an <code>https://</code> link. Offered as a button that opens outside the app; it is never a substitute for bundling the original.</td>
+</tr>
+<tr>
+<td><code>procedures_dir</code></td>
+<td>Omit it if you have no procedures.</td>
+</tr>
+<tr>
+<td><code>gating</code></td>
+<td>Always <code>{ "iap": "enterprise" }</code> for a custom vault.</td>
+</tr>
+<tr>
+<td><code>prompt_rules</code></td>
+<td>The rules the assistant follows while this vault is active.</td>
+</tr>
+<tr>
+<td><code>source_attribution_*</code></td>
+<td>Forces a source line on every factual claim drawn from the core files.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>The importer refuses a manifest whose rules do not mention fabrication and citation.</strong> Your <code>prompt_rules</code> must include a rule containing the word <em>fabricate</em> and one containing <em>cite</em>. The rules above satisfy that; reword them freely as long as those two words survive.</p>
+<p><strong>The title is the citation.</strong> Whatever you put in <code>title</code> is what the technician hears: <em>"Source: RTU-500 Service Manual, page 42"</em>. Name it the way your people already refer to the book.</p>
+</blockquote>
+<h2 id="step-4-procedures-optional">Step 4 · Procedures (optional)</h2>
+<p>A procedure is a branching checklist the assistant walks a technician through by voice: <em>"next"</em>, <em>"go back"</em>, <em>"repeat that"</em>, and branch choices from what the technician reports. Skip this for your first import; add one once the question-and-answer loop works.</p>
+<p>Each procedure is one JSON file in <code>procedures/</code>. The importer checks the graph before install: the entry step must exist, every branch must point at a real step, every non-terminal step needs a way forward, and at least one terminal step must be reachable.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;rtu500_low_charge&quot;,
+  &quot;title&quot;: &quot;RTU-500 Low Charge Diagnostic&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;description&quot;: &quot;Confirm and correct a ZX9 low-charge fault on the RTU-500.&quot;,
+  &quot;safety_notes&quot;: [
+    &quot;Lock out power before opening the control panel.&quot;,
+    &quot;Recover refrigerant before opening the circuit.&quot;
+  ],
+  &quot;entry_step&quot;: &quot;confirm_fault&quot;,
+  &quot;steps&quot;: [
+    {
+      &quot;id&quot;: &quot;confirm_fault&quot;,
+      &quot;title&quot;: &quot;Confirm the fault&quot;,
+      &quot;instruction&quot;: &quot;Read the controller display. Is ZX9 active now, or only in the history log?&quot;,
+      &quot;expected_input&quot;: &quot;active or history&quot;,
+      &quot;citations&quot;: [&quot;error_codes.md&quot;],
+      &quot;branches&quot;: [
+        { &quot;id&quot;: &quot;active&quot;,  &quot;condition&quot;: &quot;ZX9 is active now&quot;,     &quot;next&quot;: &quot;check_sight_glass&quot; },
+        { &quot;id&quot;: &quot;history&quot;, &quot;condition&quot;: &quot;ZX9 is only in the log&quot;, &quot;next&quot;: &quot;intermittent&quot; }
+      ],
+      &quot;default_next&quot;: &quot;check_sight_glass&quot;
+    },
+    {
+      &quot;id&quot;: &quot;check_sight_glass&quot;,
+      &quot;title&quot;: &quot;Check the sight glass&quot;,
+      &quot;instruction&quot;: &quot;With the unit running for ten minutes, look at the liquid line sight glass. Is it clear, or bubbling?&quot;,
+      &quot;expected_input&quot;: &quot;clear or bubbling&quot;,
+      &quot;safety_note&quot;: &quot;Keep hands clear of the condenser fan while the panel is open.&quot;,
+      &quot;citations&quot;: [&quot;RTU-500 Service Manual&quot;],
+      &quot;branches&quot;: [
+        { &quot;id&quot;: &quot;bubbling&quot;, &quot;condition&quot;: &quot;Bubbling or foaming&quot;, &quot;next&quot;: &quot;measure_subcooling&quot; },
+        { &quot;id&quot;: &quot;clear&quot;,    &quot;condition&quot;: &quot;Clear&quot;,               &quot;next&quot;: &quot;sensor_check&quot; }
+      ],
+      &quot;default_next&quot;: &quot;measure_subcooling&quot;
+    },
+    {
+      &quot;id&quot;: &quot;measure_subcooling&quot;,
+      &quot;title&quot;: &quot;Measure subcooling&quot;,
+      &quot;instruction&quot;: &quot;Read liquid line pressure and temperature and tell me both. The manual's target is on page 58.&quot;,
+      &quot;expected_input&quot;: &quot;liquid pressure and temperature&quot;,
+      &quot;citations&quot;: [&quot;RTU-500 Service Manual&quot;],
+      &quot;default_next&quot;: &quot;done_charge&quot;
+    },
+    { &quot;id&quot;: &quot;sensor_check&quot;, &quot;title&quot;: &quot;Sensor check&quot;, &quot;instruction&quot;: &quot;The charge looks right. Check the low-pressure transducer per page 61 before adding refrigerant.&quot;, &quot;terminal&quot;: true, &quot;outcome&quot;: &quot;sensor_suspected&quot; },
+    { &quot;id&quot;: &quot;intermittent&quot;, &quot;title&quot;: &quot;Intermittent fault&quot;, &quot;instruction&quot;: &quot;Clear the log, run the unit for a full cycle, and re-run this check if ZX9 returns.&quot;, &quot;terminal&quot;: true, &quot;outcome&quot;: &quot;deferred&quot; },
+    { &quot;id&quot;: &quot;done_charge&quot;, &quot;title&quot;: &quot;Charge corrected&quot;, &quot;instruction&quot;: &quot;Adjust charge to the target subcooling, record before and after readings, and clear the fault.&quot;, &quot;terminal&quot;: true, &quot;outcome&quot;: &quot;resolved&quot; }
+  ]
+}
+</code></pre>
+<h2 id="step-5-import-on-the-iphone">Step 5 · Import on the iPhone</h2>
+<ol>
+<li>Copy the whole folder into iCloud Drive (or AirDrop it to the phone and save it in Files). Do not zip it; the importer takes a folder.</li>
+<li>Open <strong>Settings › Custom Vaults</strong> and tap <strong>Import Vault Folder…</strong>, then pick the folder.</li>
+<li>The app validates first. If anything is wrong it names the file and the problem, and nothing is installed. Fix it on the computer and try again.</li>
+<li>On success the vault appears in the list and indexing starts immediately. Each manual shows a progress bar and then a section count, for example <em>RTU-500 Service Manual · 412 sections</em>. Leave the app in the foreground until every manual has a count.</li>
+<li>Warnings are advisory. The one you are most likely to see says the core files exceed the budget; move long material into <code>documents</code> and re-import.</li>
+</ol>
+<h2 id="step-6-test-the-loop">Step 6 · Test the loop</h2>
+<ol>
+<li>In <strong>Settings › Field Assist</strong>, choose your vault as the default.</li>
+<li>Say <em>"Start a session in Acme RTU Service."</em></li>
+<li><strong>Read the nameplate first.</strong> With the plate in view say <em>"Look up this nameplate"</em>, or simply say the model. The app reads the plate on the phone, matches the model against your core files and then against the manuals, and — when it resolves to exactly one of the models named in your <code>##</code> headings — remembers it for the rest of the session. The assistant says which machine it settled on, and the <strong>Active Session</strong> card on the Field Assist screen shows the model; tap it for the heading it matched, whether it came from the plate, your voice or the work order, and the time. If the read was wrong, correct it by voice — <em>"no, it's the 070"</em> — or tap <strong>Change</strong> on that card and pick from your own model list; <strong>Clear</strong> forgets it. When the glasses have a display, the model appears there too, on one line, each time it changes.</li>
+</ol>
+<p>From then on the session answers for that machine: a table row printed for a different model of the same family ranks below the row that covers yours. This is also what makes the next test work, so do this one first.
+4. Ask about a code you know is in the manual: <em>"What does fault ZX9 mean on the RTU-500?"</em> The answer should end with a source line naming the manual and page.
+5. Ask about a machine you do not have — <em>"how do I replace the heat exchanger on a Carrier 58MVB"</em>. The answer should name the models your vault does cover and refuse: <em>"The loaded manuals cover Acme RTU Service models RTU-500, RTU-750 and 2 more; 58MVB is not one of them. Confirm the nameplate or load its manual."</em> This works only because your model headings list every spelling of every model (Step 1); a vault whose headings name no models never refuses on equipment, and behaves exactly as it did before.
+6. Ask something the manuals do not cover, for example a torque spec that is not in the book. The correct answer is that the loaded manuals do not cover it and to escalate.</p>
+<p>The check that produces that answer is measured, not assumed, and it is worth knowing what it can and cannot do. Against a real pair of furnace manuals it refused three out of four out-of-scope questions — a torque figure the book never gives, another manufacturer's efficiency rating, a price, a warranty procedure. What word overlap alone does <strong>not</strong> refuse is a question about a subject your manuals genuinely cover but a machine they do not: ask about the heat exchanger on someone else's furnace and passages about heat exchangers come back, because they are about heat exchangers. That is what the equipment check above is for, and with model headings in place the same pair refused nine out of ten. A question that names no machine at all — <em>"how do I charge the refrigerant on the outdoor unit"</em> — is still outside its reach; there the vault's prompt rules and the page citation on every passage are what keep the answer honest, which is why the rules about fabricating and citing are required. The same check occasionally refuses a fair question whose wording shares little with the book's; rephrase it in the manual's own words and ask again.</p>
+<p>If you get a confident answer where the book is silent, tell us; that is the behaviour the vault rules exist to prevent.
+7. <strong>Tap the citation under the answer.</strong> Every source an answer names becomes a chip; tapping one opens that page. The header tells you which document you are looking at — <em>Manufacturer's document · page 42 of 118 · unmodified since import</em>, or <em>Extracted text · page 42</em> with a line saying whether the original is bundled — and you can swipe through the manual and tap once to come back to the cited page. A chip naming a core file opens that file at the section it cites, ready to correct. If a chip opens a page that does not answer the question, the manual's page numbering is off by a page or two; see Step 1.
+8. <strong>Ask for the job so far.</strong> Say <em>"read back the job"</em> — or tap <strong>Read back the job</strong> on the Active Session card — and the assistant speaks the work record: the machine, each task with its status and evidence, the parts requested, the pages verified against the manufacturer's document, and the time on site. It is assembled from what was recorded and nothing else; no model writes it, so two identical visits read identically. This is what the technician confirms before anything is sent.
+9. End the session. The audit log records every question, answer, photo and citation — including which citations were opened and which document each was read in — and the machine the session identified, printed at the top of the exported work order (<em>Equipment: RTU-500 — from the nameplate at 14:02</em>). A team licence can export the record as PDF.</p>
+<blockquote>
+<p><strong>Everything stays on the phone.</strong> Manuals are indexed and searched on the device and never uploaded to us. The passages relevant to a question are sent to whichever AI model you configured, together with the question, in the same way the rest of the app works. If you use an on-device model, nothing leaves the phone at all.</p>
+</blockquote>
+<h2 id="step-7-send-the-job-report">Step 7 · Send the job report</h2>
+<p>At the end of a visit there is one record: what was recommended, what the technician decided, what was done and on what evidence, and what base is being asked for. It leaves in three shapes off the same data — a PDF a person reads, a JSON file a job system parses, and a short summary that fits in a message — so they cannot disagree with each other.</p>
+<h3 id="set-the-destinations-once">Set the destinations once</h3>
+<p>In <strong>Settings › Field Assist › Job Reports</strong>:</p>
+<ul>
+<li><strong>Email / Messages recipients</strong> — where a report goes when nobody names anybody. Separate several with commas. A technician can always override by naming a contact out loud.</li>
+<li><strong>Office endpoint</strong> (optional) — an HTTPS URL your own system answers on. With one set, job records and parts requests are posted there through the offline queue with no tap at all, retried until they arrive. The optional bearer token is kept in the device Keychain and never in preferences, never in an export.</li>
+<li><strong>Allowed channels</strong> — which routes a report may leave by: Email, Messages, WhatsApp, Telegram, Share…, Endpoint. <strong>What may carry site data is the organisation's call, not each technician's.</strong> Switch a channel off and the assistant refuses it out loud and names the ones that are allowed. The endpoint becomes selectable once one is configured.</li>
+</ul>
+<h3 id="sending-it">Sending it</h3>
+<p>Say <em>"send the job report to base"</em>, <em>"email this to the office"</em>, <em>"message the job to Dave"</em> or <em>"share the report"</em> — or tap <strong>Send report…</strong> on the Active Session card. The composer opens on the phone with everything filled in, and <strong>the technician taps Send</strong>. iOS does not let an app send mail or a message on someone's behalf, and that requirement is the point rather than an obstacle: nothing leaves the device without either a person's tap or the endpoint the organisation configured.</p>
+<p>What each channel carries:</p>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Body</th>
+<th>Attachments</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Email</td>
+<td>The full work record</td>
+<td>Work order PDF + JSON record</td>
+</tr>
+<tr>
+<td>Messages</td>
+<td>Short summary and the job reference</td>
+<td>The PDF, when the device can attach one; the body says so when it cannot</td>
+</tr>
+<tr>
+<td>WhatsApp / Telegram</td>
+<td>Short summary and the job reference</td>
+<td>None — these open by URL scheme and cannot carry a file</td>
+</tr>
+<tr>
+<td>Share…</td>
+<td>The full record</td>
+<td>Both files, to anywhere the share sheet reaches</td>
+</tr>
+<tr>
+<td>Endpoint</td>
+<td>The JSON record, posted</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Recipients need an address the channel can use: a contact name resolves to a phone number for the message channels, and an email needs an actual address — the assistant says so rather than guessing one, because the wrong inbox is the one mistake here that nobody would notice.</p>
+<h3 id="nothing-is-silently-lost">Nothing is silently lost</h3>
+<p>A composer you dismiss sends nothing, and nothing pretends otherwise: the record stays in the queue, any parts requests stay <em>requested</em>, and the Active Session card says <strong>Unsent</strong>. Open <strong>Settings › Field Assist › Field Sync</strong> to see every job report and parts request the office has not received, listed by job reference with what is in it. Each row has <strong>Retry</strong>, which puts it back through the queue, and a work record also offers <strong>Send by email instead</strong>, which opens the composer with the record in the body. WhatsApp and Telegram cannot tell the app whether you tapped Send in them, so a report handed to one of those is recorded as not confirmed and stays queued — deliberately.</p>
+<h2 id="sending-the-technician-their-next-job">Sending the technician their next job</h2>
+<p>An office can send a job before the visit as a small file — <code>.ogjob</code> — attached to an email. On the phone the technician taps the attachment, chooses <strong>Open with Avenkin</strong>, reads what it says on a review sheet, and taps <strong>Add to upcoming jobs</strong>. Nothing is added without that tap, and a job file cannot start a job, change equipment, create a task or send anything: it only proposes a job ahead, which then appears under <strong>Upcoming</strong> on the Job tab and on the car screen, where it can be briefed, navigated to, and started on site.</p>
+<p><strong>The format, in one line:</strong> a JSON object with <code>"format": "openglasses.job"</code>, <code>"format_version": 1</code>, and any of <code>job_reference</code>, <code>site</code> {<code>customer</code>, <code>address</code>, <code>contact</code>}, <code>fault_report</code> (the words the customer gave, verbatim), <code>equipment</code> [{<code>model</code>, <code>serial</code>}], <code>scheduled_for</code> (ISO 8601), <code>notes</code>, <code>attachments</code> [{<code>name</code>, <code>reference</code>}] (named, never embedded) and <code>issued_by</code>, plus an optional <code>signature</code>. Plain text only, 64 KB at most; a field the app does not know is refused rather than ignored.</p>
+<p><strong>Make one</strong> with <code>swift Scripts/make-job-file.swift make job.json 1007.ogjob --key-file office.key</code>, which checks the app's limits before writing. Leave out <code>--key-file</code> to write it unsigned — the phone will say <em>Not signed — check it came from your office</em>.</p>
+<p><strong>Signing is your organisation's, not ours.</strong> Mint a key once with <code>swift Scripts/make-job-file.swift keygen office.key</code>; it prints the public half, which goes into your organisation's profile on the phone. A job file signed with it shows <em>Signed by</em> your organisation's name; one signed with any other key, or altered after signing, is refused. In medical mode, or when your profile requires it, an unsigned job file is refused outright.</p>
+<p><strong>Receive only.</strong> The app never emails a job file out, and there is no link form — a link in an email that opens a job is the shape of a phishing message.</p>
+<h2 id="updating-a-vault">Updating a vault</h2>
+<p>Edit the folder on the computer, bump <code>version</code>, and import again with the same <code>id</code>. Manuals whose content has not changed are skipped; a changed manual is re-indexed and its old index removed; a manual you dropped from the manifest is removed. Technicians' in-app edits to the core files are kept and layered over your new originals. To pull a vault off the phone with those edits included, swipe the vault row and choose <strong>Export</strong>.</p>
+<p><strong>An export does not contain the manuals.</strong> It carries the manifest, the core markdown with the technicians' edits, and the procedures — never the manual text, never the manufacturer's PDFs. The manuals stay on the phone they were indexed on. The exported manifest still <em>lists</em> every manual the vault needs and marks them as not included, so importing that folder on another phone stops and names the files to supply: put the manuals back into the folder's <code>documents/</code> directory, from your own copy on the computer, and the import goes through. What an export is for is the vault's own content and the technicians' edits; what carries the manuals is the folder you built, which is why you keep it.</p>
+<h2 id="removing-one-manual-on-the-phone">Removing one manual on the phone</h2>
+<p>A manual gets superseded, or it turns out to be the wrong revision, and the technician holding the phone is not the person with the vault folder on a computer. Open <strong>Settings › Custom Vaults</strong>, find the manual under its vault, and tap <strong>Remove manual…</strong>.</p>
+<p>The confirmation names the manual and the vault and says what it does: <em>Remove this manual from this device's vault and search index? Existing conversations and core reference files are unchanged. Importing a vault containing this manual again can restore it.</em> Tap <strong>Remove manual</strong> and the row shows <strong>Removing…</strong> until it is done; the rest of the vault keeps working throughout, and the vault itself stays installed even if you remove the last manual in it.</p>
+<p>Three things are worth being precise about, because they are three different kinds of memory:</p>
+<ul>
+<li><strong>Manual retrieval</strong> — the passages the assistant searches to answer a question. This is what the removal takes away, permanently and on this device: after it finishes nothing can retrieve that manual, including after a restart and after tapping <strong>Re-index manuals</strong>.</li>
+<li><strong>Core reference files</strong> — your markdown (<code>error_codes.md</code>, <code>models.md</code>, safety rules). These are loaded whole into every prompt and are <strong>untouched</strong>. If a fact was copied out of the manual into a core file, it is still there; edit the core file if you want it gone.</li>
+<li><strong>Conversation history</strong> — the questions and answers already on screen, and the session records already written. These are <strong>not rewritten</strong>, and neither is what was already sent to an AI model. An older answer can still quote the manual you removed, and tapping its citation now says <em>Manual removed from this vault</em> instead of opening the page.</li>
+</ul>
+<p>So <strong>start a fresh conversation for a clean test.</strong> Ask the same question again in a new conversation: the assistant should answer from the manuals that are left, or say the loaded manuals do not cover it. Do not treat an old answer still quoting the removed manual as a failure — that answer was given while the manual was loaded.</p>
+<p>A job in progress is not interrupted. The session keeps its job reference, the machine it identified, its tasks and parts and its audit log; only the manual's own material drops out from that moment, and the record notes that a manual was removed part-way through the visit.</p>
+<p><strong>If the removal reports a failure</strong>, the manual stays unavailable and the row offers <strong>Retry removal</strong> — a removal that stopped part-way is finished by trying again, or at the next launch. If it says the vault's manual index needs repairing, import the vault's folder again; that rebuilds the index and the removal can then proceed.</p>
+<p><strong>Restoring one.</strong> There is no undo, and nothing keeps a list of what was removed. Importing a vault folder that contains the manual puts it back — an explicit import is always authoritative. What an export cannot do is bring it back: an export of the reduced vault no longer lists the manual at all, and it does not carry any manual's file either. Keep the original folder on a computer.</p>
+<p>Removing a manual is only offered for vaults you imported yourself. A signed pack's manuals belong to its publisher; remove the whole pack instead. Removing installed content does <strong>not</strong> need a current subscription or licence — importing manuals does, but taking a superseded one off a phone should not stop working when a subscription lapses. The same line holds for the vaults already on the phone: a lapsed subscription keeps them readable and removable, and only stops new manuals going in.</p>
+<h2 id="if-the-import-refuses">If the import refuses</h2>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>manifest.json is missing or unreadable</code></td>
+<td>The file must sit at the top of the folder with that exact name.</td>
+</tr>
+<tr>
+<td><code>listed file missing: models.md</code></td>
+<td>A name in <code>files</code> does not match a file. Case and extension matter.</td>
+</tr>
+<tr>
+<td><code>listed document missing: documents/…</code></td>
+<td>Same for a manual; check <code>documents_dir</code> and the file name.</td>
+</tr>
+<tr>
+<td><code>manual not included in this export: … — add documents/… to the folder before importing</code></td>
+<td>The folder came off a phone, and exports never carry manuals. Copy the named files into it from your own copy and import again.</td>
+</tr>
+<tr>
+<td><code>… has no text layer on N of N pages; it will be read by on-device recognition at import</code></td>
+<td>A warning, not a refusal. Either let the phone read it (Route A), or add a text layer on your computer first (Route B or C).</td>
+</tr>
+<tr>
+<td><code>prompt_rules should address 'fabricate'</code></td>
+<td>Add a rule containing the word fabricate; likewise for cite.</td>
+</tr>
+<tr>
+<td><code>document has no title</code></td>
+<td>Every entry in <code>documents</code> needs a non-empty <code>title</code>.</td>
+</tr>
+<tr>
+<td><code>… → unknown step</code></td>
+<td>A procedure branch points at a step id that does not exist.</td>
+</tr>
+<tr>
+<td><code>no terminal step is reachable</code></td>
+<td>Give the procedure at least one step with <code>"terminal": true</code> that the entry step can reach.</td>
+</tr>
+<tr>
+<td><code>core files total … characters (budget 32768)</code></td>
+<td>Warning only. Move the long material into a document.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="receiving-a-vault-from-a-link-or-a-qr-code">Receiving a vault from a link or a QR code</h2>
+<p>Not everybody builds a vault. If a publisher — a distributor, a dealer, a manufacturer's own
+support arm, whoever may lawfully supply the manuals — sells you a set, they can hand it over as a
+link or a code on the page you land on after buying. The phone does the rest, and the manuals
+arrive already read for search, so there is no afternoon of on-device text recognition.</p>
+<p><strong>The app only ever receives.</strong> There is no "share this vault" anywhere in it: no link to send, no
+code to show somebody, no upload. A vault you built stays on the phones you put it on, and the
+export you can make of it carries no manuals at all. That is deliberate — an in-app share would
+make every subscriber a redistributor of manufacturers' manuals.</p>
+<p>You need an active subscription (or a team licence) to add a vault of your own, by link or by
+folder.</p>
+<ol>
+<li>Open <strong>Settings › Custom Vaults</strong> and tap <strong>Add from Link or QR…</strong>. Paste the address from the
+   publisher's page, or tap <strong>Scan a QR code</strong> and point the phone at theirs. Scanning the same code
+   with the phone's own Camera app works too — it opens the app on this screen.</li>
+<li>The app shows you the <strong>site</strong> the vault would come from and asks before it downloads anything.
+   It shows the site and nothing else of the address: a post-purchase link is often a one-time
+   token, so the app treats it as a secret and never puts it on screen, in a log, in an export or
+   in a job record.</li>
+<li>When the download finishes you get a <strong>review</strong>: the vault's name and version, the site, how big
+   it is, the manuals by title, and either
+   - <strong>Signed by &lt;publisher&gt;</strong> — the archive is signed with a key the app knows, and nothing in it
+     has changed since it was signed. One tap installs it; or
+   - a highlighted <strong>unverified source</strong> warning — the archive is not signed, or is signed by
+     somebody nobody has listed. It can still be installed, at your own risk, after you tick a
+     second box saying you know where it came from. It is then marked <strong>Unverified source</strong>
+     wherever it is listed, and the job record of any session that uses it says so.</li>
+<li>Two things are refused outright, with no way to override them: an archive that has been
+   <strong>altered</strong> since it was signed, and one signed by a publisher who has been <strong>revoked</strong>. A vault
+   already installed from a publisher who is revoked later is left alone — you may be standing in a
+   plant room depending on it — and is flagged in the list instead.</li>
+<li>On a phone in <strong>medical mode</strong>, and on a phone carrying an organisation configuration that says
+   so, unsigned vaults are refused as well. Ask the publisher to get their key listed.</li>
+<li>Installing over a vault with the same id replaces the publisher's files and keeps your own edits
+   to the core files. Indexing starts as it does after a folder import.</li>
+</ol>
+<p>If anything goes wrong — the download fails, the archive is not readable, you change your mind —
+nothing is installed and nothing is left behind.</p>
+<h2 id="publishing-a-vault">Publishing a vault</h2>
+<p>This section is for the other side: you hold the right to supply a set of manuals and you want a
+customer to be able to get the whole vault onto a phone from the page they land on after buying.</p>
+<blockquote>
+<p>You must hold the right to supply the manuals you put in a vault you publish. What that requires
+is between you and the manufacturer.</p>
+</blockquote>
+<p><strong>You host it, not us.</strong> A vault archive lives on your own site. The vendor does not host, mirror or
+proxy vaults, and the app's own catalog stays free of manuals.</p>
+<h3 id="build-the-archive">Build the archive</h3>
+<p>Start from a vault folder that already imports cleanly (Steps 1–5 above), with the manuals extracted
+to text in <code>documents/</code>. Then, on a Mac:</p>
+<pre><code>./Scripts/make-vault-archive.swift path/to/acme_rtu \
+    --publisher-id acme --publisher-name &quot;Acme Manuals&quot; \
+    --key-file secrets/acme-signing-key.txt
+</code></pre>
+<p>That writes <code>acme_rtu.vaultarchive</code> — a zip of the folder plus a small header listing every file
+with its SHA-256 and size, and a detached signature over the lot. It prints the header so you can
+check what you are about to publish.</p>
+<h3 id="get-a-signing-key-and-get-it-listed">Get a signing key, and get it listed</h3>
+<pre><code>swift Scripts/skillpack-sign.swift keygen secrets/acme-signing-key.txt
+</code></pre>
+<p>That writes the private half to a file only you can read and prints the <strong>public</strong> half. Send us the
+public half, the id you want to use and the name technicians should see. It goes into the signed
+catalog, and a phone that has seen the catalog will show <em>Signed by Acme Manuals</em> on your archives.
+A key can be revoked there without an app release, which is also what happens if one is lost.</p>
+<p>Never pass a private key as a command-line argument; the tools refuse it. Arguments end up in <code>ps</code>,
+in shell history, in CI logs and in crash reports, and a key that has been through any of those has
+to be replaced.</p>
+<h3 id="publishing-without-a-key">Publishing without a key</h3>
+<p>You can build an unsigned archive by leaving the key flags off. It will install — behind a warning
+block and a second acknowledgement — and stay marked <em>Unverified source</em> on the customer's phone
+for as long as it is there. It is fine for handing a vault to your own crew. It is not fine as a
+product.</p>
+<h3 id="on-your-site">On your site</h3>
+<ul>
+<li>Link to the <code>.vaultarchive</code> file directly, over https. That link is all the app needs.</li>
+<li>A QR code of the same address works, and so does <code>openglasses://vault?src=&lt;the https address&gt;</code>,
+  which opens the app straight from the phone's Camera app.</li>
+<li><strong>One-time or expiring links are worth using.</strong> The app treats the address as a secret, but the
+  publisher is the only one who can stop it being passed around.</li>
+<li>Keep archives under 250 MB. That is the ceiling the app will download and unpack; a vault of
+  extracted text is a long way under it, and the size only becomes interesting when you include the
+  manufacturers' original PDFs.</li>
+<li>To publish an update, rebuild the archive from the folder with a higher <code>version</code> in
+  <code>manifest.json</code> and replace the file. A customer who installs it keeps their own edits.</li>
+</ul>
+<h2 id="sharing-a-vault-three-situations">Sharing a vault: three situations</h2>
+<p>Most of this guide assumes you are building a vault for your own technicians. Two other situations come up, and they work differently. Decide which one you are in before you start.</p>
+<h3 id="1-your-own-crew">1 · Your own crew</h3>
+<p>You build one vault, your manuals included, and put it on the phones your technicians carry. Nothing changes; this is the path the rest of the guide describes.</p>
+<h3 id="2-building-a-vault-for-a-customer">2 · Building a vault for a customer</h3>
+<p>Here you assemble the whole vault for one customer: their core files, their manuals, their procedures. You test it, then you hand it over finished. Their technicians do not each repeat the work; one person prepares the manuals once and everyone else uses the result.</p>
+<p>The manuals in such a vault are normally the customer's own. They already hold them through their OEM portal access, their dealer relationship, or the equipment itself. What you are providing is the assembly, the text extraction and the testing. If you intend to reuse one master set of manuals across several customers, that is redistribution and it needs the manufacturer's permission, so check your agreements first.</p>
+<p>Delivery is by hand, or by link. By hand: you install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. By link: you build a vault archive and put it on your own site, and their technicians add it from the link or the code — see <strong>Publishing a vault</strong> above. One scan can also set the phones up: ask us for an enrolment profile for the customer's organisation, and scanning its code (or entering its licence key) applies the organisation's configuration and installs its pack — the core files and procedures, published as in situation 3. A pack never carries manuals, so those still go by hand or by link; delivering them in the same step is planned.</p>
+<h3 id="3-publishing-a-pack">3 · Publishing a pack</h3>
+<p>The parts you authored, the core files and the procedures, can be published as a <strong>pack</strong> that other Field Assist users install from the app's Packs list, and that a team licence can include for a whole organisation. What you are publishing is your fault-code tables, nameplate decoding, safety rules and diagnostics, which is where your field knowledge lives.</p>
+<blockquote>
+<p><strong>A pack must never contain manufacturer manuals.</strong> It goes into a catalog anyone can install from, so everything inside it is copied to people you have never met. Keep the manuals out. A customer who installs your pack pairs it with manuals from their own vault, or from a vault you built for them as in situation 2.</p>
+</blockquote>
+<p>To prepare one:</p>
+<ol>
+<li>Copy the vault folder and delete <code>documents/</code>. Remove <code>documents</code> and <code>documents_dir</code> from the manifest, and set <code>gating</code> to <code>{ "iap": "com.openglasses.vault.&lt;id&gt;" }</code>, where <code>&lt;id&gt;</code> is the vault's <code>id</code>.</li>
+<li>Add a <code>pack.json</code> beside the manifest:</li>
+</ol>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;com.openglasses.vault.acme_rtu&quot;,
+  &quot;vaultId&quot;: &quot;acme_rtu&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;name&quot;: &quot;Acme RTU Service&quot;,
+  &quot;summary&quot;: &quot;Fault codes, nameplate decoding, and diagnostics for Acme rooftop units.&quot;,
+  &quot;author&quot;: &quot;Your company name, as technicians should see it&quot;,
+  &quot;licensePack&quot;: &quot;acme_rtu&quot;
+}
+</code></pre>
+<ol start="3">
+<li>Send the folder to us. We sign it, host it, and list it in the catalog; nothing unsigned can be installed. If the pack includes extracted manual text, it needs the manufacturer's written permission to redistribute, recorded in the pack, and we will ask for it.</li>
+<li>Decide how it is sold. A pack is its own App Store product for solo technicians, and a team licence includes it when the code is issued with the pack's key, so your own customers get it with their licence rather than buying it separately.</li>
+</ol>
+<p>Updating a published pack is the same folder with a higher <code>version</code>. Technicians who install the update keep their in-app edits and their own manuals.</p>
+<h2 id="checklist-before-you-send-a-vault-to-a-customer">Checklist before you send a vault to a customer</h2>
+<ul>
+<li>[ ] Every PDF selects text on the computer, or you have decided to let the phone read it.</li>
+<li>[ ] Each manual's <code>title</code> is the name the crew already uses.</li>
+<li>[ ] Fault codes sit under a heading per model, one code per row.</li>
+<li>[ ] <code>safety.md</code> says what you want spoken, in your words.</li>
+<li>[ ] Core files total well under 32 KB.</li>
+<li>[ ] Import shows a section count for every manual.</li>
+<li>[ ] A known fault code answers with a page citation.</li>
+<li>[ ] An out-of-scope question answers with "the manuals do not cover this".</li>
+</ul>
+</div>
+</main>
+<footer class="site-footer">
+  <a href="/privacy.html">Privacy</a>
+  <a href="/support.html">Support</a>
+  <a href="/security.html">Security</a>
+  <a href="/source/">Source licence</a>
+  <a href="/terms/">Terms</a>
+  <span>&copy; 2026 Skunkworks NZ Ltd</span>
+</footer>
+</body>
+</html>

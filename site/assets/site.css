@@ -474,3 +474,24 @@ main > .wrap:last-of-type > .section:last-child { padding-bottom: 72px; }
 /* Utility pages: the text column lines up with the page title above it. */
 .stage + main > .prose { max-width: 68rem; }
 .stage + main > .prose > * { max-width: 44rem; }
+
+/* Long guides: contents list, code and quoted notes. */
+.contents { margin: 0 0 8px; padding: 18px 22px; background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; }
+.contents ol { margin: 0; padding-left: 1.25rem; columns: 2; column-gap: 32px; }
+.contents li { margin-bottom: 4px; break-inside: avoid; }
+.prose pre {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: #141C1E;
+  color: #F6F2EB;
+  border-radius: 12px;
+  font: 0.85rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.prose pre code { font: inherit; background: none; padding: 0; }
+.prose :not(pre) > code { padding: 1px 5px; background: var(--rule); border-radius: 5px; overflow-wrap: anywhere; }
+.prose blockquote { margin: 0 0 16px; padding: 12px 18px; background: var(--surface); border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0; }
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose td:first-child { font-weight: 500; }
+.prose h2[id], .prose h3[id] { scroll-margin-top: 16px; }
+@media (max-width: 40rem) { .contents ol { columns: 1; } }
