@@ -216,3 +216,209 @@ code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .site-header { justify-content: center; }
   .hero { padding-top: 32px; }
 }
+
+/* ------------------------------------------------------------------------------------------------
+   Homepage. A dark stage for the hero, then alternating bands. Everything is CSS: no images beyond
+   the mark, no script, no hosted font. Display type uses the platform serif.
+   ------------------------------------------------------------------------------------------------ */
+
+:root { --display: "New York", ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+
+.stage {
+  --ink: #F6F2EB;
+  --muted: #A9B3B4;
+  --rule: rgba(246, 242, 235, 0.14);
+  position: relative;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(60rem 34rem at 78% 38%, rgba(231, 127, 71, 0.22), transparent 62%),
+    radial-gradient(40rem 26rem at 8% 110%, rgba(231, 127, 71, 0.10), transparent 60%),
+    #141C1E;
+}
+.stage::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(231, 127, 71, 0.6), transparent);
+}
+.stage .brand { color: var(--ink); }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: center;
+  gap: 48px;
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 56px 20px 96px;
+}
+.kicker {
+  margin: 0 0 18px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.hero-grid h1 {
+  margin: 0 0 22px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(3rem, 8.2vw, 5.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+.hero-grid h1 em { font-style: italic; color: var(--accent); }
+.hero-grid .lede { max-width: 33em; margin: 0 0 10px; font-size: 1.12rem; }
+.hero-grid .devices { max-width: 33em; margin: 0 0 30px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; margin: 0 0 30px; }
+.button.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--rule); }
+.button.ghost:hover, .button.ghost:focus-visible { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.92rem; }
+.facts li::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 9px 2px 0; border-radius: 50%; background: var(--accent); }
+
+/* The hero visual: the mark, glowing, behind an example conversation. */
+.scene { position: relative; min-height: 25rem; }
+.scene .glyph {
+  position: absolute;
+  top: -6%; right: -6%;
+  width: 78%;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 42px rgba(231, 127, 71, 0.55));
+  animation: breathe 7s ease-in-out infinite;
+}
+.talk {
+  position: absolute;
+  left: 0; right: 6%; bottom: 0;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.bubble {
+  max-width: 88%;
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px solid rgba(246, 242, 235, 0.14);
+  border-radius: 18px;
+  background: rgba(20, 28, 30, 0.72);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  line-height: 1.45;
+}
+.bubble b {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.bubble.you { justify-self: end; border-bottom-right-radius: 6px; }
+.bubble.it { border-bottom-left-radius: 6px; border-color: rgba(231, 127, 71, 0.45); }
+.bubble.it b { color: var(--accent); }
+.where {
+  justify-self: start;
+  margin: 2px 0 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(231, 127, 71, 0.14);
+  color: #F3B08A;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+@keyframes breathe { 50% { transform: translateY(-8px) scale(1.015); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .scene .glyph { animation: none; } }
+
+/* Bands */
+.section { padding: 88px 0 24px; }
+.section-head { max-width: 40rem; margin: 0 0 36px; }
+.section-head h2, .statement h2 {
+  margin: 0 0 12px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(2rem, 4.6vw, 3rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+}
+.section-head p { margin: 0; color: var(--muted); font-size: 1.1rem; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(17.5rem, 1fr)); gap: 16px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.tile:hover { transform: translateY(-3px); border-color: rgba(231, 127, 71, 0.55); }
+.tile .eyebrow { margin-bottom: 12px; }
+.tile h3 { margin: 0 0 8px; font-size: 1.22rem; line-height: 1.25; letter-spacing: -0.01em; }
+.tile p { margin: 0 0 18px; color: var(--muted); }
+.tile .say {
+  margin: auto 0 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px 12px 12px 4px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 1.05rem;
+}
+
+.trio { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0; border-top: 1px solid var(--rule); }
+.trio > div { padding: 26px 26px 8px 0; }
+.trio .num { margin: 0 0 10px; color: var(--accent); font-family: var(--display); font-size: 2.2rem; line-height: 1; }
+.trio h3 { margin: 0 0 6px; font-size: 1.15rem; }
+.trio p { margin: 0 0 16px; color: var(--muted); }
+
+.statement {
+  --ink: #F6F2EB;
+  --muted: #A9B3B4;
+  --rule: rgba(246, 242, 235, 0.14);
+  margin: 88px 0 0;
+  padding: 88px 0;
+  color: var(--ink);
+  background: radial-gradient(48rem 26rem at 15% 0%, rgba(231, 127, 71, 0.16), transparent 62%), #141C1E;
+}
+.statement h2 { max-width: 14em; font-size: clamp(2.3rem, 6vw, 4rem); }
+.statement h2 span { color: var(--accent); }
+.statement .trio { margin-top: 36px; }
+.statement a { color: #F3B08A; }
+
+.duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 16px; }
+.duo .tile { padding: 32px; }
+.duo .tile h3 { font-family: var(--display); font-weight: 600; font-size: 1.8rem; }
+.duo .tile .more { margin: auto 0 0; font-weight: 600; }
+
+.closing { padding: 96px 20px 104px; text-align: center; }
+.closing h2 {
+  margin: 18px 0 12px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.closing p { max-width: 34em; margin: 0 auto 26px; color: var(--muted); }
+.closing .actions { justify-content: center; margin: 0; }
+.closing .button.ghost { color: var(--ink); }
+
+/* Inner pages pick up the display face for their titles. */
+.prose h1 { font-family: var(--display); font-weight: 600; }
+
+@media (max-width: 54rem) {
+  .hero-grid { grid-template-columns: 1fr; gap: 36px; padding: 32px 20px 72px; }
+  .scene { min-height: 21rem; }
+  .scene .glyph { width: 60%; right: 0; top: 0; }
+  .section { padding-top: 64px; }
+  .statement { margin-top: 64px; padding: 64px 0; }
+  .trio > div { padding-right: 0; }
+}
