@@ -3,6 +3,10 @@
 **Status:** 📝 Drafted 2026-09-21 — nothing implemented. Two owner decisions recorded the same day: the
 reviewer is a supervisor back at base, and a learning may answer where the manual is silent so long
 as it is clearly one (open questions 1 and 4).
+**Office contract:** when the reviewer works in Avenkin Office, the candidate, its status and the
+published set are specified in [`Contracts/team-learning.md`](../../Contracts/team-learning.md)
+(draft v1, design only, 2026-10-04). P1–P3's unsigned bundle remains the route for an organisation
+without an office.
 **Origin:** A commercial partner reselling Field Assist to service companies asked for the thing a
 vault cannot currently hold: not the manufacturer's book, but what *this* organisation's crew has
 worked out about the machines in its territory. A technician who discovers that a particular board
