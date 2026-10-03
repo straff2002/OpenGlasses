@@ -12,7 +12,9 @@ organisation's AI model ([#560](https://github.com/straff2002/OpenGlasses/pull/5
 merged in three slices on 2026-09-25: the edition and administrator gate ([#562](https://github.com/straff2002/OpenGlasses/pull/562)), the technician's
 view ([#563](https://github.com/straff2002/OpenGlasses/pull/563)) and the administrator phone ([#564](https://github.com/straff2002/OpenGlasses/pull/564)). PR 4, leaving the firm, merged 2026-09-25:
 deliver, then erase ([#565](https://github.com/straff2002/OpenGlasses/pull/565)), offer the firm its records before removal ([#566](https://github.com/straff2002/OpenGlasses/pull/566)), and erase after a
-long lapse when opted in (4c, [#567](https://github.com/straff2002/OpenGlasses/pull/567)). Sealing (4b) is deferred. What remains is listed under
+long lapse when opted in (4c, [#567](https://github.com/straff2002/OpenGlasses/pull/567)). Sealing (4b) is deferred. A notice when the organisation's
+signed term has ended (notice only, nothing removed) followed on 2026-10-04 — see *The organisation's
+term has ended*. What remains is listed under
 *Deferred, and why* and in P4. Manuals were planned to come from the base server (Plan FT, FT4); Plan
 FX superseded FT on 2026-09-27, so they now come from Avenkin Office. See *Numbering, reconciled*. Re-sequenced the same day to a thin first slice aimed at the seven `organization*`
 stand-ins Plans FO and FS already shipped (see *Delivery order* below). Revised
@@ -1595,6 +1597,39 @@ any erasure. A ceiling on `recordingSaveToPhotos` narrows the first; nothing nar
 and the signed revocation document are small and land in PR 1 (schema, script) and PR 2 (fetch,
 state, locking). The owner axis, sealing and deliver-then-erase touch every store in the list above,
 which is why they are a PR of their own.
+
+### The organisation's term has ended — a notice, first (2026-10-04)
+
+When `policyExpiry` passes, the lease reports lapsed and PR 4's lapse applies: the rules stay, the
+content locks, an open job runs to its end. Nothing told the person the profile had *ended* or where
+to take it off. This first step does only that, and the product owner approved exactly this much.
+
+**The rule** (`OrgProfileEndPolicy`, pure, `OrgProfileEndPolicyTests`): the profile's `policyExpiry`,
+now, the clock high-water mark, whether a job is open, the reports and job records still owed to the
+firm (counted as the leaving screen counts them) and the profile's source give *in force*, *ended
+but a job is open* (quiet until it closes, as the lock is) or *ended*. It reads `policyExpiry`
+**only, never a lease lapse on its own**: an office-commissioned phone has no profile address to
+renew from, so its lease always lapses `leaseDays` after enrolment, and acting on that would hit
+every pilot phone. A clock wound back behind the high-water mark cannot hide the notice; a clock
+moved forward shows it early, which is harmless for a notice.
+
+**What the person sees**, in the Organisation section of Settings (tapping it opens the
+organisation's page) and at the top of that page (tapping it scrolls to "Leave ⟨org⟩"):
+*"⟨org⟩'s profile ended on ⟨date⟩. To remove it, go to Settings › Organisation › ⟨org⟩ and choose
+Remove Profile under Leave ⟨org⟩."* With records owed it adds *"Send ⟨org⟩ its records first: Remove
+Profile offers that before anything is removed."* An MDM's profile says the organisation's device
+management removes it, with no Leave instruction. There is no banner outside Settings: no
+organisation-status notice lives there today.
+
+**Nothing else changes.** Nothing is removed, lifted or erased automatically — removal starts a
+departure that erases the firm's records after `undeliveredEraseDays` whether or not they were
+delivered, which is why it stays the person's choice. Locks, licence withholding, lease status,
+removal and departures are untouched; a profile without `policyExpiry` and an unmanaged phone see
+nothing new.
+
+**Still to come:** inactive-then-removed, with a grace period the product owner chooses; a removal
+the office signs and pushes; and renewal from the office, which is what would let an
+office-commissioned phone's lease mean something. Each waits for office renewal and removal to exist.
 
 ### Deferred, and why
 

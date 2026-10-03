@@ -231,6 +231,8 @@ struct ManagedByOrganisationSection: View {
     @State private var finishingModel = false
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var departures = OrgDepartureService.shared
+    @ObservedObject private var fieldSessions = FieldSessionService.shared
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         if let profile = manager.profile, let record = manager.record {
@@ -256,6 +258,20 @@ struct ManagedByOrganisationSection: View {
                     OGDivider()
                     OGNotice(text: notice.text, systemImage: notice.icon)
                         .padding(12)
+                }
+                // The organisation's signed term has ended: say so, and where to remove the profile.
+                // A notice only — nothing is removed (`OrgProfileEndPolicy`).
+                if let ended = OrgProfileEndPolicy.decide(.current(profile: profile, record: record,
+                                                                   appState: appState)).notice {
+                    OGDivider()
+                    NavigationLink {
+                        OrganisationProfilePage(manager: manager)
+                    } label: {
+                        OGNotice(text: ended.settingsText, systemImage: ended.systemImage)
+                            .padding(12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text(ended.settingsHint))
                 }
                 if let packId = record.pendingPackId {
                     OGDivider()
@@ -392,11 +408,17 @@ struct OrganisationProfilePage: View {
     @State private var leaving = false
     @State private var recordsShare: ShareItem?
     @State private var exportProblem: String?
+    /// Re-draws the ended notice when a job opens or closes.
+    @ObservedObject private var fieldSessions = FieldSessionService.shared
+    /// Where the ended notice scrolls to.
+    private static let leaveSection = "leave"
 
     var body: some View {
-        OGScrollPage {
-            if let profile = manager.profile, let record = manager.record {
-                content(profile: profile, record: record)
+        ScrollViewReader { proxy in
+            OGScrollPage {
+                if let profile = manager.profile, let record = manager.record {
+                    content(profile: profile, record: record, proxy: proxy)
+                }
             }
         }
         .navigationTitle(manager.profile?.organizationName ?? "Organisation")
@@ -407,7 +429,7 @@ struct OrganisationProfilePage: View {
     }
 
     @ViewBuilder
-    private func content(profile: ConfigProfile, record: OrgEnrolmentRecord) -> some View {
+    private func content(profile: ConfigProfile, record: OrgEnrolmentRecord, proxy: ScrollViewProxy) -> some View {
         let organization = profile.organizationName
         // What is in force now, not what the review once said: a renewal may have changed it, and a
         // revocation lifts it.
@@ -419,6 +441,19 @@ struct OrganisationProfilePage: View {
         OGSection {
             ManagedByOrganisationRow(organization: organization,
                                      subtitle: ManagedByOrganisationSection.subtitle(profile: profile, record: record))
+        }
+
+        // The organisation's signed term has ended: a notice only (`OrgProfileEndPolicy`). It takes
+        // the person to "Leave ⟨org⟩" below; nothing is removed until they choose to there.
+        if let ended = OrgProfileEndPolicy.decide(.current(profile: profile, record: record,
+                                                           appState: appState)).notice {
+            Button {
+                withAnimation { proxy.scrollTo(Self.leaveSection, anchor: .top) }
+            } label: {
+                OGNotice(text: ended.pageText, systemImage: ended.systemImage)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text(ended.pageHint))
         }
 
         if !hidden.isEmpty {
@@ -497,6 +532,7 @@ struct OrganisationProfilePage: View {
         } message: {
             Text("Its locks lift, the settings it chose go back to yours, and a licence it brought is removed.")
         }
+        .id(Self.leaveSection)
     }
 
     /// One plain line per entry, as the enrolment review listed them.
@@ -614,6 +650,26 @@ struct ManagedSettingNote: View {
         if PolicyEnvelope.isLocked(key), let name = PolicyEnvelope.organizationName {
             ManagedLockNote(organization: name)
         }
+    }
+}
+
+extension OrgProfileEndPolicy.Input {
+    /// What this phone holds now. Reports and job records are counted as the leaving screen counts
+    /// them (`OrganisationProfilePage.owedReports` / `owedSessions`), and the open job is the one the
+    /// lease's mid-job grace waits on.
+    @MainActor
+    static func current(profile: ConfigProfile, record: OrgEnrolmentRecord, appState: AppState,
+                        now: Date = Date()) -> Self {
+        let sessions = FieldSessionService.shared
+        return Self(organizationName: profile.organizationName,
+                    policyExpiry: profile.policyExpiry,
+                    now: now,
+                    clockHighWater: record.clockHighWater,
+                    jobOpen: sessions.activeSession != nil,
+                    owedReports: appState.jobSends.stagedCount,
+                    owedSessions: OrgDepartureService.managedSessionIds(sessions.history,
+                                                                        since: record.enrolledAt).count,
+                    source: record.source)
     }
 }
 
