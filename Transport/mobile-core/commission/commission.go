@@ -6,6 +6,8 @@
 // the key that signs and the clock. Nothing here is authority. An approval carries the
 // vendor-signed profile, the licence and the administrator-signed peer binding as opaque text,
 // and the phone verifies each of those with the code it already has.
+//
+// The connection that carries these messages is the sibling package commission/bootstrap.
 package commission
 
 import (
@@ -83,7 +85,9 @@ type Redemption struct {
 }
 
 // Approval carries the three artefacts the phone already knows how to verify, as their exact
-// original text. The approval's own signature only says which office sent them.
+// original text, and the address of the office's sync engine. The approval's own signature only
+// says which office sent them; the address is a route hint, and the engine pins the office
+// transport identity named by the peer binding.
 type Approval struct {
 	Version             int    `json:"version"`
 	Kind                string `json:"kind"`
@@ -95,6 +99,7 @@ type Approval struct {
 	ProfileDocument     string `json:"profileDocument"`
 	LicenceCode         string `json:"licenceCode"`
 	PeerBinding         string `json:"peerBinding"`
+	OfficeAddress       string `json:"officeAddress"`
 	IssuedAt            int64  `json:"issuedAt"`
 }
 
@@ -116,7 +121,7 @@ type Decision struct {
 
 var invitationFields = []string{"version", "kind", "invitation", "organizationID", "officeID", "officeApplicationKey", "officeTransportID", "address", "issuedAt", "expiresAt"}
 var redemptionFields = []string{"version", "kind", "invitationSHA256", "invitation", "enrolmentID", "phoneTransportID", "phoneApplicationKey", "appVersion", "appBuild", "existingEnrolment", "createdAt"}
-var approvalFields = []string{"version", "kind", "invitationSHA256", "redemptionSHA256", "enrolmentID", "phoneTransportID", "phoneApplicationKey", "profileDocument", "licenceCode", "peerBinding", "issuedAt"}
+var approvalFields = []string{"version", "kind", "invitationSHA256", "redemptionSHA256", "enrolmentID", "phoneTransportID", "phoneApplicationKey", "profileDocument", "licenceCode", "peerBinding", "officeAddress", "issuedAt"}
 var refusalFields = []string{"version", "kind", "invitationSHA256", "redemptionSHA256", "reason", "issuedAt"}
 
 // RefusalReasons is the closed set a refusal may give.
@@ -148,8 +153,17 @@ func sign(domain string, v any, key ed25519.PrivateKey, limit int) (string, erro
 	if e != nil {
 		return "", e
 	}
-	message := append(append([]byte(domain), 0), payload...)
-	out, e := json.Marshal(envelope{base64.StdEncoding.EncodeToString(payload), base64.StdEncoding.EncodeToString(ed25519.Sign(key, message))})
+	return seal(payload, ed25519.Sign(key, signingInput(domain, payload)), limit)
+}
+
+// signingInput is the exact bytes a message's signature covers: the domain, one zero byte, the
+// payload.
+func signingInput(domain string, payload []byte) []byte {
+	return append(append([]byte(domain), 0), payload...)
+}
+
+func seal(payload, signature []byte, limit int) (string, error) {
+	out, e := json.Marshal(envelope{base64.StdEncoding.EncodeToString(payload), base64.StdEncoding.EncodeToString(signature)})
 	if e != nil {
 		return "", e
 	}
@@ -226,6 +240,10 @@ func token(s string) bool {
 	b, e := base64.RawURLEncoding.Strict().DecodeString(s)
 	return e == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == s
 }
+
+// PrivateAddress says whether s is `a.b.c.d:port` on a private IPv4 network, the form of an
+// invitation's address and an approval's office address. Either is a route hint.
+func PrivateAddress(s string) bool { return privateAddress(s) }
 
 // privateAddress accepts only `a.b.c.d:port` on a private IPv4 network. It is a route hint.
 func privateAddress(s string) bool {
@@ -324,6 +342,39 @@ func SignRedemption(r Redemption, phoneKey ed25519.PrivateKey) (string, error) {
 	return sign(RedemptionDomain, r, phoneKey, MaximumRedemption)
 }
 
+// RedemptionSigningInput is SignRedemption in two halves, for a phone whose application key
+// signs inside device storage and never reaches this code. It returns the redemption's payload
+// and the exact bytes the phone application key must sign (the redemption domain, one zero
+// byte, the payload); SealRedemption then makes the envelope. The envelope is byte-identical to
+// what SignRedemption makes with the same key.
+func RedemptionSigningInput(r Redemption) (payload, input []byte, err error) {
+	if !r.valid() {
+		return nil, nil, errors.New("invalid redemption")
+	}
+	payload, err = json.Marshal(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	return payload, signingInput(RedemptionDomain, payload), nil
+}
+
+// SealRedemption makes the redemption envelope from a payload of RedemptionSigningInput and the
+// phone's signature over its signing input, then reads it back exactly as the office will
+// against `invitationEnvelope`. Anything the office would refuse is refused here.
+func SealRedemption(payload, signature []byte, invitationEnvelope string) (string, error) {
+	if len(signature) != ed25519.SignatureSize {
+		return "", errors.New("invalid signature")
+	}
+	out, e := seal(payload, signature, MaximumRedemption)
+	if e != nil {
+		return "", e
+	}
+	if _, e = ReadRedemption(out, invitationEnvelope); e != nil {
+		return "", e
+	}
+	return out, nil
+}
+
 // ReadRedemption checks a redemption as the office does: well formed, signed by the phone key
 // it presents (the proof of possession), and answering exactly `invitationEnvelope`. Whether
 // the invitation is still unspent is the office ledger's question, not this function's.
@@ -383,7 +434,8 @@ func (a Approval) valid() bool {
 		safeIdentifier(a.EnrolmentID) && transportID(a.PhoneTransportID) &&
 		len(a.ProfileDocument) > 0 && len(a.ProfileDocument) <= maximumProfile &&
 		len(a.LicenceCode) > 0 && len(a.LicenceCode) <= maximumLicence &&
-		len(a.PeerBinding) > 0 && len(a.PeerBinding) <= maximumPeerBinding && instant(a.IssuedAt)
+		len(a.PeerBinding) > 0 && len(a.PeerBinding) <= maximumPeerBinding && privateAddress(a.OfficeAddress) &&
+		instant(a.IssuedAt)
 }
 
 // SignApproval signs an approval with the office application key.

@@ -40,7 +40,7 @@ func redemption(invitationEnvelope string) Redemption {
 }
 func approval(invitationEnvelope, redemptionEnvelope string) Approval {
 	return Approval{1, ApprovalKind, Digest(invitationEnvelope), Digest(redemptionEnvelope), "a1b2c3d4", transport("phone"),
-		public(phoneKey), "profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, now + 20}
+		public(phoneKey), "profile.signature", "licence.signature", `{"payload":"e30=","signature":"AA=="}`, "192.168.1.24:22000", now + 20}
 }
 func must[T any](v T, e error) T {
 	if e != nil {
@@ -195,6 +195,41 @@ func TestARedemptionProvesThePhoneKeyAndAnswersOneInvitation(t *testing.T) {
 	}
 }
 
+// A phone whose key signs inside device storage makes the same envelope in two halves.
+func TestARedemptionSignedOutsideThisCodeIsTheSameEnvelope(t *testing.T) {
+	inv, red := exchange(t)
+	payload, input, e := RedemptionSigningInput(redemption(inv))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if string(input) != RedemptionDomain+"\x00"+string(payload) {
+		t.Fatal("signing input is not the domain, a zero byte and the payload")
+	}
+	if sealed := must(SealRedemption(payload, ed25519.Sign(phoneKey, input), inv)); sealed != red {
+		t.Fatal("sealed redemption differs from SignRedemption's")
+	}
+	otherInvitation := invitation()
+	otherInvitation.Invitation = base64.RawURLEncoding.EncodeToString(append(make([]byte, 31), 1))
+	other := must(SignInvitation(otherInvitation, officeKey))
+	for name, attempt := range map[string]func() (string, error){
+		"another key":        func() (string, error) { return SealRedemption(payload, ed25519.Sign(otherKey, input), inv) },
+		"short signature":    func() (string, error) { return SealRedemption(payload, make([]byte, 63), inv) },
+		"another invitation": func() (string, error) { return SealRedemption(payload, ed25519.Sign(phoneKey, input), other) },
+		"edited payload": func() (string, error) {
+			return SealRedemption(append([]byte(nil), payload[:len(payload)-1]...), ed25519.Sign(phoneKey, input), inv)
+		},
+	} {
+		if _, e := attempt(); e == nil {
+			t.Fatalf("sealed a redemption with %s", name)
+		}
+	}
+	bad := redemption(inv)
+	bad.EnrolmentID = "a/b"
+	if _, _, e := RedemptionSigningInput(bad); e == nil {
+		t.Fatal("made signing input for an invalid redemption")
+	}
+}
+
 func TestADecisionIsForOneExchangeOnePhoneAndOneOffice(t *testing.T) {
 	inv, red := exchange(t)
 	good := approval(inv, red)
@@ -215,6 +250,12 @@ func TestADecisionIsForOneExchangeOnePhoneAndOneOffice(t *testing.T) {
 		"no licence":              change(func(a *Approval) { a.LicenceCode = "" }),
 		"no binding":              change(func(a *Approval) { a.PeerBinding = "" }),
 		"oversized profile":       change(func(a *Approval) { a.ProfileDocument = strings.Repeat("p", maximumProfile+1) }),
+		"no office address":       change(func(a *Approval) { a.OfficeAddress = "" }),
+		"public office address":   change(func(a *Approval) { a.OfficeAddress = "8.8.8.8:22000" }),
+		"office address no port":  change(func(a *Approval) { a.OfficeAddress = "192.168.1.24" }),
+		"office address as URL":   change(func(a *Approval) { a.OfficeAddress = "tcp://192.168.1.24:22000" }),
+		"office address by name":  change(func(a *Approval) { a.OfficeAddress = "office.local:22000" }),
+		"loopback office address": change(func(a *Approval) { a.OfficeAddress = "127.0.0.1:22000" }),
 	} {
 		if _, e := ReadDecision(reseal(t, ApprovalDomain, bad, officeKey), inv, red); e == nil {
 			t.Fatalf("read an approval with %s", name)

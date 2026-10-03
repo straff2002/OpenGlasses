@@ -42,7 +42,7 @@ func Fixtures() (map[string][]byte, error) {
 	}
 	approval, e := SignApproval(Approval{1, ApprovalKind, Digest(invitation), Digest(redemption), "fixture-enrolment", phoneTransport,
 		b64(phone.Public().(ed25519.PublicKey)), "FICTIONAL-PROFILE.FICTIONAL-SIGNATURE", "FICTIONAL-LICENCE.FICTIONAL-SIGNATURE",
-		`{"payload":"RklDVElPTkFMLUJJTkRJTkc=","signature":"RklDVElPTkFM"}`, FixtureNow + 60}, office)
+		`{"payload":"RklDVElPTkFMLUJJTkRJTkc=","signature":"RklDVElPTkFM"}`, "192.168.1.24:22000", FixtureNow + 60}, office)
 	if e != nil {
 		return nil, e
 	}
