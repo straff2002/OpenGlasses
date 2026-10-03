@@ -1,8 +1,9 @@
 # FX1 manual assignment contract — draft v1
 
 Other contracts in this folder: [office commissioning](commissioning.md) (scan to join an office),
-[office preview](office-preview.md), [recorded session](recorded-session.md) and
-[team learning](team-learning.md) (design only).
+[office preview](office-preview.md), [recorded session](recorded-session.md),
+[team learning](team-learning.md) and [managed office folders](office-folders.md) (the last two
+design only).
 
 This is a tested draft and import preflight, not production commissioning or delivery. The
 Swift phone verifier and Go implementation agree on the same public, fictional signed vault

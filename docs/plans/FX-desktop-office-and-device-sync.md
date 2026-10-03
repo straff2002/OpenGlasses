@@ -54,7 +54,10 @@ transport's, behind `OfficeCommissionTransport`; a build without the office tran
 cannot join this way. Open: physical testing against the office.
 
 The current phone UI and services implement setup, binding review and a handshake-only managed
-connection. No production managed folder is enabled by that handshake. The earlier standalone
+connection. No production managed folder is enabled by that handshake. The folders that
+follow a verified binding — which exist, their direction, names, paths and what each side may
+serve — are specified in [`Contracts/office-folders.md`](../../Contracts/office-folders.md)
+(draft v1, design only, 2026-10-04); nothing implements it yet. The earlier standalone
 Device Lab pairing is a separate feasibility protocol, not a substitute for vendor authority.
 
 ## Messages, manuals and receipts
