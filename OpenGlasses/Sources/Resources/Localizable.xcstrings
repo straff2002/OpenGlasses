@@ -17952,16 +17952,6 @@
         }
       }
     },
-    "My company gave me a key or code" : {
-      "localizations" : {
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Моя компания выдала мне ключ или код"
-          }
-        }
-      }
-    },
     "My Day" : {
       "localizations" : {
         "ru" : {
@@ -26707,6 +26697,9 @@
           }
         }
       }
+    },
+    "Set up with my company" : {
+
     },
     "Sets as a starting point" : {
       "localizations" : {

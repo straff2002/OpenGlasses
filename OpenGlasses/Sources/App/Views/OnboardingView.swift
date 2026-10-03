@@ -92,6 +92,9 @@ struct OnboardingView: View {
     @State private var showingOrgKeyEntry = false
     @State private var orgEntryOutcome: OrgKeyEntrySheet.Outcome?
     @State private var orgEntryMessage: String?
+    /// "Set up with my company" was chosen here, so the profile coming into force carries the
+    /// person on from the welcome page (`OrgFirstRun.continuesFromWelcome`).
+    @State private var tookCompanyRoute = false
     @ObservedObject private var license = LicenseService.shared
     @State private var isRegistering = false
 
@@ -131,6 +134,13 @@ struct OnboardingView: View {
             }
         }
         .onChange(of: page) { _, newPage in focusedPage = newPage }
+        .onChange(of: orgProfile.isManaged) { wasManaged, isManaged in
+            guard OrgFirstRun.continuesFromWelcome(
+                tookCompanyRoute: tookCompanyRoute, onWelcomePage: page == OnboardingFlow.Page.welcome.rawValue,
+                wasManaged: wasManaged, isManaged: isManaged) else { return }
+            tookCompanyRoute = false
+            go(to: OrgFirstRun.pageAfterWelcome(organisationChoseModel: orgChoseModel))
+        }
         .onAppear { refreshOfflineOffer() }
     }
 
@@ -360,8 +370,9 @@ struct OnboardingView: View {
                     go(to: OrgFirstRun.pageAfterWelcome(organisationChoseModel: orgChoseModel))
                 }
                 if !orgProfile.isManaged {
-                    Button("My company gave me a key or code") {
+                    Button("Set up with my company") {
                         orgEntryMessage = nil
+                        tookCompanyRoute = true
                         showingOrgKeyEntry = true
                     }
                     .buttonStyle(.ogQuiet)
@@ -376,7 +387,7 @@ struct OnboardingView: View {
             orgEntryOutcome = nil
             switch outcome {
             case .licence(let code): startOrgLicence(code)
-            case .scanned(let code): appState.orgEnrolment.openScanned(code)
+            case .scanned(let code): appState.openScannedOrganisationCode(code)
             }
         }) {
             OrgKeyEntrySheet(service: appState.orgEnrolment) { orgEntryOutcome = $0 }
@@ -430,6 +441,7 @@ struct OnboardingView: View {
                 Button("Use a different key") {
                     license.clear()
                     appState.orgEnrolment.dismiss()
+                    tookCompanyRoute = true
                     showingOrgKeyEntry = true
                 }
                 .buttonStyle(.ogQuiet)
