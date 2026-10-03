@@ -4,6 +4,15 @@ import Foundation
 /// has no authority of its own; OfficeInlineEntitlement verifies both signatures after parsing.
 enum OfficeSetupPackage {
     static let maximumBytes = 65_536
+    /// The extension Avenkin Office gives a setup file, so the system offers this app for it.
+    static let fileExtension = "avenkinsetup"
+    /// Exported in Info.plist. Conforms to JSON: the file is the same package under its own name.
+    static let typeIdentifier = "com.openglasses.app.office-setup"
+
+    /// Whether a URL handed to the app is an Avenkin Office setup file.
+    static func isSetupFile(_ url: URL) -> Bool {
+        url.isFileURL && url.pathExtension.lowercased() == fileExtension
+    }
 
     struct Contents: Codable, Equatable {
         let version: Int

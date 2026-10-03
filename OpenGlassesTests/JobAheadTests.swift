@@ -302,4 +302,20 @@ final class JobAheadTests: XCTestCase {
         })
         XCTAssertEqual(plist["LSSupportsOpeningDocumentsInPlace"] as? Bool, false)
     }
+
+    func testTheOfficeSetupFileTypeIsDeclaredSoTheSystemOffersThisApp() throws {
+        let plist = try infoPlist
+        let exported = try XCTUnwrap(plist["UTExportedTypeDeclarations"] as? [[String: Any]])
+        let type = try XCTUnwrap(exported.first { $0["UTTypeIdentifier"] as? String == OfficeSetupPackage.typeIdentifier })
+        let tags = try XCTUnwrap(type["UTTypeTagSpecification"] as? [String: Any])
+        XCTAssertEqual(tags["public.filename-extension"] as? [String], [OfficeSetupPackage.fileExtension])
+        XCTAssertEqual((type["UTTypeConformsTo"] as? [String])?.contains("public.json"), true)
+        let documents = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
+        XCTAssertTrue(documents.contains {
+            ($0["LSItemContentTypes"] as? [String])?.contains(OfficeSetupPackage.typeIdentifier) == true
+        })
+        XCTAssertTrue(OfficeSetupPackage.isSetupFile(URL(fileURLWithPath: "/tmp/Strafford.AvenkinSetup")))
+        XCTAssertFalse(OfficeSetupPackage.isSetupFile(URL(fileURLWithPath: "/tmp/avenkin-setup.json")))
+        XCTAssertFalse(OfficeSetupPackage.isSetupFile(URL(string: "https://example.com/a.avenkinsetup")!))
+    }
 }
