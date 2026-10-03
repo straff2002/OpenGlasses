@@ -29,8 +29,9 @@ out="${1:-$repo_root/_site}"
 # --- allowlist ------------------------------------------------------------------------------------
 #
 # Derived from what the site actually serves:
-#   index.html                          the Meta auth redirect page (self-contained: no external
-#                                       CSS, script or image references — checked)
+#   index.html                          the homepage, which also hands a returning Meta sign-in
+#                                       back to the app (its only script is inline; its stylesheet
+#                                       and mark come from site/assets/, staged below)
 #   privacy.html                        the public privacy policy App Store Connect links to
 #                                       (self-contained like index.html; only outbound links are
 #                                       provider privacy policies and privacy.org.nz)
@@ -123,6 +124,29 @@ for rel in "${ALLOW[@]}"; do
   cp -R "$src" "$out/$rel"
 done
 
+# --- site/ (Plan FZ P2) ---------------------------------------------------------------------------
+#
+# site/ holds the pages added by the restructure: the shared stylesheet and mark, /app/,
+# /field-assist/, /office/, /pricing/, /source/, /terms/, /auth/meta/, security.html, 404.html and
+# .well-known/security.txt. The whole folder is public by construction, so it is copied to the site
+# root as a tree rather than listed file by file. The legacy pages stay where they have always been
+# (the repository root, in ALLOW above) because tests and the rename script read them there.
+#
+# A file under site/ may never replace something ALLOW already staged: a legacy path keeps the
+# bytes it has always served (FZ I1). The gate below still runs over everything copied here.
+if [ -d "$repo_root/site" ]; then
+  while IFS= read -r src; do
+    rel="${src#"$repo_root/site/"}"
+    if [ -e "$out/$rel" ]; then
+      echo "stage-pages-site: COLLISION 'site/$rel' would replace an allowlisted path" >&2
+      missing=1
+      continue
+    fi
+    mkdir -p "$out/$(dirname "$rel")"
+    cp "$src" "$out/$rel"
+  done < <(find "$repo_root/site" -type f ! -name '.DS_Store' | sort)
+fi
+
 # --- activation keys (Plan CT 3a) -----------------------------------------------------------------
 #
 # activation/ holds one sealed licence file per activation key, named by a 64-character hex digest
@@ -134,7 +158,7 @@ if [ -d "$repo_root/activation" ]; then
 fi
 
 if [ "$missing" -ne 0 ]; then
-  echo "stage-pages-site: FAIL — allowlist names paths that are not in the tree." >&2
+  echo "stage-pages-site: FAIL — allowlist names paths that are not in the tree, or site/ collides with it." >&2
   echo "  Either the file moved (update the allowlist) or the checkout is incomplete." >&2
   exit 1
 fi

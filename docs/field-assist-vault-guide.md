@@ -1,6 +1,6 @@
 # Building a Field Assist vault from your own manuals
 
-*Field Assist, powered by Avenkin · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
+*Field Assist, powered by Avenkin · applies to builds with the manual tier (September 2026 or later) · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text*
 
 A vault is a folder. It holds a manifest that names things, a few short markdown files the assistant always has in front of it, and the OEM manuals it searches when a technician asks. You build the folder on a computer, move it to the phones that will use it, and import it once on each.
 
@@ -476,8 +476,9 @@ product.
 ### On your site
 
 - Link to the `.vaultarchive` file directly, over https. That link is all the app needs.
-- A QR code of the same address works, and so does `openglasses://vault?src=<the https address>`,
-  which opens the app straight from the phone's Camera app.
+- A QR code of the same address works, and so does `avenkin://vault?src=<the https address>`,
+  which opens the app straight from the phone's Camera app. Builds from before October 2026 only
+  answer to the older `openglasses://vault?src=…` form, which current builds still accept.
 - **One-time or expiring links are worth using.** The app treats the address as a secret, but the
   publisher is the only one who can stop it being passed around.
 - Keep archives under 250 MB. That is the ceiling the app will download and unpack; a vault of

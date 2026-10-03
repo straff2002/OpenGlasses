@@ -1,0 +1,29 @@
+# Paths the published site must always serve (Plan FZ, invariant I1 and "Legacy paths").
+#
+# Shipped builds, App Store Connect, the Meta developer portal and the signed pack catalogs name
+# these paths. A redesign may add paths; it never moves or removes one of these.
+# Scripts/check-pages-site.py fails the deploy if any line below is missing from the staged site.
+#
+# One path per line, relative to the site root. activation/<64 hex> files are covered by the
+# stage script's own gate, not listed here.
+
+index.html
+privacy.html
+support.html
+about.html
+skillpacks/catalog.json
+skillpacks/packs/com.openglasses.barista-1.0.0.zip
+skillpacks/packs/com.openglasses.focus-1.0.0.zip
+vaultpacks/catalog.json
+.well-known/apple-app-site-association
+LICENSE
+README.md
+README.zh-CN.md
+docs/BUILDING.md
+docs/CAPABILITIES.md
+docs/cross-vendor-ai-glasses-research.md
+docs/field-assist-vault-guide.md
+docs/field-assist-vault-guide.pdf
+docs/opportunity-assessment.md
+docs/skillpack-authoring.md
+docs/webrtc/expert-client.html

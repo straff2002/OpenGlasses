@@ -261,7 +261,19 @@ build is the one App Store Connect reports, and it has to be captured there.
 
 **The published website is staged, not the checkout.** `Scripts/stage-pages-site.sh` copies an
 explicit allowlist into `_site/` and then independently refuses to publish a tree containing a
-denied path. Adding a page to the site means adding it to that allowlist.
+denied path. New pages go in `site/`, which is staged to the site root as a tree; anything else
+published from outside `site/` is added to that allowlist. `Scripts/check-pages-site.py` then checks
+the staged tree: the paths shipped builds read are still there (`Scripts/site-legacy-paths.txt`), no
+page loads anything from another site, and every internal link resolves. The vault guide page
+(`site/field-assist/vault-guide/`) is converted from `docs/field-assist-vault-guide.md`: after
+changing the guide, run `python3 Scripts/build-vault-guide-page.py` and commit the page, or the
+check fails. To preview locally:
+
+```bash
+./Scripts/stage-pages-site.sh && python3 Scripts/check-pages-site.py _site
+node Scripts/tests/site-auth-forward.test.js
+python3 -m http.server 8000 --directory _site
+```
 
 
 Default generate includes **watch** and **unit tests**. To build a slimmer project locally (iPhone + widget only):
