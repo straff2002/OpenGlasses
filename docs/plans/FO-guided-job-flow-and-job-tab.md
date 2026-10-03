@@ -31,6 +31,8 @@ check, the medical/organisation refusal, the review sheet and duplicate handling
 built* below. No car, no device, no mail client. P4 unbuilt.
 **Transcript export added 2026-09-26, headless** — *Export transcript…* on a past job and *Export
 a day's transcripts…* under Past jobs; see *Transcript export* below.
+**Binding revised 2026-10-03** — a paused job claims no conversation until it is resumed, and the
+session card always shows an open job; see *Revised 2026-10-03* at the end of *P1 as built*.
 The voice-turn reliability fixes
 from the same field report (wake word re-arm, self-interrupted speech, `new_topic` misfire, short
 wake phrases, and the narrow "keep the saved thread while a field session is active" rule) landed
@@ -601,6 +603,38 @@ func confirmLeaveJobThread()
 `FieldSession` now also carries `conversationThreadId`, `conversationThreadDetached`, `jobIntake`,
 `pendingUnitChange` and `visitedUnits` (the multi-unit list §"Open questions" asked about — one
 `equipment` plus a list, scoped by FM's continuity scope so the export can partition later).
+
+### Revised 2026-10-03: a paused job claims nothing, and an open job is always shown
+
+A device record showed lazy binding going wrong. A procedure tap opened a job before anything
+had been said, so it had no thread. Closing the app paused it, and the launch restore brought it
+back paused. Hours later the owner started a new conversation about the weather. The job adopted
+it: the turns went into the job's log, and "you can end" closed the job with an audit log. The
+owner decided two changes.
+
+- **A paused job claims nothing until it is resumed.** `JobThreadPolicy.Inputs` gains
+  `jobPaused` (read from `FieldSession.pausedAt`, which any pause sets, deliberate or app-closed).
+  While a job is paused:
+  - a turn binds nothing and is not pulled back into the job's thread. It resolves like any
+    unbound turn, but the job's own thread is still never idle-ended.
+  - New conversation and opening another thread ask no question. They are not a detach either,
+    so the job keeps its thread.
+  - the end of a turn and a disconnect end nothing.
+  - the launch restore replays whatever thread the store restored instead of reopening the job's
+    thread. A dangling id is still cleared.
+
+  Debrief turns are unchanged. Resuming the job puts lazy binding back exactly as it was. Turns
+  made while the job is paused are not written to its log
+  (`FieldSessionService.recordConversationTurn` / `recordAssistantReply`). The turn that paused
+  the job keeps its answer. "Resume the job" is recorded once the next tool round re-records it
+  after the resume. The model's tools and the vault context are unchanged while paused, so the
+  model can still hear "resume the job". P1's "a paused job is still the job" still holds for the
+  job number, the held question and closing.
+- **An open job is never invisible.** The session card shows "Job running" or "Job paused"
+  (`SessionCardJobPill`) whenever a job is open. It is absent otherwise, and so for everyone without
+  Field Assist. A tap opens the job's page in the Job tab (`AppState.openJobs(.currentJob)`), where
+  Pause/Resume and End are. The pill sits on its own row above the footer, not inside it, because
+  at phone width the footer's line is already full.
 
 ## P2 as built (2026-09-22)
 

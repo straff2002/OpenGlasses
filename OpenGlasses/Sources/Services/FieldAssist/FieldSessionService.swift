@@ -1290,8 +1290,23 @@ final class FieldSessionService: ObservableObject {
         if let manuals = manualPassagesContext(turn: turn, store: store) {
             context = (context.map { $0 + "\n\n" } ?? "") + manuals
         }
+        // A paused job claims no conversation, and the model has to know that too: shown a job
+        // with nothing saying it was paused, it read "you can end" in a chat about the weather as
+        // "end the job" and closed it.
+        if activeSession?.pausedAt != nil {
+            context = (context.map { $0 + "\n\n" } ?? "") + Self.pausedJobPromptNote
+        }
         return context
     }
+
+    /// What the model is told while the open job is paused.
+    static let pausedJobPromptNote = """
+        This job is PAUSED. The technician may be talking about something unrelated: answer \
+        normally and do not treat the conversation as work on the job. Do not start, end or \
+        change the job unless they name the job or ask for that. "End", "stop" or "that's all" \
+        on their own end the conversation, not the job. If they ask to carry on with the job, \
+        call field_session with action 'resume'.
+        """
 
     /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has no reference tier, nothing
     /// has been ingested for it, or there is no turn to retrieve against.
@@ -1852,6 +1867,12 @@ final class FieldSessionService: ObservableObject {
             pendingAppInstruction = nil
         }
         guard let session = activeSession, let logger, !text.isEmpty else { return }
+        // A paused job's record is not the transcript of whatever the wearer says meanwhile
+        // (2026-10-03): a weather question asked while a job sat paused landed in that job's log.
+        // Checked before the source id is claimed, on purpose — "resume the job" arrives paused,
+        // and the providers that re-record every tool round find it unclaimed once the tool has
+        // resumed the job, so the turn that brought the job back still makes the record.
+        guard session.pausedAt == nil else { return }
         guard claimConversationSource(sourceID, logger: logger) else { return }
         logger.append(.init(timestamp: Date(),
                             kind: origin == .appInstruction ? .appInstruction : .userMessage,
@@ -1869,7 +1890,11 @@ final class FieldSessionService: ObservableObject {
     /// the answer's citations. Live modes (Gemini Live, OpenAI Realtime) keep what Plan FW says.
     func recordAssistantReply(_ text: String, sourceID: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard activeSession != nil, let logger, !trimmed.isEmpty else { return }
+        guard let session = activeSession, let logger, !trimmed.isEmpty else { return }
+        // Paused, the job takes no reply — unless the question it answers is already in the
+        // record, which is the turn that paused it: "pause the job" was logged while the job ran,
+        // and its answer belongs beside it rather than leaving a question with no reply.
+        if session.pausedAt != nil, !conversationSourceRecorded(sourceID, logger: logger) { return }
         guard claimConversationSource("assistant:" + sourceID, logger: logger) else { return }
         var payload: [String: AnyCodable] = ["source_id": AnyCodable("assistant:" + sourceID)]
         let citations = CitationLineParser.parse(trimmed).map(\.label)
@@ -1879,12 +1904,21 @@ final class FieldSessionService: ObservableObject {
 
     /// Whether a turn's source id is new to this session's log. The first sight claims it.
     private func claimConversationSource(_ sourceID: String, logger: SessionLogger) -> Bool {
-        if conversationSourceIDs == nil {
-            conversationSourceIDs = Set(logger.readEvents().compactMap {
-                $0.payload?["source_id"]?.value as? String
-            })
-        }
+        loadConversationSources(logger: logger)
         return conversationSourceIDs?.insert(sourceID).inserted == true
+    }
+
+    /// Whether a turn with this source id is already in the log. Asks without claiming.
+    private func conversationSourceRecorded(_ sourceID: String, logger: SessionLogger) -> Bool {
+        loadConversationSources(logger: logger)
+        return conversationSourceIDs?.contains(sourceID) == true
+    }
+
+    private func loadConversationSources(logger: SessionLogger) {
+        guard conversationSourceIDs == nil else { return }
+        conversationSourceIDs = Set(logger.readEvents().compactMap {
+            $0.payload?["source_id"]?.value as? String
+        })
     }
 
     func continuityContext(turn: String? = nil) -> String? {
