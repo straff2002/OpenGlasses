@@ -120,7 +120,7 @@ func Verify(data []byte, trust Trust, now int64, previous *HighWater) (Verified,
 	if p.OrganizationID != trust.OrganizationID || p.EnrolmentID != trust.EnrolmentID || p.OfficeID != trust.OfficeID || p.Generation != trust.Generation || p.OfficeTransportID != trust.OfficeTransportID || p.PhoneTransportID != trust.PhoneTransportID {
 		return empty, ErrAuthority
 	}
-	if p.Version != 1 || p.Kind != "avenkin.managed-job" || !safeID(p.MessageID, 32) || !safeID(p.JobSHA256, 64) || !safeName(p.OrganizationID) || !safeName(p.EnrolmentID) || !safeName(p.OfficeID) || !deviceID(p.OfficeTransportID) || !deviceID(p.PhoneTransportID) || p.Sequence <= 0 || p.Sequence > maximumSafeInteger || p.Generation <= 0 || p.Generation > maximumSafeInteger || p.IssuedAt <= 0 || p.ExpiresAt <= p.IssuedAt || p.ExpiresAt > maximumSafeInteger || p.ExpiresAt-p.IssuedAt > 30*86400 || p.JobBytes <= 0 || p.JobBytes > MaximumJobBytes {
+	if !validFields(p) {
 		return empty, ErrFields
 	}
 	if now < p.IssuedAt || now >= p.ExpiresAt {
@@ -139,6 +139,47 @@ func Verify(data []byte, trust Trust, now int64, previous *HighWater) (Verified,
 		}
 	}
 	return v, nil
+}
+
+func validFields(p Job) bool {
+	return p.Version == 1 && p.Kind == "avenkin.managed-job" && safeID(p.MessageID, 32) && safeID(p.JobSHA256, 64) && safeName(p.OrganizationID) && safeName(p.EnrolmentID) && safeName(p.OfficeID) && deviceID(p.OfficeTransportID) && deviceID(p.PhoneTransportID) && p.Sequence > 0 && p.Sequence <= maximumSafeInteger && p.Generation > 0 && p.Generation <= maximumSafeInteger && p.IssuedAt > 0 && p.ExpiresAt > p.IssuedAt && p.ExpiresAt <= maximumSafeInteger && p.ExpiresAt-p.IssuedAt <= 30*86400 && p.JobBytes > 0 && p.JobBytes <= MaximumJobBytes
+}
+
+// MaximumIssueSkewSeconds is how far ahead of the signer's clock a payload's issuedAt may be.
+const MaximumIssueSkewSeconds = 300
+
+// SignPayload signs exact payload bytes that the caller built, so no JSON is re-encoded between
+// the office's record of a message and what a phone verifies. It is for a process that holds
+// the office application key on behalf of another that does not: the key holder checks the
+// payload as a verifier would before lending its signature.
+//
+// The payload must be the closed, flat managed-job object with valid fields, name officeID (the
+// identity of the key that is about to sign), be issued no later than a few minutes from now,
+// and not have expired. The reply is the same envelope Sign produces for those bytes.
+func SignPayload(raw []byte, privateKey ed25519.PrivateKey, officeID string, now int64) ([]byte, error) {
+	if len(privateKey) != ed25519.PrivateKeySize {
+		return nil, ErrSignature
+	}
+	if len(raw) == 0 || len(raw) > MaximumEnvelopeBytes || !officepreview.Flat(raw, fields) {
+		return nil, ErrMalformed
+	}
+	var p Job
+	if json.Unmarshal(raw, &p) != nil {
+		return nil, ErrMalformed
+	}
+	if !validFields(p) {
+		return nil, ErrFields
+	}
+	if officeID == "" || p.OfficeID != officeID {
+		return nil, ErrAuthority
+	}
+	if p.IssuedAt > now+MaximumIssueSkewSeconds || now >= p.ExpiresAt {
+		return nil, ErrTime
+	}
+	return json.Marshal(Envelope{
+		Payload:   base64.StdEncoding.EncodeToString(raw),
+		Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, append([]byte(Domain), raw...))),
+	})
 }
 
 func VerifyBytes(job []byte, verified Verified) error {

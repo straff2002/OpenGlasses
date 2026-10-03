@@ -1,6 +1,8 @@
 // Native-owned stdin helper. Signing keys never enter the desktop renderer.
 //
-// Every operation but one is one JSON request on stdin and one JSON reply on stdout. The
+// Every operation but one is one JSON request on stdin and one JSON reply on stdout
+// ("sign-managed-job" among them: it lends the office application key's signature to a managed-job
+// payload the desktop built, after checking it). The
 // exception is "commission-serve": a long-running, line-delimited conversation for one
 // commissioning invitation, whose protocol is documented at the top of
 // commission/bootstrap/converse.go.
@@ -8,10 +10,12 @@ package main
 
 import (
 	"avenkin.dev/mobilecore/commission/bootstrap"
+	"avenkin.dev/mobilecore/manageddelivery"
 	p "avenkin.dev/mobilecore/officepreview"
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +39,8 @@ type Request struct {
 	EnrolmentID         string     `json:"enrolmentID"`
 	PhoneTransportID    string     `json:"phoneTransportID"`
 	PhoneApplicationKey string     `json:"phoneApplicationKey"`
+	// Payload is the exact managed-job payload bytes to sign, base64 ("sign-managed-job").
+	Payload string `json:"payload"`
 }
 
 // ServeRequest is the first line of a commissioning conversation.
@@ -89,6 +95,15 @@ func run(root string, b []byte) (any, error) {
 		return map[string]string{"messageID": id}, e
 	case "publish":
 		return o.Public(), o.Publish()
+	case "sign-managed-job":
+		// The office application key stays here. The desktop sends the payload it built and
+		// recorded; it is checked as a phone would check it, and must name this office.
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed managed job payload")
+		}
+		envelope, e := manageddelivery.SignPayload(raw, o.Key, o.ManagedOfficeID(), p.Now())
+		return map[string]string{"envelope": string(envelope)}, e
 	case "receipt":
 		if e := o.VerifyReceipt(r.Receipt); e != nil {
 			return nil, e

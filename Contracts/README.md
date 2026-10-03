@@ -124,6 +124,15 @@ conflict, or altered job bytes. The phone's existing `JobFileService` must still
 `.ogjob` document and show the technician its review. Transport verification is neither job
 acceptance nor a delivery receipt.
 
+`manageddelivery.SignPayload` signs exact payload bytes a caller built, for the case where the
+office application key is held by one process (the connection helper) on behalf of another (the
+desktop). The key holder checks the payload as a verifier would — closed flat object, the field
+rules, issued no more than five minutes ahead and not expired — and that it names the office the
+key belongs to, then returns the same envelope `Sign` produces for those bytes. Nothing is
+re-encoded, so the office's record of a message and what a phone verifies are the same bytes. The
+helper exposes it as the one-shot operation `sign-managed-job`; its reply carries the envelope and
+no key.
+
 These functions are a contract boundary only. No managed folder, durable job high-water/commit,
 receipt, office job-signing key, or phone UI caller is enabled. The fixture contains public test
 keys and a synthetic unsigned `.ogjob`; it cannot satisfy an organisation policy requiring a

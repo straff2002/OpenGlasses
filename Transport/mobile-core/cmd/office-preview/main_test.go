@@ -207,3 +207,64 @@ func TestCommissionServeRefusesABadStart(t *testing.T) {
 		}
 	}
 }
+
+func TestSignManagedJobLendsTheApplicationKeyToItsOwnOfficeOnly(t *testing.T) {
+	root := t.TempDir()
+	office, err := p.OpenOffice(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := func(label string) string {
+		digest := sha256.Sum256([]byte(label))
+		return protocol.DeviceID(digest).String()
+	}
+	now := p.Now()
+	payload := func(officeID string) string {
+		// The members in the contract's order, as the desktop writes them.
+		ordered := `{"version":1,"kind":"avenkin.managed-job","messageID":"` + strings.Repeat("ab", 16) +
+			`","organizationID":"test-organisation","enrolmentID":"phone-1","officeID":"` + officeID +
+			`","generation":1,"officeTransportID":"` + device("office") + `","phoneTransportID":"` + device("phone") +
+			`","sequence":1,"issuedAt":` + strings.TrimSpace(string(mustJSON(now))) + `,"expiresAt":` + strings.TrimSpace(string(mustJSON(now+3600))) +
+			`,"jobSHA256":"` + strings.Repeat("cd", 32) + `","jobBytes":120}`
+		return base64.StdEncoding.EncodeToString([]byte(ordered))
+	}
+	ask := func(body string) (int, map[string]string) {
+		var out bytes.Buffer
+		status := helper([]string{"helper", root}, strings.NewReader(body), &out)
+		var reply map[string]string
+		_ = json.Unmarshal(out.Bytes(), &reply)
+		return status, reply
+	}
+
+	sent := payload(office.ManagedOfficeID())
+	status, reply := ask(`{"op":"sign-managed-job","payload":"` + sent + `"}`)
+	if status != 0 || reply["envelope"] == "" {
+		t.Fatalf("exit %d: %v", status, reply)
+	}
+	var envelope struct{ Payload, Signature string }
+	if json.Unmarshal([]byte(reply["envelope"]), &envelope) != nil || envelope.Payload != sent {
+		t.Fatalf("the payload was not signed as sent: %s", reply["envelope"])
+	}
+	raw, _ := base64.StdEncoding.DecodeString(envelope.Payload)
+	signature, _ := base64.StdEncoding.DecodeString(envelope.Signature)
+	if !ed25519.Verify(office.Key.Public().(ed25519.PublicKey), append([]byte("Avenkin.ManagedJob.v1\x00"), raw...), signature) {
+		t.Fatal("signature does not verify under the office application key")
+	}
+	// The reply carries nothing but the envelope: no key.
+	if len(reply) != 1 {
+		t.Fatalf("unexpected members: %v", reply)
+	}
+
+	for name, body := range map[string]string{
+		"another office": `{"op":"sign-managed-job","payload":"` + payload("another-office") + `"}`,
+		"not base64":     `{"op":"sign-managed-job","payload":"***"}`,
+		"no payload":     `{"op":"sign-managed-job"}`,
+		"not a job":      `{"op":"sign-managed-job","payload":"` + base64.StdEncoding.EncodeToString([]byte(`{"version":1}`)) + `"}`,
+	} {
+		if status, reply := ask(body); status != 1 || reply["error"] == "" || reply["envelope"] != "" {
+			t.Fatalf("%s: exit %d, %v", name, status, reply)
+		}
+	}
+}
+
+func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
