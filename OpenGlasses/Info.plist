@@ -30,6 +30,21 @@
 				<string>com.openglasses.app.job</string>
 			</array>
 		</dict>
+		<!-- The setup file Avenkin Office saves for a device (.avenkinsetup). Receive only, opened
+		     as a copy like a job file. It carries the vendor-signed profile and licence; the app
+		     verifies both and the owner reviews them before anything is applied. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Avenkin Office Setup</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.openglasses.app.office-setup</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
@@ -54,6 +69,28 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>application/vnd.openglasses.job+json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.openglasses.app.office-setup</string>
+			<key>UTTypeDescription</key>
+			<string>Avenkin Office Setup</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>avenkinsetup</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.openglasses.office-setup+json</string>
 				</array>
 			</dict>
 		</dict>

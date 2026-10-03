@@ -250,3 +250,50 @@ func TestSavedReceiptCannotFalselyRestoreCompletion(t *testing.T) {
 		t.Fatal("invalid saved receipt restored as complete")
 	}
 }
+func TestManualsAreSentAgainUnderTheJobTheDeviceHolds(t *testing.T) {
+	o, p, _ := paired(t)
+	content := t.TempDir()
+	first := []byte("Fictional manual, first edition")
+	second := []byte("Fictional manual, second edition")
+	for _, b := range [][]byte{first, second} {
+		_ = os.WriteFile(filepath.Join(content, Digest(b)), b, 0600)
+	}
+	manual := func(b []byte) []Manual {
+		return []Manual{{"manual", "Fictional manual", "fixture.txt", "txt", Digest(b), Digest(b), int64(len(b)), int64(len(b))}}
+	}
+	if _, e := o.Dispatch("", manual(first), content, 1010); e == nil {
+		t.Fatal("manuals sent before the device holds a job")
+	}
+	j, _ := json.Marshal(Job{"job1", "Fictional inspection", "Fixture customer", "FX100", "Test only", ""})
+	if _, e := o.Dispatch(string(j), manual(first), content, 1010); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := o.Dispatch("", manual(second), content, 1011); e == nil {
+		t.Fatal("manuals sent while a delivery still waits for its receipt")
+	}
+	i, _ := o.Binding()
+	_, _, folder := Folders(i.PairID)
+	source := filepath.Join(o.Root, folder)
+	if ready, e := p.Receive(o.State.Pending, source, 1011); e != nil || !ready {
+		t.Fatalf("delivery failed: %v %v", ready, e)
+	}
+	if e := o.VerifyReceipt(p.State.Receipt); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := o.Dispatch("", manual(second), content, 1012); e != nil {
+		t.Fatal(e)
+	}
+	held := o.Public()["manuals"].([]map[string]string)
+	if o.Public()["jobID"] != "job1" || len(held) != 1 || held[0]["sourceSha256"] != Digest(second) || o.Public()["receivedInCompanion"] != false {
+		t.Fatalf("office does not report the manuals it sent: %v", o.Public())
+	}
+	if ready, e := p.Receive(o.State.Pending, source, 1013); e != nil || !ready {
+		t.Fatalf("manual update failed: %v %v", ready, e)
+	}
+	if p.State.Job.ID != "job1" || len(p.State.Manuals) != 1 || p.State.Manuals[0].SourceSHA256 != Digest(second) {
+		t.Fatal("device did not keep its job with the newer manual")
+	}
+	if e := o.VerifyReceipt(p.State.Receipt); e != nil {
+		t.Fatal(e)
+	}
+}

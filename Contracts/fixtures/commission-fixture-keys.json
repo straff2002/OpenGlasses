@@ -1,0 +1,10 @@
+{
+  "invitationSHA256": "9d117ca1adf1a8c58b4145f0bc381819170bbfdd7d449a442f684cdae169cfc0",
+  "note": "Fictional keys derived from public labels: seed = SHA-256(label). They have no authority.",
+  "now": 1800000000,
+  "officeApplicationKey": "XNmlSele8WL46e+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=",
+  "officeKeyLabel": "Avenkin public fixture office key v1",
+  "phoneApplicationKey": "2hr21s5ALq78ys4P9AP3in9U/Q1/5XqTV7a58EF4A1Q=",
+  "phoneKeyLabel": "Avenkin public fixture phone key v1",
+  "redemptionSHA256": "c802dfb495c4ccda196eb2bf12edc10fef426359f015611bc1fbb3c82379ca16"
+}

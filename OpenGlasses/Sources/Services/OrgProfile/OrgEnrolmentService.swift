@@ -242,6 +242,34 @@ final class OrgEnrolmentService: ObservableObject {
         }
     }
 
+    /// A setup file the system handed over (AirDrop, Files, Mail): read it once, bounded, let go
+    /// of the system's copy, then treat it exactly as an imported file.
+    func openOfficePackageFile(at url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let bytes: Data? = {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            return try? handle.read(upToCount: OfficeSetupPackage.maximumBytes + 1) ?? Data()
+        }()
+        Self.discardInboxCopy(url)
+        guard let bytes else {
+            reset()
+            source = .office
+            stage = .failed("Couldn't read the Avenkin Office setup file. Ask your organisation to send it again.")
+            return
+        }
+        openOfficePackageFile(bytes)
+    }
+
+    /// The system copies an opened file into Documents/Inbox; nothing else is ever deleted.
+    private static func discardInboxCopy(_ url: URL) {
+        guard url.deletingLastPathComponent().lastPathComponent == "Inbox",
+              let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              url.standardizedFileURL.path.hasPrefix(documents.standardizedFileURL.path) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
     /// What typed text comes to before the licence path sees it (Plan CT 3a).
     enum KeyEntry: Equatable {
         /// A licence code — typed as one, or the one an activation key resolved to. It goes on to

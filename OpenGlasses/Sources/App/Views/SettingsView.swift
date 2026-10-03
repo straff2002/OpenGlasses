@@ -1040,6 +1040,26 @@ struct GlassesSettingsView: View {
 
     var body: some View {
         Form {
+            // The only way back after the app is removed from Meta AI (or was never added past
+            // onboarding): the session card's pill no longer starts a connect, so without this row
+            // an unregistered app has nowhere to ask for registration.
+            if GlassesRegistration(stateRaw: appState.registrationStateRaw) != .registered {
+                Section {
+                    Button {
+                        Task { await appState.connectGlasses() }
+                    } label: {
+                        HStack {
+                            Label("Connect to Meta AI", systemImage: "link")
+                            Spacer()
+                            if appState.isConnectingGlasses { ProgressView() }
+                        }
+                    }
+                    .disabled(appState.isConnectingGlasses)
+                } footer: {
+                    Text("Avenkin isn't connected to your glasses in the Meta AI app. This opens Meta AI so you can approve the connection.")
+                }
+            }
+
             // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
             // Any glasses that pair as a Bluetooth headset already run the whole voice loop, so
             // say what the connected pair CAN do rather than letting the user find the limits

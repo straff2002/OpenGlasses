@@ -450,7 +450,8 @@ struct FieldAssistSettingsView: View {
         #if AVENKIN_OFFICE_TRANSPORT
         .sheet(isPresented: $showingOfficePairing) { OfficePairingSheet() }
         #endif
-        .fileImporter(isPresented: $showingOfficeSetupImporter, allowedContentTypes: [.json]) { result in
+        .fileImporter(isPresented: $showingOfficeSetupImporter,
+                      allowedContentTypes: [UTType(exportedAs: OfficeSetupPackage.typeIdentifier), .json]) { result in
             switch result {
             case .failure:
                 officeImportError = "Couldn't open the Avenkin Office setup file. Try selecting it again."

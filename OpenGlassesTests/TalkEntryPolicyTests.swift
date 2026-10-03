@@ -254,6 +254,71 @@ final class TalkEntryPolicyTests: XCTestCase {
         XCTAssertTrue(SessionCardGlassesPill.awayHint.localizedCaseInsensitiveContains("Meta AI"))
     }
 
+    // MARK: - Session card: job pill
+
+    func testNoOpenJobShowsNoJobPill() {
+        XCTAssertNil(SessionCardJobPill.presentation(jobOpen: false, paused: false))
+        XCTAssertNil(SessionCardJobPill.presentation(jobOpen: false, paused: true),
+                     "a stale pause on a job that is not open is not news")
+        XCTAssertNil(SessionCardJobPill.presentation(session: nil),
+                     "without Field Assist there is never a session, so never a pill")
+    }
+
+    func testARunningJobReadsRunningAndOpensTheJob() {
+        XCTAssertEqual(SessionCardJobPill.presentation(jobOpen: true, paused: false),
+                       .init(word: "Job running", systemImage: "checklist", tint: .ok,
+                             action: .openJob,
+                             accessibilityHint: "Double-tap to open the job, where you can pause or end it."))
+    }
+
+    /// The case the pill exists for: a job paused when the app closed, restored paused, and
+    /// otherwise invisible from the home screen.
+    func testAPausedJobReadsPausedAndOpensTheJob() {
+        XCTAssertEqual(SessionCardJobPill.presentation(jobOpen: true, paused: true),
+                       .init(word: "Job paused", systemImage: "pause.circle", tint: .warn,
+                             action: .openJob,
+                             accessibilityHint: "Double-tap to open the job, where you can resume or end it."))
+    }
+
+    func testTheJobPillsTwoStatesDifferInShapeAsWellAsColour() {
+        let running = SessionCardJobPill.presentation(jobOpen: true, paused: false)
+        let paused = SessionCardJobPill.presentation(jobOpen: true, paused: true)
+        XCTAssertNotEqual(running?.systemImage, paused?.systemImage)
+        XCTAssertNotEqual(running?.tint, paused?.tint)
+    }
+
+    func testTheJobPillsLabelIsItsWordAndItsHintNamesTheTap() {
+        for paused in [false, true] {
+            guard let presentation = SessionCardJobPill.presentation(jobOpen: true, paused: paused) else {
+                return XCTFail("an open job always has a pill")
+            }
+            XCTAssertEqual(presentation.accessibilityLabel, presentation.word)
+            XCTAssertTrue(presentation.accessibilityHint.hasPrefix("Double-tap to open the job"))
+            XCTAssertFalse(presentation.word.localizedCaseInsensitiveContains("tap"))
+        }
+    }
+
+    private func session(_ json: String) throws -> FieldSession {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(FieldSession.self, from: Data(json.utf8))
+    }
+
+    /// Read off the session the same way the Job tab's presence is: not ended, not cancelled —
+    /// and paused by `pausedAt`, the field pause, resume and the launch restore all write.
+    func testTheJobPillReadsTheOpenSession() throws {
+        let base = #""id":"s1","vaultId":"refrigeration","mode":"ai_only","startedAt":"2026-10-03T08:00:00Z","escalations":[],"billableSeconds":0"#
+        let running = try session("{\(base),\"outcome\":\"in_progress\"}")
+        let paused = try session("{\(base),\"outcome\":\"paused\",\"pausedAt\":\"2026-10-03T09:00:00Z\"}")
+        let ended = try session("{\(base),\"outcome\":\"resolved\",\"endedAt\":\"2026-10-03T10:00:00Z\"}")
+        let cancelled = try session("{\(base),\"outcome\":\"cancelled\"}")
+
+        XCTAssertEqual(SessionCardJobPill.presentation(session: running)?.word, "Job running")
+        XCTAssertEqual(SessionCardJobPill.presentation(session: paused)?.word, "Job paused")
+        XCTAssertNil(SessionCardJobPill.presentation(session: ended))
+        XCTAssertNil(SessionCardJobPill.presentation(session: cancelled))
+    }
+
     // MARK: - Session card: wake word off
 
     /// The master switch can be turned off from the Lock Screen, Control Center, a widget or Siri,

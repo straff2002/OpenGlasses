@@ -179,3 +179,18 @@ paths = [
   '''OpenGlassesTests/WakePhraseMigrationTests\.swift''',
 ]
 regexes = ['''wakePhraseMigratedToAvenkin_v1''']
+
+[[allowlists]]
+description = """
+The two PUBLIC Ed25519 application keys in the commissioning contract fixtures (office and
+phone). Both are public halves, and both are derived from public labels in
+Transport/mobile-core/commission/fixtures.go, so there is no secret behind them. They appear as
+`officeApplicationKey` / `phoneApplicationKey` inside the signed payloads, which is what trips the
+generic detector. Scoped to the two exact values AND the commissioning fixture files.
+"""
+condition = "AND"
+paths = ['''^Contracts/fixtures/commission-[a-z-]+-v1\.(json|txt)$''', '''^Contracts/fixtures/commission-fixture-keys\.json$''']
+regexes = [
+  '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''',
+  '''2hr21s5ALq78ys4P9AP3in9U/Q1/5XqTV7a58EF4A1Q=''',
+]
