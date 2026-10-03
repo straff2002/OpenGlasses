@@ -8,8 +8,9 @@
 <meta name="referrer" content="no-referrer">
 <title>Vault guide · Field Assist · Avenkin</title>
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
-<!-- Converted from docs/field-assist-vault-guide.md. That file is the source: change the guide
-     there and convert it again, rather than editing this page. -->
+<!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
+     is the source: change the guide there and run the script again, rather than editing this page.
+     source-sha256: 976f3e0bf101a09a6c94da1ed7e2e437291787844d2104aa07d4117182b19062 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -32,7 +33,7 @@
 </div>
 <main>
 <div class="prose">
-<p class="meta">Field Assist, powered by Avenkin · applies to September 2026 builds with the manual tier · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text</p>
+<p class="meta">Field Assist, powered by Avenkin · applies to builds with the manual tier (September 2026 or later) · a Field Assist subscription or an organisation licence · formats: PDF (text layer or scanned), EPUB, Markdown, plain text</p>
 <p class="meta">Also available as a <a href="/docs/field-assist-vault-guide.pdf">PDF</a>.</p>
 <nav class="contents" aria-label="Contents">
 <ol>
@@ -571,8 +572,9 @@ product.</p>
 <h3 id="on-your-site">On your site</h3>
 <ul>
 <li>Link to the <code>.vaultarchive</code> file directly, over https. That link is all the app needs.</li>
-<li>A QR code of the same address works, and so does <code>openglasses://vault?src=&lt;the https address&gt;</code>,
-  which opens the app straight from the phone's Camera app.</li>
+<li>A QR code of the same address works, and so does <code>avenkin://vault?src=&lt;the https address&gt;</code>,
+  which opens the app straight from the phone's Camera app. Builds from before October 2026 only
+  answer to the older <code>openglasses://vault?src=…</code> form, which current builds still accept.</li>
 <li><strong>One-time or expiring links are worth using.</strong> The app treats the address as a secret, but the
   publisher is the only one who can stop it being passed around.</li>
 <li>Keep archives under 250 MB. That is the ceiling the app will download and unpack; a vault of

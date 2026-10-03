@@ -27,6 +27,8 @@ on:
       - '.well-known/**'
       - 'Scripts/stage-pages-site.sh'
       - 'Scripts/check-pages-site.py'
+      - 'Scripts/build-vault-guide-page.py'
+      - 'docs/field-assist-vault-guide.md'
       - 'Scripts/site-legacy-paths.txt'
       - 'Scripts/tests/site-auth-forward.test.js'
       - '.github/workflows/pages.yml'

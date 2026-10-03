@@ -18,6 +18,7 @@ the site's promises:
   script policy    every page under the site's Content-Security-Policy lists the SHA-256 of each
                    inline script it carries, so the sign-in hand-off is never silently blocked
   404, security    404.html and a well-formed .well-known/security.txt exist
+  vault guide      the guide page was converted from the Markdown as it stands now
 
 Standard library only. Exit status is nonzero on any failure, which stops the deploy.
 """
@@ -227,6 +228,16 @@ def main():
             if left < 60:
                 print(f"check-pages-site: WARNING — site/.well-known/security.txt expires in {left} day(s); renew it.",
                       file=sys.stderr)
+
+    # --- the vault guide page is the current Markdown ---------------------------------------------
+    guide_page = site / "field-assist" / "vault-guide" / "index.html"
+    guide_source = REPO / "docs" / "field-assist-vault-guide.md"
+    if guide_page.is_file():
+        recorded = re.search(r"source-sha256: ([0-9a-f]{64})", guide_page.read_text(encoding="utf-8"))
+        current = hashlib.sha256(guide_source.read_bytes()).hexdigest()
+        if not recorded or recorded.group(1) != current:
+            fail("field-assist/vault-guide/index.html",
+                 "is not the current docs/field-assist-vault-guide.md; run Scripts/build-vault-guide-page.py and commit the page")
 
     if failures:
         for line in failures:

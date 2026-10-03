@@ -264,7 +264,10 @@ explicit allowlist into `_site/` and then independently refuses to publish a tre
 denied path. New pages go in `site/`, which is staged to the site root as a tree; anything else
 published from outside `site/` is added to that allowlist. `Scripts/check-pages-site.py` then checks
 the staged tree: the paths shipped builds read are still there (`Scripts/site-legacy-paths.txt`), no
-page loads anything from another site, and every internal link resolves. To preview locally:
+page loads anything from another site, and every internal link resolves. The vault guide page
+(`site/field-assist/vault-guide/`) is converted from `docs/field-assist-vault-guide.md`: after
+changing the guide, run `python3 Scripts/build-vault-guide-page.py` and commit the page, or the
+check fails. To preview locally:
 
 ```bash
 ./Scripts/stage-pages-site.sh && python3 Scripts/check-pages-site.py _site
