@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Security · Avenkin</title>
+<meta name="description" content="How to report a security vulnerability in Avenkin, and what to expect.">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="30" height="30">Avenkin</a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/app/">The app</a>
+    <a href="/field-assist/">Field Assist</a>
+    <a href="/office/">Office</a>
+    <a href="/pricing/">Plans</a>
+  </nav>
+</header>
+<main>
+<div class="prose">
+<h1>Security</h1>
+<p class="intro">How to report a vulnerability, and what to expect when you do.</p>
+<p>Avenkin runs on a camera and a microphone you may wear on your face. Reports are welcome and taken seriously.</p>
+
+<h2>Reporting a vulnerability</h2>
+<p><strong>Please do not open a public issue for a security defect.</strong> Use either private channel:</p>
+<ul>
+  <li><strong>GitHub private vulnerability reporting</strong>, preferred: <a href="https://github.com/straff2002/OpenGlasses/security/advisories/new">report a vulnerability</a> on the source repository. It stays private until an advisory is published.</li>
+  <li><strong>Email</strong> <a href="mailto:g@skunkworks.kiwi">g@skunkworks.kiwi</a>, if you would rather not use a GitHub account or the finding concerns this website.</li>
+</ul>
+<p>It helps to include the version or commit, the device and iOS version, steps to reproduce, what an attacker gains, and whether any data left the device.</p>
+<p><strong>Please do not send us other people's data.</strong> If reproducing a finding captured someone's face, voice or health information, describe it rather than attaching it.</p>
+
+<h2>What to expect</h2>
+<p>These are the targets of a small team, not a contractual commitment.</p>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Stage</th><th>Target</th></tr></thead>
+  <tbody>
+    <tr><td>Acknowledgement that a person has read it</td><td>3 business days</td></tr>
+    <tr><td>Triage: severity, scope and what happens next</td><td>10 business days</td></tr>
+    <tr><td>Fix or written mitigation plan, high and critical</td><td>30 days</td></tr>
+    <tr><td>Fix or written mitigation plan, everything else</td><td>90 days</td></tr>
+  </tbody>
+</table>
+</div>
+<p>These are New Zealand business days. If a target passes in silence, please chase it. Once a fix ships we publish an advisory and credit you by whatever name you prefer, including none.</p>
+
+<h2>Scope</h2>
+<p><strong>In scope:</strong> the iOS app with its extensions, watch app and widgets; the scripts and build configuration in the source repository; and this website and the files it publishes.</p>
+<p><strong>Out of scope:</strong> Meta's Wearables Device Access Toolkit and Meta's services; third-party AI providers and model hosts; Apple platform defects; findings that need an already-compromised device; and scanner output with no analysis.</p>
+
+<h2>Safe harbour</h2>
+<p>If you research in good faith and within the scope above, we will not pursue or support legal action against you. Good faith means using your own devices and accounts, not accessing or keeping anyone else's data, not degrading the service for others, and giving us a reasonable chance to fix a finding before publishing it.</p>
+
+<p>The full policy is <a href="https://github.com/straff2002/OpenGlasses/blob/main/SECURITY.md">SECURITY.md</a> in the source repository. Machine-readable contact details are at <a href="/.well-known/security.txt">/.well-known/security.txt</a>.</p>
+</div>
+</main>
+<footer class="site-footer">
+  <a href="/privacy.html">Privacy</a>
+  <a href="/support.html">Support</a>
+  <a href="/security.html">Security</a>
+  <a href="/source/">Source licence</a>
+  <a href="/terms/">Terms</a>
+  <span>&copy; 2026 Skunkworks NZ Ltd</span>
+</footer>
+</body>
+</html>

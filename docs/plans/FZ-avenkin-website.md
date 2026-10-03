@@ -1,7 +1,23 @@
 # Plan FZ — The Avenkin Website (avenkin.com)
 
-**Status:** 📝 Drafted 2026-09-29 — for review. Nothing is built, no DNS has been changed by this
-plan, and no site file has moved.
+**Status:** 🚧 P2 built 2026-10-03 (PR pending); P3–P5 not started. Drafted 2026-09-29. avenkin.com
+already serves the Pages site and new builds read one base URL (`PublicSite`, Plan FY).
+**P2 as built:** the homepage at `/` with the sign-in hand-off kept inline and byte-for-byte as it
+was; `/auth/meta/` with the fixed-path hand-off; `/app/`, `/field-assist/`, `/office/`, `/pricing/`
+(structure, no prices or buy links), `/source/`, `/terms/`, `/security.html`,
+`/.well-known/security.txt`, `/404.html`; one shared stylesheet; a `<meta>` Content-Security-Policy
+on every new page; the association file narrowed to `/auth/meta`; `Scripts/site-legacy-paths.txt`,
+`Scripts/check-pages-site.py` and `Scripts/tests/site-auth-forward.test.js`, run by `pages.yml` on
+deploy and on pull requests that touch the site. **Differences from the text below:** (1) new pages
+live in `site/`, but the four legacy pages stay at the repository root, because
+`BrandNameGuardTests`, `WeatherKitEntitlementGuardTests` and the rename script read them there;
+(2) `/` forwards on any query or fragment, as it always has, rather than on named auth keys, because
+P0 recorded no key names — so nothing may link to a fragment of the homepage, and the site check
+enforces that; (3) the role addresses (`support@`, `security@`, …) are **not** used: avenkin.com has
+no mail records yet, so every page keeps the existing contact address; (4) the privacy policy gains
+a section on the website only — Avenkin Office is not covered yet; (5) the activation-gate fixture
+is not written. **Owed by the owner:** a Meta registration from a clean install via `/` and via
+`/auth/meta/`, then the portal switch; legal review of `/terms/` (R10); mail for the domain.
 **Origin:** The owner bought **avenkin.com** on 2026-09-29, the day after the product was renamed
 (Plan FY: the phone app becomes **Avenkin**, the desktop app **Avenkin Office**). Decided the same
 day: the existing GitHub Pages site, built by this repository's `pages.yml`, takes avenkin.com as

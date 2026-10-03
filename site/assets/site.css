@@ -1,0 +1,218 @@
+/* The one shared stylesheet for avenkin.com (Plan FZ P2).
+   Self-hosted on purpose: no hosted fonts, no imports, no url() that leaves the site (FZ I4).
+   The legacy pages (privacy.html, support.html, about.html) carry their own inline styles and do
+   not load this file. */
+
+:root {
+  --bg: #F6F2EB;
+  --surface: #FFFDF9;
+  --ink: #202B2D;
+  --muted: #5B6668;
+  --accent: #E77F47;
+  --link: #A4441A;
+  --rule: rgba(32, 43, 45, 0.12);
+  --shadow: 0 1px 2px rgba(32, 43, 45, 0.06), 0 8px 24px rgba(32, 43, 45, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1A2325;
+    --surface: #222E30;
+    --ink: #F6F2EB;
+    --muted: #AEB6B7;
+    --link: #F09A66;
+    --rule: rgba(246, 242, 235, 0.14);
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--link); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Header */
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  width: 100%;
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 18px 20px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.brand img { width: 30px; height: 30px; }
+.site-nav { display: flex; flex-wrap: wrap; gap: 4px 4px; }
+.site-nav a {
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.site-nav a:hover, .site-nav a:focus-visible { color: var(--ink); background: var(--rule); }
+.site-nav a[aria-current="page"] { color: var(--ink); background: var(--rule); }
+
+/* Layout */
+main { flex: 1; width: 100%; }
+.wrap { max-width: 68rem; margin: 0 auto; padding: 0 20px; }
+.prose { max-width: 44rem; margin: 0 auto; padding: 24px 20px 72px; }
+
+/* Hero */
+.hero { text-align: center; padding: 56px 20px 40px; }
+.hero .mark { width: 88px; height: 88px; }
+.hero h1 {
+  font-size: clamp(2.5rem, 7vw, 3.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin: 20px 0 10px;
+}
+.tagline {
+  font-size: clamp(1.15rem, 3.2vw, 1.4rem);
+  font-weight: 600;
+  margin: 0 0 14px;
+}
+.lede { max-width: 34em; margin: 0 auto 10px; }
+.devices { max-width: 34em; margin: 0 auto 28px; color: var(--muted); }
+.pill {
+  display: inline-block;
+  padding: 7px 18px;
+  border: 1.5px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 16px;
+  padding: 16px 0 24px;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 20px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.card h2 { font-size: 1.2rem; line-height: 1.3; margin: 0 0 6px; }
+.card p { margin: 0 0 14px; color: var(--muted); }
+.card .more { margin: auto 0 0; font-weight: 600; }
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.band {
+  margin: 16px 0 64px;
+  padding: 26px 26px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+}
+.band h2 { font-size: 1.3rem; margin: 0 0 8px; }
+.band p { max-width: 46em; margin: 0 0 14px; }
+
+/* Prose pages */
+.prose h1 {
+  font-size: clamp(2rem, 5vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 24px 0 8px;
+}
+.prose .intro { font-size: 1.15rem; color: var(--muted); margin: 0 0 28px; }
+.prose h2 {
+  font-size: 1.3rem;
+  line-height: 1.3;
+  margin: 40px 0 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+.prose h3 { font-size: 1.05rem; margin: 24px 0 4px; }
+.prose p, .prose ul, .prose ol { margin: 0 0 16px; }
+.prose ul, .prose ol { padding-left: 1.25rem; }
+.prose li { margin-bottom: 6px; }
+.meta { color: var(--muted); margin: 0 0 28px; }
+.note {
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+}
+.note p:last-child { margin-bottom: 0; }
+
+.table-scroll { overflow-x: auto; margin: 0 0 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.96rem; }
+th, td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+th { font-size: 0.8rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-weight: 600; }
+code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+.button {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Footer */
+.site-footer {
+  border-top: 1px solid var(--rule);
+  padding: 20px 20px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.site-footer a { color: var(--muted); text-decoration: none; }
+.site-footer a:hover, .site-footer a:focus-visible { color: var(--ink); text-decoration: underline; }
+
+/* Returning from Meta sign-in: show only the hand-off message (the script in the page head sets
+   the class before anything renders). */
+#returning { display: none; text-align: center; padding: 96px 20px; }
+.returning #home { display: none; }
+.returning #returning { display: block; }
+#manual { display: none; margin-top: 20px; }
+
+@media (max-width: 34rem) {
+  .site-header { justify-content: center; }
+  .hero { padding-top: 32px; }
+}
