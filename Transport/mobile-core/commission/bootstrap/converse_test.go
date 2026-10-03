@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -193,5 +195,114 @@ func TestAStartUpFailureIsReportedAndCloses(t *testing.T) {
 	}
 	if <-c.done == nil {
 		t.Fatal("start-up failure returned no error")
+	}
+}
+
+// After expiry an approval is refused before a binding is issued: issuing writes the ledger.
+func TestNoBindingIsIssuedAfterExpiry(t *testing.T) {
+	clock := clockAt(time.Now().Unix())
+	cfg := liveConfig(clock.Load())
+	cfg.Certificate, cfg.Now = certificate(t), clock.Load
+	issued := 0
+	issue := func(string, string, string, string, string, int64) (string, error) { issued++; return "binding", nil }
+	c := converse(t, cfg, issue)
+	invitationEnvelope, red := phoneOf(t, c.next("invitation"))
+	if _, e := Exchange(context.Background(), toLoopback, invitationEnvelope, red); e != nil {
+		t.Fatal(e)
+	}
+	c.next("redemption")
+	clock.Add(900)
+	c.write(`{"op":"approve","profileDocument":"p.s","licenceCode":"l.s"}`)
+	if !strings.Contains(c.next("error")["message"].(string), "expired") {
+		t.Fatal("approval after expiry not refused as expired")
+	}
+	c.write(`{"op":"refuse","reason":"policy"}`)
+	c.next("error")
+	if issued != 0 {
+		t.Fatal("a peer binding was issued after expiry")
+	}
+	a, e := Exchange(context.Background(), toLoopback, invitationEnvelope, red)
+	if e != nil || a.Decision.Refusal == nil || a.Decision.Refusal.Reason != "expired" {
+		t.Fatal("phone not told the invitation expired", e)
+	}
+}
+
+// blockedWriter takes the first write, then blocks every later one until released.
+type blockedWriter struct {
+	mu      sync.Mutex
+	written []string
+	release chan struct{}
+}
+
+func (w *blockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	n := len(w.written)
+	w.mu.Unlock()
+	if n > 0 {
+		<-w.release
+	}
+	w.mu.Lock()
+	w.written = append(w.written, string(p))
+	w.mu.Unlock()
+	return len(p), nil
+}
+
+// A desktop that stops reading stdout does not keep the listener open past expiry.
+func TestExpiryClosesTheListenerWhileStdoutIsBlocked(t *testing.T) {
+	now := time.Now().Unix()
+	cfg := liveConfig(now)
+	cfg.Certificate, cfg.ExpiresAt = certificate(t), now+2
+	bound := make(chan string, 1)
+	cfg.Listen = func(network, address string) (net.Listener, error) {
+		l, e := loopback(network, address)
+		if e == nil {
+			bound <- l.Addr().String()
+		}
+		return l, e
+	}
+	out := &blockedWriter{release: make(chan struct{})}
+	stdinR, stdinW := io.Pipe()
+	defer stdinW.Close()
+	done := make(chan error, 1)
+	go func() { done <- Converse(cfg, nil, stdinR, out) }()
+	address := <-bound
+	// Events pile up behind the blocked writer: a redemption among them.
+	waitFor(t, func() bool { out.mu.Lock(); defer out.mu.Unlock(); return len(out.written) == 1 })
+	var invitation map[string]any
+	out.mu.Lock()
+	_ = json.Unmarshal([]byte(out.written[0]), &invitation)
+	out.mu.Unlock()
+	invitationEnvelope, red := phoneOf(t, invitation)
+	if a, e := Exchange(context.Background(), toLoopback, invitationEnvelope, red); e != nil || !a.Awaiting {
+		t.Fatal("request stalled behind stdout", e)
+	}
+	waitFor(t, func() bool {
+		c, e := net.DialTimeout("tcp4", address, 200*time.Millisecond)
+		if e == nil {
+			c.Close()
+		}
+		return e != nil
+	})
+	close(out.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("conversation did not end once stdout drained")
+	}
+	last := out.written[len(out.written)-1]
+	if !strings.Contains(last, `"event":"closed"`) || !strings.Contains(last, `"expired"`) ||
+		!strings.Contains(out.written[1], `"event":"redemption"`) {
+		t.Fatal("events out of order or closed not last", out.written)
+	}
+}
+
+func waitFor(t *testing.T, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition not reached")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

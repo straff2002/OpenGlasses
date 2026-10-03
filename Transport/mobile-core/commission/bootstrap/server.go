@@ -74,7 +74,9 @@ type Config struct {
 	OfficeKey ed25519.PrivateKey
 	// Notify receives the exchange's events, one at a time and in order: "redemption",
 	// "unexpected-use", "approval-ready", "refusal-ready" and "delivered", with the fields
-	// documented in converse.go. Nil discards them.
+	// documented in converse.go. It is called from one goroutine of its own, never while the
+	// exchange is locked, so a slow Notify delays only later events, never a request or Close.
+	// Events still queued when the server closes are delivered; none follow. Nil discards them.
 	Notify func(map[string]any)
 	// Now is the clock in Unix seconds. Nil is the system clock.
 	Now func() int64
@@ -94,14 +96,18 @@ type Server struct {
 	http              *http.Server
 	served            chan struct{}
 	requests          atomic.Int64
+	closed            atomic.Bool
+	events            *queue
 
 	mu         sync.Mutex
 	redemption string
 	redeemed   commission.Redemption
 	decision   string
+	// expired is the `expired` refusal once one has been served for the exchange's own
+	// redemption: from then on that is the exchange's answer, and nobody can decide.
+	expired    string
 	delivered  bool
 	unexpected map[string]bool
-	closed     bool
 }
 
 // privateHost checks that `host` is a private-network IPv4 address in canonical dotted form.
@@ -186,7 +192,8 @@ func Listen(cfg Config) (*Server, error) {
 		TLSNextProto:      map[string]func(*http.Server, *tls.Conn, http.Handler){},
 		ErrorLog:          log.New(io.Discard, "", 0),
 	}
-	listener := tls.NewListener(&limitListener{Listener: socket, slots: make(chan struct{}, MaximumConnections)},
+	s.events = newQueue(cfg.Notify)
+	listener := tls.NewListener(&limitListener{Listener: socket, slots: make(chan struct{}, MaximumConnections), done: make(chan struct{})},
 		&tls.Config{Certificates: []tls.Certificate{cfg.Certificate}, MinVersion: tls.VersionTLS13,
 			MaxVersion: tls.VersionTLS13, NextProtos: []string{"http/1.1"}, ClientAuth: tls.NoClientCert})
 	go func() {
@@ -243,7 +250,7 @@ func (s *Server) Approve(profileDocument, licenceCode, peerBinding string) (stri
 		return "", e
 	}
 	s.decision = approval
-	s.cfg.Notify(map[string]any{"event": "approval-ready", "peerBinding": peerBinding, "decisionSHA256": commission.Digest(approval)})
+	s.events.push(map[string]any{"event": "approval-ready", "peerBinding": peerBinding, "decisionSHA256": commission.Digest(approval)})
 	return approval, nil
 }
 
@@ -270,11 +277,22 @@ func (s *Server) Refuse(reason string) (string, error) {
 		return "", e
 	}
 	s.decision = refusal
-	s.cfg.Notify(map[string]any{"event": "refusal-ready", "reason": reason, "decisionSHA256": commission.Digest(refusal)})
+	s.events.push(map[string]any{"event": "refusal-ready", "reason": reason, "decisionSHA256": commission.Digest(refusal)})
 	return refusal, nil
 }
 
+// Decidable says why the office cannot approve or refuse now, or nil if it can. Check it before
+// issuing anything for an approval.
+func (s *Server) Decidable() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.decidable()
+}
+
 func (s *Server) decidable() error {
+	if s.expired != "" || s.cfg.Now() >= s.cfg.ExpiresAt {
+		return errors.New("the invitation has expired")
+	}
 	if s.redemption == "" {
 		return errors.New("no phone has redeemed this invitation")
 	}
@@ -290,15 +308,18 @@ func (s *Server) refusal(redemption, reason string) (string, error) {
 		Reason: reason, IssuedAt: s.cfg.Now()}, s.cfg.OfficeKey)
 }
 
-// Close stops the listener and every open connection, and waits for it.
+// Close stops the listener and every open connection, and waits for the listener (not for
+// Notify: events already queued are still delivered, and Flushed says when they have been).
 func (s *Server) Close() error {
-	s.mu.Lock()
-	s.closed = true
-	s.mu.Unlock()
+	s.closed.Store(true)
 	e := s.http.Close()
 	<-s.served
+	s.events.stop()
 	return e
 }
+
+// Flushed is closed once the server has closed and every queued event has been delivered.
+func (s *Server) Flushed() <-chan struct{} { return s.events.done }
 
 func reply(w http.ResponseWriter, status int, body []byte) error {
 	h := w.Header()
@@ -347,9 +368,9 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	status, answer, legitimate := s.answer(redemption, redeemed)
 	if e = reply(w, status, answer); e == nil && legitimate {
 		s.mu.Lock()
-		if !s.delivered && !s.closed {
+		if !s.delivered && !s.closed.Load() {
 			s.delivered = true
-			s.cfg.Notify(map[string]any{"event": "delivered"})
+			s.events.push(map[string]any{"event": "delivered"})
 		}
 		s.mu.Unlock()
 	}
@@ -360,14 +381,21 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) answer(redemption string, redeemed commission.Redemption) (status int, body []byte, legitimate bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
+	if s.closed.Load() {
 		return http.StatusServiceUnavailable, nil, false
 	}
 	if s.redemption == redemption && s.decision != "" {
 		return http.StatusOK, []byte(s.decision), true
 	}
+	if s.redemption == redemption && s.expired != "" {
+		return http.StatusOK, []byte(s.expired), false
+	}
 	if s.cfg.Now() >= s.cfg.ExpiresAt {
-		return s.refused(redemption, "expired")
+		status, body, _ := s.refused(redemption, "expired")
+		if status == http.StatusOK && s.redemption == redemption {
+			s.expired = string(body)
+		}
+		return status, body, false
 	}
 	switch {
 	case s.redemption == "":
@@ -376,7 +404,7 @@ func (s *Server) answer(redemption string, redeemed commission.Redemption) (stat
 			return http.StatusInternalServerError, nil, false
 		}
 		s.redemption, s.redeemed = redemption, redeemed
-		s.cfg.Notify(map[string]any{"event": "redemption", "envelope": redemption,
+		s.events.push(map[string]any{"event": "redemption", "envelope": redemption,
 			"redemptionSHA256": commission.Digest(redemption), "comparison": comparison,
 			"enrolmentID": redeemed.EnrolmentID, "phoneTransportID": redeemed.PhoneTransportID,
 			"phoneApplicationKey": redeemed.PhoneApplicationKey, "appVersion": redeemed.AppVersion,
@@ -390,7 +418,7 @@ func (s *Server) answer(redemption string, redeemed commission.Redemption) (stat
 		digest := commission.Digest(redemption)
 		if !s.unexpected[digest] {
 			s.unexpected[digest] = true
-			s.cfg.Notify(map[string]any{"event": "unexpected-use", "redemptionSHA256": digest,
+			s.events.push(map[string]any{"event": "unexpected-use", "redemptionSHA256": digest,
 				"phoneTransportID": redeemed.PhoneTransportID, "phoneApplicationKey": redeemed.PhoneApplicationKey})
 		}
 		return s.refused(redemption, "already_used")
@@ -405,20 +433,31 @@ func (s *Server) refused(redemption, reason string) (int, []byte, bool) {
 	return http.StatusOK, []byte(refusal), false
 }
 
-// limitListener holds at most cap(slots) connections at once.
+// limitListener holds at most cap(slots) connections at once. Close does not wait for a slot.
 type limitListener struct {
 	net.Listener
-	slots chan struct{}
+	slots     chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func (l *limitListener) Accept() (net.Conn, error) {
-	l.slots <- struct{}{}
+	select {
+	case l.slots <- struct{}{}:
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
 	c, e := l.Listener.Accept()
 	if e != nil {
 		<-l.slots
 		return nil, e
 	}
 	return &limitConn{Conn: c, release: func() { <-l.slots }}, nil
+}
+
+func (l *limitListener) Close() error {
+	l.closeOnce.Do(func() { close(l.done) })
+	return l.Listener.Close()
 }
 
 type limitConn struct {
@@ -431,4 +470,63 @@ func (c *limitConn) Close() error {
 	e := c.Conn.Close()
 	c.once.Do(c.release)
 	return e
+}
+
+// queue delivers events in the order they were pushed, from one goroutine, so that pushing
+// never waits for the receiver.
+type queue struct {
+	mu      sync.Mutex
+	items   []map[string]any
+	stopped bool
+	wake    chan struct{}
+	done    chan struct{}
+}
+
+func newQueue(deliver func(map[string]any)) *queue {
+	q := &queue{wake: make(chan struct{}, 1), done: make(chan struct{})}
+	go func() {
+		defer close(q.done)
+		for {
+			q.mu.Lock()
+			items, stopped := q.items, q.stopped
+			q.items = nil
+			q.mu.Unlock()
+			for _, event := range items {
+				deliver(event)
+			}
+			if len(items) > 0 {
+				continue
+			}
+			if stopped {
+				return
+			}
+			<-q.wake
+		}
+	}()
+	return q
+}
+
+// push queues an event; after stop it is dropped.
+func (q *queue) push(event map[string]any) {
+	q.mu.Lock()
+	if !q.stopped {
+		q.items = append(q.items, event)
+	}
+	q.mu.Unlock()
+	q.signal()
+}
+
+// stop accepts no more events; those queued are still delivered, then done closes.
+func (q *queue) stop() {
+	q.mu.Lock()
+	q.stopped = true
+	q.mu.Unlock()
+	q.signal()
+}
+
+func (q *queue) signal() {
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
 }

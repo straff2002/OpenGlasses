@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -177,8 +178,8 @@ func TestThePhoneReadsARefusalAndRefusesAnImpostor(t *testing.T) {
 	_, port, _ := net.SplitHostPort(impostor.Address())
 	commissionDial = dialPort(port)
 	t.Cleanup(func() { commissionDial = nil })
-	if _, e := CommissionExchange(invitation, redemption); e == nil {
-		t.Fatal("exchanged with a listener that is not the invitation's office")
+	if _, e := CommissionExchange(invitation, redemption); !errors.Is(e, bootstrap.ErrNotTheOffice) {
+		t.Fatal("exchanged with a listener that is not the invitation's office, or failed for another reason:", e)
 	}
 	if _, _, redeemed := impostor.Redeemed(); redeemed {
 		t.Fatal("the impostor received the redemption")

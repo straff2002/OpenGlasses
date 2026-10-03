@@ -47,17 +47,33 @@ func toLoopback(ctx context.Context, _, address string) (net.Conn, error) {
 	return (&net.Dialer{}).DialContext(ctx, "tcp4", "127.0.0.1:"+port)
 }
 
+// recorder keeps a server's events. Events arrive from the server's own goroutine, so all()
+// first waits for everything queued before it.
 type recorder struct {
 	mu     sync.Mutex
 	events []map[string]any
+	server *Server
+	synced chan struct{}
 }
 
 func (r *recorder) notify(event map[string]any) {
+	if event["event"] == "test-sync" {
+		r.synced <- struct{}{}
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.events = append(r.events, event)
 }
 func (r *recorder) all(kind string) []map[string]any {
+	if r.server != nil && !r.server.closed.Load() {
+		r.server.events.push(map[string]any{"event": "test-sync"})
+		select {
+		case <-r.synced:
+		case <-time.After(5 * time.Second):
+			panic("events not delivered")
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []map[string]any
@@ -88,6 +104,7 @@ func start(t *testing.T, clock *atomic.Int64, events *recorder) *Server {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
+	events.server, events.synced = s, make(chan struct{})
 	return s
 }
 
@@ -224,23 +241,122 @@ func TestASecondRedemptionIsAlreadyUsedAndAnUnexpectedUse(t *testing.T) {
 	}
 }
 
-func TestAnExpiredInvitationIsRefused(t *testing.T) {
+// Once the phone has been told the invitation expired, nobody can decide it: the phone and the
+// office never hold contradictory answers.
+func TestAnExpiredInvitationIsRefusedAndCannotBeDecided(t *testing.T) {
 	clock := clockAt(time.Now().Unix())
 	events := &recorder{}
 	s := start(t, clock, events)
 	red := redeem(t, s.Invitation(), "phone")
 	exchange(t, s, red)
 	clock.Add(900)
-	a := exchange(t, s, red)
-	if a.Decision.Refusal == nil || a.Decision.Refusal.Reason != "expired" {
-		t.Fatal("expired invitation not refused as expired", a)
+	first := exchange(t, s, red)
+	if first.Decision.Refusal == nil || first.Decision.Refusal.Reason != "expired" {
+		t.Fatal("expired invitation not refused as expired", first)
 	}
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+		t.Fatal("approved after the phone was told the invitation expired")
+	}
+	if _, e := s.Refuse("refused_by_person"); e == nil {
+		t.Fatal("refused after the phone was told the invitation expired")
+	}
+	// Even if the clock steps back, the exchange's answer stays the expiry it was given.
+	clock.Add(-60)
+	if e := s.Decidable(); e == nil {
+		t.Fatal("decidable after the phone was told the invitation expired")
+	}
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+		t.Fatal("approved after the clock stepped back")
+	}
+	again := exchange(t, s, red)
+	if again.Decision.Approval != nil || again.Envelope != first.Envelope {
+		t.Fatal("the phone got another answer after expiry", again)
+	}
+	if len(events.all("approval-ready")) != 0 || len(events.all("refusal-ready")) != 0 {
+		t.Fatal("a decision was announced after expiry")
+	}
+}
+
+// Nobody can decide once the clock has passed expiresAt, even before the phone asks again.
+func TestNobodyDecidesAfterExpiry(t *testing.T) {
+	clock := clockAt(time.Now().Unix())
+	s := start(t, clock, &recorder{})
+	exchange(t, s, redeem(t, s.Invitation(), "phone"))
+	clock.Add(900)
+	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e == nil {
+		t.Fatal("approved after expiry")
+	}
+}
+
+// A decision made while the invitation was live is still served to its phone after expiry.
+func TestADecisionMadeInTimeIsServedAfterExpiry(t *testing.T) {
+	clock := clockAt(time.Now().Unix())
+	s := start(t, clock, &recorder{})
+	red := redeem(t, s.Invitation(), "phone")
+	exchange(t, s, red)
 	if _, e := s.Approve("profile.signature", "licence.signature", "binding"); e != nil {
 		t.Fatal(e)
 	}
-	// A decision made in the last second is still served to the phone it was made for.
-	if a = exchange(t, s, red); a.Decision.Approval == nil {
+	clock.Add(900)
+	if a := exchange(t, s, red); a.Decision.Approval == nil {
 		t.Fatal("decided exchange not served at expiry")
+	}
+}
+
+// A receiver that never returns delays only the events: requests are answered, decisions are
+// made and the listener closes.
+func TestABlockedEventReceiverStopsNothingElse(t *testing.T) {
+	release := make(chan struct{})
+	now := time.Now().Unix()
+	s, e := Listen(Config{Invitation: token("invitation"), OrganizationID: "test-organisation", Address: officeAddress,
+		IssuedAt: now, ExpiresAt: now + 900, Certificate: certificate(t), OfficeKey: officeKey,
+		Notify: func(map[string]any) { <-release }, Listen: loopback})
+	if e != nil {
+		t.Fatal(e)
+	}
+	red := redeem(t, s.Invitation(), "phone")
+	if !exchange(t, s, red).Awaiting {
+		t.Fatal("not awaiting")
+	}
+	exchange(t, s, redeem(t, s.Invitation(), "intruder"))
+	if _, e = s.Approve("profile.signature", "licence.signature", "binding"); e != nil {
+		t.Fatal(e)
+	}
+	if exchange(t, s, red).Decision.Approval == nil {
+		t.Fatal("approval not served")
+	}
+	closed := make(chan struct{})
+	go func() { s.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close waited for the event receiver")
+	}
+	if _, e = Exchange(context.Background(), toLoopback, s.Invitation(), red); e == nil {
+		t.Fatal("listener still answering after Close")
+	}
+	close(release)
+	select {
+	case <-s.Flushed():
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued events not flushed once the receiver returned")
+	}
+}
+
+func TestCloseDoesNotWaitForAConnectionSlot(t *testing.T) {
+	s := start(t, clockAt(time.Now().Unix()), &recorder{})
+	for range MaximumConnections + 2 {
+		c, e := toLoopback(context.Background(), "tcp4", s.Address())
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer c.Close()
+	}
+	time.Sleep(100 * time.Millisecond) // let the listener take every slot
+	started := time.Now()
+	s.Close()
+	if waited := time.Since(started); waited > time.Second {
+		t.Fatalf("Close took %v with every connection slot held", waited)
 	}
 }
 
@@ -301,7 +417,7 @@ func TestTheListenerServesOnePurpose(t *testing.T) {
 			t.Fatalf("%s %s: %d, want %d", c.method, c.path, got, c.want)
 		}
 	}
-	if len(events.events) != 0 {
+	if len(events.all("redemption")) != 0 || len(events.events) != 0 {
 		t.Fatal("refused requests reached the exchange", events.events)
 	}
 	if got := raw(t, s, "POST", Path, red); got != 202 {

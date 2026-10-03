@@ -48,7 +48,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"sync"
 	"time"
 )
 
@@ -75,14 +74,12 @@ type Decision struct {
 // events to `out`, reads decisions from `in`, and returns when the listener has closed. The
 // returned error is the start-up failure, if any.
 func Converse(cfg Config, issue Issuer, in io.Reader, out io.Writer) error {
-	var writing sync.Mutex
+	// Every event but the start-up failure and "closed" goes through the server's queue, so the
+	// order is one order and a desktop that stops reading stdout stalls only stdout: requests,
+	// expiry and Close go on. "closed" is written after the queue has drained.
 	encoder := json.NewEncoder(out)
 	encoder.SetEscapeHTML(false)
-	emit := func(event map[string]any) {
-		writing.Lock()
-		defer writing.Unlock()
-		_ = encoder.Encode(event)
-	}
+	emit := func(event map[string]any) { _ = encoder.Encode(event) }
 	delivered := make(chan struct{}, 1)
 	cfg.Notify = func(event map[string]any) {
 		emit(event)
@@ -102,8 +99,9 @@ func Converse(cfg Config, issue Issuer, in io.Reader, out io.Writer) error {
 		emit(map[string]any{"event": "closed", "reason": "failed"})
 		return e
 	}
+	push := server.events.push
 	invitation, _ := Invitation(server.Invitation())
-	emit(map[string]any{"event": "invitation", "qr": server.QRText(), "invitationSHA256": server.InvitationSHA256(),
+	push(map[string]any{"event": "invitation", "qr": server.QRText(), "invitationSHA256": server.InvitationSHA256(),
 		"address": server.Address(), "expiresAt": cfg.ExpiresAt, "officeID": invitation.OfficeID,
 		"officeTransportID": server.OfficeTransportID()})
 
@@ -122,10 +120,10 @@ func Converse(cfg Config, issue Issuer, in io.Reader, out io.Writer) error {
 			}
 		}
 		if scanner.Err() != nil {
-			emit(map[string]any{"event": "error", "message": "unreadable input: " + scanner.Err().Error()})
+			push(map[string]any{"event": "error", "message": "unreadable input: " + scanner.Err().Error()})
 		}
 	}()
-	expiry := time.NewTimer(time.Duration(cfg.ExpiresAt-cfg.Now()) * time.Second)
+	expiry := time.NewTimer(time.Until(time.Unix(cfg.ExpiresAt, 0)))
 	defer expiry.Stop()
 	var linger <-chan time.Time
 	reason := ""
@@ -137,7 +135,7 @@ func Converse(cfg Config, issue Issuer, in io.Reader, out io.Writer) error {
 				continue
 			}
 			if e := decide(server, issue, cfg.Now, line); e != nil {
-				emit(map[string]any{"event": "error", "message": e.Error()})
+				push(map[string]any{"event": "error", "message": e.Error()})
 			}
 		case <-expiry.C:
 			reason = "expired"
@@ -148,6 +146,7 @@ func Converse(cfg Config, issue Issuer, in io.Reader, out io.Writer) error {
 		}
 	}
 	_ = server.Close()
+	<-server.Flushed()
 	emit(map[string]any{"event": "closed", "reason": reason})
 	return nil
 }
@@ -159,13 +158,11 @@ func decide(server *Server, issue Issuer, now func() int64, line []byte) error {
 	}
 	switch d.Op {
 	case "approve":
-		redeemed, _, ok := server.Redeemed()
-		if !ok {
-			return errors.New("no phone has redeemed this invitation")
+		// Checked before the binding is issued: issuing writes the binding ledger.
+		if e := server.Decidable(); e != nil {
+			return e
 		}
-		if server.Decided() {
-			return errors.New("this invitation is already decided")
-		}
+		redeemed, _, _ := server.Redeemed()
 		if len(d.ProfileDocument) == 0 || len(d.LicenceCode) == 0 {
 			return errors.New("an approval needs the profile document and the licence code")
 		}
