@@ -266,7 +266,7 @@ final class JobRecordingCoordinator: ObservableObject {
     }
 
     /// Start recording the open job, or carry on a recording of it that was interrupted. Returns
-    /// the line said at every start, or why not.
+    /// the line shown at every start, or why not.
     func start() async -> Result<String, Refusal> {
         await inTurn { await self.startInTurn() }
     }

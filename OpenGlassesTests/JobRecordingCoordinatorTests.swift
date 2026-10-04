@@ -215,7 +215,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         let coordinator = makeCoordinator()
         let result = await coordinator.start()
 
-        XCTAssertEqual(try result.get(), RecordingConsent.reminder, "the one line said at every start")
+        XCTAssertEqual(try result.get(), RecordingConsent.reminder, "the one line shown at every start")
         XCTAssertEqual(coordinator.status, .recording(sessionID: sessionID))
         XCTAssertEqual(recorder.started.count, 1)
         let part = try XCTUnwrap(recorder.started.first)

@@ -1165,6 +1165,18 @@ class AppState: ObservableObject, AppStateProtocol {
         return JobRecordingCoordinator(seams: seams)
     }()
 
+    /// A recording the phone could not seal when it stopped is sealed once the pairing verifies
+    /// again. Looked for every half minute while the office connection runs, and off the poll's
+    /// own path: sealing transcribes the recording, and the office's other traffic — check-in,
+    /// jobs, reports — must not wait for it.
+    private func sealPendingRecordingsNowAndThen() {
+        guard let recordings = jobRecordings,
+              Date().timeIntervalSince(lastRecordingSealPass) >= 30 else { return }
+        lastRecordingSealPass = Date()
+        Task { @MainActor in await recordings.sealPending() }
+    }
+    private var lastRecordingSealPass = Date.distantPast
+
     /// Whether a recorded job may be sent to the office now: the network, power, the phone's
     /// standing with its organisation and office, medical mode, and what else is waiting.
     private func recordingSyncConditions() -> SyncEligibility.Conditions {
@@ -1633,9 +1645,8 @@ class AppState: ObservableObject, AppStateProtocol {
             try? await self?.officeJobUpdates?.sweep()
             try? await self?.officeManuals?.sweep()
             await self?.officeReportPump?.tick()
-            // Reports and receipts first; a recording is large and never urgent. One the phone
-            // could not seal earlier is sealed now that the pairing has verified.
-            await self?.jobRecordings?.sealPending()
+            // Reports and receipts first; a recording is large and never urgent.
+            self?.sealPendingRecordingsNowAndThen()
             try? await self?.officeJobRecordings?.sweep()
         }
         return OfficeFieldConnection(seams: seams)

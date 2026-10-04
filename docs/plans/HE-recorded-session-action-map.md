@@ -389,7 +389,7 @@ office transport, so it has no office and offers no recording.
   host clock's reading at its first sample and how long it ran. `placed(partID:on:endedBy:)` puts
   it on the `SessionClock`; `tracksAndGaps` writes the timeline's tracks and, between one part and
   the next, a gap with the reason the earlier part ended.
-- **`RecordingConsent`** — the six points the sheet makes, the line said at each start, and
+- **`RecordingConsent`** — the six points the sheet makes, the line shown at each start, and
   whether an acknowledgement still stands: for this wording and for this organisation.
 - **`JobRecordingAvailability`** — the one decision about whether recording is offered and may
   run. *Not offered* (nothing is shown): no office transport in the build, Field Assist not
@@ -441,7 +441,8 @@ office transport, so it has no office and offers no recording.
 transcript; blocked in Local Only) is asked by the sync service where it publishes.
 
 *In the app:* `AppState.jobRecordings` and `officeJobRecordings`; a sweep on the office
-connection's poll, after reports; "Record this job" on the open job's page with the consent
+connection's poll, after reports, and every half minute a look for recordings still to be sealed
+(off the poll's own path, so the office's other traffic never waits on a transcription); "Record this job" on the open job's page with the consent
 sheet, pause, mark, stop, and the line saying where the recording stands, also on a finished
 job's page; deleting a recording asks first and says when the office has not received it.
 

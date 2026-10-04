@@ -7,7 +7,7 @@ import Foundation
 /// leaves the phone for the organisation's office. Nothing records until the person holding the
 /// phone has read that in plain words and said so. It is asked once, for the wording as it stands
 /// and for the organisation the phone is paired with: a change to either asks again. Each start
-/// after that says one line.
+/// after that shows one line.
 ///
 /// Pure: the wording, and whether an acknowledgement still stands. Where the acknowledgement is
 /// kept is the app's.
@@ -22,7 +22,7 @@ enum RecordingConsent {
     /// What the button that acknowledges it says.
     static let acknowledgeTitle = "I understand — record this job"
 
-    /// Said, and shown, each time a recording starts.
+    /// Shown each time a recording starts.
     static let reminder = "Recording this job for your office. Tell the people nearby."
 
     /// The points the sheet makes, in the order it makes them.
