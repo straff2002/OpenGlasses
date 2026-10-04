@@ -1,0 +1,458 @@
+import CryptoKit
+import XCTest
+@testable import OpenGlasses
+
+/// A recorded job sealed on the phone and taken to the office: the bundle on disk, and the
+/// service that sends it, against the Go golden fixtures and an in-memory stand-in for the
+/// transport.
+@MainActor
+final class JobRecordingSyncServiceTests: XCTestCase {
+    private typealias F = OfficeCheckInFixtures
+    private typealias Store = JobRecordingBundleStore
+    private typealias Service = JobRecordingSyncService
+
+    private var root: URL!
+    private var transport = OfficeManagedFolderMemoryTransport()
+    private var now = Date(timeIntervalSince1970: TimeInterval(OfficeCheckInFixtures.now))
+    private var conditions = SyncEligibility.Conditions(
+        network: .wifi, isCharging: true, batteryLevel: 1, profileIsCurrent: true, leaseIsCurrent: true,
+        bindingIsCurrent: true, officeIsReachable: true)
+    private var gateFailure: Error?
+    private var gateCalls = 0
+
+    private let sessionID = "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+    private let videoPart = Data("Avenkin public fixture recording video part v1: eighty-two bytes of nothing at all".utf8)
+    private let audioPart = Data("Avenkin public fixture audio v1".utf8)
+
+    private struct Failed: Error {}
+
+    override func setUp() {
+        super.setUp()
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("JobRecordingSyncServiceTests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: root)
+        super.tearDown()
+    }
+
+    // MARK: - The world
+
+    private var store: Store { Store(sessionsRoot: root.appendingPathComponent("FieldSessions", isDirectory: true)) }
+
+    private func bundleID() throws -> String {
+        try XCTUnwrap(try F.fields(F.payload("recording-bundle-manifest-v1"))["bundleID"] as? String)
+    }
+
+    private func binding() throws -> BundleManifest.Binding {
+        let held = try F.held()
+        return .init(organizationID: held.organizationID, enrolmentID: held.enrolmentID, officeID: held.officeID,
+                     generation: held.generation, phoneTransportID: held.phoneTransportID)
+    }
+
+    /// The recorder's output: two part files in the app's own storage.
+    private func partFiles() throws -> [Store.PartFile] {
+        let parts = root.appendingPathComponent("parts-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: parts, withIntermediateDirectories: true)
+        let video = parts.appendingPathComponent("video-1.mp4")
+        let audio = parts.appendingPathComponent("audio-1.m4a")
+        try videoPart.write(to: video)
+        try audioPart.write(to: audio)
+        return [.init(partID: "video-1", track: .video, container: "mp4", file: video),
+                .init(partID: "audio-1", track: .audio, container: "m4a", file: audio)]
+    }
+
+    /// The golden signature for the golden manifest (CryptoKit's signatures are randomised); the
+    /// fixture phone key for anything else.
+    private func sign(_ payload: Data) throws -> Data {
+        if payload == (try F.payload("recording-bundle-manifest-v1")) {
+            return try XCTUnwrap(Data(base64Encoded: F.envelope(F.data("recording-bundle-manifest-v1")).signature))
+        }
+        return try F.phone().signature(for: BundleManifest.signingDomain + payload)
+    }
+
+    @discardableResult
+    private func seal(parts: [Store.PartFile]? = nil) async throws -> Store.Record {
+        try await store.seal(
+            .init(bundleID: try bundleID(), sessionID: sessionID, jobNumber: "JOB-1042", binding: try binding(),
+                  consentAt: now.addingTimeInterval(-3_600), blurred: false, droppedFrames: 0, chunkBytes: 32,
+                  timeline: try RecordedJobFixtures.data("recorded-session-timeline-v1"),
+                  transcript: try RecordedJobFixtures.data("recorded-session-transcript-v1"),
+                  parts: try parts ?? partFiles()),
+            now: now, sign: { try self.sign($0) })
+    }
+
+    private func openFolders() async throws {
+        let held = try F.held()
+        let binding = try F.fields(F.payload("office-check-in-binding-v1"))
+        let fields: [String: Any] = [
+            "organizationID": held.organizationID, "enrolmentID": held.enrolmentID, "officeID": held.officeID,
+            "generation": 1, "officeTransportID": try XCTUnwrap(binding["officeTransportID"]),
+            "officeApplicationKey": held.officeApplicationKey.base64EncodedString(),
+            "phoneApplicationKey": held.phoneApplicationKey.base64EncodedString(),
+            "profileID": held.profileID, "bindingSHA256": held.bindingSHA256,
+            "administratorKey": held.administratorKey.base64EncodedString(),
+        ]
+        try await transport.startFolders(
+            bindingJSON: String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self),
+            policy: "automatic", lanHint: "")
+    }
+
+    private func makeService() -> Service {
+        Service(seams: .init(
+            transport: transport, store: store,
+            trust: { [unowned self] in
+                self.gateCalls += 1
+                if let gateFailure = self.gateFailure { throw gateFailure }
+                let held = try F.held()
+                return .init(organizationID: held.organizationID, enrolmentID: held.enrolmentID, officeID: held.officeID,
+                             phoneTransportID: held.phoneTransportID, officeApplicationKey: held.officeApplicationKey)
+            },
+            conditions: { [unowned self] in self.conditions },
+            clock: { [unowned self] in self.now }))
+    }
+
+    /// Passes until every chunk is in the office's folder and the office has taken it.
+    private func sendEverything(_ service: Service) async throws {
+        for _ in 0..<8 {
+            try await service.sweep()
+            await transport.officeTakes(try bundleID())
+        }
+        try await service.sweep()
+    }
+
+    private func officeSays(_ status: String, _ fixture: String? = nil, _ envelope: Data? = nil) async throws {
+        await transport.put(recordingStatus: try envelope ?? F.data(fixture ?? "recording-receipt-\(status)-v1"),
+                            bundleID: try bundleID(), status: status)
+    }
+
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    // MARK: - Sealing
+
+    func testARecordedJobIsSealedAsTheGoldenBundle() async throws {
+        let parts = try partFiles()
+        let record = try await seal(parts: parts)
+        let manifest = try store.manifest(record)
+        XCTAssertEqual(manifest.payload, try F.payload("recording-bundle-manifest-v1"), "the golden manifest, byte for byte")
+        XCTAssertEqual(BundleManifest.sealed(payload: manifest.payload, signature: manifest.signature),
+                       try F.data("recording-bundle-manifest-v1"))
+        XCTAssertEqual(record.manifestSHA256, OfficeCheckIn.digest(manifest.payload))
+        XCTAssertEqual(record.chunks.map(\.bytes), [32, 32, 18, 31])
+        XCTAssertEqual(record.mediaBytes, 113)
+        XCTAssertEqual(record.stage, .sealed)
+
+        // Each chunk is a file named by its digest, the two JSON files are the ones listed, and
+        // the recorder's part files are gone: the chunks are the recording now.
+        for chunk in record.chunks {
+            let bytes = try Data(contentsOf: store.chunkFile(record, sha256: chunk.sha256))
+            XCTAssertEqual(OfficeCheckIn.digest(bytes), chunk.sha256)
+        }
+        let video = try record.chunks.prefix(3).reduce(Data()) { $0 + (try Data(contentsOf: store.chunkFile(record, sha256: $1.sha256))) }
+        XCTAssertEqual(video, videoPart)
+        XCTAssertEqual(try Data(contentsOf: store.timelineFile(record)), try RecordedJobFixtures.data("recorded-session-timeline-v1"))
+        XCTAssertTrue(parts.allSatisfy { !exists($0.file) })
+        XCTAssertEqual(store.records(), [record])
+        XCTAssertEqual(store.unsyncedBytes(), 113)
+        let media = try FileManager.default.contentsOfDirectory(atPath: store.bundleDirectory(sessionID: sessionID).appendingPathComponent("media").path)
+        XCTAssertEqual(media.count, 4, "nothing left over from cutting")
+    }
+
+    func testHalfABundleIsNoBundleAndTheRecordedPartsStay() async throws {
+        var parts = try partFiles()
+        parts.append(.init(partID: "video-2", track: .video, container: "mp4",
+                           file: root.appendingPathComponent("missing.mp4")))
+        do {
+            try await seal(parts: parts)
+            XCTFail("sealed with a part that cannot be read")
+        } catch let failure as Store.Failure {
+            XCTAssertEqual(failure, .unreadablePart)
+        }
+        XCTAssertFalse(exists(store.bundleDirectory(sessionID: sessionID)))
+        XCTAssertTrue(parts.prefix(2).allSatisfy { exists($0.file) })
+        XCTAssertTrue(store.records().isEmpty)
+
+        // A signer that does not sign leaves no bundle either, and a session that is a path is refused.
+        do {
+            _ = try await store.seal(
+                .init(bundleID: try bundleID(), sessionID: sessionID, jobNumber: nil, binding: try binding(),
+                      consentAt: now, blurred: false, droppedFrames: 0, chunkBytes: 32,
+                      timeline: Data("{}".utf8), transcript: Data("{}".utf8), parts: Array(parts.prefix(2))),
+                now: now, sign: { _ in Data(repeating: 0, count: 10) })
+            XCTFail("sealed without a signature")
+        } catch let failure as Store.Failure {
+            XCTAssertEqual(failure, .notSigned)
+        }
+        XCTAssertFalse(exists(store.bundleDirectory(sessionID: sessionID)))
+        do {
+            _ = try await store.seal(
+                .init(bundleID: try bundleID(), sessionID: "../elsewhere", jobNumber: nil, binding: try binding(),
+                      consentAt: now, blurred: false, droppedFrames: 0, timeline: Data(), transcript: Data(), parts: []),
+                now: now, sign: { try self.sign($0) })
+            XCTFail("sealed under a path")
+        } catch let failure as Store.Failure {
+            XCTAssertEqual(failure, .notAnIdentifier)
+        }
+    }
+
+    // MARK: - The road to the office
+
+    func testARecordingGoesOnlyWhenTheMomentIsRightAndOnlyAFewChunksAhead() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        let id = try bundleID()
+        XCTAssertEqual(service.rows.map(\.phase), [.sealed])
+
+        // On mobile data, which the person has not allowed: nothing is published and it says why.
+        conditions.network = .cellular
+        try await service.sweep()
+        var published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.waitingForWiFi)))
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)),
+                       "Recording waiting to sync. Waiting for Wi-Fi. Recordings aren't sent over mobile data unless you allow it.")
+        XCTAssertEqual(gateCalls, 0, "the pairing gate is not asked while nothing can be sent")
+
+        // On the office's Wi-Fi: the manifest, byte for byte the golden one, and two chunks.
+        conditions.network = .wifi
+        try await service.sweep()
+        published = await transport.recordings
+        XCTAssertEqual(published[id]?.envelope, try F.data("recording-bundle-manifest-v1"))
+        XCTAssertEqual(published[id]?.published.keys.filter { $0.hasPrefix("media/") }.count, 2)
+        guard case .transferring(let sent, let total)? = service.rows.first?.phase else {
+            return XCTFail("\(String(describing: service.rows.first?.phase))")
+        }
+        XCTAssertEqual(sent, 0)
+        XCTAssertEqual(total, store.records().first?.totalBytes)
+
+        // Nothing more goes until the office has taken what is there.
+        try await service.sweep()
+        var chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 2)
+        await transport.officeTakes(id)
+        try await service.sweep()
+        chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 4)
+
+        // The route stops being a good one: what is there stays, nothing is added.
+        conditions.isCharging = false
+        conditions.batteryLevel = 0.2
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.waitingForPower)))
+
+        // Everything served is "sent", never "received": only the office's receipt says that.
+        conditions.isCharging = true
+        await transport.officeTakes(id)
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)), "Recording sent. Waiting for the office to confirm it.")
+        XCTAssertNil(store.records().first?.acknowledgedAt)
+        XCTAssertTrue(exists(store.chunkFile(try XCTUnwrap(store.records().first), sha256: try XCTUnwrap(store.records().first?.chunks.first?.sha256))))
+        let withdrawn = await transport.withdrawnRecordings
+        XCTAssertTrue(withdrawn.isEmpty)
+    }
+
+    func testOnlyTheOfficesReceiptLetsARecordingGoAndTheMediaIsTrimmedAWeekLater() async throws {
+        try await openFolders()
+        let sealed = try await seal()
+        let service = makeService()
+        try await sendEverything(service)
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+
+        // What is not the office's word about this bundle changes nothing.
+        try await officeSays("received", nil, try F.changed("recording-receipt-received-v1", domain: OfficeRecordingReceipt.domain, by: F.phone()) { _ in })
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        try await officeSays("received", nil, try F.changed("recording-receipt-received-v1", domain: OfficeRecordingReceipt.domain, by: F.office()) {
+            $0["manifestSHA256"] = String(repeating: "0", count: 64)
+        })
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        try await officeSays("reviewed", "recording-receipt-received-v1")   // under another status's name
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        XCTAssertNil(service.rows.first?.outcome)
+
+        // The golden receipt: acknowledged, taken out of the folder, and nothing removed yet.
+        try await officeSays("received")
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .acknowledged)
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)), "Recording received by the office.")
+        var record = try XCTUnwrap(store.records().first)
+        XCTAssertEqual(record.acknowledgedAt, now)
+        let withdrawn = await transport.withdrawnRecordings
+        XCTAssertEqual(withdrawn, [sealed.bundleID])
+        let receipts = store.bundleDirectory(sessionID: sessionID).appendingPathComponent("receipts")
+        XCTAssertEqual(try Data(contentsOf: receipts.appendingPathComponent("received.envelope.json")),
+                       try F.data("recording-receipt-received-v1"))
+        XCTAssertTrue(record.chunks.allSatisfy { exists(store.chunkFile(record, sha256: $0.sha256)) })
+        XCTAssertEqual(store.unsyncedBytes(), 0)
+
+        // Six days on the media is still here; at seven it is trimmed, and only the media.
+        now = now.addingTimeInterval(6 * 86_400)
+        try await service.sweep()
+        XCTAssertTrue(exists(store.chunkFile(record, sha256: record.chunks[0].sha256)))
+        now = now.addingTimeInterval(86_400)
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .trimmed)
+        record = try XCTUnwrap(store.records().first)
+        XCTAssertTrue(record.chunks.allSatisfy { !exists(store.chunkFile(record, sha256: $0.sha256)) })
+        XCTAssertTrue(exists(store.timelineFile(record)))
+        XCTAssertTrue(exists(store.transcriptFile(record)))
+        XCTAssertNoThrow(try store.manifest(record))
+        XCTAssertTrue(exists(receipts.appendingPathComponent("received.envelope.json")))
+
+        // What came of it arrives after the bundle has left the folder, and is still heard.
+        try await officeSays("published")
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.outcome?.status, "published")
+        XCTAssertEqual(service.rows.first?.outcome?.vaultID, "fixture-organisation-vault")
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)),
+                       "Recording received by the office. A procedure was published from it.")
+
+        // The app launched again is where it was, and the same receipts are not acted on twice.
+        let relaunched = makeService()
+        try await relaunched.sweep()
+        XCTAssertEqual(relaunched.rows, service.rows)
+        let after = await transport.withdrawnRecordings
+        XCTAssertEqual(after, [sealed.bundleID])
+    }
+
+    func testARefusedRecordingIsKeptWholeAndOfferedAgainOnlyWhenTheTechnicianSays() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        try await sendEverything(service)
+        try await officeSays("refused")
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .failed(.digest))
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)),
+                       "The office didn't accept the recording (what arrived wasn't what was sent). It is still on this phone.")
+        var record = try XCTUnwrap(store.records().first)
+        XCTAssertTrue(record.chunks.allSatisfy { exists(store.chunkFile(record, sha256: $0.sha256)) })
+        XCTAssertNil(record.acknowledgedAt)
+        XCTAssertTrue(service.deletionNeedsConfirmation(bundleID: record.bundleID))
+
+        // Nothing more is sent by itself.
+        let before = await transport.recordingChunkPublishes
+        try await service.sweep()
+        var publishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(publishes, before)
+
+        // The technician says try again: it goes from the start, and the old refusal is not acted on again.
+        try await service.keepWaiting(bundleID: record.bundleID)
+        XCTAssertEqual(service.rows.first?.phase, .sealed)
+        try await service.sweep()
+        publishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(publishes, before + 2)
+        record = try XCTUnwrap(store.records().first)
+        XCTAssertEqual(record.stage, .sealed)
+
+        // A refusal after an acknowledgement takes nothing back.
+        try await sendEverything(service)
+        try await officeSays("received")
+        try await service.sweep()
+        try await officeSays("refused", nil, try F.changed("recording-receipt-refused-v1", domain: OfficeRecordingReceipt.domain, by: F.office()) {
+            $0["at"] = F.now + 9_000
+        })
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .acknowledged)
+    }
+
+    func testARecordingThatWaitsTooLongIsKeptAndTheTechnicianIsAsked() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        conditions.officeIsReachable = false
+        now = now.addingTimeInterval(29 * 86_400)
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.officeNotReachable)))
+        now = now.addingTimeInterval(86_400)
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .expired)
+        let record = try XCTUnwrap(store.records().first)
+        XCTAssertTrue(record.chunks.allSatisfy { exists(store.chunkFile(record, sha256: $0.sha256)) }, "nothing is removed")
+
+        // Even with the office back, nothing is sent until the technician chooses.
+        conditions.officeIsReachable = true
+        try await service.sweep()
+        let published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        try await service.keepWaiting(bundleID: record.bundleID)
+        XCTAssertEqual(store.records().first?.waitingSince, now)
+        try await service.sweep()
+        guard case .transferring? = service.rows.first?.phase else {
+            return XCTFail("\(String(describing: service.rows.first?.phase))")
+        }
+    }
+
+    func testNothingIsPublishedOnAPairingThatDoesNotVerify() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        gateFailure = Failed()
+        do {
+            try await service.sweep()
+            XCTFail("the pass should have failed at the gate")
+        } catch is Failed {}
+        var published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(service.rows.first?.phase, .sealed)
+        gateFailure = nil
+        try await service.sweep()
+        published = await transport.recordings
+        XCTAssertEqual(published.count, 1)
+    }
+
+    func testDeletingARecordingRemovesAllOfItAndAsksFirstWhenTheOfficeHasNotGotIt() async throws {
+        try await openFolders()
+        let record = try await seal()
+        let service = makeService()
+        try await service.sweep()
+        XCTAssertTrue(service.deletionNeedsConfirmation(bundleID: record.bundleID))
+        try await service.delete(bundleID: record.bundleID)
+        XCTAssertFalse(exists(store.bundleDirectory(sessionID: sessionID).deletingLastPathComponent()))
+        XCTAssertTrue(service.rows.isEmpty)
+        let published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        try await service.sweep()   // nothing to do, and nothing wrong
+    }
+
+    // MARK: - The record and the words
+
+    func testTheRecordAndTheStateMachineAgree() async throws {
+        let sealed = try await seal()
+        for stage in [Store.Stage.sealed, .delivered, .acknowledged, .trimmed, .failed("too_large"), .expired] {
+            var record = sealed
+            record.stage = stage
+            var back = sealed
+            Service.keep(Service.state(of: record), in: &back)
+            XCTAssertEqual(back.stage, stage)
+        }
+        var partway = sealed
+        partway.transferStarted = true
+        partway.sentBytes = 64
+        XCTAssertEqual(Service.state(of: partway).phase, .transferring(sentBytes: 64, totalBytes: sealed.totalBytes))
+        XCTAssertTrue(Service.state(of: { var r = sealed; r.stage = .trimmed; return r }()).isAcknowledged)
+        XCTAssertFalse(Service.state(of: { var r = sealed; r.stage = .delivered; return r }()).isAcknowledged)
+    }
+
+    func testOnlyAnAcknowledgedRecordingIsSaidToBeReceived() {
+        let phases: [BundleSyncState.Phase] = [
+            .preparing, .sealed, .waiting(.notEligible(.waitingForPower)), .waiting(.openAppToPrepare),
+            .transferring(sentBytes: 10, totalBytes: 100), .delivered, .failed(.policy), .expired]
+        for phase in phases {
+            let words = Service.words(.init(id: "a", sessionID: "s", phase: phase, sentBytes: 10, totalBytes: 100, outcome: nil))
+            XCTAssertFalse(words.lowercased().contains("received"), words)
+        }
+        XCTAssertEqual(Service.words(.init(id: "a", sessionID: "s", phase: .transferring(sentBytes: 50, totalBytes: 200),
+                                           sentBytes: 50, totalBytes: 200, outcome: nil)),
+                       "Sending the recording to the office: 25% of 200 bytes.")
+        for reason in BundleSyncState.RefusalReason.allCases {
+            XCTAssertFalse(Service.refusalWords(reason).isEmpty)
+        }
+    }
+}

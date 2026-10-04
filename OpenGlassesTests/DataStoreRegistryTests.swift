@@ -267,6 +267,7 @@ final class DataStoreRegistryTests: XCTestCase {
         case .complete: expected = .complete
         case .completeUntilFirstUserAuthentication: expected = .completeUntilFirstUserAuthentication
         case .completeUnlessOpenInComplianceMode: expected = Config.hipaaMode ? .completeUnlessOpen : nil
+        case .completeUnlessOpen: expected = .completeUnlessOpen
         default: expected = nil                     // the registry claims no explicit attribute
         }
         if let expected {
