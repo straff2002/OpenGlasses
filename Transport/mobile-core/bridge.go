@@ -209,14 +209,16 @@ type managedRoute struct {
 // to the office except receipts this phone has published.
 //
 // bindingJSON is a closed object with organizationID, enrolmentID, officeID, generation,
-// officeTransportID, officeApplicationKey and phoneApplicationKey (the keys base64). The native
-// caller must have re-verified the saved vendor and administrator binding and the live
+// officeTransportID, officeApplicationKey and phoneApplicationKey (the keys base64). With
+// profileID, bindingSHA256 (the binding digest the phone holds) and administratorKey as well, the
+// folders also carry check-in, renewal and removal (Contracts/office-check-in.md); all three or
+// none. The native caller must have re-verified the saved vendor and administrator binding and the live
 // entitlement first: nothing here verifies that chain, and a folder grants nothing by itself.
 func (c *Client) StartManagedOfficeFolders(bindingJSON, policy, lanHint string) error {
 	if err := checkManagedRoute(policy, lanHint); err != nil {
 		return err
 	}
-	trust, phoneKey, err := parseManagedBinding(bindingJSON, c.id)
+	trust, phoneKey, authority, err := parseManagedBindingAuthority(bindingJSON, c.id)
 	if err != nil {
 		return err
 	}
@@ -229,6 +231,7 @@ func (c *Client) StartManagedOfficeFolders(bindingJSON, policy, lanHint string) 
 	if err != nil {
 		return err
 	}
+	inbox.authority = authority
 	b := binding{DeviceID: trust.OfficeTransportID, Address: lanHint, Mode: "lan", RequiredNetwork: "any"}
 	if policy == managedAutomatic {
 		b = binding{DeviceID: trust.OfficeTransportID, Address: "dynamic", Mode: "automatic"}
@@ -292,6 +295,100 @@ func (c *Client) PublishManagedJobReceipt(messageID, signatureBase64 string) err
 	}
 	t := c.inbox.trust
 	return c.app.Internals.ScanFolderSubdirs(managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords), nil)
+}
+
+// ManagedCheckInPending lists what the office has put in control/checkin/ and control/removal/
+// that verifies against the binding handed over, as a JSON object {challenges, results, removals},
+// each an array of {id, envelope}: envelope is the exact bytes of the file, base64. At most one
+// challenge is listed (the live one with the latest issuedAt) and at most one result (the one for
+// the check-in this phone published). Listing is not acting: the native caller verifies each
+// again through its own gate before it answers, commits or revokes anything.
+func (c *Client) ManagedCheckInPending() (string, error) {
+	c.mu.Lock()
+	inbox := c.inbox
+	c.mu.Unlock()
+	if inbox == nil {
+		return stringJSON(checkInPending{[]pendingEnvelope{}, []pendingEnvelope{}, []pendingEnvelope{}})
+	}
+	pending, err := inbox.checkInPending(time.Now().Unix())
+	if err != nil {
+		return "", err
+	}
+	return stringJSON(pending)
+}
+
+// ManagedCheckInPayload returns the exact bytes (base64) of the check-in that answers the live
+// challenge challengeID, for the phone application key to sign under the check-in domain. A
+// challenge is answered once: asking again returns the same bytes, with the same nonce.
+// leaseRenewBy, appVersion and appBuild are the caller's and decide nothing.
+func (c *Client) ManagedCheckInPayload(challengeID string, leaseRenewBy int64, appVersion, appBuild string) (string, error) {
+	c.mu.Lock()
+	inbox := c.inbox
+	c.mu.Unlock()
+	if inbox == nil {
+		return "", errors.New("no managed office folders are open")
+	}
+	payload, err := inbox.checkInPayload(challengeID, leaseRenewBy, appVersion, appBuild, time.Now().Unix())
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(payload), nil
+}
+
+// PublishManagedCheckIn publishes the check-in for challengeID at records/checkin/ and returns
+// the exact envelope published. signatureBase64 is the phone application key's signature over
+// the check-in domain, one zero byte and the payload ManagedCheckInPayload gave. A check-in
+// already published keeps its bytes.
+func (c *Client) PublishManagedCheckIn(challengeID, signatureBase64 string) (string, error) {
+	return c.publishRecord(signatureBase64, func(inbox *managedInbox, signature []byte) ([]byte, error) {
+		return inbox.publishCheckIn(challengeID, signature)
+	})
+}
+
+// ManagedRemovalReceiptPayload returns the exact bytes (base64) of the receipt for the removal
+// removalID, for the phone application key to sign under the removal-receipt domain. actedAt is
+// when the native caller marked the enrolment revoked; asking again returns the same bytes.
+func (c *Client) ManagedRemovalReceiptPayload(removalID string, actedAt int64) (string, error) {
+	c.mu.Lock()
+	inbox := c.inbox
+	c.mu.Unlock()
+	if inbox == nil {
+		return "", errors.New("no managed office folders are open")
+	}
+	payload, err := inbox.removalReceiptPayload(removalID, actedAt)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(payload), nil
+}
+
+// PublishManagedRemovalReceipt publishes the receipt for removalID at records/removal/ and
+// returns the exact envelope published.
+func (c *Client) PublishManagedRemovalReceipt(removalID, signatureBase64 string) (string, error) {
+	return c.publishRecord(signatureBase64, func(inbox *managedInbox, signature []byte) ([]byte, error) {
+		return inbox.publishRemovalReceipt(removalID, signature)
+	})
+}
+
+func (c *Client) publishRecord(signatureBase64 string, publish func(*managedInbox, []byte) ([]byte, error)) (string, error) {
+	signature, err := base64.StdEncoding.Strict().DecodeString(signatureBase64)
+	if err != nil {
+		return "", errors.New("malformed signature")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inbox == nil || c.app == nil {
+		return "", errors.New("no managed office folders are open")
+	}
+	envelope, err := publish(c.inbox, signature)
+	if err != nil {
+		return "", err
+	}
+	t := c.inbox.trust
+	if err = c.app.Internals.ScanFolderSubdirs(managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords), nil); err != nil {
+		return "", err
+	}
+	return string(envelope), nil
 }
 
 // checkManagedRoute accepts exactly the policies and hints StartManagedOfficeRoute documents.

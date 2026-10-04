@@ -46,27 +46,50 @@ type managedBinding struct {
 	OfficeTransportID    string `json:"officeTransportID"`
 	OfficeApplicationKey string `json:"officeApplicationKey"`
 	PhoneApplicationKey  string `json:"phoneApplicationKey"`
+	// The three below come together or not at all. With them the folders also carry check-in,
+	// renewal and removal (Contracts/office-check-in.md); without them, managed jobs only.
+	ProfileID        string `json:"profileID,omitempty"`
+	BindingSHA256    string `json:"bindingSHA256,omitempty"`
+	AdministratorKey string `json:"administratorKey,omitempty"`
 }
 
 var managedBindingFields = []string{"organizationID", "enrolmentID", "officeID", "generation", "officeTransportID", "officeApplicationKey", "phoneApplicationKey"}
+var managedCheckInBindingFields = append(append([]string{}, managedBindingFields...), "profileID", "bindingSHA256", "administratorKey")
 
 func parseManagedBinding(raw, phoneTransportID string) (manageddelivery.Trust, ed25519.PublicKey, error) {
+	trust, phone, _, err := parseManagedBindingAuthority(raw, phoneTransportID)
+	return trust, phone, err
+}
+
+// parseManagedBindingAuthority reads the binding object in either of its two closed forms. The
+// check-in authority is nil for the form without it.
+func parseManagedBindingAuthority(raw, phoneTransportID string) (manageddelivery.Trust, ed25519.PublicKey, *checkInAuthority, error) {
 	var b managedBinding
 	invalid := errors.New("invalid managed office binding")
-	if len(raw) > 4096 || !officepreview.Flat([]byte(raw), managedBindingFields) || json.Unmarshal([]byte(raw), &b) != nil {
-		return manageddelivery.Trust{}, nil, invalid
+	withAuthority := officepreview.Flat([]byte(raw), managedCheckInBindingFields)
+	if len(raw) > 4096 || !(withAuthority || officepreview.Flat([]byte(raw), managedBindingFields)) || json.Unmarshal([]byte(raw), &b) != nil {
+		return manageddelivery.Trust{}, nil, nil, invalid
+	}
+	var authority *checkInAuthority
+	if withAuthority {
+		administrator, e := base64.StdEncoding.Strict().DecodeString(b.AdministratorKey)
+		if e != nil || len(administrator) != ed25519.PublicKeySize || b.ProfileID == "" || !lowerHex(b.BindingSHA256, 64) {
+			return manageddelivery.Trust{}, nil, nil, invalid
+		}
+		authority = &checkInAuthority{profileID: b.ProfileID, bindingSHA256: b.BindingSHA256, administratorKey: administrator,
+			officeApplicationKey: b.OfficeApplicationKey, phoneApplicationKey: b.PhoneApplicationKey}
 	}
 	office, e1 := base64.StdEncoding.Strict().DecodeString(b.OfficeApplicationKey)
 	phone, e2 := base64.StdEncoding.Strict().DecodeString(b.PhoneApplicationKey)
 	if e1 != nil || e2 != nil || len(office) != ed25519.PublicKeySize || len(phone) != ed25519.PublicKeySize ||
 		b.OrganizationID == "" || b.EnrolmentID == "" || b.OfficeID == "" || b.Generation <= 0 || b.OfficeTransportID == phoneTransportID {
-		return manageddelivery.Trust{}, nil, invalid
+		return manageddelivery.Trust{}, nil, nil, invalid
 	}
 	return manageddelivery.Trust{
 		OrganizationID: b.OrganizationID, EnrolmentID: b.EnrolmentID, OfficeID: b.OfficeID,
 		OfficeTransportID: b.OfficeTransportID, PhoneTransportID: phoneTransportID,
 		Generation: b.Generation, OfficeApplicationKey: office,
-	}, phone, nil
+	}, phone, authority, nil
 }
 
 // managedInbox takes managed jobs out of the control folder: verify against the binding, commit
@@ -81,6 +104,9 @@ type managedInbox struct {
 	records  string // the records folder (send-only)
 	private  string // committed jobs and state; never shared
 	state    inboxState
+	// authority is what check-in, renewal and removal are verified against; nil when the caller
+	// handed over a binding without it, and then none of those is read or offered.
+	authority *checkInAuthority
 }
 
 // inboxState is the durable record: the high-water mark and what was committed. It lives
@@ -90,6 +116,9 @@ type inboxState struct {
 	HighWater *manageddelivery.HighWater `json:"highWater,omitempty"`
 	Jobs      []committedJob             `json:"jobs"`
 	Refused   map[string]string          `json:"refused"` // envelope digest → bounded reason
+	// CheckIn is the one check-in this phone is waiting on; Removals the removal receipts it made.
+	CheckIn  *checkInRecord  `json:"checkIn,omitempty"`
+	Removals []removalRecord `json:"removals,omitempty"`
 }
 
 type committedJob struct {
@@ -359,6 +388,9 @@ func (i *managedInbox) publishReceipt(messageID string, signature []byte) error 
 func (i *managedInbox) outbound(name string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	if i.outboundCheckIn(name) {
+		return true
+	}
 	id, ok := strings.CutSuffix(strings.TrimPrefix(name, "receipts/"), ".envelope.json")
 	if !ok || !strings.HasPrefix(name, "receipts/") || !lowerHex(id, 32) {
 		return false
