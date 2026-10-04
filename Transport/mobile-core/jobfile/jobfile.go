@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 )
 
 const (
@@ -120,8 +121,61 @@ func members(raw []byte) (map[string]json.RawMessage, error) {
 	return out, nil
 }
 
+// unambiguous says raw is one JSON value in which no object, at any depth, names a member twice.
+// A signature over exact bytes says nothing about which of two members a reader takes.
+func unambiguous(raw []byte) bool {
+	type frame struct {
+		object    bool
+		seen      map[string]bool
+		expectKey bool
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
+	var stack []frame
+	for {
+		t, e := d.Token()
+		if e == io.EOF {
+			return len(stack) == 0
+		}
+		if e != nil {
+			return false
+		}
+		top := len(stack) - 1
+		if top >= 0 && stack[top].object && stack[top].expectKey {
+			if delim, closing := t.(json.Delim); closing && delim == '}' {
+				stack = stack[:top]
+				continue
+			}
+			name, ok := t.(string)
+			if !ok || stack[top].seen[name] {
+				return false
+			}
+			stack[top].seen[name], stack[top].expectKey = true, false
+			continue
+		}
+		// A value: its object, if it is in one, expects a name next.
+		if top >= 0 && stack[top].object {
+			stack[top].expectKey = true
+		}
+		switch t {
+		case json.Delim('{'):
+			stack = append(stack, frame{object: true, seen: map[string]bool{}, expectKey: true})
+		case json.Delim('['):
+			stack = append(stack, frame{})
+		case json.Delim(']'):
+			if top < 0 {
+				return false
+			}
+			stack = stack[:top]
+		}
+	}
+}
+
 // identity reads a job's identifier and revision from its exact bytes.
 func identity(job []byte) (Identity, error) {
+	if !unambiguous(job) {
+		return Identity{}, ErrMalformed
+	}
 	fields, e := members(job)
 	if e != nil {
 		return Identity{}, e
@@ -183,6 +237,9 @@ func Sign(job []byte, organisationKey ed25519.PrivateKey) ([]byte, error) {
 // signed says whether the file carries a signature at all; it is not yet checked (see Verify).
 func Open(data []byte) (job []byte, id Identity, signed bool, err error) {
 	if len(data) == 0 || len(data) > MaximumBytes {
+		return nil, Identity{}, false, ErrMalformed
+	}
+	if !unambiguous(data) {
 		return nil, Identity{}, false, ErrMalformed
 	}
 	outer, e := members(data)
