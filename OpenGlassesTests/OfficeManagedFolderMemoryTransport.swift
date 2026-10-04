@@ -32,6 +32,7 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
         case noSuchChallenge, noSuchRemoval
         case notThisPhonesReport, anotherReportUnderThatOperation, noSuchAttachment, notTheBytesNamed
         case invalidBulkRequest, noSuchBulkContent, noSuchAssignment
+        case noSuchUpdate
     }
 
     static let bindingFields: Set<String> = [
@@ -309,6 +310,61 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
         if let published = assignmentReceipts[key] { return String(decoding: published, as: UTF8.self) }
         let envelope = Self.sealed(payload, signatureBase64)
         assignmentReceipts[key] = envelope
+        return String(decoding: envelope, as: UTF8.self)
+    }
+
+    // MARK: Job updates
+
+    /// What sits in `control/updates/`, by identifier, and the receipts published for them.
+    private(set) var updateFiles: [String: Data] = [:]
+    private(set) var updateReceipts: [String: Data] = [:]
+    private var updateReceiptPayloads: [String: Data] = [:]
+
+    func put(update: Data, id: String) { updateFiles[id] = update }
+    /// The office takes an update out of the folder.
+    func remove(update id: String) { updateFiles[id] = nil }
+
+    func jobUpdatesPending() async throws -> String {
+        String(decoding: try JSONSerialization.data(withJSONObject: isOpen ? Self.listing(updateFiles) : []),
+               as: UTF8.self)
+    }
+
+    func jobUpdateReceiptPayload(updateID: String, jobState: String, at: Int64) async throws -> String {
+        guard isOpen else { throw Failure.notOpen }
+        if let built = updateReceiptPayloads[updateID] { return built.base64EncodedString() }
+        guard let envelope = updateFiles[updateID],
+              let fields = try? JSONSerialization.jsonObject(with: envelope) as? [String: Any],
+              let payload = (fields["payload"] as? String).flatMap({ Data(base64Encoded: $0) }),
+              let u = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            throw Failure.noSuchUpdate
+        }
+        func text(_ name: String) -> String { u[name] as? String ?? "" }
+        func number(_ name: String) -> Int64 { (u[name] as? NSNumber)?.int64Value ?? 0 }
+        // The order the transport writes a receipt in. Every value here is plain ASCII.
+        let members: [String] = [
+            #""version":1"#, #""kind":"avenkin.job-update-receipt""#,
+            #""updateID":"\#(updateID)""#, #""updateSHA256":"\#(OfficeReport.digest(payload))""#,
+            #""organizationID":"\#(text("organizationID"))""#, #""enrolmentID":"\#(text("enrolmentID"))""#,
+            #""officeID":"\#(text("officeID"))""#, #""generation":\#(number("generation"))"#,
+            #""phoneTransportID":"\#(phoneTransportID)""#, #""jobID":"\#(text("jobID"))""#,
+            #""sequence":\#(number("sequence"))"#, #""outcome":"received""#,
+            #""jobState":"\#(jobState)""#, #""receivedAt":\#(at)"#,
+        ]
+        let built = Data(("{" + members.joined(separator: ",") + "}").utf8)
+        updateReceiptPayloads[updateID] = built
+        return built.base64EncodedString()
+    }
+
+    func publishJobUpdateReceipt(updateID: String, signatureBase64: String) async throws -> String {
+        guard isOpen, let phoneKey else { throw Failure.notOpen }
+        guard let payload = updateReceiptPayloads[updateID] else { throw Failure.noSuchUpdate }
+        guard let signature = Data(base64Encoded: signatureBase64), signature.count == 64,
+              phoneKey.isValidSignature(signature, for: Data("Avenkin.JobUpdateReceipt.v1\0".utf8) + payload) else {
+            throw Failure.notThisPhonesSignature
+        }
+        if let published = updateReceipts[updateID] { return String(decoding: published, as: UTF8.self) }
+        let envelope = Self.sealed(payload, signatureBase64)
+        updateReceipts[updateID] = envelope
         return String(decoding: envelope, as: UTF8.self)
     }
 

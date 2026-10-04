@@ -49,6 +49,15 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/office-bulk-assignment-receipt-installed-v1.json
         buildPhase: resources
+      # The job-update contract: three updates on one job and the phone's receipt for the first.
+      - path: Contracts/fixtures/job-update-parts-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/job-update-schedule-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/job-update-note-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/job-update-receipt-v1.json
+        buildPhase: resources
       # The report contract's golden report, record, manifest and receipts.
       - path: Contracts/fixtures/office-report-v1.json
         buildPhase: resources
