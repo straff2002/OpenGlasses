@@ -8,6 +8,9 @@ assignments and managed jobs. The Go phone transport and its Syncthing source ex
 Physical main-app pairing, durable job/manual import over that connection, exact receipts and
 background/route-change behaviour still require implementation and testing. The Avenkin Office
 desktop implementation and lab evidence are maintained in its private repository.
+**The phone backlog from here is ordered in Plan [HO](HO-office-delivery-phone-half.md)**
+(2026-10-04): the managed folders in the app, check-in and renewal, reports back, job updates,
+manuals, recorded jobs.
 
 ## Product boundary
 
