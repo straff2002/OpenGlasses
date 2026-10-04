@@ -16,8 +16,9 @@ func fixtureKey(label string) ed25519.PrivateKey {
 }
 
 // FixtureRecord is the fictional record body the golden report names. It stands in for a work
-// record: the contract treats a record as opaque bytes.
-const FixtureRecord = `{"job_reference":"JOB-1042","session_id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","tasks":[]}` + "\n"
+// record: the contract treats a record as opaque bytes. It says where a phone takes the report's
+// job reference, job identifier and job revision from.
+const FixtureRecord = `{"job_file":{"job_id":"job-2031","revision":2},"job_reference":"JOB-1042","session_id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","tasks":[]}` + "\n"
 
 // fixtureAttachment is an attachment whose bytes are a public sentence: only its digest and
 // size travel in the fixtures.
