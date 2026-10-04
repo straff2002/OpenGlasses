@@ -83,6 +83,8 @@ final class OfficeFieldConnection: ObservableObject {
     private var notConnectedSince: Date?
     /// When the engine was last started again to look the office up afresh (automatic only).
     private var lastLookedAgain: Date?
+    /// The saved approval is known to have changed: check it on the next poll, not the next interval.
+    private var approvalCheckDue = false
     /// `restart()`'s caller, told how the run it asked for first started.
     private var firstStart: CheckedContinuation<Void, Error>?
 
@@ -153,6 +155,12 @@ final class OfficeFieldConnection: ObservableObject {
         }
     }
 
+    /// The saved approval has just been replaced (a renewed binding). The running connection
+    /// checks it on its next poll and starts the folders again under the new one.
+    func approvalChanged() {
+        approvalCheckDue = true
+    }
+
     // MARK: - Engine work
 
     /// Replace whatever runs with a new run, after the previous work has finished.
@@ -165,6 +173,7 @@ final class OfficeFieldConnection: ObservableObject {
         running = true
         notConnectedSince = seams.clock()
         lastLookedAgain = nil
+        approvalCheckDue = false
         work = Task { [weak self] in
             await previous?.value
             await self?.run(current)
@@ -246,7 +255,9 @@ final class OfficeFieldConnection: ObservableObject {
         while isCurrent(run) {
             do { try await seams.sleep(UInt64(Policy.pollInterval * 1_000_000_000)) } catch { return .ended }
             guard isCurrent(run) else { return .ended }
-            if seams.clock().timeIntervalSince(lastApprovalCheck) >= Policy.approvalRecheckInterval {
+            if approvalCheckDue
+                || seams.clock().timeIntervalSince(lastApprovalCheck) >= Policy.approvalRecheckInterval {
+                approvalCheckDue = false
                 do {
                     let latest = try await seams.approvedOffice()
                     guard isCurrent(run) else { return .ended }

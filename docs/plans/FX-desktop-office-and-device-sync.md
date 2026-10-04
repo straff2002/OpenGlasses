@@ -67,8 +67,13 @@ office's engine with a stand-in phone). **The opt-in office transport build now 
 folders through the pairing gate, takes a managed job to the existing job review and signs its
 receipt. That is proved headless against an in-memory transport; it has not been run on a
 physical phone, and the default build still links no transport and has no managed folder. How an office-joined phone renews its binding and lease, and
-how it is removed, is drafted in [`Contracts/office-check-in.md`](../../Contracts/office-check-in.md)
-(draft v1, 2026-10-04, design only: no code or fixture on either side). The earlier standalone
+how it is removed, is in [`Contracts/office-check-in.md`](../../Contracts/office-check-in.md)
+(draft v1, 2026-10-04). Its messages, the office key holder's operations and golden fixtures are
+in the Go transport, and **the phone's half is built in the opt-in build** (Plan
+[HO](HO-office-delivery-phone-half.md) P1, 2026-10-04): the phone answers a challenge once,
+takes the renewed binding through the pairing gate and renews its lease, and treats a removal as
+a signed revocation and receipts it. That is proved headless against the fixtures; no phone has
+yet been renewed or removed by a real office, and the office app does not call those operations. The earlier standalone
 Device Lab pairing is a separate feasibility protocol, not a substitute for vendor authority.
 
 ## Messages, manuals and receipts

@@ -294,6 +294,13 @@ final class OfficePairingServiceTests: XCTestCase {
                        office.publicKey.rawRepresentation.base64EncodedString())
         XCTAssertEqual(handed["phoneApplicationKey"] as? String,
                        phone.publicKey.rawRepresentation.base64EncodedString())
+        // What check-in, renewal and removal are read against: the profile, its administrator
+        // key, and the digest of the binding this phone holds.
+        let approved = try await service.currentApprovedPeer()
+        XCTAssertEqual(handed["profileID"] as? String, "northbridge-field")
+        XCTAssertEqual(handed["bindingSHA256"] as? String, approved.binding.payloadSHA256)
+        XCTAssertEqual(handed["administratorKey"] as? String,
+                       administrator.publicKey.rawRepresentation.base64EncodedString())
         let open = await folders.isOpen
         let stops = await folders.stops
         XCTAssertTrue(open)

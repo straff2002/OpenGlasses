@@ -10,6 +10,8 @@ actor OfficePhoneIdentity {
         case invalidChallenge
         case invalidRedemption
         case invalidReceipt
+        case invalidCheckIn
+        case invalidRemovalReceipt
     }
 
     static let shared = OfficePhoneIdentity()
@@ -64,6 +66,23 @@ actor OfficePhoneIdentity {
     func signManagedJobReceipt(_ payload: Data) throws -> Data {
         guard OfficeManagedJobReceipt.payload(payload) != nil else { throw Refusal.invalidReceipt }
         return try key().signature(for: OfficeManagedJobReceipt.domain + payload)
+    }
+
+    /// Sign the check-in that answers an office's challenge (Contracts/office-check-in.md §4.2).
+    /// `payload` is the exact bytes the transport offers; the signature is over the check-in
+    /// domain followed by them. Only a check-in is signed here: anything that is not a closed
+    /// check-in payload within the contract's field rules is refused. Whether it answers a live
+    /// challenge under the binding held is the caller's check, made before it asks.
+    func signCheckIn(_ payload: Data) throws -> Data {
+        guard OfficeCheckIn.checkInPayload(payload) != nil else { throw Refusal.invalidCheckIn }
+        return try key().signature(for: OfficeCheckIn.checkInDomain + payload)
+    }
+
+    /// Sign the receipt for a removal this phone has acted on (Contracts/office-check-in.md §8).
+    /// Only a closed removal-receipt payload is signed here, under the removal-receipt domain.
+    func signRemovalReceipt(_ payload: Data) throws -> Data {
+        guard OfficeCheckIn.removalReceiptPayload(payload) != nil else { throw Refusal.invalidRemovalReceipt }
+        return try key().signature(for: OfficeCheckIn.removalReceiptDomain + payload)
     }
 
     private func key() throws -> Curve25519.Signing.PrivateKey {

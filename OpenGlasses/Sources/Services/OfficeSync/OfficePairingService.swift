@@ -3,8 +3,10 @@ import Foundation
 /// Last trust gate before a managed connection. Approval follows a person's comparison of the
 /// desktop's displayed identity; a later connection rechecks it. `connectToApprovedOffice` opens
 /// no shared folder; `openFoldersWithApprovedOffice` opens the two managed folders, and is the
-/// only place a binding is handed to the transport. Any further content-share caller must repeat
-/// the gate at the point of sharing.
+/// only place a binding is handed to the transport. `renew(withResult:waiting:)` is the only place
+/// a binding replaces the saved one without a person, and `remove(withRemoval:)` the only place an
+/// office ends an enrolment. Any further content-share caller must repeat the gate at the point
+/// of sharing.
 @MainActor
 final class OfficePairingService {
     struct ReviewedOffice: Sendable {
@@ -33,6 +35,9 @@ final class OfficePairingService {
         let transportPolicy: TransportPolicy
         /// `tcp://a.b.c.d:port` on a private network, or nil. Unsigned: a shortcut, never trust.
         let lanHint: String?
+        /// The administrator key the vendor-verified profile names: the key that signed the
+        /// binding, and the only one a check-in result or a removal is accepted under.
+        let administratorPublicKey: Data
     }
 
     enum Refusal: Error, Equatable {
@@ -168,7 +173,8 @@ final class OfficePairingService {
         guard let policy = TransportPolicy(rawValue: pair.root.transportPolicy) else {
             throw OfficePeerBinding.Refusal.untrustedProfile
         }
-        return ApprovedOffice(binding: binding, transportPolicy: policy, lanHint: saved.lanHint)
+        return ApprovedOffice(binding: binding, transportPolicy: policy, lanHint: saved.lanHint,
+                              administratorPublicKey: pair.root.administratorPublicKey)
     }
 
     /// Open only the certificate-pinned managed connection, under the policy in the verified
@@ -206,7 +212,7 @@ final class OfficePairingService {
     func openFoldersWithApprovedOffice(_ transport: any OfficeManagedFolderTransport) async throws {
         let before = try await currentApprovedPeer()
         if before.transportPolicy == .privateLan, before.lanHint == nil { throw Refusal.noOfficeAddress }
-        try await transport.startFolders(bindingJSON: Self.managedBindingJSON(before.binding),
+        try await transport.startFolders(bindingJSON: Self.managedBindingJSON(before),
                                          policy: before.transportPolicy.rawValue,
                                          lanHint: before.lanHint ?? "")
         do {
@@ -223,15 +229,132 @@ final class OfficePairingService {
 
     /// The closed object the transport's managed folders take, from a binding verified just now.
     /// Private: no other value may be turned into one.
-    private static func managedBindingJSON(_ binding: OfficePeerBinding.Verified) throws -> String {
-        let p = binding.payload
+    private static func managedBindingJSON(_ office: ApprovedOffice) throws -> String {
+        let p = office.binding.payload
         let fields: [String: Any] = [
             "organizationID": p.organizationID, "enrolmentID": p.enrolmentID, "officeID": p.officeID,
             "generation": NSNumber(value: p.generation), "officeTransportID": p.officeTransportID,
             "officeApplicationKey": p.officeApplicationKey, "phoneApplicationKey": p.phoneApplicationKey,
+            // What check-in, renewal and removal are read against (Contracts/office-check-in.md).
+            "profileID": p.profileID, "bindingSHA256": office.binding.payloadSHA256,
+            "administratorKey": office.administratorPublicKey.base64EncodedString(),
         ]
         let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
+    }
+
+    // MARK: - Check-in, renewal and removal (Contracts/office-check-in.md)
+
+    /// Take in the office's result for the one check-in this phone is waiting on (contract §7),
+    /// in the contract's order and stopping at the first failure with nothing changed:
+    ///
+    /// 1. signed by the administrator key from the vendor-verified profile, and naming this
+    ///    phone's organisation, enrolment, office and transport identity;
+    /// 2. for exactly `waiting`: its challenge and the digest of the check-in as published;
+    /// 3. carrying a binding that passes the binding verifier against this phone's own keys and
+    ///    the office identities saved when a person approved the pairing, and is a renewal of the
+    ///    binding the check-in named: the same identities and a higher generation;
+    /// 4. with the profile, licence and lease in force, checked again;
+    /// 5. then committed: the generation high-water mark, the saved binding, and last the lease,
+    ///    from this phone's own clock.
+    ///
+    /// The binding held must still be inside its validity window and the lease in force: renewal
+    /// is before the end. A crash between the steps of 5 is repaired by taking the same result in
+    /// again while `waiting` is still kept: the same generation with the same digest is an exact
+    /// repeat. The caller forgets `waiting` once this returns, so the same result later fits no
+    /// check-in and renews nothing.
+    @discardableResult
+    func renew(withResult data: Data, waiting: OfficeCheckIn.Waiting) async throws -> Approval {
+        guard let record = manager.record, record.source == .office,
+              let profile = manager.profile else { throw Refusal.noDesktopEnrolment }
+        guard manager.evaluateLease()?.isInForce == true, !manager.contentLocked,
+              record.revoked != true else { throw Refusal.inactiveLease }
+        guard let code = licence(for: record, profile: profile) else { throw Refusal.missingLicence }
+        let pair = try OfficeInlineEntitlement.verify(
+            profileDocument: record.document, licenceCode: code,
+            profileKeys: profileKeys, licenceKey: licenceKey, now: clock())
+        guard let saved = try await approvedPeerStore.read(
+            organizationID: pair.root.organizationID,
+            enrolmentID: record.enrolmentId) else { throw Refusal.noApprovedOffice }
+        guard let retained = try await highWater.read(
+            organizationID: pair.root.organizationID,
+            enrolmentID: record.enrolmentId) else { throw Refusal.approvalSuperseded }
+        let actualTransportID = try await transportID()
+        let actualApplicationKey = try await phoneApplicationKey()
+        func expected(minimumGeneration: Int64) -> OfficePeerBinding.ExpectedPeer {
+            .init(enrolmentID: record.enrolmentId, officeID: saved.officeID,
+                  officeTransportID: saved.officeTransportID,
+                  officeApplicationKey: saved.officeApplicationKey,
+                  phoneTransportID: actualTransportID, phoneApplicationKey: actualApplicationKey,
+                  minimumGeneration: minimumGeneration)
+        }
+        let now = clock()
+        let seconds = Int64(now.timeIntervalSince1970)
+
+        let result = try OfficeCheckIn.result(
+            data, administratorKey: pair.root.administratorPublicKey,
+            organizationID: pair.root.organizationID, enrolmentID: record.enrolmentId,
+            officeID: saved.officeID, phoneTransportID: actualTransportID, waiting: waiting)
+
+        // The saved binding, still inside its window. After a crash in step 5 it may be the one
+        // the high-water mark has already moved past, so it is not held to that mark here.
+        let held = try OfficePeerBinding.verify(saved.signedBinding, root: pair.root,
+                                                expected: expected(minimumGeneration: 1), now: seconds)
+        guard held.payload.generation <= retained.generation else { throw Refusal.approvalSuperseded }
+        // Both bindings verified against the same expected peer and profile, so every identity
+        // is already the same; what is left of "a renewal" is the generation.
+        let next = try OfficePeerBinding.verify(result.peerBinding, root: pair.root,
+                                                expected: expected(minimumGeneration: retained.generation),
+                                                now: seconds)
+        if next.payloadSHA256 == held.payloadSHA256 {
+            // Already saved: a crash before the lease step. An exact repeat, for a check-in that
+            // named the binding before it.
+            guard next.payloadSHA256 == retained.payloadSHA256,
+                  waiting.generation < next.payload.generation else { throw OfficeCheckIn.Refusal.notARenewal }
+        } else {
+            guard waiting.generation == held.payload.generation,
+                  waiting.bindingSHA256 == held.payloadSHA256,
+                  next.payload.generation > held.payload.generation else {
+                throw OfficeCheckIn.Refusal.notARenewal
+            }
+        }
+
+        try recheck(record: record, code: code, at: now)
+        // A second binding at the retained generation is refused here as a conflict; the exact
+        // one is a repeat.
+        let decision = try await highWater.accept(next)
+        try recheck(record: record, code: code, at: clock())
+        try await approvedPeerStore.save(
+            result.peerBinding, organizationID: pair.root.organizationID,
+            enrolmentID: record.enrolmentId, officeID: saved.officeID,
+            officeTransportID: saved.officeTransportID,
+            officeApplicationKey: saved.officeApplicationKey, lanHint: saved.lanHint)
+        try recheck(record: record, code: code, at: clock())
+        guard manager.renewLease(officeBinding: next) else { throw Refusal.changedDuringApproval }
+        return Approval(binding: next, highWater: decision)
+    }
+
+    /// Take in an office's removal (contract §8): signed by the administrator key from the
+    /// vendor-verified profile, and naming this phone's own organisation, profile, enrolment and
+    /// transport identity. The enrolment is then revoked exactly as a signed revocation heard from
+    /// a hosted profile revokes it. An exact repeat changes nothing. After this the gate above no
+    /// longer passes, so no further managed connection opens for the enrolment.
+    func remove(withRemoval data: Data) async throws -> OfficeCheckIn.VerifiedRemoval {
+        guard let record = manager.record, record.source == .office,
+              let profile = manager.profile else { throw Refusal.noDesktopEnrolment }
+        guard let code = licence(for: record, profile: profile) else { throw Refusal.missingLicence }
+        let pair = try OfficeInlineEntitlement.verify(
+            profileDocument: record.document, licenceCode: code,
+            profileKeys: profileKeys, licenceKey: licenceKey, now: clock())
+        let actualTransportID = try await transportID()
+        let removal = try OfficeCheckIn.removal(
+            data, administratorKey: pair.root.administratorPublicKey,
+            organizationID: pair.root.organizationID, profileID: pair.root.profileID,
+            enrolmentID: record.enrolmentId, phoneTransportID: actualTransportID)
+        guard let latest = manager.record, latest.source == .office,
+              latest.enrolmentId == record.enrolmentId, latest.document == record.document,
+              manager.revoke(officeRemoval: removal) else { throw Refusal.changedDuringApproval }
+        return removal
     }
 
     /// Keep a LAN address that has just reached the office, for the next connection. Only on
@@ -258,5 +381,18 @@ final class OfficePairingService {
         _ = try OfficeInlineEntitlement.verify(
             profileDocument: latest.document, licenceCode: code,
             profileKeys: profileKeys, licenceKey: licenceKey, now: now)
+    }
+}
+
+extension OfficeCheckIn.Held {
+    /// The binding a check-in is made under: only from an approval that verified just now.
+    init?(_ office: OfficePairingService.ApprovedOffice) {
+        let p = office.binding.payload
+        guard let officeKey = Data(base64Encoded: p.officeApplicationKey),
+              let phoneKey = Data(base64Encoded: p.phoneApplicationKey) else { return nil }
+        self.init(organizationID: p.organizationID, profileID: p.profileID, enrolmentID: p.enrolmentID,
+                  officeID: p.officeID, phoneTransportID: p.phoneTransportID, generation: p.generation,
+                  bindingSHA256: office.binding.payloadSHA256, officeApplicationKey: officeKey,
+                  phoneApplicationKey: phoneKey, administratorKey: office.administratorPublicKey)
     }
 }

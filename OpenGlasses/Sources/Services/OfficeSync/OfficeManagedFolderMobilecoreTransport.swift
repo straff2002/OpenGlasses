@@ -32,6 +32,31 @@ enum OfficeManagedFolderMobilecoreTransport {
                 messageID: messageID, signatureBase64: signatureBase64)
         }
 
+        func checkInPending() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedCheckInPending()
+        }
+
+        func checkInPayload(challengeID: String, leaseRenewBy: Int64, appVersion: String,
+                            appBuild: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedCheckInPayload(
+                challengeID: challengeID, leaseRenewBy: leaseRenewBy, appVersion: appVersion, appBuild: appBuild)
+        }
+
+        func publishCheckIn(challengeID: String, signatureBase64: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedCheckIn(
+                challengeID: challengeID, signatureBase64: signatureBase64)
+        }
+
+        func removalReceiptPayload(removalID: String, actedAt: Int64) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedRemovalReceiptPayload(
+                removalID: removalID, actedAt: actedAt)
+        }
+
+        func publishRemovalReceipt(removalID: String, signatureBase64: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedRemovalReceipt(
+                removalID: removalID, signatureBase64: signatureBase64)
+        }
+
         func stop() async {
             await OfficeTransportIdentity.shared.stop()
         }

@@ -90,6 +90,68 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    // Swift imports the binding's `…CheckIn…` selectors split at "In": `managedCheck(inPending:)`,
+    // `managedCheck(inPayload:…)`, `publishManagedCheck(in:…)`. They are the transport's
+    // ManagedCheckInPending, ManagedCheckInPayload and PublishManagedCheckIn.
+    func managedCheckInPending() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedCheck(inPending: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedCheckInPayload(challengeID: String, leaseRenewBy: Int64, appVersion: String,
+                               appBuild: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedCheck(
+            inPayload: challengeID, leaseRenewBy: leaseRenewBy, appVersion: appVersion, appBuild: appBuild, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedCheckIn(challengeID: String, signatureBase64: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedCheck(
+            in: challengeID, signatureBase64: signatureBase64, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedRemovalReceiptPayload(removalID: String, actedAt: Int64) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedRemovalReceiptPayload(removalID, actedAt: actedAt, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedRemovalReceipt(removalID: String, signatureBase64: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedRemovalReceipt(
+            removalID, signatureBase64: signatureBase64, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?

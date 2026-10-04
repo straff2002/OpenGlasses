@@ -1,8 +1,9 @@
 # Plan HO — Office Delivery on the Phone (jobs, updates, manuals out; reports, transcripts back)
 
-**Status:** 🚧 P0 built 2026-10-04 (opt-in office transport build only; headless exit met, the
-physical-phone run is owed). P1–P6 planned. A build order, not a new design: nothing else in it
-is built beyond what the table under *Where each flow stands* marks as existing.
+**Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
+exits met, the physical-phone runs are owed). P2–P6 planned. A build order, not a new design:
+nothing else in it is built beyond what the table under *Where each flow stands* marks as
+existing.
 **Track:** Field Assist (B2B), phone half.
 **Related:** Plan [FX](FX-desktop-office-and-device-sync.md) (the signed office connection; this
 plan is its phone backlog), Plan [HN](HN-job-updates-and-several-open-jobs.md) (job updates and
@@ -30,18 +31,20 @@ and stops each step at something a test can prove.
 
 One fact sits under every row: **the default phone build has no managed folder.** The transport
 is only in the opt-in `AVENKIN_OFFICE_TRANSPORT` build. Since P0 that build opens the `control`
-and `records` folders for a paired phone and takes a managed job to the job review; it has not
-yet been run on a physical phone against an office. Everything else in the table is as it was:
-a joined phone can receive a job and nothing more.
+and `records` folders for a paired phone and takes a managed job to the job review, and since P1
+it answers the office's check-in challenge, renews its binding and lease from the result, and
+acts on a removal; none of it has yet been run on a physical phone against an office. Everything
+else in the table is as it was: a joined phone can receive a job, stay joined and be removed,
+and nothing more.
 
 | Flow | Contract | Go transport | Swift | Missing |
 |---|---|---|---|---|
 | Join an office by its code | v1, fixtures | built | built (opt-in build) | a run on a physical phone against the office |
-| Stay joined: check-in and renewal | draft v1, fixtures | messages and the office key holder's operations; **not** the phone's folder handling | none | P1 below. Until then a binding ends 30 days after pairing and the lease `leaseDays` after it |
-| Removal by the office | same contract | messages only | none | P1 |
+| Stay joined: check-in and renewal | draft v1, fixtures | messages, the office key holder's operations, and the phone's folder handling | **P1 built** (opt-in build): the challenge answered once, the result through the pairing gate, the lease renewed, the folders restarted under the new generation | a phone renewed by a real office, and one left unreachable past a challenge then renewed on return. The office app does not yet call the key holder's operations |
+| Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
 | Job to the phone | managed job + receipt, fixtures | intake, durable commit, receipt offered for signing | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published | one signed job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
-| Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
+| Attachments with a job | a job file names them, does not carry them | — | — | undecided: carried in `control`, or in `bulk` |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
 | Report and parts request to the office | **none for an office**: only the HTTP endpoint envelope and email | none | queue sends to an endpoint or by email | a signed report envelope, attachment manifest and office receipt — P2 |
 | Transcript to the office | travels with the report, under HD's audience rule | — | — | P2 |
@@ -55,21 +58,6 @@ transcript, and the office imports them by hand.
 
 Each phase is one PR, pure core first, and ends at its exit test. A phase marked *contract first*
 does not start in Swift until its contract and fixtures are merged in `Contracts/`.
-
-**Sequence (decided by Greig, 2026-10-04).** The phase letters are kept so other documents'
-references stay true; the order of work is:
-
-1. **P0** — built.
-2. **P0b** — job-file format 2, **before** P0's run on a physical phone, so the first real job
-   already carries the office's job identifier and revision.
-3. **P2** — reports and transcripts back. Second by decision: until it lands every report is
-   emailed and imported by hand. Its contract is written first.
-4. **P4** — the `bulk` folder, job attachments and manuals. Brought forward: attachments travel
-   in `bulk`, and a job must be able to bring a manual the phone does not have.
-5. **P1** — check-in, renewal and removal. It can run alongside the others (it shares no file
-   with them beyond the transport seam); until it ships, a phone is paired again by scanning
-   before its 30 days end.
-6. **P3**, **P5**, **P6** as below.
 
 ### P0 — The managed folders in the app, and a job arriving
 
@@ -137,33 +125,16 @@ Choices made where the plan left room:
 **Still owed for P0:**
 
 - The physical run: the opt-in build on a phone, one signed job from the office, its receipt
-  accepted there. Nothing in this phase was run against the Go engine from Swift. The bridge
-  calls exist only in the opt-in build; they were typechecked against the header the pinned
-  binding generator produces from this transport source, but the opt-in app itself was not
-  built or launched for this phase.
+  accepted there. Nothing in this phase was run against the Go engine from Swift. The opt-in
+  app itself has since been built (with P1, 2026-10-04): a Debug simulator build and a Release
+  device build, installed and launched on a phone that is not paired with an office. No bridge
+  call has yet run against an office.
 - A job whose review the technician puts aside is not offered again, though the office holds its
   receipt. Reopening a received job from the phone is not built.
 - The review does not yet say that a job came over the office connection; it shows the file name
   `office-job-<sequence>.ogjob` and the job file's own signature state.
 - A refused job stays listed by the transport as pending with no receipt. The office sees it as
   not received; nothing tells the office why.
-
-### P0b — Job-file format 2 (*contract first*)
-
-Decided 2026-10-04: before P0's run on a physical phone.
-
-- **Contract:** format version 2 of the job file — an office-assigned stable job identifier and
-  a revision, a domain-separated signature over the exact file bytes, and a signed golden
-  fixture. Version 1 stays readable; a version-1 file is never upgraded in place.
-- **Phone:** the import, the review and the job record keep the identifier and revision; a later
-  revision of a job the phone holds is shown as a revision of that job, not a second job; a
-  report names the identifier and revision it was written against, so the office matches by
-  identifier and not by digest alone.
-- A job that arrives twice — the same identifier and revision under two managed messages, as
-  can happen when the office issues a job again after a binding renewal — is one job.
-
-**Exit:** the golden fixture imports, reviews and round-trips; a version-1 file still imports;
-the same identifier and revision twice is one job; an older revision never replaces a newer one.
 
 ### P1 — Check-in, renewal and removal on the phone
 
@@ -182,6 +153,82 @@ Without it every paired phone stops receiving 30 days after pairing.
 **Exit:** the fixture exchange renews a lease and a binding in a headless test; a replayed or
 foreign result changes nothing; a removal revokes and is receipted. **Owed:** a phone left
 unreachable past a challenge, then renewed on return.
+
+**As built (2026-10-04).**
+
+- **Transport** (`Transport/mobile-core/managed_checkin.go`, beside the managed inbox). Each pass
+  reads `control/checkin/` and `control/removal/` by the contract's names only and lists what
+  verifies with the reference `checkin` package: the one live challenge with the latest
+  `issuedAt` set under exactly the binding handed over, the result for the check-in this phone
+  published, and removals naming this enrolment. `ManagedCheckInPayload` builds the check-in once
+  per challenge, with its own nonce, and returns the same bytes when asked again;
+  `PublishManagedCheckIn` and `PublishManagedRemovalReceipt` publish only under a signature the
+  binding's phone application key made over the right domain, staged outside the folders and
+  moved into place. The outbound guard serves `records/checkin/<challengeID>.envelope.json` and
+  `records/removal/<removalID>.envelope.json` only while they are published, beside job receipts.
+  A check-in is withdrawn when its challenge expires, a later one is answered, or the folders
+  start under a newer generation.
+- **`OfficeCheckIn`** is the phone's verifier for the five messages: closed flat objects, the
+  signature over the exact payload bytes under the key the caller supplies (the office or phone
+  application key from the binding, the administrator key from the vendor-verified profile), the
+  field rules, and that a message names this binding, phone and exchange. A removal that
+  verifies is the only value the revoking code accepts.
+- **`OfficePhoneIdentity.signCheckIn` / `signRemovalReceipt`** sign nothing but a closed payload
+  of their own kind, under their own domain.
+- **`OfficePairingService.renew(withResult:waiting:)`** is contract §7 in its order: the
+  result's signature and identity, the one check-in waited on, the carried binding through the
+  existing binding verifier against this phone's own keys and the saved office identities with a
+  higher generation, profile, licence and lease rechecked, then the high-water mark, the saved
+  binding (keeping the route hint), and last `OrgProfileManager.renewLease(officeBinding:)`,
+  which sets `lastRenewedAt` to the phone's clock. `remove(withRemoval:)` verifies a removal and
+  calls `OrgProfileManager.revoke(officeRemoval:)`, which is the existing signed-revocation path:
+  rules lift, content stays locked, the leaving rules take over what is owed.
+- **`OfficeCheckInService`** drives it from the connection's poll, before the job intake:
+  removal first, then the result for the check-in waited on, then the live challenge. It keeps
+  the check-in's exact bytes, nonce and signature (`Application Support/AvenkinOffice/
+  check-in.json`) until a result arrives or the challenge expires, publishes the same bytes
+  again rather than a second check-in, forgets the nonce after a renewal, and records a file
+  that does not verify once, with a bounded reason. After a renewal it tells
+  `OfficeFieldConnection`, which checks the approval on its next poll and starts the folders
+  again under the new generation.
+- **Shown** under Field Assist settings only when the office has removed the phone: *Removed by
+  your organisation*, with one sentence that differs for `removed` and `revoked`. A check-in and
+  a renewal show nothing; the managed row already shows the lease's date.
+
+Choices made where the plan and contract left room:
+
+- **The transport is handed more of the binding.** To verify a result or a removal the
+  transport needs the administrator key, the profile identifier and the digest of the binding
+  held, which the managed-job binding object did not carry. `StartManagedOfficeFolders` now
+  takes those three as well; all three or none, and a caller that hands over the earlier form
+  (the transport's own stand-in phone does) gets managed jobs and no check-in. In Swift the
+  binding's check-in functions are spelled `managedCheck(inPending:)`,
+  `managedCheck(inPayload:…)` and `publishManagedCheck(in:…)`: the importer splits the names at
+  "In". Only the opt-in build shows that, which is how it was found. The transport's
+  check is a first filter only: the phone commits or revokes on its own verification.
+- **The same result with the same check-in is a repair, not a replay.** The contract repairs a
+  crash between the commit steps by taking the same result in again. The gate cannot tell that
+  from a repeat while the caller still holds the check-in, so it allows it, and what stops a
+  stored result renewing a lease later is the service forgetting the check-in — as §7 says.
+- **A removal's receipt leaves on the connection that brought it.** The phone revokes, then
+  signs and publishes the receipt; nothing reopens a connection for that enrolment, and the
+  running one stops at its next approval check, at most 30 seconds later and possibly a few.
+  Whether the receipt has reached the office by then is not checked.
+- **A removal record does not follow the phone into a new enrolment.** The record names the
+  enrolment it ended; a phone that joins again starts clean.
+
+**Still owed for P1:**
+
+- The physical runs: a phone renewed by a real office; one left unreachable past a challenge and
+  renewed on return; a removal delivered and its receipt accepted. The opt-in app builds, and
+  launches on a phone, but nothing here was run against the Go engine from Swift, and the office
+  app does not yet set challenges or renew.
+- A check-in the office never answers is not shown; the technician sees the lease date on the
+  managed row and nothing about the office having gone quiet.
+- A managed job signed under the old generation and not yet committed is refused after a
+  renewal, as the contract says; the office has to issue it again. Not exercised end to end.
+- If the transport loses its own record of a check-in the phone already signed, that challenge
+  is not answered again; the office sets a new one when it expires.
 
 ### P2 — Reports back to the office (*contract first*)
 
@@ -203,16 +250,7 @@ office leaves the queue intact past the old retry limit.
 HN owns the design. This phase is its message contract and the intake beside P0's: a signed
 update on a job the phone holds, information only, shown when the technician opens the job.
 
-### P4 — The `bulk` folder: job attachments and manuals (*contract first* for three pieces)
-
-Decided 2026-10-04: attachments travel in `bulk`, and a job can bring a manual with it.
-
-- **A job names what it needs.** The job arrives first, in `control`, and is usable at once. Its
-  attachments, and any manual it needs that the phone does not hold, follow in `bulk` and are
-  shown on the job as *still downloading*, *waiting for Wi-Fi* or *ready* — never as missing.
-  The contract piece: how a job names an attachment (digest, bytes, name) and a manual set it
-  needs, and that the office then publishes a manual assignment for it. A job never authorises
-  a manual by itself; the assignment and the publisher's signature still do.
+### P4 — Manuals (*contract first* for two pieces)
 
 - Trust for an organisation's own publishing key, reaching the phone through the vendor-rooted
   chain and accepted only for vaults that organisation's office assigned to its own phones.
@@ -241,10 +279,10 @@ relaunch and a route change in the middle of each.
 - It promises no background delivery: a phone exchanges files when the app is allowed to run.
 - It does not design the office side; requirements on the office are in the contracts.
 
-## Decisions (Greig, 2026-10-04)
+## Decisions wanted
 
-1. **Job attachments travel in `bulk`,** after the job. Manuals must be able to come with a job
-   when the phone does not already hold them, so the `bulk` folder and manuals are brought
-   forward (P4).
-2. **Reports back (P2) come second,** ahead of check-in and renewal (P1).
-3. **Job-file format 2 comes before P0's run on a physical phone** (P0b).
+1. Whether job attachments travel in `control` (small, with the job) or `bulk` (pausable).
+2. Whether P2 or P1 comes second if a pilot is shorter than 30 days. This plan puts P1 second:
+   a phone that silently stops receiving is worse than a report that is emailed.
+3. Job-file format 2 (an office-assigned job identifier and revision) before or after P0's
+   device run.

@@ -750,6 +750,39 @@ final class OrgProfileManager: ObservableObject {
         seams.installEnvelope(result, renewed.organizationName)
     }
 
+    // MARK: - An office's renewal and removal (Contracts/office-check-in.md)
+
+    /// The office renewed this phone's binding in answer to a check-in, so the lease runs from
+    /// now, on this phone's own clock: exactly what a re-fetched hosted profile does for a phone
+    /// enrolled from one. `binding` is the renewed binding as the pairing gate verified it, for
+    /// this enrolment; `OfficePairingService.renew(withResult:waiting:)` is the only caller, after
+    /// it has committed that binding. The lease still ends at the earlier of `leaseDays` from now
+    /// and the profile's own term. Returns false, changing nothing, for any other phone.
+    func renewLease(officeBinding binding: OfficePeerBinding.Verified) -> Bool {
+        guard var current = record, current.source == .office, current.revoked != true, profile != nil,
+              current.enrolmentId == binding.payload.enrolmentID else { return false }
+        current.lastRenewedAt = seams.now()
+        current.leaseLock = nil
+        seams.saveRecord(current)
+        record = current
+        evaluateLease()
+        return true
+    }
+
+    /// The office removed this phone. `removal` verified against the administrator key of this
+    /// phone's vendor-verified profile and names this enrolment, so it is treated exactly as a
+    /// signed revocation heard from a hosted profile: the enrolment is revoked, the organisation's
+    /// rules lift, its content stays locked, and the leaving rules take over what is still owed.
+    /// An exact repeat changes nothing. Returns false for any other phone.
+    func revoke(officeRemoval removal: OfficeCheckIn.VerifiedRemoval) -> Bool {
+        guard let current = record, current.source == .office, let profile,
+              profile.profileId == removal.payload.profileID,
+              current.enrolmentId == removal.payload.enrolmentID else { return false }
+        if current.revoked != true { markRevoked() }
+        evaluateLease()
+        return true
+    }
+
     // MARK: - Removal
 
     /// Remove the profile: lift the ceiling, put back the person's own starting values, and clear

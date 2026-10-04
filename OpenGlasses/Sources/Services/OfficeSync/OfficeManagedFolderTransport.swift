@@ -12,10 +12,12 @@ import Foundation
 protocol OfficeManagedFolderTransport: Sendable {
     /// `StartManagedOfficeFolders`: opens the pinned managed connection with the two folders the
     /// binding calls for. `bindingJSON` is a closed object with `organizationID`, `enrolmentID`,
-    /// `officeID`, `generation`, `officeTransportID`, `officeApplicationKey` and
-    /// `phoneApplicationKey` (the keys standard base64). The transport verifies none of that
-    /// chain: only `OfficePairingService.openFoldersWithApprovedOffice` may call this, with a
-    /// binding it has rechecked at that moment.
+    /// `officeID`, `generation`, `officeTransportID`, `officeApplicationKey`,
+    /// `phoneApplicationKey`, `profileID`, `bindingSHA256` and `administratorKey` (the keys
+    /// standard base64; the last three are what check-in, renewal and removal are read against).
+    /// The transport verifies none of that chain: only
+    /// `OfficePairingService.openFoldersWithApprovedOffice` may call this, with a binding it has
+    /// rechecked at that moment.
     func startFolders(bindingJSON: String, policy: String, lanHint: String) async throws
 
     /// `ManagedJobsPending`: the jobs this phone has verified and committed and not yet given a
@@ -30,6 +32,31 @@ protocol OfficeManagedFolderTransport: Sendable {
     /// is the phone application key's signature over the receipt domain followed by the receipt
     /// payload `pendingJobs` gave. A signature that is not this phone's publishes nothing.
     func publishReceipt(messageID: String, signatureBase64: String) async throws
+
+    /// `ManagedCheckInPending`: what the office has put in `control/checkin/` and
+    /// `control/removal/` that reads as its own message under the binding handed over, as a JSON
+    /// `OfficeManagedFolders.CheckInPending`. Listing is not acting: each is verified again here
+    /// before anything is answered, committed or revoked.
+    func checkInPending() async throws -> String
+
+    /// `ManagedCheckInPayload`: the exact bytes (standard base64) of the check-in that answers
+    /// the live challenge, for the phone application key to sign. Asking again for the same
+    /// challenge returns the same bytes, with the same nonce.
+    func checkInPayload(challengeID: String, leaseRenewBy: Int64, appVersion: String,
+                        appBuild: String) async throws -> String
+
+    /// `PublishManagedCheckIn`: publishes the check-in at `records/checkin/` and returns the
+    /// exact envelope published. A signature that is not this phone's publishes nothing.
+    func publishCheckIn(challengeID: String, signatureBase64: String) async throws -> String
+
+    /// `ManagedRemovalReceiptPayload`: the exact bytes (standard base64) of the receipt for a
+    /// removal, for the phone application key to sign. `actedAt` is when the enrolment was marked
+    /// revoked; asking again returns the same bytes.
+    func removalReceiptPayload(removalID: String, actedAt: Int64) async throws -> String
+
+    /// `PublishManagedRemovalReceipt`: publishes the receipt at `records/removal/` and returns
+    /// the exact envelope published.
+    func publishRemovalReceipt(removalID: String, signatureBase64: String) async throws -> String
 
     /// `Stop`: closes the connection and its folders. What was committed stays committed.
     func stop() async
@@ -47,12 +74,34 @@ enum OfficeManagedFolders {
         let receiptPayload: String
     }
 
+    /// One file from `control`, as the transport read it.
+    struct PendingEnvelope: Decodable, Equatable, Sendable {
+        /// The identifier in the file's name: a challenge's or a removal's.
+        let id: String
+        /// The exact bytes of the file, standard base64.
+        let envelope: String
+    }
+
+    /// What has arrived for check-in, renewal and removal.
+    struct CheckInPending: Decodable, Equatable, Sendable {
+        let challenges: [PendingEnvelope]
+        let results: [PendingEnvelope]
+        let removals: [PendingEnvelope]
+    }
+
     enum DecodingFailure: Error, Equatable {
         case malformed
     }
 
     static func decodePending(_ json: String) throws -> [PendingJob] {
         guard let pending = try? JSONDecoder().decode([PendingJob].self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return pending
+    }
+
+    static func decodeCheckInPending(_ json: String) throws -> CheckInPending {
+        guard let pending = try? JSONDecoder().decode(CheckInPending.self, from: Data(json.utf8)) else {
             throw DecodingFailure.malformed
         }
         return pending

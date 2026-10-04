@@ -1,4 +1,4 @@
-# Managed office folders contract — draft v1 (design; `control` and `records` built for managed jobs, in the transport and the opt-in phone build)
+# Managed office folders contract — draft v1 (design; `control` and `records` built for managed jobs and for check-in, renewal and removal, in the transport and the opt-in phone build)
 
 Drafted 2026-10-04 for Plan [FX](../docs/plans/FX-desktop-office-and-device-sync.md). This is
 the agreement between the phone app and Avenkin Office about the synchronised folders that
@@ -21,8 +21,16 @@ starts the folders with a binding it has verified at that moment and closes them
 changes while they start; `OfficeManagedJobIntake` hands each committed job to the job-file
 import and its review and signs the receipt with the phone application key. This is tested
 against an in-memory stand-in for the transport, not yet on a physical phone against an office.
-The default app build links no transport and opens no folder. `bulk`, and every other path in
-§3, is not built.
+**Check-in, renewal and removal use the same two folders** (Plan HO P1): the transport reads
+`control/checkin/` and `control/removal/`, publishes `records/checkin/<challengeID>.envelope.json`
+and `records/removal/<removalID>.envelope.json` once the phone application key has signed them,
+and the outbound guard serves those and published job receipts and nothing else. A check-in is
+withdrawn — removed from `records` and from the outbound list — when its challenge expires, when
+a later challenge is answered, or when the folders start under a newer generation. The binding
+object the caller hands over now also names the profile, the administrator key and the digest
+of the binding held; a caller that hands over the earlier seven-field form gets managed jobs
+only. The default app build links no transport and opens no folder. `bulk`, and every other
+path in §3, is not built.
 
 **What this is not.** It is not a message format. Every file in these folders is defined by its
 own contract — the [managed job](README.md), the [manual assignment](README.md), the
@@ -203,4 +211,4 @@ refused).
    unmeasured.
 6. **Administrator overlay** (Plan FX control payloads) will take paths under `control` and
    `records` when its contract exists. Check-in, renewal and removal now have theirs
-   ([office-check-in.md](office-check-in.md), design only) and the paths in §3.
+   ([office-check-in.md](office-check-in.md)) and the paths in §3, built on the phone side.

@@ -53,6 +53,55 @@ final class OfficePhoneIdentityTests: XCTestCase {
         }
     }
 
+    func testOnlyACheckInOrARemovalReceiptIsSignedUnderItsOwnDomain() async throws {
+        let account = "office.phone.identity.tests.\(UUID().uuidString)"
+        defer { try? KeychainService.deleteItem(account) }
+        let identity = OfficePhoneIdentity(account: account)
+        let verifier = try Curve25519.Signing.PublicKey(rawRepresentation: await identity.publicKey())
+        // The exact bytes the transport offers: here, the golden payloads.
+        let checkIn = try OfficeCheckInFixtures.payload("office-check-in-v1")
+        let receipt = try OfficeCheckInFixtures.payload("office-removal-receipt-v1")
+
+        let checkInSignature = try await identity.signCheckIn(checkIn)
+        XCTAssertTrue(verifier.isValidSignature(checkInSignature, for: OfficeCheckIn.checkInDomain + checkIn))
+        XCTAssertFalse(verifier.isValidSignature(checkInSignature, for: OfficeCheckIn.removalReceiptDomain + checkIn))
+        let receiptSignature = try await identity.signRemovalReceipt(receipt)
+        XCTAssertTrue(verifier.isValidSignature(receiptSignature, for: OfficeCheckIn.removalReceiptDomain + receipt))
+        XCTAssertFalse(verifier.isValidSignature(receiptSignature, for: OfficeCheckIn.checkInDomain + receipt))
+
+        // Neither signer signs the other's payload, an office's message, a job receipt or noise.
+        let others = [try OfficeCheckInFixtures.payload("office-check-in-challenge-v1"),
+                      try OfficeCheckInFixtures.payload("office-check-in-result-v1"),
+                      try OfficeCheckInFixtures.payload("office-removal-v1"),
+                      try OfficeCheckInFixtures.payload("office-check-in-binding-v1"),
+                      Data(#"{"kind":"avenkin.managed-job-receipt"}"#.utf8), Data(repeating: 7, count: 32)]
+        for other in others + [receipt] {
+            do {
+                _ = try await identity.signCheckIn(other)
+                XCTFail("the check-in signer signed something that is not a check-in")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidCheckIn)
+            }
+        }
+        for other in others + [checkIn] {
+            do {
+                _ = try await identity.signRemovalReceipt(other)
+                XCTFail("the removal-receipt signer signed something that is not one")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidRemovalReceipt)
+            }
+        }
+        // And the job-receipt signer signs neither.
+        for other in [checkIn, receipt] {
+            do {
+                _ = try await identity.signManagedJobReceipt(other)
+                XCTFail("the job-receipt signer signed a check-in message")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidReceipt)
+            }
+        }
+    }
+
     func testCorruptStoredIdentityFailsClosed() async throws {
         let account = "office.phone.identity.tests.\(UUID().uuidString)"
         defer { try? KeychainService.deleteItem(account) }

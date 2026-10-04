@@ -3,8 +3,9 @@
 Other contracts in this folder: [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md),
 [team learning](team-learning.md), [managed office folders](office-folders.md) and
-[office check-in, renewal and removal](office-check-in.md) (team learning and the folders are
-design only; check-in has its messages, key-holder operations and fixtures, and no app caller).
+[office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
+folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
+key-holder operations and fixtures, the phone's half in that build, and no office app caller).
 
 This is a tested draft and import preflight, not production commissioning or delivery. The
 Swift phone verifier and Go implementation agree on the same public, fictional signed vault
@@ -121,6 +122,15 @@ signature, this phone's actual transport and application keys, and the generatio
 and from nothing else. The approval is verified again once the engine has started; if it fails,
 or is no longer the same binding under the same policy, the folders are closed. While the app is
 open the connection is kept by `OfficeFieldConnection`, which repeats the check every 30 seconds.
+
+**Check-in, renewal and removal in the phone app.** Over those folders, in the same opt-in
+build, the phone answers the office's live challenge once, takes the administrator-signed result
+through the pairing gate (`OfficePairingService.renew(withResult:waiting:)`: the generation
+high-water mark, the saved binding, then the lease from the phone's own clock), and starts the
+folders again under the new generation. An administrator-signed removal revokes the enrolment as
+a signed revocation does, its receipt is signed and published, and the gate then opens no
+further connection ([check-in contract](office-check-in.md)). Tested headless against the golden
+fixtures; not yet run on a physical phone against an office.
 
 ## Managed job transport reference — draft v1
 

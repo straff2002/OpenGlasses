@@ -187,6 +187,23 @@ final class OfficeFieldConnectionTests: XCTestCase {
         connection.appEnteredBackground()
     }
 
+    func testARenewedBindingIsNoticedOnTheNextPollNotTheNextInterval() async {
+        world.pausesMoveTheClock = false   // the 30-second recheck never comes due by itself
+        let connection = makeConnection()
+        connection.appBecameActive()
+        await waitUntil { world.starts == 1 && world.takeIns > 0 }
+        let checksBefore = world.approvalChecks
+        world.approval = .success(.init(transportPolicy: .automatic, lanHint: "tcp://192.168.1.24:22000",
+                                        bindingSHA256: "renewed"))
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(world.starts, 1, "nothing rechecks the approval before the interval")
+        XCTAssertEqual(world.approvalChecks, checksBefore)
+        // The check-in service says the saved binding was replaced: the folders start again.
+        connection.approvalChanged()
+        await waitUntil { world.starts == 2 }
+        connection.appEnteredBackground()
+    }
+
     func testTheBackgroundStopsTheEngineAndTheForegroundStartsIt() async {
         let connection = makeConnection()
         connection.appBecameActive()
