@@ -62,10 +62,53 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         func stall() { onStalled?(endPart()) }
     }
 
+    /// A blur pass that does no blurring: it writes what it was given, under a prefix that says
+    /// it came out of the pass, and reports what the test tells it to. What has to be right here
+    /// is what the coordinator does around a pass, not the pass.
+    private final class FakeBlur {
+        static let prefix = Data("blurred:".utf8)
+
+        var available = true
+        /// The parts handed over, by file name, with where each was to be written.
+        var asked: [(part: String, output: String)] = []
+        /// What the pass reports for a part, by part name. One not named here is blurred whole.
+        var results: [String: Result<BlurredPart.Report, JobPartBlur.Failure>] = [:]
+        var awake: [Bool] = []
+        var progressSeen: [Double] = []
+
+        static let whole = BlurredPart.Report(framesWritten: 480, framesDropped: 0, keptSound: true)
+
+        var seam: JobPartBlur {
+            JobPartBlur(
+                isAvailable: { self.available },
+                blur: { part, output, progress in
+                    await MainActor.run { () -> Result<BlurredPart.Report, JobPartBlur.Failure> in
+                        self.asked.append((part.lastPathComponent, output.lastPathComponent))
+                        progress(0.5)
+                        let name = part.deletingPathExtension().lastPathComponent
+                        let result = self.results[name] ?? .success(Self.whole)
+                        switch result {
+                        case .success(let report) where !report.keptNothing:
+                            try? (Self.prefix + ((try? Data(contentsOf: part)) ?? Data())).write(to: output)
+                        case .success:
+                            break
+                        case .failure:
+                            // A real pass removes what it had written. This one leaves it, so the
+                            // coordinator's own clearing up is what is tested.
+                            try? Data("half a part".utf8).write(to: output)
+                        }
+                        return result
+                    }
+                },
+                keepAwake: { self.awake.append($0) })
+        }
+    }
+
     // MARK: - The world
 
     private var root: URL!
     private var recorder: FakeRecorder!
+    private var blur: FakeBlur?
     private var rawFrames: PassthroughSubject<UIImage, Never>!
     private var relayFrames: PassthroughSubject<UIImage, Never>!
 
@@ -131,8 +174,17 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         wall = wall.addingTimeInterval(seconds)
     }
 
-    private func makeCoordinator() -> Coordinator {
-        Coordinator(seams: .init(
+    /// The usual seams with another blur pass in place of the test's own.
+    private func lyingSeams(_ pass: JobPartBlur) -> Coordinator.Seams {
+        var seams = makeSeams()
+        seams.blur = pass
+        return seams
+    }
+
+    private func makeCoordinator() -> Coordinator { Coordinator(seams: makeSeams()) }
+
+    private func makeSeams() -> Coordinator.Seams {
+        .init(
             rules: { [unowned self] in self.rules },
             binding: { [unowned self] in self.binding },
             job: { [unowned self] in self.job },
@@ -158,6 +210,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
                 if fails { throw Failed() }
                 return Data(repeating: 7, count: 64)
             },
+            blur: blur?.seam,
             transcribe: { [unowned self] _ in
                 if self.holdTranscription {
                     await withCheckedContinuation { self.transcriptionWaiters.append($0) }
@@ -174,7 +227,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
             newBundleID: { [unowned self] in
                 self.bundleIDs += 1
                 return String(format: "%032x", self.bundleIDs)
-            }))
+            })
     }
 
     /// Lets work the coordinator started on the main actor run.
@@ -287,9 +340,9 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         assertNothingWasRecorded()
     }
 
-    /// The blur pass does not exist yet. Where blur is required a job is not recorded at all —
-    /// never recorded and sent unblurred, never recorded and held.
-    func testWhereBlurIsRequiredNothingIsRecordedAndItSaysWhy() async {
+    /// In an app with no blur pass, where blur is required a job is not recorded at all — never
+    /// recorded and sent unblurred, never recorded and held.
+    func testWhereBlurIsRequiredAndTheAppCannotBlurNothingIsRecordedAndItSaysWhy() async {
         rules.organizationRequiresBlur = true
         let coordinator = makeCoordinator()
         await coordinator.refresh()
@@ -995,5 +1048,471 @@ final class JobRecordingCoordinatorTests: XCTestCase {
     func testASessionNameThatIsNotAnIdentifierBuildsNoPath() {
         XCTAssertThrowsError(try capture.prepare(sessionID: "../elsewhere"))
         XCTAssertNil(capture.journal(sessionID: "../elsewhere"))
+    }
+    // MARK: - Blur, where the organisation requires it (Plan HE §1)
+
+    private func manifest(_ record: JobRecordingBundleStore.Record) throws -> BundleManifest {
+        try XCTUnwrap(BundleManifest(payload: bundles.manifest(record).payload))
+    }
+
+    /// Every byte of media in a sealed bundle, chunk by chunk.
+    private func media(_ record: JobRecordingBundleStore.Record) throws -> [Data] {
+        try record.chunks.map { try Data(contentsOf: bundles.chunkFile(record, sha256: $0.sha256)) }
+    }
+
+    private func captureFiles() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: capture.directory(sessionID: sessionID).path)) ?? [])
+            .sorted()
+    }
+
+    @discardableResult
+    private func requireBlur() -> FakeBlur {
+        let blur = FakeBlur()
+        self.blur = blur
+        rules.organizationRequiresBlur = true
+        return blur
+    }
+
+    func testWhereBlurIsRequiredAJobCanBeRecordedAndIsSealedBlurred() async throws {
+        let blur = requireBlur()
+        let coordinator = makeCoordinator()
+        await coordinator.refresh()
+        XCTAssertEqual(coordinator.verdict, .available, "the rule no longer stands in the way of recording")
+
+        await started(coordinator)
+        XCTAssertEqual(capture.journal(sessionID: sessionID)?.blurRequired, true)
+        advance(20)
+        await coordinator.tick()
+        XCTAssertEqual(coordinator.status, .recording(sessionID: sessionID), "and does not stop one that is running")
+        let outcome = await coordinator.stop()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertEqual(outcome, .sealed(bundleID: record.bundleID))
+        let manifest = try manifest(record)
+        XCTAssertTrue(manifest.blurred)
+        XCTAssertEqual(manifest.droppedFrames, 0)
+        XCTAssertEqual(manifest.parts.map(\.partID), ["part-1"])
+        XCTAssertTrue(bundles.isBlurred(record))
+
+        // What was sealed is what came out of the pass, and nothing else.
+        XCTAssertEqual(blur.asked.map(\.part), ["part-1.mp4"])
+        XCTAssertEqual(blur.asked.map(\.output), ["part-1.blurring.mp4"])
+        let sealed = try media(record)
+        XCTAssertEqual(sealed.count, 1)
+        XCTAssertTrue(sealed.allSatisfy { $0.starts(with: FakeBlur.prefix) }, "an unblurred part was sealed")
+        XCTAssertEqual(sealed.first?.count, FakeBlur.prefix.count + 2_048)
+
+        // No unblurred part is left on the phone.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.directory(sessionID: sessionID).path))
+        XCTAssertEqual(blur.awake, [true, false], "the phone is kept awake for the pass and let go after")
+        XCTAssertEqual(coordinator.blurProgress, [:])
+        XCTAssertTrue(coordinator.deferredForBlur.isEmpty)
+        let sealedLine = try XCTUnwrap(logged.last { $0.kind == .recordingBundleSealed })
+        XCTAssertEqual(sealedLine.payload["blurred"]?.value as? Bool, true)
+        XCTAssertEqual(sealedLine.payload["dropped_frames"]?.value as? Int, 0)
+    }
+
+    func testTheDroppedFramesAreCountedInTheManifestAndWrittenOnTheTimeline() async throws {
+        let blur = requireBlur()
+        // The second part loses a stretch of pictures three seconds long, and a single frame.
+        blur.results["part-2"] = .success(.init(
+            framesWritten: 400, framesDropped: 80,
+            droppedRuns: [.init(from: 5, to: 8), .init(from: 12, to: 12.04)], keptSound: true))
+        blur.results["part-1"] = .success(.init(framesWritten: 475, framesDropped: 5, keptSound: true))
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(30)
+        await coordinator.pause()
+        advance(10)
+        await coordinator.resume()
+        advance(20)
+        await coordinator.stop()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        let manifest = try manifest(record)
+        XCTAssertTrue(manifest.blurred)
+        XCTAssertEqual(manifest.droppedFrames, 85, "every frame dropped, across every part")
+        XCTAssertEqual(blur.asked.map(\.part), ["part-1.mp4", "part-2.mp4"])
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+
+        let timeline = try timeline(record)
+        XCTAssertEqual(timeline.gaps.filter { $0.track == .video }, [
+            .init(track: .video, from: t(30), to: t(40), reason: .pause),
+            .init(track: .video, from: t(45), to: t(48), reason: .filter),
+        ], "the long stretch is a gap where it fell in the session; the single frame is only counted")
+        XCTAssertEqual(timeline.tracks.first?.parts.map(\.partID), ["part-1", "part-2"])
+        XCTAssertTrue(coordinator.lastNote?.contains("couldn't have faces blurred") == true,
+                      "the technician is told some of the video was left out")
+        XCTAssertEqual(logged.last { $0.kind == .recordingBundleSealed }?.payload["dropped_frames"]?.value as? Int, 85)
+    }
+
+    func testWhereBlurIsNotRequiredNoPassRunsAndNothingChanges() async throws {
+        let blur = FakeBlur()
+        self.blur = blur
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        XCTAssertNil(capture.journal(sessionID: sessionID)?.blurRequired)
+        advance(20)
+        await coordinator.stop()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        let manifest = try manifest(record)
+        XCTAssertFalse(manifest.blurred)
+        XCTAssertEqual(manifest.droppedFrames, 0)
+        XCTAssertFalse(bundles.isBlurred(record))
+        XCTAssertTrue(blur.asked.isEmpty, "a pass ran where none was required")
+        XCTAssertTrue(blur.awake.isEmpty)
+        XCTAssertEqual(try media(record), [Data(repeating: 1, count: 2_048)], "sealed exactly as it was recorded")
+        XCTAssertEqual(logged.last { $0.kind == .recordingBundleSealed }?.payload["blurred"]?.value as? Bool, false)
+    }
+
+    /// The blur runs only with the app in front. A recording that stops while it is not waits,
+    /// says to open the app, and is prepared the next time a pass finds the blur available.
+    func testWithTheBlurUnavailableTheRecordingWaitsAndIsPreparedWhenTheAppIsOpen() async throws {
+        let blur = requireBlur()
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        blur.available = false
+        let outcome = await coordinator.stop()
+
+        XCTAssertEqual(outcome, .waitingForBlur)
+        XCTAssertTrue(bundles.records().isEmpty, "nothing is sealed with an unblurred part in it")
+        XCTAssertEqual(signed, 0)
+        XCTAssertTrue(blur.asked.isEmpty)
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"], "the recorded part is where it was")
+        XCTAssertEqual(coordinator.deferredForBlur, [sessionID])
+        XCTAssertEqual(coordinator.preparationPhase(sessionID: sessionID), .waiting(.openAppToPrepare))
+        XCTAssertEqual(coordinator.unsealed, .waitingToPrepare)
+        XCTAssertTrue(coordinator.lastNote?.contains("Open Avenkin to prepare the recording.") == true,
+                      coordinator.lastNote ?? "")
+
+        // Still not in front: asked again, still waiting, and not put off for a quarter of an hour.
+        await coordinator.sealPending()
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(coordinator.preparationPhase(sessionID: sessionID), .waiting(.openAppToPrepare))
+
+        blur.available = true
+        await coordinator.sealPending()
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertTrue(try manifest(record).blurred)
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+        XCTAssertTrue(coordinator.deferredForBlur.isEmpty)
+        XCTAssertNil(coordinator.preparationPhase(sessionID: sessionID))
+        XCTAssertTrue(coordinator.lastNote?.contains("ready to go to the office") == true, coordinator.lastNote ?? "")
+    }
+
+    /// The rule can come in while a recording waits. What is prepared under the rule is blurred.
+    func testARuleTurnedOnBetweenStoppingAndPreparingIsMet() async throws {
+        let blur = FakeBlur()
+        self.blur = blur
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        binding = nil
+        let outcome = await coordinator.stop()
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        XCTAssertNil(capture.journal(sessionID: sessionID)?.blurRequired)
+        XCTAssertTrue(blur.asked.isEmpty)
+
+        rules.organizationRequiresBlur = true
+        binding = Self.office
+        await coordinator.sealPending()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertTrue(try manifest(record).blurred)
+        XCTAssertEqual(blur.asked.map(\.part), ["part-1.mp4"])
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+    }
+
+    /// And the other way: what was recorded under the rule is blurred, whatever the rule says by
+    /// the time it is prepared. The people in it were recorded on that understanding.
+    func testARecordingMadeUnderTheRuleIsBlurredEvenIfTheRuleHasSinceGone() async throws {
+        let blur = requireBlur()
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        blur.available = false
+        await coordinator.stop()
+
+        rules.organizationRequiresBlur = false
+        blur.available = true
+        await coordinator.sealPending()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertTrue(try manifest(record).blurred)
+        XCTAssertEqual(blur.asked.count, 1)
+    }
+
+    func testARuleThatCameAndWentDuringTheRecordingStillBlursIt() async throws {
+        let blur = FakeBlur()
+        self.blur = blur
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(10)
+        rules.organizationRequiresBlur = true
+        await coordinator.tick()
+        XCTAssertEqual(coordinator.status, .recording(sessionID: sessionID))
+        XCTAssertEqual(capture.journal(sessionID: sessionID)?.blurRequired, true, "written down when it was seen")
+        rules.organizationRequiresBlur = false
+        advance(10)
+        await coordinator.stop()
+        XCTAssertTrue(try manifest(try XCTUnwrap(bundles.records().first)).blurred)
+        XCTAssertEqual(blur.asked.count, 1)
+    }
+
+    /// Transcribing takes minutes, and the rule can come in meanwhile. An unblurred bundle sealed
+    /// then could never be sent and cannot be blurred once signed — so it is not sealed.
+    func testARuleThatComesInWhileTheWordsAreBeingReadLeavesTheRecordingUnsealed() async throws {
+        let blur = FakeBlur()
+        self.blur = blur
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        holdTranscription = true
+        let stopping = Task { await coordinator.stop() }
+        await settle { !self.transcriptionWaiters.isEmpty }
+        rules.organizationRequiresBlur = true
+        holdTranscription = false
+        transcriptionWaiters.forEach { $0.resume() }
+        transcriptionWaiters = []
+        let outcome = await stopping.value
+
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(signed, 0)
+
+        await coordinator.sealPending()
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertTrue(try manifest(record).blurred)
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+    }
+
+    /// A pass the app left the foreground in the middle of: the recorded part stays, nothing that
+    /// could pass for a blurred part is left, and it is done again from the start.
+    func testAnInterruptedPassLeavesTheRecordedPartAndNothingThatCouldPassForABlurredOne() async throws {
+        let blur = requireBlur()
+        blur.results["part-1"] = .failure(.interrupted)
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        let outcome = await coordinator.stop()
+
+        XCTAssertEqual(outcome, .waitingForBlur)
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"], "what the pass had written is gone")
+        XCTAssertNil(capture.journal(sessionID: sessionID)?.blurred)
+        XCTAssertEqual(try Data(contentsOf: capture.partFile(sessionID: sessionID, partID: "part-1")),
+                       Data(repeating: 1, count: 2_048))
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(blur.awake, [true, false])
+
+        blur.results["part-1"] = nil
+        await coordinator.sealPending()
+        XCTAssertEqual(blur.asked.count, 2, "done again from the start")
+        XCTAssertTrue(try manifest(try XCTUnwrap(bundles.records().first)).blurred)
+    }
+
+    func testAPassThatFailsIsTriedAgainLaterAndNothingIsSealedMeanwhile() async throws {
+        let blur = requireBlur()
+        blur.results["part-1"] = .failure(.failed)
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        let outcome = await coordinator.stop()
+
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"])
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(coordinator.preparationPhase(sessionID: sessionID), .preparing,
+                       "it is not waiting for the app to be opened: opening it would not help")
+        XCTAssertTrue(coordinator.deferredForBlur.isEmpty)
+
+        blur.results["part-1"] = nil
+        await coordinator.sealPending()
+        XCTAssertEqual(blur.asked.count, 1, "not tried again on the very next pass")
+        advance(Coordinator.sealRetryInterval + 1)
+        await coordinator.sealPending()
+        XCTAssertEqual(blur.asked.count, 2)
+        XCTAssertTrue(try manifest(try XCTUnwrap(bundles.records().first)).blurred)
+    }
+
+    /// Parts are blurred one at a time, and each is safe to stop after. A pass that got through
+    /// the first part and was interrupted in the second carries on from the second.
+    func testAPassCarriesOnFromThePartItWasStoppedIn() async throws {
+        let blur = requireBlur()
+        blur.results["part-2"] = .failure(.interrupted)
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(30)
+        await coordinator.pause()
+        advance(5)
+        await coordinator.resume()
+        advance(20)
+        let outcome = await coordinator.stop()
+
+        XCTAssertEqual(outcome, .waitingForBlur)
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.blurred.mp4", "part-2.mp4"],
+                       "the first part's unblurred file went once its replacement was written down")
+        XCTAssertEqual(capture.journal(sessionID: sessionID)?.blurred?.map(\.partID), ["part-1"])
+        XCTAssertTrue(bundles.records().isEmpty, "nothing is sealed while one part is unblurred")
+
+        blur.results["part-2"] = nil
+        await coordinator.sealPending()
+        XCTAssertEqual(blur.asked.map(\.part), ["part-1.mp4", "part-2.mp4", "part-2.mp4"], "part 1 is not blurred twice")
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertEqual(try manifest(record).parts.map(\.partID), ["part-1", "part-2"])
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+    }
+
+    /// The app closed between a blurred part being written down and the unblurred one being
+    /// removed. The journal is what says a part is blurred: the unblurred file is removed on the
+    /// next pass and is never sealed.
+    func testAnUnblurredPartLeftBesideItsReplacementIsRemovedAndNeverSealed() async throws {
+        let blur = requireBlur()
+        blur.results["part-2"] = .failure(.interrupted)
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(30)
+        await coordinator.pause()
+        advance(5)
+        await coordinator.resume()
+        advance(20)
+        await coordinator.stop()
+        // As if part 1's unblurred file had not been removed before the app went away.
+        try Data(repeating: 1, count: 2_048).write(to: capture.partFile(sessionID: sessionID, partID: "part-1"))
+        XCTAssertTrue(capture.holdsUnblurredParts(sessionID: sessionID))
+
+        blur.results["part-2"] = nil
+        await coordinator.sealPending()
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertEqual(blur.asked.filter { $0.part == "part-1.mp4" }.count, 1)
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) }, "an unblurred part was sealed")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.directory(sessionID: sessionID).path))
+    }
+
+    /// A file under a blurred part's name that the journal does not name was never checked — the
+    /// app closed after it was moved into place and before it was written down. It is not taken
+    /// on trust: it is removed and the part is blurred again.
+    func testABlurredFileTheJournalDoesNotNameIsMadeAgainNotTrusted() async throws {
+        let blur = requireBlur()
+        blur.available = false
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        await coordinator.stop()
+        try Data("not what a pass wrote".utf8).write(to: capture.blurredPartFile(sessionID: sessionID, partID: "part-1"))
+        try Data("left half made".utf8).write(to: capture.blurScratchFile(sessionID: sessionID, partID: "part-1"))
+
+        blur.available = true
+        await coordinator.sealPending()
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertEqual(blur.asked.count, 1)
+        XCTAssertEqual(try media(record), [FakeBlur.prefix + Data(repeating: 1, count: 2_048)])
+    }
+
+    /// A file in the folder that the journal does not name is no part of the recording. Under the
+    /// blur rule it is removed — never sealed, never blurred as if it were a part — and it does
+    /// not hold the recording up.
+    func testAFileTheJournalDoesNotNameIsRemovedAndNotSealed() async throws {
+        let blur = requireBlur()
+        blur.available = false
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        await coordinator.stop()
+        try Data(repeating: 9, count: 512).write(to: capture.partFile(sessionID: sessionID, partID: "part-9"))
+
+        blur.available = true
+        await coordinator.sealPending()
+        let record = try XCTUnwrap(bundles.records().first)
+        XCTAssertEqual(try manifest(record).parts.map(\.partID), ["part-1"])
+        XCTAssertEqual(blur.asked.map(\.part), ["part-1.mp4"])
+        XCTAssertTrue(try media(record).allSatisfy { $0.starts(with: FakeBlur.prefix) })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.directory(sessionID: sessionID).path))
+    }
+
+    /// Chosen: a part none of whose pictures could be blurred keeps its sound and is listed as
+    /// sound. The whole of its video is a `filter` gap.
+    func testAPartWithNoPictureLeftIsSealedAsSoundAlone() async throws {
+        let blur = requireBlur()
+        blur.results["part-1"] = .success(.init(framesWritten: 0, framesDropped: 480, keptSound: true))
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        await coordinator.stop()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        let manifest = try manifest(record)
+        XCTAssertTrue(manifest.blurred)
+        XCTAssertEqual(manifest.droppedFrames, 480)
+        XCTAssertEqual(manifest.parts.map(\.track), ["audio"])
+        let timeline = try timeline(record)
+        XCTAssertEqual(timeline.tracks.map(\.track), [.audio])
+        XCTAssertEqual(timeline.gaps, [.init(track: .video, from: t(0), to: t(20), reason: .filter)])
+    }
+
+    /// And one with no sound either is not in the bundle at all.
+    func testAPartWithNothingLeftIsNotInTheBundle() async throws {
+        let blur = requireBlur()
+        blur.results["part-1"] = .success(.init(framesWritten: 0, framesDropped: 700, keptSound: false))
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(30)
+        await coordinator.pause()
+        advance(10)
+        await coordinator.resume()
+        advance(20)
+        await coordinator.stop()
+
+        let record = try XCTUnwrap(bundles.records().first)
+        let manifest = try manifest(record)
+        XCTAssertEqual(manifest.parts.map(\.partID), ["part-2"])
+        XCTAssertEqual(manifest.droppedFrames, 700)
+        XCTAssertEqual(try media(record).count, 1)
+        XCTAssertEqual(try timeline(record).gaps.filter { $0.track == .video },
+                       [.init(track: .video, from: t(0), to: t(30), reason: .filter)])
+    }
+
+    func testARecordingWithNothingLeftAfterTheBlurLeavesNothingBehind() async throws {
+        let blur = requireBlur()
+        blur.results["part-1"] = .success(.init(framesWritten: 0, framesDropped: 480, keptSound: false))
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        let outcome = await coordinator.stop()
+        XCTAssertEqual(outcome, .nothingRecorded)
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.directory(sessionID: sessionID).path))
+    }
+
+    /// A pass that says it succeeded and wrote nothing has not blurred the part.
+    func testAPassThatReportsPicturesAndWritesNoFileIsNotTakenAtItsWord() async throws {
+        rules.organizationRequiresBlur = true
+        var pass = FakeBlur().seam
+        pass.blur = { _, _, _ in .success(FakeBlur.whole) }   // says it did; wrote nothing
+        let lying = Coordinator(seams: lyingSeams(pass))
+        await started(lying)
+        advance(20)
+        let outcome = await lying.stop()
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"])
+        XCTAssertNil(capture.journal(sessionID: sessionID)?.blurred)
+    }
+
+    /// In an app with no blur pass, a recording that came under the rule after it was made is
+    /// never sealed unblurred. It stays as it is.
+    func testWithNoBlurPassARecordingThatCameUnderTheRuleIsNotSealed() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        binding = nil
+        await coordinator.stop()
+        rules.organizationRequiresBlur = true
+        binding = Self.office
+        await coordinator.sealPending()
+        XCTAssertTrue(bundles.records().isEmpty)
+        XCTAssertEqual(signed, 0)
+        XCTAssertEqual(capture.bytes(sessionID: sessionID), 2_048)
     }
 }

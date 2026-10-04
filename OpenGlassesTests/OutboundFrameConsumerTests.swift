@@ -239,11 +239,13 @@ final class OutboundFrameConsumerTests: XCTestCase {
 
     // MARK: - "Record this job" (Plan HE)
 
-    /// The recorded job's path is two entries and no more: the raw capture into the job's folder,
-    /// and the one exit to the office. A third entry under this scope is a new way for unblurred
-    /// footage to move, and has to be argued for in the roster and added here.
-    func testARecordedJobHasOneCaptureAndOneExit() {
-        XCTAssertEqual(OutboundFrameConsumer.jobRecordingPath, [.jobRecordingCapture, .jobRecordingOfficeSync])
+    /// The recorded job's path is three entries and no more: the raw capture into the job's
+    /// folder, the blur pass that rewrites a part inside that folder where the organisation
+    /// requires it, and the one exit to the office. Another entry here is a new way for footage
+    /// to move, and has to be argued for in the roster and added here — as the blur pass was.
+    func testARecordedJobHasOneCaptureOneBlurPassAndOneExit() {
+        XCTAssertEqual(OutboundFrameConsumer.jobRecordingPath,
+                       [.jobRecordingCapture, .jobRecordingBlurPass, .jobRecordingOfficeSync])
 
         let capture = OutboundFrameConsumer.jobRecordingCapture
         XCTAssertEqual(capture.owningType, "JobRecordingCoordinator")
@@ -257,9 +259,38 @@ final class OutboundFrameConsumerTests: XCTestCase {
         XCTAssertEqual(exit.tap, .jobRecordingFolder)
         XCTAssertEqual(exit.mechanism, .organisationExit)
 
+        // The blur pass reads the folder and writes back into it. It is not an exit: it filters
+        // at the chokepoint, under a scope of its own that is filtered whatever the app-wide
+        // switch says, and `JobRecordingExitTests` holds its file to calling nothing that leaves.
+        let blur = OutboundFrameConsumer.jobRecordingBlurPass
+        XCTAssertEqual(blur.owningType, "BundleBlurPass")
+        XCTAssertEqual(blur.scope, .officeRecordingBlur)
+        XCTAssertEqual(blur.tap, .jobRecordingFolder)
+        XCTAssertEqual(blur.mechanism, .chokepoint)
+        XCTAssertEqual(blur.scope?.isFiltered, true)
+        XCTAssertEqual(blur.scope?.isMandatory, true)
+
         // Nothing else leaves unfiltered, and nothing else reads the job's recording folder.
         XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.mechanism == .organisationExit }, [exit])
-        XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.tap == .jobRecordingFolder }, [exit])
+        XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.tap == .jobRecordingFolder }, [blur, exit])
+        XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.scope == .officeRecording }, [capture, exit],
+                       "the unfiltered scope still has one way in and one way out")
+        XCTAssertFalse(OutboundFrameConsumer.typesAllowedOnTheRawCameraTap.contains("BundleBlurPass"))
+        XCTAssertFalse(OutboundFrameConsumer.typesAllowedOnARawStill.contains("BundleBlurPass"))
+    }
+
+    /// The blur pass's one call to the chokepoint is where the roster says it is, and it asks for
+    /// the mandatory scope — never the recorded job's unfiltered one, under which the chokepoint
+    /// hands a picture straight back.
+    func testTheBlurPassAsksTheChokepointForTheMandatoryScope() throws {
+        let hits = try allHits().filter { $0.type == "BundleBlurPass" }
+        XCTAssertEqual(hits.count, 1, "one tap: \(hits.map(\.text))")
+        XCTAssertTrue(hits.contains { $0.text.contains("filteredOrUnavailable(image, for: .officeRecordingBlur)") })
+        XCTAssertFalse(hits.contains { $0.text.contains("framePublisher") || $0.text.contains("latestFrame") },
+                       "the blur pass reads files, not the camera")
+        // Nothing but the pass asks for that scope.
+        let askers = try allHits().filter { $0.text.contains(".officeRecordingBlur") }.map(\.type)
+        XCTAssertEqual(Set(askers), ["BundleBlurPass"])
     }
 
     /// The raw tap is taken where the roster says it is: in `JobRecordingCoordinator`, and from
