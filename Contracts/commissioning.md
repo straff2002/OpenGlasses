@@ -216,5 +216,6 @@ COMMISSION_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./co
 - **Decided:** the QR is text with a prefix, not a registered URL scheme; the comparison code is
   twelve characters; the bootstrap connection is TLS pinned to the office transport identity.
 - **Still open:** whether the approval later carries a first organisation overlay; lease renewal,
-  revocation and removal for office-enrolled phones (a separate contract); the file form of the
+  revocation and removal for office-enrolled phones (now drafted separately:
+  [office-check-in.md](office-check-in.md), design only); the file form of the
   three messages for networks that block the bootstrap connection.
