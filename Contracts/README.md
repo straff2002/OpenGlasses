@@ -4,8 +4,8 @@ Other contracts in this folder: [job file](job-file.md) (format 2: an office-ass
 and revision, signed over exact bytes; reference implementation, fixture and the phone's import), [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md),
 [team learning](team-learning.md), [managed office folders](office-folders.md),
-[office reports](office-reports.md) (messages, reference implementation and fixtures; no app
-caller) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
+[office reports](office-reports.md) (messages, fixtures, and the phone's transport, verifier
+and waiting sink; not yet wired into the app) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
 folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
 key-holder operations and fixtures, the phone's half in that build, and no office app caller).
 

@@ -743,6 +743,7 @@ func (c *Client) Snapshot() (string, error) {
 		if c.inbox != nil {
 			status["sharedFolders"] = 2
 			status["managedJobsCommitted"], status["managedReceiptsPublished"] = c.inbox.counts()
+			status["managedReportsPublished"] = c.inbox.reportCount()
 		}
 		return stringJSON(status)
 	}

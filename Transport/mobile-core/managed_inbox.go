@@ -119,6 +119,8 @@ type inboxState struct {
 	// CheckIn is the one check-in this phone is waiting on; Removals the removal receipts it made.
 	CheckIn  *checkInRecord  `json:"checkIn,omitempty"`
 	Removals []removalRecord `json:"removals,omitempty"`
+	// Reports are the reports this phone has published and not withdrawn.
+	Reports []publishedReport `json:"reports,omitempty"`
 }
 
 type committedJob struct {
@@ -388,7 +390,7 @@ func (i *managedInbox) publishReceipt(messageID string, signature []byte) error 
 func (i *managedInbox) outbound(name string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.outboundCheckIn(name) {
+	if i.outboundCheckIn(name) || i.outboundReport(name) {
 		return true
 	}
 	id, ok := strings.CutSuffix(strings.TrimPrefix(name, "receipts/"), ".envelope.json")

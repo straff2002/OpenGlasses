@@ -7,6 +7,10 @@ enum SyncOutcome: Equatable {
     case conflict(reason: String)   // server state diverged while offline — surface, don't overwrite
     case transient(reason: String)  // temporary failure — keep the op, retry later
     case permanent(reason: String)  // will never succeed — fail the op
+    /// Nothing went wrong and nothing is delivered yet: the receiver is out of reach, or has the
+    /// op and has not yet said so. The op stays pending and **no attempt is counted** — being
+    /// away from the office is not a failure, and must never run an op out of attempts.
+    case waiting(reason: String)
 }
 
 /// Pluggable delivery target for queued ops (Plan T). v1 is `LocalSyncSink` (no backend — local
@@ -112,6 +116,8 @@ final class SyncEngine: ObservableObject {
                     } else {
                         retry.append((op.id, attempts))   // re-armed below, once the drain is done
                     }
+                case .waiting:
+                    retry.append((op.id, op.attempts))   // re-armed below, with nothing counted
                 case .permanent:
                     queue.mark(op.id, state: .failed)
                     PrivacyLog.transfer(.offlineSync, .permanentlyFailed,

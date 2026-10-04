@@ -3,8 +3,9 @@
 **Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
 exits met, the physical-phone runs are owed). P0b (job-file format 2) built 2026-10-05, in every
 build: contract, reference implementation, fixture and the phone's import; headless exit met.
-P2's contract (reports back, 2026-10-04) is drafted with its reference implementation and
-fixtures; its phone half, and P3–P6, are planned. A build order, not a new design:
+P2 (reports back): the contract (2026-10-04) and the first part of the phone half (2026-10-05:
+transport, verifier, report service and a sink that waits) are built and tested headless; the
+second part, which switches it on in the app, and P3–P6, are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -49,7 +50,7 @@ and nothing more.
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
-| Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages only (`officereport`); **not** the phone's folder handling | queue sends to an endpoint or by email | P2's phone half: the transport's publishing and outbound list, the office sink, stored attachment bytes |
+| Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 first part built**, not switched on: the report and manifest written and signed, the report service, a sink that waits. The queue still sends to an endpoint or by email | P2's second part: the office as the destination on joining, stored attachment bytes, erase only on *fully accepted*; then a report from a physical phone |
 | Transcript to the office | travels with the report, under HD's audience rule | — | — | P2 |
 | Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
 | Team learning both ways | design only | none | none | its own plan |
@@ -359,6 +360,67 @@ Open in the contract (its §11), for a decision before or during the phone half:
 refusal needs a signed outcome; whether `recordAccepted` or only `fullyAccepted` releases a
 leaving phone; records owed at removal; and whether large evidence wants its own pausable
 folder.
+
+**Phone half, first part — as built (2026-10-05).** Everything up to the app's own wiring,
+ending at the plan's exit tests. Nothing here is reachable by a technician yet.
+
+- **Transport** (`Transport/mobile-core/managed_reports.go`). `PublishManagedReport` takes the
+  report payload, the phone's signature, the record and the manifest, checks them with the
+  reference `officereport` package exactly as the office will — the binding's phone key, this
+  pairing's identities, the record's and manifest's digests, a canonical manifest — and
+  publishes the three files, companions first. `PublishManagedReportAttachment` copies in one
+  attachment a published report names, from a file in the app's storage, only when its size and
+  digest are the manifest's. `ManagedReportReceipts` lists the office's receipts that verify for
+  a published report under the name their outcome has. `WithdrawManagedReport` removes a report
+  and whatever no other published report names. The outbound guard serves exactly those files.
+  A report published under one generation is still the same report after a renewal.
+- **`OfficeReport`** writes the report payload and the manifest in their one spelling — the
+  golden fixtures, byte for byte — and reads a report and a receipt under the binding's keys.
+  `OfficePhoneIdentity.signOfficeReport` signs nothing but a closed report payload.
+- **`OfficeReportService`** takes one record with its evidence: it gives the record the next
+  revision, keeps the report's exact bytes before anything is signed, signs once, publishes, and
+  publishes each attachment (one that is not there yet is tried on the next pass; the rest still
+  go). A report's standing moves only on a receipt that verifies for exactly the envelope in
+  the folder, and only upwards. A later send of the same record withdraws an earlier one the
+  office has not accepted. A fully accepted report is withdrawn. Its record is
+  `Application Support/AvenkinOffice/reports.json`.
+- **`OfficeReportSink`** sits where the endpoint sink does. A work record or a stock check goes
+  to the report service when the office is the phone's destination; everything else goes where
+  it went before. `SyncOutcome` gained `waiting`: the operation stays queued and **no attempt is
+  counted** while the office is out of reach, the pairing does not verify, or the office has not
+  answered. The operation is delivered on *record accepted*. A record that can never be a report
+  (over the size cap, no identity) fails with a reason rather than waiting for ever.
+
+Exit, as tests (`OfficeReportServiceTests`, `OfficeReportTests`): the fixture record is
+published as the golden report and is delivered only on the office's receipt; a phone that
+lost its own record of a report sends it again as the same bytes and the office's receipt still
+fits; an unreachable office, a pairing that does not verify, and an office that does not answer
+each leave the operation queued with no attempt counted, three times past the old limit.
+
+Choices made where the contract left room:
+
+- **The phone writes the report's bytes; the transport verifies them.** One bridge call takes
+  the payload, the signature, the record and the manifest. The transport builds nothing, so the
+  only bytes signed are bytes Swift wrote and tests pin to the fixtures.
+- **The published envelope is kept.** A receipt names the digest of the envelope as published;
+  the service keeps those bytes rather than reconstructing them.
+- **A superseded operation is released.** When a later revision is published first, the earlier
+  operation leaves the queue as done: its record is in the later one.
+- **At most 64 reports wait in the folder at once**, a bound on the transport's own state.
+
+**Still owed for P2 (second part):**
+
+- Switching it on: the office as the report destination when a phone joins by code; the sink in
+  the app's sync chain; receipts read on the connection's poll, and the queue flushed when one
+  changes a report's standing.
+- The evidence: the work-order document, the transcript under the audience rule (or `omitted`),
+  photographs and clips, stored with their digests until the office has them. Today the
+  document is rendered on demand and photographs carry no digest.
+- The addendum as a record kind, and erasing a leaving phone's records only on *fully accepted*.
+- An optional attachment the phone can no longer produce leaves a report at *record accepted*
+  and in the folder; with enough of those the 64-report bound is reached. The second part has to
+  either keep the bytes or withdraw such a report.
+- A report from a physical phone to a real office, and the office reading one at all.
 
 ### P3 — Updates and notes on a job (*contract first*, Plan HN)
 

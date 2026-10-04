@@ -30,6 +30,7 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
     enum Failure: Error, Equatable {
         case invalidBinding, alreadyRunning, notOpen, noSuchJob, notThisPhonesSignature
         case noSuchChallenge, noSuchRemoval
+        case notThisPhonesReport, anotherReportUnderThatOperation, noSuchAttachment, notTheBytesNamed
     }
 
     static let bindingFields: Set<String> = [
@@ -185,6 +186,93 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
 
     /// The receipt never reached the folder: the job is pending again, as after a failed publish.
     func loseReceipt(messageID: String) { receipts[messageID] = nil }
+
+    // MARK: Reports
+
+    /// What sits in `records/reports/` and `records/attachments/`, and the receipts the office
+    /// has put in `control/receipts/`, by report identifier.
+    private(set) var reports: [String: Data] = [:]
+    private(set) var reportRecords: [String: Data] = [:]
+    private(set) var reportManifests: [String: Data] = [:]
+    private(set) var attachments: [String: Data] = [:]
+    private(set) var reportPublishes = 0
+    private(set) var withdrawnReports: [String] = []
+    private var receiptFiles: [String: [String: Data]] = [:]
+
+    /// The office answers: a receipt under the name its outcome has.
+    func put(receipt: Data, reportID: String, stage: String) {
+        receiptFiles[reportID, default: [:]][stage] = receipt
+    }
+
+    func publishReport(payloadBase64: String, signatureBase64: String, recordBase64: String,
+                       manifestBase64: String) async throws -> String {
+        guard isOpen, let phoneKey else { throw Failure.notOpen }
+        guard let payload = Data(base64Encoded: payloadBase64),
+              let signature = Data(base64Encoded: signatureBase64), signature.count == 64,
+              let record = Data(base64Encoded: recordBase64),
+              let manifest = Data(base64Encoded: manifestBase64),
+              phoneKey.isValidSignature(signature, for: OfficeReport.reportDomain + payload),
+              let fields = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let reportID = fields["reportID"] as? String,
+              fields["recordSHA256"] as? String == OfficeReport.digest(record),
+              fields["manifestSHA256"] as? String == OfficeReport.digest(manifest) else {
+            throw Failure.notThisPhonesReport
+        }
+        // A published name keeps its bytes: the same report again is the file already there.
+        if let existing = reports[reportID] {
+            guard reportRecords[reportID] == record, reportManifests[reportID] == manifest else {
+                throw Failure.anotherReportUnderThatOperation
+            }
+            return String(decoding: existing, as: UTF8.self)
+        }
+        reportPublishes += 1
+        let envelope = OfficeReport.envelopeBytes(payload: payload, signature: signature)
+        reports[reportID] = envelope
+        reportRecords[reportID] = record
+        reportManifests[reportID] = manifest
+        return String(decoding: envelope, as: UTF8.self)
+    }
+
+    func publishReportAttachment(sha256: String, path: String) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        guard reportManifests.values.contains(where: {
+            String(decoding: $0, as: UTF8.self).contains(#""sha256":"\#(sha256)""#)
+        }) else { throw Failure.noSuchAttachment }
+        if attachments[sha256] != nil { return }
+        guard let bytes = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              OfficeReport.digest(bytes) == sha256 else { throw Failure.notTheBytesNamed }
+        attachments[sha256] = bytes
+    }
+
+    func reportReceipts() async throws -> String {
+        guard isOpen else { return "[]" }
+        var listed: [[String: String]] = []
+        for reportID in reports.keys.sorted() {
+            for stage in ["pending", "record", "full"] {
+                if let receipt = receiptFiles[reportID]?[stage] {
+                    listed.append(["reportID": reportID, "stage": stage,
+                                   "envelope": receipt.base64EncodedString()])
+                }
+            }
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: listed), as: UTF8.self)
+    }
+
+    func withdrawReport(reportID: String) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        guard reports[reportID] != nil else { return }
+        let named = { (manifest: Data?) in String(decoding: manifest ?? Data(), as: UTF8.self) }
+        let gone = named(reportManifests[reportID])
+        reports[reportID] = nil
+        reportRecords[reportID] = nil
+        reportManifests[reportID] = nil
+        // An attachment another published report still names stays.
+        let stillNamed = reportManifests.values.map { named($0) }.joined()
+        for digest in attachments.keys where gone.contains(digest) && !stillNamed.contains(digest) {
+            attachments[digest] = nil
+        }
+        withdrawnReports.append(reportID)
+    }
 
     func startFolders(bindingJSON: String, policy: String, lanHint: String) async throws {
         guard !isOpen else { throw Failure.alreadyRunning }

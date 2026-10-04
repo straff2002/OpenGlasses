@@ -152,6 +152,47 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    func publishManagedReport(payloadBase64: String, signatureBase64: String, recordBase64: String,
+                              manifestBase64: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedReport(
+            payloadBase64, signatureBase64: signatureBase64, recordBase64: recordBase64,
+            manifestBase64: manifestBase64, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedReportAttachment(sha256: String, path: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().publishManagedReportAttachment(sha256, path: path)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedReportReceipts() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedReportReceipts(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func withdrawManagedReport(reportID: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().withdrawManagedReport(reportID)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?

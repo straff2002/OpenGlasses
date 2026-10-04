@@ -1,4 +1,4 @@
-# Office report contract — draft v1 (messages, reference implementation and fixtures; no app uses it yet)
+# Office report contract — draft v1 (messages, fixtures, and the phone's transport, verifier and sink; not yet wired into the app)
 
 Drafted 2026-10-04 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P2. This is the
 agreement between the phone app and Avenkin Office about how a technician's record — a work
@@ -9,11 +9,26 @@ be carried into the office repository.
 **It asserts nothing about the office app's internals.** Statements about the office are
 requirements or marked *Assumption*.
 
-**Built so far:** `Transport/mobile-core/officereport` implements every message here — signing,
+**Built so far.** `Transport/mobile-core/officereport` implements every message here — signing,
 the two-step signing a phone needs, the manifest's one spelling and each side's checks — and the
-golden fixtures in §10. **Neither app uses any of it yet:** the phone transport publishes no
-report, no Swift code calls it, and the phone's queue still sends records only to an HTTP
-endpoint or by email.
+golden fixtures in §10.
+
+**The phone's half exists and is not yet switched on** (Plan
+[HO](../docs/plans/HO-office-delivery-phone-half.md) P2, first part, 2026-10-05):
+
+- the phone transport checks a report, its record and its manifest as the office will and
+  publishes them under `records/reports/`, copies in only the attachments a published report
+  names, lists the office's receipts, withdraws a report, and serves exactly what it published;
+- in Swift, `OfficeReport` writes the report and the manifest in their one spelling and reads a
+  receipt; `OfficeReportService` assigns a record's revision, signs once, publishes, and moves a
+  report's standing only on a receipt that verifies for exactly what it published;
+  `OfficeReportSink` feeds it from the phone's queue and **waits** rather than counting attempts.
+
+That is tested headless against the golden fixtures and an in-memory stand-in for the transport.
+**Nothing in the app calls it yet:** no office is set as a phone's report destination, the
+evidence a job's record needs (the work-order document, the transcript, photographs) is not yet
+stored with its digests, and the queue still sends records only to an HTTP endpoint or by email.
+No report has left a physical phone, and the office app does not read one.
 
 **Builds on, unchanged:** the administrator-signed peer binding and the application keys it
 names ([README](README.md), "Office authority and peer binding"), the
@@ -264,7 +279,9 @@ tests, with the check-in fixtures' fictional office and phone keys
 
 - `office-report-v1.json` — a work record at revision 1, written against job `job-2031` at its
   revision 2, transcript attached;
-- `office-report-record-v1.json` — the fictional record bytes it names;
+- `office-report-record-v1.json` — the fictional record bytes it names. It carries `job_reference`
+  and `job_file.job_id` / `job_file.revision`, which is where a phone takes the report's
+  `jobReference`, `jobID` and `jobRevision` from;
 - `office-report-manifest-v1.json` — three attachments: a required work order, a required
   transcript for the office only, an optional photograph. The attachments themselves are not in
   the repository; their bytes are the public sentences in `fixtures.go`;
@@ -276,7 +293,8 @@ go -C Transport/mobile-core test -tags noassets ./officereport/
 REPORT_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./officereport/   # regenerate
 ```
 
-Negative cases, covered in the Go tests and to be covered by each app's verifier: a report
+Negative cases, covered in the Go tests and, for the phone's side, in the portable Swift checks
+(`Contracts/tests/test_manual_contracts.py`); the office's verifier is still to cover them: a report
 signed by a key other than the binding's phone application key; a report for another
 organisation, enrolment, office or phone; a `reportID` that is not its operation's digest; a
 job identifier without a revision or a revision without an identifier; a

@@ -102,6 +102,36 @@ final class OfficePhoneIdentityTests: XCTestCase {
         }
     }
 
+    func testOnlyAReportIsSignedUnderTheReportDomain() async throws {
+        let account = "office.phone.identity.tests.\(UUID().uuidString)"
+        defer { try? KeychainService.deleteItem(account) }
+        let identity = OfficePhoneIdentity(account: account)
+        let verifier = try Curve25519.Signing.PublicKey(rawRepresentation: await identity.publicKey())
+        let report = try OfficeCheckInFixtures.payload("office-report-v1")
+        let signature = try await identity.signOfficeReport(report)
+        XCTAssertTrue(verifier.isValidSignature(signature, for: OfficeReport.reportDomain + report))
+        XCTAssertFalse(verifier.isValidSignature(signature, for: OfficeReport.receiptDomain + report))
+        // Not a receipt, another contract's message, a record's own bytes or noise.
+        for other in [try OfficeCheckInFixtures.payload("office-report-receipt-full-v1"),
+                      try OfficeCheckInFixtures.payload("office-check-in-v1"),
+                      try OfficeCheckInFixtures.data("office-report-record-v1"),
+                      try OfficeCheckInFixtures.data("office-report-manifest-v1"), Data(repeating: 7, count: 32)] {
+            do {
+                _ = try await identity.signOfficeReport(other)
+                XCTFail("the report signer signed something that is not a report")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidReport)
+            }
+        }
+        // And no other signer signs a report.
+        do {
+            _ = try await identity.signCheckIn(report)
+            XCTFail("the check-in signer signed a report")
+        } catch {
+            XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidCheckIn)
+        }
+    }
+
     func testCorruptStoredIdentityFailsClosed() async throws {
         let account = "office.phone.identity.tests.\(UUID().uuidString)"
         defer { try? KeychainService.deleteItem(account) }

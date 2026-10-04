@@ -57,6 +57,25 @@ enum OfficeManagedFolderMobilecoreTransport {
                 removalID: removalID, signatureBase64: signatureBase64)
         }
 
+        func publishReport(payloadBase64: String, signatureBase64: String, recordBase64: String,
+                           manifestBase64: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedReport(
+                payloadBase64: payloadBase64, signatureBase64: signatureBase64,
+                recordBase64: recordBase64, manifestBase64: manifestBase64)
+        }
+
+        func publishReportAttachment(sha256: String, path: String) async throws {
+            try await OfficeTransportIdentity.shared.publishManagedReportAttachment(sha256: sha256, path: path)
+        }
+
+        func reportReceipts() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedReportReceipts()
+        }
+
+        func withdrawReport(reportID: String) async throws {
+            try await OfficeTransportIdentity.shared.withdrawManagedReport(reportID: reportID)
+        }
+
         func stop() async {
             await OfficeTransportIdentity.shared.stop()
         }
