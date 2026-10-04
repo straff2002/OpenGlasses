@@ -118,14 +118,24 @@ struct JobFileProvenance: Codable, Equatable {
     let receivedAt: Date
     /// SHA-256 of the bytes that were opened, so two copies of "the same" file can be told apart.
     let digest: String
+    /// The office's own identifier for the job, its revision, and the SHA-256 of the job's exact
+    /// bytes — from a format-2 file (Contracts/job-file.md). All nil for a format-1 file, which
+    /// has no identity of its own. Kept on the job ahead and then on the visit's record, so what
+    /// goes back to the office can name the job and the revision it was written against.
+    let jobID: String?
+    let revision: Int64?
+    let jobSHA256: String?
 
     init(fileName: String, signature: Signature, signer: String?, receivedAt: Date = Date(),
-         digest: String) {
+         digest: String, identity: JobFile.Identity? = nil) {
         self.fileName = fileName
         self.signature = signature
         self.signer = signature == .signed ? signer : nil
         self.receivedAt = Date(timeIntervalSince1970: receivedAt.timeIntervalSince1970.rounded(.down))
         self.digest = digest
+        jobID = identity?.jobID
+        revision = identity?.revision
+        jobSHA256 = identity?.sha256
     }
 
     enum CodingKeys: String, CodingKey {
@@ -133,6 +143,15 @@ struct JobFileProvenance: Codable, Equatable {
         case signature, signer
         case receivedAt = "received_at"
         case digest
+        case jobID = "job_id"
+        case revision
+        case jobSHA256 = "job_sha256"
+    }
+
+    /// Which of the office's jobs this is, when the file said.
+    var identity: JobFile.Identity? {
+        guard let jobID, let revision, let jobSHA256 else { return nil }
+        return JobFile.Identity(jobID: jobID, revision: revision, sha256: jobSHA256)
     }
 
     /// The line the work order and the audit log carry.
@@ -141,13 +160,14 @@ struct JobFileProvenance: Codable, Equatable {
     /// copy of the file and never says which app it came from, so the record cannot claim Mail.
     var recordLine: String {
         let date = receivedAt.formatted(date: .abbreviated, time: .shortened)
+        let file = revision.map { "\(fileName) (revision \($0))" } ?? fileName
         switch signature {
         case .signed:
-            return "Job file \(fileName), opened \(date), signed by \(signer ?? "the organisation")."
+            return "Job file \(file), opened \(date), signed by \(signer ?? "the organisation")."
         case .unsigned:
-            return "Job file \(fileName), opened \(date), not signed."
+            return "Job file \(file), opened \(date), not signed."
         case .unverifiable:
-            return "Job file \(fileName), opened \(date), signed with a key this phone could not check."
+            return "Job file \(file), opened \(date), signed with a key this phone could not check."
         }
     }
 }

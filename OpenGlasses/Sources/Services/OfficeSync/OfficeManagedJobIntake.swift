@@ -25,6 +25,9 @@ final class OfficeManagedJobIntake: ObservableObject {
         case busy
         /// The import refused the file now, though it would have offered it when it arrived.
         case refused(String)
+        /// The job is already on this phone — the same office job at the same revision — so there
+        /// is no review to raise.
+        case held
     }
 
     struct Entry: Codable, Equatable, Sendable {
@@ -63,6 +66,9 @@ final class OfficeManagedJobIntake: ObservableObject {
         var refusal: @MainActor (Data) -> String?
         /// Raises the existing job review for these bytes under this file name.
         var raise: @MainActor (Data, String) -> Raised
+        /// Whether these bytes are a job this phone already has: the same office job at the same
+        /// revision, as when an office issues a job again under a new message after a renewal.
+        var alreadyHeld: @MainActor (Data) -> Bool = { _ in false }
         /// Signs the exact receipt payload with the phone application key under the receipt domain.
         var sign: (Data) async throws -> Data = { try await OfficePhoneIdentity.shared.signManagedJobReceipt($0) }
         var load: () -> Ledger = { Ledger() }
@@ -155,6 +161,14 @@ final class OfficeManagedJobIntake: ObservableObject {
             try record(entry)
             return
         }
+        // The same job under another message: it is on this phone, so it is receipted, and it is
+        // one job, so there is no second review.
+        if seams.alreadyHeld(bytes) {
+            entry.state = .reviewed
+            try record(entry)
+            try await giveReceipt(job, id: id)
+            return
+        }
         // Recorded before the receipt: a receipt is never given for a job this phone has no
         // record of offering.
         entry.state = .awaitingReview
@@ -195,6 +209,8 @@ final class OfficeManagedJobIntake: ObservableObject {
             raised.insert(next.receiptID)
         case .busy:
             break
+        case .held:
+            try update(next.receiptID) { $0.state = .reviewed }
         case .refused(let reason):
             try update(next.receiptID) {
                 $0.state = .refused

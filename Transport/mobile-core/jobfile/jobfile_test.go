@@ -92,6 +92,9 @@ func TestOnlyAClosedFormatTwoFileWithAnIdentityOpens(t *testing.T) {
 		"a revision in text":                         {withJob(`{"job_id":"job-1","revision":"1"}`), ErrFields},
 		"an unknown job member":                      {withJob(`{"job_id":"job-1","revision":1,"start_now":true}`), ErrFields},
 		"a duplicate job member":                     {withJob(`{"job_id":"job-1","job_id":"job-2","revision":1}`), ErrMalformed},
+		"a member named twice inside the site":       {withJob(`{"job_id":"job-1","revision":1,"site":{"customer":"A","customer":"B"}}`), ErrMalformed},
+		"a member named twice inside a machine":      {withJob(`{"job_id":"job-1","revision":1,"equipment":[{"model":"A","model":"B"}]}`), ErrMalformed},
+		"a member named twice inside the signature":  {strings.Replace(good, `{"algorithm":"ed25519",`, `{"algorithm":"ed25519","algorithm":"ed25519",`, 1), ErrMalformed},
 		"a format-1 signature member inside the job": {withJob(`{"job_id":"job-1","revision":1,"signature":{}}`), ErrFields},
 		"nothing":                                    {``, ErrMalformed},
 	} {

@@ -28,6 +28,12 @@ struct JobFileReviewSheet: View {
                     } footer: {
                         Text("Nothing was added.")
                     }
+                case .alreadyHeld(let title):
+                    Section {
+                        OGStatusLabel(JobFileService.alreadyHeldMessage(title), kind: .ok)
+                    } footer: {
+                        Text("Nothing was added.")
+                    }
                 case .added(let title):
                     Section {
                         OGStatusLabel("\(title) added to upcoming jobs.", kind: .ok)
@@ -91,7 +97,17 @@ struct JobFileReviewSheet: View {
         }
 
         Section {
-            if let question = review.duplicateQuestion {
+            if let note = review.revisionNote {
+                Text(note).font(.callout)
+                Button {
+                    service.accept(.update)
+                } label: {
+                    Text("Update \(review.revises?.title ?? "that job")")
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                }
+                .buttonStyle(.ogProminent)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            } else if let question = review.duplicateQuestion {
                 Text(question).font(.callout)
                 Button("Update \(review.duplicate?.title ?? "that job")") { service.accept(.update) }
                     .accessibilityHint("Replaces what's on this phone with what the file says.")

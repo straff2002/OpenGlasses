@@ -1,4 +1,4 @@
-# Job file contract — format 2, draft (reference implementation and fixture; the app reads format 1 only)
+# Job file contract — format 2, draft (reference implementation, fixture and the phone's import; no office writes it yet)
 
 Drafted 2026-10-05 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P0b. This is the
 agreement between an office and the phone app about a job sent as a file (`.ogjob`): what format
@@ -10,9 +10,12 @@ requirements or marked *Assumption*.
 
 **Built so far:** `Transport/mobile-core/jobfile` reads and writes format 2 — the outer file,
 the signature, the job's identity and how two identities relate — and makes the golden fixture
-in §8. **The phone app reads format 1 only:** it refuses a format-2 file as a version it cannot
-read, keeps no job identifier or revision, and treats a job number already on the phone as a
-question for the technician. The phone's half of this contract is the next step of P0b.
+in §8. **The phone app reads both formats** (Plan HO P0b, 2026-10-05): `JobFileValidator` opens
+a format-2 file under the rules here, `JobFileSignatureCheck` verifies its signature over the
+exact bytes, the job ahead and then the visit's record keep `job_id`, `revision` and the digest
+of the job's bytes, and `JobFileService` applies §5. That is tested headless against the golden
+fixture; no office writes format 2 yet, and no format-2 file has been opened on a physical
+phone. Two things in §5 the phone does not do yet are marked there.
 
 ## 1. What a job file is, in either format
 
@@ -47,8 +50,8 @@ One JSON object with these members and no others:
 | `job` | The job's exact bytes (§4), standard-alphabet padded base64 |
 | `signature` | Optional. `{"algorithm":"ed25519","value":"<base64>"}` and no other member |
 
-The whole file is at most 65,536 bytes. Duplicate or unknown members and trailing data are
-refused. A format-1 reader sees a job file at a version it does not know and says so; it does
+The whole file is at most 65,536 bytes. Unknown members, trailing data and a member named twice
+in any object, at any depth, are refused. A format-1 reader sees a job file at a version it does not know and says so; it does
 not mistake it for something else.
 
 **The signature** is Ed25519 over the UTF-8 bytes `Avenkin.JobFile.v2`, one zero byte, then the
@@ -86,7 +89,7 @@ exact `job` bytes. When a file arrives for a `job_id` the phone already holds:
 
 | Arriving | The phone |
 |---|---|
-| A higher `revision` | Shows it in the review as a revision of that job — what changed, not a second job — and, when the technician accepts it, replaces the job ahead in place |
+| A higher `revision` | Shows it in the review as a revision of that job, not a second job, and, when the technician accepts it, replaces the job ahead in place. *Not yet:* the review shows the whole of the new revision and says which revision it replaces; it does not pick out what changed |
 | The same `revision`, the same bytes | Has this job already. It is one job, however many times and by whatever route it arrives — in particular when an office issues a job again under a new managed message after a binding renewal |
 | The same `revision`, other bytes | Refuses it as a conflict. Laying the same words out differently is other bytes |
 | A lower `revision` | Refuses it. An older revision never replaces a newer one |
@@ -97,6 +100,8 @@ exact `job` bytes. When a file arrives for a `job_id` the phone already holds:
 **A job already started.** A revision that arrives after the technician has started the job
 does not change the job in progress or its record. It is shown as information on that job. How
 an office sends an update or a note to a job in progress is Plan HN's contract, not this one.
+*Not yet:* the phone refuses such a file with a sentence saying the job has been started, and
+shows nothing on the job. The same revision arriving again for a started job is still one job.
 
 **Signed and unsigned.** Whether an unsigned file may be offered at all is the phone's existing
 rule: refused in medical mode and where the organisation's profile requires its signature,
@@ -135,7 +140,7 @@ go -C Transport/mobile-core test -tags noassets ./jobfile/
 JOBFILE_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./jobfile/   # regenerate
 ```
 
-Negative cases, covered in the Go tests and to be covered by the phone's validator: a file at
+Negative cases, covered in the Go tests and in the app's own tests (`JobFileFormat2Tests`): a file at
 another format version; an unknown or duplicate member of the file or of the job; trailing
 data; a `job` that is not base64 or not an object; a missing, non-identifier or path-like
 `job_id`; a missing, zero, fractional or quoted `revision`; a signature by another key, with no

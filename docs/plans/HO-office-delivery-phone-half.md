@@ -1,9 +1,10 @@
 # Plan HO — Office Delivery on the Phone (jobs, updates, manuals out; reports, transcripts back)
 
 **Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
-exits met, the physical-phone runs are owed). The contracts for P0b (job-file format 2,
-2026-10-05) and P2 (reports back, 2026-10-04) are drafted with reference implementations and
-fixtures; their phone halves, and P3–P6, are planned. A build order, not a new design:
+exits met, the physical-phone runs are owed). P0b (job-file format 2) built 2026-10-05, in every
+build: contract, reference implementation, fixture and the phone's import; headless exit met.
+P2's contract (reports back, 2026-10-04) is drafted with its reference implementation and
+fixtures; its phone half, and P3–P6, are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -44,7 +45,7 @@ and nothing more.
 | Join an office by its code | v1, fixtures | built | built (opt-in build) | a run on a physical phone against the office |
 | Stay joined: check-in and renewal | draft v1, fixtures | messages, the office key holder's operations, and the phone's folder handling | **P1 built** (opt-in build): the challenge answered once, the result through the pairing gate, the lease renewed, the folders restarted under the new generation | a phone renewed by a real office, and one left unreachable past a challenge then renewed on return. The office app does not yet call the key holder's operations |
 | Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
-| Job to the phone | managed job + receipt, fixtures | intake, durable commit, receipt offered for signing | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published | one signed job to a physical phone and its receipt accepted by the office |
+| Job to the phone | managed job + receipt, fixtures; [job file](../../Contracts/job-file.md) format 2, fixture | intake, durable commit, receipt offered for signing; job-file format 2 reference | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published. **P0b built** (every build): a format-2 job keeps the office's identifier and revision; a later revision revises the job, the same one twice is one job | one signed format-2 job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
@@ -66,7 +67,7 @@ references stay true; the order of work is:
 
 1. **P0** — built.
 2. **P0b** — job-file format 2, **before** P0's run on a physical phone, so the first real job
-   already carries the office's job identifier and revision.
+   already carries the office's job identifier and revision. Built 2026-10-05.
 3. **P2** — reports and transcripts back. Second by decision: until it lands every report is
    emailed and imported by hand. Its contract is written first.
 4. **P4** — the `bulk` folder, job attachments and manuals. Brought forward: attachments travel
@@ -168,10 +169,9 @@ Decided 2026-10-04: before P0's run on a physical phone.
 **Exit:** the golden fixture imports, reviews and round-trips; a version-1 file still imports;
 the same identifier and revision twice is one job; an older revision never replaces a newer one.
 
-**Contract drafted (2026-10-05):** [`Contracts/job-file.md`](../../Contracts/job-file.md), with
+**Contract (2026-10-05):** [`Contracts/job-file.md`](../../Contracts/job-file.md), with
 `Transport/mobile-core/jobfile` as its reference implementation and the signed golden fixture
-`job-file-v2.ogjob`. The phone half has not started: the app still reads format 1 only. What the
-contract settled:
+`job-file-v2.ogjob`. What the contract settled:
 
 - **The file wraps the job's exact bytes.** A signature cannot cover a file it sits inside, so a
   format-2 file is `format`, `format_version`, `job` (the job's bytes, base64) and `signature`,
@@ -188,6 +188,39 @@ contract settled:
 
 Open in the contract (its §9): attachments still only named; what a revision does to a job in
 progress (Plan HN); whether format 2 should always be signed; no signed cancellation.
+
+**As built on the phone (2026-10-05).** In every build — a job file opens from Mail or Files
+whether or not the office transport is linked:
+
+- `JobFileValidator` reads format 2: the closed outer file, the job's exact bytes, `job_id` and
+  `revision`, and then format 1's own content rules on the job. Exact bytes are what the
+  signature covers, so a member named twice at any depth is refused (`JobFileJSON`), as it now
+  is in the Go reference. Format 1 is read exactly as before.
+- `JobFileSignatureCheck` verifies a format-2 signature over `Avenkin.JobFile.v2`, a zero byte
+  and the job's bytes, with the organisation's job-signing key from its profile.
+- `JobFileProvenance` gained `job_id`, `revision` and `job_sha256`. It is what the job ahead
+  keeps and what a started job's session and work record carry (`job_file`), so the identifier
+  and revision are in the record a report will be built from. A record written before they
+  existed still reads.
+- `JobFileService` applies the contract's §5 before it raises a review: a higher revision of a
+  job ahead is offered as a revision of that job and replaces it in place, whatever is tapped;
+  the same revision with the same job bytes is the job the phone has (*already on this phone*,
+  nothing added); a lower revision, and other bytes at the same revision, are refused; an
+  unsigned or uncheckable file never revises a job that arrived signed. It also looks at jobs
+  already started, from the session history.
+- `OfficeManagedJobIntake`: the same job under a second managed message is receipted — it is on
+  this phone — and raises no second review.
+
+**Still owed for P0b:**
+
+- A format-2 file opened on a physical phone, and one written by an office. The phone's own
+  `Scripts/make-job-file.swift` still writes format 1 only.
+- The review of a revision shows the whole new revision and which one it replaces; it does not
+  pick out what changed.
+- A revision of a job already started is refused with a sentence; it is not shown as
+  information on that job (Plan HN).
+- Nothing sends the identifier and revision back yet: the record carries them, and the report
+  that names them is P2's phone half.
 
 ### P1 — Check-in, renewal and removal on the phone
 
