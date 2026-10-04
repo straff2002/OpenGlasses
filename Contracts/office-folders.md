@@ -198,8 +198,10 @@ refused).
 ## 9. Open points
 
 1. **Reports over the folder.** The signed report, its attachment manifest and the office's
-   receipts now have their contract ([office-reports.md](office-reports.md), draft v1: messages,
-   reference implementation and fixtures). Neither app publishes or reads a report yet.
+   receipts have their contract ([office-reports.md](office-reports.md), draft v1). The phone
+   transport publishes a report, its record, its manifest and its attachments under `records`,
+   serves exactly those, and lists the office's receipts; the app does not yet send anything
+   that way, and the office app reads none of it.
 2. **The phone's receipt for an assignment** is required by Plan FX and not yet specified. The
    receipt for a managed job is ([README](README.md), "Managed job receipt").
 3. **Deletion.** Whether receivers should also set the engine's ignore-deletes on their
