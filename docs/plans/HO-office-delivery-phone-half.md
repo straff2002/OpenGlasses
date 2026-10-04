@@ -1,7 +1,8 @@
 # Plan HO — Office Delivery on the Phone (jobs, updates, manuals out; reports, transcripts back)
 
 **Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
-exits met, the physical-phone runs are owed). P2–P6 planned. A build order, not a new design:
+exits met, the physical-phone runs are owed). P2's contract drafted 2026-10-04 with its reference
+implementation and fixtures; its phone half, and P3–P6, planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -46,7 +47,7 @@ and nothing more.
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | a job file names them, does not carry them | — | — | undecided: carried in `control`, or in `bulk` |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
-| Report and parts request to the office | **none for an office**: only the HTTP endpoint envelope and email | none | queue sends to an endpoint or by email | a signed report envelope, attachment manifest and office receipt — P2 |
+| Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages only (`officereport`); **not** the phone's folder handling | queue sends to an endpoint or by email | P2's phone half: the transport's publishing and outbound list, the office sink, stored attachment bytes |
 | Transcript to the office | travels with the report, under HD's audience rule | — | — | P2 |
 | Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
 | Team learning both ways | design only | none | none | its own plan |
@@ -244,6 +245,35 @@ Choices made where the plan and contract left room:
 
 **Exit:** fixture round trip; a lost receipt is asked for again and matches; an unreachable
 office leaves the queue intact past the old retry limit.
+
+**Contract drafted (2026-10-04):** [`Contracts/office-reports.md`](../../Contracts/office-reports.md),
+with `Transport/mobile-core/officereport` as its reference implementation and golden fixtures.
+The phone half has not started. What the contract settled, and what the phone half now has to
+build because of it:
+
+- **A report is flat and names its record and manifest by digest**, as a managed job names its
+  job file. The record is the bytes the phone already produces; the contract does not look
+  inside it.
+- **Every send is a new operation; a record has a stable identifier and a rising revision.** The
+  queue mints a new operation identifier each time a job's record is sent (end of job, report,
+  addendum) and has no revision. The phone half needs a durable revision per record.
+- **An addendum is a record kind**, not a queued operation kind today: the same job's record
+  again, with the addendum document attached.
+- **Three receipts, one file each**, because a published name never changes:
+  evidence pending → record accepted (every required attachment in) → fully accepted.
+  `recordAccepted` counts as delivered; erasure waits for `fullyAccepted`.
+- **No generation in a report**, so a report published before a renewal is receipted after it
+  without being signed again.
+- **The phone must keep the exact attachment bytes it named.** The work-order document is
+  rendered on demand and photographs carry no digest today; a report's attachments have to be
+  stored, with their digests, until they are receipted.
+- **The transcript** is an attachment for the office only, or the report says `omitted` or
+  `none`; the existing audience rule decides which.
+
+Open in the contract (its §11), for a decision before or during the phone half: whether a
+refusal needs a signed outcome; whether `recordAccepted` or only `fullyAccepted` releases a
+leaving phone; records owed at removal; and whether large evidence wants its own pausable
+folder.
 
 ### P3 — Updates and notes on a job (*contract first*, Plan HN)
 

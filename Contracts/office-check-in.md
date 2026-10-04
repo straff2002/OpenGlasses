@@ -385,7 +385,9 @@ and fractional fields.
 2. **How early the office renews** is a requirement here (24 hours), not a wire rule. Each
    renewal re-issues undelivered jobs under a new generation; whether that cost wants a longer
    interval is unmeasured.
-3. **Records still owed at removal** travel by whatever path reports use; reports over the
-   folders are not yet specified ([folders contract](office-folders.md) §9.1).
+3. **Records still owed at removal** travel by whatever path reports use. Reports over the
+   folders now have a contract ([office-reports.md](office-reports.md)), which leaves this point
+   open: a removed phone opens no further connection, so a report not receipted by then does
+   not travel that way.
 4. **The lease shorter than the binding.** A profile with `leaseDays` under 30 makes the lease
    the limit. Nothing here forbids it; an office that authors policy should say so.

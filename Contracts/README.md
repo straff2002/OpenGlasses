@@ -2,8 +2,9 @@
 
 Other contracts in this folder: [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md),
-[team learning](team-learning.md), [managed office folders](office-folders.md) and
-[office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
+[team learning](team-learning.md), [managed office folders](office-folders.md),
+[office reports](office-reports.md) (messages, reference implementation and fixtures; no app
+caller) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
 folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
 key-holder operations and fixtures, the phone's half in that build, and no office app caller).
 
