@@ -426,7 +426,9 @@ office transport, so it has no office and offers no recording.
   reached the size limit — stopping, saving and saying so when not. On stop it transcribes each
   part, assembles the two files and calls `JobRecordingBundleStore.seal`; nothing is sealed or
   signed on a pairing that does not verify at that moment, and the recording then waits on the
-  phone and is sealed on a later pass.
+  phone and is sealed on a later pass. Changes to the recorder — start, pause, carry on, stop —
+  happen one at a time; sealing is not one of them, so a stop never waits behind a transcription
+  and another job can be recorded while the last is being prepared.
 - **`JobRecordingCaptureStore`** — the parts before sealing, in
   `Documents/FieldSessions/{id}/recording/capture/`, with a journal of the recording so far.
   Registered as `SensitiveStore.jobRecordingCapture` and accounted for in subject erasure.
@@ -481,6 +483,10 @@ job's page; deleting a recording asks first and says when the office has not rec
   old zero through the wall clock, since the monotonic clock restarts with the phone) or
   finished as it is; once the job has closed it is sealed from what it had. The part being
   written when the app closed has no index, does not play, and is removed.
+- **A recording that could not be sealed is kept and tried again** — at once when the reason
+  was the pairing, after fifteen minutes otherwise (each try transcribes it from the start).
+  Sealing cuts the parts into chunks before the parts are removed, so for that moment a
+  recording is on the phone twice; one that does not fit stays as parts and says it is waiting.
 - **Mobile data is never used.** There is no setting yet for a technician to allow it, so a
   recording waits for Wi-Fi whatever the organisation says. A link the system calls expensive
   counts as mobile data.
