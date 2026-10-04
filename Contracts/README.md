@@ -3,7 +3,8 @@
 Other contracts in this folder: [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md),
 [team learning](team-learning.md), [managed office folders](office-folders.md) and
-[office check-in, renewal and removal](office-check-in.md) (the last three design only).
+[office check-in, renewal and removal](office-check-in.md) (team learning and the folders are
+design only; check-in has its messages, key-holder operations and fixtures, and no app caller).
 
 This is a tested draft and import preflight, not production commissioning or delivery. The
 Swift phone verifier and Go implementation agree on the same public, fictional signed vault

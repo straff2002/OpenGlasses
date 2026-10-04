@@ -56,11 +56,38 @@ type PeerBinding struct {
 	ExpiresAt            int64  `json:"expiresAt"`
 }
 
+// bindingLedger is the generation record for one enrolment. Removed means the administrator
+// removed the device: no binding is issued for the enrolment again. Binding is the latest
+// binding issued, and RenewedFrom the payload digest of the binding it renewed (empty for a
+// pairing), so a repeated renewal request returns the same binding.
 type bindingLedger struct {
 	Version      int    `json:"version"`
 	Generation   int64  `json:"generation"`
 	Organization string `json:"organizationID"`
 	Enrolment    string `json:"enrolmentID"`
+	Removed      bool   `json:"removed,omitempty"`
+	Binding      string `json:"binding,omitempty"`
+	RenewedFrom  string `json:"renewedFrom,omitempty"`
+}
+
+func bindingLedgerPath(root, organizationID, enrolmentID string) string {
+	nameHash := sha256.Sum256([]byte(organizationID + "\x00" + enrolmentID))
+	return filepath.Join(root, "bindings", hex.EncodeToString(nameHash[:])+".json")
+}
+
+// bindingExpiry is thirty days from now, or the profile's own end if that is sooner.
+func bindingExpiry(profile signedProfile, now int64) (int64, error) {
+	expires := now + 30*86400
+	if profile.PolicyExpiry != "" {
+		policyExpiry, _ := time.Parse(time.RFC3339, profile.PolicyExpiry)
+		if policyExpiry.Unix() < expires {
+			expires = policyExpiry.Unix()
+		}
+	}
+	if expires <= now {
+		return 0, errors.New("profile expires before this binding can be issued")
+	}
+	return expires, nil
 }
 
 func (o *Office) ManagedOfficeID() string {
@@ -203,8 +230,7 @@ func (o *Office) issuePeerBinding(profileDocument, enrolmentID,
 		!canonicalPublic(phoneApplicationKey) || now <= 0 || now > maximumSafeInteger-30*86400 {
 		return "", errors.New("invalid office or phone pairing details")
 	}
-	nameHash := sha256.Sum256([]byte(profile.Authority.OrganizationID + "\x00" + enrolmentID))
-	ledgerPath := filepath.Join(o.Root, "bindings", hex.EncodeToString(nameHash[:])+".json")
+	ledgerPath := bindingLedgerPath(o.Root, profile.Authority.OrganizationID, enrolmentID)
 	ledger := bindingLedger{Version: 1, Organization: profile.Authority.OrganizationID, Enrolment: enrolmentID}
 	if e = load(ledgerPath, &ledger); e != nil && !os.IsNotExist(e) {
 		return "", e
@@ -213,31 +239,24 @@ func (o *Office) issuePeerBinding(profileDocument, enrolmentID,
 		ledger.Enrolment != enrolmentID || ledger.Generation >= maximumSafeInteger {
 		return "", errors.New("pairing generation record is invalid")
 	}
-	expires := now + 30*86400
-	if profile.PolicyExpiry != "" {
-		policyExpiry, _ := time.Parse(time.RFC3339, profile.PolicyExpiry)
-		if policyExpiry.Unix() < expires {
-			expires = policyExpiry.Unix()
-		}
+	if ledger.Removed {
+		return "", errRemoved
 	}
-	if expires <= now {
-		return "", errors.New("profile expires before this binding can be issued")
+	expires, e := bindingExpiry(profile, now)
+	if e != nil {
+		return "", e
 	}
 	ledger.Generation++
 	payload := PeerBinding{1, "avenkin.office-peer-binding", profile.Authority.OrganizationID,
 		profile.ProfileID, enrolmentID, o.ManagedOfficeID(), ledger.Generation, officeTransportID,
 		public(o.Key), phoneTransportID, phoneApplicationKey, now, expires}
-	bytes, e := json.Marshal(payload)
+	envelope, e := signPeerBinding(payload, admin)
 	if e != nil {
 		return "", e
 	}
-	signature := ed25519.Sign(admin, append([]byte(peerBindingDomain), bytes...))
-	envelope, e := json.Marshal(Envelope{base64.StdEncoding.EncodeToString(bytes), base64.StdEncoding.EncodeToString(signature)})
-	if e != nil || len(envelope) > maximumPeerBinding {
-		return "", errors.New("signed binding exceeds size limit")
-	}
+	ledger.Binding, ledger.RenewedFrom = envelope, ""
 	if e = save(ledgerPath, ledger); e != nil {
 		return "", e
 	}
-	return string(envelope), nil
+	return envelope, nil
 }

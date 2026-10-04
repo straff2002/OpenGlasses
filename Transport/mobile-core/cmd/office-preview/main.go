@@ -2,18 +2,21 @@
 //
 // Every operation but one is one JSON request on stdin and one JSON reply on stdout
 // ("sign-managed-job" among them: it lends the office application key's signature to a managed-job
-// payload the desktop built, after checking it). The
+// payload the desktop built, after checking it; "sign-check-in-challenge", "renew-peer-binding"
+// and "sign-office-removal" are the check-in contract's, each checked here before a key signs). The
 // exception is "commission-serve": a long-running, line-delimited conversation for one
 // commissioning invitation, whose protocol is documented at the top of
 // commission/bootstrap/converse.go.
 package main
 
 import (
+	"avenkin.dev/mobilecore/checkin"
 	"avenkin.dev/mobilecore/commission/bootstrap"
 	"avenkin.dev/mobilecore/manageddelivery"
 	p "avenkin.dev/mobilecore/officepreview"
 	"bufio"
 	"bytes"
+	"crypto/ed25519"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -39,8 +42,13 @@ type Request struct {
 	EnrolmentID         string     `json:"enrolmentID"`
 	PhoneTransportID    string     `json:"phoneTransportID"`
 	PhoneApplicationKey string     `json:"phoneApplicationKey"`
-	// Payload is the exact managed-job payload bytes to sign, base64 ("sign-managed-job").
+	// Payload is the exact payload bytes to sign, base64 ("sign-managed-job",
+	// "sign-check-in-challenge", "sign-office-removal").
 	Payload string `json:"payload"`
+	// The exact envelopes of one check-in exchange ("renew-peer-binding").
+	Challenge string `json:"challenge"`
+	CheckIn   string `json:"checkIn"`
+	Binding   string `json:"binding"`
 }
 
 // ServeRequest is the first line of a commissioning conversation.
@@ -104,6 +112,31 @@ func run(root string, b []byte) (any, error) {
 		}
 		envelope, e := manageddelivery.SignPayload(raw, o.Key, o.ManagedOfficeID(), p.Now())
 		return map[string]string{"envelope": string(envelope)}, e
+	case "sign-check-in-challenge":
+		// The office application key signs a check-in challenge the desktop built and recorded,
+		// after checking it is one, for this office, and live (Contracts/office-check-in.md §4.1).
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed check-in challenge payload")
+		}
+		envelope, e := checkin.SignChallengePayload(raw, o.Key, p.Now())
+		return map[string]string{"envelope": envelope}, e
+	case "renew-peer-binding":
+		// The administrator key stays here, and does not sign a renewed binding on request
+		// alone: the challenge, the phone's check-in and the current binding are verified
+		// first, and the generation record refuses a binding that is not the latest or an
+		// enrolment that was removed (§5).
+		binding, result, e := checkin.Renew(o.Authority(), o.Key, r.ProfileDocument, r.Challenge, r.CheckIn, r.Binding, p.Now())
+		return map[string]string{"binding": binding, "result": result}, e
+	case "sign-office-removal":
+		// The administrator key signs a removal the desktop built, for this organisation,
+		// profile and office, and marks the enrolment removed before it signs (§8).
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed removal payload")
+		}
+		envelope, e := checkin.Remove(o.Authority(), o.Key.Public().(ed25519.PublicKey), r.ProfileDocument, raw, p.Now())
+		return map[string]string{"envelope": envelope}, e
 	case "receipt":
 		if e := o.VerifyReceipt(r.Receipt); e != nil {
 			return nil, e

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"avenkin.dev/mobilecore/checkin"
 	"avenkin.dev/mobilecore/commission"
 	"avenkin.dev/mobilecore/commission/bootstrap"
 	p "avenkin.dev/mobilecore/officepreview"
@@ -268,3 +269,55 @@ func TestSignManagedJobLendsTheApplicationKeyToItsOwnOfficeOnly(t *testing.T) {
 }
 
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
+
+func TestSignCheckInChallengeLendsTheApplicationKeyToItsOwnOfficeOnly(t *testing.T) {
+	root := t.TempDir()
+	office, err := p.OpenOffice(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	officePublic := office.Key.Public().(ed25519.PublicKey)
+	digest := sha256.Sum256([]byte("phone"))
+	now := p.Now()
+	payload := func(officeID string, issuedAt, expiresAt int64) string {
+		raw, _ := json.Marshal(checkin.Challenge{Version: 1, Kind: checkin.ChallengeKind, ChallengeID: strings.Repeat("ab", 16),
+			Nonce: base64.RawURLEncoding.EncodeToString(digest[:]), OrganizationID: "test-organisation", EnrolmentID: "phone-1",
+			OfficeID: officeID, PhoneTransportID: protocol.DeviceID(digest).String(), Generation: 1,
+			BindingSHA256: strings.Repeat("cd", 32), IssuedAt: issuedAt, ExpiresAt: expiresAt})
+		return base64.StdEncoding.EncodeToString(raw)
+	}
+	ask := func(body string) (int, map[string]string) {
+		var out bytes.Buffer
+		status := helper([]string{"helper", root}, strings.NewReader(body), &out)
+		var reply map[string]string
+		_ = json.Unmarshal(out.Bytes(), &reply)
+		return status, reply
+	}
+	sent := payload(checkin.OfficeID(officePublic), now, now+3600)
+	status, reply := ask(`{"op":"sign-check-in-challenge","payload":"` + sent + `"}`)
+	if status != 0 || len(reply) != 1 {
+		t.Fatalf("exit %d: %v", status, reply)
+	}
+	var envelope struct{ Payload, Signature string }
+	if json.Unmarshal([]byte(reply["envelope"]), &envelope) != nil || envelope.Payload != sent {
+		t.Fatalf("the payload was not signed as sent: %s", reply["envelope"])
+	}
+	if _, e := checkin.ReadChallenge(reply["envelope"], officePublic); e != nil {
+		t.Fatal(e)
+	}
+	for name, body := range map[string]string{
+		"another office": `{"op":"sign-check-in-challenge","payload":"` + payload("office-000000000000000000000000", now, now+3600) + `"}`,
+		"expired":        `{"op":"sign-check-in-challenge","payload":"` + payload(checkin.OfficeID(officePublic), now-7200, now-3600) + `"}`,
+		"too long":       `{"op":"sign-check-in-challenge","payload":"` + payload(checkin.OfficeID(officePublic), now, now+8*86400) + `"}`,
+		"not base64":     `{"op":"sign-check-in-challenge","payload":"***"}`,
+		"a managed job":  `{"op":"sign-check-in-challenge","payload":"` + base64.StdEncoding.EncodeToString([]byte(`{"version":1,"kind":"avenkin.managed-job"}`)) + `"}`,
+		// The administrator key signs nothing without a vendor-signed profile and a verified exchange.
+		"renewal on request":      `{"op":"renew-peer-binding","profileDocument":"x.y","challenge":"{}","checkIn":"{}","binding":"{}"}`,
+		"renewal with nothing":    `{"op":"renew-peer-binding"}`,
+		"removal without profile": `{"op":"sign-office-removal","payload":"` + base64.StdEncoding.EncodeToString([]byte(`{}`)) + `"}`,
+	} {
+		if status, reply := ask(body); status != 1 || reply["error"] == "" || len(reply) != 1 {
+			t.Fatalf("%s: exit %d, %v", name, status, reply)
+		}
+	}
+}

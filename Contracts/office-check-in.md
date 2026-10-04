@@ -1,4 +1,4 @@
-# Office check-in, renewal and removal contract — draft v1 (design only)
+# Office check-in, renewal and removal contract — draft v1 (messages, key-holder operations and fixtures; no app uses it yet)
 
 Drafted 2026-10-04 for Plan [FX](../docs/plans/FX-desktop-office-and-device-sync.md). This is the
 agreement between the phone app and Avenkin Office about how a phone that joined an office by
@@ -8,8 +8,17 @@ office returns, and the removal an administrator signs. It is self-contained so 
 into the office repository.
 
 **It asserts nothing about the office app's internals.** Statements about the office are
-requirements or marked *Assumption*. **No code or fixture exists yet on either side**; where this
-says "fixture" it names a file to be added to `Contracts/fixtures/`.
+requirements or marked *Assumption*.
+
+**Built so far, in the Go transport only:** `Transport/mobile-core/checkin` implements every
+message here — signing, the two-step signing a phone needs, and each side's checks — and the
+golden fixtures in §11. The connection helper (`cmd/office-preview`) has the three operations
+of the key holder in §5 and §8: `sign-check-in-challenge` (office application key),
+`renew-peer-binding` and `sign-office-removal` (administrator key), each checked before a key
+signs; the generation record keeps the removed mark and the binding last issued. **Neither app
+uses any of it yet:** the phone transport does not read `control/checkin/` or `control/removal/`
+or publish a check-in, no Swift code calls it, and the office app does not call the helper's
+new operations.
 
 **Builds on, unchanged:** the vendor-signed schema-2 profile and licence pair, the
 administrator-signed peer binding and its generation rule ([README](README.md), "Office authority
@@ -333,15 +342,21 @@ This is the one exception to "gone when the binding is" in the
 7. **Background delivery.** Nothing here makes iOS run the engine in the background: a phone
    checks in when the app is allowed to run.
 
-## 11. Fixtures to add
+## 11. Fixtures
 
-With fictional keys derived from public labels, as the commissioning fixtures are, and the clock
-fixed: `office-check-in-challenge-v1.json`, `office-check-in-v1.json`,
-`office-check-in-result-v1.json` (carrying a renewed binding one generation above
-`office-check-in-binding-v1.json`), `office-removal-v1.json`, `office-removal-receipt-v1.json`
-and `office-check-in-fixture-keys.json`.
+In `Contracts/fixtures/`, made by `checkin.Fixtures()` and kept current by that package's tests,
+with fictional keys derived from public labels (the office and phone keys are the commissioning
+fixtures' own) and the clock at 1800000000: `office-check-in-binding-v1.json` (generation 1),
+`office-check-in-challenge-v1.json`, `office-check-in-v1.json`, `office-check-in-result-v1.json`
+(carrying the same binding at generation 2), `office-removal-v1.json`,
+`office-removal-receipt-v1.json` and `office-check-in-fixture-keys.json`.
 
-Negative cases to cover in both implementations: a check-in for an expired, withdrawn, used or
+```
+go -C Transport/mobile-core test -tags noassets ./checkin/ ./officepreview/ ./cmd/office-preview/
+CHECKIN_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./checkin/   # regenerate
+```
+
+Negative cases, covered in the Go tests and to be covered by the phone's verifier: a check-in for an expired, withdrawn, used or
 foreign challenge; a check-in signed by a key other than the binding's; a check-in naming an
 older generation or another binding digest; a second check-in for one challenge; a result signed
 by the office application key instead of the administrator key; a result for another check-in,

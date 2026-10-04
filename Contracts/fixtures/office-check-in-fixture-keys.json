@@ -1,0 +1,14 @@
+{
+  "administratorKeyLabel": "Avenkin public fixture administrator key v1",
+  "administratorPublicKey": "tjugy/LlJ7WiKq4IFRwKwu2wterxjbs8s30IAl79UWQ=",
+  "bindingSHA256": "357c2dcecbe7c5d41a15052fa4ae101fd199c2f19834b90c9391eecf52ea9f4c",
+  "challengeSHA256": "854625df74f68c77391c875a3ef7c1e5448765b35a87a2a853ddf37f6a1882db",
+  "checkInSHA256": "b872bb408875f328a14f5d97dde2ef33a9eeea951b4f5542a46033eae579b932",
+  "note": "Fictional keys derived from public labels: seed = SHA-256(label). They have no authority.",
+  "now": 1800000000,
+  "officeApplicationKey": "XNmlSele8WL46e+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=",
+  "officeKeyLabel": "Avenkin public fixture office key v1",
+  "phoneApplicationKey": "2hr21s5ALq78ys4P9AP3in9U/Q1/5XqTV7a58EF4A1Q=",
+  "phoneKeyLabel": "Avenkin public fixture phone key v1",
+  "removalSHA256": "c4332f068cabd27bd18d2e14bea1a598dc564a8f5b3cce74cb1153055f412534"
+}
