@@ -178,11 +178,12 @@ enum OutboundFrameConsumer: String, CaseIterable {
 
     // MARK: - "Record this job" (Plan HE)
     //
-    // The two entries below are the whole of a recorded job's path, and there is deliberately no
-    // third. A recorded job is written raw into the job's own folder and leaves that folder one
-    // way only, to the organisation's office. It is not offered to a share sheet, saved to Photos
-    // or attached to a report — a clip for a report stays `jobClipRecording`'s work, off the
-    // blurred relay. `JobRecordingExitTests` reads the sources and holds the folder to that.
+    // The entries below are the whole of a recorded job's path: in, blurred where it has to be,
+    // and out — and there is deliberately no other. A recorded job is written raw into the job's
+    // own folder and leaves that folder one way only, to the organisation's office. It is not
+    // offered to a share sheet, saved to Photos or attached to a report — a clip for a report
+    // stays `jobClipRecording`'s work, off the blurred relay. `JobRecordingExitTests` reads the
+    // sources and holds the folder to that.
 
     /// The raw tap for "Record this job": `JobRecordingCoordinator` hands the unfiltered camera
     /// publisher to its own recorder, which writes the frames into the job's folder
@@ -193,18 +194,30 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// the relay drops every frame while the blur cannot run, which is whenever the phone is
     /// locked in a pocket. The person recording has been told the footage is unblurred and where
     /// it goes (`RecordingConsent`), and it is refused outright in Medical Compliance mode, where
-    /// the organisation forbids it, and where the organisation requires a blur the app cannot yet
-    /// apply (`JobRecordingAvailability`).
+    /// the organisation forbids it, and where the organisation requires a blur and the app has no
+    /// blur pass to apply it with (`JobRecordingAvailability`).
     case jobRecordingCapture
+    /// The blur pass, where the organisation requires faces blurred before a recording goes to
+    /// its office: `BundleBlurPass` reads each recorded part out of the job's folder, puts every
+    /// picture through the face blur, and writes the blurred part back into the same folder.
+    ///
+    /// **Not an exit.** It moves pixels from one file in the job's folder to another and nowhere
+    /// else. It is on the roster because it holds raw pixels and is what stands between them and
+    /// a bundle marked blurred, so what it promises is written here: a picture is written only if
+    /// the filter returned one, under a scope that is filtered whatever the app-wide switch says
+    /// (`PrivacyFilterScope.officeRecordingBlur`); a picture the filter cannot process is dropped
+    /// and counted; and the raw part is removed only once its blurred replacement is whole.
+    case jobRecordingBlurPass
     /// The one exit: the sealed bundle sent to the organisation's own office over the managed
     /// connection (`JobRecordingSyncService`), to the office the phone's current pairing names and
     /// to nobody else.
     ///
     /// **Raw by default, by the organisation's decision** — the destination is the organisation's
     /// own computer and its analysis is better for it. Where the organisation requires faces
-    /// blurred first, an unblurred bundle is not sent (`SyncEligibility.Reason.blurRequired`), and
-    /// until the app can blur a recording nothing is recorded under that rule at all. The app-wide
-    /// blur switch does not govern this exit either way.
+    /// blurred first, a recording is blurred on the phone before it is sealed
+    /// (`jobRecordingBlurPass`), and a bundle whose own manifest does not say it is blurred is not
+    /// sent (`SyncEligibility.Reason.blurRequired`). The app-wide blur switch does not govern this
+    /// exit either way.
     case jobRecordingOfficeSync
 
     /// Where the consumer taps the pixels.
@@ -228,7 +241,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         /// `StillImageFiltering` before the bytes go anywhere.
         case heldImage
         /// A recorded job already written to its own folder on this phone. Not a camera tap at all:
-        /// the consumer reads files, and what is being policed is where those files may go.
+        /// the consumer reads files, and what is being policed is where those files may go — to
+        /// the office, or through the blur and back into the same folder.
         case jobRecordingFolder
     }
 
@@ -298,6 +312,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .faceRecognitionTool: return "FaceRecognitionTool"
         case .fitnessPoseFrame: return "NativeToolRegistry"
         case .jobRecordingCapture: return "JobRecordingCoordinator"
+        case .jobRecordingBlurPass: return "BundleBlurPass"
         case .jobRecordingOfficeSync: return "JobRecordingSyncService"
         }
     }
@@ -332,6 +347,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
              .fitnessPoseFrame: return .onDeviceVision
         case .jobRecordingCapture, .jobRecordingOfficeSync: return .officeRecording
+        case .jobRecordingBlurPass: return .officeRecordingBlur
         }
     }
 
@@ -339,7 +355,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         switch self {
         case .outboundRelayInput, .appRelayAttachment, .faceRecognition, .readingCompanion,
              .fingerspelling, .dwellCapture, .jobRecordingCapture: return .rawCameraPublisher
-        case .jobRecordingOfficeSync: return .jobRecordingFolder
+        case .jobRecordingBlurPass, .jobRecordingOfficeSync: return .jobRecordingFolder
         case .liveSessionPush, .livePreview: return .rawCameraCallback
         case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
              .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
@@ -373,7 +389,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture,
-             .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto: return .chokepoint
+             .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto,
+             .jobRecordingBlurPass: return .chokepoint
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
@@ -401,10 +418,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
                     .map(\.owningType))
     }
 
-    /// The consumers through which a recorded job's pixels may move: into the job's folder, and
-    /// from it to the office. Anything else touching that folder is a new exit nobody argued for.
+    /// The consumers through which a recorded job's pixels may move: into the job's folder,
+    /// through the blur where the organisation requires it, and from the folder to the office.
+    /// Anything else touching that folder is a new exit nobody argued for.
     static var jobRecordingPath: [OutboundFrameConsumer] {
-        allCases.filter { $0.scope == .officeRecording }
+        allCases.filter { $0.scope == .officeRecording || $0.scope == .officeRecordingBlur }
     }
 
     static var owningTypes: Set<String> { Set(allCases.map(\.owningType)) }
