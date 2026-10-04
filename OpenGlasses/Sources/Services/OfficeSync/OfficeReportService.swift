@@ -109,8 +109,17 @@ final class OfficeReportService: ObservableObject {
 
     static let maximumEntries = 200
 
+    /// What is still on its way, for a screen.
+    struct Summary: Equatable, Sendable {
+        /// Reports the office has said nothing about.
+        var waiting = 0
+        /// Reports whose record the office has, and whose required documents it does not.
+        var evidencePending = 0
+    }
+
     /// Bumped whenever a report's standing changes, for whatever is waiting on it.
     @Published private(set) var changes = 0
+    @Published private(set) var summary = Summary()
     private(set) var ledger: Ledger
 
     private let seams: Seams
@@ -119,6 +128,7 @@ final class OfficeReportService: ObservableObject {
     init(seams: Seams) {
         self.seams = seams
         ledger = seams.load()
+        summary = Self.summary(of: ledger)
     }
 
     // MARK: - Reading
@@ -131,6 +141,48 @@ final class OfficeReportService: ObservableObject {
     /// erase-after-delivery rule waits on: zero means everything they named is at the office.
     func notFullyAccepted(recordIDs: Set<String>) -> Int {
         ledger.entries.filter { recordIDs.contains($0.recordID) && !$0.superseded && $0.outcome != .fullyAccepted }.count
+    }
+
+    /// Operations whose documents are no longer owed: the office has all of them, or a later
+    /// report replaced the one that named them.
+    var settledOperationIDs: Set<String> {
+        Set(ledger.entries.filter { $0.superseded || $0.outcome == .fullyAccepted }.map(\.operationID))
+    }
+
+    /// Drop what this phone holds about these records: for a phone leaving its organisation, once
+    /// the records themselves are erased. Nothing is withdrawn from the office.
+    func forget(recordIDs: Set<String>) {
+        var next = ledger
+        next.entries.removeAll { recordIDs.contains($0.recordID) }
+        try? commit(next)
+    }
+
+    static func summary(of ledger: Ledger) -> Summary {
+        var summary = Summary()
+        for entry in ledger.entries where !entry.superseded {
+            switch entry.outcome {
+            case nil: summary.waiting += 1
+            case .evidencePending?: summary.evidencePending += 1
+            case .recordAccepted?, .fullyAccepted?: break
+            }
+        }
+        return summary
+    }
+
+    /// The words for what is still on its way. Nil when nothing is. A record is "with the office"
+    /// only on its receipt; nothing here says sent or delivered for a finished transfer.
+    static func status(_ summary: Summary) -> OfficeFieldConnectionPolicy.Status? {
+        if summary.waiting > 0 {
+            return .init(title: summary.waiting == 1 ? "1 record for the office" : "\(summary.waiting) records for the office",
+                         detail: "Kept on this phone until the office confirms it has them.",
+                         systemImage: "tray.and.arrow.up")
+        }
+        if summary.evidencePending > 0 {
+            return .init(title: summary.evidencePending == 1 ? "The office has 1 record" : "The office has \(summary.evidencePending) records",
+                         detail: "Their documents are still on the way.",
+                         systemImage: "doc.badge.clock")
+        }
+        return nil
     }
 
     static func status(_ entry: Entry) -> Status {
@@ -354,6 +406,7 @@ final class OfficeReportService: ObservableObject {
         guard next != ledger else { return }
         try seams.save(next)
         ledger = next
+        summary = Self.summary(of: next)
     }
 
     /// Bounded: the oldest settled entries go first. One the office has not fully accepted stays.
@@ -401,5 +454,25 @@ extension OfficeReportService {
                                                 withIntermediateDirectories: true)
         try JSONEncoder().encode(ledger).write(
             to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+}
+
+/// The app's wiring: the pairing gate, and a file for the record.
+extension OfficeReportService.Seams {
+    @MainActor
+    static func app(transport: any OfficeManagedFolderTransport,
+                    pairing: @escaping @MainActor () -> OfficePairingService = { OfficePairingService() },
+                    ledgerFile: URL? = OfficeReportService.defaultLedgerFile()) -> Self {
+        var seams = Self(transport: transport, held: {
+            guard let held = OfficeCheckIn.Held(try await pairing().currentApprovedPeer()) else {
+                throw OfficePeerBinding.Refusal.invalidFields
+            }
+            return held
+        })
+        if let ledgerFile {
+            seams.load = { OfficeReportService.readLedger(ledgerFile) }
+            seams.save = { try OfficeReportService.writeLedger($0, to: ledgerFile) }
+        }
+        return seams
     }
 }

@@ -3,9 +3,11 @@
 **Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
 exits met, the physical-phone runs are owed). P0b (job-file format 2) built 2026-10-05, in every
 build: contract, reference implementation, fixture and the phone's import; headless exit met.
-P2 (reports back): the contract (2026-10-04) and the first part of the phone half (2026-10-05:
-transport, verifier, report service and a sink that waits) are built and tested headless; the
-second part, which switches it on in the app, and P3–P6, are planned. A build order, not a new design:
+P2 (reports back) built 2026-10-05 in the opt-in build, tested headless: the contract, the
+transport, the report service and a sink that waits, and the app's wiring — a phone that joined
+an office sends each job's record there with its work order, audit export and transcript, and
+counts it delivered only on the office's receipt. What P2 still owes is listed under it. P3–P6
+are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -50,8 +52,8 @@ and nothing more.
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
-| Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 first part built**, not switched on: the report and manifest written and signed, the report service, a sink that waits. The queue still sends to an endpoint or by email | P2's second part: the office as the destination on joining, stored attachment bytes, erase only on *fully accepted*; then a report from a physical phone |
-| Transcript to the office | travels with the report, under HD's audience rule | — | — | P2 |
+| Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
+| Transcript to the office | travels with the report, under HD's audience rule | an attachment like any other | **P2 built**: its own document for the office only, and inside the audit export, unless the organisation's rule is *never* — then the report says *omitted* | the same physical run |
 | Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
 | Team learning both ways | design only | none | none | its own plan |
 
@@ -408,19 +410,48 @@ Choices made where the contract left room:
   operation leaves the queue as done: its record is in the later one.
 - **At most 64 reports wait in the folder at once**, a bound on the transport's own state.
 
-**Still owed for P2 (second part):**
+**Phone half, second part — as built (2026-10-05).** Switched on, in the opt-in build:
 
-- Switching it on: the office as the report destination when a phone joins by code; the sink in
-  the app's sync chain; receipts read on the connection's poll, and the queue flushed when one
-  changes a report's standing.
-- The evidence: the work-order document, the transcript under the audience rule (or `omitted`),
-  photographs and clips, stored with their digests until the office has them. Today the
-  document is rendered on demand and photographs carry no digest.
-- The addendum as a record kind, and erasing a leaving phone's records only on *fully accepted*.
-- An optional attachment the phone can no longer produce leaves a report at *record accepted*
-  and in the folder; with enough of those the 64-report bound is reached. The second part has to
-  either keep the bytes or withdraw such a report.
+- **The office is the destination for a phone that joined one.** `OfficeReportSink` is first in
+  the app's sync chain. A phone enrolled from an office, and not removed, sends its job records
+  and stock checks there; any other phone, and any build without the transport, sends as it did
+  before. Nothing has to be configured: joining by code is what sets it.
+- **The documents go with the record, as exact bytes.** `OfficeReportDocuments` decides which:
+  the work order (the one document the office may pass on to a customer) and the audit export
+  always; the transcript as its own document, for the office only, unless the organisation's
+  rule is *never* — then the report says *omitted* — and *none* when nothing was said.
+  `OfficeReportEvidenceStore` renders them once per queued operation and keeps those bytes under
+  their digests (`Application Support/AvenkinOffice/report-evidence/`, excluded from backup)
+  until the office has them, because two renderings of one work order are not the same bytes.
+- **Receipts are read on the connection's poll.** `OfficeReportPump` runs after check-in and
+  the job intake: it reads the office's receipts, flushes the queue when one changed a report's
+  standing or when records are waiting (at most once a minute otherwise), and lets go of
+  documents the office now has.
+- **A leaving phone erases only what the office fully has.** The departure rule's "delivered"
+  now also requires every report for those jobs to be *fully accepted*; *record accepted* is
+  delivered and is not yet a reason to erase.
+- **Shown** under Field Assist settings: how many records are still for the office, or that the
+  office has them and their documents are on the way. Nothing says sent or delivered.
+- **The data-store inventory lists the office's stores**: the engine's folders, the job intake,
+  check-in, reports and report evidence. The first three were added by earlier phases and had
+  not been listed.
+
+**Still owed for P2:**
+
 - A report from a physical phone to a real office, and the office reading one at all.
+- Photographs and clips as their own attachments. The chosen photographs are inside the work
+  order; the originals, and any clip, do not travel yet. Clips are large, and whether large
+  evidence wants its own pausable folder is open in the contract.
+- The addendum as a record kind. A later send of a job is a later revision of its work record,
+  which carries the debrief; nothing marks it as an addendum or attaches the addendum document.
+- The report composer does not offer the office. The record goes when the job ends and whenever
+  a record is queued; a technician cannot choose "send to the office" as they choose email.
+- A phone without the audited-export capability, or whose job is no longer on it, sends the
+  record with no documents and says there is no transcript.
+- If a report's stored documents are lost while it is waiting, it stays at *evidence pending*:
+  nothing re-renders them under a new revision.
+- Once a phone has been removed, records the office has not fully accepted do not travel
+  ([check-in](../../Contracts/office-check-in.md) §8); they are erased at the erase-by date.
 
 ### P3 — Updates and notes on a job (*contract first*, Plan HN)
 

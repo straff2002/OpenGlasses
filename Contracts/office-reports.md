@@ -1,4 +1,4 @@
-# Office report contract — draft v1 (messages, fixtures, and the phone's transport, verifier and sink; not yet wired into the app)
+# Office report contract — draft v1 (messages, fixtures and the phone's half, in the opt-in build; no office reads a report yet)
 
 Drafted 2026-10-04 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P2. This is the
 agreement between the phone app and Avenkin Office about how a technician's record — a work
@@ -13,8 +13,8 @@ requirements or marked *Assumption*.
 the two-step signing a phone needs, the manifest's one spelling and each side's checks — and the
 golden fixtures in §10.
 
-**The phone's half exists and is not yet switched on** (Plan
-[HO](../docs/plans/HO-office-delivery-phone-half.md) P2, first part, 2026-10-05):
+**The phone's half is built, in the opt-in office transport build only** (Plan
+[HO](../docs/plans/HO-office-delivery-phone-half.md) P2, 2026-10-05):
 
 - the phone transport checks a report, its record and its manifest as the office will and
   publishes them under `records/reports/`, copies in only the attachments a published report
@@ -24,11 +24,15 @@ golden fixtures in §10.
   report's standing only on a receipt that verifies for exactly what it published;
   `OfficeReportSink` feeds it from the phone's queue and **waits** rather than counting attempts.
 
+- in the app, a phone that joined an office sends its job records and stock checks there. A
+  job's record goes with its work order and audit export, and with the transcript as its own
+  document unless the organisation's rule keeps it on the phone; each is rendered once and kept
+  as the exact bytes named until the office has it. Receipts are read while the connection is up.
+
 That is tested headless against the golden fixtures and an in-memory stand-in for the transport.
-**Nothing in the app calls it yet:** no office is set as a phone's report destination, the
-evidence a job's record needs (the work-order document, the transcript, photographs) is not yet
-stored with its digests, and the queue still sends records only to an HTTP endpoint or by email.
-No report has left a physical phone, and the office app does not read one.
+**No report has left a physical phone, and the office app does not read one.** Photographs and
+clips do not yet travel as attachments of their own, and the phone does not use the `addendum`
+kind. The default app build links no transport and sends nothing this way.
 
 **Builds on, unchanged:** the administrator-signed peer binding and the application keys it
 names ([README](README.md), "Office authority and peer binding"), the
