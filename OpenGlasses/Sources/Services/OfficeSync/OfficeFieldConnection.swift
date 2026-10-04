@@ -5,8 +5,9 @@ import Foundation
 /// Each run verifies the saved approval again (vendor and administrator signatures, live lease,
 /// this phone's keys, the generation high-water) before it starts the engine, and again every
 /// 30 seconds while it runs; when the approval no longer verifies the engine stops and the state
-/// says why. The engine opens no folder and no listener (`OfficePairingService`). Nothing runs in
-/// the background: leaving the screen stops it, and coming back starts it again.
+/// says why. The engine opens no listener, and only the two managed folders the verified binding
+/// calls for (`OfficePairingService.openFoldersWithApprovedOffice`). Nothing runs in the
+/// background: leaving the screen stops it, and coming back starts it again.
 ///
 /// One engine serves the app, so the pairing screen's own connection test `suspend()`s this and
 /// `resume()`s it afterwards, and joining an office by its code `restart()`s it. Engine work is
@@ -42,10 +43,16 @@ final class OfficeFieldConnection: ObservableObject {
         var approvedOffice: @MainActor () async throws -> Approved = {
             Approved(try await OfficePairingService().currentApprovedPeer())
         }
-        /// Starts the managed engine from the saved approval, which it verifies again before and after.
+        /// Starts the managed engine and its two folders from the saved approval, which it verifies
+        /// again before and after.
         var start: @MainActor () async throws -> Void = {
-            try await OfficePairingService().connectToApprovedOffice()
+            guard let folders = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else {
+                throw OfficeTransportIdentity.Refusal.unavailable
+            }
+            try await OfficePairingService().openFoldersWithApprovedOffice(folders)
         }
+        /// Asked on every poll while the engine runs: take in what the office has sent.
+        var takeIn: @MainActor () async -> Void = {}
         var stop: @MainActor () async -> Void = { await OfficeTransportIdentity.shared.stop() }
         /// The engine's public status JSON.
         var snapshot: @MainActor () async throws -> String = { try await OfficeTransportIdentity.shared.snapshot() }
@@ -266,6 +273,11 @@ final class OfficeFieldConnection: ObservableObject {
                 observed = .notRunning
             }
             guard isCurrent(run) else { return .ended }
+            if observed != .notRunning {
+                // A job committed while the office was out of reach is still taken in.
+                await seams.takeIn()
+                guard isCurrent(run) else { return .ended }
+            }
             switch observed {
             case .connected(let route):
                 notConnectedSince = nil

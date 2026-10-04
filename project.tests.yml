@@ -31,6 +31,8 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/managed-job-fixture-keys.json
         buildPhase: resources
+      - path: Contracts/fixtures/managed-job-receipt-v1.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.tests

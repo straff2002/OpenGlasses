@@ -20,6 +20,8 @@ final class OfficeFieldConnectionTests: XCTestCase {
         /// The fake clock at each engine start, in seconds after the test began.
         var startTimes: [TimeInterval] = []
         var stops = 0
+        /// How often the connection asked for what the office has sent to be taken in.
+        var takeIns = 0
         /// Every pause the connection asked for, in seconds.
         var sleeps: [TimeInterval] = []
         var now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -48,6 +50,7 @@ final class OfficeFieldConnectionTests: XCTestCase {
         }
         seams.stop = { world.stops += 1 }
         seams.snapshot = { world.snapshot }
+        seams.takeIn = { world.takeIns += 1 }
         // Each pause moves the fake clock on by what was asked, and takes a moment of real time.
         // Recorded on the main actor as the run asks, so a replaced run records nothing more.
         seams.sleep = { @MainActor nanoseconds in
@@ -81,6 +84,25 @@ final class OfficeFieldConnectionTests: XCTestCase {
         await waitUntil { connection.state == .stopped(.notPaired) }
         XCTAssertEqual(world.starts, 0)
         XCTAssertEqual(world.approvalChecks, 1, "a refused approval is not retried on its own")
+    }
+
+    func testWhatTheOfficeSentIsTakenInOnlyWhileTheEngineRuns() async {
+        let connection = makeConnection()
+        connection.appBecameActive()
+        // Waiting for the office still takes in: a job committed earlier is on the phone already.
+        await waitUntil { world.takeIns >= 2 }
+        XCTAssertEqual(connection.state, .waiting(.automatic))
+        connection.appEnteredBackground()
+        await waitUntil { world.stops >= 2 }
+        let taken = world.takeIns
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(world.takeIns, taken, "nothing is taken in once the engine has stopped")
+
+        world.approval = .failure(OfficePairingService.Refusal.inactiveLease)
+        world.takeIns = 0
+        connection.appBecameActive()
+        await waitUntil { connection.state == .stopped(.managementLapsed) }
+        XCTAssertEqual(world.takeIns, 0, "and nothing on an approval that no longer verifies")
     }
 
     func testABuildWithoutTheTransportDoesNothing() async throws {

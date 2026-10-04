@@ -56,14 +56,17 @@ dialled, and a connection that fails leaves the pairing kept. The pinned exchang
 transport's, behind `OfficeCommissionTransport`; a build without the office transport says it
 cannot join this way. Open: physical testing against the office.
 
-The current phone UI and services implement setup, binding review and a handshake-only managed
-connection. No production managed folder is enabled by that handshake. The folders that
+The current phone UI and services implement setup, binding review and the managed connection.
+The pairing sheet's connection test is a handshake with no folder. The folders that
 follow a verified binding — which exist, their direction, names, paths and what each side may
 serve — are specified in [`Contracts/office-folders.md`](../../Contracts/office-folders.md)
 (draft v1, 2026-10-04). The Go transport now implements the `control` and `records` folders for
 managed jobs and their receipts (`StartManagedOfficeFolders`, checked end to end against the
-office's engine with a stand-in phone); **the app does not call it yet**, so a shipping phone
-still has no managed folder. How an office-joined phone renews its binding and lease, and
+office's engine with a stand-in phone). **The opt-in office transport build now calls it**
+(Plan [HO](HO-office-delivery-phone-half.md) P0, 2026-10-04): a paired phone opens the two
+folders through the pairing gate, takes a managed job to the existing job review and signs its
+receipt. That is proved headless against an in-memory transport; it has not been run on a
+physical phone, and the default build still links no transport and has no managed folder. How an office-joined phone renews its binding and lease, and
 how it is removed, is drafted in [`Contracts/office-check-in.md`](../../Contracts/office-check-in.md)
 (draft v1, 2026-10-04, design only: no code or fixture on either side). The earlier standalone
 Device Lab pairing is a separate feasibility protocol, not a substitute for vendor authority.

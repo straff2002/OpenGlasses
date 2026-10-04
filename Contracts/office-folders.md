@@ -1,4 +1,4 @@
-# Managed office folders contract — draft v1 (design; `control` and `records` built in the transport for managed jobs)
+# Managed office folders contract — draft v1 (design; `control` and `records` built for managed jobs, in the transport and the opt-in phone build)
 
 Drafted 2026-10-04 for Plan [FX](../docs/plans/FX-desktop-office-and-device-sync.md). This is
 the agreement between the phone app and Avenkin Office about the synchronised folders that
@@ -10,14 +10,19 @@ is self-contained so it can be carried into the office repository.
 requirements or marked *Assumption*. No fixture or code exists yet; where this says "fixture" it
 names a file to be added to `Contracts/fixtures/`, with portable checks in `Contracts/tests/`.
 
-**Built so far (2026-10-04), in the phone transport only (`Transport/mobile-core`):**
+**Built so far (2026-10-04), in the phone transport (`Transport/mobile-core`):**
 `StartManagedOfficeFolders` opens the managed connection with the `control` and `records`
 folders named as §2 says; managed jobs under `control/jobs/` are verified against the binding the
 caller hands over, taken lowest sequence first, and committed to private storage; the receipt is
 offered to the caller to sign and published at `records/receipts/<messageID>.envelope.json`; and
-the outbound guard serves only receipts this phone published. **The app does not call any of it
-yet**: no Swift code starts these folders, hands a committed job to the job-file review, or signs
-a receipt. `bulk`, and every other path in §3, is not built.
+the outbound guard serves only receipts this phone published. **The opt-in office transport
+build of the app now calls it** (Plan HO P0): `OfficePairingService.openFoldersWithApprovedOffice`
+starts the folders with a binding it has verified at that moment and closes them if the approval
+changes while they start; `OfficeManagedJobIntake` hands each committed job to the job-file
+import and its review and signs the receipt with the phone application key. This is tested
+against an in-memory stand-in for the transport, not yet on a physical phone against an office.
+The default app build links no transport and opens no folder. `bulk`, and every other path in
+§3, is not built.
 
 **What this is not.** It is not a message format. Every file in these folders is defined by its
 own contract — the [managed job](README.md), the [manual assignment](README.md), the

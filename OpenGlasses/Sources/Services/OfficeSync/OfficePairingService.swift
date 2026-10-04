@@ -1,8 +1,10 @@
 import Foundation
 
 /// Last trust gate before a managed connection. Approval follows a person's comparison of the
-/// desktop's displayed identity; a later connection rechecks it and opens no shared folder.
-/// A future content-share caller must repeat the gate at the point of sharing.
+/// desktop's displayed identity; a later connection rechecks it. `connectToApprovedOffice` opens
+/// no shared folder; `openFoldersWithApprovedOffice` opens the two managed folders, and is the
+/// only place a binding is handed to the transport. Any further content-share caller must repeat
+/// the gate at the point of sharing.
 @MainActor
 final class OfficePairingService {
     struct ReviewedOffice: Sendable {
@@ -193,6 +195,43 @@ final class OfficePairingService {
             await stopManagedOffice()
             throw error
         }
+    }
+
+    /// Open the managed connection with its `control` and `records` folders
+    /// (Contracts/office-folders.md). The binding the transport is given comes only from
+    /// `currentApprovedPeer()` at this moment: the profile, licence, lease, administrator
+    /// signature, this phone's own keys and the generation high-water have all just agreed. The
+    /// transport verifies none of that itself. The approval is checked again once the engine has
+    /// started; if it no longer verifies, or is no longer the same one, the folders are closed.
+    func openFoldersWithApprovedOffice(_ transport: any OfficeManagedFolderTransport) async throws {
+        let before = try await currentApprovedPeer()
+        if before.transportPolicy == .privateLan, before.lanHint == nil { throw Refusal.noOfficeAddress }
+        try await transport.startFolders(bindingJSON: Self.managedBindingJSON(before.binding),
+                                         policy: before.transportPolicy.rawValue,
+                                         lanHint: before.lanHint ?? "")
+        do {
+            let after = try await currentApprovedPeer()
+            guard after.binding.payloadSHA256 == before.binding.payloadSHA256,
+                  after.transportPolicy == before.transportPolicy else {
+                throw Refusal.approvalSuperseded
+            }
+        } catch {
+            await transport.stop()
+            throw error
+        }
+    }
+
+    /// The closed object the transport's managed folders take, from a binding verified just now.
+    /// Private: no other value may be turned into one.
+    private static func managedBindingJSON(_ binding: OfficePeerBinding.Verified) throws -> String {
+        let p = binding.payload
+        let fields: [String: Any] = [
+            "organizationID": p.organizationID, "enrolmentID": p.enrolmentID, "officeID": p.officeID,
+            "generation": NSNumber(value: p.generation), "officeTransportID": p.officeTransportID,
+            "officeApplicationKey": p.officeApplicationKey, "phoneApplicationKey": p.phoneApplicationKey,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Keep a LAN address that has just reached the office, for the next connection. Only on

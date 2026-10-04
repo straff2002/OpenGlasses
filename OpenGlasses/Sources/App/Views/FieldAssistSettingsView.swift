@@ -167,6 +167,9 @@ struct FieldAssistSettingsView: View {
             if orgProfile.record?.source == .office {
                 Section {
                     OfficeFieldConnectionRow(connection: appState.officeField)
+                    if let officeJobs = appState.officeJobs {
+                        OfficeManagedJobIntakeRow(intake: officeJobs)
+                    }
                     Button("Pair with Avenkin Office") { showingOfficePairing = true }
                 } footer: {
                     Text("Review the desktop identity and verify its administrator-signed binding before this phone can connect.")

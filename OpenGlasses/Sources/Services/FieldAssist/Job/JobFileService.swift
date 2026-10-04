@@ -66,15 +66,36 @@ final class JobFileService: ObservableObject {
 
     /// The pure half of `open`, for a file's bytes and name.
     func handle(data: Data, fileName: String) {
-        guard seams.fieldAssistActive() else {
-            stage = .refused(Self.fieldAssistOffMessage)
-            return
+        switch assess(data) {
+        case .refuse(let message):
+            stage = .refused(message)
+        case .offer(let file, let signature, let signer):
+            let provenance = JobFileProvenance(fileName: fileName, signature: signature, signer: signer,
+                                               receivedAt: seams.now(), digest: JobFile.digest(data))
+            stage = .review(JobFileReview.make(file: file, provenance: provenance,
+                                               existing: seams.store()?.jobs ?? [], now: seams.now()))
         }
+    }
+
+    /// Why `handle` would refuse these bytes now, or nil when it would raise the review. Raises
+    /// nothing and changes nothing: for a caller that has to know before it offers a file.
+    func refusal(for data: Data) -> String? {
+        if case .refuse(let message) = assess(data) { return message }
+        return nil
+    }
+
+    private enum Assessment {
+        case refuse(String)
+        case offer(JobFile, JobFileProvenance.Signature, signer: String?)
+    }
+
+    /// Validation, the signature check and the import policy, in that order.
+    private func assess(_ data: Data) -> Assessment {
+        guard seams.fieldAssistActive() else { return .refuse(Self.fieldAssistOffMessage) }
         let file: JobFile
         switch JobFileValidator.validate(data) {
         case .failure(let refusal):
-            stage = .refused(refusal.message)
-            return
+            return .refuse(refusal.message)
         case .success(let valid):
             file = valid
         }
@@ -82,12 +103,9 @@ final class JobFileService: ObservableObject {
                                                   organisationName: seams.organisationName())
         switch seams.policy().decide(outcome) {
         case .refuse(let message):
-            stage = .refused(message)
+            return .refuse(message)
         case .offer(let signature, let signer):
-            let provenance = JobFileProvenance(fileName: fileName, signature: signature, signer: signer,
-                                               receivedAt: seams.now(), digest: JobFile.digest(data))
-            stage = .review(JobFileReview.make(file: file, provenance: provenance,
-                                               existing: seams.store()?.jobs ?? [], now: seams.now()))
+            return .offer(file, signature, signer: signer)
         }
     }
 

@@ -1,7 +1,8 @@
 # Plan HO — Office Delivery on the Phone (jobs, updates, manuals out; reports, transcripts back)
 
-**Status:** 📋 Planned 2026-10-04 — a build order, not a new design. Nothing in it is built beyond
-what the table under *Where each flow stands* marks as existing.
+**Status:** 🚧 P0 built 2026-10-04 (opt-in office transport build only; headless exit met, the
+physical-phone run is owed). P1–P6 planned. A build order, not a new design: nothing else in it
+is built beyond what the table under *Where each flow stands* marks as existing.
 **Track:** Field Assist (B2B), phone half.
 **Related:** Plan [FX](FX-desktop-office-and-device-sync.md) (the signed office connection; this
 plan is its phone backlog), Plan [HN](HN-job-updates-and-several-open-jobs.md) (job updates and
@@ -27,17 +28,18 @@ and stops each step at something a test can prove.
 
 ## Where each flow stands (checked 2026-10-04)
 
-One fact sits under every row: **no phone build has a managed folder.** The Go transport can open
-the `control` and `records` folders, but no Swift code calls it, and the transport is only in the
-opt-in `AVENKIN_OFFICE_TRANSPORT` build. A phone that has joined an office holds a pinned
-connection with nothing on it.
+One fact sits under every row: **the default phone build has no managed folder.** The transport
+is only in the opt-in `AVENKIN_OFFICE_TRANSPORT` build. Since P0 that build opens the `control`
+and `records` folders for a paired phone and takes a managed job to the job review; it has not
+yet been run on a physical phone against an office. Everything else in the table is as it was:
+a joined phone can receive a job and nothing more.
 
 | Flow | Contract | Go transport | Swift | Missing |
 |---|---|---|---|---|
 | Join an office by its code | v1, fixtures | built | built (opt-in build) | a run on a physical phone against the office |
 | Stay joined: check-in and renewal | draft v1, fixtures | messages and the office key holder's operations; **not** the phone's folder handling | none | P1 below. Until then a binding ends 30 days after pairing and the lease `leaseDays` after it |
 | Removal by the office | same contract | messages only | none | P1 |
-| Job to the phone | managed job + receipt, fixtures | intake, durable commit, receipt offered for signing | verifier only; no caller | **P0** |
+| Job to the phone | managed job + receipt, fixtures | intake, durable commit, receipt offered for signing | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published | one signed job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | a job file names them, does not carry them | — | — | undecided: carried in `control`, or in `bulk` |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
@@ -76,6 +78,60 @@ The smallest thing that makes the connection carry something.
 verifies against the golden receipt's rules; a foreign binding, a lapsed lease and a changed
 profile each leave the folders closed. Release build green. **Owed after it:** one signed job to
 a physical phone and its receipt accepted by the office.
+
+**As built (2026-10-04).** In `OpenGlasses/Sources/Services/OfficeSync/`:
+
+- `OfficeManagedFolderTransport` is the seam over `StartManagedOfficeFolders`,
+  `ManagedJobsPending`, `ManagedJobFile`, `PublishManagedJobReceipt` and `Stop`.
+  `OfficeManagedFolderMobilecoreTransport` is the real one, in the opt-in build only; the tests
+  use an in-memory one that behaves as the Go transport does at the seam.
+- `OfficePairingService.openFoldersWithApprovedOffice` is the only caller of the start function.
+  The binding object is built privately from `currentApprovedPeer()` at that moment, the approval
+  is verified again once the engine has started, and the folders are closed if it no longer
+  verifies or is no longer the same one. `OfficeFieldConnection` now starts the connection this
+  way and asks for what has arrived on every poll while the engine runs. The pairing sheet's
+  connection test is still the handshake with no folder.
+- `OfficeManagedJobIntake` takes each committed job's exact bytes to `JobFileService`: the same
+  validation, signature rule and import policy as a file opened from Mail, and the same review
+  with its one tap. A file the import refuses is recorded with a reason of at most 200
+  characters and gets no receipt. One it would offer is recorded, then its receipt payload is
+  signed (`OfficePhoneIdentity.signManagedJobReceipt`, which signs nothing but a closed receipt
+  payload) and published. `OfficeManagedJobReceipt` is the Swift form of the receipt contract,
+  checked against the Go golden receipt.
+- Shown under Field Assist settings, beside the connection's own line: *Job received* while a
+  job is on the phone waiting for its review, or that a job could not be added and why.
+  *Waiting for the office* remains the connection's line. Nothing says sent, delivered or
+  accepted.
+
+Choices made where the plan left room:
+
+- **The receipt does not wait for the technician.** The review shows one file at a time. A job is
+  receipted as soon as the import would offer it and the offer is recorded; its review is raised
+  when the review is free, lowest sequence first. That is the receipt contract's meaning
+  ("committed … ready for the technician's review").
+- **"Offered once" survives a relaunch.** The intake keeps its own record
+  (`Application Support/AvenkinOffice/managed-jobs.json`) with the receipt signature, so a job
+  the transport lists again gets the same receipt, byte for byte, and no second review. A review
+  that was never answered before the app closed is raised again from the committed bytes: the
+  same offer, not a new one.
+- **The job file's own signature rule is unchanged.** The office's signature on the transport
+  message says who sent the bytes; it does not sign the job file. Under an organisation or
+  medical rule that requires signed job files, an unsigned job from the office is refused, as
+  the managed job contract already says.
+
+**Still owed for P0:**
+
+- The physical run: the opt-in build on a phone, one signed job from the office, its receipt
+  accepted there. Nothing in this phase was run against the Go engine from Swift. The bridge
+  calls exist only in the opt-in build; they were typechecked against the header the pinned
+  binding generator produces from this transport source, but the opt-in app itself was not
+  built or launched for this phase.
+- A job whose review the technician puts aside is not offered again, though the office holds its
+  receipt. Reopening a received job from the phone is not built.
+- The review does not yet say that a job came over the office connection; it shows the file name
+  `office-job-<sequence>.ogjob` and the job file's own signature state.
+- A refused job stays listed by the transport as pending with no receipt. The office sees it as
+  not received; nothing tells the office why.
 
 ### P1 — Check-in, renewal and removal on the phone
 
