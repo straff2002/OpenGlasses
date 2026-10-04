@@ -2465,6 +2465,12 @@ final class FieldSessionService: ObservableObject {
         }
     }
 
+    /// Write one recorded-job event against a session, open or finished (Plan HE). There is no
+    /// text on purpose: these lines carry counts and digests, never a word that was said.
+    func logRecording(_ kind: SessionLogger.Event.Kind, sessionId: String, payload: [String: AnyCodable]) {
+        logDebrief(kind, sessionId: sessionId, payload: payload)
+    }
+
     // MARK: - Procedures
 
     /// "id — title" summaries of procedures available in the active session's vault.

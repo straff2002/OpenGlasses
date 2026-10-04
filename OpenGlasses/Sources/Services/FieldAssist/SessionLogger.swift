@@ -167,6 +167,17 @@ final class SessionLogger {
             case reportCancelled = "report_cancelled"
             /// …or the channel refused it.
             case reportFailed = "report_failed"
+            /// The person recording read what recording a job means and said so (Plan HE). The
+            /// payload names the wording's revision and nothing else.
+            case recordingConsent = "recording_consent"
+            /// "Record this job" started (Plan HE). Counts only — never a word that was said or a
+            /// picture that was taken.
+            case recordingStarted = "recording_started"
+            /// …and stopped, with why, how many parts and how many bytes.
+            case recordingStopped = "recording_stopped"
+            /// …and was sealed for the office: the manifest's digest, the number of chunks and
+            /// the bytes.
+            case recordingBundleSealed = "recording_bundle_sealed"
             case error = "error"
         }
     }

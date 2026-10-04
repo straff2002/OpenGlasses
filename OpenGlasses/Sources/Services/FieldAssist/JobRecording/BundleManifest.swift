@@ -279,6 +279,14 @@ struct BundleManifest: Equatable, Sendable {
             || (97...122).contains($0) || $0 == 45 || $0 == 95 || $0 == 46 }
     }
 
+    /// A job number as a manifest may carry it, or nil when it may not. The manifest has one
+    /// spelling, so a number with a character that would need an escape, or one over 80
+    /// characters, is left out rather than altered: the job is still named by its session.
+    static func writableJobNumber(_ value: String?) -> String? {
+        guard let value, !value.isEmpty, plain(value, maximum: 80) else { return nil }
+        return value
+    }
+
     /// Printable ASCII that needs no escape, so it has one spelling. Empty is plain.
     private static func plain(_ value: String, maximum: Int) -> Bool {
         value.utf8.count <= maximum && value.utf8.allSatisfy {
