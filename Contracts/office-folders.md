@@ -97,6 +97,7 @@ never opened, never imported, never served, and counted for diagnostics.
 | `jobs/<messageID>.envelope.json` | Managed-job envelope | Managed job transport reference |
 | `jobs/<jobSHA256>.ogjob` | The exact job-file bytes that envelope names | same |
 | `assignments/<assignmentID>.envelope.json` | Manual assignment | Manual assignment contract |
+| `publishers/<grantID>.envelope.json` | Administrator-signed grant of the organisation's own publishing key | [Bulk content](office-bulk.md) §3 |
 | `receipts/<reportID>.pending.envelope.json`, `….record.envelope.json`, `….full.envelope.json` | The office's receipts for a report, one file per outcome | [Reports](office-reports.md) §8 |
 | `recordings/<bundleID>.status.envelope.json` | Recording acknowledgement and status | Recorded session §6 |
 | `learning/set.envelope.json` | The current learning set | Team learning §5 |
@@ -113,7 +114,8 @@ never opened, never imported, never served, and counted for diagnostics.
 | `reports/<recordSHA256>.record.json` | The exact record bytes that report names | same |
 | `reports/<manifestSHA256>.manifest.json` | The attachment manifest that report names | Reports §5 |
 | `attachments/<sha256>` | Evidence named by a report's attachment manifest | same |
-| `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job (for an assignment: *not yet specified*, §9.2) | Managed job receipt |
+| `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job | Managed job receipt |
+| `assignments/<assignmentID>.received.envelope.json`, `….installed.envelope.json` | The phone's receipts for a manual assignment, one file per outcome | [Bulk content](office-bulk.md) §4 |
 | `recordings/<bundleID>/…` | A recorded-session bundle, laid out as its contract says | Recorded session §3 |
 | `learning/candidates/<candidateID>-<revision>.envelope.json` | A learning candidate | Team learning §3 |
 | `checkin/<challengeID>.envelope.json` | The phone's check-in | Check-in §4.2 |
@@ -124,6 +126,7 @@ never opened, never imported, never served, and counted for diagnostics.
 | Path | Contents | Defined by |
 |---|---|---|
 | `vaults/<archiveSHA256>.zip` | A vault archive a manual assignment names | Manual assignment contract |
+| `attachments/<sha256>` | A file a job this phone holds names by digest | [Bulk content](office-bulk.md) §5 |
 
 Path rules: components are lowercase hexadecimal digests, the identifiers their contracts
 define, or the fixed words above; at most four components; no component is `.`, `..` or empty;
@@ -202,8 +205,9 @@ refused).
    transport publishes a report, its record, its manifest and its attachments under `records`,
    serves exactly those, and lists the office's receipts; the opt-in phone build sends job
    records and stock checks that way, and the office app reads none of it yet.
-2. **The phone's receipt for an assignment** is required by Plan FX and not yet specified. The
-   receipt for a managed job is ([README](README.md), "Managed job receipt").
+2. **The phone's receipt for an assignment** is now specified
+   ([bulk content](office-bulk.md) §4), with the organisation's own publisher and how a job
+   names what follows it. The `bulk` folder itself is not built on either side.
 3. **Deletion.** Whether receivers should also set the engine's ignore-deletes on their
    receive-only folders, or rely on §4's rule that a committed record is independent of the
    folder.

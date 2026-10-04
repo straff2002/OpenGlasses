@@ -2,7 +2,9 @@ package jobfile
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -39,8 +41,12 @@ func TestTheGoldenFixtureIsCurrentAndReadsBack(t *testing.T) {
 			t.Fatalf("%s is not what Fixtures makes; regenerate with JOBFILE_WRITE_FIXTURES=1 (%v)", name, e)
 		}
 		job, id, e := Verify(got, FixtureKey().Public().(ed25519.PublicKey))
-		if e != nil || string(job) != FixtureJob || id.JobID != "job-2031" || id.Revision != 2 {
-			t.Fatalf("%v %+v", e, id)
+		wantJob, wantID, wantRevision := FixtureJob, "job-2031", int64(2)
+		if name == "job-file-v2-needs.ogjob" {
+			wantJob, wantID, wantRevision = FixtureJobWithNeeds, "job-2032", 1
+		}
+		if e != nil || string(job) != wantJob || id.JobID != wantID || id.Revision != wantRevision {
+			t.Fatalf("%s: %v %+v", name, e, id)
 		}
 	}
 }
@@ -131,6 +137,55 @@ func TestAnOlderRevisionNeverReplacesANewerAndTheSameOneTwiceIsOneJob(t *testing
 	} {
 		if got := Relate(held, read(c.job)); got != c.want {
 			t.Fatalf("%s: got %d, want %d", name, got, c.want)
+		}
+	}
+}
+
+func TestAJobNamesWhatFollowsItAndNothingMore(t *testing.T) {
+	needs, e := ReadNeeds([]byte(FixtureJobWithNeeds))
+	if e != nil || len(needs.Attachments) != 1 || needs.Attachments[0].Name != "Site plan" || needs.Attachments[0].Bytes != int64(len(FixtureAttachment)) ||
+		needs.Attachments[0].MediaType != "application/pdf" || len(needs.ManualSets) != 1 || needs.ManualSets[0] != "fixture-manuals" {
+		t.Fatalf("%v %+v", e, needs)
+	}
+	sum := sha256.Sum256([]byte(FixtureAttachment))
+	if needs.Attachments[0].SHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatal("the fixture attachment's digest is not the public sentence's")
+	}
+	// A job that names nothing, and the golden job, need nothing.
+	for _, job := range []string{`{"job_id":"job-1","revision":1,"job_reference":"1"}`, FixtureJob} {
+		if needs, e = ReadNeeds([]byte(job)); e != nil || len(needs.Attachments)+len(needs.ManualSets) != 0 {
+			t.Fatalf("%v %+v", e, needs)
+		}
+	}
+	digest := strings.Repeat("a", 64)
+	job := func(rest string) []byte { return []byte(`{"job_id":"job-1","revision":1,` + rest + `}`) }
+	for name, rest := range map[string]string{
+		"a digest with no size":           `"attachments":[{"name":"x","sha256":"` + digest + `","media_type":"application/pdf"}]`,
+		"a size with no digest":           `"attachments":[{"name":"x","bytes":4,"media_type":"application/pdf"}]`,
+		"no media type":                   `"attachments":[{"name":"x","sha256":"` + digest + `","bytes":4}]`,
+		"a media type not listed":         `"attachments":[{"name":"x","sha256":"` + digest + `","bytes":4,"media_type":"text/html"}]`,
+		"an upper-case digest":            `"attachments":[{"name":"x","sha256":"` + strings.Repeat("A", 64) + `","bytes":4,"media_type":"application/pdf"}]`,
+		"a short digest":                  `"attachments":[{"name":"x","sha256":"abc","bytes":4,"media_type":"application/pdf"}]`,
+		"an empty attachment":             `"attachments":[{"name":"x","sha256":"` + digest + `","bytes":0,"media_type":"application/pdf"}]`,
+		"a fractional size":               `"attachments":[{"name":"x","sha256":"` + digest + `","bytes":4.0,"media_type":"application/pdf"}]`,
+		"one digest twice":                `"attachments":[{"name":"x","sha256":"` + digest + `","bytes":4,"media_type":"application/pdf"},{"name":"y","sha256":"` + digest + `","bytes":4,"media_type":"application/pdf"}]`,
+		"an attachment member not listed": `"attachments":[{"name":"x","path":"../x"}]`,
+		"an attachment with no name":      `"attachments":[{"sha256":"` + digest + `","bytes":4,"media_type":"application/pdf"}]`,
+		"a manual set that is a path":     `"manuals":[{"set_id":"../manuals"}]`,
+		"a manual that names an archive":  `"manuals":[{"set_id":"a","archive":"` + digest + `"}]`,
+		"a manual with a key":             `"manuals":[{"set_id":"a","publisher_key":"x"}]`,
+		"one set twice":                   `"manuals":[{"set_id":"a"},{"set_id":"a"}]`,
+		"manuals that are not a list":     `"manuals":{"set_id":"a"}`,
+		"too many manual sets": `"manuals":[` + strings.TrimSuffix(strings.Repeat(`{"set_id":"a"},`, 1)+func() string {
+			out := ""
+			for n := 0; n < MaximumManualSets; n++ {
+				out += `{"set_id":"s` + string(rune('a'+n)) + `"},`
+			}
+			return out
+		}(), ",") + `]`,
+	} {
+		if _, e = ReadNeeds(job(rest)); !errors.Is(e, ErrFields) {
+			t.Fatalf("%s: got %v", name, e)
 		}
 	}
 }

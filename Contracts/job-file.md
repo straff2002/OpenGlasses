@@ -74,7 +74,11 @@ The rest are format 1's, with format 1's meaning and limits: `job_reference`, `s
 (`customer`, `address`, `contact`), `fault_report`, `equipment` (up to 10 of `model`, `serial`),
 `scheduled_for` (ISO 8601), `notes`, `attachments` (up to 10 of `name`, `reference`; named,
 never embedded) and `issued_by`. `format`, `format_version` and `signature` are members of the
-file, not of the job. A member not listed here is refused, as in format 1: a file that carries
+file, not of the job. A format-2 job may also name what follows it in the `bulk` folder: an
+attachment may carry `sha256`, `bytes` and `media_type`, and the job may have a `manuals` member
+naming manual sets it needs ([bulk content](office-bulk.md) §5). **The phone does not read
+those yet**: its validator refuses them as members it does not know, until that contract's
+phone half is built. A member not listed here is refused, as in format 1: a file that carries
 something the phone cannot show is a file whose review would not be the whole truth. Text is
 plain — no markup, no control characters beyond a line break in `fault_report` and `notes` —
 and within format 1's length limits. A job needs a job number, a site or a fault report.
@@ -149,9 +153,10 @@ held, a lower revision, and other bytes at the same revision.
 
 ## 9. Open points
 
-1. **Attachments.** Format 2 still only names them. Job attachments are to travel in the `bulk`
-   folder after the job (Plan HO, decided 2026-10-04); how a job names bytes that arrive there
-   is that phase's contract and may need a later format version.
+1. **Attachments.** How a job names bytes that follow it in `bulk` is now in the
+   [bulk-content contract](office-bulk.md) §5, as additions to format 2's job rather than a
+   format 3: no office has written a format-2 file yet, and no released phone reads one. Once
+   either is true, a new member is a new format version.
 2. **A started job.** §5 leaves a revision of a job in progress as information only. Plan HN
    decides what an office can change once work has begun.
 3. **Unsigned format 2.** This draft keeps format 1's rule and lets an unsigned format-2 file be

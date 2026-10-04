@@ -6,8 +6,9 @@ build: contract, reference implementation, fixture and the phone's import; headl
 P2 (reports back) built 2026-10-05 in the opt-in build, tested headless: the contract, the
 transport, the report service and a sink that waits, and the app's wiring — a phone that joined
 an office sends each job's record there with its work order, audit export and transcript, and
-counts it delivered only on the office's receipt. What P2 still owes is listed under it. P3–P6
-are planned. A build order, not a new design:
+counts it delivered only on the office's receipt. What P2 still owes is listed under it. P4's
+contract (the `bulk` folder, manuals and job attachments) is drafted 2026-10-05 with its
+reference implementation and fixtures; its phone half, and P3, P5 and P6, are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -50,8 +51,8 @@ and nothing more.
 | Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
 | Job to the phone | managed job + receipt, fixtures; [job file](../../Contracts/job-file.md) format 2, fixture | intake, durable commit, receipt offered for signing; job-file format 2 reference | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published. **P0b built** (every build): a format-2 job keeps the office's identifier and revision; a later revision revises the job, the same one twice is one job | one signed format-2 job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
-| Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
-| Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
+| Attachments with a job | [bulk content](../../Contracts/office-bulk.md) §5: a job names them by digest and they follow in `bulk` | `jobfile.ReadNeeds` | the validator refuses the new members | P4's phone half |
+| Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, and the grant and receipt messages; `bulk` folder not built | preflight to the vault installer | P4's phone half: the `bulk` folder, the grant and assignment taken in, durable install state, the receipts |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
 | Transcript to the office | travels with the report, under HD's audience rule | an attachment like any other | **P2 built**: its own document for the office only, and inside the audit export, unless the organisation's rule is *never* — then the report says *omitted* | the same physical run |
 | Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
@@ -478,6 +479,30 @@ Decided 2026-10-04: attachments travel in `bulk`, and a job can bring a manual w
 
 **Exit:** a fixture vault assigned, verified, installed and receipted in a headless test; a
 paused or unassigned archive is not fetched.
+
+**Contract drafted (2026-10-05):** [`Contracts/office-bulk.md`](../../Contracts/office-bulk.md),
+with `Transport/mobile-core/officebulk` and `jobfile.ReadNeeds` as its reference implementation
+and golden fixtures (a grant, a vault the granted key signed, its assignment and both receipts,
+and a job that names an attachment and a manual set). The phone half has not started. What the
+contract settled:
+
+- **The organisation's publisher is granted by the administrator**, not listed by the vendor:
+  vendor signs the profile, the profile names the administrator key, the administrator signs
+  the grant. Its identifier is `org.<organizationID>`, a prefix the vendor's catalogue never
+  uses, so a grant cannot stand in for a catalogue publisher or for another organisation.
+- **A grant verifies an archive only under an assignment** from that organisation's office for
+  this phone. The organisation's publisher is never added to the phone's general list.
+- **Two assignment receipts, one file each:** *received* (the assignment is committed) and
+  *installed* (the archive is verified and installed). No refusal outcome.
+- **A job names; it never authorises.** An attachment travels because a job the phone holds
+  names its exact bytes. A manual set a job names is installed only under its own assignment
+  and its publisher's signature.
+- **These are additions to format 2's job, not a format 3**, because no office has written a
+  format-2 file and no released phone reads one. The phone's validator refuses them until the
+  phone half is built.
+
+Open in the contract (its §10): who decides a route is metered; size caps; erasing a job's
+attachments before the job goes; narrowing a publishing key to named vaults.
 
 ### P5 — Recorded jobs
 
