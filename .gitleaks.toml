@@ -197,13 +197,16 @@ regexes = [
 
 [[allowlists]]
 description = """
-The three PUBLIC Ed25519 keys in the office check-in contract's fixture key file: the office and
-phone application keys (the commissioning fixtures' own) and the fictional administrator key.
-All are public halves derived from public labels in Transport/mobile-core/checkin/fixtures.go, so
-there is no secret behind them. Scoped to the three exact values AND that one file.
+The three PUBLIC Ed25519 keys in the office check-in contract's fixtures: the office and phone
+application keys (the commissioning fixtures' own) and the fictional administrator key. All are
+public halves derived from public labels in Transport/mobile-core/checkin/fixtures.go, so there
+is no secret behind them. They are plain in the fixture key file, and the scanner also decodes
+the peer binding's base64 payload — in the binding fixture and again inside the result fixture
+that carries a binding — where `officeApplicationKey` / `phoneApplicationKey` trip the generic
+detector. Scoped to the three exact values AND those three files.
 """
 condition = "AND"
-paths = ['''^Contracts/fixtures/office-check-in-fixture-keys\.json$''']
+paths = ['''^Contracts/fixtures/office-check-in-(fixture-keys|binding-v1|result-v1)\.json$''']
 regexes = [
   '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''',
   '''2hr21s5ALq78ys4P9AP3in9U/Q1/5XqTV7a58EF4A1Q=''',
