@@ -1,4 +1,4 @@
-# Recorded-session contract — draft v1 (shared rules, signed messages and fixtures built; the phone records, seals and sends in the opt-in build; no office, and no device run, yet)
+# Recorded-session contract — draft v1 (shared rules, signed messages and fixtures built; the phone records, blurs where required, seals and sends in the opt-in build; no office, and no device run, yet)
 
 Drafted 2026-10-02 with Plan [HE](../docs/plans/HE-recorded-session-action-map.md). This is the
 agreement between the phone app and Avenkin Office about a recorded job: what the phone sends,
@@ -29,11 +29,15 @@ consent whose time is the manifest's `consentAt`; stopping builds `timeline.json
 `transcript.json` (§4, §5) and seals the bundle (§3). The transport publishes exactly what a
 sealed manifest lists under `records/recordings/<bundleID>/` and serves nothing else of it, the
 phone feeds it a couple of chunks ahead of what the office has taken, and only the office's
-verified *received* lets the phone let go of anything. **Every bundle is `blurred: false`:** the
-phone cannot blur a recording yet, so where an organisation requires blur no job is recorded,
-and an unblurred bundle already on the phone is not sent. **Not yet built:** the blur pass;
-anything on the office side. **No bundle has left a physical phone**, and nothing here has been
-run on one: what a phone and glasses have still to show is listed in Plan HE under "P1 as built".
+verified *received* lets the phone let go of anything. **A bundle is `blurred: true` where the
+organisation requires it** (2026-10-05): every picture of every part is put through the phone's
+face blur before the bundle is sealed, a picture the blur cannot process is left out and counted
+in `droppedFrames`, and the sound is carried over as it was. Everywhere else a bundle is
+`blurred: false`. A bundle sealed unblurred before an organisation turned the rule on cannot be
+blurred afterwards — it is signed — and is kept on the phone and not sent. The blur has so far
+run only over a small movie made in a test. **Not yet built:** anything on the office side.
+**No bundle has left a physical phone**, and nothing here has been run on one: what a phone and
+glasses have still to show is listed in Plan HE under "P1 as built" and "The blur pass, as built".
 
 ## 1. Roles
 
@@ -88,8 +92,8 @@ present.
 | `jobSessionID`, `jobNumber` | The job it belongs to; `jobNumber` is empty when the job has none, and otherwise printable ASCII that needs no escape, at most 80 characters |
 | `createdAt` | Unix UTC seconds |
 | `timelineVersion`, `transcriptVersion` | Schema versions of the two JSON files |
-| `blurred` | `true` when faces were blurred on the phone before sealing |
-| `droppedFrames` | Frames removed because the blur could not process them |
+| `blurred` | `true` when faces were blurred on the phone before sealing: every picture in every part listed has been through the blur. Never `true` for a bundle with a part that has not |
+| `droppedFrames` | Frames left out because the blur could not process them, across every part. They are in no part of the bundle |
 | `consentAt` | When the recorder acknowledged the recording consent |
 | `chunkBytes` | Chunk size used (every chunk but a part's last is exactly this), at most 64 MiB |
 | `files[]` | `{path, bytes, sha256, role}`; `role` ∈ `timeline`, `transcript`, `media` |
@@ -143,6 +147,14 @@ candidates: [{ from, to, certainty: "certain"|"likely", reason }]
 - **A gap** lies between one part of a track and the next, from where the earlier ends to where
   the later begins, with the reason the earlier one ended. A recording carried on after the app
   was closed has a `restart` gap, and the parts after it are placed through the wall clock.
+- **A `filter` gap** is on the video track and may lie *inside* a part: a stretch of a second or
+  more in which every frame was left out because the blur could not process it. The part's
+  `tZero` and `duration` are as recorded; in its file the frames either side of the stretch keep
+  their times, so nothing after it has moved. A shorter run of dropped frames is counted in
+  `droppedFrames` and not written as a gap — the frame before it is simply shown for longer. A
+  part none of whose frames could be blurred has no video: it is listed as `audio` when it has
+  sound, and is absent when it has not, and the stretch its video covered is a `filter` gap. A
+  reader that tests "inside a part and in no gap" (§7.2, §7.4) needs nothing new for this.
 - Events the phone notes as they happen (`turn_started`, the assistant speaking, the capture
   silenced, `tool_call`, `user_marker`) are to the millisecond. Events taken from the job's log
   (`turn_logged` before alignment, `photo`, the `procedure_*` kinds) are to the second: the log
