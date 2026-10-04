@@ -22,8 +22,13 @@ Plan HE under "P0 as built". **The two signed messages have a reference implemen
 `Transport/mobile-core/recordingbundle` signs and reads the manifest (§3) and the office's
 receipt and later status (§6), with golden fixtures (§11). The phone's own code for them writes
 the golden manifest byte for byte and reads the golden receipts, tested headless; nothing in the
-app calls it. **Not yet built:** anything that records, seals or sends a bundle; the transport
-for a bundle (§2); anything on the office side. Nothing on the phone records, bundles or sends a recorded job yet.
+app calls it. **The phone can seal and send a bundle, in the opt-in
+office transport build, and nothing starts it yet** (Plan HE P2, headless part, 2026-10-05): the
+transport publishes exactly what a sealed manifest lists under `records/recordings/<bundleID>/`
+and serves nothing else of it, the phone feeds it a couple of chunks ahead of what the office
+has taken, and only the office's verified *received* lets the phone let go of anything. **Not
+yet built:** anything that records; the blur pass; anything on the office side. No bundle has
+left a physical phone. Nothing on the phone records, bundles or sends a recorded job yet.
 
 ## 1. Roles
 
