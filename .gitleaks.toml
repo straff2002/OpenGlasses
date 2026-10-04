@@ -212,3 +212,15 @@ regexes = [
   '''2hr21s5ALq78ys4P9AP3in9U/Q1/5XqTV7a58EF4A1Q=''',
   '''tjugy/LlJ7WiKq4IFRwKwu2wterxjbs8s30IAl79UWQ=''',
 ]
+
+[[allowlists]]
+description = """
+The PUBLIC Ed25519 key of the fictional organisation publisher in the bulk-content contract's
+fixtures. It is the public half of a key derived from a public label in
+Transport/mobile-core/officebulk/fixtures.go, so there is no secret behind it. The scanner
+decodes the publisher grant's base64 payload, where the field name `publisherKey` trips the
+generic detector. Scoped to the one exact value AND that one file.
+"""
+condition = "AND"
+paths = ['''^Contracts/fixtures/office-publisher-grant-v1\.json$''']
+regexes = ['''PH5UJYKYn\+zEShzaulyuGir0cEU/y07EPM4nNMrrcfE=''']

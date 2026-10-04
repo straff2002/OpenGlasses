@@ -44,7 +44,110 @@ var (
 // that carries something the phone cannot show is a file whose review would not be the whole
 // truth.
 var jobMembers = map[string]bool{"job_id": true, "revision": true, "job_reference": true, "site": true, "fault_report": true,
-	"equipment": true, "scheduled_for": true, "notes": true, "attachments": true, "issued_by": true}
+	"equipment": true, "scheduled_for": true, "notes": true, "attachments": true, "issued_by": true, "manuals": true}
+
+// What a job may ask to follow it (Contracts/office-bulk.md §5).
+const (
+	MaximumAttachments = 10
+	MaximumManualSets  = 10
+)
+
+var attachmentMediaTypes = map[string]bool{"application/pdf": true, "image/jpeg": true, "image/png": true}
+
+// Attachment is a file a job names by digest: it follows the job in the bulk folder.
+type Attachment struct {
+	Name      string
+	SHA256    string
+	Bytes     int64
+	MediaType string
+}
+
+// Needs is what a job says follows it: attachments it names by digest, and manual sets it needs.
+// Naming is all a job does. An attachment is accepted because a job the phone holds names its
+// exact bytes; a manual is accepted only under its own assignment and its publisher's signature.
+type Needs struct {
+	Attachments []Attachment
+	ManualSets  []string
+}
+
+func plainInteger(raw json.RawMessage) (int64, bool) {
+	var n json.Number
+	if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n.String() != string(raw) || raw[0] == '0' {
+		return 0, false
+	}
+	v, e := n.Int64()
+	return v, e == nil && v > 0 && v <= maximumSafeInteger
+}
+
+// ReadNeeds reads what a job's exact bytes say follows it. An attachment with no digest is only
+// named, as in format 1, and is not in the result.
+func ReadNeeds(job []byte) (Needs, error) {
+	var needs Needs
+	if _, e := identity(job); e != nil {
+		return needs, e
+	}
+	fields, _ := members(job)
+	if raw, ok := fields["attachments"]; ok {
+		var list []json.RawMessage
+		if json.Unmarshal(raw, &list) != nil || len(list) > MaximumAttachments {
+			return Needs{}, ErrFields
+		}
+		seen := map[string]bool{}
+		for _, item := range list {
+			m, e := members(item)
+			if e != nil {
+				return Needs{}, ErrFields
+			}
+			for name := range m {
+				if name != "name" && name != "reference" && name != "sha256" && name != "bytes" && name != "media_type" {
+					return Needs{}, ErrFields
+				}
+			}
+			var a Attachment
+			if json.Unmarshal(m["name"], &a.Name) != nil || a.Name == "" {
+				return Needs{}, ErrFields
+			}
+			_, hasDigest := m["sha256"]
+			_, hasBytes := m["bytes"]
+			_, hasType := m["media_type"]
+			if !hasDigest && !hasBytes && !hasType {
+				continue
+			}
+			size, ok := plainInteger(m["bytes"])
+			if !hasDigest || !hasBytes || !hasType || !ok || json.Unmarshal(m["sha256"], &a.SHA256) != nil ||
+				json.Unmarshal(m["media_type"], &a.MediaType) != nil || !attachmentMediaTypes[a.MediaType] || seen[a.SHA256] {
+				return Needs{}, ErrFields
+			}
+			for _, c := range []byte(a.SHA256) {
+				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+					return Needs{}, ErrFields
+				}
+			}
+			if len(a.SHA256) != 64 {
+				return Needs{}, ErrFields
+			}
+			a.Bytes, seen[a.SHA256] = size, true
+			needs.Attachments = append(needs.Attachments, a)
+		}
+	}
+	if raw, ok := fields["manuals"]; ok {
+		var list []json.RawMessage
+		if json.Unmarshal(raw, &list) != nil || len(list) > MaximumManualSets {
+			return Needs{}, ErrFields
+		}
+		seen := map[string]bool{}
+		for _, item := range list {
+			m, e := members(item)
+			var set string
+			if e != nil || len(m) != 1 || json.Unmarshal(m["set_id"], &set) != nil || !identifier(set) || seen[set] {
+				return Needs{}, ErrFields
+			}
+			seen[set] = true
+			needs.ManualSets = append(needs.ManualSets, set)
+		}
+	}
+	return needs, nil
+}
 
 // Identity is what makes two files the same job, and orders them.
 type Identity struct {
