@@ -137,6 +137,11 @@ final class JobRecordingCoordinator: ObservableObject {
         var auditConsent: @MainActor (RecordingConsent.Acknowledgement) -> Void = { _ in }
         /// Called once a bundle is sealed, so whatever sends it can look.
         var sealed: @MainActor () -> Void = {}
+        /// Takes a job's sealed bundle back out of the office's folder and forgets it there.
+        /// Called only when a recording was deleted at the moment it was being sealed and the
+        /// seal finished first, and before the bundle's files are removed — which the
+        /// coordinator does itself.
+        var withdrawSealed: @MainActor (_ sessionID: String) async -> Void = { _ in }
 
         var limits = RetentionDecision.Limits.standard
         var wallNow: () -> Date = Date.init
@@ -202,6 +207,50 @@ final class JobRecordingCoordinator: ObservableObject {
     func hasUnsealedRecording(sessionID: String) -> Bool {
         status.sessionID != sessionID && !preparing.contains(sessionID)
             && seams.capture.hasJournal(sessionID: sessionID)
+    }
+
+    /// Why a recording that is on this phone, not running and not sealed is not with the office
+    /// yet. For the Jobs list and the job-day card, which say it of every such recording and not
+    /// only the open job's (Plan HE §4).
+    enum Waiting: Equatable {
+        /// Being blurred where that is required, transcribed and sealed, now.
+        case beingPrepared
+        /// Faces have to be blurred first, and that runs only with the app in front.
+        case forTheAppToBeOpen
+        /// The app was closed while it ran and its job is still open: the technician carries it
+        /// on or finishes it.
+        case interrupted
+        /// Stopped, and prepared on a later pass.
+        case toBePrepared
+
+        /// The reason as a sentence — the same words the job's page uses.
+        var explanation: String {
+            switch self {
+            case .beingPrepared: return JobRecordingCoordinator.preparingNote
+            case .forTheAppToBeOpen: return BundleSyncState.WaitReason.openAppToPrepare.explanation
+            case .interrupted: return JobRecordingCoordinator.interruptedNote
+            case .toBePrepared: return JobRecordingCoordinator.sentence(for: .waitingToPrepare, reason: .asked)
+            }
+        }
+    }
+
+    nonisolated static let preparingNote = "Preparing the recording."
+    nonisolated static let interruptedNote = "A recording of this job was interrupted. What had been recorded is saved."
+    nonisolated static let deletedNote = "The recording was deleted from this phone."
+
+    /// Every recording on this phone that is neither running now nor sealed, by job, with why it
+    /// is not with the office yet. One whose journal cannot be read is still a recording.
+    func unsealedRecordings() -> [(sessionID: String, waiting: Waiting)] {
+        seams.capture.sessionIDsWithJournal().compactMap { sessionID in
+            guard sessionID != status.sessionID else { return nil }
+            if preparing.contains(sessionID) { return (sessionID, .beingPrepared) }
+            if deferredForBlur.contains(sessionID) { return (sessionID, .forTheAppToBeOpen) }
+            if let journal = seams.capture.journal(sessionID: sessionID), !journal.isStopped,
+               seams.job()?.sessionID == sessionID {
+                return (sessionID, .interrupted)
+            }
+            return (sessionID, .toBePrepared)
+        }
     }
 
     /// Where a stopped recording that is not sealed yet stands: being prepared, or waiting for the
@@ -585,6 +634,8 @@ final class JobRecordingCoordinator: ObservableObject {
         case waitingForBlur
         /// Nothing had been recorded, so there is nothing to keep.
         case nothingRecorded
+        /// The technician deleted it while it was being prepared. Nothing of it is kept.
+        case deleted
     }
 
     /// Stop the recording and seal it. Nil when nothing was being recorded.
@@ -631,7 +682,7 @@ final class JobRecordingCoordinator: ObservableObject {
         ])
     }
 
-    static func sentence(for outcome: Outcome, reason: StopReason, droppedFrames: Int64 = 0) -> String {
+    nonisolated static func sentence(for outcome: Outcome, reason: StopReason, droppedFrames: Int64 = 0) -> String {
         let lead: String
         switch reason {
         case .asked: lead = ""
@@ -653,6 +704,8 @@ final class JobRecordingCoordinator: ObservableObject {
                 + BundleSyncState.WaitReason.openAppToPrepare.explanation
         case .nothingRecorded:
             return lead + "Nothing was recorded, so there is nothing to send."
+        case .deleted:
+            return lead + deletedNote
         }
     }
 
@@ -666,6 +719,9 @@ final class JobRecordingCoordinator: ObservableObject {
         for var journal in seams.capture.journals()
         where journal.sessionID != status.sessionID && !preparing.contains(journal.sessionID) {
             if let retry = sealRetryAfter[journal.sessionID], now < retry { continue }
+            // Deleted while an earlier recording in this pass was being sealed: there is nothing
+            // of it to stop, write down or seal.
+            guard seams.capture.hasJournal(sessionID: journal.sessionID) else { continue }
             if !journal.isStopped {
                 guard seams.job()?.sessionID != journal.sessionID else { continue }
                 seams.capture.removeUnfinishedParts(journal)
@@ -723,10 +779,31 @@ final class JobRecordingCoordinator: ObservableObject {
         let sessionID = stopped.sessionID
         // One sealing of a recording at a time: a pass that finds it already under way leaves it.
         guard preparing.insert(sessionID).inserted else { return .waitingToPrepare }
-        defer {
-            preparing.remove(sessionID)
-            blurProgress[sessionID] = nil
+        // A task of its own, whoever asked for it: deleting the recording stops this pass and
+        // nothing else (`deleteUnsealed`).
+        let pass = Task { @MainActor () -> Outcome in
+            let outcome = await self.prepareAndSeal(stopped)
+            // Cleared here, before anybody waiting for the pass hears that it has ended.
+            self.passes[sessionID] = nil
+            self.preparing.remove(sessionID)
+            self.blurProgress[sessionID] = nil
+            return outcome
         }
+        passes[sessionID] = pass
+        return await pass.value
+    }
+
+    /// The passes preparing a recording right now, by job.
+    private var passes: [String: Task<Outcome, Never>] = [:]
+
+    /// One pass over one stopped recording. Run only as a pass's own task, so "cancelled" here
+    /// means one thing: the technician deleted this recording while it was being prepared. It is
+    /// asked after every wait, and from then on nothing more is written, signed or kept.
+    private func prepareAndSeal(_ stopped: JobRecordingCaptureStore.Journal) async -> Outcome {
+        let sessionID = stopped.sessionID
+        // Deleted between stopping and this pass: there is no journal, and nothing is made of
+        // what the caller still holds of it.
+        guard !Task.isCancelled, seams.capture.hasJournal(sessionID: sessionID) else { return .deleted }
         var journal = stopped
 
         // The organisation's blur rule as it stands now, as well as how it stood while the job was
@@ -737,7 +814,9 @@ final class JobRecordingCoordinator: ObservableObject {
             guard (try? seams.capture.save(journal)) != nil else { return .waitingToPrepare }
         }
         if journal.mustBeBlurred {
-            switch await blurParts(of: &journal) {
+            let step = await blurParts(of: &journal)
+            if Task.isCancelled { return .deleted }
+            switch step {
             case .done:
                 deferredForBlur.remove(sessionID)
             case .deferred:
@@ -774,12 +853,15 @@ final class JobRecordingCoordinator: ObservableObject {
             return .nothingRecorded
         }
         // Nothing is sealed, and nothing signed, on a pairing that does not verify now.
-        guard let binding = await seams.binding() else { return .waitingToPrepare }
+        let held = await seams.binding()
+        if Task.isCancelled { return .deleted }
+        guard let binding = held else { return .waitingToPrepare }
 
         var words: [RecordedJobAssembly.PartWords] = []
         for part in parts where part.audio != nil {
             guard let file = media(part) else { continue }
             words.append(.init(partID: part.partID, utterances: await seams.transcribe(file)))
+            if Task.isCancelled { return .deleted }
         }
         // The rule may have come into force while the words were being read. An unblurred bundle
         // sealed now could never be sent, and cannot be blurred once it is signed: it is left as
@@ -806,7 +888,21 @@ final class JobRecordingCoordinator: ObservableObject {
                     return JobRecordingBundleStore.PartFile(
                         partID: part.partID, track: part.video != nil ? .video : .audio, container: "mp4", file: file)
                 })
-            let record = try await seams.bundles.seal(input, now: seams.wallNow(), sign: seams.sign)
+            let sign = seams.sign
+            let record = try await seams.bundles.seal(input, now: seams.wallNow(), sign: { payload in
+                // Nothing is signed for a recording that has been deleted. The store then leaves
+                // no bundle: half a bundle is no bundle.
+                try Task.checkCancellation()
+                return try await sign(payload)
+            })
+            if Task.isCancelled {
+                // Deleted in the moment between its being signed and written down. What was
+                // sealed goes too: out of the office's folder, if a pass has already put it
+                // there, and off the phone.
+                await seams.withdrawSealed(sessionID)
+                try? seams.bundles.delete(record)
+                return .deleted
+            }
             seams.capture.remove(sessionID: sessionID)
             seams.log(sessionID, .recordingBundleSealed, [
                 "manifest_sha256": AnyCodable(record.manifestSHA256),
@@ -822,10 +918,80 @@ final class JobRecordingCoordinator: ObservableObject {
             seams.sealed()
             return .sealed(bundleID: record.bundleID)
         } catch {
+            if Task.isCancelled { return .deleted }
             // Everything is still where it was. Tried again later, not on the very next pass.
             sealRetryAfter[sessionID] = seams.wallNow().addingTimeInterval(Self.sealRetryInterval)
             return .waitingToPrepare
         }
+    }
+
+    // MARK: - Deleting a recording that is not sealed
+
+    /// The question to put before a recording that has not been sealed is deleted. Only the
+    /// coordinator makes one, and `deleteUnsealed` takes nothing else — so there is no way to
+    /// delete such a recording without having been handed the question first.
+    struct UnsealedDeletion: Equatable {
+        let sessionID: String
+        /// An unsealed recording has never left this phone, so it is always the only copy.
+        let warning: String
+
+        fileprivate init(sessionID: String) {
+            self.sessionID = sessionID
+            warning = RetentionDecision.unacknowledgedRecordingDeletionWarning
+        }
+    }
+
+    /// What to ask before deleting a job's recording that is on this phone and not sealed. Nil
+    /// when the job has no such recording, and while it is being recorded: a recording that is
+    /// running is stopped first, by the person, with the stop control.
+    func askToDeleteUnsealed(sessionID: String) -> UnsealedDeletion? {
+        guard status.sessionID != sessionID, seams.capture.hasJournal(sessionID: sessionID) else { return nil }
+        return UnsealedDeletion(sessionID: sessionID)
+    }
+
+    /// Deletes a job's recording that has not been sealed: its recorded parts, blurred or not,
+    /// and its journal — and nothing else of the job. False when there was nothing to delete.
+    ///
+    /// A pass that is preparing the recording is stopped first and waited for, so nothing is
+    /// written after the folder has gone: the blur stops at its next frame and removes what it
+    /// had written, the words stop being read, and nothing is signed. A pass that had got as far
+    /// as sealing removes what it sealed (`prepareAndSeal`).
+    @discardableResult
+    func deleteUnsealed(_ asked: UnsealedDeletion) async -> Bool {
+        let sessionID = asked.sessionID
+        // The question may be an old one: the recording carried on since, sealed, or deleted.
+        guard status.sessionID != sessionID, seams.capture.hasJournal(sessionID: sessionID) else { return false }
+        // What is there when the technician says so: a pass stopped below may have moved it.
+        let bytes = seams.capture.bytes(sessionID: sessionID)
+        let parts = seams.capture.journal(sessionID: sessionID)?.parts.count ?? 0
+        var passDeletedIt = false
+        while let pass = passes[sessionID] {
+            pass.cancel()
+            if await pass.value == .deleted { passDeletedIt = true }
+        }
+        // Asked again: that was a wait, and the recording may have been carried on in it.
+        guard status.sessionID != sessionID else { return false }
+
+        let hadCapture = seams.capture.hasJournal(sessionID: sessionID)
+        if hadCapture { seams.capture.delete(sessionID: sessionID) }
+        deferredForBlur.remove(sessionID)
+        blurProgress[sessionID] = nil
+        sealRetryAfter[sessionID] = nil
+        droppedAtSeal[sessionID] = nil
+        // Nothing unsealed was there and no pass was stopped: sealed before this was asked, or
+        // already gone. Nothing was deleted here.
+        guard hadCapture || passDeletedIt else { return false }
+
+        seams.log(sessionID, .recordingDeleted, [
+            "sealed": AnyCodable(false),
+            "acknowledged": AnyCodable(false),
+            "parts": AnyCodable(parts),
+            "bytes": AnyCodable(Int(bytes)),
+        ])
+        lastNote = Self.deletedNote
+        lastNoteSessionID = sessionID
+        await refresh()
+        return true
     }
 
     // MARK: - Blurring
@@ -887,6 +1053,12 @@ final class JobRecordingCoordinator: ObservableObject {
             let finished = seams.capture.blurredPartFile(sessionID: sessionID, partID: part.partID)
             let result = await blur.blur(raw, scratch) { [weak self] fraction in
                 self?.blurProgress[sessionID] = (Double(index) + min(1, max(0, fraction))) / Double(waiting.count)
+            }
+            // The recording was deleted while this part was being blurred: whatever the pass
+            // says of it, nothing more is written.
+            if Task.isCancelled {
+                try? manager.removeItem(at: scratch)
+                return .failed
             }
             let report: BlurredPart.Report
             switch result {

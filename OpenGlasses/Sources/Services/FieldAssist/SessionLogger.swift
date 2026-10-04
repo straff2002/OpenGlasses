@@ -178,6 +178,16 @@ final class SessionLogger {
             /// …and was sealed for the office: the manifest's digest, the number of chunks and
             /// the bytes.
             case recordingBundleSealed = "recording_bundle_sealed"
+            /// The office's own verified receipt for that bundle was taken in: the manifest's
+            /// digest, the receipt's digest and the bytes. Written once, and never on the
+            /// transport's word that everything was served.
+            case recordingSyncAcknowledged = "recording_sync_acknowledged"
+            /// The recording's media was removed from the phone after the office had it, on the
+            /// retention rule: the manifest's digest, the number of chunks and the bytes removed.
+            case recordingTrimmed = "recording_trimmed"
+            /// The technician deleted the recording from the phone, having been asked first:
+            /// whether it had been sealed, whether the office had it, and the bytes removed.
+            case recordingDeleted = "recording_deleted"
             case error = "error"
         }
     }

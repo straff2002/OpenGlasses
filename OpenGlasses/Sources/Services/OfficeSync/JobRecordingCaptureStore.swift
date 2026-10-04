@@ -168,6 +168,13 @@ struct JobRecordingCaptureStore: Sendable {
             && FileManager.default.fileExists(atPath: journalFile(sessionID: sessionID).path)
     }
 
+    /// The jobs that have a recording on this phone that has not been sealed, readable or not, in
+    /// a fixed order.
+    func sessionIDsWithJournal() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: sessionsRoot.path)) ?? [])
+            .filter(hasJournal(sessionID:)).sorted()
+    }
+
     /// Every recording on this phone that has not been sealed, oldest first.
     func journals() -> [Journal] {
         let sessions = (try? FileManager.default.contentsOfDirectory(atPath: sessionsRoot.path)) ?? []
@@ -238,5 +245,17 @@ struct JobRecordingCaptureStore: Sendable {
     func remove(sessionID: String) {
         guard JobRecordingBundleStore.identifier(sessionID) else { return }
         try? FileManager.default.removeItem(at: directory(sessionID: sessionID))
+    }
+
+    /// Removes a job's unsealed recording because the technician deleted it: its parts and its
+    /// journal, and the folder they were in when nothing else is in it. A sealed bundle beside
+    /// them is not touched, and neither is anything else of the job.
+    func delete(sessionID: String) {
+        guard JobRecordingBundleStore.identifier(sessionID) else { return }
+        remove(sessionID: sessionID)
+        let recording = directory(sessionID: sessionID).deletingLastPathComponent()
+        if (try? FileManager.default.contentsOfDirectory(atPath: recording.path))?.isEmpty == true {
+            try? FileManager.default.removeItem(at: recording)
+        }
     }
 }
