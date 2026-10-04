@@ -86,6 +86,20 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/office-check-in-fixture-keys.json
         buildPhase: resources
+      # The recorded-session contract: a golden timeline and transcript, the segments the transcript
+      # gives, and the shared rules' cases (action-event validation, agreement, the index). Fictional.
+      - path: Contracts/fixtures/recorded-session-timeline-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/recorded-session-transcript-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/walkthrough-segments-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/action-events-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/agreement-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/cross-reference-v1.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.tests
