@@ -275,7 +275,7 @@ final class SubjectErasureTests: XCTestCase {
                                  "\(receipt.store.rawValue): a refusal needs a reason worth reading")
         }
         // The refusals a wearer must be told about, by name.
-        for store in [SensitiveStore.recordings, .capturedPhotos, .clinicalTranscripts] {
+        for store in [SensitiveStore.recordings, .jobRecordingBundles, .capturedPhotos, .clinicalTranscripts] {
             XCTAssertNotNil(receipts.first { $0.store == store }?.unsupported)
         }
     }
