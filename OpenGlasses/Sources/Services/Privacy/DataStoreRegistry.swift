@@ -87,6 +87,7 @@ enum SensitiveStore: String, CaseIterable {
     case officeCheckIn
     case officeReports
     case officeReportEvidence
+    case officeManuals
 
     // Clinical
     case healthSummaryCache
@@ -664,6 +665,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "OfficeReportEvidenceStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeReportEvidenceStore.swift"],
                           location: "Application Support/AvenkinOffice/report-evidence/")
+
+        case .officeManuals:
+            // Which manuals the office assigned: each assignment's signed bytes, the publisher
+            // grants held, the highest assignment taken for each manual set, and whether each was
+            // installed. Identifiers, digests and dates; the manuals themselves are in
+            // `vaultDocuments` once installed. It is kept apart from the installed vaults on
+            // purpose: removing a manual must not let an old assignment bring it back.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
+                          retention: .cap(OfficeManualService.maximumEntries),
+                          deleteAll: .unavailable("the set marks are the rollback boundary for assigned manuals; the record is bounded and holds no manual content"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeManualService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeManualService.swift"],
+                          location: "Application Support/AvenkinOffice/manuals.json")
 
         case .orgEnrolment:
             // Plan CT: the organisation profile this phone is enrolled with — the signed document,

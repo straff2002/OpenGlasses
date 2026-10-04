@@ -13,6 +13,7 @@ actor OfficePhoneIdentity {
         case invalidCheckIn
         case invalidRemovalReceipt
         case invalidReport
+        case invalidAssignmentReceipt
     }
 
     static let shared = OfficePhoneIdentity()
@@ -94,6 +95,14 @@ actor OfficePhoneIdentity {
     func signOfficeReport(_ payload: Data) throws -> Data {
         guard OfficeReport.reportPayload(payload) != nil else { throw Refusal.invalidReport }
         return try key().signature(for: OfficeReport.reportDomain + payload)
+    }
+
+    /// Sign the receipt for a manual assignment this phone has committed or installed
+    /// (Contracts/office-bulk.md §4). Only a closed assignment-receipt payload is signed here,
+    /// under the assignment-receipt domain.
+    func signAssignmentReceipt(_ payload: Data) throws -> Data {
+        guard OfficeBulk.receiptPayload(payload) != nil else { throw Refusal.invalidAssignmentReceipt }
+        return try key().signature(for: OfficeBulk.receiptDomain + payload)
     }
 
     private func key() throws -> Curve25519.Signing.PrivateKey {

@@ -78,6 +78,35 @@ protocol OfficeManagedFolderTransport: Sendable {
     /// other published report names.
     func withdrawReport(reportID: String) async throws
 
+    /// `ManagedBulkPending`: the publisher grants and manual assignments in `control` that read
+    /// as their own messages for this phone, as a JSON `OfficeManagedFolders.BulkPending`.
+    func bulkPending() async throws -> String
+
+    /// `SetManagedBulkWanted`: exactly which files the `bulk` folder may take, as a JSON array of
+    /// `{kind, sha256, bytes}`. It replaces what was asked for before; everything else there
+    /// stays ignored.
+    func setBulkWanted(_ wantedJSON: String) async throws
+
+    /// `ManagedBulkStatus`: where each wanted file is, as a JSON array of
+    /// `OfficeManagedFolders.BulkStatus`.
+    func bulkStatus() async throws -> String
+
+    /// `ManagedBulkFile`: the private path of a wanted file that is ready — a copy whose size and
+    /// digest were checked, outside every shared folder.
+    func bulkFile(sha256: String) async throws -> String
+
+    /// `SetManagedBulkPaused`: pauses or resumes the `bulk` folder. It starts paused.
+    func setBulkPaused(_ paused: Bool) async throws
+
+    /// `ManagedAssignmentReceiptPayload`: the exact bytes (standard base64) of the receipt for a
+    /// manual assignment and outcome, for the phone application key to sign.
+    func assignmentReceiptPayload(assignmentID: String, outcome: String, at: Int64) async throws -> String
+
+    /// `PublishManagedAssignmentReceipt`: publishes that receipt at `records/assignments/` and
+    /// returns the exact envelope published.
+    func publishAssignmentReceipt(assignmentID: String, outcome: String,
+                                  signatureBase64: String) async throws -> String
+
     /// `Stop`: closes the connection and its folders. What was committed stays committed.
     func stop() async
 }
@@ -118,6 +147,19 @@ enum OfficeManagedFolders {
         let envelope: String
     }
 
+    /// What has arrived for bulk content: grants and assignments.
+    struct BulkPending: Decodable, Equatable, Sendable {
+        let grants: [PendingEnvelope]
+        let assignments: [PendingEnvelope]
+    }
+
+    /// Where one wanted file is: `ready`, `offered` or `waiting`.
+    struct BulkStatus: Decodable, Equatable, Sendable {
+        let kind: String
+        let sha256: String
+        let state: String
+    }
+
     enum DecodingFailure: Error, Equatable {
         case malformed
     }
@@ -127,6 +169,20 @@ enum OfficeManagedFolders {
             throw DecodingFailure.malformed
         }
         return pending
+    }
+
+    static func decodeBulkPending(_ json: String) throws -> BulkPending {
+        guard let pending = try? JSONDecoder().decode(BulkPending.self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return pending
+    }
+
+    static func decodeBulkStatus(_ json: String) throws -> [BulkStatus] {
+        guard let status = try? JSONDecoder().decode([BulkStatus].self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return status
     }
 
     static func decodeReportReceipts(_ json: String) throws -> [ReportReceipt] {

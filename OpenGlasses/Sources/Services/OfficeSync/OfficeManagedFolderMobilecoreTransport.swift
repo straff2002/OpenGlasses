@@ -76,6 +76,37 @@ enum OfficeManagedFolderMobilecoreTransport {
             try await OfficeTransportIdentity.shared.withdrawManagedReport(reportID: reportID)
         }
 
+        func bulkPending() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedBulkPending()
+        }
+
+        func setBulkWanted(_ wantedJSON: String) async throws {
+            try await OfficeTransportIdentity.shared.setManagedBulkWanted(wantedJSON)
+        }
+
+        func bulkStatus() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedBulkStatus()
+        }
+
+        func bulkFile(sha256: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedBulkFile(sha256: sha256)
+        }
+
+        func setBulkPaused(_ paused: Bool) async throws {
+            try await OfficeTransportIdentity.shared.setManagedBulkPaused(paused)
+        }
+
+        func assignmentReceiptPayload(assignmentID: String, outcome: String, at: Int64) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedAssignmentReceiptPayload(
+                assignmentID: assignmentID, outcome: outcome, at: at)
+        }
+
+        func publishAssignmentReceipt(assignmentID: String, outcome: String,
+                                      signatureBase64: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedAssignmentReceipt(
+                assignmentID: assignmentID, outcome: outcome, signatureBase64: signatureBase64)
+        }
+
         func stop() async {
             await OfficeTransportIdentity.shared.stop()
         }
