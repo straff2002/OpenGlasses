@@ -2,7 +2,8 @@
 
 Other contracts in this folder: [job file](job-file.md) (format 2: an office-assigned identifier
 and revision, signed over exact bytes; reference implementation, fixture and the phone's import), [office commissioning](commissioning.md) (scan to join an office),
-[office preview](office-preview.md), [recorded session](recorded-session.md),
+[office preview](office-preview.md), [recorded session](recorded-session.md) (the shared rules
+and the two signed messages have reference code and fixtures; nothing records or sends),
 [team learning](team-learning.md), [managed office folders](office-folders.md),
 [bulk content](office-bulk.md) (an organisation's own publisher, the assignment receipt, and what
 a job names; messages, fixtures, and the phone's half in the opt-in build),

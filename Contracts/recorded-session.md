@@ -1,4 +1,4 @@
-# Recorded-session contract — draft v1 (shared rules and fixtures built; signed messages and transport not)
+# Recorded-session contract — draft v1 (shared rules, signed messages and fixtures built; capture and transport not)
 
 Drafted 2026-10-02 with Plan [HE](../docs/plans/HE-recorded-session-action-map.md). This is the
 agreement between the phone app and Avenkin Office about a recorded job: what the phone sends,
@@ -18,9 +18,11 @@ runs the reference code against them. Everything in them is fictional. Where §7
 open — what a word is, the stop-words, the stemming, how far a negation reaches, whether an edge
 counts, the order rejections are tried in, how rows are named — the fixture's `rules` block and
 its cases are the reference until this text is revised to say the same; the choices are listed in
-Plan HE under "P0 as built". **Not yet built:** the signed manifest (§3) and the receipt (§6),
-their keys and golden fixtures; the transport (§2); anything on the office side. Nothing on the
-phone records, bundles or sends a recorded job yet.
+Plan HE under "P0 as built". **The two signed messages have a reference implementation** (2026-10-05):
+`Transport/mobile-core/recordingbundle` signs and reads the manifest (§3) and the office's
+receipt and later status (§6), with golden fixtures (§11). **Not yet built:** anything on the
+phone that seals a bundle or reads a receipt; the transport for a bundle (§2); anything on the
+office side. Nothing on the phone records, bundles or sends a recorded job yet.
 
 ## 1. Roles
 
@@ -54,9 +56,16 @@ phone records, bundles or sends a recorded job yet.
 ```
 
 **Envelope.** Two base64 strings, `payload` and `signature`; Ed25519 over the UTF-8 bytes
-`Avenkin.RecordingBundle.v1`, one zero byte, then the exact decoded payload bytes. No JSON
-re-encoding at verification. Closed objects: duplicate or unknown keys and non-integer numeric
-spellings are refused. Envelope cap 1 MiB.
+`Avenkin.RecordingBundle.v1`, one zero byte, then the exact decoded payload bytes, signed with
+the phone application key. No JSON re-encoding at verification. Envelope cap 1 MiB.
+
+**One spelling.** The manifest holds lists, so it cannot be a flat object like the other
+messages. Instead it has exactly one spelling: the members in the order of the table below (and
+of the two list tables), no white space, integers in plain decimal, `blurred` as `true` or
+`false`, and no string that needs a JSON escape. A verifier parses the payload, writes it again
+that way, and refuses it unless the bytes are identical — which refuses a duplicate or unknown
+member, another order, and a number written another way, all at once. Every member is always
+present.
 
 **Manifest payload.**
 
@@ -64,19 +73,37 @@ spellings are refused. Envelope cap 1 MiB.
 |---|---|
 | `version`, `kind` | `1`, `avenkin.recording-bundle` |
 | `bundleID` | 32 lowercase hex |
-| `organizationID`, `enrolmentID`, `officeID`, `generation` | The binding this bundle is for |
-| `jobSessionID`, `jobNumber?` | The job it belongs to |
+| `organizationID`, `enrolmentID`, `officeID`, `generation`, `phoneTransportID` | The binding this bundle was sealed under |
+| `jobSessionID`, `jobNumber` | The job it belongs to; `jobNumber` is empty when the job has none, and otherwise printable ASCII that needs no escape, at most 80 characters |
 | `createdAt` | Unix UTC seconds |
 | `timelineVersion`, `transcriptVersion` | Schema versions of the two JSON files |
 | `blurred` | `true` when faces were blurred on the phone before sealing |
 | `droppedFrames` | Frames removed because the blur could not process them |
 | `consentAt` | When the recorder acknowledged the recording consent |
-| `chunkBytes` | Chunk size used (every chunk but a part's last is exactly this) |
+| `chunkBytes` | Chunk size used (every chunk but a part's last is exactly this), at most 64 MiB |
 | `files[]` | `{path, bytes, sha256, role}`; `role` ∈ `timeline`, `transcript`, `media` |
-| `parts[]` | `{partID, track, container, chunks: [sha256…], bytes, sha256}` — concatenating a part's chunks in order yields a file with that digest |
+| `parts[]` | `{partID, track, container, chunks: [sha256…], bytes, sha256}` — concatenating a part's chunks in order yields a file with that digest. `track` ∈ `video`, `audio`; `container` ∈ `mp4`, `m4a` |
 
 Paths are fixed names or digests; a peer-supplied name never selects a path. Integers are
-positive and ≤ 2^53 − 1.
+positive and ≤ 2^53 − 1, except `droppedFrames`, which may be `0` and is `0` unless `blurred`.
+
+What makes a manifest list exactly its bundle:
+
+- exactly one `timeline` file at `timeline.json` and one `transcript` file at `transcript.json`;
+- a `media` file's path is `media/<its sha256>.chunk`, it is no larger than `chunkBytes`, and no
+  path appears twice — identical chunks are one file;
+- every chunk a part names is a listed media file; every chunk of a part but its last is exactly
+  `chunkBytes`; a part's `bytes` is the sum of its chunks'; and every listed media file is in at
+  least one part;
+- no two parts share a `partID`; at most 256 parts and 4 096 chunks;
+- `consentAt` is not later than `createdAt`;
+- a bundle with no media — `files` is the two JSON files and `parts` is `[]` — is a bundle.
+
+**The generation.** A bundle may take days to arrive, and the binding may be renewed
+meanwhile. The manifest names the generation it was sealed under. *Requirement on the office:*
+it accepts a manifest whose generation is the binding's current one or an earlier one it issued
+to that enrolment, signed by the phone application key that binding names, and refuses one that
+names a generation it has not reached.
 
 ## 4. Timeline (`timeline.json`, version 1)
 
@@ -108,9 +135,28 @@ it references back.
 
 ## 6. Acknowledgement and status (office → phone)
 
-Same envelope rule, domain `Avenkin.RecordingReceipt.v1`. Payload: `version`, `kind`
-(`avenkin.recording-receipt`), `bundleID`, `manifestSHA256`, the binding fields, `receivedAt`,
-`status`.
+Same envelope rule, domain `Avenkin.RecordingReceipt.v1`, signed with the office application
+key, cap 8 192 bytes. The payload is a closed, flat object like the other office messages — every
+member always present, each a string or an integer in plain decimal:
+
+| Field | Meaning |
+|---|---|
+| `version`, `kind` | `1`, `avenkin.recording-receipt` |
+| `bundleID` | The bundle's |
+| `manifestSHA256` | SHA-256 of the manifest's exact payload bytes |
+| `organizationID`, `enrolmentID`, `officeID`, `generation`, `phoneTransportID` | As the manifest names them: `generation` is the manifest's, not the binding's current one |
+| `status` | `received`, `refused`, `reviewed`, `published` or `rejected` |
+| `reason` | For `refused`, one of the closed reasons below; otherwise empty |
+| `vaultID`, `vaultVersion` | For `published`, the vault the procedure went out as; otherwise empty |
+| `at` | Unix UTC seconds, by the office's clock |
+
+Each status is its own file, `control/recordings/<bundleID>.<status>.envelope.json`, so a
+published name always holds the same bytes.
+
+The phone accepts one only if it is closed and in form, signed by the office application key of
+the binding held, names that binding's organisation, enrolment, office and phone, and its
+`bundleID`, `manifestSHA256` and `generation` equal the phone's own record of the manifest it
+sealed. A receipt has no expiry: it is a statement of fact about a bundle.
 
 - The office sends `status: "received"` **only after** it has verified the manifest signature,
   every chunk digest and every part digest, and committed the bundle durably. Transport
@@ -221,3 +267,24 @@ Fixture: `cross-reference-v1.json`.
   redundant — decide when FX's phone → office folder exists.
 - Whether `received` should also be sent per part, so a phone can free space early.
 - Whether the office should return the action map to the phone at all (v1: no).
+- Whether a later status needs an order of its own (`reviewed` before `published`). In this
+  version each is an independent statement; a phone shows the latest it holds.
+
+## 11. Fixtures for the signed messages
+
+In `fixtures/`, made by `recordingbundle.Fixtures()` and checked byte for byte by its tests. Keys
+are derived from public labels (seed = SHA-256 of the label) and have no authority; they are the
+check-in fixtures' office and phone keys, and the binding is the check-in fixtures' binding. The
+clock is 1 800 000 000.
+
+| File | What it is |
+|---|---|
+| `recording-bundle-manifest-v1.json` | The signed manifest of one fictional bundle: `timeline.json` and `transcript.json` are exactly `recorded-session-timeline-v1.json` and `recorded-session-transcript-v1.json`; a video part of three chunks and an audio part of one, at a chunk size of 32 bytes |
+| `recording-receipt-received-v1.json` | The office has the bundle, two hours later |
+| `recording-receipt-refused-v1.json` | The office refuses it, reason `digest` |
+| `recording-receipt-published-v1.json` | A procedure was published from it as `fixture-organisation-vault` 1.0.0 |
+
+The media is not in the repository. The video part's whole bytes are the ASCII sentence
+`Avenkin public fixture recording video part v1: eighty-two bytes of nothing at all` and the audio
+part's are `Avenkin public fixture audio v1`; cut at 32 bytes they give the chunks the manifest
+names.

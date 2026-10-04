@@ -1,9 +1,10 @@
 # Plan HE — Recorded Job and Sync to the Office
 
 **Status:** 🚧 P0 built 2026-10-05 — the pure core and the contract's fixtures, headless; nothing
-is wired into the app, and nothing records, stores or sends. Two things P0 lists are **not** in it:
-the signed bundle manifest and the office's receipt, which are being written separately as a
-reference implementation with golden fixtures (see "P0 as built"). P1–P4 are unbuilt, and P2 is
+is wired into the app, and nothing records, stores or sends. The two signed messages P0 lists — the bundle manifest
+and the office's receipt — have a reference implementation and golden fixtures in
+`Transport/mobile-core/recordingbundle` (2026-10-05); the phone's own Swift for them is not built
+(see "P0 as built"). P1–P4 are unbuilt, and P2 is
 still blocked on Plan FX. Drafted 2026-10-02 and **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
