@@ -1,4 +1,4 @@
-# Recorded-session contract — draft v1 (design, nothing implemented)
+# Recorded-session contract — draft v1 (shared rules and fixtures built; signed messages and transport not)
 
 Drafted 2026-10-02 with Plan [HE](../docs/plans/HE-recorded-session-action-map.md). This is the
 agreement between the phone app and Avenkin Office about a recorded job: what the phone sends,
@@ -6,9 +6,21 @@ what the office acknowledges, and the platform-neutral rules both sides must com
 It is self-contained so it can be carried into the office repository.
 
 **It asserts nothing about the office app's internals.** Statements about the office are
-requirements or marked *Assumption*. No fixture, key or code exists yet; where this says "fixture"
-it names a file Plan HE P0 will add to `Contracts/fixtures/`, with portable checks in
-`Contracts/tests/`, the same way the manual-assignment and managed-job contracts are held.
+requirements or marked *Assumption*.
+
+**What exists (2026-10-05).** The phone repository holds reference code and fixtures for the parts
+that need no key and no transport: the timeline and transcript files (§4, §5), the chunk rule
+(§3), and the shared rules (§7). The fixtures are in `Contracts/fixtures/` —
+`recorded-session-timeline-v1.json`, `recorded-session-transcript-v1.json`,
+`walkthrough-segments-v1.json` (the segments §7.3 means by "step-like"), `action-events-v1.json`,
+`agreement-v1.json`, `cross-reference-v1.json` — and `Contracts/tests/test_recorded_session_contracts.py`
+runs the reference code against them. Everything in them is fictional. Where §7 leaves a detail
+open — what a word is, the stop-words, the stemming, how far a negation reaches, whether an edge
+counts, the order rejections are tried in, how rows are named — the fixture's `rules` block and
+its cases are the reference until this text is revised to say the same; the choices are listed in
+Plan HE under "P0 as built". **Not yet built:** the signed manifest (§3) and the receipt (§6),
+their keys and golden fixtures; the transport (§2); anything on the office side. Nothing on the
+phone records, bundles or sends a recorded job yet.
 
 ## 1. Roles
 

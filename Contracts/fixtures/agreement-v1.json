@@ -1,0 +1,933 @@
+{
+  "version": 1,
+  "about": "Agreement between what was seen and what was said (Contracts/recorded-session.md §7.3). Each case is a transcript.json and validated action events, with the labels they must give. `words` and `stems` pin the reading of words the labels rest on. Fictional.",
+  "rules": {
+    "windowSeconds": 5,
+    "window": "an utterance (or a step-like segment) and an event are near when neither ends more than the window before the other starts; exactly the window apart is near",
+    "word": "a run of a-z (A-Z read as lower case) and 0-9; an apostrophe (U+0027, U+2019) inside a word is dropped; every other character ends the word",
+    "minimumWordLength": 2,
+    "stopWords": [
+      "a",
+      "about",
+      "after",
+      "again",
+      "all",
+      "alright",
+      "also",
+      "am",
+      "an",
+      "and",
+      "any",
+      "are",
+      "as",
+      "at",
+      "back",
+      "be",
+      "been",
+      "before",
+      "being",
+      "bit",
+      "both",
+      "but",
+      "by",
+      "can",
+      "could",
+      "did",
+      "do",
+      "does",
+      "doing",
+      "done",
+      "down",
+      "each",
+      "er",
+      "first",
+      "for",
+      "from",
+      "get",
+      "go",
+      "going",
+      "gonna",
+      "got",
+      "had",
+      "has",
+      "have",
+      "having",
+      "he",
+      "her",
+      "here",
+      "heres",
+      "him",
+      "his",
+      "how",
+      "i",
+      "id",
+      "if",
+      "ill",
+      "im",
+      "in",
+      "into",
+      "is",
+      "it",
+      "its",
+      "ive",
+      "just",
+      "let",
+      "lets",
+      "like",
+      "little",
+      "may",
+      "me",
+      "might",
+      "more",
+      "most",
+      "must",
+      "my",
+      "next",
+      "now",
+      "of",
+      "off",
+      "ok",
+      "okay",
+      "on",
+      "once",
+      "one",
+      "ones",
+      "only",
+      "onto",
+      "or",
+      "other",
+      "our",
+      "out",
+      "over",
+      "own",
+      "right",
+      "same",
+      "shall",
+      "she",
+      "should",
+      "so",
+      "some",
+      "still",
+      "such",
+      "than",
+      "that",
+      "thats",
+      "the",
+      "their",
+      "them",
+      "then",
+      "there",
+      "theres",
+      "these",
+      "they",
+      "theyre",
+      "thing",
+      "things",
+      "this",
+      "those",
+      "through",
+      "to",
+      "too",
+      "uh",
+      "um",
+      "up",
+      "us",
+      "very",
+      "was",
+      "we",
+      "well",
+      "were",
+      "weve",
+      "what",
+      "whats",
+      "when",
+      "where",
+      "which",
+      "who",
+      "why",
+      "will",
+      "with",
+      "would",
+      "yeah",
+      "yes",
+      "you",
+      "youll",
+      "your",
+      "youre",
+      "youve"
+    ],
+    "negators": [
+      "aint",
+      "arent",
+      "cannot",
+      "cant",
+      "couldnt",
+      "didnt",
+      "doesnt",
+      "dont",
+      "hadnt",
+      "hasnt",
+      "havent",
+      "isnt",
+      "mustnt",
+      "neednt",
+      "neither",
+      "never",
+      "no",
+      "nor",
+      "not",
+      "shouldnt",
+      "wasnt",
+      "werent",
+      "without",
+      "wont",
+      "wouldnt"
+    ],
+    "clauseBreakCharacters": [
+      ".",
+      ",",
+      ";",
+      ":",
+      "!",
+      "?"
+    ],
+    "clauseBreakWords": [
+      "but"
+    ],
+    "negation": "a negator reaches from where it stands to the end of its clause",
+    "stemming": [
+      "a word of fewer than 4 letters, or with a digit in it, is unchanged",
+      "plural: -ies becomes -y when the word has 5 letters or more; otherwise -sses, -ches, -shes, -xes, -zes lose -es; otherwise a final -s goes unless the word ends -ss, -us or -is",
+      "then: -ing goes when the word has 6 letters or more and what is left has one of aeiouy; otherwise -ed goes (not -eed) when the word has 5 letters or more and what is left has one of aeiouy; after either, a doubled final letter other than l, s or z loses one",
+      "then: a final -e goes when the word has 4 letters or more"
+    ]
+  },
+  "words": [
+    {
+      "text": "Don't remove the cover.",
+      "contentStems": [
+        "cover",
+        "remov"
+      ],
+      "affirmedStems": []
+    },
+    {
+      "text": "Don’t worry, remove the cover now.",
+      "contentStems": [
+        "cover",
+        "remov",
+        "worry"
+      ],
+      "affirmedStems": [
+        "cover",
+        "remov"
+      ]
+    },
+    {
+      "text": "Don't remove the cover but loosen the screws",
+      "contentStems": [
+        "cover",
+        "loosen",
+        "remov",
+        "screw"
+      ],
+      "affirmedStems": [
+        "loosen",
+        "screw"
+      ]
+    },
+    {
+      "text": "REMOVING the Covers",
+      "contentStems": [
+        "cover",
+        "remov"
+      ],
+      "affirmedStems": [
+        "cover",
+        "remov"
+      ]
+    },
+    {
+      "text": "It's 3.5 volts at the M8 terminal.",
+      "contentStems": [
+        "m8",
+        "terminal",
+        "volt"
+      ],
+      "affirmedStems": [
+        "m8",
+        "terminal",
+        "volt"
+      ]
+    },
+    {
+      "text": "Never without the earth strap",
+      "contentStems": [
+        "earth",
+        "strap"
+      ],
+      "affirmedStems": []
+    },
+    {
+      "text": "the technician's gloves; a café",
+      "contentStems": [
+        "caf",
+        "glov",
+        "technician"
+      ],
+      "affirmedStems": [
+        "caf",
+        "glov",
+        "technician"
+      ]
+    },
+    {
+      "text": "Remove the cover? No. Remove the lid.",
+      "contentStems": [
+        "cover",
+        "lid",
+        "remov"
+      ],
+      "affirmedStems": [
+        "cover",
+        "lid",
+        "remov"
+      ]
+    }
+  ],
+  "stems": {
+    "remove": "remov",
+    "removed": "remov",
+    "removing": "remov",
+    "removes": "remov",
+    "cover": "cover",
+    "covers": "cover",
+    "covered": "cover",
+    "tighten": "tighten",
+    "tightened": "tighten",
+    "tightening": "tighten",
+    "fitting": "fit",
+    "unplugged": "unplug",
+    "installing": "install",
+    "presses": "press",
+    "pressed": "press",
+    "batteries": "battery",
+    "switches": "switch",
+    "fixes": "fix",
+    "gases": "gas",
+    "fans": "fan",
+    "fan": "fan",
+    "speed": "speed",
+    "bleed": "bleed",
+    "bleeding": "bleed",
+    "spring": "spring",
+    "springs": "spring",
+    "wiring": "wir",
+    "wire": "wir",
+    "valve": "valv",
+    "isolate": "isolat",
+    "isolated": "isolat",
+    "closed": "clos",
+    "sealed": "seal",
+    "chassis": "chassis",
+    "glass": "glass",
+    "status": "status",
+    "m8": "m8",
+    "goes": "goe"
+  },
+  "cases": [
+    {
+      "name": "the three labels",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "Next, remove the cover."
+          },
+          {
+            "id": "u2",
+            "start": 40,
+            "end": 44,
+            "text": "Then tighten the terminal screws."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 16,
+          "action": "remove cover",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e2",
+          "start": 20,
+          "end": 24,
+          "action": "wipe panel",
+          "object": "panel",
+          "evidence": [
+            {
+              "t": 20
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          },
+          {
+            "event": "e2",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": [
+          {
+            "segment": "s2",
+            "label": "said_not_seen",
+            "from": 40,
+            "to": 44,
+            "utterances": [
+              "u2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a negated word does not confirm",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "Don't remove the cover yet."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 13,
+          "action": "remove cover",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "a negation ends with its clause",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "Don't worry, remove the cover now."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 13,
+          "action": "remove cover",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "but ends a negation",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "Don't remove the cover but loosen the screws."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 12,
+          "action": "remove cover",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e2",
+          "start": 12,
+          "end": 13,
+          "action": "loosen screw",
+          "evidence": [
+            {
+              "t": 12
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          },
+          {
+            "event": "e2",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "window edges for an event: exactly five seconds is near, a millisecond more is not",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 12,
+            "text": "Tighten the clamp."
+          },
+          {
+            "id": "u2",
+            "start": 30,
+            "end": 32,
+            "text": "Check the gauge."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 17,
+          "end": 19,
+          "action": "tighten clamp",
+          "evidence": [
+            {
+              "t": 17
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e2",
+          "start": 17.001,
+          "end": 19,
+          "action": "tighten clamp",
+          "evidence": [
+            {
+              "t": 17.001
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e3",
+          "start": 23,
+          "end": 25,
+          "action": "check gauge",
+          "evidence": [
+            {
+              "t": 23
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e4",
+          "start": 23,
+          "end": 24.999,
+          "action": "check gauge",
+          "evidence": [
+            {
+              "t": 23
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          },
+          {
+            "event": "e2",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          },
+          {
+            "event": "e3",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u2"
+            ]
+          },
+          {
+            "event": "e4",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "window edge for a step: an event exactly five seconds after it means it was seen",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 12,
+            "text": "Next, bleed the radiator."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 17,
+          "end": 18,
+          "action": "open window",
+          "evidence": [
+            {
+              "t": 17
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "window edge for a step: a millisecond more and the step was said and not seen",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 12,
+            "text": "Next, bleed the radiator."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 17.001,
+          "end": 18,
+          "action": "open window",
+          "evidence": [
+            {
+              "t": 17.001
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": [
+          {
+            "segment": "s1",
+            "label": "said_not_seen",
+            "from": 10,
+            "to": 12,
+            "utterances": [
+              "u1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a low-confidence event is labelled and stays flagged",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "Next, replace the filter."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 13,
+          "action": "replace filter",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.2,
+          "low_confidence": true
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "confirmed_by_speech",
+            "low_confidence": true,
+            "utterances": [
+              "u1"
+            ]
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "the object or the tool can carry the shared word",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "I'm using the multimeter on the terminals."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 13,
+          "action": "measure voltage",
+          "tool": "multimeter",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e2",
+          "start": 11,
+          "end": 13,
+          "action": "probe",
+          "object": "terminal block",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        },
+        {
+          "id": "e3",
+          "start": 11,
+          "end": 13,
+          "action": "measure voltage",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          },
+          {
+            "event": "e2",
+            "label": "confirmed_by_speech",
+            "low_confidence": false,
+            "utterances": [
+              "u1"
+            ]
+          },
+          {
+            "event": "e3",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": []
+      }
+    },
+    {
+      "name": "the model's own utterances are not trusted",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 10,
+            "end": 14,
+            "text": "The casing is quite corroded."
+          }
+        ]
+      },
+      "events": [
+        {
+          "id": "e1",
+          "start": 11,
+          "end": 13,
+          "action": "remove cover",
+          "evidence": [
+            {
+              "t": 11
+            }
+          ],
+          "utterances": [
+            "u1"
+          ],
+          "confidence": 0.9,
+          "low_confidence": false
+        }
+      ],
+      "expected": {
+        "seen": [
+          {
+            "event": "e1",
+            "label": "seen_not_said",
+            "low_confidence": false,
+            "utterances": []
+          }
+        ],
+        "unseen": []
+      }
+    }
+  ]
+}

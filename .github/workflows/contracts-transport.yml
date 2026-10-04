@@ -8,11 +8,11 @@ name: Contracts and Transport
 # Two jobs:
 # - transport (Linux): prepares the pinned embedded engine the way Transport/scripts/build_ios_lab.sh
 #   does, then `go vet` and `go test -race` on the mobile core, plus the preparer's own unit test.
-# - contracts (macOS): the two contract checks copy the app's real verification sources into a
+# - contracts (macOS): the contract checks copy the app's real verification sources into a
 #   throwaway Swift package and run them against the shared fixtures. They need CryptoKit, so macOS.
 #
 # A positive `paths:` list, not `paths-ignore`: in paths-ignore a `!` pattern re-includes rather
-# than excludes. The Swift paths are the sources and tests the two contract scripts copy in (see
+# than excludes. The Swift paths are the sources and tests the contract scripts copy in (see
 # SOURCES and TESTS at the top of each); a new file added to either list belongs here too.
 
 on:
@@ -36,6 +36,22 @@ on:
       - 'OpenGlassesTests/OfficeManualImportTests.swift'
       - 'OpenGlassesTests/OfficeInlineEntitlementTests.swift'
       - 'OpenGlassesTests/VaultArchiveFixtures.swift'
+      - 'OpenGlasses/Sources/Services/FieldAssist/JobRecording/**'
+      - 'OpenGlassesTests/RecordedJobFixtures.swift'
+      - 'OpenGlassesTests/SessionClockTests.swift'
+      - 'OpenGlassesTests/SessionTimelineCodingTests.swift'
+      - 'OpenGlassesTests/TimedTranscriptCodingTests.swift'
+      - 'OpenGlassesTests/WalkthroughSegmenterTests.swift'
+      - 'OpenGlassesTests/TurnAlignerTests.swift'
+      - 'OpenGlassesTests/ProcedureCandidateDetectorTests.swift'
+      - 'OpenGlassesTests/ChunkPlanTests.swift'
+      - 'OpenGlassesTests/BundleSyncStateTests.swift'
+      - 'OpenGlassesTests/SyncEligibilityTests.swift'
+      - 'OpenGlassesTests/RetentionDecisionTests.swift'
+      - 'OpenGlassesTests/RecordingTextTests.swift'
+      - 'OpenGlassesTests/ActionEventValidatorTests.swift'
+      - 'OpenGlassesTests/SpeechAgreementTests.swift'
+      - 'OpenGlassesTests/CrossReferenceIndexTests.swift'
   push:
     branches: [main]
     paths:
@@ -56,6 +72,22 @@ on:
       - 'OpenGlassesTests/OfficeManualImportTests.swift'
       - 'OpenGlassesTests/OfficeInlineEntitlementTests.swift'
       - 'OpenGlassesTests/VaultArchiveFixtures.swift'
+      - 'OpenGlasses/Sources/Services/FieldAssist/JobRecording/**'
+      - 'OpenGlassesTests/RecordedJobFixtures.swift'
+      - 'OpenGlassesTests/SessionClockTests.swift'
+      - 'OpenGlassesTests/SessionTimelineCodingTests.swift'
+      - 'OpenGlassesTests/TimedTranscriptCodingTests.swift'
+      - 'OpenGlassesTests/WalkthroughSegmenterTests.swift'
+      - 'OpenGlassesTests/TurnAlignerTests.swift'
+      - 'OpenGlassesTests/ProcedureCandidateDetectorTests.swift'
+      - 'OpenGlassesTests/ChunkPlanTests.swift'
+      - 'OpenGlassesTests/BundleSyncStateTests.swift'
+      - 'OpenGlassesTests/SyncEligibilityTests.swift'
+      - 'OpenGlassesTests/RetentionDecisionTests.swift'
+      - 'OpenGlassesTests/RecordingTextTests.swift'
+      - 'OpenGlassesTests/ActionEventValidatorTests.swift'
+      - 'OpenGlassesTests/SpeechAgreementTests.swift'
+      - 'OpenGlassesTests/CrossReferenceIndexTests.swift'
 
 # Same rule as tests.yml: a superseded PR run is cancelled, a run on main never is.
 concurrency:
@@ -128,3 +160,6 @@ jobs:
 
       - name: Inline entitlement and pairing gate
         run: python3 Contracts/tests/test_inline_entitlement.py
+
+      - name: Recorded-session rules
+        run: python3 Contracts/tests/test_recorded_session_contracts.py

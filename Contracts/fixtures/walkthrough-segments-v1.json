@@ -1,0 +1,468 @@
+{
+  "version": 1,
+  "about": "Narration cut into segments (Contracts/recorded-session.md §7.3 relies on the step-like ones). Each case is a transcript.json and the segments it must give. Fictional.",
+  "rules": {
+    "silenceSeconds": 4,
+    "minimumWords": 3,
+    "fillers": [
+      "alright",
+      "and",
+      "ok",
+      "okay",
+      "right",
+      "so",
+      "uh",
+      "um",
+      "well"
+    ],
+    "markers": [
+      [
+        "first"
+      ],
+      [
+        "next"
+      ],
+      [
+        "then"
+      ],
+      [
+        "now",
+        "im",
+        "going",
+        "to"
+      ],
+      [
+        "now",
+        "i",
+        "am",
+        "going",
+        "to"
+      ],
+      [
+        "once",
+        "thats",
+        "done"
+      ],
+      [
+        "once",
+        "that",
+        "is",
+        "done"
+      ]
+    ],
+    "stepMarker": "step, then a number word from one to twenty or a run of digits",
+    "explicitMarker": [
+      "new",
+      "step"
+    ],
+    "stepNumbers": [
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+      "ten",
+      "eleven",
+      "twelve",
+      "thirteen",
+      "fourteen",
+      "fifteen",
+      "sixteen",
+      "seventeen",
+      "eighteen",
+      "nineteen",
+      "twenty"
+    ],
+    "sentenceEnds": [
+      ".",
+      "!",
+      "?"
+    ]
+  },
+  "cases": [
+    {
+      "name": "a narrated walkthrough",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 12,
+            "end": 16.5,
+            "text": "First, switch the boiler off at the isolator."
+          },
+          {
+            "id": "u2",
+            "start": 17,
+            "end": 20,
+            "text": "The light on the front panel goes out."
+          },
+          {
+            "id": "u3",
+            "start": 44,
+            "end": 49,
+            "text": "Next, remove the front cover. There are two screws underneath."
+          },
+          {
+            "id": "u4",
+            "start": 60,
+            "end": 63,
+            "text": "Okay, then lift the cover away"
+          },
+          {
+            "id": "u5",
+            "start": 63.2,
+            "end": 66,
+            "text": "then set it down somewhere safe."
+          },
+          {
+            "id": "u6",
+            "start": 96,
+            "end": 101,
+            "text": "Step three. Check the fuse on the control board."
+          },
+          {
+            "id": "u7",
+            "start": 103,
+            "end": 106,
+            "text": "Don't touch the capacitor."
+          },
+          {
+            "id": "u8",
+            "start": 116,
+            "end": 126.9,
+            "text": "Next, vacuum the dust out of the burner tray."
+          },
+          {
+            "id": "u9",
+            "start": 131,
+            "end": 134,
+            "text": "The fuse looks fine."
+          },
+          {
+            "id": "u10",
+            "start": 136,
+            "end": 143,
+            "text": "Once that's done, refit the cover. New step. Restore the power."
+          },
+          {
+            "id": "u11",
+            "start": 250,
+            "end": 252,
+            "text": "Okay."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 12,
+          "end": 20,
+          "text": "First, switch the boiler off at the isolator. The light on the front panel goes out.",
+          "utterances": [
+            "u1",
+            "u2"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s2",
+          "start": 44,
+          "end": 49,
+          "text": "Next, remove the front cover. There are two screws underneath.",
+          "utterances": [
+            "u3"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s3",
+          "start": 60,
+          "end": 66,
+          "text": "Okay, then lift the cover away then set it down somewhere safe.",
+          "utterances": [
+            "u4",
+            "u5"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s4",
+          "start": 96,
+          "end": 106,
+          "text": "Step three. Check the fuse on the control board. Don't touch the capacitor.",
+          "utterances": [
+            "u6",
+            "u7"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s5",
+          "start": 116,
+          "end": 126.9,
+          "text": "Next, vacuum the dust out of the burner tray.",
+          "utterances": [
+            "u8"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s6",
+          "start": 131,
+          "end": 134,
+          "text": "The fuse looks fine.",
+          "utterances": [
+            "u9"
+          ],
+          "opening": "silence",
+          "stepLike": false
+        },
+        {
+          "id": "s7",
+          "start": 136,
+          "end": 139.888,
+          "text": "Once that's done, refit the cover.",
+          "utterances": [
+            "u10"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s8",
+          "start": 139.888,
+          "end": 143,
+          "text": "New step. Restore the power.",
+          "utterances": [
+            "u10"
+          ],
+          "opening": "new_step",
+          "stepLike": true
+        },
+        {
+          "id": "s9",
+          "start": 250,
+          "end": 252,
+          "text": "Okay.",
+          "utterances": [
+            "u11"
+          ],
+          "opening": "silence",
+          "stepLike": false
+        }
+      ]
+    },
+    {
+      "name": "a marker said on its own joins the step it announces, across the pause",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 0,
+            "end": 1,
+            "text": "Next."
+          },
+          {
+            "id": "u2",
+            "start": 8,
+            "end": 11,
+            "text": "Remove the cover."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 11,
+          "text": "Next. Remove the cover.",
+          "utterances": [
+            "u1",
+            "u2"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        }
+      ]
+    },
+    {
+      "name": "a short remark joins the step that follows it straight away",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 0,
+            "end": 1,
+            "text": "Right."
+          },
+          {
+            "id": "u2",
+            "start": 1.5,
+            "end": 4,
+            "text": "First, isolate the supply."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 4,
+          "text": "Right. First, isolate the supply.",
+          "utterances": [
+            "u1",
+            "u2"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        }
+      ]
+    },
+    {
+      "name": "a short remark before a long pause is left alone",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 0,
+            "end": 1,
+            "text": "Right."
+          },
+          {
+            "id": "u2",
+            "start": 9,
+            "end": 12,
+            "text": "First, isolate the supply."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 1,
+          "text": "Right.",
+          "utterances": [
+            "u1"
+          ],
+          "opening": "start",
+          "stepLike": false
+        },
+        {
+          "id": "s2",
+          "start": 9,
+          "end": 12,
+          "text": "First, isolate the supply.",
+          "utterances": [
+            "u2"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        }
+      ]
+    },
+    {
+      "name": "no marker and no pause is one segment that is not a step",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 0,
+            "end": 3,
+            "text": "The casing is quite corroded."
+          },
+          {
+            "id": "u2",
+            "start": 5,
+            "end": 8,
+            "text": "It was like that on the last visit."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 8,
+          "text": "The casing is quite corroded. It was like that on the last visit.",
+          "utterances": [
+            "u1",
+            "u2"
+          ],
+          "opening": "start",
+          "stepLike": false
+        }
+      ]
+    },
+    {
+      "name": "a decimal point does not end a sentence, and step needs a number",
+      "transcript": {
+        "utterances": [
+          {
+            "id": "u1",
+            "start": 0,
+            "end": 4,
+            "text": "It reads 3.5 volts. Then step back from the unit."
+          },
+          {
+            "id": "u2",
+            "start": 5,
+            "end": 9,
+            "text": "Step 4. Refit the fuse."
+          },
+          {
+            "id": "u3",
+            "start": 10,
+            "end": 13,
+            "text": "Step carefully over the pipework."
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s1",
+          "start": 0,
+          "end": 1.632,
+          "text": "It reads 3.5 volts.",
+          "utterances": [
+            "u1"
+          ],
+          "opening": "start",
+          "stepLike": false
+        },
+        {
+          "id": "s2",
+          "start": 1.632,
+          "end": 4,
+          "text": "Then step back from the unit.",
+          "utterances": [
+            "u1"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        },
+        {
+          "id": "s3",
+          "start": 5,
+          "end": 13,
+          "text": "Step 4. Refit the fuse. Step carefully over the pipework.",
+          "utterances": [
+            "u2",
+            "u3"
+          ],
+          "opening": "marker",
+          "stepLike": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,449 @@
+{
+  "version": 1,
+  "about": "The cross-reference index (Contracts/recorded-session.md §7.4) built from a timeline.json, a transcript.json and validated action events: the rows, in order. The timeline and transcript are the ones in recorded-session-timeline-v1.json and recorded-session-transcript-v1.json. Fictional.",
+  "rules": {
+    "rows": "one for each event, and one for each stretch of video under a step-like segment that was said and not seen",
+    "rowID": "e- and the event id; s-, the segment id, - and the number of the piece of video, from 1",
+    "step": "the last procedure_step at or before the row's start, while a procedure is running",
+    "order": "by video.from, then rowID by its bytes"
+  },
+  "timeline": {
+    "clock": {
+      "wallStart": 1800000000000,
+      "monotonicZero": 0
+    },
+    "tracks": [
+      {
+        "track": "video",
+        "parts": [
+          {
+            "partID": "v1",
+            "tZero": 0.25,
+            "duration": 119.75
+          },
+          {
+            "partID": "v2",
+            "tZero": 126.5,
+            "duration": 173.5
+          }
+        ]
+      },
+      {
+        "track": "audio",
+        "parts": [
+          {
+            "partID": "a1",
+            "tZero": 0.2,
+            "duration": 299.8
+          }
+        ]
+      }
+    ],
+    "gaps": [
+      {
+        "track": "video",
+        "from": 120,
+        "to": 126.5,
+        "reason": "stall"
+      },
+      {
+        "track": "video",
+        "from": 200,
+        "to": 200.4,
+        "reason": "filter"
+      }
+    ],
+    "events": [
+      {
+        "t": 39.6,
+        "kind": "tool_call",
+        "ref": "procedure_runner"
+      },
+      {
+        "t": 40,
+        "kind": "procedure_started",
+        "ref": "no-heat-check"
+      },
+      {
+        "t": 42,
+        "kind": "procedure_step",
+        "ref": "remove-cover"
+      },
+      {
+        "t": 58.3,
+        "kind": "photo",
+        "ref": "photo-1"
+      },
+      {
+        "t": 95,
+        "kind": "procedure_step",
+        "ref": "check-fuse"
+      },
+      {
+        "t": 110,
+        "kind": "procedure_completed",
+        "ref": "no-heat-check"
+      },
+      {
+        "t": 129.8,
+        "kind": "turn_started"
+      },
+      {
+        "t": 131,
+        "kind": "turn_logged",
+        "ref": "turn-2",
+        "text": "The fuse looks fine.",
+        "speaker": "technician",
+        "precision": "aligned"
+      },
+      {
+        "t": 143.8,
+        "kind": "turn_logged",
+        "ref": "turn-3",
+        "text": "Noted. Refit the cover when you are ready.",
+        "speaker": "assistant",
+        "precision": "coarse"
+      },
+      {
+        "t": 144,
+        "kind": "assistant_speaking_began"
+      },
+      {
+        "t": 144,
+        "kind": "capture_silenced"
+      },
+      {
+        "t": 147.5,
+        "kind": "assistant_speaking_ended"
+      },
+      {
+        "t": 147.5,
+        "kind": "capture_passed"
+      },
+      {
+        "t": 240,
+        "kind": "user_marker"
+      }
+    ],
+    "candidates": [
+      {
+        "from": 12,
+        "to": 143,
+        "certainty": "likely",
+        "reason": "step_run"
+      },
+      {
+        "from": 40,
+        "to": 110,
+        "certainty": "certain",
+        "reason": "procedure_run"
+      },
+      {
+        "from": 210,
+        "to": 270,
+        "certainty": "certain",
+        "reason": "user_marker"
+      }
+    ]
+  },
+  "transcript": {
+    "utterances": [
+      {
+        "id": "u1",
+        "start": 12,
+        "end": 16.5,
+        "text": "First, switch the boiler off at the isolator."
+      },
+      {
+        "id": "u2",
+        "start": 17,
+        "end": 20,
+        "text": "The light on the front panel goes out."
+      },
+      {
+        "id": "u3",
+        "start": 44,
+        "end": 49,
+        "text": "Next, remove the front cover. There are two screws underneath."
+      },
+      {
+        "id": "u4",
+        "start": 60,
+        "end": 63,
+        "text": "Okay, then lift the cover away"
+      },
+      {
+        "id": "u5",
+        "start": 63.2,
+        "end": 66,
+        "text": "then set it down somewhere safe."
+      },
+      {
+        "id": "u6",
+        "start": 96,
+        "end": 101,
+        "text": "Step three. Check the fuse on the control board."
+      },
+      {
+        "id": "u7",
+        "start": 103,
+        "end": 106,
+        "text": "Don't touch the capacitor."
+      },
+      {
+        "id": "u8",
+        "start": 116,
+        "end": 126.9,
+        "text": "Next, vacuum the dust out of the burner tray."
+      },
+      {
+        "id": "u9",
+        "start": 131,
+        "end": 134,
+        "text": "The fuse looks fine."
+      },
+      {
+        "id": "u10",
+        "start": 136,
+        "end": 143,
+        "text": "Once that's done, refit the cover. New step. Restore the power."
+      },
+      {
+        "id": "u11",
+        "start": 250,
+        "end": 252,
+        "text": "Okay."
+      }
+    ]
+  },
+  "events": [
+    {
+      "id": "a1",
+      "start": 13,
+      "end": 18,
+      "action": "switch off isolator",
+      "object": "isolator",
+      "evidence": [
+        {
+          "t": 14
+        },
+        {
+          "t": 16.5
+        }
+      ],
+      "utterances": [
+        "u1"
+      ],
+      "confidence": 0.9,
+      "low_confidence": false
+    },
+    {
+      "id": "a2",
+      "start": 45,
+      "end": 58,
+      "action": "remove front cover",
+      "object": "cover",
+      "tool": "screwdriver",
+      "evidence": [
+        {
+          "t": 46
+        },
+        {
+          "t": 52.5
+        },
+        {
+          "t": 57
+        }
+      ],
+      "utterances": [],
+      "confidence": 0.82,
+      "low_confidence": false
+    },
+    {
+      "id": "a3",
+      "start": 97,
+      "end": 104,
+      "action": "touch capacitor",
+      "object": "capacitor",
+      "evidence": [
+        {
+          "t": 100
+        }
+      ],
+      "utterances": [
+        "u7"
+      ],
+      "confidence": 0.7,
+      "low_confidence": false
+    },
+    {
+      "id": "a4",
+      "start": 205,
+      "end": 212,
+      "action": "tighten terminal screw",
+      "tool": "screwdriver",
+      "evidence": [
+        {
+          "t": 206
+        }
+      ],
+      "utterances": [],
+      "confidence": 0.3,
+      "low_confidence": true
+    }
+  ],
+  "expected": {
+    "rows": [
+      {
+        "rowID": "e-a1",
+        "utterances": [
+          "u1"
+        ],
+        "video": {
+          "partID": "v1",
+          "from": 13,
+          "to": 18
+        },
+        "keyframes": [
+          {
+            "t": 14
+          },
+          {
+            "t": 16.5
+          }
+        ],
+        "events": [
+          "a1"
+        ],
+        "agreement": "confirmed_by_speech"
+      },
+      {
+        "rowID": "e-a2",
+        "step": {
+          "procedureID": "no-heat-check",
+          "stepID": "remove-cover"
+        },
+        "utterances": [
+          "u3",
+          "u4"
+        ],
+        "video": {
+          "partID": "v1",
+          "from": 45,
+          "to": 58
+        },
+        "keyframes": [
+          {
+            "t": 46
+          },
+          {
+            "t": 52.5
+          },
+          {
+            "t": 57
+          }
+        ],
+        "events": [
+          "a2"
+        ],
+        "agreement": "confirmed_by_speech"
+      },
+      {
+        "rowID": "e-a3",
+        "step": {
+          "procedureID": "no-heat-check",
+          "stepID": "check-fuse"
+        },
+        "utterances": [],
+        "video": {
+          "partID": "v1",
+          "from": 97,
+          "to": 104
+        },
+        "keyframes": [
+          {
+            "t": 100
+          }
+        ],
+        "events": [
+          "a3"
+        ],
+        "agreement": "seen_not_said"
+      },
+      {
+        "rowID": "s-s5-1",
+        "utterances": [
+          "u8"
+        ],
+        "video": {
+          "partID": "v1",
+          "from": 116,
+          "to": 120
+        },
+        "keyframes": [],
+        "events": [],
+        "agreement": "said_not_seen"
+      },
+      {
+        "rowID": "s-s5-2",
+        "utterances": [
+          "u8"
+        ],
+        "video": {
+          "partID": "v2",
+          "from": 126.5,
+          "to": 126.9
+        },
+        "keyframes": [],
+        "events": [],
+        "agreement": "said_not_seen"
+      },
+      {
+        "rowID": "s-s7-1",
+        "utterances": [
+          "u10"
+        ],
+        "video": {
+          "partID": "v2",
+          "from": 136,
+          "to": 139.888
+        },
+        "keyframes": [],
+        "events": [],
+        "agreement": "said_not_seen"
+      },
+      {
+        "rowID": "s-s8-1",
+        "utterances": [
+          "u10"
+        ],
+        "video": {
+          "partID": "v2",
+          "from": 139.888,
+          "to": 143
+        },
+        "keyframes": [],
+        "events": [],
+        "agreement": "said_not_seen"
+      },
+      {
+        "rowID": "e-a4",
+        "utterances": [],
+        "video": {
+          "partID": "v2",
+          "from": 205,
+          "to": 212
+        },
+        "keyframes": [
+          {
+            "t": 206
+          }
+        ],
+        "events": [
+          "a4"
+        ],
+        "agreement": "seen_not_said"
+      }
+    ]
+  }
+}

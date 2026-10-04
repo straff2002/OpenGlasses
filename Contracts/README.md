@@ -279,6 +279,7 @@ GOMODCACHE="$PWD/Transport/.tools/gomod" GOCACHE="$PWD/Transport/.tools/gocache"
   go -C Transport/mobile-core test -race -tags noassets ./...
 python3 Contracts/tests/test_manual_contracts.py
 python3 Contracts/tests/test_inline_entitlement.py
+python3 Contracts/tests/test_recorded_session_contracts.py
 ```
 
 The Swift script copies the actual production verification/ZIP/manifest sources unchanged into
@@ -289,6 +290,9 @@ The inline-entitlement runner likewise copies the production licence, profile an
 sources and runs their negative tests. Its only test-only seams replace unrelated app settings and
 tier types; signatures and association checks are the production implementations. It does not
 exercise the iOS enrolment UI or a Syncthing connection.
+The recorded-session runner copies the phone's recorded-job sources — all of them pure — and runs
+their tests against the timeline, transcript, segment, action-event, agreement and index fixtures.
+The signed bundle manifest and the office's receipt are not among them yet.
 
 `generate-fixture.go` derives fictional test keys from public labels, without production authority.
 It deterministically generates the assignment, tiny publisher-signed archive and public-key

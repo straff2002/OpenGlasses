@@ -1,0 +1,1262 @@
+{
+  "version": 1,
+  "about": "Validation of a video model's action events (Contracts/recorded-session.md §7.2). Each case is one model output checked against the timeline, transcript and analysed span below, with the result it must give. Fictional.",
+  "rules": {
+    "confidenceFloor": 0.4,
+    "actionCharacters": [
+      1,
+      200
+    ],
+    "objectAndToolCharacters": [
+      0,
+      80
+    ],
+    "idCharacters": [
+      1,
+      80
+    ],
+    "rejectionOrder": [
+      "not_an_object",
+      "no_id",
+      "duplicate_id",
+      "times_missing",
+      "times_reversed",
+      "outside_span",
+      "outside_media",
+      "action_length",
+      "object_length",
+      "tool_length",
+      "no_evidence"
+    ],
+    "repairs": [
+      "evidence_removed",
+      "utterance_removed"
+    ]
+  },
+  "timeline": {
+    "clock": {
+      "wallStart": 1800000000000,
+      "monotonicZero": 0
+    },
+    "tracks": [
+      {
+        "track": "video",
+        "parts": [
+          {
+            "partID": "v1",
+            "tZero": 0.25,
+            "duration": 119.75
+          },
+          {
+            "partID": "v2",
+            "tZero": 126.5,
+            "duration": 173.5
+          }
+        ]
+      },
+      {
+        "track": "audio",
+        "parts": [
+          {
+            "partID": "a1",
+            "tZero": 0.2,
+            "duration": 299.8
+          }
+        ]
+      }
+    ],
+    "gaps": [
+      {
+        "track": "video",
+        "from": 120,
+        "to": 126.5,
+        "reason": "stall"
+      },
+      {
+        "track": "video",
+        "from": 200,
+        "to": 200.4,
+        "reason": "filter"
+      }
+    ],
+    "events": [
+      {
+        "t": 39.6,
+        "kind": "tool_call",
+        "ref": "procedure_runner"
+      },
+      {
+        "t": 40,
+        "kind": "procedure_started",
+        "ref": "no-heat-check"
+      },
+      {
+        "t": 42,
+        "kind": "procedure_step",
+        "ref": "remove-cover"
+      },
+      {
+        "t": 58.3,
+        "kind": "photo",
+        "ref": "photo-1"
+      },
+      {
+        "t": 95,
+        "kind": "procedure_step",
+        "ref": "check-fuse"
+      },
+      {
+        "t": 110,
+        "kind": "procedure_completed",
+        "ref": "no-heat-check"
+      },
+      {
+        "t": 129.8,
+        "kind": "turn_started"
+      },
+      {
+        "t": 131,
+        "kind": "turn_logged",
+        "ref": "turn-2",
+        "text": "The fuse looks fine.",
+        "speaker": "technician",
+        "precision": "aligned"
+      },
+      {
+        "t": 143.8,
+        "kind": "turn_logged",
+        "ref": "turn-3",
+        "text": "Noted. Refit the cover when you are ready.",
+        "speaker": "assistant",
+        "precision": "coarse"
+      },
+      {
+        "t": 144,
+        "kind": "assistant_speaking_began"
+      },
+      {
+        "t": 144,
+        "kind": "capture_silenced"
+      },
+      {
+        "t": 147.5,
+        "kind": "assistant_speaking_ended"
+      },
+      {
+        "t": 147.5,
+        "kind": "capture_passed"
+      },
+      {
+        "t": 240,
+        "kind": "user_marker"
+      }
+    ],
+    "candidates": [
+      {
+        "from": 12,
+        "to": 143,
+        "certainty": "likely",
+        "reason": "step_run"
+      },
+      {
+        "from": 40,
+        "to": 110,
+        "certainty": "certain",
+        "reason": "procedure_run"
+      },
+      {
+        "from": 210,
+        "to": 270,
+        "certainty": "certain",
+        "reason": "user_marker"
+      }
+    ]
+  },
+  "transcript": {
+    "utterances": [
+      {
+        "id": "u1",
+        "start": 12,
+        "end": 16.5,
+        "text": "First, switch the boiler off at the isolator."
+      },
+      {
+        "id": "u2",
+        "start": 17,
+        "end": 20,
+        "text": "The light on the front panel goes out."
+      },
+      {
+        "id": "u3",
+        "start": 44,
+        "end": 49,
+        "text": "Next, remove the front cover. There are two screws underneath."
+      },
+      {
+        "id": "u4",
+        "start": 60,
+        "end": 63,
+        "text": "Okay, then lift the cover away"
+      },
+      {
+        "id": "u5",
+        "start": 63.2,
+        "end": 66,
+        "text": "then set it down somewhere safe."
+      },
+      {
+        "id": "u6",
+        "start": 96,
+        "end": 101,
+        "text": "Step three. Check the fuse on the control board."
+      },
+      {
+        "id": "u7",
+        "start": 103,
+        "end": 106,
+        "text": "Don't touch the capacitor."
+      },
+      {
+        "id": "u8",
+        "start": 116,
+        "end": 126.9,
+        "text": "Next, vacuum the dust out of the burner tray."
+      },
+      {
+        "id": "u9",
+        "start": 131,
+        "end": 134,
+        "text": "The fuse looks fine."
+      },
+      {
+        "id": "u10",
+        "start": 136,
+        "end": 143,
+        "text": "Once that's done, refit the cover. New step. Restore the power."
+      },
+      {
+        "id": "u11",
+        "start": 250,
+        "end": 252,
+        "text": "Okay."
+      }
+    ]
+  },
+  "analysedSpan": {
+    "from": 10,
+    "to": 290
+  },
+  "cases": [
+    {
+      "name": "valid; a member nobody defined is dropped",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 13,
+            "end": 18,
+            "action": "switch off isolator",
+            "object": "isolator",
+            "evidence": [
+              {
+                "t": 16.5
+              },
+              {
+                "t": 14
+              },
+              {
+                "t": 14
+              }
+            ],
+            "utterances": [
+              "u1"
+            ],
+            "confidence": 0.9,
+            "note": "wearing gloves"
+          }
+        ],
+        "view_limitations": [
+          "hands leave the frame at times",
+          "  "
+        ],
+        "partial_view": false
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a1",
+              "start": 13,
+              "end": 18,
+              "action": "switch off isolator",
+              "object": "isolator",
+              "evidence": [
+                {
+                  "t": 14
+                },
+                {
+                  "t": 16.5
+                }
+              ],
+              "utterances": [
+                "u1"
+              ],
+              "confidence": 0.9,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [],
+        "view_limitations": [
+          "hands leave the frame at times"
+        ],
+        "partial_view": false
+      }
+    },
+    {
+      "name": "reversed times, and an event with no length",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 58,
+            "end": 45,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 50
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 45,
+            "end": 45,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 45
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "times_reversed"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "times_reversed"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "evidence outside the event is taken out; an event left with none is dropped",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              },
+              {
+                "t": 59.5
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 10
+              },
+              {
+                "t": "50"
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a1",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": [
+              "evidence_removed"
+            ]
+          }
+        ],
+        "rejected": [
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "no_evidence"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "no evidence",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "no_evidence"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "no_evidence"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "an utterance the transcript does not have is taken out; the rest are put in transcript order",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "utterances": [
+              "u4",
+              "u99",
+              "u3",
+              "u3"
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a1",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [
+                "u3",
+                "u4"
+              ],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": [
+              "utterance_removed"
+            ]
+          }
+        ],
+        "rejected": [],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "confidence: missing, below the floor, at the floor, out of range, not a number",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ]
+          },
+          {
+            "id": "a2",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.39
+          },
+          {
+            "id": "a3",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.4
+          },
+          {
+            "id": "a4",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 1.3
+          },
+          {
+            "id": "a5",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": "high"
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a1",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": null,
+              "low_confidence": true
+            },
+            "repairs": []
+          },
+          {
+            "event": {
+              "id": "a2",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.39,
+              "low_confidence": true
+            },
+            "repairs": []
+          },
+          {
+            "event": {
+              "id": "a3",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.4,
+              "low_confidence": false
+            },
+            "repairs": []
+          },
+          {
+            "event": {
+              "id": "a4",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": null,
+              "low_confidence": true
+            },
+            "repairs": []
+          },
+          {
+            "event": {
+              "id": "a5",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": null,
+              "low_confidence": true
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "outside the analysed span",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 4,
+            "end": 12,
+            "action": "open plant room door",
+            "evidence": [
+              {
+                "t": 11
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 285,
+            "end": 290.001,
+            "action": "close plant room door",
+            "evidence": [
+              {
+                "t": 286
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a3",
+            "start": 285,
+            "end": 290,
+            "action": "close plant room door",
+            "evidence": [
+              {
+                "t": 286
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a3",
+              "start": 285,
+              "end": 290,
+              "action": "close plant room door",
+              "evidence": [
+                {
+                  "t": 286
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "outside_span"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "outside_span"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "not wholly on video: across the stall, into the filter gap, and up to a gap's edge",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 119,
+            "end": 127,
+            "action": "vacuum burner tray",
+            "evidence": [
+              {
+                "t": 119.5
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 199,
+            "end": 200.2,
+            "action": "tighten terminal screw",
+            "evidence": [
+              {
+                "t": 199.5
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a3",
+            "start": 199,
+            "end": 201,
+            "action": "tighten terminal screw",
+            "evidence": [
+              {
+                "t": 199.5
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a4",
+            "start": 195,
+            "end": 200,
+            "action": "tighten terminal screw",
+            "evidence": [
+              {
+                "t": 199.5
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a5",
+            "start": 200.4,
+            "end": 204,
+            "action": "tighten terminal screw",
+            "evidence": [
+              {
+                "t": 201
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a4",
+              "start": 195,
+              "end": 200,
+              "action": "tighten terminal screw",
+              "evidence": [
+                {
+                  "t": 199.5
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          },
+          {
+            "event": {
+              "id": "a5",
+              "start": 200.4,
+              "end": 204,
+              "action": "tighten terminal screw",
+              "evidence": [
+                {
+                  "t": 201
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "outside_media"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "outside_media"
+          },
+          {
+            "index": 2,
+            "id": "a3",
+            "reason": "outside_media"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "action, object and tool lengths; an empty object is no object",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "  ",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": 45,
+            "end": 58,
+            "action": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a3",
+            "start": 45,
+            "end": 58,
+            "action": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "object": "",
+            "tool": " screwdriver ",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a4",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "object": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a5",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "tool": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a6",
+            "start": 45,
+            "end": 58,
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a3",
+              "start": 45,
+              "end": 58,
+              "action": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "tool": "screwdriver",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "action_length"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "action_length"
+          },
+          {
+            "index": 3,
+            "id": "a4",
+            "reason": "object_length"
+          },
+          {
+            "index": 4,
+            "id": "a5",
+            "reason": "tool_length"
+          },
+          {
+            "index": 5,
+            "id": "a6",
+            "reason": "action_length"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "ids: missing, not text, used twice; an entry that is not an object",
+      "model_output": {
+        "action_events": [
+          {
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": 7,
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a1",
+            "start": 45,
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a1",
+            "start": 97,
+            "end": 104,
+            "action": "check fuse",
+            "evidence": [
+              {
+                "t": 100
+              }
+            ],
+            "confidence": 0.8
+          },
+          "remove front cover"
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a1",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [
+          {
+            "index": 0,
+            "id": null,
+            "reason": "no_id"
+          },
+          {
+            "index": 1,
+            "id": null,
+            "reason": "no_id"
+          },
+          {
+            "index": 3,
+            "id": "a1",
+            "reason": "duplicate_id"
+          },
+          {
+            "index": 4,
+            "id": null,
+            "reason": "not_an_object"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "times: missing, not a number; times are rounded to the millisecond",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a2",
+            "start": "45",
+            "end": 58,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46
+              }
+            ],
+            "confidence": 0.8
+          },
+          {
+            "id": "a3",
+            "start": 45.0004,
+            "end": 57.9996,
+            "action": "remove front cover",
+            "evidence": [
+              {
+                "t": 46.0006
+              }
+            ],
+            "confidence": 0.8
+          }
+        ]
+      },
+      "expected": {
+        "kept": [
+          {
+            "event": {
+              "id": "a3",
+              "start": 45,
+              "end": 58,
+              "action": "remove front cover",
+              "evidence": [
+                {
+                  "t": 46.001
+                }
+              ],
+              "utterances": [],
+              "confidence": 0.8,
+              "low_confidence": false
+            },
+            "repairs": []
+          }
+        ],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "times_missing"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "times_missing"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "the first failure is the reason: reversed before outside the span before no evidence",
+      "model_output": {
+        "action_events": [
+          {
+            "id": "a1",
+            "start": 400,
+            "end": 300,
+            "action": "",
+            "evidence": []
+          },
+          {
+            "id": "a2",
+            "start": 300,
+            "end": 400,
+            "action": "",
+            "evidence": []
+          },
+          {
+            "id": "a3",
+            "start": 119,
+            "end": 127,
+            "action": "",
+            "evidence": []
+          }
+        ]
+      },
+      "expected": {
+        "kept": [],
+        "rejected": [
+          {
+            "index": 0,
+            "id": "a1",
+            "reason": "times_reversed"
+          },
+          {
+            "index": 1,
+            "id": "a2",
+            "reason": "outside_span"
+          },
+          {
+            "index": 2,
+            "id": "a3",
+            "reason": "outside_media"
+          }
+        ],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    },
+    {
+      "name": "a view not said to be whole is partial",
+      "model_output": {
+        "action_events": [],
+        "view_limitations": "none",
+        "partial_view": "false"
+      },
+      "expected": {
+        "kept": [],
+        "rejected": [],
+        "view_limitations": [],
+        "partial_view": true
+      }
+    }
+  ]
+}

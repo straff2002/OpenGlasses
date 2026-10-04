@@ -59,7 +59,7 @@ and nothing more.
 | Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, the grant and receipt messages, and the phone's `bulk` folder | **P4 first part built** (opt-in build): a grant kept, an assignment committed and receipted, its archive taken from `bulk` when the route allows, verified under the organisation's granted publisher and handed to the installer | a manual from a real office to a physical phone; the office side of `bulk` |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
 | Transcript to the office | travels with the report, under HD's audience rule | an attachment like any other | **P2 built**: its own document for the office only, and inside the audit export, unless the organisation's rule is *never* — then the report says *omitted* | the same physical run |
-| Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
+| Recorded job to the office | [recorded session](../../Contracts/recorded-session.md) draft; fixtures for the timeline, the transcript and the shared rules | none | Plan HE's pure core built (headless): the clock, timeline and transcript files, chunking, the sync state machine, eligibility, retention, and the contract's rules as reference code | the signed manifest and the office's receipt; capture; the bundle and its sync; a device run |
 | Team learning both ways | design only | none | none | its own plan |
 
 What works today without any of it: a technician emails the report, the work-order PDF and the
@@ -667,7 +667,8 @@ Choices made where the contract left room:
 
 ### P5 — Recorded jobs
 
-Plan HE, unchanged; listed so the order is whole.
+Plan HE, unchanged; listed so the order is whole. Its own phases are in that plan; its pure core
+(HE P0) was built 2026-10-05.
 
 ### P6 — Physical evidence
 
