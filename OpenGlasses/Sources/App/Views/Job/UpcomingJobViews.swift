@@ -23,6 +23,7 @@ struct UpcomingJobView: View {
         Group {
             if let job {
                 List {
+                    JobUpdatesSection(jobID: job.provenance?.identity?.jobID)
                     detailsSection(job)
                     JobNeedsSection(needs: job.needs)
                     actionsSection(job)

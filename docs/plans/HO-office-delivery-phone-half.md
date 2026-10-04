@@ -10,7 +10,9 @@ counts it delivered only on the office's receipt. What P2 still owes is listed u
 (the `bulk` folder) built 2026-10-05 in the opt-in build, tested headless: an assigned manual
 is verified under the organisation's own granted publisher, installed and receipted, and an
 attachment a signed job names by digest follows it and opens from the job. What P4 still owes
-is listed under it. P3, P5 and P6 are planned. A build order, not a new design:
+is listed under it. P3 (updates on a job) built 2026-10-05 in the opt-in build, tested headless:
+the contract, the transport, and a service that keeps, receipts and shows on the job what the
+office says about it. P5 and P6 are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -52,7 +54,7 @@ and nothing more.
 | Stay joined: check-in and renewal | draft v1, fixtures | messages, the office key holder's operations, and the phone's folder handling | **P1 built** (opt-in build): the challenge answered once, the result through the pairing gate, the lease renewed, the folders restarted under the new generation | a phone renewed by a real office, and one left unreachable past a challenge then renewed on return. The office app does not yet call the key holder's operations |
 | Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
 | Job to the phone | managed job + receipt, fixtures; [job file](../../Contracts/job-file.md) format 2, fixture | intake, durable commit, receipt offered for signing; job-file format 2 reference | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published. **P0b built** (every build): a format-2 job keeps the office's identifier and revision; a later revision revises the job, the same one twice is one job | one signed format-2 job to a physical phone and its receipt accepted by the office |
-| Update or note on a job the phone holds | [job updates](../../Contracts/job-updates.md), draft v1, fixtures | messages: the update and the phone's receipt | none | P3's phone half |
+| Update or note on a job the phone holds | [job updates](../../Contracts/job-updates.md), draft v1, fixtures | messages: the update and the phone's receipt, and the phone's listing, receipt and outbound list | **P3 built** (opt-in build): an update on a job is verified against the binding, kept under its job and sequence, receipted, and shown on the job when the technician opens it | an update from a real office to a physical phone; a notification and an unread mark; the update in the exported record |
 | Attachments with a job | [bulk content](../../Contracts/office-bulk.md) §5: a job names them by digest and they follow in `bulk` | `jobfile.ReadNeeds` | **P4 second part built**: the validator reads them in format 2, the job keeps them, and (opt-in build) an attachment a signed job names is taken from `bulk`, checked and opened from the job | an attachment from a real office to a physical phone |
 | Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, the grant and receipt messages, and the phone's `bulk` folder | **P4 first part built** (opt-in build): a grant kept, an assignment committed and receipted, its archive taken from `bulk` when the route allows, verified under the organisation's granted publisher and handed to the installer | a manual from a real office to a physical phone; the office side of `bulk` |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
@@ -464,7 +466,7 @@ update on a job the phone holds, information only, shown when the technician ope
 **Contract drafted (2026-10-05):** [`Contracts/job-updates.md`](../../Contracts/job-updates.md),
 with `Transport/mobile-core/jobupdate` as its reference implementation and golden fixtures
 (three updates on the golden format-2 job — a part dispatched, the visit moved, a note — and the
-phone's receipt for the first). The phone half has not started. What the contract settled:
+phone's receipt for the first). What the contract settled:
 
 - **One closed, flat payload for every kind.** `parts`, `schedule` and `note` share one list
   of members; one that does not apply is empty. A kind word this version does not define still
@@ -481,6 +483,54 @@ phone's receipt for the first). The phone half has not started. What the contrac
   (HN's open question 1).
 - **Left out of v1:** a reply from the phone, attachments on an update (a job's files travel
   as the job's own attachments), and applying a new time to the job.
+
+**Phone half, as built (2026-10-05).** In the opt-in build:
+
+- **Transport** (`Transport/mobile-core/managed_updates.go`). `ManagedJobUpdatesPending` lists
+  the updates in `control/updates/` that verify against the binding now and are under their own
+  identifier; one that can never verify is remembered once, one that is only not current waits.
+  `ManagedJobUpdateReceiptPayload` builds the receipt once and returns the same bytes when
+  asked again; `PublishManagedJobUpdateReceipt` takes the phone's signature, checks it, and
+  publishes at `records/updates/`, which the outbound guard serves. A receipt is let go once the
+  office has taken its update out of `control`.
+- **`OfficeJobUpdate`** is the verifier and the receipt's closed form;
+  `OfficePhoneIdentity.signJobUpdateReceipt` signs nothing else.
+- **`OfficeJobUpdateService`**, on the connection's poll, after jobs: through the pairing gate,
+  commits each update that verifies under its job and sequence, with what the phone held for
+  the job at that moment, and gives its receipt. The same file twice is one update; other bytes
+  at a held sequence, or a reused identifier, are refused once and never receipted. An update
+  for a job the phone does not hold is kept and dropped only when it has run out. Its record is
+  `Application Support/AvenkinOffice/job-updates.json`, and it goes when the phone leaves.
+- **Shown on the job**, ahead and open, above the job's details, under *Updates from the
+  office*, newest first: a part with its state and expected date, a new time, or a note, each
+  with the office's own text, marked *New* until the job has been opened with it. Opening the
+  job records when each was first shown. Nothing else changes: no clock, no notification, and
+  the job itself is as it was.
+
+Exit, as tests (`OfficeJobUpdateTests`, `OfficeJobUpdateServiceTests`): the three golden
+updates arrive out of order, are kept, receipted — the parts receipt is the golden receipt byte
+for byte — and are shown newest first; nothing is opened until the job is; a second pass or a
+relaunch takes nothing twice; what does not verify, conflicts or reuses an identifier is never
+kept or receipted; nothing is taken in on a pairing that does not verify.
+
+Choices made where the contract and Plan HN left room:
+
+- **No notification, and no unread mark outside the job.** HN's §3 and §4 — the notification,
+  the switch that starts a clock, the read-out — are HN's own phases and need its several-open-
+  jobs model first. Here an update waits on the job's screen.
+- **Not in the exported record yet.** HN wants each update written to the job's record when
+  received and when first opened. Both times are kept in the phone's own record of updates; the
+  work record does not carry them.
+- **Never to a model.** An update's text is shown and is not put in any prompt.
+- **Room is made only from what has been seen** (50 a job, 200 in all): otherwise the arriving
+  update waits in the office's folder, unreceipted.
+
+**Still owed for P3:**
+
+- An update from a real office to a physical phone, and its receipt read by the office.
+- The notification, the unread mark on the Jobs list, and reading an update aloud (Plan HN P3).
+- The update in the visit's exported record.
+- The reply (Plan HN P4), which needs its own contract.
 
 ### P4 — The `bulk` folder: job attachments and manuals (*contract first* for three pieces)
 

@@ -267,6 +267,41 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    func managedJobUpdatesPending() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedJobUpdatesPending(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedJobUpdateReceiptPayload(updateID: String, jobState: String, at: Int64) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedJobUpdateReceiptPayload(
+            updateID, jobState: jobState, at: at, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedJobUpdateReceipt(updateID: String, signatureBase64: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedJobUpdateReceipt(
+            updateID, signatureBase64: signatureBase64, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?

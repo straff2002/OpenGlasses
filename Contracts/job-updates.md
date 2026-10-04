@@ -1,4 +1,4 @@
-# Job update contract — draft v1: an update on a job the phone already has (messages and fixtures; no phone half yet)
+# Job update contract — draft v1: an update on a job the phone already has (messages, fixtures, and the phone's half in the opt-in build)
 
 Drafted 2026-10-05 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P3; the design
 it serves is Plan [HN](../docs/plans/HN-job-updates-and-several-open-jobs.md) §2. This is the
@@ -11,8 +11,21 @@ requirements or marked *Assumption*.
 
 **Built so far.** `Transport/mobile-core/jobupdate` implements both messages — signing, the
 two-step signing a phone needs, the signing an office key-holder does over exact bytes, and
-each side's checks — and the golden fixtures are in §8. **Nothing on the phone reads an update
-yet**, the phone transport does not look in `control/updates/`, and no office sends one.
+each side's checks — and the golden fixtures are in §8.
+
+**The phone's half is built, in the opt-in office transport build only** (Plan HO P3,
+2026-10-05). The phone transport lists the updates in `control/updates/` that read as their own
+messages for this phone now, offers the receipt's exact bytes for the phone application key to
+sign, publishes it at `records/updates/`, serves only receipts it published, and lets a receipt
+go once the office has taken its update out of `control`. In Swift, `OfficeJobUpdate` is the
+verifier and `OfficeJobUpdateService` keeps each update under its job and sequence, receipts
+it, and shows a job's updates on the job, newest first, when the technician opens it. That is
+tested headless against the golden fixtures and an in-memory stand-in for the transport. **No
+update has reached a physical phone from an office, and no office sends one.**
+
+**Not built on the phone:** a notification, an unread mark outside the job's own screen, the
+update in the visit's exported record, reading an update aloud, and anything that applies an
+update to the job. The default app build links no transport and takes in no updates.
 
 **Builds on, unchanged:** the [managed folders](office-folders.md) and the peer binding they
 are opened under, the [job file](job-file.md) (format 2's `job_id` is what an update names),
@@ -117,6 +130,13 @@ job file with that `job_id` is on its list of jobs ahead or has been started.
   it. An update whose job never arrives is dropped when it expires.
 
 Whichever it is, the update is committed and receipted; the receipt says which (§6).
+
+As built on the phone: a job is matched by the `job_id` of its job file, signed or not — the
+update itself is the office's signed message for this phone, and showing it against a job that
+only claims the identifier shows nothing the office did not send here. The phone keeps at most
+50 updates a job and 200 in all. To make room it lets go of the oldest one the technician has
+already had open; when every one is unopened the arriving update **waits in the office's
+folder, unreceipted**, rather than push out one nobody has seen.
 
 ## 6. The receipt
 

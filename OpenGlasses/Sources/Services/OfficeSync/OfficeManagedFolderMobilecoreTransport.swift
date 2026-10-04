@@ -107,6 +107,20 @@ enum OfficeManagedFolderMobilecoreTransport {
                 assignmentID: assignmentID, outcome: outcome, signatureBase64: signatureBase64)
         }
 
+        func jobUpdatesPending() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedJobUpdatesPending()
+        }
+
+        func jobUpdateReceiptPayload(updateID: String, jobState: String, at: Int64) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedJobUpdateReceiptPayload(
+                updateID: updateID, jobState: jobState, at: at)
+        }
+
+        func publishJobUpdateReceipt(updateID: String, signatureBase64: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedJobUpdateReceipt(
+                updateID: updateID, signatureBase64: signatureBase64)
+        }
+
         func stop() async {
             await OfficeTransportIdentity.shared.stop()
         }

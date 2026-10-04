@@ -1108,6 +1108,22 @@ class AppState: ObservableObject, AppStateProtocol {
         return OfficeManualService(seams: seams)
     }()
 
+    /// What the office says about jobs this phone has: kept, receipted and shown on the job.
+    /// Nil in a build without the office transport.
+    lazy var officeJobUpdates: OfficeJobUpdateService? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else { return nil }
+        var seams = OfficeJobUpdateService.Seams.app(transport: transport)
+        seams.jobState = { [weak self] jobID in
+            OfficeJobUpdateService.jobState(
+                jobID,
+                ahead: (self?.upcomingJobs.jobs ?? []).compactMap { $0.provenance?.identity?.jobID },
+                started: FieldSessionService.shared.history.compactMap { session in
+                    session.jobFile?.identity.map { ($0.jobID, session.endedAt != nil) }
+                })
+        }
+        return OfficeJobUpdateService(seams: seams)
+    }()
+
     /// The attachments that follow a job from the office. Nil in a build without the office
     /// transport.
     lazy var officeJobAttachments: OfficeJobAttachmentStore? = {
@@ -1229,8 +1245,10 @@ class AppState: ObservableObject, AppStateProtocol {
                     VaultRegistry.shared.reloadUserManifests()
                 }
                 self.upcomingJobs.removeAll()
-                // Attachments belong to the organisation's jobs, and go with them.
+                // Attachments belong to the organisation's jobs, and go with them; so does what
+                // the office said about them.
                 self.officeJobAttachments?.removeAll()
+                self.officeJobUpdates?.removeAll()
                 StagedExportCoordinator.fieldSession.revokeAll()
                 // The turn records name the organisation's manuals and jobs.
                 TurnTraceStore.shared.removeAll()
@@ -1549,6 +1567,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Check-in first: a phone the office has removed takes in nothing else.
             if let checkIn = self?.officeCheckIn, (try? await checkIn.sweep()) == .removed { return }
             try? await self?.officeJobs?.sweep()
+            try? await self?.officeJobUpdates?.sweep()
             try? await self?.officeManuals?.sweep()
             await self?.officeReportPump?.tick()
         }

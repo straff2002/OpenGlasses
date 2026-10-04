@@ -21,6 +21,9 @@ starts the folders with a binding it has verified at that moment and closes them
 changes while they start; `OfficeManagedJobIntake` hands each committed job to the job-file
 import and its review and signs the receipt with the phone application key. This is tested
 against an in-memory stand-in for the transport, not yet on a physical phone against an office.
+**Updates on a job** (Plan HO P3): the transport lists `control/updates/`, publishes the
+phone's receipt at `records/updates/<updateID>.envelope.json` once the phone application key has
+signed it, serves it, and lets it go once the office has taken the update away.
 **Check-in, renewal and removal use the same two folders** (Plan HO P1): the transport reads
 `control/checkin/` and `control/removal/`, publishes `records/checkin/<challengeID>.envelope.json`
 and `records/removal/<removalID>.envelope.json` once the phone application key has signed them,
