@@ -1,4 +1,4 @@
-# Office check-in, renewal and removal contract — draft v1 (messages, key-holder operations and fixtures; no app uses it yet)
+# Office check-in, renewal and removal contract — draft v1 (messages, key-holder operations and fixtures; the phone's half is built in the opt-in build and not yet run against an office)
 
 Drafted 2026-10-04 for Plan [FX](../docs/plans/FX-desktop-office-and-device-sync.md). This is the
 agreement between the phone app and Avenkin Office about how a phone that joined an office by
@@ -10,15 +10,25 @@ into the office repository.
 **It asserts nothing about the office app's internals.** Statements about the office are
 requirements or marked *Assumption*.
 
-**Built so far, in the Go transport only:** `Transport/mobile-core/checkin` implements every
-message here — signing, the two-step signing a phone needs, and each side's checks — and the
-golden fixtures in §11. The connection helper (`cmd/office-preview`) has the three operations
-of the key holder in §5 and §8: `sign-check-in-challenge` (office application key),
-`renew-peer-binding` and `sign-office-removal` (administrator key), each checked before a key
-signs; the generation record keeps the removed mark and the binding last issued. **Neither app
-uses any of it yet:** the phone transport does not read `control/checkin/` or `control/removal/`
-or publish a check-in, no Swift code calls it, and the office app does not call the helper's
-new operations.
+**Built so far.** `Transport/mobile-core/checkin` implements every message here — signing, the
+two-step signing a phone needs, and each side's checks — and the golden fixtures in §11. The
+connection helper (`cmd/office-preview`) has the three operations of the key holder in §5 and
+§8: `sign-check-in-challenge` (office application key), `renew-peer-binding` and
+`sign-office-removal` (administrator key), each checked before a key signs; the generation
+record keeps the removed mark and the binding last issued.
+
+**The phone's half is built, in the opt-in office transport build only** (Plan
+[HO](../docs/plans/HO-office-delivery-phone-half.md) P1, 2026-10-04). The phone transport reads
+`control/checkin/` and `control/removal/`, builds the check-in and the removal receipt as exact
+bytes for the phone application key to sign, publishes them under `records/`, and its outbound
+guard serves exactly those published files. In Swift, `OfficeCheckIn` is the phone's verifier
+for every message here; `OfficeCheckInService` answers the live challenge once and keeps the
+exact bytes and nonce; `OfficePairingService.renew(withResult:waiting:)` is §7 in its order, and
+`remove(withRemoval:)` is §8. This is tested headless against an in-memory stand-in for the
+transport and the golden fixtures. **It has not been run on a physical phone against an
+office,** and the office app does not yet call the helper's operations, so no real phone has
+been renewed or removed this way. The default app build links no transport and does none of
+this.
 
 **Builds on, unchanged:** the vendor-signed schema-2 profile and licence pair, the
 administrator-signed peer binding and its generation rule ([README](README.md), "Office authority
@@ -356,7 +366,9 @@ go -C Transport/mobile-core test -tags noassets ./checkin/ ./officepreview/ ./cm
 CHECKIN_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./checkin/   # regenerate
 ```
 
-Negative cases, covered in the Go tests and to be covered by the phone's verifier: a check-in for an expired, withdrawn, used or
+Negative cases, covered in the Go tests and, for the phone's side, in the portable Swift checks
+(`Contracts/tests/test_manual_contracts.py` for the messages, `test_inline_entitlement.py` for
+the pairing gate) against these fixtures: a check-in for an expired, withdrawn, used or
 foreign challenge; a check-in signed by a key other than the binding's; a check-in naming an
 older generation or another binding digest; a second check-in for one challenge; a result signed
 by the office application key instead of the administrator key; a result for another check-in,
