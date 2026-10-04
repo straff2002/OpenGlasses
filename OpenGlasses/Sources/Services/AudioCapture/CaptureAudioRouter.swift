@@ -41,6 +41,9 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
     private var arbiter = AudioSourceArbiter()
     private var wakeListening = false
     private var assistantSpeaking = false
+    /// Whether consumers are being handed silence right now, as the gate last decided. Read by a
+    /// recorded job's timeline, which writes down when the capture could not hear (Plan HE).
+    private(set) var isCaptureSilenced = false
     /// Source changes are serialised through one chained task: starting the standalone engine is
     /// async, and a listening toggle that arrives mid-start must not interleave with it.
     private var sourceTask: Task<Void, Never>?
@@ -194,6 +197,7 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
             includeAssistantVoice: includeAssistantVoice()
         )
         fanout.setSilenced(decision == .silence)
+        isCaptureSilenced = decision == .silence
     }
 
     private func publishConsumers() {

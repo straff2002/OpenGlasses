@@ -39,6 +39,7 @@ struct ActiveJobView: View {
     var onSendToday: (() -> Void)?
 
     @Environment(\.appAccent) private var accent
+    @EnvironmentObject private var appState: AppState
     @FocusState private var referenceFocused: Bool
     @State private var expandedTaskId: String?
 
@@ -73,9 +74,14 @@ struct ActiveJobView: View {
                                      evidenceSelection = chosen
                                  })
             }
+            // "Record this job" for the office, and where that recording stands (Plan HE). Draws
+            // nothing on a phone with no office to record for.
+            JobRecordingSection(sessionID: FieldSessionService.shared.activeSession?.id)
             actionsSection
         }
         .ogFormStyle()
+        // Asked here rather than by the section, which draws nothing until it knows the answer.
+        .task { await appState.jobRecordings?.refresh() }
     }
 
     // MARK: - The questions

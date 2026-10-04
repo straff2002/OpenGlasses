@@ -177,6 +177,9 @@ final class JobRecordingSyncService: ObservableObject {
             return
         }
         waiting[record.bundleID] = nil
+        // The medical local-only rule, asked where the bytes would leave: the conditions above are
+        // what the caller reported, and this is the guard's own answer.
+        try MedicalEgressGuard.check(.jobRecordingOfficeSync)
         _ = try await gate()   // nothing is published on a pairing that does not verify now
 
         let manifest = try seams.store.manifest(record)
@@ -237,6 +240,26 @@ final class JobRecordingSyncService: ObservableObject {
         try seams.store.delete(record)
         waiting[bundleID] = nil
         refresh()
+    }
+
+    /// How many recordings of these jobs the office has not acknowledged. A phone leaving its
+    /// organisation owes these as it owes undelivered reports.
+    func unacknowledged(sessionIDs: Set<String>) -> Int {
+        seams.store.records().filter { sessionIDs.contains($0.sessionID) && $0.acknowledgedAt == nil }.count
+    }
+
+    /// Takes these jobs' recordings out of the office's folder and forgets them, because the jobs
+    /// themselves are being removed from the phone. The files go with the jobs' folders; this is
+    /// the transport's half, and it reads which bundles they are before the folders are gone.
+    func withdrawForRemoval(sessionIDs: Set<String>) {
+        let bundleIDs = seams.store.records().filter { sessionIDs.contains($0.sessionID) }.map(\.bundleID)
+        guard !bundleIDs.isEmpty else { return }
+        for bundleID in bundleIDs { waiting[bundleID] = nil }
+        let transport = seams.transport
+        Task { @MainActor [weak self] in
+            for bundleID in bundleIDs { try? await transport.withdrawRecording(bundleID: bundleID, forget: true) }
+            self?.refresh()
+        }
     }
 
     /// Whether deleting this recording would delete the only copy: the office has not said it
@@ -340,3 +363,49 @@ final class JobRecordingSyncService: ObservableObject {
         }
     }
 }
+
+extension JobRecordingSyncService.Seams {
+    /// The seams as the app wires them: the receipts' trust from the pairing gate passing now, as
+    /// every other office service takes it.
+    @MainActor
+    static func app(transport: any OfficeManagedFolderTransport, store: JobRecordingBundleStore,
+                    pairing: @escaping @MainActor () -> OfficePairingService = { OfficePairingService() },
+                    conditions: @escaping @MainActor () -> SyncEligibility.Conditions) -> Self {
+        Self(
+            transport: transport, store: store,
+            trust: {
+                let binding = try await pairing().currentApprovedPeer().binding.payload
+                guard let officeKey = Data(base64Encoded: binding.officeApplicationKey) else {
+                    throw OfficePeerBinding.Refusal.invalidFields
+                }
+                return OfficeRecordingReceipt.Trust(
+                    organizationID: binding.organizationID, enrolmentID: binding.enrolmentID,
+                    officeID: binding.officeID, phoneTransportID: binding.phoneTransportID,
+                    officeApplicationKey: officeKey)
+            },
+            conditions: conditions)
+    }
+}
+
+extension JobRecordingSyncService {
+    /// What the connection to the office says about the pairing and whether the office is in
+    /// reach. While the engine runs the saved approval has verified and is verified again every
+    /// half minute; stopped, it has not. The gate asks again before anything is published either
+    /// way — this only decides what a waiting recording says.
+    static func pairing(_ state: OfficeFieldConnectionPolicy.State) -> (bindingIsCurrent: Bool, officeIsReachable: Bool) {
+        switch state {
+        case .connected: return (true, true)
+        case .waiting, .paused: return (true, false)
+        case .unavailable, .stopped: return (false, false)
+        }
+    }
+
+    /// Whether this phone's organisation settings are the office's and in force.
+    @MainActor
+    static func profileIsCurrent(_ manager: OrgProfileManager) -> Bool {
+        guard let record = manager.record, record.source == .office, record.revoked != true,
+              manager.profile != nil else { return false }
+        return !manager.contentLocked
+    }
+}
+

@@ -77,6 +77,26 @@ enum PrivacyFilterScope: String, CaseIterable {
     /// filtered, for both halves of constraint 1: no egress exists to filter, and an indiscriminate
     /// blur over the frame destroys exactly the signal these models are reading.
     case onDeviceVision
+    /// "Record this job" (Plan HE): the glasses' frames written, unfiltered, into the job's own
+    /// folder on this phone, and from there to the organisation's own office and nowhere else.
+    ///
+    /// **Unfiltered at capture, and the one exemption that is an egress.** Every other exempt
+    /// scope is exempt because its pixels never leave the device. This one is argued differently,
+    /// and the argument is written here rather than left to be inferred:
+    ///
+    /// - The app-wide blur switch does not govern it, in either direction. With the switch on, a
+    ///   relay-fed recording has holes — the relay drops every frame while the blur cannot run,
+    ///   and a phone in a pocket is a locked phone — and an office that receives a recording with
+    ///   holes cannot tell what happened in them. So capture is raw, and whether the recording is
+    ///   blurred is decided once, by the organisation, before it is sent.
+    /// - Private, protected storage on the phone is not egress. The only ways the pixels leave the
+    ///   job's folder are on the roster: `jobRecordingCapture` writes them there and
+    ///   `jobRecordingOfficeSync` sends the sealed bundle to the one office the phone is paired
+    ///   with. There is no share sheet, no Photos save and no report attachment.
+    /// - The person recording is told all of this first (`RecordingConsent`), and an organisation
+    ///   that requires blur gets no recording at all until the app can blur one
+    ///   (`JobRecordingAvailability`).
+    case officeRecording
 
     /// Whether the bystander blur is applied to this consumer when the setting is on.
     var isFiltered: Bool {
@@ -85,8 +105,22 @@ enum PrivacyFilterScope: String, CaseIterable {
              .recording, .broadcast, .expertStream, .visionAssessment, .assistiveGuidance,
              .toolPhotoCapture, .photoLibrary, .remoteFrameRequest:
             return true
+        case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording:
+            return false
+        }
+    }
+
+    /// Whether pixels under this scope leave the device at all. Every filtered scope is an egress
+    /// — that is why it is filtered. Of the unfiltered ones, only `officeRecording` is: its one
+    /// destination is the organisation's own office, and the roster names its exits.
+    var leavesTheDevice: Bool {
+        switch self {
         case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision:
             return false
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .recording, .broadcast,
+             .expertStream, .visionAssessment, .assistiveGuidance, .toolPhotoCapture, .photoLibrary,
+             .remoteFrameRequest, .officeRecording:
+            return true
         }
     }
 
@@ -98,7 +132,8 @@ enum PrivacyFilterScope: String, CaseIterable {
         case .recording, .broadcast, .expertStream: return true
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
              .sceneNarration, .onDevicePreview, .onDeviceVision, .visionAssessment,
-             .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest: return false
+             .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest,
+             .officeRecording: return false
         }
     }
 }

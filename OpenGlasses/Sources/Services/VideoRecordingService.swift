@@ -30,6 +30,69 @@ class VideoRecordingService: ObservableObject {
     /// When true, ambient captions are started alongside recording for live transcription.
     var autoTranscribe = false
 
+    // MARK: - Where a recording goes, and where its frames come from (Plan HE)
+
+    /// Where a finished recording is put.
+    enum Destination: Equatable {
+        /// What every recording did before there was a choice: filed by `RecordingFiler` into the
+        /// app's Recordings folder, copied to the folder the wearer chose, and saved to Photos
+        /// unless they turned that off.
+        case library
+        /// Written to exactly this file and nowhere else — a part of a recorded job, inside the
+        /// job's own folder. Not filed, not copied, not saved to Photos, and no transcript is
+        /// written beside it or into Documents.
+        case file(URL)
+    }
+
+    /// Which frames a recording is being given. Declared by the caller so the pairing with the
+    /// destination can be checked, rather than inferred from which publisher was passed.
+    enum FrameSource: Equatable {
+        /// `OutboundFrameRelay.publisher`: through the bystander blur when that setting is on.
+        case outboundRelay
+        /// The camera's own publisher, unfiltered, for a recorded job that goes to the
+        /// organisation's office (`PrivacyFilterScope.officeRecording`).
+        case rawForOfficeRecording
+    }
+
+    /// Raw frames were asked to be written somewhere other than a job's own folder.
+    struct FramePairingError: Error {}
+
+    /// The rule that keeps the two callers of this recorder apart: raw frames may only be written
+    /// to a file the caller names — a job's own folder — and never into the library, where they
+    /// would be filed, copied and saved to Photos. Checked before anything is created.
+    nonisolated static func checkPairing(source: FrameSource, destination: Destination) throws {
+        if source == .rawForOfficeRecording, destination == .library { throw FramePairingError() }
+    }
+
+    /// What is done with a finished recording, decided from where it was sent and the wearer's
+    /// settings. For a named file every answer is no, whatever the settings say.
+    struct FilingPlan: Equatable {
+        let filesIntoRecordingsFolder: Bool
+        let copiesToChosenFolder: Bool
+        let savesToPhotos: Bool
+        let writesTranscriptFiles: Bool
+    }
+
+    nonisolated static func filingPlan(for destination: Destination, photosSetting: Bool,
+                                       hasChosenFolder: Bool) -> FilingPlan {
+        switch destination {
+        case .library:
+            return FilingPlan(filesIntoRecordingsFolder: true, copiesToChosenFolder: hasChosenFolder,
+                              savesToPhotos: photosSetting, writesTranscriptFiles: true)
+        case .file:
+            return FilingPlan(filesIntoRecordingsFolder: false, copiesToChosenFolder: false,
+                              savesToPhotos: false, writesTranscriptFiles: false)
+        }
+    }
+
+    /// Where the recording in progress is going. `.library` whenever nothing else was asked for.
+    private var destination: Destination = .library
+
+    /// What the last finished recording says about its own timing: each track's first-sample
+    /// reading on the host clock and how long it ran. Set by `stopRecording`; nil when nothing was
+    /// written.
+    private(set) var lastTimebase: RecordingTimebase?
+
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var durationTimer: Timer?
@@ -81,8 +144,10 @@ class VideoRecordingService: ObservableObject {
     /// why anything that didn't land, didn't. Optional; nothing here depends on it being wired.
     var onDebugEvent: ((String) -> Void)?
 
-    /// ID used to register as an audio buffer consumer on the capture audio router.
-    private static let audioConsumerId = "video_recording_audio"
+    /// ID used to register as an audio buffer consumer on the capture audio router. A second
+    /// recorder — the one a recorded job uses — takes another id, so the two never replace each
+    /// other's handler when both run.
+    var audioConsumerId = "video_recording_audio"
 
     /// Mic source for recording audio (Plan CZ: `CaptureAudioRouter`, which rides the always-on
     /// listener's shared tap while it runs and its own engine when it doesn't).
@@ -104,6 +169,10 @@ class VideoRecordingService: ObservableObject {
     private nonisolated(unsafe) var adaptor: AVAssetWriterInputPixelBufferAdaptor?
     private nonisolated(unsafe) var videoStartTime: CMTime?
     private nonisolated(unsafe) var audioStartTime: CMTime?
+    /// Presentation time of the newest video frame, and where the newest audio buffer ends —
+    /// each from its own track's first sample. Kept for `lastTimebase`.
+    private nonisolated(unsafe) var lastVideoPresentation: CMTime?
+    private nonisolated(unsafe) var audioEndTime: CMTime?
     private nonisolated(unsafe) var frameCount: Int64 = 0
     /// Reusable pixel buffer pool — avoids per-frame allocation during long recordings.
     private nonisolated(unsafe) var pixelBufferPool: CVPixelBufferPool?
@@ -201,13 +270,19 @@ class VideoRecordingService: ObservableObject {
     ///   - outputSize: Encoded video dimensions. Defaults to 720x1280 (glasses native).
     ///   - frameRate: Frame rate the encoder should expect. Defaults to the configured camera
     ///     rate; it feeds both the derived bitrate and the encoder's rate controller.
+    ///   - destination: Where the finished recording is put. `.library` unless a recorded job
+    ///     names its own file.
+    ///   - source: Which frames `publisher` carries. Raw frames are refused for the library.
     func startRecording(
         from publisher: PassthroughSubject<UIImage, Never>,
         bitrate: Int? = nil,
         outputSize: CGSize? = nil,
-        frameRate: Double? = nil
+        frameRate: Double? = nil,
+        destination: Destination = .library,
+        source: FrameSource = .outboundRelay
     ) throws {
         guard !isRecording else { return }
+        try Self.checkPairing(source: source, destination: destination)
 
         let requestedWidth = Int(outputSize?.width ?? 720)
         let requestedHeight = Int(outputSize?.height ?? 1280)
@@ -241,11 +316,19 @@ class VideoRecordingService: ObservableObject {
             }
         }
 
-        // In compliance mode the writer's file is created in a folder that already carries
-        // `completeUnlessOpen`, so it is protected while it is being written, not only once filed.
-        let tempDir = ComplianceFileProtection.inProgressDirectory(complianceMode: Config.hipaaMode)
-        let fileName = "OpenGlasses_\(Int(Date().timeIntervalSince1970)).mp4"
-        let url = tempDir.appendingPathComponent(fileName)
+        let url: URL
+        switch destination {
+        case .library:
+            // In compliance mode the writer's file is created in a folder that already carries
+            // `completeUnlessOpen`, so it is protected while it is being written, not only once filed.
+            let tempDir = ComplianceFileProtection.inProgressDirectory(complianceMode: Config.hipaaMode)
+            let fileName = "OpenGlasses_\(Int(Date().timeIntervalSince1970)).mp4"
+            url = tempDir.appendingPathComponent(fileName)
+        case .file(let named):
+            // A recorded job's part is written where it will stay: in the job's own folder, which
+            // its owner made protected and kept out of backup. It never passes through `tmp/`.
+            url = named
+        }
 
         // Clean up any previous file at this path
         try? FileManager.default.removeItem(at: url)
@@ -308,6 +391,10 @@ class VideoRecordingService: ObservableObject {
         self.outputURL = url
         self.videoStartTime = nil
         self.audioStartTime = nil
+        self.lastVideoPresentation = nil
+        self.audioEndTime = nil
+        self.lastTimebase = nil
+        self.destination = destination
         self.frameCount = 0
         self.pixelBufferPool = nil
         self.poolWidth = 0
@@ -333,7 +420,7 @@ class VideoRecordingService: ObservableObject {
 
         // Subscribe to mic audio. Registering is also what tells the router a capture is live, so
         // it brings up a source even when the always-on listener is off (Plan CZ).
-        audioProvider?.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
+        audioProvider?.addAudioBufferConsumer(id: audioConsumerId) { [weak self] buffer in
             self?.appendAudioBuffer(buffer)
         }
 
@@ -410,7 +497,7 @@ class VideoRecordingService: ObservableObject {
         isRecording = false
 
         // Stop audio consumer
-        audioProvider?.removeAudioBufferConsumer(id: Self.audioConsumerId)
+        audioProvider?.removeAudioBufferConsumer(id: audioConsumerId)
 
         // Stop meeting assistant
         meetingAssistant?.stop()
@@ -450,10 +537,24 @@ class VideoRecordingService: ObservableObject {
         PrivacyLog.recording(.finished, count: Int(frameCount), seconds: recordingDuration,
                              success: temporaryURL != nil)
 
+        lastTimebase = Self.timebase(videoStart: videoStartTime, lastVideoPresentation: lastVideoPresentation,
+                                     frameRate: Double(Config.cameraFrameRate),
+                                     audioStart: audioStartTime, audioEnd: audioEndTime)
+
+        // What is done with the finished file follows from where it was sent. A recorded job's
+        // part stays in the file it was written to: none of what follows — the filer, the chosen
+        // folder, Photos, the transcript files — applies to it.
+        let plan = Self.filingPlan(for: destination, photosSetting: Config.recordingSaveToPhotos,
+                                   hasChosenFolder: Config.recordingFolderURL != nil)
+        if case .file(let named) = destination {
+            return finishNamedFile(named, writerFailure: writerFailure)
+        }
+
         // Get the file out of tmp/ before anything else can go wrong with it. Everything below
         // — the transcript sidecar, file protection, the URL handed back for sharing — works
         // against the filed location, not the temporary one.
-        let url = await fileFinishedRecording(temporaryURL, encodeFailed: writerFailure != nil)
+        let url = await fileFinishedRecording(temporaryURL, encodeFailed: writerFailure != nil,
+                                              wantsPhotos: plan.savesToPhotos)
 
         // A broken encode is worth saying out loud even when the bytes were filed: a playable
         // prefix and an unplayable file look identical from the outside.
@@ -469,7 +570,7 @@ class VideoRecordingService: ObservableObject {
         }
 
         // Build final transcript with clinical header
-        if !recordingTranscript.isEmpty, let videoURL = url {
+        if plan.writesTranscriptFiles, !recordingTranscript.isEmpty, let videoURL = url {
             let dateFormatter = DateFormatter()
             dateFormatter.dateStyle = .long
             dateFormatter.timeStyle = .short
@@ -528,6 +629,51 @@ class VideoRecordingService: ObservableObject {
         return url
     }
 
+    /// The end of a recording that was written to a file its caller named (Plan HE): release the
+    /// writer and hand the file back where it is. Nothing is moved, copied, offered to Photos or
+    /// transcribed here. Nil when the encode failed or nothing is on disk — a part that does not
+    /// play is not a part.
+    private func finishNamedFile(_ url: URL, writerFailure: String?) -> URL? {
+        lastSaveNote = nil
+        lastSaveSummary = nil
+        autoTranscribe = false
+        writer = nil
+        appendWriter = nil
+        videoInput = nil
+        audioInput = nil
+        audioStreamDescription = nil
+        audioFormatDescription = nil
+        adaptor = nil
+        outputURL = nil
+        videoStartTime = nil
+        audioStartTime = nil
+        pixelBufferPool = nil
+        destination = .library
+        guard writerFailure == nil, FileManager.default.fileExists(atPath: url.path) else {
+            lastTimebase = nil
+            return nil
+        }
+        return url
+    }
+
+    /// The timing of a finished recording from what the append paths noted: each track's first
+    /// sample on the host clock, and its length — to the end of the last frame's interval for the
+    /// pictures, to the end of the last buffer for the sound. A track that never received a sample
+    /// has no entry.
+    nonisolated static func timebase(videoStart: CMTime?, lastVideoPresentation: CMTime?, frameRate: Double,
+                                     audioStart: CMTime?, audioEnd: CMTime?) -> RecordingTimebase {
+        var result = RecordingTimebase()
+        if let videoStart, let lastVideoPresentation {
+            let frame = frameRate > 0 ? 1 / frameRate : 0
+            result.video = .init(firstSample: CMTimeGetSeconds(videoStart),
+                                 duration: CMTimeGetSeconds(lastVideoPresentation) + frame)
+        }
+        if let audioStart, let audioEnd {
+            result.audio = .init(firstSample: CMTimeGetSeconds(audioStart), duration: CMTimeGetSeconds(audioEnd))
+        }
+        return result
+    }
+
     // MARK: - Transcription
 
     /// Collect new caption entries from ambient captions into the recording transcript.
@@ -555,7 +701,8 @@ class VideoRecordingService: ObservableObject {
     /// The destination decisions and the moves themselves live in `RecordingFiler`; this is the
     /// thin edge that resolves the user's settings, holds the security scope on a chosen folder,
     /// and performs the one step the filer deliberately leaves out — the Photos save.
-    private func fileFinishedRecording(_ temporaryURL: URL?, encodeFailed: Bool = false) async -> URL? {
+    private func fileFinishedRecording(_ temporaryURL: URL?, encodeFailed: Bool = false,
+                                       wantsPhotos: Bool) async -> URL? {
         lastSaveNote = nil
         lastSaveSummary = nil
         guard let temporaryURL else { return nil }
@@ -565,7 +712,6 @@ class VideoRecordingService: ObservableObject {
         defer { folderURL?.stopAccessingSecurityScopedResource() }
 
         let filer = RecordingFiler(recordingsDirectory: recordingsDirectory, folderURL: folderURL)
-        let wantsPhotos = Config.recordingSaveToPhotos
         var outcome = filer.file(temporaryURL,
                                  date: recordingStartDate ?? Date(),
                                  saveToPhotos: wantsPhotos)
@@ -714,6 +860,7 @@ class VideoRecordingService: ObservableObject {
 
         guard let adaptor, adaptor.assetWriterInput.isReadyForMoreMediaData else { return }
         adaptor.append(buffer, withPresentationTime: presentationTime)
+        lastVideoPresentation = presentationTime
         frameCount += 1
     }
 
@@ -816,6 +963,8 @@ class VideoRecordingService: ObservableObject {
         if !audioInput.append(sb) {
             PrivacyLog.recording(.audioAppendRejected,
                                  error: appendWriter?.error.map(SafeErrorSummary.init))
+        } else {
+            audioEndTime = CMTimeAdd(timing.presentationTimeStamp, timing.duration)
         }
     }
 

@@ -106,6 +106,17 @@ final class SyncEligibilityTests: XCTestCase {
         XCTAssertEqual(E.evaluate(everythingWrong), .notEligible(.medicalMode))
     }
 
+    // MARK: - The organisation's blur rule
+
+    /// Where the organisation requires faces blurred and what is waiting is not, it is not sent —
+    /// whatever else is true — and it says why.
+    func testAnUnblurredRecordingIsHeldWhereTheOrganisationRequiresBlur() {
+        XCTAssertFalse(ready().blurRequiredAndNotDone, "off unless the caller says so")
+        XCTAssertEqual(E.evaluate(ready { $0.blurRequiredAndNotDone = true }), .notEligible(.blurRequired))
+        let sentence = E.Reason.blurRequired.explanation
+        XCTAssertTrue(sentence.contains("blurred") && sentence.contains("stays on this phone"), sentence)
+    }
+
     // MARK: - The office and smaller traffic
 
     func testAnOfficeOutOfReachHoldsIt() {
@@ -121,10 +132,10 @@ final class SyncEligibilityTests: XCTestCase {
     func testWhenSeveralThingsAreInTheWayTheyAreNamedInOrder() {
         let everythingWrong = E.Conditions(network: .cellular, cellularForbiddenByOrganization: true, isCharging: false,
                                            batteryLevel: 0.1, profileIsCurrent: false, leaseIsCurrent: false,
-                                           bindingIsCurrent: false, medicalModeOn: true, officeIsReachable: false,
-                                           smallerItemsWaiting: true)
+                                           bindingIsCurrent: false, medicalModeOn: true, blurRequiredAndNotDone: true,
+                                           officeIsReachable: false, smallerItemsWaiting: true)
         XCTAssertEqual(E.reasons(everythingWrong), [
-            .medicalMode, .profileNotCurrent, .leaseNotCurrent, .bindingNotCurrent, .cellularForbiddenByOrganization,
+            .medicalMode, .blurRequired, .profileNotCurrent, .leaseNotCurrent, .bindingNotCurrent, .cellularForbiddenByOrganization,
             .waitingForPower, .officeNotReachable, .smallerItemsFirst,
         ])
         XCTAssertEqual(E.evaluate(ready {

@@ -1,14 +1,17 @@
 # Plan HE — Recorded Job and Sync to the Office
 
-**Status:** 🚧 P0 built 2026-10-05 — the pure core and the contract's fixtures, headless; nothing
-is wired into the app, and nothing records, stores or sends. The two signed messages P0 lists — the bundle manifest
-and the office's receipt — have a reference implementation and golden fixtures in
-`Transport/mobile-core/recordingbundle`, and the phone's own Swift for them (`BundleManifest`,
-`OfficeRecordingReceipt`, a signer that signs only a manifest) writes and reads the same bytes
-(2026-10-05; see "P0 as built"). **P2's headless part is built** (2026-10-05, opt-in build): the
-transport for a bundle, the bundle on disk, and the service that sends it and keeps it until the
-office's receipt — tested against the golden bundle, and started by nothing yet. P1 (capture and
-consent), the rest of P2, P3 and P4 are unbuilt. Drafted 2026-10-02 and **revised the same day:**
+**Status:** 🚧 P0, P1 and the headless part of P2 built 2026-10-05, in the opt-in office transport
+build; device checks owed. **P1 (2026-10-05):** "Record this job" on the open job's page records
+the glasses' raw frames and the microphone into the job's own folder, on one clock, behind a
+recording consent, and seals the bundle when it stops; the sync service P2 built is now started
+from the app and sends it (see "P1 as built"). The default build has no office transport and so
+offers no recording. **Where an organisation requires blur, no job is recorded at all**: the blur
+pass is not built. P0 is the pure core and the contract's fixtures; the two signed messages — the
+bundle manifest and the office's receipt — have a reference implementation and golden fixtures in
+`Transport/mobile-core/recordingbundle`, and the phone's own Swift for them writes and reads the
+same bytes (see "P0 as built"). Still unbuilt: `BundleBlurPass`, the owed item on the Jobs list
+and the job-day card, starting a recording by voice, P3 and P4. No bundle has left a physical
+phone. Drafted 2026-10-02 and **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
 [`Contracts/recorded-session.md`](../../Contracts/recorded-session.md).
@@ -348,8 +351,8 @@ are also in the fixtures' `rules` blocks.
   not answer an expired recording. Keep-waiting returns an expired recording to where it was and
   a refused one to `sealed` with nothing counted as sent.
 - *`SyncEligibility`.* Battery floor 50 % when not charging; when several things are in the way
-  the one named is the first of: medical mode, profile, licence, pairing, network, power, office
-  reachable, smaller traffic first.
+  the one named is the first of: medical mode, the organisation's blur rule (added in P1),
+  profile, licence, pairing, network, power, office reachable, smaller traffic first.
 - *`RetentionDecision`.* A gigabyte is 10⁹ bytes. Trimming removes media only — the transcript
   stays with the timeline, manifest and receipt (the plan did not say). Choosing to keep waiting
   starts the 30 days again.
@@ -376,6 +379,141 @@ entries; `RecordingConsent`; timeline events from the turn flow; `TimedTranscrip
 the three organisation keys; HIPAA disable. Tests: `RecordingTimebaseTests`,
 `JobRecordingCoordinatorTests` (fake recorder and clock; never Photos), `OutboundFrameConsumerTests`,
 `RecordingConsentTests`, `SettingKeyTests`, `MedicalEgressGuardTests`.
+
+**P1 as built (2026-10-05)** — in the opt-in office transport build. The default build links no
+office transport, so it has no office and offers no recording.
+
+*Pure, in `JobRecording/` (and in the portable check):*
+
+- **`RecordingTimebase`** — what a recorder says about a part when it stops: for each track, the
+  host clock's reading at its first sample and how long it ran. `placed(partID:on:endedBy:)` puts
+  it on the `SessionClock`; `tracksAndGaps` writes the timeline's tracks and, between one part and
+  the next, a gap with the reason the earlier part ended.
+- **`RecordingConsent`** — the six points the sheet makes, the line shown at each start, and
+  whether an acknowledgement still stands: for this wording and for this organisation.
+- **`JobRecordingAvailability`** — the one decision about whether recording is offered and may
+  run. *Not offered* (nothing is shown): no office transport in the build, Field Assist not
+  unlocked, or no pairing that verifies now. *Unavailable*, with a sentence: Medical Compliance
+  on, Medical Local Only refusing the route, the organisation forbidding it, **the organisation
+  requiring blur**, no open job, the job already recorded, too much waiting to be sent. The same
+  rules stop a recording that is already running.
+- **`RecordedJobAssembly`** — puts the timeline and transcript together when a recording stops:
+  the placed parts and their gaps; what was noted as it happened; the job log's turns, photographs
+  and procedure steps placed through the wall clock, technician turns then moved by `TurnAligner`;
+  each part's words shifted to where its sound begins; and the candidate markers.
+- `SyncEligibility` gained `blurRequired` (named after medical mode): an unblurred recording is
+  not sent where the organisation requires blur. `PowerPosture.defersBulkTransfer` is true from
+  `conserve` up.
+
+*Capture:*
+
+- **`VideoRecordingService`** takes a `destination` and a `source`. `.file(URL)` writes the part
+  where it will stay and does nothing else with it — no `RecordingFiler`, no chosen folder, no
+  Photos, no transcript files (`filingPlan`, which the code follows). `.rawForOfficeRecording`
+  is refused for the library before anything is created (`checkPairing`). It reports
+  `lastTimebase` on stop. Every existing caller passes neither and behaves as before.
+- **`PrivacyFilterScope.officeRecording`** — unfiltered at capture, and the one unfiltered scope
+  that leaves the device (`leavesTheDevice`). Roster: `jobRecordingCapture` (raw tap, justified
+  exemption, owned by `JobRecordingCoordinator`) and `jobRecordingOfficeSync` (the bundle, a new
+  `organisationExit` mechanism reading a new `jobRecordingFolder` tap, owned by
+  `JobRecordingSyncService`). `JobRecordingExitTests` reads the sources: the files that hold a
+  recorded job call nothing that shares, exports, files or saves one, and only the two stores
+  build a path into a job's `recording` folder.
+- **`JobRecordingCoordinator`** — starts, pauses, carries on and stops a recording of the open
+  job, against seams. One recording a job; a stall, a pause or carrying on after the app was
+  closed begins a new part. It claims the glasses stream as a clip does. Each second it asks
+  whether the job is still open, whether the rules still allow it, and whether the recording has
+  reached the size limit — stopping, saving and saying so when not. On stop it transcribes each
+  part, assembles the two files and calls `JobRecordingBundleStore.seal`; nothing is sealed or
+  signed on a pairing that does not verify at that moment, and the recording then waits on the
+  phone and is sealed on a later pass. Changes to the recorder — start, pause, carry on, stop —
+  happen one at a time; sealing is not one of them, so a stop never waits behind a transcription
+  and another job can be recorded while the last is being prepared.
+- **`JobRecordingCaptureStore`** — the parts before sealing, in
+  `Documents/FieldSessions/{id}/recording/capture/`, with a journal of the recording so far.
+  Registered as `SensitiveStore.jobRecordingCapture` and accounted for in subject erasure.
+- **`TimedTranscriptSource`** — on-device: the part's sound read in ten-second windows, each an
+  utterance.
+
+*Policy:* `organizationForbidsJobRecording`, `organizationRequiresBlurBeforeOfficeSync` and
+`organizationForbidsRecordingSyncOnCellular` are `SettingKey` ceilings pinned on, read through
+`PolicyEnvelope` like every other. `NetworkRoute.jobRecordingOfficeSync` (frames, audio,
+transcript; blocked in Local Only) is asked by the sync service where it publishes.
+
+*In the app:* `AppState.jobRecordings` and `officeJobRecordings`; a sweep on the office
+connection's poll, after reports, and every half minute a look for recordings still to be sealed
+(off the poll's own path, so the office's other traffic never waits on a transcription); "Record this job" on the open job's page with the consent
+sheet, pause, mark, stop, and the line saying where the recording stands, also on a finished
+job's page; deleting a recording asks first and says when the office has not received it.
+
+**Choices made in P1.**
+
+- **Where blur is required, no job is recorded.** `BundleBlurPass` is not built, so the rule
+  cannot be met. Rather than record and hold, or record and send, "Record this job" is shown
+  unavailable with the reason. A recording made before the organisation turned the rule on is
+  kept and not sent, and says why.
+- **One file a part, sound and pictures together.** The recorder writes one MP4 holding both.
+  The manifest lists it once, as `video`/`mp4`; the timeline's `audio` track names the same
+  `partID` with the sound's own `tZero` and `duration`. Inside the file each track starts at
+  zero at its own first sample, so the two are offset by the difference of their `tZero`s — the
+  recorder's existing behaviour, now written down instead of lost. In the contract (§4).
+- **Raw frames come from the camera's publisher, taken in one named place**
+  (`JobRecordingCoordinator.rawFrames(from:)`), by a recorder of its own — a second
+  `VideoRecordingService` with its own microphone handler — so a job's recording and the
+  wearer's ordinary recording never share a writer or a destination.
+- **Unsealed parts live in the job's folder, never `tmp/`.** The folder is made
+  `completeUnlessOpen` and excluded from backup before the recorder creates a file in it; a
+  finished part's protection is also set by name.
+- **Consent is three plain values in the app's settings** — when, which wording, which
+  organisation — acknowledged once, cleared on leaving the organisation, and asked again when
+  the wording or the organisation changes. Its time is the manifest's `consentAt`. The
+  compliance audit log is handed a `consentChanged` event, **but that log records only in
+  Medical Compliance mode, where job recording is disabled** — so in practice the record of
+  consent is the stored acknowledgement and a `recording_consent` line in the job's own log.
+- **The three keys are read where they bind:** forbids and requires-blur by
+  `JobRecordingAvailability` at the button, at the start and every second of a recording;
+  requires-blur and forbids-cellular by `SyncEligibility` on every sync pass.
+- **Transcription is on-device only.** The plan allowed the cloud transcriber when a key is set;
+  the consent names one destination, the office, so a transcription vendor is not used. With no
+  on-device model the recording is sealed with an empty transcript and coarse turn times.
+- **Events from the job log are placed to the second**: the log writes whole-second stamps.
+  What is noted live — microphone, assistant speaking, capture silenced, tool calls, markers — is
+  to the millisecond. A turn the log gave no id is `log-N`; a photograph's `ref` is its file name.
+- **A recording survives the app being closed.** Finished parts and what was noted are in the
+  journal. While the job is open it can be carried on (a `restart` gap; the new parts join the
+  old zero through the wall clock, since the monotonic clock restarts with the phone) or
+  finished as it is; once the job has closed it is sealed from what it had. The part being
+  written when the app closed has no index, does not play, and is removed.
+- **A recording that could not be sealed is kept and tried again** — at once when the reason
+  was the pairing, after fifteen minutes otherwise (each try transcribes it from the start).
+  Sealing cuts the parts into chunks before the parts are removed, so for that moment a
+  recording is on the phone twice; one that does not fit stays as parts and says it is waiting.
+- **Mobile data is never used.** There is no setting yet for a technician to allow it, so a
+  recording waits for Wi-Fi whatever the organisation says. A link the system calls expensive
+  counts as mobile data.
+- **Leaving the organisation:** an unacknowledged recording is owed like an undelivered report,
+  and is withdrawn from the office's folder when its job is erased.
+- **Nothing deletes a job from a screen today**, so `unacknowledgedDeletionWarning` has no
+  caller; the same rule is on the recording's own delete.
+
+**Still owed after P1:** `BundleBlurPass`; starting and marking by voice (not built — no tool was
+added); the owed item on the Jobs list and the job-day card; a setting to allow mobile data;
+a live phone-camera session; P3; P4.
+
+**What only a phone and glasses can show (owed):**
+
+1. That a recording starts, runs with a conversation going, and plays back with sound.
+2. The offset between sound and pictures inside a part, against the two `tZero`s.
+3. Capture with the phone locked in a pocket: that frames keep arriving on the raw path, that a
+   new part can begin while locked, and that stopping while locked leaves the recording waiting
+   and sealed once unlocked.
+4. A stall: glasses out of range and back, the part boundary and the gap.
+5. The on-device transcriber reading the sound out of a recorded MP4.
+6. Size on disk per minute against the 2 GB limit, and free space while sealing (the parts and
+   their chunks are both on disk until the seal finishes).
+7. The capture light, and the assistant's replies on the recording through the glasses and
+   through the phone speaker.
+8. A bundle sealed on a phone, taken by a real office, acknowledged and trimmed.
 
 **P2 — Bundle and sync.** `BundleBuilder`, `BundleBlurPass`, the sync service over an injected
 transport seam, acknowledgement verification, retention, the owed item and job-page status.
@@ -435,11 +573,11 @@ Choices made:
   question.
 - **The transcript stays after the trim**, with the timeline, manifest and receipts.
 
-**Still owed for P2:** `BundleBlurPass`; the service started from the app, with real conditions
-(network, power, posture, policy, what else is waiting); the owed item on the Jobs list and the
-job-day card, and the job page's size, progress and delete control; deleting a job with an
-unacknowledged recording asking first; the organisation's leaving rule for recordings. All of them
-wait on P1: until something records, there is nothing to prepare, send or show.
+**Still owed for P2:** `BundleBlurPass`; the owed item on the Jobs list and the job-day card.
+Done with P1 (2026-10-05): the service is started from the app with real conditions, the job's
+page shows where the recording stands and has the delete control (which asks first, and says
+when the office has not received the recording), and a phone leaving its organisation owes an
+unacknowledged recording as it owes an undelivered report.
 
 **P3 — Office feedback on the phone.** Signed status messages, the job's "what came of it" line,
 the published procedure arriving as a vault. Tests: `RecordingStatusMessageTests`,

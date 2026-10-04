@@ -3,9 +3,10 @@ import Foundation
 /// Whether a recorded job may be sent to the office right now, and if not, why (Plan HE §4).
 ///
 /// A recording is large and never urgent, so it waits for the right moment: no medical privacy
-/// mode, a current profile, licence and pairing, Wi-Fi (mobile data only when the person allows it
-/// and the organisation does not forbid it), power or a well-charged battery, an office that can be
-/// reached, and nothing smaller waiting — job reports and receipts always go first.
+/// mode, no organisation rule it does not meet, a current profile, licence and pairing, Wi-Fi
+/// (mobile data only when the person allows it and the organisation does not forbid it), power or
+/// a well-charged battery, an office that can be reached, and nothing smaller waiting — job
+/// reports and receipts always go first.
 ///
 /// Pure: everything it weighs is an input. When several things are in the way it names the first
 /// in the order above, which is the order a person would have to put them right.
@@ -32,6 +33,9 @@ enum SyncEligibility {
         var bindingIsCurrent: Bool
 
         var medicalModeOn = false
+        /// The organisation requires faces blurred before a recording is sent, and what is
+        /// waiting has not been blurred.
+        var blurRequiredAndNotDone = false
         var officeIsReachable: Bool
         /// Job reports or receipts are still waiting to go.
         var smallerItemsWaiting = false
@@ -42,6 +46,8 @@ enum SyncEligibility {
 
     enum Reason: Equatable, CaseIterable, Sendable {
         case medicalMode
+        /// Unblurred, where the organisation requires blur. It is kept and not sent.
+        case blurRequired
         case profileNotCurrent
         case leaseNotCurrent
         case bindingNotCurrent
@@ -59,6 +65,9 @@ enum SyncEligibility {
             switch self {
             case .medicalMode:
                 return "Recordings are not sent while a medical privacy mode is on."
+            case .blurRequired:
+                return "Your organisation requires faces to be blurred before a recording is sent, "
+                    + "and this version of the app can't do that yet. The recording stays on this phone."
             case .profileNotCurrent:
                 return "This phone's organisation settings are out of date, so the recording can't be sent yet."
             case .leaseNotCurrent:
@@ -98,6 +107,7 @@ enum SyncEligibility {
     static func reasons(_ c: Conditions) -> [Reason] {
         var reasons: [Reason] = []
         if c.medicalModeOn { reasons.append(.medicalMode) }
+        if c.blurRequiredAndNotDone { reasons.append(.blurRequired) }
         if !c.profileIsCurrent { reasons.append(.profileNotCurrent) }
         if !c.leaseIsCurrent { reasons.append(.leaseNotCurrent) }
         if !c.bindingIsCurrent { reasons.append(.bindingNotCurrent) }

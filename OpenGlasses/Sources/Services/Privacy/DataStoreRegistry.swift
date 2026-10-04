@@ -91,6 +91,7 @@ enum SensitiveStore: String, CaseIterable {
     case officeJobAttachments
     case officeJobUpdates
     case jobRecordingBundles
+    case jobRecordingCapture
 
     // Clinical
     case healthSummaryCache
@@ -733,6 +734,26 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "JobRecordingBundleStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/JobRecordingBundleStore.swift"],
                           location: "Documents/FieldSessions/{id}/recording/bundle/")
+
+        case .jobRecordingCapture:
+            // "Record this job" as it is being made, before it is sealed: each recorded part as
+            // the recorder wrote it — the glasses' pictures and the microphone's sound, unblurred —
+            // and a small journal of the recording so far (its clock, its parts, what was noted
+            // as it happened, which carries tool names and no words). Written straight into the
+            // job's own folder, never to the temporary directory, the Recordings folder or Photos.
+            // It lasts as long as the recording does: stopping seals it into the bundle and the
+            // parts are removed; a recording the app was closed in the middle of can be carried on
+            // while its job is open, and is sealed from what it had once the job has closed. It
+            // goes with its job, and has no way off the phone of its own — the bundle is the
+            // only exit.
+            return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUnlessOpen, backupExcluded: true,
+                          retention: .policy("removed when the recording is sealed into its bundle; one interrupted by the app closing is carried on or sealed once its job has closed"),
+                          deleteAll: .api("JobRecordingCaptureStore.remove(sessionID:)"),
+                          deleteSubject: .unavailable("a recording is not indexed by who appears in it"),
+                          owner: "JobRecordingCaptureStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/JobRecordingCaptureStore.swift"],
+                          location: "Documents/FieldSessions/{id}/recording/capture/")
 
         case .orgEnrolment:
             // Plan CT: the organisation profile this phone is enrolled with — the signed document,

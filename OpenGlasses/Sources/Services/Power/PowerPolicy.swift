@@ -61,6 +61,10 @@ enum PowerPosture: Int, Comparable, CaseIterable, Equatable {
     /// glasses' radio. Never applies to a conversation, only to waiting.
     var prefersPhoneWakeMic: Bool { self == .reserve }
 
+    /// Plan HE — a large transfer that nobody is waiting for (a recorded job going to the office)
+    /// waits for power. Small traffic — job reports, receipts — is not held by this.
+    var defersBulkTransfer: Bool { self >= .conserve }
+
     /// Multiplier on a live-mode frame-forwarding interval — the posture's lever on the biggest
     /// continuous spender. `1.0` = full rate; higher = fewer frames. Mirrors the shape of Plan W's
     /// `ThrottleDecision.intervalMultiplier`, applied to frame cadence rather than loop cadence.

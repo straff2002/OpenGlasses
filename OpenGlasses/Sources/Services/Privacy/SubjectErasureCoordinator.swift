@@ -151,6 +151,7 @@ final class SubjectErasureCoordinator {
         .recordedSessions,
         .recordings,
         .jobRecordingBundles,
+        .jobRecordingCapture,
         .capturedPhotos,
         .clinicalTranscripts,
         .keychainClinicalCredentials,
@@ -234,6 +235,10 @@ final class SubjectErasureCoordinator {
                 receipt = .unsupported(store, "a recorded job is not indexed by who appears in it; "
                                        + "it is removed with its job, and its media a week after "
                                        + "the office has it")
+            case .jobRecordingCapture:
+                receipt = .unsupported(store, "a job being recorded is not indexed by who appears in it; "
+                                       + "it is sealed into its bundle when the recording stops, "
+                                       + "and removed with its job")
             case .capturedPhotos:
                 receipt = .unsupported(store, "a photo is not indexed by who appears in it; "
                                        + "erasure is per file, in Photos")

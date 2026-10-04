@@ -159,6 +159,13 @@ final class PowerPolicyTests: XCTestCase {
         XCTAssertTrue(PowerPosture.reserve.requiresConfirmationBeforeStream)
     }
 
+    /// Plan HE: a recorded job going to the office waits whenever the phone is economising.
+    func testBulkTransferWaitsWheneverThePhoneIsEconomising() {
+        XCTAssertFalse(PowerPosture.normal.defersBulkTransfer)
+        XCTAssertTrue(PowerPosture.conserve.defersBulkTransfer)
+        XCTAssertTrue(PowerPosture.reserve.defersBulkTransfer)
+    }
+
     func testExplanationNilWhenNormal() {
         XCTAssertNil(PowerPolicy.explanation(PowerState(), posture: .normal))
     }

@@ -43,6 +43,9 @@ struct CameraStreamClaims: Equatable {
         /// Plan GB P4 — a job clip (`record_clip`). Claims so a clip started after a relaunch can
         /// bring the stream up itself, and gives back only what it opened.
         static let jobClip = Owner("jobClip")
+        /// Plan HE — "Record this job". Claims so a recording can bring the stream up itself, and
+        /// gives back only what it opened when the recording stops.
+        static let jobRecording = Owner("jobRecording")
     }
 
     /// What the service should do about a `claim`.

@@ -184,7 +184,33 @@ final class OutboundFramePrivacyTests: XCTestCase {
     /// exemption has to be argued for here rather than added quietly.
     func testExemptionsAreExactlyTheNonEgressConsumers() {
         let exempt = PrivacyFilterScope.allCases.filter { !$0.isFiltered }
-        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision])
+        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision,
+                                .officeRecording])
+        // Four of the five are exempt for the two reasons above, and nothing under them leaves
+        // the device.
+        XCTAssertEqual(exempt.filter { !$0.leavesTheDevice },
+                       [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision])
+    }
+
+    /// Plan HE. The fifth exemption is argued here because it is the one that *is* an egress: a
+    /// recorded job goes, unblurred unless the organisation requires otherwise, to the
+    /// organisation's own office. It is exempt from the app-wide blur because capture has to be
+    /// raw — a relay-fed recording has a hole wherever the blur could not run, which is whenever
+    /// the phone is locked — and because whether the office receives it blurred is the
+    /// organisation's decision, not this switch's. What keeps that from being a bypass is pinned
+    /// below: it is the only unfiltered scope that leaves the device, it never rides the relay,
+    /// and the roster gives it exactly one exit.
+    func testTheRecordedJobIsTheOnlyUnfilteredScopeThatLeavesTheDevice() {
+        let unfilteredEgress = PrivacyFilterScope.allCases.filter { !$0.isFiltered && $0.leavesTheDevice }
+        XCTAssertEqual(unfilteredEgress, [.officeRecording])
+        XCTAssertFalse(PrivacyFilterScope.officeRecording.usesOutboundRelay)
+        for scope in PrivacyFilterScope.allCases where scope.isFiltered {
+            XCTAssertTrue(scope.leavesTheDevice, "\(scope.rawValue) is filtered, so it is an egress")
+        }
+        let exits = OutboundFrameConsumer.allCases.filter {
+            $0.scope == .officeRecording && $0.tap != .rawCameraPublisher
+        }
+        XCTAssertEqual(exits, [.jobRecordingOfficeSync])
     }
 
     /// Camera-rate consumers share one pass; the ~1 fps model paths filter at their own chokepoint.

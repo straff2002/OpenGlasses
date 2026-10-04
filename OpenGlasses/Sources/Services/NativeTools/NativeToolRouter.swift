@@ -37,6 +37,10 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// ceiling (Plan W) — AppState records it for surfacing when the user re-engages. The string is
     /// a human-readable action summary.
     var onActionHeld: ((String) -> Void)?
+    /// Told the name of every tool as it is dispatched, before anything is decided about it. A
+    /// recorded job's timeline writes down that a tool was called and when (Plan HE); the name is
+    /// all it is given.
+    var onToolDispatched: ((String) -> Void)?
 
     /// Tool execution timeout in seconds (prevents hung tools from blocking forever).
     var toolTimeoutSeconds: TimeInterval = 30
@@ -199,6 +203,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // resolved target *and* keeps the pack action its parent already recorded — the pair is the
         // useful signal; only the user-visible progress reporting below is de-duplicated.
         turnToolNames.append(name)
+        onToolDispatched?(name)
 
         let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
         // Resolved before the policy runs, because both the effect-class floor and the binding an

@@ -1,3 +1,6 @@
+import AVFoundation
+import Combine
+import UIKit
 import XCTest
 @testable import OpenGlasses
 
@@ -64,5 +67,73 @@ final class VideoRecordingGuardTests: XCTestCase {
         let now = Date()
         XCTAssertFalse(VideoRecordingService.shouldAutoStop(
             isRecording: false, lastFrameAt: now.addingTimeInterval(-600), now: now))
+    }
+
+    // MARK: - Where a recording goes, and where its frames come from (Plan HE)
+
+    /// Every existing caller passes neither, and gets what it always got.
+    func testALibraryRecordingIsFiledAsItAlwaysWas() {
+        typealias Service = VideoRecordingService
+        XCTAssertEqual(Service.filingPlan(for: .library, photosSetting: true, hasChosenFolder: true),
+                       .init(filesIntoRecordingsFolder: true, copiesToChosenFolder: true, savesToPhotos: true,
+                             writesTranscriptFiles: true))
+        XCTAssertEqual(Service.filingPlan(for: .library, photosSetting: false, hasChosenFolder: false),
+                       .init(filesIntoRecordingsFolder: true, copiesToChosenFolder: false, savesToPhotos: false,
+                             writesTranscriptFiles: true))
+    }
+
+    /// A recorded job's part stays in the file it was written to — whatever the wearer's
+    /// recording settings say. **Never Photos.**
+    func testANamedFileIsNeverFiledCopiedOrSavedToPhotos() {
+        let part = VideoRecordingService.Destination.file(URL(fileURLWithPath: "/job/recording/capture/part-1.mp4"))
+        for photos in [true, false] {
+            for folder in [true, false] {
+                XCTAssertEqual(VideoRecordingService.filingPlan(for: part, photosSetting: photos, hasChosenFolder: folder),
+                               .init(filesIntoRecordingsFolder: false, copiesToChosenFolder: false,
+                                     savesToPhotos: false, writesTranscriptFiles: false),
+                               "photos \(photos), chosen folder \(folder)")
+            }
+        }
+    }
+
+    func testRawFramesAreRefusedForTheLibrary() {
+        typealias Service = VideoRecordingService
+        let part = Service.Destination.file(URL(fileURLWithPath: "/job/recording/capture/part-1.mp4"))
+        XCTAssertNoThrow(try Service.checkPairing(source: .outboundRelay, destination: .library))
+        XCTAssertNoThrow(try Service.checkPairing(source: .outboundRelay, destination: part))
+        XCTAssertNoThrow(try Service.checkPairing(source: .rawForOfficeRecording, destination: part))
+        XCTAssertThrowsError(try Service.checkPairing(source: .rawForOfficeRecording, destination: .library))
+    }
+
+    /// The refusal comes before a writer, a file or a subscription exists.
+    func testStartingALibraryRecordingFromRawFramesThrowsAndStartsNothing() {
+        let recorder = VideoRecordingService()
+        XCTAssertThrowsError(try recorder.startRecording(from: PassthroughSubject<UIImage, Never>(),
+                                                         source: .rawForOfficeRecording)) { error in
+            XCTAssertTrue(error is VideoRecordingService.FramePairingError)
+        }
+        XCTAssertFalse(recorder.isRecording)
+    }
+
+    // MARK: - The timebase
+
+    func testEachTrackReportsItsOwnFirstSampleAndLength() {
+        func time(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 1_000) }
+        let timebase = VideoRecordingService.timebase(videoStart: time(5_000.4), lastVideoPresentation: time(59.9),
+                                                      frameRate: 10, audioStart: time(5_000.65), audioEnd: time(59.5))
+        XCTAssertEqual(timebase.video?.firstSample ?? 0, 5_000.4, accuracy: 0.001)
+        XCTAssertEqual(timebase.video?.duration ?? 0, 60, accuracy: 0.001, "to the end of the last frame's interval")
+        XCTAssertEqual(timebase.audio?.firstSample ?? 0, 5_000.65, accuracy: 0.001)
+        XCTAssertEqual(timebase.audio?.duration ?? 0, 59.5, accuracy: 0.001)
+    }
+
+    func testATrackThatNeverReceivedASampleHasNoEntry() {
+        let start = CMTime(seconds: 10, preferredTimescale: 1_000)
+        XCTAssertTrue(VideoRecordingService.timebase(videoStart: nil, lastVideoPresentation: nil, frameRate: 24,
+                                                     audioStart: nil, audioEnd: nil).isEmpty)
+        let soundOnly = VideoRecordingService.timebase(videoStart: nil, lastVideoPresentation: nil, frameRate: 24,
+                                                       audioStart: start, audioEnd: start)
+        XCTAssertNil(soundOnly.video)
+        XCTAssertNotNil(soundOnly.audio)
     }
 }

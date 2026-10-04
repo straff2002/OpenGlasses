@@ -225,8 +225,67 @@ final class OutboundFrameConsumerTests: XCTestCase {
                 XCTAssertNil(consumer.scope,
                              "\(consumer.rawValue) is the blur pass itself and has no consumer scope")
                 XCTAssertEqual(consumer.tap, .rawCameraPublisher)
+            case .organisationExit:
+                // Plan HE. An unfiltered egress is the most dangerous thing this roster can
+                // describe, so the mechanism is held to exactly one shape: the recorded job's
+                // scope, reading the job's own folder, and never the camera.
+                XCTAssertEqual(consumer.scope, .officeRecording,
+                               "\(consumer.rawValue) leaves unfiltered but is not the recorded job's exit")
+                XCTAssertEqual(consumer.tap, .jobRecordingFolder,
+                               "\(consumer.rawValue) leaves unfiltered and taps \(consumer.tap.rawValue)")
             }
         }
+    }
+
+    // MARK: - "Record this job" (Plan HE)
+
+    /// The recorded job's path is two entries and no more: the raw capture into the job's folder,
+    /// and the one exit to the office. A third entry under this scope is a new way for unblurred
+    /// footage to move, and has to be argued for in the roster and added here.
+    func testARecordedJobHasOneCaptureAndOneExit() {
+        XCTAssertEqual(OutboundFrameConsumer.jobRecordingPath, [.jobRecordingCapture, .jobRecordingOfficeSync])
+
+        let capture = OutboundFrameConsumer.jobRecordingCapture
+        XCTAssertEqual(capture.owningType, "JobRecordingCoordinator")
+        XCTAssertEqual(capture.scope, .officeRecording)
+        XCTAssertEqual(capture.tap, .rawCameraPublisher)
+        XCTAssertEqual(capture.mechanism, .exemptByScope)
+
+        let exit = OutboundFrameConsumer.jobRecordingOfficeSync
+        XCTAssertEqual(exit.owningType, "JobRecordingSyncService")
+        XCTAssertEqual(exit.scope, .officeRecording)
+        XCTAssertEqual(exit.tap, .jobRecordingFolder)
+        XCTAssertEqual(exit.mechanism, .organisationExit)
+
+        // Nothing else leaves unfiltered, and nothing else reads the job's recording folder.
+        XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.mechanism == .organisationExit }, [exit])
+        XCTAssertEqual(OutboundFrameConsumer.allCases.filter { $0.tap == .jobRecordingFolder }, [exit])
+    }
+
+    /// The raw tap is taken where the roster says it is: in `JobRecordingCoordinator`, and from
+    /// the camera's own publisher rather than the relay. A recorded job fed from the relay would
+    /// have holes wherever the blur could not run.
+    func testTheRecordedJobTakesTheRawCameraPublisherInTheCoordinator() throws {
+        let hits = try allHits().filter { $0.type == "JobRecordingCoordinator" }
+        XCTAssertTrue(hits.contains { $0.text.contains("cameraService.framePublisher") },
+                      "the recorded job's raw tap is not where the roster says it is")
+        XCTAssertFalse(hits.contains { $0.text.contains("outboundFrames.publisher") })
+        XCTAssertFalse(hits.contains { $0.text.contains("latestFrame") },
+                       "a recorder has no use for a raw still")
+        XCTAssertFalse(OutboundFrameConsumer.typesAllowedOnARawStill.contains("JobRecordingCoordinator"))
+        XCTAssertTrue(OutboundFrameConsumer.typesAllowedOnTheRawCameraTap.contains("JobRecordingCoordinator"))
+    }
+
+    /// The long-form recorder is shared by two callers with opposite rules, so the rule is in the
+    /// recorder: raw frames are written only to a file the caller names inside a job's folder, and
+    /// a recording bound for the library never takes them.
+    func testRawFramesAreOnlyEverWrittenToAJobsOwnFolder() {
+        XCTAssertNoThrow(try VideoRecordingService.checkPairing(source: .outboundRelay, destination: .library))
+        XCTAssertNoThrow(try VideoRecordingService.checkPairing(
+            source: .rawForOfficeRecording, destination: .file(URL(fileURLWithPath: "/tmp/part.mp4"))))
+        XCTAssertThrowsError(try VideoRecordingService.checkPairing(source: .rawForOfficeRecording,
+                                                                    destination: .library),
+                             "raw frames must never reach the Recordings folder or Photos")
     }
 
     /// Every filtered scope has at least one consumer, and every consumer scope is a real one.

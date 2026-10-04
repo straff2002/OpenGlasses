@@ -2509,6 +2509,57 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: "organizationForbidsCustomerTranscript"))
     }
 
+    // MARK: - Recorded jobs (Plan HE)
+
+    /// Whether the organisation forbids "Record this job". A ceiling pinned on, written only by a
+    /// profile; false on a phone without one. There is no setter on purpose.
+    static var organizationForbidsJobRecording: Bool {
+        PolicyEnvelope.bool(.organizationForbidsJobRecording,
+                            stored: UserDefaults.standard.bool(forKey: "organizationForbidsJobRecording"))
+    }
+
+    /// Whether the organisation requires a recorded job's faces blurred before it goes to the
+    /// office. A ceiling pinned on. While the app cannot blur a recording, this makes recording a
+    /// job unavailable and holds any unblurred recording already on the phone.
+    static var organizationRequiresBlurBeforeOfficeSync: Bool {
+        PolicyEnvelope.bool(.organizationRequiresBlurBeforeOfficeSync,
+                            stored: UserDefaults.standard.bool(forKey: "organizationRequiresBlurBeforeOfficeSync"))
+    }
+
+    /// Whether the organisation forbids sending a recorded job over mobile data. A ceiling pinned on.
+    static var organizationForbidsRecordingSyncOnCellular: Bool {
+        PolicyEnvelope.bool(.organizationForbidsRecordingSyncOnCellular,
+                            stored: UserDefaults.standard.bool(forKey: "organizationForbidsRecordingSyncOnCellular"))
+    }
+
+    /// That the person holding this phone read what recording a job means and said so
+    /// (`RecordingConsent`): when, for which wording, and for which organisation. Three plain
+    /// values rather than a record, and nil unless all three are there.
+    static var jobRecordingConsent: RecordingConsent.Acknowledgement? {
+        get {
+            let defaults = UserDefaults.standard
+            let at = defaults.double(forKey: "jobRecordingConsentAt")
+            let version = defaults.integer(forKey: "jobRecordingConsentWording")
+            guard at > 0, version > 0,
+                  let organization = defaults.string(forKey: "jobRecordingConsentOrganization"),
+                  !organization.isEmpty else { return nil }
+            return RecordingConsent.Acknowledgement(at: Date(timeIntervalSince1970: at), wordingVersion: version,
+                                                    organizationID: organization)
+        }
+        set {
+            let defaults = UserDefaults.standard
+            guard let newValue else {
+                for key in ["jobRecordingConsentAt", "jobRecordingConsentWording", "jobRecordingConsentOrganization"] {
+                    defaults.removeObject(forKey: key)
+                }
+                return
+            }
+            defaults.set(newValue.at.timeIntervalSince1970, forKey: "jobRecordingConsentAt")
+            defaults.set(newValue.wordingVersion, forKey: "jobRecordingConsentWording")
+            defaults.set(newValue.organizationID, forKey: "jobRecordingConsentOrganization")
+        }
+    }
+
     // MARK: - Directions (Plan FO P3c)
 
     /// The maps app directions are handed to, chosen once in Settings. Apple Maps by default —

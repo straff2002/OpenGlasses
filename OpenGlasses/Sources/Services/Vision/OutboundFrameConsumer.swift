@@ -176,6 +176,37 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// filtered before it is saved.
     case dwellCapture
 
+    // MARK: - "Record this job" (Plan HE)
+    //
+    // The two entries below are the whole of a recorded job's path, and there is deliberately no
+    // third. A recorded job is written raw into the job's own folder and leaves that folder one
+    // way only, to the organisation's office. It is not offered to a share sheet, saved to Photos
+    // or attached to a report — a clip for a report stays `jobClipRecording`'s work, off the
+    // blurred relay. `JobRecordingExitTests` reads the sources and holds the folder to that.
+
+    /// The raw tap for "Record this job": `JobRecordingCoordinator` hands the unfiltered camera
+    /// publisher to its own recorder, which writes the frames into the job's folder
+    /// (`Documents/FieldSessions/{id}/recording/`), protected and out of backup.
+    ///
+    /// **Justified exemption.** Private, protected storage on the phone is not egress, so there is
+    /// nothing to filter at capture; and filtering at capture is what puts holes in a recording —
+    /// the relay drops every frame while the blur cannot run, which is whenever the phone is
+    /// locked in a pocket. The person recording has been told the footage is unblurred and where
+    /// it goes (`RecordingConsent`), and it is refused outright in Medical Compliance mode, where
+    /// the organisation forbids it, and where the organisation requires a blur the app cannot yet
+    /// apply (`JobRecordingAvailability`).
+    case jobRecordingCapture
+    /// The one exit: the sealed bundle sent to the organisation's own office over the managed
+    /// connection (`JobRecordingSyncService`), to the office the phone's current pairing names and
+    /// to nobody else.
+    ///
+    /// **Raw by default, by the organisation's decision** — the destination is the organisation's
+    /// own computer and its analysis is better for it. Where the organisation requires faces
+    /// blurred first, an unblurred bundle is not sent (`SyncEligibility.Reason.blurRequired`), and
+    /// until the app can blur a recording nothing is recorded under that rule at all. The app-wide
+    /// blur switch does not govern this exit either way.
+    case jobRecordingOfficeSync
+
     /// Where the consumer taps the pixels.
     enum Tap: String {
         /// `CameraService.framePublisher` — unfiltered, camera rate. Only the relay and the exempt
@@ -196,6 +227,9 @@ enum OutboundFrameConsumer: String, CaseIterable {
         /// still an egress, so the consumer filters at its own chokepoint through
         /// `StillImageFiltering` before the bytes go anywhere.
         case heldImage
+        /// A recorded job already written to its own folder on this phone. Not a camera tap at all:
+        /// the consumer reads files, and what is being policed is where those files may go.
+        case jobRecordingFolder
     }
 
     /// What protects the consumer.
@@ -208,6 +242,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case exemptByScope
         /// Is the blur pass, or wires it up. Reads raw pixels by construction.
         case relayInput
+        /// Leaves the device unfiltered by the app-wide blur, to one destination the organisation
+        /// has named — its own office — under the organisation's own rule about blurring. Only
+        /// the recorded job's sealed bundle uses this, and the consumer must refuse to send where
+        /// that rule is not met.
+        case organisationExit
     }
 
     /// The Swift type that owns the subscription or the call. The exhaustiveness test matches
@@ -258,6 +297,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .badgeScanTool: return "BadgeScanTool"
         case .faceRecognitionTool: return "FaceRecognitionTool"
         case .fitnessPoseFrame: return "NativeToolRegistry"
+        case .jobRecordingCapture: return "JobRecordingCoordinator"
+        case .jobRecordingOfficeSync: return "JobRecordingSyncService"
         }
     }
 
@@ -290,13 +331,15 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
              .fitnessPoseFrame: return .onDeviceVision
+        case .jobRecordingCapture, .jobRecordingOfficeSync: return .officeRecording
         }
     }
 
     var tap: Tap {
         switch self {
         case .outboundRelayInput, .appRelayAttachment, .faceRecognition, .readingCompanion,
-             .fingerspelling, .dwellCapture: return .rawCameraPublisher
+             .fingerspelling, .dwellCapture, .jobRecordingCapture: return .rawCameraPublisher
+        case .jobRecordingOfficeSync: return .jobRecordingFolder
         case .liveSessionPush, .livePreview: return .rawCameraCallback
         case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
              .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
@@ -325,7 +368,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .liveSessionPush, .liveSessionPollFallback, .directModelTurn, .pinnedFrame,
              .agentAttachment: return .chokepoint
         case .faceRecognition, .sceneNarration, .livePreview, .readingCompanion,
-             .fingerspelling, .dwellCapture: return .exemptByScope
+             .fingerspelling, .dwellCapture, .jobRecordingCapture: return .exemptByScope
+        case .jobRecordingOfficeSync: return .organisationExit
         case .structuredVisionAssessment, .safetyAssessment, .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture,
@@ -352,8 +396,15 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// raw still appearing in it would be a new tap nobody argued for.
     static var typesAllowedOnARawStill: Set<String> {
         Set(allCases.filter { $0.tap != .filteredStill && $0.tap != .outboundRelay
-                              && $0.tap != .heldImage }
+                              && $0.tap != .heldImage && $0.tap != .jobRecordingFolder
+                              && $0 != .jobRecordingCapture }
                     .map(\.owningType))
+    }
+
+    /// The consumers through which a recorded job's pixels may move: into the job's folder, and
+    /// from it to the office. Anything else touching that folder is a new exit nobody argued for.
+    static var jobRecordingPath: [OutboundFrameConsumer] {
+        allCases.filter { $0.scope == .officeRecording }
     }
 
     static var owningTypes: Set<String> { Set(allCases.map(\.owningType)) }

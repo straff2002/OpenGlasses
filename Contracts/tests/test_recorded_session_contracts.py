@@ -31,6 +31,10 @@ TESTS = [
     "SpeechAgreementTests.swift",
     "CrossReferenceIndexTests.swift",
     "BundleManifestTests.swift",
+    "RecordingTimebaseTests.swift",
+    "RecordingConsentTests.swift",
+    "JobRecordingAvailabilityTests.swift",
+    "RecordedJobAssemblyTests.swift",
 ]
 
 
