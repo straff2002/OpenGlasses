@@ -1,8 +1,7 @@
 # FX1 manual assignment contract — draft v1
 
 Other contracts in this folder: [job file](job-file.md) (format 2: an office-assigned identifier
-and revision, signed over exact bytes; reference implementation and fixture, the app reads
-format 1 only), [office commissioning](commissioning.md) (scan to join an office),
+and revision, signed over exact bytes; reference implementation, fixture and the phone's import), [office commissioning](commissioning.md) (scan to join an office),
 [office preview](office-preview.md), [recorded session](recorded-session.md),
 [team learning](team-learning.md), [managed office folders](office-folders.md),
 [office reports](office-reports.md) (messages, reference implementation and fixtures; no app
