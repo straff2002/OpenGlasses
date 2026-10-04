@@ -97,6 +97,12 @@ final class OfficeManualService: ObservableObject {
         /// This phone's ceiling on an assigned archive, which no assignment can raise.
         var maximumArchiveBytes: Int64 = 200 * 1_048_576
         var maximumInflatedBytes = 400 * 1_048_576
+        /// The job attachments still to come from the same folder. This service is the only one
+        /// that tells the folder what to take, so a second owner cannot undo what the first asked.
+        var attachmentsWanted: @MainActor () -> [JobNeeds.Attachment] = { [] }
+        /// Where each wanted attachment is after a pass, by digest (`ready`, `offered` or
+        /// `waiting`), and whether the route allows large content now.
+        var attachmentsStatus: @MainActor ([String: String], Bool) async -> Void = { _, _ in }
         var clock: () -> Date = Date.init
         var load: () -> Ledger = { Ledger() }
         var save: (Ledger) throws -> Void = { _ in }
@@ -133,6 +139,9 @@ final class OfficeManualService: ObservableObject {
 
     private let seams: Seams
     private var sweeping = false
+    /// Whether the last pass asked the folder for attachments, so the pass after the last one
+    /// has arrived still tells the folder to let it go.
+    private var askedForAttachments = false
 
     init(seams: Seams) {
         self.seams = seams
@@ -149,7 +158,14 @@ final class OfficeManualService: ObservableObject {
         defer { sweeping = false }
         let pending = try OfficeManagedFolders.decodeBulkPending(try await seams.transport.bulkPending())
         let unfinished = ledger.entries.contains { $0.state == .received }
-        guard unfinished || !pending.grants.isEmpty || !pending.assignments.isEmpty else { return }
+        let attachments = seams.attachmentsWanted()
+        guard unfinished || !pending.grants.isEmpty || !pending.assignments.isEmpty
+                || !attachments.isEmpty || askedForAttachments else {
+            // Nothing to ask the folder. The attachment store still lets go of what no held job
+            // names any more; that needs no office.
+            await seams.attachmentsStatus([:], seams.bulkAllowed())
+            return
+        }
         // The gate first: nothing is taken in on a pairing that does not verify now.
         let held = try await seams.held()
         let now = Int64(seams.clock().timeIntervalSince1970)
@@ -164,20 +180,29 @@ final class OfficeManualService: ObservableObject {
             await attempt { try await self.giveReceipts(entry.assignmentID) }
         }
 
-        // Only the archives of assignments this phone has accepted are asked of the folder, and
-        // only while the route allows large content.
+        // Only the archives of assignments this phone has accepted, and the attachments of jobs
+        // it holds, are asked of the folder, and only while the route allows large content.
         let wanted = ledger.entries.filter { $0.state == .received && $0.enrolmentID == held.enrolmentID }
+        let archives = Set(wanted.map(\.archiveSHA256))
+        let wantedAttachments = attachments.filter { !archives.contains($0.sha256) }
         let allowed = seams.bulkAllowed()
         var offered: Set<String> = []
         var ready: [String] = []
+        var attachmentStates: [String: String] = [:]
         await attempt {
-            try await self.seams.transport.setBulkWanted(Self.wantedJSON(wanted))
-            try await self.seams.transport.setBulkPaused(!allowed || wanted.isEmpty)
+            try await self.seams.transport.setBulkWanted(Self.wantedJSON(wanted, attachments: wantedAttachments))
+            try await self.seams.transport.setBulkPaused(!allowed || (wanted.isEmpty && wantedAttachments.isEmpty))
+            self.askedForAttachments = !wantedAttachments.isEmpty
             let status = try OfficeManagedFolders.decodeBulkStatus(try await self.seams.transport.bulkStatus())
             offered = Set(status.filter { $0.state == "offered" }.map(\.sha256))
             let arrived = Set(status.filter { $0.state == "ready" }.map(\.sha256))
             ready = wanted.filter { arrived.contains($0.archiveSHA256) }.map(\.assignmentID)
+            for attachment in wantedAttachments {
+                attachmentStates[attachment.sha256] = status.first { $0.sha256 == attachment.sha256 }?.state ?? "waiting"
+            }
         }
+        // Small things first: a job's attachments before a manual archive is installed.
+        await seams.attachmentsStatus(attachmentStates, allowed)
         for assignmentID in ready {
             await attempt { try await self.install(assignmentID, held: held, now: now) }
         }
@@ -408,8 +433,10 @@ final class OfficeManualService: ObservableObject {
         }
     }
 
-    private static func wantedJSON(_ entries: [Entry]) throws -> String {
-        let items = entries.map { ["kind": "vault", "sha256": $0.archiveSHA256, "bytes": $0.archiveBytes] as [String: Any] }
+    private static func wantedJSON(_ entries: [Entry], attachments: [JobNeeds.Attachment]) throws -> String {
+        // Attachments first: within the folder, small things before a manual archive.
+        let items = attachments.map { ["kind": "attachment", "sha256": $0.sha256, "bytes": $0.bytes] as [String: Any] }
+            + entries.map { ["kind": "vault", "sha256": $0.archiveSHA256, "bytes": $0.archiveBytes] as [String: Any] }
         return String(decoding: try JSONSerialization.data(withJSONObject: items), as: UTF8.self)
     }
 
@@ -428,6 +455,21 @@ final class OfficeManualService: ObservableObject {
             }
             return Row(id: entry.assignmentID, vaultID: entry.vaultID, vaultVersion: entry.vaultVersion, state: state)
         }
+    }
+
+    /// Where a manual set a job names stands: installed under an assignment, on its way, or
+    /// assigned by nobody yet. A job never authorises a manual; it only says it needs one.
+    enum SetStanding: Equatable, Sendable {
+        case ready
+        case onItsWay
+        case notYetAvailable
+    }
+
+    func standing(ofSet setID: String) -> SetStanding {
+        let entries = ledger.entries.filter { $0.setID == setID }
+        if entries.contains(where: { $0.state == .installed }) { return .ready }
+        if entries.contains(where: { $0.state == .received }) { return .onItsWay }
+        return .notYetAvailable
     }
 
     /// The words for one assigned manual. A manual is "ready" only once it is installed; nothing

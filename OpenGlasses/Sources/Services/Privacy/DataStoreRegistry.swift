@@ -88,6 +88,7 @@ enum SensitiveStore: String, CaseIterable {
     case officeReports
     case officeReportEvidence
     case officeManuals
+    case officeJobAttachments
 
     // Clinical
     case healthSummaryCache
@@ -680,6 +681,20 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "OfficeManualService",
                           ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeManualService.swift"],
                           location: "Application Support/AvenkinOffice/manuals.json")
+
+        case .officeJobAttachments:
+            // The attachments a signed job names by digest, as the office sent them: a site plan,
+            // a drawing, a photograph. The organisation's documents about a job, issued to this
+            // technician with the work order, so filed as `upcomingJobs` is. Each is kept only while a job that names it is ahead or open on
+            // this phone, and is never sent anywhere. Excluded from backup: the office has them.
+            return Record(store: self, dataClass: .documentCorpus, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("removed when the job that names it is removed or finished"),
+                          deleteAll: .api("OfficeJobAttachmentStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeJobAttachmentStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeJobAttachmentStore.swift"],
+                          location: "Application Support/AvenkinOffice/job-attachments/")
 
         case .orgEnrolment:
             // Plan CT: the organisation profile this phone is enrolled with — the signed document,

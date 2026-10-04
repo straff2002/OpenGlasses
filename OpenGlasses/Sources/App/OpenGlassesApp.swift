@@ -1099,7 +1099,29 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self, case .connected(let route) = self.officeField.state else { return false }
             return OfficeManualService.bulkAllowed(route: route, expensive: self.reachability.isExpensive)
         }
+        // The same folder carries the attachments of jobs this phone holds; the manual service
+        // is the one that tells the folder what to take.
+        seams.attachmentsWanted = { [weak self] in self?.officeJobAttachments?.wanted ?? [] }
+        seams.attachmentsStatus = { [weak self] status, allowed in
+            await self?.officeJobAttachments?.took(status: status, allowed: allowed)
+        }
         return OfficeManualService(seams: seams)
+    }()
+
+    /// The attachments that follow a job from the office. Nil in a build without the office
+    /// transport.
+    lazy var officeJobAttachments: OfficeJobAttachmentStore? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable(),
+              let directory = OfficeJobAttachmentStore.defaultDirectory() else { return nil }
+        var seams = OfficeJobAttachmentStore.Seams(transport: transport, directory: directory)
+        seams.freeBytes = { OfficeJobAttachmentStore.volumeFreeBytes(directory) }
+        // Jobs ahead, and jobs started and not finished. An attachment goes with its job.
+        seams.named = { [weak self] in
+            OfficeJobAttachmentStore.named(
+                (self?.upcomingJobs.jobs ?? []).map { ($0.needs, $0.provenance) }
+                + FieldSessionService.shared.history.filter { $0.endedAt == nil }.map { ($0.jobNeeds, $0.jobFile) })
+        }
+        return OfficeJobAttachmentStore(seams: seams)
     }()
 
     /// Reads the office's receipts on the connection's poll and offers waiting records again.
@@ -1207,6 +1229,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     VaultRegistry.shared.reloadUserManifests()
                 }
                 self.upcomingJobs.removeAll()
+                // Attachments belong to the organisation's jobs, and go with them.
+                self.officeJobAttachments?.removeAll()
                 StagedExportCoordinator.fieldSession.revokeAll()
                 // The turn records name the organisation's manuals and jobs.
                 TurnTraceStore.shared.removeAll()
