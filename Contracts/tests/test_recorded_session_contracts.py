@@ -35,6 +35,7 @@ TESTS = [
     "RecordingConsentTests.swift",
     "JobRecordingAvailabilityTests.swift",
     "RecordedJobAssemblyTests.swift",
+    "BlurredPartTests.swift",
 ]
 
 

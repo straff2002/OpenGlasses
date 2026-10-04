@@ -67,6 +67,7 @@ extension JobRecordingCoordinator.Seams {
                     audio: (any BroadcastAudioProviding)?,
                     hipaa: HIPAAComplianceService?,
                     bundles: JobRecordingBundleStore,
+                    blur: JobPartBlur? = nil,
                     pairing: @escaping @MainActor () -> OfficePairingService = { OfficePairingService() },
                     sessions: @escaping @MainActor () -> FieldSessionService = { .shared }) -> Self {
         Self(
@@ -106,6 +107,7 @@ extension JobRecordingCoordinator.Seams {
             capture: JobRecordingCaptureStore(sessionsRoot: bundles.sessionsRoot),
             bundles: bundles,
             sign: { try await OfficePhoneIdentity.shared.signRecordingManifest($0) },
+            blur: blur,
             transcribe: TimedTranscriptSource.onDevice().utterances,
             logEntries: { sessionID in
                 JobRecordingLogReader.entries(
@@ -119,6 +121,40 @@ extension JobRecordingCoordinator.Seams {
                               count: acknowledgement.wordingVersion)
             },
             monotonicNow: { JobRecordingCoordinator.hostClockSeconds() })
+    }
+}
+
+extension JobPartBlur {
+    /// The blur pass as the app wires it: `BundleBlurPass` over the app's one face blur, run only
+    /// while the app is in front and the blur says it can be relied on.
+    @MainActor
+    static func app(filter: PrivacyFilterService) -> JobPartBlur {
+        // Both are asked: the filter's own view of the app's life, and the application's. Either
+        // one saying no is no.
+        let available: @MainActor () -> Bool = {
+            UIApplication.shared.applicationState == .active && !filter.isSuspendedForBackground
+        }
+        let pass = BundleBlurPass.app(filter: filter, isAvailable: available)
+        // The phone is let lock itself again exactly as it would have before: something else may
+        // have asked for it to stay awake meanwhile.
+        var stayedAwakeBefore = false
+        return JobPartBlur(
+            isAvailable: available,
+            blur: { part, output, progress in
+                switch await pass.run(part: part, output: output, progress: progress) {
+                case .success(let report): return .success(report)
+                case .failure(.interrupted): return .failure(.interrupted)
+                case .failure: return .failure(.failed)
+                }
+            },
+            keepAwake: { awake in
+                if awake {
+                    stayedAwakeBefore = UIApplication.shared.isIdleTimerDisabled
+                    UIApplication.shared.isIdleTimerDisabled = true
+                } else {
+                    UIApplication.shared.isIdleTimerDisabled = stayedAwakeBefore
+                }
+            })
     }
 }
 

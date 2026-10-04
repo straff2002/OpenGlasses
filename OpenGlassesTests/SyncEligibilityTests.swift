@@ -115,6 +115,9 @@ final class SyncEligibilityTests: XCTestCase {
         XCTAssertEqual(E.evaluate(ready { $0.blurRequiredAndNotDone = true }), .notEligible(.blurRequired))
         let sentence = E.Reason.blurRequired.explanation
         XCTAssertTrue(sentence.contains("blurred") && sentence.contains("stays on this phone"), sentence)
+        // A sealed recording cannot be blurred afterwards. What can be done about it is said.
+        XCTAssertTrue(sentence.contains("can't be blurred now") && sentence.contains("You can delete it"), sentence)
+        XCTAssertFalse(sentence.contains("yet"), "the app can blur a recording now; this one it cannot")
     }
 
     // MARK: - The office and smaller traffic

@@ -74,10 +74,12 @@ final class JobRecordingSyncServiceTests: XCTestCase {
     }
 
     @discardableResult
-    private func seal(parts: [Store.PartFile]? = nil) async throws -> Store.Record {
+    private func seal(parts: [Store.PartFile]? = nil, blurred: Bool = false,
+                      droppedFrames: Int64 = 0) async throws -> Store.Record {
         try await store.seal(
             .init(bundleID: try bundleID(), sessionID: sessionID, jobNumber: "JOB-1042", binding: try binding(),
-                  consentAt: now.addingTimeInterval(-3_600), blurred: false, droppedFrames: 0, chunkBytes: 32,
+                  consentAt: now.addingTimeInterval(-3_600), blurred: blurred, droppedFrames: droppedFrames,
+                  chunkBytes: 32,
                   timeline: try RecordedJobFixtures.data("recorded-session-timeline-v1"),
                   transcript: try RecordedJobFixtures.data("recorded-session-transcript-v1"),
                   parts: try parts ?? partFiles()),
@@ -445,6 +447,68 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.blurRequired)))
         XCTAssertTrue(Service.words(try XCTUnwrap(service.rows.first)).contains("blurred"))
         XCTAssertEqual(store.records().count, 1, "it is kept")
+        XCTAssertFalse(store.isBlurred(try XCTUnwrap(store.records().first)))
+    }
+
+    /// A sealed recording cannot be blurred afterwards: its manifest is signed. So one sealed
+    /// before the rule applied is held for as long as the rule does, however many passes go by,
+    /// and the words on the job's page say what it is and what can be done about it.
+    func testAnUnblurredRecordingSealedBeforeTheRuleStaysHeldAndSaysItCanBeDeleted() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        conditions.blurRequiredAndNotDone = true
+        for _ in 0..<3 { try await service.sweep() }
+        let published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+
+        let words = Service.words(try XCTUnwrap(service.rows.first))
+        XCTAssertTrue(words.hasPrefix("This recording is held on this phone."), words)
+        XCTAssertTrue(words.contains("can't be blurred now") && words.contains("You can delete it"), words)
+        XCTAssertFalse(words.contains("waiting to sync"), "it is not waiting for anything")
+        XCTAssertTrue(service.deletionNeedsConfirmation(bundleID: try bundleID()))
+
+        // Deleting it is the one thing a technician can do, and it works while it is held.
+        try await service.delete(bundleID: try bundleID())
+        XCTAssertTrue(store.records().isEmpty)
+    }
+
+    /// A bundle whose own signed manifest says it was blurred is what the rule asks for, and goes.
+    /// What the caller reports is the organisation's rule; whether a bundle meets it is read from
+    /// the bundle.
+    func testABlurredRecordingIsSentWhereTheOrganisationRequiresBlur() async throws {
+        try await openFolders()
+        let record = try await seal(blurred: true, droppedFrames: 7)
+        XCTAssertTrue(store.isBlurred(record))
+        let manifest = try XCTUnwrap(BundleManifest(payload: store.manifest(record).payload))
+        XCTAssertTrue(manifest.blurred)
+        XCTAssertEqual(manifest.droppedFrames, 7)
+
+        let service = makeService()
+        conditions.blurRequiredAndNotDone = true
+        try await service.sweep()
+        let published = await transport.recordings
+        XCTAssertEqual(published.count, 1)
+        XCTAssertNotEqual(service.rows.first?.phase, .waiting(.notEligible(.blurRequired)))
+    }
+
+    /// Whether a bundle is blurred is read from its manifest and nowhere else. One whose manifest
+    /// is gone, or is not the one the record was made for, is not taken to be blurred.
+    func testABundleWhoseManifestCannotBeReadIsNotTakenToBeBlurred() async throws {
+        try await openFolders()
+        let record = try await seal(blurred: true)
+        XCTAssertTrue(store.isBlurred(record))
+        let manifest = store.bundleDirectory(sessionID: sessionID).appendingPathComponent("manifest.json")
+        try Data("{}".utf8).write(to: manifest)
+        XCTAssertFalse(store.isBlurred(record))
+        try FileManager.default.removeItem(at: manifest)
+        XCTAssertFalse(store.isBlurred(record))
+
+        let service = makeService()
+        conditions.blurRequiredAndNotDone = true
+        try? await service.sweep()
+        let published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
     }
 
     func testDeletingARecordingRemovesAllOfItAndAsksFirstWhenTheOfficeHasNotGotIt() async throws {

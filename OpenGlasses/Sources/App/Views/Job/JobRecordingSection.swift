@@ -62,6 +62,14 @@ private struct JobRecordingRows: View {
                             Text("Preparing the recording.")
                                 .font(.callout)
                         }
+                        if let fraction = coordinator.blurProgress[sessionID] {
+                            // Faces are blurred with the app open; leaving stops it and it starts
+                            // that part again.
+                            Text(verbatim: "Blurring faces: \(Int((fraction * 100).rounded(.down)))%. Keep Avenkin open until this finishes.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     } else if let row {
                         sent(row)
                     } else if !isOpenJob {
@@ -146,9 +154,17 @@ private struct JobRecordingRows: View {
             choice("Carry on recording") { Task { await beginAfterConsent() } }
             choice("Finish the recording") { Task { await coordinator.finishInterrupted() } }
         case .waitingToPrepare:
-            Text("The recording is saved on this phone and will be prepared for the office.")
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
+            if case .waiting(let reason)? = coordinator.preparationPhase(sessionID: sessionID) {
+                // Faces have to be blurred first, and that runs only with the app open.
+                Text(verbatim: "The recording is saved on this phone. Faces have to be blurred before it goes to the office. \(reason.explanation)")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                choice("Prepare the recording now") { Task { await coordinator.sealPending() } }
+            } else {
+                Text("The recording is saved on this phone and will be prepared for the office.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

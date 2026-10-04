@@ -34,7 +34,9 @@ enum SyncEligibility {
 
         var medicalModeOn = false
         /// The organisation requires faces blurred before a recording is sent, and what is
-        /// waiting has not been blurred.
+        /// waiting has not been blurred. A sealed recording cannot be blurred afterwards — its
+        /// manifest is signed — so one sealed before the rule applied stays held for as long as
+        /// the rule does.
         var blurRequiredAndNotDone = false
         var officeIsReachable: Bool
         /// Job reports or receipts are still waiting to go.
@@ -46,7 +48,8 @@ enum SyncEligibility {
 
     enum Reason: Equatable, CaseIterable, Sendable {
         case medicalMode
-        /// Unblurred, where the organisation requires blur. It is kept and not sent.
+        /// Unblurred, where the organisation requires blur. It is kept and not sent, and the only
+        /// thing a technician can do about it is delete it.
         case blurRequired
         case profileNotCurrent
         case leaseNotCurrent
@@ -66,8 +69,9 @@ enum SyncEligibility {
             case .medicalMode:
                 return "Recordings are not sent while a medical privacy mode is on."
             case .blurRequired:
-                return "Your organisation requires faces to be blurred before a recording is sent, "
-                    + "and this version of the app can't do that yet. The recording stays on this phone."
+                return "Your organisation requires faces to be blurred before a recording is sent. "
+                    + "This one was made ready for the office without that, and can't be blurred now. "
+                    + "It stays on this phone and isn't sent. You can delete it."
             case .profileNotCurrent:
                 return "This phone's organisation settings are out of date, so the recording can't be sent yet."
             case .leaseNotCurrent:

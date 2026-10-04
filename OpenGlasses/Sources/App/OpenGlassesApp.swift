@@ -562,6 +562,9 @@ struct OpenGlassesApp: App {
                 appState.restoreFromBackground()
                 // A paired phone reconnects to its office whenever the app is open.
                 appState.officeField.appBecameActive()
+                // A recorded job waiting to have faces blurred is prepared now: the blur runs only
+                // while the app is in front.
+                appState.prepareWaitingRecordings()
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
@@ -1157,7 +1160,10 @@ class AppState: ObservableObject, AppStateProtocol {
               let root = JobRecordingBundleStore.defaultSessionsRoot() else { return nil }
         var seams = JobRecordingCoordinator.Seams.app(
             cameraService: cameraService, audio: captureAudioRouter, hipaa: hipaaService,
-            bundles: JobRecordingBundleStore(sessionsRoot: root))
+            bundles: JobRecordingBundleStore(sessionsRoot: root),
+            // Where the organisation requires faces blurred, each recorded part goes through the
+            // app's one face blur before the bundle is sealed.
+            blur: .app(filter: privacyFilter))
         // A sealed recording is offered to the office on the next pass, and shown at once.
         seams.sealed = { [weak self] in
             Task { @MainActor in try? await self?.officeJobRecordings?.sweep() }
@@ -1176,6 +1182,14 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { @MainActor in await recordings.sealPending() }
     }
     private var lastRecordingSealPass = Date.distantPast
+
+    /// The app has come to the front. A recording that was waiting to have faces blurred — the
+    /// blur runs only in the foreground — is prepared now rather than at the next poll.
+    func prepareWaitingRecordings() {
+        guard let recordings = jobRecordings else { return }
+        lastRecordingSealPass = Date()
+        Task { @MainActor in await recordings.sealPending() }
+    }
 
     /// Whether a recorded job may be sent to the office now: the network, power, the phone's
     /// standing with its organisation and office, medical mode, and what else is waiting.
@@ -1196,7 +1210,8 @@ class AppState: ObservableObject, AppStateProtocol {
             leaseIsCurrent: manager.evaluateLease()?.isInForce == true,
             bindingIsCurrent: pairing.bindingIsCurrent,
             medicalModeOn: Config.hipaaMode || MedicalEgressGuard.blocks(.jobRecordingOfficeSync),
-            // Nothing on this phone blurs a recording yet, so every bundle is unblurred.
+            // The organisation's rule. Whether a bundle meets it is read from that bundle's own
+            // signed manifest, where it is sent (`JobRecordingSyncService`).
             blurRequiredAndNotDone: Config.organizationRequiresBlurBeforeOfficeSync,
             officeIsReachable: pairing.officeIsReachable,
             // Job reports and receipts go first.

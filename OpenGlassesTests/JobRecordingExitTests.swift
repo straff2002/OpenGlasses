@@ -23,6 +23,7 @@ final class JobRecordingExitTests: XCTestCase {
     private static let recordedJobFiles = [
         "Services/FieldAssist/Job/JobRecordingCoordinator.swift",
         "Services/FieldAssist/Job/JobRecordingCoordinator+App.swift",
+        "Services/FieldAssist/Job/BundleBlurPass.swift",
         "Services/OfficeSync/JobRecordingCaptureStore.swift",
         "Services/OfficeSync/JobRecordingBundleStore.swift",
         "Services/OfficeSync/JobRecordingSyncService.swift",
@@ -88,6 +89,46 @@ final class JobRecordingExitTests: XCTestCase {
         }
         XCTAssertEqual(partReaders, ["JobRecordingCoordinator.swift"])
         XCTAssertEqual(chunkReaders, ["JobRecordingSyncService.swift"])
+    }
+
+    /// The blur pass is not an exit, and is held to that: it is handed two addresses by the
+    /// coordinator — the recorded part and where to write the blurred one — and builds no path of
+    /// its own. Only the coordinator names a blurred part or the file one is being made in.
+    func testTheBlurPassIsHandedItsFilesAndOnlyTheCoordinatorNamesABlurredPart() throws {
+        guard let walker = FileManager.default.enumerator(at: Self.sourcesRoot, includingPropertiesForKeys: nil) else {
+            return XCTFail("Could not enumerate the sources")
+        }
+        var blurredReaders: Set<String> = []
+        var scratchReaders: Set<String> = []
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            if text.contains(".blurredPartFile(sessionID:") { blurredReaders.insert(url.lastPathComponent) }
+            if text.contains(".blurScratchFile(sessionID:") { scratchReaders.insert(url.lastPathComponent) }
+        }
+        XCTAssertEqual(blurredReaders, ["JobRecordingCoordinator.swift"])
+        XCTAssertEqual(scratchReaders, ["JobRecordingCoordinator.swift"])
+
+        let pass = try code("Services/FieldAssist/Job/BundleBlurPass.swift")
+        for reach in ["sessionsRoot", "JobRecordingCaptureStore", "JobRecordingBundleStore", "appendingPathComponent(",
+                      "temporaryDirectory", "NSTemporaryDirectory", "documentDirectory"] {
+            XCTAssertFalse(pass.contains(reach), "the blur pass reaches for \(reach): it is handed its two files")
+        }
+    }
+
+    /// In the blur pass a picture reaches the encoder one way: as what the filter handed back.
+    /// The decoded frame is never appended, and there is one place a frame is appended at all.
+    func testTheBlurPassWritesOnlyWhatTheFilterReturned() throws {
+        let pass = try code("Services/FieldAssist/Job/BundleBlurPass.swift")
+        let appends = pass.components(separatedBy: "\n").filter { $0.contains("pictures.append(") }
+        XCTAssertEqual(appends.count, 1, "one place a picture is written")
+        XCTAssertTrue(pass.contains("Self.pixelBuffer(drawing: returned, from: pool)"),
+                      "what is drawn for the encoder is what the filter returned")
+        XCTAssertEqual(pass.components(separatedBy: "Self.pixelBuffer(drawing:").count - 1, 1,
+                       "and nothing else is ever drawn for it")
+        XCTAssertTrue(pass.contains("filter.filteredOrUnavailable(image, for: .officeRecordingBlur)"),
+                      "the app's pass asks the one chokepoint, under the scope the wearer's setting has no say in")
+        XCTAssertFalse(pass.contains("VNDetectFaceRectanglesRequest") || pass.contains("CIGaussianBlur"),
+                       "there is one blur in the app, and it is not here")
     }
 
     /// The exit itself goes to the office and to nothing else: the sender's only use of a chunk is

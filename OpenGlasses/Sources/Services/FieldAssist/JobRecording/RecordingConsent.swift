@@ -3,8 +3,9 @@ import Foundation
 /// What a person is told before a job is recorded, and the record that they were told
 /// (Plan HE §5).
 ///
-/// A recorded job holds the sound and the pictures of everybody who was there, unblurred, and it
-/// leaves the phone for the organisation's office. Nothing records until the person holding the
+/// A recorded job holds the sound and the pictures of everybody who was there — unblurred, unless
+/// the organisation requires faces blurred before it is sent — and it leaves the phone for the
+/// organisation's office. Nothing records until the person holding the
 /// phone has read that in plain words and said so. It is asked once, for the wording as it stands
 /// and for the organisation the phone is paired with: a change to either asks again. Each start
 /// after that shows one line.

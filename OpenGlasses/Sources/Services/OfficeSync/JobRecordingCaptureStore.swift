@@ -7,9 +7,19 @@ import Foundation
 ///
 /// ```
 /// <job>/recording/capture/
-///   <partID>.mp4      one recorded part: the glasses' pictures and the microphone's sound, unblurred
-///   journal.json      the recording so far: its clock, its parts, what was noted as it happened
+///   <partID>.mp4            one recorded part: the glasses' pictures and the microphone's sound, unblurred
+///   <partID>.blurred.mp4    the same part with every picture through the face blur, where the
+///                           organisation requires it — finished, checked and written down in the journal
+///   <partID>.blurring.mp4   that blurred part while it is being made; never a part of anything
+///   journal.json            the recording so far: its clock, its parts, what was noted as it happened
 /// ```
+///
+/// **A name says what a file is, and is never reused.** `<partID>.mp4` is only ever what the
+/// recorder wrote, unblurred. `<partID>.blurred.mp4` is only ever the output of a blur pass that
+/// finished — and it counts as the part only once the journal says so (`Journal.blurred`): one
+/// that is there without its line in the journal is removed and made again. `<partID>.blurring.mp4`
+/// is removed wherever it is found. So an interrupted pass leaves the unblurred part where it was
+/// and nothing that could be taken for a blurred one.
 ///
 /// The folder is made `completeUnlessOpen` and kept out of backup before anything is written to
 /// it, so a part is protected while it is being written and not only once it is finished. It lasts
@@ -59,8 +69,19 @@ struct JobRecordingCaptureStore: Sendable {
         /// When the recording stopped, on the session clock. Nil while it is still running — or
         /// was, when the app closed.
         var stoppedAt: SessionTime?
+        /// Whether faces must be blurred before this recording is sealed: the organisation
+        /// required it at some moment between the recording starting and its being prepared.
+        /// Once set it stays set — what was recorded under the rule is blurred, whatever the
+        /// rule says later.
+        var blurRequired: Bool?
+        /// What the blur pass did to each part it has finished and that has been checked. A part
+        /// named here is the blurred file; a part not named here has not been blurred.
+        var blurred: [BlurredPart]?
 
         var isStopped: Bool { stoppedAt != nil }
+        var mustBeBlurred: Bool { blurRequired == true }
+
+        func blurredPart(_ partID: String) -> BlurredPart? { blurred?.first { $0.partID == partID } }
     }
 
     enum Failure: Error, Equatable {
@@ -81,6 +102,17 @@ struct JobRecordingCaptureStore: Sendable {
 
     func partFile(sessionID: String, partID: String) -> URL {
         directory(sessionID: sessionID).appendingPathComponent("\(partID).mp4")
+    }
+
+    /// A part once every picture in it has been through the face blur. It is the part only when
+    /// the journal says so.
+    func blurredPartFile(sessionID: String, partID: String) -> URL {
+        directory(sessionID: sessionID).appendingPathComponent("\(partID).blurred.mp4")
+    }
+
+    /// Where a blurred part is written while it is being made.
+    func blurScratchFile(sessionID: String, partID: String) -> URL {
+        directory(sessionID: sessionID).appendingPathComponent("\(partID).blurring.mp4")
     }
 
     private func journalFile(sessionID: String) -> URL {
@@ -144,7 +176,8 @@ struct JobRecordingCaptureStore: Sendable {
 
     // MARK: - Sizes
 
-    /// The bytes one job's unsealed recording holds: its parts, including the one being written.
+    /// The bytes one job's unsealed recording holds: its parts, including the one being written
+    /// and a blurred part and the unblurred one it is replacing, while both are there.
     func bytes(sessionID: String) -> Int64 {
         let folder = directory(sessionID: sessionID)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
@@ -175,11 +208,30 @@ struct JobRecordingCaptureStore: Sendable {
     /// mid-recording, the part it was writing is one of them: it has no index and does not play.
     func removeUnfinishedParts(_ journal: Journal) {
         let folder = directory(sessionID: journal.sessionID)
+        // A finished part's own file, and its blurred replacement once the journal names it.
         let finished = Set(journal.parts.map { "\($0.partID).mp4" })
+            .union((journal.blurred ?? []).map { "\($0.partID).blurred.mp4" })
         for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         where name.hasSuffix(".mp4") && !finished.contains(name) {
             try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
         }
+    }
+
+    /// Removes anything a blur pass left half made. Safe at any time: a file being made is never
+    /// a part.
+    func removeBlurScratch(sessionID: String) {
+        let folder = directory(sessionID: sessionID)
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        where name.hasSuffix(".blurring.mp4") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
+    }
+
+    /// Whether any unblurred part is still in the folder: any `.mp4` that is neither a blurred
+    /// part nor one being made. Asked before a bundle is sealed as blurred.
+    func holdsUnblurredParts(sessionID: String) -> Bool {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory(sessionID: sessionID).path)) ?? []
+        return names.contains { $0.hasSuffix(".mp4") && !$0.hasSuffix(".blurred.mp4") && !$0.hasSuffix(".blurring.mp4") }
     }
 
     /// Removes a job's unsealed recording: its parts and its journal.

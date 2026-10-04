@@ -106,6 +106,34 @@ final class RecordedJobAssemblyTests: XCTestCase {
         XCTAssertEqual(try TimedTranscript.decode(assembled.transcript.encoded()), assembled.transcript)
     }
 
+    /// Where the organisation requires blur, the stretches the blur left without a picture are
+    /// `filter` gaps on the video, beside the gaps between parts. With nothing blurred, the
+    /// timeline is exactly what it was.
+    func testWhereTheBlurLeftNoPictureThereIsAFilterGapOnTheVideo() {
+        let parts = [part("part-1", from: 0, for: 60, endedBy: .pause), part("part-2", from: 70, for: 60)]
+        func assembled(_ blurred: [BlurredPart]) -> SessionTimeline {
+            A.assemble(clock: clock, parts: parts, noted: [], log: [], words: [], endedAt: t(130), blurred: blurred).timeline
+        }
+        let plain = assembled([])
+        XCTAssertEqual(plain, A.assemble(clock: clock, parts: parts, noted: [], log: [], words: [], endedAt: t(130)).timeline)
+        XCTAssertEqual(plain.gaps.map(\.reason), [.pause, .pause])
+
+        let blurred = assembled([
+            BlurredPart(partID: "part-1", framesWritten: 1_400, framesDropped: 40,
+                        gaps: [.init(from: t(20), to: t(21.5))]),
+            BlurredPart(partID: "part-2", framesWritten: 1_440, framesDropped: 0),
+        ])
+        XCTAssertEqual(blurred.gaps, [
+            .init(track: .video, from: t(20), to: t(21.5), reason: .filter),
+            .init(track: .video, from: t(60), to: t(70), reason: .pause),
+            .init(track: .audio, from: t(60), to: t(70.2), reason: .pause),
+        ])
+        XCTAssertEqual(blurred.tracks, plain.tracks, "the parts are where they were")
+        // The office's rules see the stretch as no video: nothing clear spans it.
+        XCTAssertEqual(blurred.clearSpans(.video).map { [$0.from, $0.to] },
+                       [[t(0), t(20)], [t(21.5), t(60)], [t(70), t(130)]])
+    }
+
     func testATurnWhoseWordsAreNotInTheTranscriptKeepsItsLogTimeAndSaysSo() {
         let assembled = A.assemble(
             clock: clock, parts: [part("part-1", from: 0, for: 60)], noted: [],

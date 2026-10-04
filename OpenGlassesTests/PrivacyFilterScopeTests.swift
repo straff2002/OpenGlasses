@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import OpenGlasses
 
@@ -42,6 +43,44 @@ final class PrivacyFilterScopeTests: XCTestCase {
         // The ordinary recording is untouched: still filtered, still off the relay.
         XCTAssertTrue(PrivacyFilterScope.recording.isFiltered)
         XCTAssertTrue(PrivacyFilterScope.recording.usesOutboundRelay)
+    }
+
+    /// Plan HE, the blur pass. Where an organisation requires faces blurred before a recorded job
+    /// goes to its office, that is not the wearer's setting to turn off. Exactly one scope is
+    /// blurred whatever the setting says, and with the setting off it still refuses a frame it
+    /// cannot process rather than handing it back.
+    func testOnlyTheRecordedJobsBlurPassIsBlurredWhateverTheSettingSays() {
+        XCTAssertEqual(PrivacyFilterScope.allCases.filter(\.isMandatory), [.officeRecordingBlur])
+        XCTAssertTrue(PrivacyFilterScope.officeRecordingBlur.isFiltered)
+        XCTAssertTrue(PrivacyFilterScope.officeRecordingBlur.leavesTheDevice)
+        XCTAssertFalse(PrivacyFilterScope.officeRecordingBlur.usesOutboundRelay)
+    }
+
+    @MainActor
+    func testWithTheSettingOffAMandatoryScopeIsStillNotAPassthrough() {
+        let filter = PrivacyFilterService()
+        filter.isEnabled = false
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+        }
+
+        // The blur cannot run: every ordinary scope hands the picture back, because the setting
+        // is off and that is the wearer's choice. The mandatory one refuses.
+        filter.noteScenePhase(.background)
+        XCTAssertIdentical(filter.filteredOrUnavailable(source, for: .recording), source)
+        XCTAssertIdentical(filter.filteredOrUnavailable(source, for: .toolPhotoCapture), source)
+        XCTAssertIdentical(filter.filtered(source, for: .directModelTurn), source)
+        XCTAssertNil(filter.filteredOrUnavailable(source, for: .officeRecordingBlur))
+        XCTAssertNotIdentical(filter.filtered(source, for: .officeRecordingBlur), source,
+                              "the nonoptional form hands back an opaque frame, never the source")
+
+        filter.noteScenePhase(.active)
+        filter.noteProtectedDataAvailable(false)
+        XCTAssertNil(filter.filteredOrUnavailable(source, for: .officeRecordingBlur))
+
+        // And the recorded job's own scope is still unfiltered at capture: that has not changed.
+        XCTAssertIdentical(filter.filteredOrUnavailable(source, for: .officeRecording), source)
     }
 
     /// A new case must not default into either bucket silently — walking `allCases` means adding

@@ -84,11 +84,14 @@ enum RecordedJobAssembly {
     ///   - noted: events noted as they happened, already on the session clock.
     ///   - log: the job log's lines. Only those stamped while the recording ran are used.
     ///   - endedAt: when the recording stopped, on the session clock.
+    ///   - blurred: what the face blur did to each part it went through, when the organisation
+    ///     requires it. Where it left the video without a picture there is a `filter` gap.
     static func assemble(clock: SessionClock, parts: [RecordingTimebase.PlacedPart],
                          noted: [SessionTimeline.Event], log: [LogEntry], words: [PartWords],
-                         endedAt: SessionTime) -> Assembled {
+                         endedAt: SessionTime, blurred: [BlurredPart] = []) -> Assembled {
         let transcript = Self.transcript(words, parts: parts)
         let placed = RecordingTimebase.tracksAndGaps(parts)
+        let gaps = BlurredPart.timelineGaps(between: placed.gaps, blurred: blurred)
         let end = max(endedAt, parts.compactMap(\.end).max() ?? .zero)
         func inside(_ time: SessionTime) -> Bool { time >= .zero && time <= end }
 
@@ -117,7 +120,7 @@ enum RecordedJobAssembly {
         events += TurnAligner.align(turns, to: transcript).map(\.event)
 
         var timeline = SessionTimeline(wallStart: clock.wallStartMilliseconds, tracks: placed.tracks,
-                                       gaps: placed.gaps, events: events)
+                                       gaps: gaps, events: events)
         timeline.candidates = ProcedureCandidateDetector.candidates(
             timeline: timeline, segments: WalkthroughSegmenter.segments(transcript))
         return Assembled(timeline: timeline.normalized(), transcript: transcript)

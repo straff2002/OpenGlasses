@@ -1,17 +1,24 @@
 # Plan HE — Recorded Job and Sync to the Office
 
-**Status:** 🚧 P0, P1 and the headless part of P2 built 2026-10-05, in the opt-in office transport
+**Status:** 🚧 P0, P1, P2's sync and the blur pass built 2026-10-05, in the opt-in office transport
 build; device checks owed. **P1 (2026-10-05):** "Record this job" on the open job's page records
 the glasses' raw frames and the microphone into the job's own folder, on one clock, behind a
 recording consent, and seals the bundle when it stops; the sync service P2 built is now started
 from the app and sends it (see "P1 as built"). The default build has no office transport and so
-offers no recording. **Where an organisation requires blur, no job is recorded at all**: the blur
-pass is not built. P0 is the pure core and the contract's fixtures; the two signed messages — the
-bundle manifest and the office's receipt — have a reference implementation and golden fixtures in
-`Transport/mobile-core/recordingbundle`, and the phone's own Swift for them writes and reads the
-same bytes (see "P0 as built"). Still unbuilt: `BundleBlurPass`, the owed item on the Jobs list
-and the job-day card, starting a recording by voice, P3 and P4. No bundle has left a physical
-phone. Drafted 2026-10-02 and **revised the same day:**
+offers no recording. **The blur pass (2026-10-05):** where an organisation requires faces blurred,
+a job can now be recorded — each recorded part is put through the app's face blur on the phone
+before the bundle is sealed, a picture the blur cannot process is dropped and counted, and the
+manifest says `blurred: true` with the count (see "The blur pass, as built"). It has run only over
+a small movie made in a test, with a stand-in for the blur: **no real recording has been blurred,
+and how long it takes on a phone is not known.** P0 is the pure core and the contract's fixtures;
+the two signed messages — the bundle manifest and the office's receipt — have a reference
+implementation and golden fixtures in `Transport/mobile-core/recordingbundle`, and the phone's own
+Swift for them writes and reads the same bytes (see "P0 as built"). **P3 is mostly there already**,
+built with P2: the office's later statuses are verified and kept, and the job's page says when a
+procedure was published — without its title, and with no words for *reviewed* or *rejected* (see
+P3 below). Still unbuilt: the owed item on the Jobs list and the job-day card, starting a recording
+by voice, the rest of P3, and P4. No bundle has left a physical phone. Drafted 2026-10-02 and
+**revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
 [`Contracts/recorded-session.md`](../../Contracts/recorded-session.md).
@@ -448,10 +455,11 @@ job's page; deleting a recording asks first and says when the office has not rec
 
 **Choices made in P1.**
 
-- **Where blur is required, no job is recorded.** `BundleBlurPass` is not built, so the rule
-  cannot be met. Rather than record and hold, or record and send, "Record this job" is shown
-  unavailable with the reason. A recording made before the organisation turned the rule on is
-  kept and not sent, and says why.
+- **Where blur is required, no job is recorded** — as P1 was built, with no blur pass. Rather
+  than record and hold, or record and send, "Record this job" was shown unavailable with the
+  reason. *Since the blur pass (below) a job is recorded under the rule and blurred before it
+  is sealed; the refusal remains only for an app with no blur pass.* A bundle sealed unblurred
+  before the organisation turned the rule on is kept and not sent, and says why.
 - **One file a part, sound and pictures together.** The recorder writes one MP4 holding both.
   The manifest lists it once, as `video`/`mp4`; the timeline's `audio` track names the same
   `partID` with the sound's own `tZero` and `duration`. Inside the file each track starts at
@@ -496,9 +504,9 @@ job's page; deleting a recording asks first and says when the office has not rec
 - **Nothing deletes a job from a screen today**, so `unacknowledgedDeletionWarning` has no
   caller; the same rule is on the recording's own delete.
 
-**Still owed after P1:** `BundleBlurPass`; starting and marking by voice (not built — no tool was
-added); the owed item on the Jobs list and the job-day card; a setting to allow mobile data;
-a live phone-camera session; P3; P4.
+**Still owed after P1:** starting and marking by voice (not built — no tool was added); the owed
+item on the Jobs list and the job-day card; a setting to allow mobile data; a live phone-camera
+session; the rest of P3; P4. (`BundleBlurPass` was owed here and is built — see below.)
 
 **What only a phone and glasses can show (owed):**
 
@@ -573,15 +581,162 @@ Choices made:
   question.
 - **The transcript stays after the trim**, with the timeline, manifest and receipts.
 
-**Still owed for P2:** `BundleBlurPass`; the owed item on the Jobs list and the job-day card.
+**Still owed for P2:** the owed item on the Jobs list and the job-day card — which is also where
+"Open Avenkin to prepare the recording" is meant to be read when the app is *not* open; today
+those words are on the job's page and in the note left when a recording stops. And every device
+check of the blur pass, listed at the end of the next section.
 Done with P1 (2026-10-05): the service is started from the app with real conditions, the job's
 page shows where the recording stands and has the delete control (which asks first, and says
 when the office has not received the recording), and a phone leaving its organisation owes an
 unacknowledged recording as it owes an undelivered report.
 
+**The blur pass, as built (2026-10-05)** — in the opt-in office transport build.
+
+*What it is.* `BundleBlurPass` (`Services/FieldAssist/Job/`, AVFoundation) reads one recorded
+part and writes a new file beside it. Every frame is decoded and handed to the filter, and only
+what the filter hands back is encoded: there is one place a picture is written, and it is fed
+only from the filter's answer. A frame the filter refuses, one it hands back at another size,
+and one that cannot be decoded are dropped and counted. The sound's packets are copied across
+as they are — not decoded and encoded again — and every picture keeps the time it had. A part
+with a second video track is refused. Before it says it succeeded it reads its own output back:
+as many pictures as it encoded, as many packets of sound as the recorded part held, and a file
+the system says plays. It never touches the recorded part.
+
+*The filter* is a seam of two closures: "can the blur run now" and "blur this picture". In the
+app it is the one chokepoint, `StillImageFiltering.filteredOrUnavailable`, under a new scope,
+`PrivacyFilterScope.officeRecordingBlur`. **That scope is blurred whatever the app's face-blur
+setting says** (`isMandatory`): every other filtered scope hands a picture straight back while
+the wearer's setting is off, and here that would have put unblurred frames into a bundle marked
+blurred. On the roster it is `jobRecordingBlurPass` — reads the job's folder, filters at the
+chokepoint, is not an exit.
+
+*Joined to sealing* (`JobRecordingCoordinator`). When the organisation requires blur, a stopped
+recording's parts go through the pass before anything else is done with it. The bundle is then
+made only of parts the journal names as blurred, from their blurred files and never from the
+recorder's own; it is not sealed while any unblurred part is still in the folder; the manifest
+says `blurred: true` and carries the total `droppedFrames`. Where blur is not required nothing
+changes: no pass, `blurred: false`, `droppedFrames: 0`.
+`JobRecordingAvailability.Facts.blurPassAvailable` is true wherever the coordinator has a pass
+wired — in the app, always — so an organisation that requires blur can record; an app with no
+pass still refuses, and never seals anything recorded under the rule.
+
+*Only in the foreground.* The pass runs while the app is in front and the blur says it can be
+relied on (both are asked). When it cannot run, the recording waits: the job's page and the note
+left at the stop say "Open Avenkin to prepare the recording", and it is prepared when the app
+next comes to the front (and on the office connection's half-minute pass). While it runs the
+phone is kept from locking itself, and the job's page shows how far it has got.
+
+*Safe to stop and repeat.* A name says what a file is and is never reused: `part-N.mp4` is only
+ever what the recorder wrote; `part-N.blurring.mp4` is a blurred part being made, and is removed
+wherever it is found; `part-N.blurred.mp4` is a finished one, and is *the part* only once the
+journal says so. One part at a time: the pass writes the new file; it takes the blurred part's
+name and the journal records it; only then is the unblurred part removed. Stopped anywhere, the
+next pass puts it right — a blurred file the journal does not name is removed and made again; an
+unblurred part still beside a replacement the journal does name is removed; any other file the
+journal does not name is removed, never sealed. A part the pass was
+interrupted in starts again from its first frame; parts already done are not done twice.
+
+*What a sealed, unblurred bundle can do.* Nothing but wait or be deleted. A bundle sealed before
+the organisation turned the rule on cannot be blurred — its manifest is signed — so
+`SyncEligibility` holds it for as long as the rule stands (unchanged), and whether a bundle is
+blurred is now read from its own signed manifest, bundle by bundle, rather than assumed. The
+job's page says "This recording is held on this phone. … It stays on this phone and isn't sent.
+You can delete it." and has the delete control, which asks first.
+
+**Choices made for the blur pass.**
+
+- **Sound: carried over untouched.** The same packets, in step. Only the first sound track; a
+  recorder writes one.
+- **Dropped frames are counted, and a long run of them is a gap.** The frames either side keep
+  their times, so a dropped frame leaves the one before it showing a little longer. A run of a
+  second or more is written on the timeline as a `filter` gap on the video, *inside* the part
+  (the timeline's own `clearSpans` already cuts gaps out of parts, and the office's rules treat
+  a gap as "no video here"). A shorter run is counted and not written: one lost frame should not
+  cut a twenty-second action in two. The second is a choice, `BlurredPart.gapThreshold`. In the
+  contract (§4).
+- **A part with every frame refused keeps its sound and no pictures**: it is listed as sound
+  (`track: audio`), and the whole of its video is one `filter` gap. With no sound either there
+  is no part; a recording left with no part at all leaves nothing behind.
+- **A rule that changes while a recording waits.** Blurred if the rule is on at any moment from
+  the start of the recording to its being prepared — written into the journal when it is seen,
+  and never unwritten. So a recording made without the rule and prepared under it is blurred,
+  and one made under the rule is blurred even if the rule has since gone: the people in it were
+  recorded on that understanding. The rule is asked once more just before signing; if it came in
+  while the words were being read, the recording is not sealed and the next pass blurs it.
+- **The temporary output is beside the recorded part**, in the capture folder that is already
+  registered (`SensitiveStore.jobRecordingCapture`), `completeUnlessOpen` and out of backup; the
+  finished file's protection is also set by name. No new store, no `tmp/`.
+- **Room is checked first**: the blurred copy is about as large as the part, so the pass does
+  not start without the part's size and a margin free. For that moment a part is on the phone
+  twice, as it is again while sealing.
+- **A decoder that delivers fewer frames than the part holds** has those counted as dropped too:
+  they are not in the output either.
+- **The technician is told** when pictures were left out: the note at sealing says so.
+- **Each frame is blurred on its own.** The chokepoint finds faces one picture at a time and
+  carries nothing from one frame to the next — unlike the camera-rate relay, which holds the
+  last faces it found so that one missed for a single frame does not flash through. So
+  `blurred: true` says every picture went through the blur; it does not say no face can be
+  seen. How often a face is missed on real footage is device check 3 below, and if it matters
+  the carrying-over belongs in the chokepoint, not in a second blur here.
+
+**Tested, and not.** `BundleBlurPassTests` makes a one-second movie in the test — twenty-four
+numbered frames, with and without sound — and runs the real pass over it with a stand-in filter
+that marks each frame it is handed: every frame through the filter once and in order, every
+frame in the output marked and where it was, refused frames absent and counted, the sound's
+bytes identical, an interrupted pass leaving the part and no output. So **the decode and encode
+really ran, in the simulator's test process; the app's face blur did not run over a movie** —
+the one test with the real blur is of it refusing every frame with the setting off and the blur
+unable to run. `JobRecordingCoordinatorTests` covers the joining with a fake pass. One thing the
+test's movie turned up: the simulator's encoder refuses the sound settings the recorder itself
+uses (AAC, 16 kHz, one channel, 64 kbps), so the test's movie is made at 44.1 kHz. The pass
+copies packets and does not care, but that a recording starts on a phone with those settings is
+check 1 of P1's own list and has not been seen here.
+
+**What only a phone can show for the blur pass (owed):**
+
+1. Time and heat for twenty minutes of video — the plan's own check. Nothing here says whether
+   that is two minutes or twenty.
+2. **The screen while it runs.** The blur is asked on the main thread, one frame at a time, as
+   every other still is. That is tens of thousands of short stops in a row; whether the app
+   stays usable meanwhile has to be seen, and if it does not the blur needs a way to be asked
+   off the main thread.
+3. That faces in a real recording are in fact blurred in the bundle, and how many frames the
+   blur drops on real footage.
+4. That the phone stays awake for a long part with the app open, and what locking it or leaving
+   the app part-way does: the part should start again, and nothing unblurred be sealed.
+5. A long single part: an interruption starts that part from its first frame, so an hour's
+   recording in one part needs an hour's worth of blurring in one sitting. If that is too much
+   to ask, the pass needs to keep what it has done within a part.
+6. That a recorded part from real glasses — hardware encoder, frame reordering — reads back with
+   the frame counts the pass checks, and that the blurred part plays in step with its sound.
+7. Free space: a part and its blurred copy together, then the bundle's chunks.
+8. A recording stopped with the phone locked in a pocket, then the app opened.
+9. Memory over a long part: a frame is decoded, copied, blurred and encoded tens of thousands of
+   times in a row.
+10. What a player at the office shows where the first frames of a part were dropped: in the
+    test's decoder that stretch reads back as one black picture before the first kept frame.
+
 **P3 — Office feedback on the phone.** Signed status messages, the job's "what came of it" line,
 the published procedure arriving as a vault. Tests: `RecordingStatusMessageTests`,
 `JobRecordingOutcomeTests`.
+
+**P3, as it stands (checked 2026-10-05) — mostly built by P0 and P2, never as a phase of its own.**
+
+- *Built:* the office's later statuses — `reviewed`, `published`, `rejected` — are read and
+  verified like a receipt (`OfficeRecordingReceipt`, against the binding held and the phone's
+  record of the manifest it sealed), acted on once, kept exactly as the office sent them, and
+  held as the recording's outcome with the vault's id and version (`JobRecordingSyncService`).
+  The job's page says "Recording received by the office. A procedure was published from it."
+  The procedure itself arrives as any assigned manual does, through the manual-assignment path
+  Plan HO built.
+- *Not built:* the procedure's title on that line (§6 has "— ⟨title⟩"); any words for
+  *reviewed* or *rejected* — both are kept and neither is shown; anything joining the installed
+  vault to the recording it came from; a job whose media has been trimmed still saying what
+  came of it is untested.
+- *Tests:* the two classes named above do not exist. What they would hold is in
+  `OfficeRecordingReceiptTests` (the three golden receipts, and what is refused) and
+  `JobRecordingSyncServiceTests` (a status under another status's name changes nothing; a
+  published status is kept and shown).
 
 **P4 — Device checks (owed).** A 20-minute recorded job with a conversation running (A/V and turn
 alignment error); locked-phone capture on the raw path; blur pass time and heat for 20 minutes of

@@ -50,20 +50,48 @@ final class JobRecordingAvailabilityTests: XCTestCase {
         XCTAssertEqual(A.evaluate(ready { $0.jobAlreadyRecorded = true }), .unavailable(.alreadyRecorded))
     }
 
-    /// The rule this phase exists to keep: with blur required and no way to blur, nothing is
-    /// recorded — rather than recorded and sent, or recorded and held.
-    func testBlurRequiredMeansNoRecordingWhileTheAppCannotBlur() {
+    /// With blur required and no way to blur, nothing is recorded — rather than recorded and
+    /// sent, or recorded and held. A blur pass is not assumed: unless the caller says one is
+    /// there, the rule is one that cannot be met.
+    func testBlurRequiredMeansNoRecordingWhereTheAppCannotBlur() {
         let facts = ready { $0.organizationRequiresBlur = true }
-        XCTAssertFalse(facts.blurPassAvailable, "the app cannot blur a recording yet, and the default says so")
+        XCTAssertFalse(facts.blurPassAvailable, "not available unless the caller says a blur pass is there")
         XCTAssertEqual(A.evaluate(facts), .unavailable(.blurRequiredButNotPossible))
         XCTAssertEqual(A.mustStop(facts), .blurRequiredButNotPossible)
         let sentence = A.Reason.blurRequiredButNotPossible.explanation
         XCTAssertTrue(sentence.contains("blurred") && sentence.contains("can't be recorded"), sentence)
-        // Only a blur that exists lifts it.
-        XCTAssertEqual(A.evaluate(ready {
+    }
+
+    /// With the blur pass there, an organisation that requires blur can record: the recording is
+    /// blurred on the phone before it is sealed. Nothing else about availability changes.
+    func testAnOrganisationThatRequiresBlurCanRecordWhereTheAppCanBlur() {
+        let facts = ready {
             $0.organizationRequiresBlur = true
             $0.blurPassAvailable = true
-        }), .available)
+        }
+        XCTAssertEqual(A.evaluate(facts), .available)
+        XCTAssertEqual(A.reasons(facts), [])
+        XCTAssertNil(A.mustStop(facts), "and a recording already running is not stopped by the rule")
+
+        // A blur pass with no rule to meet changes nothing.
+        XCTAssertEqual(A.evaluate(ready { $0.blurPassAvailable = true }), .available)
+
+        // Everything else stands in the way exactly as before.
+        func blurring(_ change: (inout A.Facts) -> Void) -> A.Facts {
+            ready {
+                $0.organizationRequiresBlur = true
+                $0.blurPassAvailable = true
+                change(&$0)
+            }
+        }
+        XCTAssertEqual(A.evaluate(blurring { $0.officeBindingCurrent = false }), .notOffered)
+        XCTAssertEqual(A.evaluate(blurring { $0.medicalComplianceMode = true }), .unavailable(.medicalComplianceMode))
+        XCTAssertEqual(A.evaluate(blurring { $0.officeRouteRefused = true }), .unavailable(.officeRouteRefused))
+        XCTAssertEqual(A.evaluate(blurring { $0.organizationForbidsRecording = true }), .unavailable(.forbiddenByOrganization))
+        XCTAssertEqual(A.evaluate(blurring { $0.jobIsOpen = false }), .unavailable(.noOpenJob))
+        XCTAssertEqual(A.evaluate(blurring { $0.jobAlreadyRecorded = true }), .unavailable(.alreadyRecorded))
+        XCTAssertEqual(A.evaluate(blurring { $0.unsyncedBytes = .max }), .unavailable(.unsyncedLimitReached))
+        XCTAssertEqual(A.mustStop(blurring { $0.organizationForbidsRecording = true }), .forbiddenByOrganization)
     }
 
     // MARK: - The limit on what is waiting

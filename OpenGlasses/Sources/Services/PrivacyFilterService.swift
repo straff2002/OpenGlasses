@@ -93,22 +93,39 @@ enum PrivacyFilterScope: String, CaseIterable {
     ///   job's folder are on the roster: `jobRecordingCapture` writes them there and
     ///   `jobRecordingOfficeSync` sends the sealed bundle to the one office the phone is paired
     ///   with. There is no share sheet, no Photos save and no report attachment.
-    /// - The person recording is told all of this first (`RecordingConsent`), and an organisation
-    ///   that requires blur gets no recording at all until the app can blur one
-    ///   (`JobRecordingAvailability`).
+    /// - The person recording is told all of this first (`RecordingConsent`), and where the
+    ///   organisation requires blur every part is put through `officeRecordingBlur` on the phone
+    ///   before the bundle is sealed — or, in an app with no way to do that, nothing is recorded
+    ///   at all (`JobRecordingAvailability`).
     case officeRecording
+    /// The pictures of a recorded job being blurred on the phone before its bundle is sealed,
+    /// because the organisation requires it (Plan HE, `BundleBlurPass`).
+    ///
+    /// **Filtered, and filtered whatever the app-wide switch says** (`isMandatory`). Every other
+    /// filtered scope is a true passthrough while the wearer's blur setting is off, and for those
+    /// that is right: the setting is theirs. This one is the organisation's rule about footage of
+    /// other people going to its office, so the wearer's setting has no say in it: with the
+    /// setting off the blur still runs, and a frame it cannot process is still refused.
+    case officeRecordingBlur
 
     /// Whether the bystander blur is applied to this consumer when the setting is on.
     var isFiltered: Bool {
         switch self {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
              .recording, .broadcast, .expertStream, .visionAssessment, .assistiveGuidance,
-             .toolPhotoCapture, .photoLibrary, .remoteFrameRequest:
+             .toolPhotoCapture, .photoLibrary, .remoteFrameRequest, .officeRecordingBlur:
             return true
         case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording:
             return false
         }
     }
+
+    /// Whether the blur runs for this consumer even while the wearer's blur setting is off.
+    ///
+    /// Only the recorded job's blur pass: there the blur is an organisation's requirement, not a
+    /// preference, and "the setting was off" must never be how an unblurred frame got into a
+    /// bundle that says it is blurred.
+    var isMandatory: Bool { self == .officeRecordingBlur }
 
     /// Whether pixels under this scope leave the device at all. Every filtered scope is an egress
     /// — that is why it is filtered. Of the unfiltered ones, only `officeRecording` is: its one
@@ -119,7 +136,7 @@ enum PrivacyFilterScope: String, CaseIterable {
             return false
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .recording, .broadcast,
              .expertStream, .visionAssessment, .assistiveGuidance, .toolPhotoCapture, .photoLibrary,
-             .remoteFrameRequest, .officeRecording:
+             .remoteFrameRequest, .officeRecording, .officeRecordingBlur:
             return true
         }
     }
@@ -133,7 +150,7 @@ enum PrivacyFilterScope: String, CaseIterable {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
              .sceneNarration, .onDevicePreview, .onDeviceVision, .visionAssessment,
              .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest,
-             .officeRecording: return false
+             .officeRecording, .officeRecordingBlur: return false
         }
     }
 }
@@ -227,8 +244,8 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// Process a protected still-image path. With the filter off this is a true passthrough; with
     /// it on, the source image is returned only after Vision successfully reports no faces.
     /// Suspension or any conversion/detection/composite failure returns an opaque replacement.
-    func processFrame(_ image: UIImage) -> UIImage {
-        switch attemptProcess(image) {
+    func processFrame(_ image: UIImage, mandatory: Bool = false) -> UIImage {
+        switch attemptProcess(image, mandatory: mandatory) {
         case .success(let processed): return processed
         case .failure(let failure): return failClosedFrame(like: image, reason: failure.reason)
         }
@@ -241,8 +258,8 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// different callers. A live session expects an image every poll and an opaque one is the least
     /// disruptive way to say "not this frame". A still reader is about to spend a model call, a file
     /// write or a Photos entry on this one image, and would rather be told it cannot have it.
-    func processFrameOrUnavailable(_ image: UIImage) -> UIImage? {
-        switch attemptProcess(image) {
+    func processFrameOrUnavailable(_ image: UIImage, mandatory: Bool = false) -> UIImage? {
+        switch attemptProcess(image, mandatory: mandatory) {
         case .success(let processed):
             return processed
         case .failure(let failure):
@@ -255,8 +272,10 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// entry points above can each log it in their own shape exactly once.
     private struct FilterFailure: Error { let reason: String }
 
-    private func attemptProcess(_ image: UIImage) -> Result<UIImage, FilterFailure> {
-        guard isEnabled else { return .success(image) }
+    /// - Parameter mandatory: the blur is somebody else's requirement, not the wearer's setting
+    ///   (`PrivacyFilterScope.isMandatory`), so the setting being off is not a passthrough.
+    private func attemptProcess(_ image: UIImage, mandatory: Bool) -> Result<UIImage, FilterFailure> {
+        guard isEnabled || mandatory else { return .success(image) }
         guard availability.isAvailable else {
             return .failure(FilterFailure(
                 reason: availability.unavailableReason?.rawValue ?? "suspended"))
@@ -288,7 +307,7 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// exempt?" is answered in one tested place instead of at each chokepoint.
     func filtered(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage {
         guard scope.isFiltered else { return image }
-        return processFrame(image)
+        return processFrame(image, mandatory: scope.isMandatory)
     }
 
     /// `filtered(_:for:)` for still readers: `nil` means "this scope must be filtered and it could
@@ -296,7 +315,7 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// `FilteredStill` for why the still paths need the difference and the camera-rate ones do not.
     func filteredOrUnavailable(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage? {
         guard scope.isFiltered else { return image }
-        return processFrameOrUnavailable(image)
+        return processFrameOrUnavailable(image, mandatory: scope.isMandatory)
     }
 
     // MARK: - Face Detection

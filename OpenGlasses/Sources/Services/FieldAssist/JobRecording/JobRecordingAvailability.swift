@@ -26,7 +26,8 @@ enum JobRecordingAvailability {
 
         var organizationForbidsRecording: Bool
         var organizationRequiresBlur: Bool
-        /// Whether this version of the app can blur a recording before it is sent. It cannot yet.
+        /// Whether this app can blur a recording before it is sealed for the office. False unless
+        /// whoever asks says a blur pass is there: a rule that cannot be met is a refusal.
         var blurPassAvailable = false
 
         var medicalComplianceMode: Bool
@@ -44,8 +45,10 @@ enum JobRecordingAvailability {
         case medicalComplianceMode
         case officeRouteRefused
         case forbiddenByOrganization
-        /// The organisation requires faces blurred before a recording is sent, and that cannot be
-        /// done yet — so nothing is recorded, rather than recorded and held or sent unblurred.
+        /// The organisation requires faces blurred before a recording is sent, and this app has
+        /// no way to do it — so nothing is recorded, rather than recorded and held or sent
+        /// unblurred. Where the blur pass is there, the rule does not stand in the way: the
+        /// recording is made, and blurred on the phone before it is sealed.
         case blurRequiredButNotPossible
         case noOpenJob
         case alreadyRecorded

@@ -741,6 +741,9 @@ enum SensitiveStore: String, CaseIterable {
             // and a small journal of the recording so far (its clock, its parts, what was noted
             // as it happened, which carries tool names and no words). Written straight into the
             // job's own folder, never to the temporary directory, the Recordings folder or Photos.
+            // Where the organisation requires faces blurred, each part's blurred replacement is
+            // made here too, beside it, and the unblurred part is removed once the replacement is
+            // whole and written down in the journal.
             // It lasts as long as the recording does: stopping seals it into the bundle and the
             // parts are removed; a recording the app was closed in the middle of can be carried on
             // while its job is open, and is sealed from what it had once the job has closed. It
