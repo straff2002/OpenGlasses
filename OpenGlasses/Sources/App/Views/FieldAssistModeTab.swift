@@ -15,6 +15,7 @@ struct FieldAssistModeTab: View {
     @ObservedObject private var sessions = FieldSessionService.shared
     @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("fieldAssistDefaultVaultId") private var faVaultId: String = "refrigeration"
+    @Environment(\.appAccent) private var accent
 
     @State private var pendingScenario: Procedure?
     @State private var problem: String?
@@ -250,7 +251,7 @@ struct FieldAssistModeTab: View {
             Spacer(minLength: 0)
             Image(systemName: "play.circle.fill")
                 .font(.title3)
-                .foregroundStyle(AccentColors.aiCoral)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .accessibilityHidden(true)
         }
         .frame(minHeight: OGMetrics.minTouchTarget)
@@ -406,12 +407,13 @@ struct FieldAssistTabRow: View {
     let symbol: String
     let title: String
     let subtitle: String?
+    @Environment(\.appAccent) private var accent
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.title3)
-                .foregroundStyle(AccentColors.aiCoral)
+                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                 .frame(width: 32)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {

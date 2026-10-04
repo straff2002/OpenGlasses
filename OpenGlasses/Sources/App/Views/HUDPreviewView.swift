@@ -39,7 +39,7 @@ struct HUDPreviewView: View {
                     .fill(OGTheme.media)
                     .overlay(
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(AppAccent.aiCoral.opacity(0.25), lineWidth: 1)
+                            .strokeBorder(AppAccent.color.opacity(0.25), lineWidth: 1)
                     )
             )
     }
@@ -176,7 +176,7 @@ private struct ComponentView: View {
             imageView(image)
         } else if let icon = component as? MWDATDisplay.Icon {
             SwiftUI.Image(systemName: sfSymbol(for: icon.name))
-                .foregroundColor(AppAccent.aiCoral)
+                .foregroundColor(AppAccent.color)
         } else if let group = component as? MWDATDisplay.ButtonGroup {
             buttonGroupView(group)
         } else if let nested = component as? MWDATDisplay.FlexBox {
@@ -221,7 +221,7 @@ private struct ComponentView: View {
             .clipShape(Capsule())
             .overlay(
                 Capsule().strokeBorder(
-                    AppAccent.aiCoral.opacity(button.style == .outline ? 0.8 : 0),
+                    AppAccent.color.opacity(button.style == .outline ? 0.8 : 0),
                     lineWidth: 1.5
                 )
             )
@@ -271,7 +271,7 @@ private func displayColor(for color: MWDATDisplay.TextColor) -> Color {
 /// Primary = coral (the active/AI accent); secondary = subtle; outline = clear + coral stroke.
 private func buttonBackground(_ style: MWDATDisplay.ButtonStyle) -> Color {
     switch style {
-    case .primary: return AppAccent.aiCoral
+    case .primary: return AppAccent.color
     case .secondary: return OGTheme.onMedia.opacity(0.16)
     default: return .clear  // .outline
     }
@@ -281,8 +281,8 @@ private func buttonForeground(_ style: MWDATDisplay.ButtonStyle) -> Color {
     switch style {
     // The accent is the *ground* on a filled button, so the label is whichever
     // pole reads on it rather than an assumed white.
-    case .primary: return OGTheme.onAccentLabel(AppAccent.aiCoral)
-    case .outline: return OGTheme.inkAccentLabel(AppAccent.aiCoral)
+    case .primary: return OGTheme.onAccentLabel(AppAccent.color)
+    case .outline: return OGTheme.inkAccentLabel(AppAccent.color)
     default: return OGTheme.onMedia  // .secondary
     }
 }

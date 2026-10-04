@@ -865,6 +865,7 @@ extension SettingKey {
         case .organizationJobReportChannel: return "Where a spoken \"send it\" goes"
         case .organizationReportRecipients: return "Who job reports are addressed to"
         case .organizationReportTranscriptInternal: return "Whether reports to the office carry the transcript"
+        case .organizationAccentColor: return "The app's accent colour"
         default: return rawValue
         }
     }
@@ -875,6 +876,7 @@ extension SettingKey {
         case (.fieldAssistEnabled, .bool(let on)): return on ? "Field Assist is turned on" : "Field Assist is turned off"
         case (.fieldAssistDefaultVaultId, .string(let id)): return "Field Assist opens with the \(id) vault"
         case (.supportReportEmail, .string(let address)): return "Support reports are emailed to \(address)"
+        case (.accentColorName, .string): return "The app starts in your organisation's accent colour"
         case (.fieldAssistDefaultMode, .string(let mode)):
             return mode == FieldSession.Mode.humanAssisted.rawValue
                 ? "Field Assist starts in human-assisted mode" : "Field Assist starts in AI-only mode"

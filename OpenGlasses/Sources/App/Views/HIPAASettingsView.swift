@@ -231,9 +231,9 @@ struct HIPAASettingsView: View {
             if complianceEnabled {
                 // MARK: - What Changes
                 Section {
-                    changeRow(icon: biometricIcon, color: AppAccent.aiCoral, title: "App Lock",
+                    changeRow(icon: biometricIcon, color: AppAccent.color, title: "App Lock",
                               detail: "\(biometricName) required to open app")
-                    changeRow(icon: "lock.doc.fill", color: AppAccent.aiCoral, title: "File Protection",
+                    changeRow(icon: "lock.doc.fill", color: AppAccent.color, title: "File Protection",
                               detail: "Recordings, transcripts, audit log and exports unreadable while locked")
                     changeRow(icon: "icloud.slash.fill", color: OGTheme.warnLabel, title: "iCloud Backup",
                               detail: "Clinical data excluded from backup")
@@ -245,9 +245,9 @@ struct HIPAASettingsView: View {
                               detail: "Disabled — memories stay on-device only")
                     changeRow(icon: "globe", color: OGTheme.warnLabel, title: "Caption Translation",
                               detail: "On-device only — audio never streams to the cloud")
-                    changeRow(icon: "list.clipboard.fill", color: AppAccent.aiCoral, title: "Audit Logging",
+                    changeRow(icon: "list.clipboard.fill", color: AppAccent.color, title: "Audit Logging",
                               detail: "All data access events are recorded")
-                    changeRow(icon: "calendar.badge.clock", color: AppAccent.aiCoral, title: "Auto-Purge",
+                    changeRow(icon: "calendar.badge.clock", color: AppAccent.color, title: "Auto-Purge",
                               detail: "Old data deleted after retention period")
                 } header: {
                     Text("What Changes")
@@ -319,7 +319,7 @@ struct HIPAASettingsView: View {
                 // MARK: - Data Routing
                 Section {
                     Toggle("Local LLM Only", isOn: $localOnly)
-                        .tint(AppAccent.aiCoral)
+                        .tint(AppAccent.color)
                         .onChange(of: localOnly) { _, val in
                             Config.hipaaLocalOnly = val
                             // Compliance mode has its own teardown hook; this switch had none, so
@@ -577,7 +577,7 @@ struct AuditLogView: View {
                         HStack {
                             Text(entry.action)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(AppAccent.aiCoral)
+                                .foregroundStyle(AppAccent.color)
                             Spacer()
                             Text(entry.at, style: .relative)
                                 .font(.caption2)

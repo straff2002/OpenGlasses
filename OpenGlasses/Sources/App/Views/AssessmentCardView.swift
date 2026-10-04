@@ -52,7 +52,7 @@ struct AssessmentCardView: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(AppAccent.aiCoral)
+                .foregroundStyle(AppAccent.color)
             }
 
             footer
@@ -71,7 +71,7 @@ struct AssessmentCardView: View {
                 Text(card.title).font(.headline)
                 Text(presentation.attributionText)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AppAccent.aiCoral)
+                    .foregroundStyle(AppAccent.color)
             }
             Spacer()
             Button(action: onDismiss) {

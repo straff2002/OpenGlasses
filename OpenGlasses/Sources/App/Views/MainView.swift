@@ -35,7 +35,7 @@ struct MainView: View {
     }
 
     private var accent: Color {
-        AppAccent.color(for: accentColorName)
+        AppAccent.color(for: AppAccent.effectiveName(stored: accentColorName))
     }
 
     /// Whether the bar carries a Job tab right now. The whole rule is in `JobTabPresence`; this

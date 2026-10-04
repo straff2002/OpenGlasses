@@ -62,6 +62,7 @@ struct FieldAssistManualsView: View {
 
 /// One manual: tap to open it; Ask, while a job is open on its vault.
 struct ManualShelfRow: View {
+    @Environment(\.appAccent) private var accent
     let manual: FieldAssistManualShelf.Manual
     let canAsk: Bool
     let onOpen: () -> Void
@@ -73,7 +74,7 @@ struct ManualShelfRow: View {
                 HStack(spacing: 12) {
                     Image(systemName: "book.closed.fill")
                         .font(.title3)
-                        .foregroundStyle(AccentColors.aiCoral)
+                        .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                         .frame(width: 32)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {

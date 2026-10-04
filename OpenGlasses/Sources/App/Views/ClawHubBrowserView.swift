@@ -481,7 +481,7 @@ struct ClawHubBrowserView: View {
         switch compat {
         case .compatible: return OGTheme.okLabel
         case .partiallyCompatible: return OGTheme.warnLabel
-        case .openclawRequired: return AppAccent.aiCoral
+        case .openclawRequired: return AppAccent.color
         }
     }
 }
@@ -675,7 +675,7 @@ struct SkillDetailSheet: View {
         switch compat {
         case .compatible: return OGTheme.okLabel
         case .partiallyCompatible: return OGTheme.warnLabel
-        case .openclawRequired: return AppAccent.aiCoral
+        case .openclawRequired: return AppAccent.color
         }
     }
 

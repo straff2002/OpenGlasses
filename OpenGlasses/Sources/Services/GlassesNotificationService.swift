@@ -163,7 +163,7 @@ private struct SystemNotificationContent: View {
         case .success: return .green
         case .warning: return .orange
         case .error: return .red
-        case .info: return AppAccent.aiCoral
+        case .info: return AppAccent.color
         }
     }
 }

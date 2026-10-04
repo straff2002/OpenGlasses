@@ -225,4 +225,42 @@ final class OrgProfileApplierTests: XCTestCase {
         XCTAssertEqual(result.drops, [.init(key: "remoteInvokeObserveEnabled",
                                             reason: .dispositionNotAllowed(.default))])
     }
+
+    // MARK: - Accent colour
+
+    /// The organisation chooses between a colour the technician may change (`accentColorName`, a
+    /// starting value) and one they may not (`organizationAccentColor`, profile-owned).
+    func testTheAccentIsADefaultOrALockByWhichKeyTheProfileSets() {
+        XCTAssertEqual(SettingKey.accentColorName.kind, .startingValue(.string))
+        XCTAssertEqual(SettingKey.organizationAccentColor.kind, .profileOwned(.string))
+
+        let offered = apply(["accentColorName": RawSetting(.string("#1A6B8F"), .default)])
+        XCTAssertEqual(offered.startingValues[.accentColorName], .string("#1A6B8F"))
+        XCTAssertFalse(offered.isLocked(.accentColorName))
+        XCTAssertTrue(offered.drops.isEmpty)
+
+        let locked = apply(["organizationAccentColor": RawSetting(.string("#1A6B8F"), .default)])
+        XCTAssertEqual(locked.effectiveValue(.organizationAccentColor, stored: .string("")), .string("#1A6B8F"))
+        XCTAssertTrue(locked.drops.isEmpty)
+    }
+
+    /// A profile names a colour as `#RRGGBB` and nothing else — not a preset id, shorthand or alpha.
+    func testAnAccentThatIsNotAHexColourIsANamedDrop() {
+        for bad in ["blue", "1A6B8F", "#1A6", "#1A6B8FFF", "#GGGGGG", ""] {
+            for key in ["accentColorName", "organizationAccentColor"] {
+                let result = apply([key: RawSetting(.string(bad), .default)])
+                XCTAssertEqual(result.drops, [.init(key: key, reason: .invalidValue("not a colour written as #RRGGBB"))],
+                               "\(key) = \(bad)")
+            }
+        }
+    }
+
+    func testHexAccentsResolveAndPresetsStillDo() {
+        XCTAssertEqual(AppAccent.hexValue("#1A6B8F"), 0x1A6B8F)
+        XCTAssertEqual(AppAccent.hexValue("#e77f47"), 0xE77F47)
+        XCTAssertNil(AppAccent.hexValue("violet"))
+        XCTAssertNil(AppAccent.hexValue("#+A6B8F"))
+        // The person's choice stands when no profile locks the accent.
+        XCTAssertEqual(AppAccent.effectiveName(stored: "teal"), Config.organizationAccentColor ?? "teal")
+    }
 }

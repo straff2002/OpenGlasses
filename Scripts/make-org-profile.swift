@@ -234,6 +234,8 @@ let allowList: [String: String] = [
     "fieldAssistDefaultVaultId": "default:string",
     "fieldAssistDefaultMode": "default:string",
     "supportReportEmail": "default:string",
+    "organizationAccentColor": "owned:string",
+    "accentColorName": "default:string",
 ]
 
 func typeName(_ value: ProfileValue) -> String {
