@@ -3,8 +3,9 @@
 **Status:** 🚧 P0 built 2026-10-05 — the pure core and the contract's fixtures, headless; nothing
 is wired into the app, and nothing records, stores or sends. The two signed messages P0 lists — the bundle manifest
 and the office's receipt — have a reference implementation and golden fixtures in
-`Transport/mobile-core/recordingbundle` (2026-10-05); the phone's own Swift for them is not built
-(see "P0 as built"). P1–P4 are unbuilt, and P2 is
+`Transport/mobile-core/recordingbundle`, and the phone's own Swift for them (`BundleManifest`,
+`OfficeRecordingReceipt`, a signer that signs only a manifest) writes and reads the same bytes
+(2026-10-05; see "P0 as built"). P1–P4 are unbuilt, and P2 is
 still blocked on Plan FX. Drafted 2026-10-02 and **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
@@ -280,13 +281,30 @@ only (CryptoKit for SHA-256), no singleton, no disk, no network, no production c
   `ActionEventValidatorTests`, `SpeechAgreementTests`, `CrossReferenceIndexTests`; and the portable
   check `Contracts/tests/test_recorded_session_contracts.py`, which runs all of them outside the app.
 
-**Not in P0.** `BundleManifest` (payload codec, signing bytes, envelope, signature domain),
-`BundleManifestTests` and the verification of the office's receipt: written separately, as the
-reference implementation and golden fixtures for the two signed messages. Until they land,
-`ChunkPlan` gives the digests and lengths a manifest lists for a part and no manifest type exists,
-and `BundleSyncState` is handed a receipt that someone else has already verified — it only decides
-whether that receipt is about this bundle and this manifest. The `PowerPosture` flag
-`defersBulkTransfer` is P1; `SyncEligibility` takes it as a plain input.
+**The signed messages, as built (2026-10-05).** `BundleManifest` lists a bundle from the two JSON
+files and each part's `ChunkPlan`, checks the contract's rules, and writes the manifest's **one
+spelling** — the exact bytes the phone application key signs; it reads back only that spelling.
+`OfficePhoneIdentity.signRecordingManifest` signs nothing else. `OfficeRecordingReceipt` reads
+the office's receipt and later status against the office application key of the binding held
+and the phone's own record of the manifest it sealed. `BundleManifestTests` holds the phone's
+bytes to the golden manifest the reference implementation signed, byte for byte;
+`OfficeRecordingReceiptTests` reads the three golden receipts and refuses what is not one.
+Nothing calls any of it yet: `BundleSyncState` is still handed a receipt someone else has
+verified, and joining the two is P2. The `PowerPosture` flag `defersBulkTransfer` is P1;
+`SyncEligibility` takes it as a plain input.
+
+Choices made for the signed messages, now in the contract (§3, §6):
+
+- **The manifest has one spelling** rather than being a flat object, because it holds lists:
+  members in the contract's order, no white space, no text that needs an escape. A verifier
+  writes it again and compares bytes.
+- **`phoneTransportID` is in the manifest and the receipt**, as in every other phone message.
+- **The generation is the one the bundle was sealed under.** A bundle may take days to arrive
+  and the binding may be renewed meanwhile: the office accepts an earlier generation it issued,
+  and a receipt names the manifest's generation, not the binding's current one.
+- **One file per status** (`control/recordings/<bundleID>.<status>.envelope.json`), so a
+  published name keeps its bytes. `reason` and the published vault are members of the receipt.
+- **Identical chunks are one file** in the bundle, as within a part.
 
 **Choices made where this plan, GY or the contract left room.** The ones an office has to match
 are also in the fixtures' `rules` blocks.

@@ -52,6 +52,7 @@ on:
       - 'OpenGlassesTests/ActionEventValidatorTests.swift'
       - 'OpenGlassesTests/SpeechAgreementTests.swift'
       - 'OpenGlassesTests/CrossReferenceIndexTests.swift'
+      - 'OpenGlassesTests/BundleManifestTests.swift'
   push:
     branches: [main]
     paths:
@@ -88,6 +89,7 @@ on:
       - 'OpenGlassesTests/ActionEventValidatorTests.swift'
       - 'OpenGlassesTests/SpeechAgreementTests.swift'
       - 'OpenGlassesTests/CrossReferenceIndexTests.swift'
+      - 'OpenGlassesTests/BundleManifestTests.swift'
 
 # Same rule as tests.yml: a superseded PR run is cancelled, a run on main never is.
 concurrency:

@@ -15,6 +15,7 @@ actor OfficePhoneIdentity {
         case invalidReport
         case invalidAssignmentReceipt
         case invalidJobUpdateReceipt
+        case invalidRecordingManifest
     }
 
     static let shared = OfficePhoneIdentity()
@@ -111,6 +112,14 @@ actor OfficePhoneIdentity {
     func signJobUpdateReceipt(_ payload: Data) throws -> Data {
         guard OfficeJobUpdate.receiptPayload(payload) != nil else { throw Refusal.invalidJobUpdateReceipt }
         return try key().signature(for: OfficeJobUpdate.receiptDomain + payload)
+    }
+
+    /// Sign the manifest of a recorded-job bundle this phone has sealed
+    /// (Contracts/recorded-session.md §3). Only the one spelling of a valid manifest is signed
+    /// here, under the recording-bundle domain.
+    func signRecordingManifest(_ payload: Data) throws -> Data {
+        guard BundleManifest(payload: payload) != nil else { throw Refusal.invalidRecordingManifest }
+        return try key().signature(for: BundleManifest.signingDomain + payload)
     }
 
     private func key() throws -> Curve25519.Signing.PrivateKey {

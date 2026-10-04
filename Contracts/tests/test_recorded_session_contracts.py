@@ -30,6 +30,7 @@ TESTS = [
     "ActionEventValidatorTests.swift",
     "SpeechAgreementTests.swift",
     "CrossReferenceIndexTests.swift",
+    "BundleManifestTests.swift",
 ]
 
 
