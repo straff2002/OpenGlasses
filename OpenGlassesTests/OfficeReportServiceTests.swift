@@ -442,6 +442,24 @@ final class OfficeReportServiceTests: XCTestCase {
         XCTAssertEqual(submission.record, record, "the record itself is sent as it is")
     }
 
+    func testALeavingPhoneForgetsWhatItKeptAboutItsRecords() async throws {
+        try await openFolders()
+        let service = makeService()
+        try await service.submit(try XCTUnwrap(OfficeReportSink.submission(
+            for: goldenOp(), evidence: goldenEvidence(), transcript: .attached)))
+        XCTAssertEqual(service.summary, .init(waiting: 1, evidencePending: 0))
+        XCTAssertEqual(service.settledOperationIDs, [])
+        try await officeAnswers("full")
+        try await service.sweep()
+        XCTAssertEqual(service.settledOperationIDs, [Self.operationID])
+        XCTAssertEqual(service.summary, .init())
+        service.forget(recordIDs: ["another-job"])
+        XCTAssertNotNil(service.status(operationID: Self.operationID))
+        service.forget(recordIDs: [Self.sessionID])
+        XCTAssertNil(service.status(operationID: Self.operationID))
+        XCTAssertTrue(saved.entries.isEmpty)
+    }
+
     func testTheRecordSurvivesAFileRoundTrip() throws {
         let file = directory.appendingPathComponent("reports.json")
         XCTAssertEqual(Service.readLedger(file), Service.Ledger())
