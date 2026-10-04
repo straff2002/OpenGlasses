@@ -214,7 +214,7 @@ extension UpcomingJob {
     func replacingIdentity(with existing: UpcomingJob) -> UpcomingJob {
         UpcomingJob(id: existing.id, jobReference: jobReference, site: site, faultReport: faultReport,
                     equipment: equipment, scheduledFor: scheduledFor, notes: notes,
-                    attachments: attachments, origin: origin, provenance: provenance,
+                    attachments: attachments, origin: origin, provenance: provenance, needs: needs,
                     brief: nil, createdAt: existing.createdAt)
     }
 }

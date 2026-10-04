@@ -201,6 +201,9 @@ struct UpcomingJob: Codable, Equatable, Identifiable {
     var attachments: [String]
     let origin: Origin
     var provenance: JobFileProvenance?
+    /// What the job file said follows it from the office: attachments by digest, and manual sets.
+    /// Nil when it named nothing, and for every job that did not come from a format-2 file.
+    var needs: JobNeeds?
     /// The last brief assembled for it, kept so the job tab can show it without re-reading the
     /// vault and so a started job's context begins from what the technician actually heard.
     var brief: JobBrief?
@@ -217,6 +220,7 @@ struct UpcomingJob: Codable, Equatable, Identifiable {
          attachments: [String] = [],
          origin: Origin,
          provenance: JobFileProvenance? = nil,
+         needs: JobNeeds? = nil,
          brief: JobBrief? = nil,
          createdAt: Date = Date()) {
         self.id = id
@@ -229,6 +233,7 @@ struct UpcomingJob: Codable, Equatable, Identifiable {
         self.attachments = attachments
         self.origin = origin
         self.provenance = provenance
+        self.needs = needs
         self.brief = brief
         self.createdAt = createdAt
         self.updatedAt = createdAt
@@ -241,7 +246,7 @@ struct UpcomingJob: Codable, Equatable, Identifiable {
         case faultReport = "fault_report"
         case equipment
         case scheduledFor = "scheduled_for"
-        case notes, attachments, origin, provenance, brief
+        case notes, attachments, origin, provenance, needs, brief
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -260,6 +265,7 @@ struct UpcomingJob: Codable, Equatable, Identifiable {
         attachments = try c.decodeIfPresent([String].self, forKey: .attachments) ?? []
         origin = try c.decodeIfPresent(Origin.self, forKey: .origin) ?? .typed
         provenance = try c.decodeIfPresent(JobFileProvenance.self, forKey: .provenance)
+        needs = try c.decodeIfPresent(JobNeeds.self, forKey: .needs)
         brief = try c.decodeIfPresent(JobBrief.self, forKey: .brief)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
