@@ -22,6 +22,7 @@ import (
 const (
 	roleControl = "control"
 	roleRecords = "records"
+	roleBulk    = "bulk"
 )
 
 // managedFolderID is the identifier both sides compute for a role.
@@ -102,6 +103,7 @@ type managedInbox struct {
 	phoneKey ed25519.PublicKey
 	control  string // the control folder (receive-only)
 	records  string // the records folder (send-only)
+	bulk     string // the bulk folder (receive-only; only what was asked for is taken)
 	private  string // committed jobs and state; never shared
 	state    inboxState
 	// authority is what check-in, renewal and removal are verified against; nil when the caller
@@ -121,6 +123,10 @@ type inboxState struct {
 	Removals []removalRecord `json:"removals,omitempty"`
 	// Reports are the reports this phone has published and not withdrawn.
 	Reports []publishedReport `json:"reports,omitempty"`
+	// Wanted is the bulk content the native caller has asked for; AssignmentReceipts the
+	// receipts this phone made for manual assignments.
+	Wanted             []bulkItem                `json:"wanted,omitempty"`
+	AssignmentReceipts []assignmentReceiptRecord `json:"assignmentReceipts,omitempty"`
 }
 
 type committedJob struct {
@@ -139,11 +145,11 @@ func openManagedInbox(home string, trust manageddelivery.Trust, phoneKey ed25519
 	root := filepath.Join(home, "managed")
 	inbox := &managedInbox{
 		trust: trust, phoneKey: phoneKey,
-		control: filepath.Join(root, roleControl), records: filepath.Join(root, roleRecords),
+		control: filepath.Join(root, roleControl), records: filepath.Join(root, roleRecords), bulk: filepath.Join(root, roleBulk),
 		// Scoped to the binding: a different office or enrolment starts with its own record.
 		private: filepath.Join(root, "private-"+managedFolderID(trust.OrganizationID, trust.EnrolmentID, trust.OfficeID, "inbox")[len("avenkin-inbox-"):]),
 	}
-	for _, dir := range []string{inbox.control, inbox.records, filepath.Join(inbox.private, "jobs")} {
+	for _, dir := range []string{inbox.control, inbox.records, inbox.bulk, filepath.Join(inbox.private, "jobs"), filepath.Join(inbox.private, "bulk")} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, err
 		}
@@ -390,7 +396,7 @@ func (i *managedInbox) publishReceipt(messageID string, signature []byte) error 
 func (i *managedInbox) outbound(name string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.outboundCheckIn(name) || i.outboundReport(name) {
+	if i.outboundCheckIn(name) || i.outboundReport(name) || i.outboundAssignmentReceipt(name) {
 		return true
 	}
 	id, ok := strings.CutSuffix(strings.TrimPrefix(name, "receipts/"), ".envelope.json")
