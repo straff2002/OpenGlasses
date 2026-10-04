@@ -75,6 +75,11 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         var results: [String: Result<BlurredPart.Report, JobPartBlur.Failure>] = [:]
         var awake: [Bool] = []
         var progressSeen: [Double] = []
+        /// When true a part takes for ever: the pass goes on until it is cancelled, as a real one
+        /// goes on frame after frame, and only then says what `results` tells it to.
+        var runsUntilCancelled = false
+        /// How many parts are in the middle of being blurred.
+        var running = 0
 
         static let whole = BlurredPart.Report(framesWritten: 480, framesDropped: 0, keptSound: true)
 
@@ -82,7 +87,12 @@ final class JobRecordingCoordinatorTests: XCTestCase {
             JobPartBlur(
                 isAvailable: { self.available },
                 blur: { part, output, progress in
-                    await MainActor.run { () -> Result<BlurredPart.Report, JobPartBlur.Failure> in
+                    if await MainActor.run(body: { self.runsUntilCancelled }) {
+                        await MainActor.run { self.running += 1 }
+                        while !Task.isCancelled { try? await Task.sleep(nanoseconds: 1_000_000) }
+                        await MainActor.run { self.running -= 1 }
+                    }
+                    return await MainActor.run { () -> Result<BlurredPart.Report, JobPartBlur.Failure> in
                         self.asked.append((part.lastPathComponent, output.lastPathComponent))
                         progress(0.5)
                         let name = part.deletingPathExtension().lastPathComponent
@@ -134,6 +144,10 @@ final class JobRecordingCoordinatorTests: XCTestCase {
     private var signFailuresLeft = 0
     private var holdTranscription = false
     private var transcriptionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var holdSigning = false
+    private var signingWaiters: [CheckedContinuation<Void, Never>] = []
+    /// The jobs whose sealed bundle the coordinator asked to have taken back out of the office's folder.
+    private var withdrawn: [String] = []
     private struct Failed: Error {}
     private var sealedCalls = 0
     private var bundleIDs = 0
@@ -208,6 +222,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
                     return true
                 }
                 if fails { throw Failed() }
+                await self.waitWhileSigningIsHeld()
                 return Data(repeating: 7, count: 64)
             },
             blur: blur?.seam,
@@ -221,6 +236,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
             log: { [unowned self] sessionID, kind, payload in self.logged.append((sessionID, kind, payload)) },
             auditConsent: { [unowned self] in self.auditedConsents.append($0) },
             sealed: { [unowned self] in self.sealedCalls += 1 },
+            withdrawSealed: { [unowned self] in self.withdrawn.append($0) },
             limits: limits,
             wallNow: { [unowned self] in self.wall },
             monotonicNow: { [unowned self] in self.monotonic },
@@ -233,6 +249,17 @@ final class JobRecordingCoordinatorTests: XCTestCase {
     /// Lets work the coordinator started on the main actor run.
     private func settle(until condition: () -> Bool) async {
         for _ in 0..<500 where !condition() { await Task.yield() }
+    }
+
+    /// The signer in the middle of signing, for as long as the test holds it there.
+    private func waitWhileSigningIsHeld() async {
+        guard holdSigning else { return }
+        await withCheckedContinuation { signingWaiters.append($0) }
+    }
+
+    /// Waits for something that happens off the main actor, for at most a few seconds.
+    private func wait(until condition: () -> Bool) async {
+        for _ in 0..<3_000 where !condition() { try? await Task.sleep(nanoseconds: 1_000_000) }
     }
 
     private func started(_ coordinator: Coordinator, file: StaticString = #filePath, line: UInt = #line) async {
@@ -913,6 +940,300 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertTrue(recorder.started.isEmpty)
         XCTAssertEqual(try Data(contentsOf: journal), Data("not a journal".utf8), "left exactly as it was")
         XCTAssertEqual(capture.bytes(sessionID: sessionID), 512)
+    }
+
+    // MARK: - Deleting a recording that is not sealed
+
+    /// The folder a job's recording is in, sealed or not.
+    private var recordingFolder: URL { capture.directory(sessionID: sessionID).deletingLastPathComponent() }
+
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    /// Something else of the job's beside its recording: its log and a photograph.
+    private func otherFilesOfTheJob() throws -> [URL] {
+        let folder = sessionsRoot.appendingPathComponent(sessionID, isDirectory: true)
+        let photos = folder.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photos, withIntermediateDirectories: true)
+        let log = folder.appendingPathComponent("events.jsonl")
+        let photo = photos.appendingPathComponent("photo-1.jpg")
+        try Data("the job's own log".utf8).write(to: log)
+        try Data(repeating: 3, count: 64).write(to: photo)
+        return [log, photo]
+    }
+
+    /// Nothing of the recording is on the phone: no part, no journal, no bundle, no signature,
+    /// and the coordinator holds nothing about it.
+    private func assertNothingIsLeft(_ coordinator: Coordinator, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(exists(recordingFolder), "the recording's folder is still there: \(captureFiles())", file: file, line: line)
+        XCTAssertTrue(bundles.records().isEmpty, "a bundle was sealed from a deleted recording", file: file, line: line)
+        XCTAssertFalse(kinds().contains(.recordingBundleSealed), file: file, line: line)
+        XCTAssertEqual(sealedCalls, 0, "the sender was told of a bundle", file: file, line: line)
+        XCTAssertTrue(coordinator.preparing.isEmpty, file: file, line: line)
+        XCTAssertTrue(coordinator.deferredForBlur.isEmpty, file: file, line: line)
+        XCTAssertTrue(coordinator.blurProgress.isEmpty, file: file, line: line)
+        XCTAssertTrue(coordinator.unsealedRecordings().isEmpty, file: file, line: line)
+        XCTAssertFalse(coordinator.hasUnsealedRecording(sessionID: sessionID), file: file, line: line)
+        XCTAssertNil(coordinator.askToDeleteUnsealed(sessionID: sessionID), file: file, line: line)
+    }
+
+    func testDeletingAnUnsealedRecordingAsksFirstAndTakesTheRecordingAndNothingElseOfTheJob() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        XCTAssertNil(coordinator.askToDeleteUnsealed(sessionID: sessionID),
+                     "a recording that is running is stopped first, not deleted from under the recorder")
+        binding = nil
+        let outcome = await coordinator.stop()
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        let kept = try otherFilesOfTheJob()
+        XCTAssertEqual(coordinator.unsealedRecordings().map(\.sessionID), [sessionID])
+        XCTAssertEqual(coordinator.unsealedRecordings().first?.waiting, .toBePrepared)
+
+        // It asks first, in the words used for any recording the office has not got.
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        XCTAssertEqual(asked.sessionID, sessionID)
+        XCTAssertEqual(asked.warning, RetentionDecision.unacknowledgedRecordingDeletionWarning)
+        XCTAssertEqual(asked.warning, "The office hasn't received this recording yet. Deleting it removes the only copy.")
+        XCTAssertNil(coordinator.askToDeleteUnsealed(sessionID: "another-job"), "a job with no recording has no question")
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"], "asking removes nothing")
+        XCTAssertFalse(kinds().contains(.recordingDeleted))
+
+        binding = Self.office
+        let deleted = await coordinator.deleteUnsealed(asked)
+        XCTAssertTrue(deleted)
+        assertNothingIsLeft(coordinator)
+        XCTAssertEqual(signed, 0)
+        for file in kept { XCTAssertTrue(exists(file), "\(file.lastPathComponent) is the job's, not the recording's") }
+        XCTAssertNil(coordinator.unsealed)
+        XCTAssertEqual(coordinator.lastNote, "The recording was deleted from this phone.")
+        XCTAssertEqual(coordinator.lastNoteSessionID, sessionID)
+        XCTAssertEqual(coordinator.verdict, .available, "the job can be recorded again")
+
+        // Written down as counts, and nothing else.
+        XCTAssertEqual(kinds(), [.recordingStarted, .recordingStopped, .recordingDeleted])
+        let line = try XCTUnwrap(logged.last)
+        XCTAssertEqual(line.sessionID, sessionID)
+        XCTAssertEqual(line.payload["sealed"]?.value as? Bool, false)
+        XCTAssertEqual(line.payload["acknowledged"]?.value as? Bool, false)
+        XCTAssertEqual(line.payload["parts"]?.value as? Int, 1)
+        XCTAssertEqual(line.payload["bytes"]?.value as? Int, 2_048)
+        XCTAssertEqual(line.payload.count, 4)
+
+        // Nothing comes back on a later pass, and the same answer deletes nothing twice.
+        await coordinator.sealPending()
+        let again = await coordinator.deleteUnsealed(asked)
+        XCTAssertFalse(again)
+        assertNothingIsLeft(coordinator)
+        XCTAssertEqual(kinds().filter { $0 == .recordingDeleted }.count, 1)
+        XCTAssertTrue(withdrawn.isEmpty, "nothing was sealed, so nothing is taken back from the office")
+    }
+
+    /// A sealed bundle beside it is another thing, with its own delete, and is not touched.
+    func testDeletingTheUnsealedPartsLeavesASealedBundleAlone() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        await coordinator.stop()
+        let record = try XCTUnwrap(bundles.records().first)
+        // As if the app had gone away between sealing and clearing up: parts and a journal again.
+        try capture.prepare(sessionID: sessionID)
+        try capture.save(.init(sessionID: sessionID, jobNumber: nil, wallStart: wall, consentAt: wall,
+                               stoppedAt: t(20)))
+        try Data(repeating: 9, count: 512).write(to: capture.directory(sessionID: sessionID).appendingPathComponent("part-1.mp4"))
+
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        let deleted = await coordinator.deleteUnsealed(asked)
+        XCTAssertTrue(deleted)
+        XCTAssertFalse(exists(capture.directory(sessionID: sessionID)))
+        XCTAssertEqual(bundles.records(), [record], "the sealed recording is still whole")
+        XCTAssertNoThrow(try bundles.manifest(record))
+    }
+
+    func testARecordingTheAppWasClosedInCanBeDeletedAndTheJobRecordedAgain() async throws {
+        let first = makeCoordinator()
+        await started(first)
+        advance(30)
+        await first.pause()
+        advance(5)
+        await first.resume()         // part-2 being written when the app goes away
+
+        recorder = FakeRecorder { [unowned self] in self.monotonic }
+        let second = makeCoordinator()
+        await second.refresh()
+        XCTAssertEqual(second.unsealed, .interrupted)
+        XCTAssertEqual(second.unsealedRecordings().first?.waiting, .interrupted)
+
+        let asked = try XCTUnwrap(second.askToDeleteUnsealed(sessionID: sessionID))
+        let deleted = await second.deleteUnsealed(asked)
+        XCTAssertTrue(deleted)
+        assertNothingIsLeft(second)
+        XCTAssertNil(second.unsealed)
+        XCTAssertFalse(kinds().contains(.recordingStopped), "it was deleted, not finished")
+
+        await started(second)
+        XCTAssertEqual(recorder.started.first?.file.lastPathComponent, "part-1.mp4", "a new recording, from its first part")
+        XCTAssertEqual(logged.last?.payload["carried_on"]?.value as? Bool, false)
+    }
+
+    /// A journal that cannot be read is still a recording, and can still be deleted.
+    func testARecordingWhoseJournalCannotBeReadCanBeDeleted() async throws {
+        try capture.prepare(sessionID: sessionID)
+        try Data("not a journal".utf8).write(to: capture.directory(sessionID: sessionID).appendingPathComponent("journal.json"))
+        try Data(repeating: 9, count: 512).write(to: capture.directory(sessionID: sessionID).appendingPathComponent("part-1.mp4"))
+        let coordinator = makeCoordinator()
+        XCTAssertEqual(coordinator.unsealedRecordings().first?.waiting, .toBePrepared)
+
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        let deleted = await coordinator.deleteUnsealed(asked)
+        XCTAssertTrue(deleted)
+        assertNothingIsLeft(coordinator)
+        XCTAssertEqual(logged.last?.payload["bytes"]?.value as? Int, 512)
+    }
+
+    /// Deleted while its faces are being blurred. The pass is stopped, and whatever it says and
+    /// whatever it had written, nothing is kept and nothing is sealed.
+    func testDeletingWhileFacesAreBeingBlurredStopsThePassAndLeavesNothingBehind() async throws {
+        for answer: Result<BlurredPart.Report, JobPartBlur.Failure> in [.failure(.interrupted), .success(FakeBlur.whole)] {
+            try? FileManager.default.removeItem(at: sessionsRoot)
+            logged = []
+            recorder = FakeRecorder { [unowned self] in self.monotonic }
+            let blur = requireBlur()
+            blur.runsUntilCancelled = true
+            // A real pass says it was interrupted and removes what it wrote. The other answer is
+            // a pass that claims a whole blurred part after it was stopped: it is not believed.
+            blur.results["part-1"] = answer
+            let coordinator = makeCoordinator()
+            await started(coordinator)
+            advance(20)
+            let stopping = Task { await coordinator.stop() }
+            await wait { blur.running == 1 }
+            XCTAssertEqual(coordinator.preparing, [sessionID])
+            XCTAssertEqual(coordinator.unsealedRecordings().first?.waiting, .beingPrepared)
+            XCTAssertEqual(blur.awake, [true], "the phone is being kept awake for the pass")
+
+            let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+            let deleted = await coordinator.deleteUnsealed(asked)
+            XCTAssertTrue(deleted)
+            let outcome = await stopping.value
+            XCTAssertEqual(outcome, .deleted)
+
+            assertNothingIsLeft(coordinator)
+            XCTAssertEqual(blur.running, 0, "the pass was stopped, not left running")
+            XCTAssertEqual(blur.asked.count, 1)
+            XCTAssertEqual(blur.awake, [true, false], "and the phone is let lock itself again")
+            XCTAssertEqual(signed, 0)
+            XCTAssertEqual(kinds(), [.recordingStarted, .recordingStopped, .recordingDeleted])
+            XCTAssertEqual(coordinator.lastNote, "The recording was deleted from this phone.")
+
+            // The next pass has nothing to find, and the job can be recorded again.
+            blur.runsUntilCancelled = false
+            await coordinator.sealPending()
+            assertNothingIsLeft(coordinator)
+            XCTAssertEqual(blur.asked.count, 1)
+            XCTAssertEqual(coordinator.verdict, .available)
+        }
+    }
+
+    /// Deleted while its words are being read. Nothing is signed, and nothing is sealed.
+    func testDeletingWhileTheWordsAreBeingReadLeavesNothingBehind() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        holdTranscription = true
+        let stopping = Task { await coordinator.stop() }
+        await settle { !self.transcriptionWaiters.isEmpty }
+
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        let deleting = Task { await coordinator.deleteUnsealed(asked) }
+        // The delete waits for the pass; until the pass has stopped, the parts are not pulled out
+        // from under it.
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertEqual(captureFiles(), ["journal.json", "part-1.mp4"])
+        holdTranscription = false
+        transcriptionWaiters.forEach { $0.resume() }
+        transcriptionWaiters = []
+
+        let deleted = await deleting.value
+        let outcome = await stopping.value
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(outcome, .deleted)
+        XCTAssertEqual(signed, 0, "nothing is signed for a recording that has been deleted")
+        assertNothingIsLeft(coordinator)
+        XCTAssertTrue(withdrawn.isEmpty)
+    }
+
+    /// Deleted in the moment the manifest is being signed: the seal finishes, and what it sealed
+    /// is removed and taken back out of the office's folder before anything is told of it.
+    func testDeletingAtTheMomentOfSigningRemovesWhatWasSealed() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        holdSigning = true
+        let stopping = Task { await coordinator.stop() }
+        await wait { !self.signingWaiters.isEmpty }
+
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        let deleting = Task { await coordinator.deleteUnsealed(asked) }
+        for _ in 0..<50 { await Task.yield() }
+        holdSigning = false
+        signingWaiters.forEach { $0.resume() }
+        signingWaiters = []
+
+        let deleted = await deleting.value
+        let outcome = await stopping.value
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(outcome, .deleted)
+        XCTAssertEqual(signed, 1, "the signer had already been asked")
+        XCTAssertEqual(withdrawn, [sessionID], "what was sealed is taken back out of the office's folder")
+        assertNothingIsLeft(coordinator)
+        XCTAssertEqual(kinds(), [.recordingStarted, .recordingStopped, .recordingDeleted])
+    }
+
+    /// The same for a recording a later pass is preparing, rather than the stop itself.
+    func testDeletingWhileALaterPassPreparesItLeavesNothingBehind() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        binding = nil
+        await coordinator.stop()
+        binding = Self.office
+        holdTranscription = true
+        let preparing = Task { await coordinator.sealPending() }
+        await settle { !self.transcriptionWaiters.isEmpty }
+        let asked = try XCTUnwrap(coordinator.askToDeleteUnsealed(sessionID: sessionID))
+        let deleting = Task { await coordinator.deleteUnsealed(asked) }
+        for _ in 0..<50 { await Task.yield() }
+        holdTranscription = false
+        transcriptionWaiters.forEach { $0.resume() }
+        transcriptionWaiters = []
+        let deleted = await deleting.value
+        await preparing.value
+        XCTAssertTrue(deleted)
+        XCTAssertEqual(signed, 0)
+        assertNothingIsLeft(coordinator)
+    }
+
+    /// What the Jobs list and the job-day card are told of recordings that are not sealed.
+    func testEveryUnsealedRecordingIsOwedWithItsOwnReason() async throws {
+        let blur = requireBlur()
+        let coordinator = makeCoordinator()
+        XCTAssertTrue(coordinator.unsealedRecordings().isEmpty)
+        await started(coordinator)
+        advance(20)
+        XCTAssertTrue(coordinator.unsealedRecordings().isEmpty, "a recording that is running is not owed yet")
+        XCTAssertTrue(JobRecordingOwed.gather(coordinator: coordinator, sync: nil, label: { _ in "Job 1042" }).isEmpty)
+
+        blur.available = false
+        await coordinator.stop()
+        XCTAssertEqual(coordinator.unsealedRecordings().first?.waiting, .forTheAppToBeOpen)
+        let owed = JobRecordingOwed.gather(coordinator: coordinator, sync: nil, label: { _ in "Job 1042" })
+        XCTAssertEqual(owed, [JobDayRecording(sessionId: sessionID, label: "Job 1042", title: "Recording waiting to sync",
+                                              reason: "Open Avenkin to prepare the recording.")])
+
+        blur.available = true
+        await coordinator.sealPending()
+        XCTAssertTrue(coordinator.unsealedRecordings().isEmpty, "sealed: from here it is the sender's to report")
+        XCTAssertTrue(JobRecordingOwed.gather(coordinator: coordinator, sync: nil, label: { _ in "Job 1042" }).isEmpty)
     }
 
     // MARK: - Consent

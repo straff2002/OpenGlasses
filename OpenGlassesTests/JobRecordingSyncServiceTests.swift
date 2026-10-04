@@ -19,6 +19,8 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         bindingIsCurrent: true, officeIsReachable: true)
     private var gateFailure: Error?
     private var gateCalls = 0
+    /// What the service wrote into jobs' logs.
+    private var logged: [(sessionID: String, kind: SessionLogger.Event.Kind, payload: [String: AnyCodable])] = []
 
     private let sessionID = "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
     private let videoPart = Data("Avenkin public fixture recording video part v1: eighty-two bytes of nothing at all".utf8)
@@ -113,7 +115,8 @@ final class JobRecordingSyncServiceTests: XCTestCase {
                              phoneTransportID: held.phoneTransportID, officeApplicationKey: held.officeApplicationKey)
             },
             conditions: { [unowned self] in self.conditions },
-            clock: { [unowned self] in self.now }))
+            clock: { [unowned self] in self.now },
+            log: { [unowned self] sessionID, kind, payload in self.logged.append((sessionID, kind, payload)) }))
     }
 
     /// Passes until every chunk is in the office's folder and the office has taken it.
@@ -523,6 +526,187 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         let published = await transport.recordings
         XCTAssertTrue(published.isEmpty)
         try await service.sweep()   // nothing to do, and nothing wrong
+    }
+
+    // MARK: - Audit without content (Plan HE §5)
+
+    private func lines(_ kind: SessionLogger.Event.Kind) -> [[String: AnyCodable]] {
+        logged.filter { $0.kind == kind }.map(\.payload)
+    }
+
+    /// The office's receipt and the trim are each written into the job's log once — as counts
+    /// and digests, and never on the transport's word that everything was served.
+    func testTheReceiptAndTheTrimAreEachWrittenDownOnceAsCountsAndDigests() async throws {
+        try await openFolders()
+        let sealed = try await seal()
+        let service = makeService()
+        try await sendEverything(service)
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        XCTAssertTrue(logged.isEmpty, "everything served is sent, not acknowledged: nothing is written yet")
+
+        // What is not the office's word about this bundle is not written down either.
+        try await officeSays("received", nil, try F.changed("recording-receipt-received-v1", domain: OfficeRecordingReceipt.domain, by: F.phone()) { _ in })
+        try await service.sweep()
+        try await officeSays("reviewed", "recording-receipt-received-v1")
+        try await service.sweep()
+        XCTAssertTrue(logged.isEmpty)
+
+        try await officeSays("received")
+        try await service.sweep()
+        XCTAssertEqual(logged.map(\.kind), [.recordingSyncAcknowledged])
+        let acknowledged = try XCTUnwrap(lines(.recordingSyncAcknowledged).first)
+        XCTAssertEqual(logged.first?.sessionID, sessionID)
+        XCTAssertEqual(acknowledged["manifest_sha256"]?.value as? String, sealed.manifestSHA256)
+        XCTAssertEqual(acknowledged["receipt_sha256"]?.value as? String,
+                       OfficeJobUpdate.digest(try F.data("recording-receipt-received-v1")))
+        XCTAssertEqual(acknowledged["chunks"]?.value as? Int, 4)
+        XCTAssertEqual(acknowledged["bytes"]?.value as? Int, Int(sealed.totalBytes))
+        XCTAssertEqual(acknowledged.count, 4)
+
+        // Seen again, on the next pass and after the app is launched again: not written twice.
+        try await service.sweep()
+        try await makeService().sweep()
+        XCTAssertEqual(lines(.recordingSyncAcknowledged).count, 1)
+        XCTAssertTrue(lines(.recordingTrimmed).isEmpty, "the media is still on the phone")
+
+        // What the office says later is not another acknowledgement.
+        try await officeSays("published")
+        try await service.sweep()
+        XCTAssertEqual(logged.map(\.kind), [.recordingSyncAcknowledged])
+
+        now = now.addingTimeInterval(6 * 86_400)
+        try await service.sweep()
+        XCTAssertTrue(lines(.recordingTrimmed).isEmpty)
+        now = now.addingTimeInterval(86_400)
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .trimmed)
+        XCTAssertEqual(logged.map(\.kind), [.recordingSyncAcknowledged, .recordingTrimmed])
+        let trimmed = try XCTUnwrap(lines(.recordingTrimmed).first)
+        XCTAssertEqual(logged.last?.sessionID, sessionID)
+        XCTAssertEqual(trimmed["manifest_sha256"]?.value as? String, sealed.manifestSHA256)
+        XCTAssertEqual(trimmed["chunks"]?.value as? Int, 4)
+        XCTAssertEqual(trimmed["bytes"]?.value as? Int, 113, "the media, and only the media")
+        XCTAssertEqual(trimmed.count, 3)
+
+        try await service.sweep()
+        try await makeService().sweep()
+        XCTAssertEqual(logged.map(\.kind), [.recordingSyncAcknowledged, .recordingTrimmed], "each written once")
+
+        // Counts and digests: no job number, no path, no status word, nothing that was said.
+        for line in logged {
+            for (key, value) in line.payload {
+                switch value.value {
+                case is Int, is Bool:
+                    continue
+                case let text as String:
+                    XCTAssertTrue(text.count == 64 && text.allSatisfy { $0.isHexDigit },
+                                  "\(line.kind.rawValue).\(key) carries \(text)")
+                default:
+                    XCTFail("\(line.kind.rawValue).\(key) carries something that is not a count or a digest")
+                }
+            }
+        }
+    }
+
+    /// A recording the office refused, and one it never answered, are neither acknowledged nor
+    /// trimmed — and say so by saying nothing.
+    func testARefusedOrUnansweredRecordingWritesNeitherLine() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        try await sendEverything(service)
+        try await officeSays("refused")
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .failed(.digest))
+        now = now.addingTimeInterval(40 * 86_400)
+        try await service.sweep()
+        XCTAssertTrue(logged.isEmpty)
+    }
+
+    /// A receipt that could not be kept is taken in again on the next pass; the line is written
+    /// when the phone's own record says acknowledged, and so once.
+    func testAReceiptThatCouldNotBeKeptAtOnceIsStillWrittenDownOnce() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        try await sendEverything(service)
+        // A file where the folder of receipts goes: the receipt verifies and cannot be kept.
+        let receipts = store.bundleDirectory(sessionID: sessionID).appendingPathComponent("receipts")
+        try Data("in the way".utf8).write(to: receipts)
+        try await officeSays("received")
+        do {
+            try await service.sweep()
+            XCTFail("the receipt was kept across a file")
+        } catch {}
+        XCTAssertTrue(logged.isEmpty, "not written down until the phone's own record says so")
+        XCTAssertNil(store.records().first?.acknowledgedAt)
+
+        try FileManager.default.removeItem(at: receipts)
+        try await service.sweep()
+        try await service.sweep()
+        XCTAssertNotNil(store.records().first?.acknowledgedAt)
+        XCTAssertEqual(logged.map(\.kind), [.recordingSyncAcknowledged])
+    }
+
+    /// Deleting a sealed recording is written down too: whether the office had it, and no more.
+    func testDeletingASealedRecordingIsWrittenDownWithWhetherTheOfficeHadIt() async throws {
+        try await openFolders()
+        let record = try await seal()
+        let service = makeService()
+        try await service.sweep()
+        try await service.deleteRecording(sessionID: "another-job")
+        XCTAssertEqual(store.records().count, 1, "another job's recording is not this one")
+        try await service.deleteRecording(sessionID: sessionID)
+        XCTAssertTrue(store.records().isEmpty)
+        XCTAssertTrue(service.rows.isEmpty)
+        XCTAssertEqual(logged.map(\.kind), [.recordingDeleted])
+        let line = try XCTUnwrap(logged.first?.payload)
+        XCTAssertEqual(line["sealed"]?.value as? Bool, true)
+        XCTAssertEqual(line["acknowledged"]?.value as? Bool, false)
+        XCTAssertEqual(line["manifest_sha256"]?.value as? String, record.manifestSHA256)
+        XCTAssertEqual(line["bytes"]?.value as? Int, Int(record.totalBytes))
+        XCTAssertEqual(line.count, 4)
+    }
+
+    /// What the Jobs list and the job-day card are told as a recording goes: owed until the
+    /// office's receipt, "sent" only when everything has been served, and then nothing.
+    func testARecordingIsOwedUntilTheOfficesReceiptAndNeverAfter() async throws {
+        func owed(_ service: Service) -> [JobDayRecording] {
+            JobRecordingOwed.gather(coordinator: nil, sync: service, label: { _ in "Job 1042" })
+        }
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        XCTAssertEqual(owed(service).map(\.title), ["Recording waiting to sync"])
+        XCTAssertNil(owed(service).first?.reason)
+
+        conditions.network = .cellular
+        try await service.sweep()
+        XCTAssertEqual(owed(service).first?.sentence,
+                       "Recording waiting to sync. Waiting for Wi-Fi. Recordings aren't sent over mobile data unless you allow it.")
+        conditions.network = .wifi
+        conditions.isCharging = false
+        conditions.batteryLevel = 0.2
+        try await service.sweep()
+        XCTAssertEqual(owed(service).first?.reason, "Waiting for power. Plug the phone in to send the recording.")
+        conditions.isCharging = true
+        conditions.officeIsReachable = false
+        try await service.sweep()
+        XCTAssertEqual(owed(service).first?.reason,
+                       "The office can't be reached from here. The recording will be sent when it can.")
+        XCTAssertEqual(owed(service).first?.sessionId, sessionID)
+        XCTAssertEqual(owed(service).first?.needsAttention, false)
+
+        conditions.officeIsReachable = true
+        try await service.sweep()
+        XCTAssertEqual(owed(service).first?.title, "Sending the recording to the office")
+        try await sendEverything(service)
+        XCTAssertEqual(owed(service).map(\.sentence), ["Recording sent. Waiting for the office to confirm it."])
+
+        try await officeSays("received")
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .acknowledged)
+        XCTAssertTrue(owed(service).isEmpty, "nothing is owed once the office has confirmed it")
     }
 
     // MARK: - The record and the words

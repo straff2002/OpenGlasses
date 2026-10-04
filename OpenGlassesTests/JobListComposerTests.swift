@@ -32,10 +32,10 @@ final class JobListComposerTests: XCTestCase {
     private func inputs(open: JobListSession? = nil, finished: [JobListSession] = [],
                         upcoming: [UpcomingJob] = [], queue: [QueuedSend] = [],
                         debrief: JobDayDebrief? = nil, signOffRequired: Bool = false,
-                        query: String = "") -> JobListInputs {
+                        recordings: [JobDayRecording] = [], query: String = "") -> JobListInputs {
         JobListInputs(now: now, calendar: calendar, open: open, finished: finished, upcoming: upcoming,
-                      queue: queue, debrief: debrief, signOffRequired: signOffRequired, query: query,
-                      dateText: date, timeText: time)
+                      queue: queue, debrief: debrief, signOffRequired: signOffRequired,
+                      recordings: recordings, query: query, dateText: date, timeText: time)
     }
 
     private func session(_ id: String, ref: String?, started: Date, ended: Date? = nil,
@@ -275,6 +275,59 @@ final class JobListComposerTests: XCTestCase {
         let list = JobListComposer.compose(inputs(finished: [facts], signOffRequired: true))
         XCTAssertEqual(card.todos.compactMap(\.sessionId), ["s1", "s1", "s1"])
         XCTAssertEqual(card.todos.map { JobList.Badge.Kind($0.kind) }, badges(list.recent.first))
+    }
+
+    // MARK: - A recording not yet with the office (Plan HE)
+
+    private func recording(_ phase: BundleSyncState.Phase, session: String, label: String) -> JobDayRecording? {
+        JobRecordingOwed.sealed(.init(id: "b-\(session)", sessionID: session, phase: phase, sentBytes: 0,
+                                      totalBytes: 200, outcome: nil), label: label)
+    }
+
+    func testARecordingNotYetWithTheOfficeIsFlaggedOnItsJobWithTheReason() {
+        let recent = session("s1", ref: "1004", started: at(day: 1, hour: 9), ended: at(day: 1, hour: 10))
+        // An old job too: the only copy of a recording is owed however long ago the job was.
+        let old = session("s0", ref: "0990", started: at(day: 2, hour: 9, month: 9), ended: at(day: 2, hour: 10, month: 9))
+        let open = session("s2", ref: "1005", started: at(day: 2, hour: 7))
+        let list = JobListComposer.compose(inputs(
+            open: open, finished: [recent, old],
+            recordings: [recording(.waiting(.notEligible(.waitingForPower)), session: "s1", label: "Job 1004"),
+                         recording(.delivered, session: "s0", label: "Job 0990"),
+                         JobRecordingOwed.unsealed(sessionId: "s2", waiting: .forTheAppToBeOpen, label: "Job 1005")]
+                .compactMap { $0 }))
+
+        XCTAssertEqual(badges(list.recent.first), [.recording])
+        XCTAssertEqual(list.recent.first?.badges.first?.label,
+                       "Recording waiting to sync. Waiting for power. Plug the phone in to send the recording.")
+        XCTAssertEqual(list.recent.first?.badges.first?.isWarning, false)
+        XCTAssertEqual(list.older.first?.badges.first?.label, "Recording sent. Waiting for the office to confirm it.")
+        XCTAssertEqual(list.olderAttention, 1)
+        XCTAssertEqual(list.open?.badges.first?.label,
+                       "Recording waiting to sync. Open Avenkin to prepare the recording.")
+        XCTAssertTrue(list.recent.first?.spoken.hasSuffix(
+            "Recording waiting to sync. Waiting for power. Plug the phone in to send the recording.") ?? false)
+    }
+
+    func testAJobWithNoRecordingOrOneTheOfficeHasConfirmedHasNoRecordingBadge() {
+        let done = session("s1", ref: "1004", started: at(day: 1, hour: 9), ended: at(day: 1, hour: 10))
+        XCTAssertEqual(badges(JobListComposer.compose(inputs(finished: [done])).recent.first), [])
+        for phase in [BundleSyncState.Phase.acknowledged, .trimmed] {
+            let list = JobListComposer.compose(inputs(
+                finished: [done], recordings: [recording(phase, session: "s1", label: "Job 1004")].compactMap { $0 }))
+            XCTAssertEqual(badges(list.recent.first), [], "nothing is owed once the office has it")
+            XCTAssertFalse(list.recent.first?.needsAttention ?? true)
+        }
+    }
+
+    func testARecordingTheTechnicianHasToDecideAboutIsAWarningBadge() {
+        let done = session("s1", ref: "1004", started: at(day: 1, hour: 9), ended: at(day: 1, hour: 10))
+        let list = JobListComposer.compose(inputs(
+            finished: [done], recordings: [recording(.expired, session: "s1", label: "Job 1004")].compactMap { $0 }))
+        XCTAssertEqual(badges(list.recent.first), [.recordingAttention])
+        XCTAssertEqual(list.recent.first?.badges.first?.isWarning, true)
+        XCTAssertEqual(list.recent.first?.badges.first?.label,
+                       "Recording needs attention. The office hasn't confirmed this recording in a long time. "
+                       + "It is still on this phone.")
     }
 
     // MARK: - Search

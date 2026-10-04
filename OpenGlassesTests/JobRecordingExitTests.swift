@@ -23,6 +23,7 @@ final class JobRecordingExitTests: XCTestCase {
     private static let recordedJobFiles = [
         "Services/FieldAssist/Job/JobRecordingCoordinator.swift",
         "Services/FieldAssist/Job/JobRecordingCoordinator+App.swift",
+        "Services/FieldAssist/Job/JobRecordingOwed.swift",
         "Services/FieldAssist/Job/BundleBlurPass.swift",
         "Services/OfficeSync/JobRecordingCaptureStore.swift",
         "Services/OfficeSync/JobRecordingBundleStore.swift",

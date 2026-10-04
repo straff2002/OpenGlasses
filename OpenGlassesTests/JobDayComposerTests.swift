@@ -29,10 +29,11 @@ final class JobDayComposerTests: XCTestCase {
 
     private func inputs(upcoming: [UpcomingJob] = [], sessions: [JobDaySession] = [],
                         queue: [QueuedSend] = [], debrief: JobDayDebrief? = nil,
-                        signOffRequired: Bool = false, personal: [MyDayItem]? = nil) -> JobDayInputs {
+                        signOffRequired: Bool = false, recordings: [JobDayRecording] = [],
+                        personal: [MyDayItem]? = nil) -> JobDayInputs {
         JobDayInputs(now: now, calendar: calendar, upcoming: upcoming, sessions: sessions, queue: queue,
-                     debrief: debrief, signOffRequired: signOffRequired, personal: personal,
-                     timeText: time, dayTimeText: dayTime)
+                     debrief: debrief, signOffRequired: signOffRequired, recordings: recordings,
+                     personal: personal, timeText: time, dayTimeText: dayTime)
     }
 
     private func upcoming(_ id: String, ref: String?, customer: String?, at date: Date?) -> UpcomingJob {
@@ -193,6 +194,167 @@ final class JobDayComposerTests: XCTestCase {
             debrief: JobDayDebrief(sessionId: "open", label: "Job 1005")))
         XCTAssertEqual(day.todos.first?.destination, .openJob)
         XCTAssertEqual(day.todos.first?.detail, "Job 1005 — not saved yet")
+    }
+
+    // MARK: - A recording not yet with the office (Plan HE)
+
+    private func recordingRow(_ phase: BundleSyncState.Phase, session: String = "done",
+                              outcome: JobRecordingBundleStore.Outcome? = nil) -> JobRecordingSyncService.Row {
+        .init(id: "b-\(session)", sessionID: session, phase: phase, sentBytes: 50, totalBytes: 200, outcome: outcome)
+    }
+
+    /// The day with one finished job, and that job's recording standing where `phase` says.
+    private func dayWithRecording(_ phase: BundleSyncState.Phase) -> JobDay {
+        let done = session("done", ref: "1004", started: at(day: 2, hour: 5), ended: at(day: 2, hour: 6),
+                           reportSent: true)
+        return JobDayComposer.compose(inputs(
+            sessions: [done],
+            recordings: [JobRecordingOwed.sealed(recordingRow(phase), label: done.label)].compactMap { $0 }))
+    }
+
+    func testAJobWithNoRecordingOwesNothingForOne() {
+        let done = session("done", ref: "1004", started: at(day: 2, hour: 5), ended: at(day: 2, hour: 6),
+                           reportSent: true)
+        let day = JobDayComposer.compose(inputs(sessions: [done]))
+        XCTAssertTrue(day.todos.isEmpty)
+        XCTAssertEqual(day.summary, "1 job · all done", "nothing changes for a job that was not recorded")
+    }
+
+    /// With no office transport in the build neither service exists, and nothing is gathered.
+    @MainActor
+    func testWithNoOfficeToRecordForNothingIsGathered() {
+        XCTAssertEqual(JobRecordingOwed.gather(coordinator: nil, sync: nil, label: { _ in "Job 1004" }), [])
+    }
+
+    func testNothingIsOwedOnceTheOfficeHasConfirmedTheRecording() {
+        let published = JobRecordingBundleStore.Outcome(status: "published", vaultID: "v", vaultVersion: "1", at: 0)
+        for phase in [BundleSyncState.Phase.acknowledged, .trimmed] {
+            XCTAssertNil(JobRecordingOwed.sealed(recordingRow(phase), label: "Job 1004"))
+            XCTAssertNil(JobRecordingOwed.sealed(recordingRow(phase, outcome: published), label: "Job 1004"))
+            XCTAssertTrue(dayWithRecording(phase).todos.isEmpty)
+        }
+    }
+
+    func testAWaitingRecordingIsOwedAndSaysWhy() {
+        let expected: [(SyncEligibility.Reason, String)] = [
+            (.noNetwork, "Waiting for Wi-Fi."),
+            (.waitingForWiFi, "Waiting for Wi-Fi. Recordings aren't sent over mobile data unless you allow it."),
+            (.waitingForPower, "Waiting for power. Plug the phone in to send the recording."),
+            (.officeNotReachable, "The office can't be reached from here. The recording will be sent when it can."),
+            (.smallerItemsFirst, "Job reports are being sent first."),
+        ]
+        for (reason, sentence) in expected {
+            let todo = dayWithRecording(.waiting(.notEligible(reason))).todos.first
+            XCTAssertEqual(todo?.kind, .recording)
+            XCTAssertEqual(todo?.title, "Recording waiting to sync")
+            XCTAssertEqual(todo?.detail, "Job 1004 — \(sentence)")
+            XCTAssertEqual(todo?.destination, .pastJob(sessionId: "done"))
+            XCTAssertEqual(todo?.sessionId, "done")
+        }
+        // Every reason there is has its own sentence, and is the one shown.
+        for reason in SyncEligibility.Reason.allCases where reason != .blurRequired {
+            XCTAssertEqual(dayWithRecording(.waiting(.notEligible(reason))).todos.first?.detail,
+                           "Job 1004 — \(reason.explanation)")
+        }
+        // Just sealed, before a pass has said why it waits: owed, with no reason invented.
+        let sealed = dayWithRecording(.sealed).todos.first
+        XCTAssertEqual(sealed?.title, "Recording waiting to sync")
+        XCTAssertEqual(sealed?.detail, "Job 1004")
+        XCTAssertEqual(dayWithRecording(.sealed).summary, "1 job · all done — 1 recording not yet with the office")
+    }
+
+    /// A recording that has stopped and is not sealed has never left the phone: it is owed too.
+    func testARecordingWaitingToBePreparedIsOwedAndSaysToOpenTheApp() {
+        func todo(_ waiting: JobRecordingCoordinator.Waiting) -> JobDay.Todo? {
+            JobDayComposer.compose(inputs(
+                sessions: [session("open", ref: "1005", started: at(day: 2, hour: 7))],
+                recordings: [JobRecordingOwed.unsealed(sessionId: "open", waiting: waiting, label: "Job 1005")]))
+                .todos.first
+        }
+        let blur = todo(.forTheAppToBeOpen)
+        XCTAssertEqual(blur?.kind, .recording)
+        XCTAssertEqual(blur?.title, "Recording waiting to sync")
+        XCTAssertEqual(blur?.detail, "Job 1005 — Open Avenkin to prepare the recording.")
+        XCTAssertEqual(blur?.destination, .openJob, "the job is the open one")
+
+        XCTAssertEqual(todo(.beingPrepared)?.detail, "Job 1005 — Preparing the recording.")
+        XCTAssertEqual(todo(.toBePrepared)?.detail,
+                       "Job 1005 — The recording is saved on this phone, and will be prepared for the office later.")
+        XCTAssertEqual(todo(.interrupted)?.detail,
+                       "Job 1005 — A recording of this job was interrupted. What had been recorded is saved.")
+        // The sync state's own wait for the app says the same thing.
+        XCTAssertEqual(dayWithRecording(.waiting(.openAppToPrepare)).todos.first?.detail,
+                       "Job 1004 — Open Avenkin to prepare the recording.")
+        XCTAssertEqual(dayWithRecording(.preparing).todos.first?.detail, "Job 1004 — Preparing the recording.")
+    }
+
+    func testARecordingOnItsWaySaysHowFarAndOneAllServedIsSentNotReceived() {
+        let going = dayWithRecording(.transferring(sentBytes: 50, totalBytes: 200)).todos.first
+        XCTAssertEqual(going?.title, "Sending the recording to the office")
+        XCTAssertEqual(going?.detail, "Job 1004 — 25% of 200 bytes.")
+
+        let sent = dayWithRecording(.delivered).todos.first
+        XCTAssertEqual(sent?.kind, .recording, "sent is still owed: the office has not said it has it")
+        XCTAssertEqual(sent?.title, "Recording sent")
+        XCTAssertEqual(sent?.detail, "Job 1004 — Waiting for the office to confirm it.")
+    }
+
+    func testARecordingTheTechnicianHasToDecideAboutIsAWarning() {
+        let stuck: [(BundleSyncState.Phase, String)] = [
+            (.failed(.tooLarge), "The office didn't accept the recording (it is too large). It is still on this phone."),
+            (.expired, "The office hasn't confirmed this recording in a long time. It is still on this phone."),
+            (.waiting(.notEligible(.blurRequired)), SyncEligibility.Reason.blurRequired.explanation),
+        ]
+        for (phase, sentence) in stuck {
+            let day = dayWithRecording(phase)
+            let todo = day.todos.first
+            XCTAssertEqual(todo?.kind, .recordingAttention)
+            XCTAssertEqual(todo?.kind.isWarning, true)
+            XCTAssertEqual(todo?.title, "Recording needs attention")
+            XCTAssertEqual(todo?.detail, "Job 1004 — \(sentence)")
+            XCTAssertEqual(day.summary, "1 job · all done — 1 recording needs attention")
+        }
+    }
+
+    /// "Received" is the office's word, said on its verified receipt and on the job's page. No
+    /// owed item says it, in any state.
+    func testNoOwedRecordingIsEverSaidToBeReceived() {
+        var phases: [BundleSyncState.Phase] = [.recording, .preparing, .sealed, .waiting(.openAppToPrepare),
+                                               .transferring(sentBytes: 10, totalBytes: 100), .delivered, .expired]
+        phases += SyncEligibility.Reason.allCases.map { .waiting(.notEligible($0)) }
+        phases += BundleSyncState.RefusalReason.allCases.map { .failed($0) }
+        for phase in phases {
+            let item = JobRecordingOwed.sealed(recordingRow(phase), label: "Job 1004")
+            XCTAssertNotNil(item, "\(phase) is not with the office, so it is owed")
+            XCTAssertFalse(item?.sentence.lowercased().contains("received") ?? true, item?.sentence ?? "")
+        }
+        for waiting in [JobRecordingCoordinator.Waiting.beingPrepared, .forTheAppToBeOpen, .interrupted, .toBePrepared] {
+            let item = JobRecordingOwed.unsealed(sessionId: "s", waiting: waiting, label: "Job 1004")
+            XCTAssertFalse(item.sentence.lowercased().contains("received"), item.sentence)
+            XCTAssertFalse(item.needsAttention)
+        }
+    }
+
+    /// The only copy of a recording is owed for as long as it is the only copy, whichever day its
+    /// job was — and it comes after the admin a technician can act on now.
+    func testARecordingOfAnEarlierJobIsStillOwedAndComesLast() {
+        let day = JobDayComposer.compose(inputs(
+            sessions: [session("open", ref: "1005", started: at(day: 2, hour: 7), parts: 1)],
+            recordings: [
+                JobDayRecording(sessionId: "last-week", label: "Job 0990", title: JobDayRecording.waitingTitle,
+                                reason: "Waiting for Wi-Fi."),
+                JobDayRecording(sessionId: "last-week", label: "Job 0990", title: JobDayRecording.sentTitle,
+                                reason: nil),
+                JobDayRecording(sessionId: "open", label: "Job 1005", title: JobDayRecording.attentionTitle,
+                                reason: "Held.", needsAttention: true),
+            ]))
+        XCTAssertEqual(day.todos.map(\.kind), [.parts, .recordingAttention, .recording],
+                       "one row a job, and the one that needs a decision before the one that only waits")
+        XCTAssertEqual(day.todos.map(\.destination), [.openJob, .openJob, .pastJob(sessionId: "last-week")])
+        XCTAssertEqual(day.todos.last?.detail, "Job 0990 — Waiting for Wi-Fi.")
+        XCTAssertEqual(day.todos.last?.spoken, "Recording waiting to sync, Job 0990 — Waiting for Wi-Fi.")
+        XCTAssertEqual(JobDayComposer.todoPhrase(Array(day.todos.suffix(1))), "1 recording not yet with the office")
+        XCTAssertEqual(JobDayComposer.todoPhrase(day.todos), "3 things to do")
     }
 
     // MARK: - My Day folded in
