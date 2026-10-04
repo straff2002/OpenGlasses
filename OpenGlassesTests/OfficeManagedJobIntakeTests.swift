@@ -266,6 +266,43 @@ final class OfficeManagedJobIntakeTests: XCTestCase {
         XCTAssertEqual(intake.state, .jobRefused(String(long.prefix(Intake.maximumReasonCharacters))))
     }
 
+    /// An office issues a job again under a new message after a binding renewal: the same office
+    /// job at the same revision. It is on this phone, so it is receipted; it is one job, so the
+    /// technician is not asked again and nothing is added twice.
+    func testTheSameJobUnderASecondMessageIsReceiptedAndIsOneJob() async throws {
+        try await openFolders()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OfficeManagedJobIntakeTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UpcomingJobStore(directory: directory)
+        let jobFiles = JobFileService(seams: .init(store: { store }))
+        var seams = Intake.Seams.app(transport: transport, jobFiles: jobFiles, ledgerFile: nil)
+        seams.sign = { [unowned self] in try await self.sign($0) }
+        let intake = Intake(seams: seams)
+
+        let file = try fixture("job-file-v2", extension: "ogjob")
+        await transport.commit(try job(sequence: 8, file: file))
+        try await intake.sweep()
+        guard case .review = jobFiles.stage else { return XCTFail("\(jobFiles.stage)") }
+        intake.reviewStageChanged(jobFiles.stage)
+        XCTAssertNotNil(jobFiles.accept(.add))
+        intake.reviewStageChanged(jobFiles.stage)
+        jobFiles.dismiss()
+        intake.reviewStageChanged(jobFiles.stage)
+        XCTAssertEqual(store.jobs.count, 1)
+        XCTAssertEqual(store.jobs.first?.provenance?.jobID, "job-2031")
+
+        // The same file again, under another message and sequence.
+        await transport.commit(try job(sequence: 9, file: file))
+        try await intake.sweep()
+        XCTAssertEqual(jobFiles.stage, .idle, "no second review")
+        XCTAssertEqual(store.jobs.count, 1, "and no second job")
+        let receipts = await transport.receipts
+        XCTAssertEqual(receipts.count, 2, "each message is receipted")
+        XCTAssertEqual(intake.ledger.entries.map(\.state), [.reviewed, .reviewed])
+        XCTAssertEqual(intake.state, .waitingForOffice)
+    }
+
     func testTheRealImportRefusesWhatIsNotAJobFile() async throws {
         try await openFolders()
         await transport.commit(try job(sequence: 8, file: Data("not a job file".utf8)))
