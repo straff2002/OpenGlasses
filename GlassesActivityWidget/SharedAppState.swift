@@ -35,7 +35,12 @@ enum SharedAppState {
     }
 
     static func postListeningChanged() {
-        let name = CFNotificationName(listeningChangedNotification as CFString)
+        postDarwinNotification(listeningChangedNotification)
+    }
+
+    /// Posts a cross-process (Darwin) notification — reaches a live app process from the extension.
+    static func postDarwinNotification(_ notification: String) {
+        let name = CFNotificationName(notification as CFString)
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             name,
