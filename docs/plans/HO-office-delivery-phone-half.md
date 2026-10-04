@@ -45,7 +45,7 @@ and nothing more.
 | Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
 | Job to the phone | managed job + receipt, fixtures | intake, durable commit, receipt offered for signing | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published | one signed job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
-| Attachments with a job | a job file names them, does not carry them | — | — | undecided: carried in `control`, or in `bulk` |
+| Attachments with a job | a job file names them, does not carry them | — | — | decided 2026-10-04: in `bulk`, after the job — P4 |
 | Manual to the phone | assignment + preflight, fixtures | verifier; `bulk` folder not built | preflight to the vault installer | organisation publisher trust, the phone's assignment receipt, `bulk`, durable install state — P4 |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages only (`officereport`); **not** the phone's folder handling | queue sends to an endpoint or by email | P2's phone half: the transport's publishing and outbound list, the office sink, stored attachment bytes |
 | Transcript to the office | travels with the report, under HD's audience rule | — | — | P2 |
@@ -59,6 +59,19 @@ transcript, and the office imports them by hand.
 
 Each phase is one PR, pure core first, and ends at its exit test. A phase marked *contract first*
 does not start in Swift until its contract and fixtures are merged in `Contracts/`.
+
+**Sequence (decided by Greig, 2026-10-04).** The phase letters are kept so other documents'
+references stay true; the order of work is:
+
+1. **P0** — built.
+2. **P0b** — job-file format 2, **before** P0's run on a physical phone, so the first real job
+   already carries the office's job identifier and revision.
+3. **P2** — reports and transcripts back. Second by decision: until it lands every report is
+   emailed and imported by hand. Its contract is written first.
+4. **P4** — the `bulk` folder, job attachments and manuals. Brought forward: attachments travel
+   in `bulk`, and a job must be able to bring a manual the phone does not have.
+5. **P1** — check-in, renewal and removal: built 2026-10-04, ahead of this order.
+6. **P3**, **P5**, **P6** as below.
 
 ### P0 — The managed folders in the app, and a job arriving
 
@@ -136,6 +149,23 @@ Choices made where the plan left room:
   `office-job-<sequence>.ogjob` and the job file's own signature state.
 - A refused job stays listed by the transport as pending with no receipt. The office sees it as
   not received; nothing tells the office why.
+
+### P0b — Job-file format 2 (*contract first*)
+
+Decided 2026-10-04: before P0's run on a physical phone.
+
+- **Contract:** format version 2 of the job file — an office-assigned stable job identifier and
+  a revision, a domain-separated signature over the exact file bytes, and a signed golden
+  fixture. Version 1 stays readable; a version-1 file is never upgraded in place.
+- **Phone:** the import, the review and the job record keep the identifier and revision; a later
+  revision of a job the phone holds is shown as a revision of that job, not a second job; a
+  report names the identifier and revision it was written against, so the office matches by
+  identifier and not by digest alone.
+- A job that arrives twice — the same identifier and revision under two managed messages, as
+  can happen when the office issues a job again after a binding renewal — is one job.
+
+**Exit:** the golden fixture imports, reviews and round-trips; a version-1 file still imports;
+the same identifier and revision twice is one job; an older revision never replaces a newer one.
 
 ### P1 — Check-in, renewal and removal on the phone
 
@@ -280,7 +310,16 @@ folder.
 HN owns the design. This phase is its message contract and the intake beside P0's: a signed
 update on a job the phone holds, information only, shown when the technician opens the job.
 
-### P4 — Manuals (*contract first* for two pieces)
+### P4 — The `bulk` folder: job attachments and manuals (*contract first* for three pieces)
+
+Decided 2026-10-04: attachments travel in `bulk`, and a job can bring a manual with it.
+
+- **A job names what it needs.** The job arrives first, in `control`, and is usable at once. Its
+  attachments, and any manual it needs that the phone does not hold, follow in `bulk` and are
+  shown on the job as *still downloading*, *waiting for Wi-Fi* or *ready* — never as missing.
+  The contract piece: how a job names an attachment (digest, bytes, name) and a manual set it
+  needs, and that the office then publishes a manual assignment for it. A job never authorises
+  a manual by itself; the assignment and the publisher's signature still do.
 
 - Trust for an organisation's own publishing key, reaching the phone through the vendor-rooted
   chain and accepted only for vaults that organisation's office assigned to its own phones.
@@ -309,10 +348,10 @@ relaunch and a route change in the middle of each.
 - It promises no background delivery: a phone exchanges files when the app is allowed to run.
 - It does not design the office side; requirements on the office are in the contracts.
 
-## Decisions wanted
+## Decisions (Greig, 2026-10-04)
 
-1. Whether job attachments travel in `control` (small, with the job) or `bulk` (pausable).
-2. Whether P2 or P1 comes second if a pilot is shorter than 30 days. This plan puts P1 second:
-   a phone that silently stops receiving is worse than a report that is emailed.
-3. Job-file format 2 (an office-assigned job identifier and revision) before or after P0's
-   device run.
+1. **Job attachments travel in `bulk`,** after the job. Manuals must be able to come with a job
+   when the phone does not already hold them, so the `bulk` folder and manuals are brought
+   forward (P4).
+2. **Reports back (P2) come second,** ahead of check-in and renewal (P1).
+3. **Job-file format 2 comes before P0's run on a physical phone** (P0b).
