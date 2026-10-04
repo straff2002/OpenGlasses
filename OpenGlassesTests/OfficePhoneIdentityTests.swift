@@ -132,6 +132,33 @@ final class OfficePhoneIdentityTests: XCTestCase {
         }
     }
 
+    func testOnlyAnAssignmentReceiptIsSignedUnderItsDomain() async throws {
+        let account = "office.phone.identity.tests.\(UUID().uuidString)"
+        defer { try? KeychainService.deleteItem(account) }
+        let identity = OfficePhoneIdentity(account: account)
+        let verifier = try Curve25519.Signing.PublicKey(rawRepresentation: await identity.publicKey())
+        let receipt = try OfficeCheckInFixtures.payload("office-bulk-assignment-receipt-installed-v1")
+        let signature = try await identity.signAssignmentReceipt(receipt)
+        XCTAssertTrue(verifier.isValidSignature(signature, for: OfficeBulk.receiptDomain + receipt))
+        XCTAssertFalse(verifier.isValidSignature(signature, for: OfficeManagedJobReceipt.domain + receipt))
+        for other in [try OfficeCheckInFixtures.payload("office-publisher-grant-v1"),
+                      try OfficeCheckInFixtures.payload("office-bulk-assignment-v1"),
+                      try OfficeCheckInFixtures.payload("office-report-v1"), Data(repeating: 7, count: 32)] {
+            do {
+                _ = try await identity.signAssignmentReceipt(other)
+                XCTFail("the assignment-receipt signer signed something that is not one")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidAssignmentReceipt)
+            }
+        }
+        do {
+            _ = try await identity.signManagedJobReceipt(receipt)
+            XCTFail("the job-receipt signer signed an assignment receipt")
+        } catch {
+            XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidReceipt)
+        }
+    }
+
     func testCorruptStoredIdentityFailsClosed() async throws {
         let account = "office.phone.identity.tests.\(UUID().uuidString)"
         defer { try? KeychainService.deleteItem(account) }

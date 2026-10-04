@@ -205,9 +205,11 @@ refused).
    transport publishes a report, its record, its manifest and its attachments under `records`,
    serves exactly those, and lists the office's receipts; the opt-in phone build sends job
    records and stock checks that way, and the office app reads none of it yet.
-2. **The phone's receipt for an assignment** is now specified
+2. **The phone's receipt for an assignment** is specified
    ([bulk content](office-bulk.md) §4), with the organisation's own publisher and how a job
-   names what follows it. The `bulk` folder itself is not built on either side.
+   names what follows it. The phone transport opens `bulk` — paused, receive-only, taking only
+   what the app has asked for — and the opt-in phone build installs an assigned manual through
+   it. Job attachments in `bulk` are not built, and the office side of `bulk` is not built.
 3. **Deletion.** Whether receivers should also set the engine's ignore-deletes on their
    receive-only folders, or rely on §4's rule that a committed record is independent of the
    folder.

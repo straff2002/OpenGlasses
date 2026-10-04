@@ -193,6 +193,80 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    func managedBulkPending() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedBulkPending(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func setManagedBulkWanted(_ wantedJSON: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().setManagedBulkWanted(wantedJSON)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedBulkStatus() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedBulkStatus(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedBulkFile(sha256: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedBulkFile(sha256, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func setManagedBulkPaused(_ paused: Bool) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().setManagedBulkPaused(paused)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedAssignmentReceiptPayload(assignmentID: String, outcome: String, at: Int64) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedAssignmentReceiptPayload(
+            assignmentID, outcome: outcome, at: at, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedAssignmentReceipt(assignmentID: String, outcome: String,
+                                         signatureBase64: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedAssignmentReceipt(
+            assignmentID, outcome: outcome, signatureBase64: signatureBase64, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?

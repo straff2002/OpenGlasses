@@ -46,6 +46,7 @@ type Client struct {
 	managed   bool
 	preview   *officepreview.Phone
 	inbox     *managedInbox
+	wrapper   config.Wrapper
 	mu        sync.Mutex
 	home      string
 	id        string
@@ -517,11 +518,18 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 		managedFolders = []managedFolder{
 			{managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleControl), roleControl, route.inbox.control, config.FolderTypeReceiveOnly},
 			{managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords), roleRecords, route.inbox.records, config.FolderTypeSendOnly},
+			{managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleBulk), roleBulk, route.inbox.bulk, config.FolderTypeReceiveOnly},
+		}
+		// Bulk takes only what the native caller has asked for, and nothing until it says the
+		// route is one large content may use.
+		if err = route.inbox.writeBulkIgnores(); err != nil {
+			return err
 		}
 	}
 	for _, spec := range managedFolders {
 		folder := conf.Defaults.Folder.Copy()
 		folder.ID, folder.Label, folder.Path, folder.Type = spec.id, spec.label, spec.path, spec.mode
+		folder.Paused = spec.label == roleBulk
 		folder.FSWatcherEnabled, folder.IgnorePerms, folder.RescanIntervalS = false, true, 60
 		folder.Devices = []config.FolderDeviceConfiguration{{DeviceID: self}, {DeviceID: peer}}
 		if err = os.MkdirAll(filepath.Join(folder.Path, ".stfolder"), 0700); err != nil {
@@ -621,6 +629,7 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 		return err
 	}
 	c.app, c.cancel, c.peer, c.mode, c.manualLab, c.preview, c.managed = app, cancel, peer, b.Mode, b.ManualLab, preview, managed
+	c.wrapper = wrapper
 	if managed && route.inbox != nil {
 		c.inbox = route.inbox
 		inbox := route.inbox
@@ -741,7 +750,7 @@ func (c *Client) Snapshot() (string, error) {
 	if c.managed {
 		status["sharedFolders"] = 0
 		if c.inbox != nil {
-			status["sharedFolders"] = 2
+			status["sharedFolders"] = 3
 			status["managedJobsCommitted"], status["managedReceiptsPublished"] = c.inbox.counts()
 			status["managedReportsPublished"] = c.inbox.reportCount()
 		}
@@ -830,7 +839,7 @@ func (c *Client) Stop() {
 		c.cancel()
 		c.workers.Wait()
 		c.app, c.cancel = nil, nil
-		c.managed, c.mode, c.inbox = false, "", nil
+		c.managed, c.mode, c.inbox, c.wrapper = false, "", nil, nil
 		engineActive.Store(false)
 	}
 	c.routeMu.Lock()

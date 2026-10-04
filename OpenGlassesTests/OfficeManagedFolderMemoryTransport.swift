@@ -31,6 +31,7 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
         case invalidBinding, alreadyRunning, notOpen, noSuchJob, notThisPhonesSignature
         case noSuchChallenge, noSuchRemoval
         case notThisPhonesReport, anotherReportUnderThatOperation, noSuchAttachment, notTheBytesNamed
+        case invalidBulkRequest, noSuchBulkContent, noSuchAssignment
     }
 
     static let bindingFields: Set<String> = [
@@ -186,6 +187,130 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
 
     /// The receipt never reached the folder: the job is pending again, as after a failed publish.
     func loseReceipt(messageID: String) { receipts[messageID] = nil }
+
+    // MARK: Bulk content
+
+    /// What sits in `control/publishers/` and `control/assignments/`, by identifier, and what the
+    /// office has put in the `bulk` folder, by name.
+    private(set) var grantFiles: [String: Data] = [:]
+    private(set) var assignmentFiles: [String: Data] = [:]
+    private(set) var bulkOffered: [String: Data] = [:]
+    /// What the phone has asked for, whether the folder is paused, and what was taken in.
+    private(set) var bulkWanted: [(kind: String, sha256: String, bytes: Int)] = []
+    private(set) var bulkPaused = true
+    private(set) var bulkTaken: [String: URL] = [:]
+    private(set) var assignmentReceipts: [String: Data] = [:]
+    private var assignmentReceiptPayloads: [String: Data] = [:]
+    /// This phone's transport identity, which the real transport knows for itself.
+    var phoneTransportID = "A44GCYW-HLGLMZV-EG2RHLW-YRQ773E-7GZUZMH-26RQHUT-MGGFBAI-JF7G6AW"
+
+    func put(grant: Data, id: String) { grantFiles[id] = grant }
+    func put(assignment: Data, id: String) { assignmentFiles[id] = assignment }
+    /// The office puts a file in the `bulk` folder under a name.
+    func offer(bulk name: String, _ data: Data) { bulkOffered[name] = data }
+
+    func bulkPending() async throws -> String {
+        let pending: [String: Any] = isOpen
+            ? ["grants": Self.listing(grantFiles), "assignments": Self.listing(assignmentFiles)]
+            : ["grants": [], "assignments": []]
+        return String(decoding: try JSONSerialization.data(withJSONObject: pending), as: UTF8.self)
+    }
+
+    func setBulkWanted(_ wantedJSON: String) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        guard let items = try? JSONSerialization.jsonObject(with: Data(wantedJSON.utf8)) as? [[String: Any]] else {
+            throw Failure.invalidBulkRequest
+        }
+        var next: [(kind: String, sha256: String, bytes: Int)] = []
+        for item in items {
+            guard let kind = item["kind"] as? String, ["vault", "attachment"].contains(kind),
+                  let sha256 = item["sha256"] as? String, sha256.utf8.count == 64,
+                  let bytes = item["bytes"] as? Int, bytes > 0 else { throw Failure.invalidBulkRequest }
+            next.append((kind, sha256, bytes))
+        }
+        bulkWanted = next
+        for digest in bulkTaken.keys where !next.contains(where: { $0.sha256 == digest }) {
+            if let file = bulkTaken[digest] { try? FileManager.default.removeItem(at: file) }
+            bulkTaken[digest] = nil
+        }
+    }
+
+    func bulkStatus() async throws -> String {
+        guard isOpen else { return "[]" }
+        var status: [[String: String]] = []
+        for item in bulkWanted {
+            let name = item.kind == "vault" ? "vaults/\(item.sha256).zip" : "attachments/\(item.sha256)"
+            var state = "waiting"
+            if bulkTaken[item.sha256] != nil {
+                state = "ready"
+            } else if let bytes = bulkOffered[name] {
+                state = "offered"
+                // A paused folder takes nothing; an unpaused one takes only the exact bytes.
+                if !bulkPaused, bytes.count == item.bytes, OfficeReport.digest(bytes) == item.sha256 {
+                    let file = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("memory-bulk-\(UUID().uuidString)")
+                    try bytes.write(to: file)
+                    bulkTaken[item.sha256] = file
+                    state = "ready"
+                }
+            }
+            status.append(["kind": item.kind, "sha256": item.sha256, "state": state])
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: status), as: UTF8.self)
+    }
+
+    func bulkFile(sha256: String) async throws -> String {
+        guard isOpen else { throw Failure.notOpen }
+        guard let file = bulkTaken[sha256] else { throw Failure.noSuchBulkContent }
+        return file.path
+    }
+
+    func setBulkPaused(_ paused: Bool) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        bulkPaused = paused
+    }
+
+    func assignmentReceiptPayload(assignmentID: String, outcome: String, at: Int64) async throws -> String {
+        guard isOpen else { throw Failure.notOpen }
+        let key = "\(assignmentID).\(outcome)"
+        if let built = assignmentReceiptPayloads[key] { return built.base64EncodedString() }
+        guard let envelope = assignmentFiles[assignmentID],
+              let fields = try? JSONSerialization.jsonObject(with: envelope) as? [String: Any],
+              let payload = (fields["payload"] as? String).flatMap({ Data(base64Encoded: $0) }),
+              let a = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            throw Failure.noSuchAssignment
+        }
+        func text(_ name: String) -> String { a[name] as? String ?? "" }
+        func number(_ name: String) -> Int64 { (a[name] as? NSNumber)?.int64Value ?? 0 }
+        // The order the transport writes a receipt in. Every value here is plain ASCII.
+        let members: [String] = [
+            #""version":1"#, #""kind":"avenkin.manual-assignment-receipt""#,
+            #""assignmentID":"\#(assignmentID)""#, #""assignmentSHA256":"\#(OfficeReport.digest(payload))""#,
+            #""organizationID":"\#(text("organizationID"))""#, #""enrolmentID":"\#(text("enrolmentID"))""#,
+            #""officeID":"\#(text("officeID"))""#, #""generation":\#(number("generation"))"#,
+            #""phoneTransportID":"\#(phoneTransportID)""#, #""setID":"\#(text("setID"))""#,
+            #""sequence":\#(number("sequence"))"#, #""archiveSHA256":"\#(text("archiveSHA256"))""#,
+            #""outcome":"\#(outcome)""#, #""at":\#(at)"#,
+        ]
+        let built = Data(("{" + members.joined(separator: ",") + "}").utf8)
+        assignmentReceiptPayloads[key] = built
+        return built.base64EncodedString()
+    }
+
+    func publishAssignmentReceipt(assignmentID: String, outcome: String,
+                                  signatureBase64: String) async throws -> String {
+        guard isOpen, let phoneKey else { throw Failure.notOpen }
+        let key = "\(assignmentID).\(outcome)"
+        guard let payload = assignmentReceiptPayloads[key] else { throw Failure.noSuchAssignment }
+        guard let signature = Data(base64Encoded: signatureBase64), signature.count == 64,
+              phoneKey.isValidSignature(signature, for: OfficeBulk.receiptDomain + payload) else {
+            throw Failure.notThisPhonesSignature
+        }
+        if let published = assignmentReceipts[key] { return String(decoding: published, as: UTF8.self) }
+        let envelope = Self.sealed(payload, signatureBase64)
+        assignmentReceipts[key] = envelope
+        return String(decoding: envelope, as: UTF8.self)
+    }
 
     // MARK: Reports
 

@@ -1088,6 +1088,20 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }()
 
+    /// The manuals the office assigns, taken to the vault installer. Nil in a build without the
+    /// office transport.
+    lazy var officeManuals: OfficeManualService? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else { return nil }
+        var seams = OfficeManualService.Seams.app(transport: transport)
+        // Large content moves on the office's own network. A relayed route, or a network the
+        // system calls expensive or constrained, leaves the folder paused.
+        seams.bulkAllowed = { [weak self] in
+            guard let self, case .connected(let route) = self.officeField.state else { return false }
+            return OfficeManualService.bulkAllowed(route: route, expensive: self.reachability.isExpensive)
+        }
+        return OfficeManualService(seams: seams)
+    }()
+
     /// Reads the office's receipts on the connection's poll and offers waiting records again.
     lazy var officeReportPump: OfficeReportPump? = {
         guard let reports = officeReports else { return nil }
@@ -1511,6 +1525,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Check-in first: a phone the office has removed takes in nothing else.
             if let checkIn = self?.officeCheckIn, (try? await checkIn.sweep()) == .removed { return }
             try? await self?.officeJobs?.sweep()
+            try? await self?.officeManuals?.sweep()
             await self?.officeReportPump?.tick()
         }
         return OfficeFieldConnection(seams: seams)

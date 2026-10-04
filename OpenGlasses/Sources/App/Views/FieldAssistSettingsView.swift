@@ -176,6 +176,9 @@ struct FieldAssistSettingsView: View {
                     if let officeReports = appState.officeReports {
                         OfficeReportRow(reports: officeReports)
                     }
+                    if let officeManuals = appState.officeManuals {
+                        OfficeManualRows(manuals: officeManuals)
+                    }
                     Button("Pair with Avenkin Office") { showingOfficePairing = true }
                 } footer: {
                     Text("Review the desktop identity and verify its administrator-signed binding before this phone can connect.")

@@ -12,13 +12,15 @@ enum OfficeCheckInFixtures {
 
     private final class Anchor {}
 
-    static func data(_ name: String) throws -> Data {
+    static func data(_ name: String) throws -> Data { try file(name, extension: "json") }
+
+    static func file(_ name: String, extension ext: String) throws -> Data {
         #if SWIFT_PACKAGE
-        let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")
+        let url = Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Fixtures")
         #else
-        let url = Bundle(for: Anchor.self).url(forResource: name, withExtension: "json")
+        let url = Bundle(for: Anchor.self).url(forResource: name, withExtension: ext)
         #endif
-        return try Data(contentsOf: XCTUnwrap(url, "fixture \(name)"))
+        return try Data(contentsOf: XCTUnwrap(url, "fixture \(name).\(ext)"))
     }
 
     static func key(_ label: String) throws -> Curve25519.Signing.PrivateKey {
