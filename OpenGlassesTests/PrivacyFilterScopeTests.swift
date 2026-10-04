@@ -31,6 +31,19 @@ final class PrivacyFilterScopeTests: XCTestCase {
         XCTAssertTrue(PrivacyFilterScope.expertStream.isFiltered)
     }
 
+    /// Plan HE: a recorded job is captured unfiltered, and the app-wide switch does not govern it
+    /// — the consent sheet says so, and the organisation decides whether the office receives it
+    /// blurred. It is not relay-fed: the relay's holes are the reason capture is raw.
+    func testTheRecordedJobIsUnfilteredAtCaptureAndNotRelayFed() {
+        XCTAssertFalse(PrivacyFilterScope.officeRecording.isFiltered)
+        XCTAssertFalse(PrivacyFilterScope.officeRecording.usesOutboundRelay)
+        XCTAssertTrue(PrivacyFilterScope.officeRecording.leavesTheDevice,
+                      "it goes to the office, and the scope must say so rather than pass as on-device")
+        // The ordinary recording is untouched: still filtered, still off the relay.
+        XCTAssertTrue(PrivacyFilterScope.recording.isFiltered)
+        XCTAssertTrue(PrivacyFilterScope.recording.usesOutboundRelay)
+    }
+
     /// A new case must not default into either bucket silently — walking `allCases` means adding
     /// one without classifying it here fails the suite.
     func testEveryScopeIsClassifiedExactlyOnce() {
