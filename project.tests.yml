@@ -36,6 +36,19 @@ targets:
       # The format-2 job file, signed with a fictional key derived from a public label.
       - path: Contracts/fixtures/job-file-v2.ogjob
         buildPhase: resources
+      # The report contract's golden report, record, manifest and receipts.
+      - path: Contracts/fixtures/office-report-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-report-record-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-report-manifest-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-report-receipt-pending-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-report-receipt-record-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-report-receipt-full-v1.json
+        buildPhase: resources
       # The check-in contract's golden exchange and removal (fictional keys from public labels).
       - path: Contracts/fixtures/office-check-in-binding-v1.json
         buildPhase: resources
