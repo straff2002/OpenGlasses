@@ -103,7 +103,7 @@ never opened, never imported, never served, and counted for diagnostics.
 | `assignments/<assignmentID>.envelope.json` | Manual assignment | Manual assignment contract |
 | `publishers/<grantID>.envelope.json` | Administrator-signed grant of the organisation's own publishing key | [Bulk content](office-bulk.md) §3 |
 | `receipts/<reportID>.pending.envelope.json`, `….record.envelope.json`, `….full.envelope.json` | The office's receipts for a report, one file per outcome | [Reports](office-reports.md) §8 |
-| `recordings/<bundleID>.status.envelope.json` | Recording acknowledgement and status | Recorded session §6 |
+| `recordings/<bundleID>.<status>.envelope.json` | Recording acknowledgement and later status, one file per status | Recorded session §6 |
 | `learning/set.envelope.json` | The current learning set | Team learning §5 |
 | `learning/status/<candidateID>-<revision>.envelope.json` | Candidate status | Team learning §4 |
 | `checkin/<challengeID>.challenge.envelope.json` | Check-in challenge | [Check-in](office-check-in.md) §4.1 |
