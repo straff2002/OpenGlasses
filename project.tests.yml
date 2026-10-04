@@ -33,6 +33,21 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/managed-job-receipt-v1.json
         buildPhase: resources
+      # The check-in contract's golden exchange and removal (fictional keys from public labels).
+      - path: Contracts/fixtures/office-check-in-binding-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-check-in-challenge-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-check-in-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-check-in-result-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-removal-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-removal-receipt-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/office-check-in-fixture-keys.json
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.tests

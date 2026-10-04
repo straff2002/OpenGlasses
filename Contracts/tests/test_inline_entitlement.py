@@ -18,11 +18,14 @@ SOURCES = [
     "OpenGlasses/Sources/Services/OfficeSync/OfficePairingService.swift",
     "OpenGlasses/Sources/Services/OfficeSync/OfficeManagedFolderTransport.swift",
     "OpenGlasses/Sources/Services/OfficeSync/OfficeManagedJobReceipt.swift",
+    "OpenGlasses/Sources/Services/OfficeSync/OfficeCheckIn.swift",
 ]
 TESTS = [
     "OpenGlassesTests/OfficeInlineEntitlementTests.swift",
     "Contracts/tests/PortableOfficePairingGateTests.swift",
     "OpenGlassesTests/OfficeManagedFolderMemoryTransport.swift",
+    "Contracts/tests/PortableOfficeCheckInGateTests.swift",
+    "OpenGlassesTests/OfficeCheckInFixtures.swift",
 ]
 
 
@@ -39,6 +42,8 @@ def main() -> None:
             shutil.copyfile(ROOT / relative, source_dir / Path(relative).name)
         for relative in TESTS:
             shutil.copyfile(ROOT / relative, test_dir / Path(relative).name)
+        # The check-in gate is checked against the golden fixtures.
+        shutil.copytree(ROOT / "Contracts/fixtures", test_dir / "Fixtures")
         (source_dir / "AppSeams.swift").write_text(
             """import Foundation
 enum FieldAssistTier: String { case solo, team, enterprise }
@@ -62,6 +67,21 @@ struct OrgEnrolmentRecord {
     var contentLocked = false
     var status: ProfileLease.Status? = .live
     func evaluateLease() -> ProfileLease.Status? { status }
+    /// The generations a lease was renewed for, in order.
+    var leaseRenewals: [Int64] = []
+    func renewLease(officeBinding binding: OfficePeerBinding.Verified) -> Bool {
+        guard let record, record.source == .office, record.revoked != true,
+              record.enrolmentId == binding.payload.enrolmentID else { return false }
+        leaseRenewals.append(binding.payload.generation)
+        return true
+    }
+    func revoke(officeRemoval removal: OfficeCheckIn.VerifiedRemoval) -> Bool {
+        guard let current = record, current.source == .office,
+              profile?.profileId == removal.payload.profileID,
+              current.enrolmentId == removal.payload.enrolmentID else { return false }
+        record?.revoked = true
+        return true
+    }
 }
 actor OfficeTransportIdentity {
     struct Started: Equatable, Sendable {
@@ -87,11 +107,18 @@ actor OfficePhoneIdentity {
 actor OfficePeerHighWaterStore {
     struct HighWater: Sendable { let generation: Int64; let payloadSHA256: String }
     enum Decision: Sendable { case accepted, replay }
+    enum Refusal: Error, Equatable { case rollback, generationConflict }
     static let shared = OfficePeerHighWaterStore()
     private var state: HighWater?
     func read(organizationID: String, enrolmentID: String) throws -> HighWater? { state }
     func accept(_ binding: OfficePeerBinding.Verified) throws -> Decision {
-        if state?.generation == binding.payload.generation { return .replay }
+        if let state {
+            guard binding.payload.generation >= state.generation else { throw Refusal.rollback }
+            if binding.payload.generation == state.generation {
+                guard binding.payloadSHA256 == state.payloadSHA256 else { throw Refusal.generationConflict }
+                return .replay
+            }
+        }
         state = HighWater(generation: binding.payload.generation, payloadSHA256: binding.payloadSHA256)
         return .accepted
     }
@@ -133,7 +160,7 @@ actor OfficeApprovedPeerStore {
             'import PackageDescription\n'
             'let package = Package(name: "OpenGlasses", platforms: [.macOS(.v14)], targets: [\n'
             '  .target(name: "OpenGlasses"),\n'
-            '  .testTarget(name: "OpenGlassesTests", dependencies: ["OpenGlasses"]),\n'
+            '  .testTarget(name: "OpenGlassesTests", dependencies: ["OpenGlasses"], resources: [.copy("Fixtures")]),\n'
             '])\n'
         )
         environment = os.environ.copy()
