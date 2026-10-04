@@ -1,7 +1,11 @@
 # Plan HN — Job Updates from the Office, and Several Open Jobs (one clock at a time)
 
-**Status:** 📝 Drafted (not scheduled) 2026-10-03 — nothing implemented. Phone half and the message
-contract; the office half is built in the office's own repository.
+**Status:** 📝 Drafted (not scheduled) 2026-10-03 — the phases below are not implemented. Phone half
+and the message contract; the office half is built in the office's own repository. **2026-10-05:**
+§2's message contract is drafted as [`Contracts/job-updates.md`](../../Contracts/job-updates.md)
+under Plan [HO](HO-office-delivery-phone-half.md) P3 — the update and the phone's receipt, with a
+reference implementation and fixtures; it leaves the reply (§5) and attachments out of its first
+version.
 **Track:** Field Assist (B2B).
 **Related:** Plan [FO](FO-guided-job-flow-and-job-tab.md) (the guided job, its thread, "a paused job
 is still the open job"), Plan [HC](HC-jobs-list.md) (the Jobs list and links into a job), Plan
