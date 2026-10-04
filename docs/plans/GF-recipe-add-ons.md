@@ -1,10 +1,86 @@
 # Plan GF — Recipe Add-ons (declarative, no-code skills with per-add-on permissions)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** 📝 Drafted (not scheduled), 2026-10-01; revised 2026-10-02 (organisation add-ons and
+signed-only capabilities, below) — nothing built.
 **Extends:** Plan [BX](BX-skill-packs.md) (signed skill packs; its P4 "JS handlers" is deferred).
 **Related:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (egress screen, definition scanner),
 Plan V (`MCPCatalog`), Plan DJ (composition floor, `OperationJournal`), Plan CT (org policy),
-Plan [GO](GO-self-built-skills.md) (the agent authors recipes; depends on this plan).
+Plan [GO](GO-self-built-skills.md) (the agent authors recipes; depends on this plan),
+Plan [HF](HF-office-stock-and-capture-contracts.md) (parts stock with Avenkin Office — not an add-on),
+Plan [HG](HG-add-on-catalogue-and-premium-gating.md) (the catalogue, shelves and gating by pack).
+
+---
+
+## Revision 2026-10-02 — organisation add-ons and signed-only capabilities
+
+Settled with the owner on 2026-10-02. Nothing below changes P0 or P1: the format, validator and
+runner are built exactly as drafted. What changes is what comes before P2 ships, and what a
+signature means.
+
+**Two classes of add-on.**
+
+| Class | Who signs | What it may hold |
+|---|---|---|
+| **Community** | nobody (a file, link or QR) | The four drafted permissions and nothing else: `network` to public HTTPS hosts, coarse `location`, write-only `memory`, `display` |
+| **Signed** | the vendor, or an organisation (its administrator key, as verified through the organisation profile) | The four above, plus any **reserved capability** the signature covers |
+
+**Reserved capabilities do not exist for unsigned files.** The validator refuses an unsigned file
+that names one — it is not a permission the wearer can grant on a sheet. They are:
+
+| Reserved capability | What it allows | Notes |
+|---|---|---|
+| `credentials` | Per-add-on secrets held in the Keychain and substituted into header values only | Flips drafted decision 5 from "later" to "with the organisation envelope", for signed add-ons only. A secret is never exported, never shown in the source view, never available to `say`, `remember` or `display`, and never substituted into a URL |
+| `parts` | Read access to the vault parts index (`VaultPartsIndex`: number, description, fits, supersedes) | A new read step, to be specified with the envelope phase. Read-only; the vault's manuals are not reachable |
+| `workRecord` | Write access to the job's work record (Plan EM): a part noted against the active task, a parts request raised | New write steps, to be specified. Every write is attributed to the add-on in the session log and follows EM's rule that base's answer is reported, never acted on |
+| `office` | The Avenkin Office channel | Reserved here so no unsigned file can claim it; what rides the channel is Plan HF's contracts, not free-form add-on traffic |
+
+**A signature covers the exact file.** A premium or organisation file that is copied and edited
+no longer verifies, so it falls back to the community class and loses every reserved capability;
+if it still names one, it does not install. This is what makes gating enforceable when the source
+is readable: the thing gated is the capability, not the text. Plan HG builds the catalogue and
+the pack-level entitlement on this.
+
+**Organisation envelope (new phase P1b, before P2).** An organisation add-on arrives **by
+reference, never embedded**:
+
+- named by id and version in the Plan CT organisation profile, the way the profile already names
+  skill packs and its vault pack (CT: a profile may reference a pack; it may not embed one), and/or
+- delivered and signed through Avenkin Office over the signed-assignment channel Plan FX defines,
+  with the same binding to organisation, office, enrolment and phone identity as a manual
+  assignment.
+
+It is installed at enrolment like a vault pack. The technician sees no approval sheet (the
+organisation's signature and the profile review are the trust decision), cannot edit it (the
+source view is read-only and says who manages it), and cannot remove it; removing the profile
+removes it and its stored credentials. Updates follow the reference: a new signed version
+replaces the old one without a diff sheet, and the change is written to the session audit log.
+
+**Organisation policy is more than an off switch.** Plan CT gains three ceilings, each a
+subtraction in the usual way:
+
+1. add-ons disabled (the whole feature);
+2. no community add-ons (signed only, from any signer the phone trusts);
+3. organisation-signed only (nothing from the public catalogue either).
+
+**What an add-on still cannot do.** Add-ons do not reach private or LAN addresses — the
+`BoundedHTTPClient` address check stands for signed add-ons too — and Avenkin Office exposes no
+HTTP surface to the phone: FX replaced HTTP delivery with signed messages over the embedded sync
+transport. So a live parts check against the firm's own stock is **not an add-on**; it is Plan
+[HF](HF-office-stock-and-capture-contracts.md). Add-ons remain the answer for systems outside
+Office, for example a supplier's stock API called with an organisation-held key.
+
+**MCP stays the alternative.** An organisation that would rather run one MCP server than maintain
+several add-ons uses P4's MCP-entry add-on; the envelope above applies to it unchanged.
+
+**Order.** P0 → P1 → **P1b (organisation envelope and signed-only capabilities, pure)** → P2 → P3
+→ P4. P1b adds `AddOnSignature` (verification over the exact file bytes, reusing the skill-pack
+signature scheme), `AddOnTrustClass` (`community` / `vendorSigned` / `organisationSigned`),
+`AddOnReservedCapability` and its validator rules, `AddOnPolicy` (the three ceilings, pure over an
+injected policy value), and the reference shape a profile or an Office assignment carries. Tests:
+`AddOnSignatureTests` (an edited byte demotes to community; a demoted file naming a reserved
+capability is refused), `AddOnReservedCapabilityTests`, `AddOnPolicyTests` (each ceiling against
+each class), `AddOnReferenceTests`. The Keychain store for `credentials`, the new step types and
+the enrolment install land with P2, where the store and the tool wrapper are.
 
 ---
 
@@ -188,7 +264,9 @@ retiring BX P4 (JavaScript handlers)** in favour of this: it gives packs HTTP wi
   parameters would leave the device). `NetworkRoute.recipeAddOn` is refused by
   `MedicalEgressGuard` in local-only mode.
 - **Agent Mode:** not required; add-ons run only when the wearer asks. Nothing here schedules runs.
-- **Org profiles (Plan CT):** a policy key can disable community add-ons or the whole feature.
+- **Org profiles (Plan CT):** three ceilings — add-ons disabled, no community add-ons, and
+  organisation-signed only (Revision 2026-10-02). A profile may also *reference* organisation
+  add-ons, installed at enrolment and removed with the profile; it never embeds one.
 - **Offline (Plan GE):** add-on skills with `network` classify as `needsNetwork`.
 
 ## Phases (one PR each)
@@ -207,6 +285,11 @@ indexing; the harness `JSONPath` moves onto it). Tests: `RecipeAddOnManifestTest
 off-allowlist refused, substituted host off-allowlist refused, forbidden headers stripped),
 `RecipeRunQueueTests`, `RecipeEgressTests` (secret in a parameter blocks).
 
+**P1b — Organisation envelope and signed-only capabilities (pure).** See *Revision 2026-10-02*:
+`AddOnSignature`, `AddOnTrustClass`, `AddOnReservedCapability`, `AddOnPolicy`, the reference
+shape. Tests: `AddOnSignatureTests`, `AddOnReservedCapabilityTests`, `AddOnPolicyTests`,
+`AddOnReferenceTests`.
+
 **P2 — Install and run for real.** `AddOnStore` (JSONStore salvage semantics), `AddOnToolWrapper`,
 `ToolDispatchSeam.addOn(id:)`, `NetworkRoute.recipeAddOn` (+ privacy-manifest reconciliation),
 `BoundedHTTPClient` POST and `.recipeAddOn` profile, deep-link/file/QR ingest, install and
@@ -223,6 +306,10 @@ air quality + UV (Open-Meteo air quality), sea state (Open-Meteo marine), Wikipe
 
 Device checks owed with P3: install from QR, AirDrop and Mail; a real run per starter add-on on
 cellular; the update diff; VoiceOver on both sheets.
+
+Plan [HG](HG-add-on-catalogue-and-premium-gating.md) takes P3's index and extends it (permission
+summary per entry, shelves, `requiresPack`); P3 here remains the starter set, the authoring guide
+and the free gallery screen.
 
 **P4 — MCP entries and the pack `recipe` binding.**
 
@@ -246,13 +333,23 @@ cellular; the update diff; VoiceOver on both sheets.
    *Recommend normal mode.*
 3. Format tag `avenkin.addon/1` (product name) vs. `openglasses.addon/1`. *Recommend the product name.*
 4. Coarse location (2 decimals) by default, no "precise" opt-in in v1? *Recommend yes.*
-5. Per-add-on secrets (API keys in the Keychain) — v1 or later? *Recommend later; starter set needs none.*
+5. ~~Per-add-on secrets (API keys in the Keychain) — v1 or later?~~ **Settled 2026-10-02:** with
+   the organisation envelope (P1b/P2), for signed add-ons only, as the reserved `credentials`
+   capability. Community add-ons never hold a secret.
 6. HIPAA mode: hide network add-ons (recommended) or allow with a per-add-on confirmation.
-7. Gallery: first-party only at launch, or also reviewed community entries?
+7. Gallery: first-party only at launch, or also reviewed community entries? *Carried by Plan
+   [HG](HG-add-on-catalogue-and-premium-gating.md), which absorbs P3's index.*
+
+**Settled 2026-10-02 (see the revision):** two classes with reserved capabilities for signed
+add-ons only; organisation add-ons by reference, installed at enrolment, not editable; three CT
+ceilings; a live stock check against Avenkin Office is Plan HF, not an add-on.
 
 UI copy never names plan letters; "add-on" is the user-facing word.
 
 ## Out of scope
 
 JavaScript or any code, loops and arithmetic, background or scheduled runs, reading memory,
-OAuth, paid add-ons, and access to contacts, camera, health, messages, calendar, photos or mic.
+OAuth, and access to contacts, camera, health, messages, calendar, photos or mic. Reaching private
+or LAN addresses, and any HTTP call to Avenkin Office, stay out for every class (Plan HF covers
+Office). A store product per add-on is out of scope here and in Plan HG: gating is by pack, and
+it gates reserved capabilities, not the file.
