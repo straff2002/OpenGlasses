@@ -60,7 +60,9 @@ serve — are specified in [`Contracts/office-folders.md`](../../Contracts/offic
 (draft v1, 2026-10-04). The Go transport now implements the `control` and `records` folders for
 managed jobs and their receipts (`StartManagedOfficeFolders`, checked end to end against the
 office's engine with a stand-in phone); **the app does not call it yet**, so a shipping phone
-still has no managed folder. The earlier standalone
+still has no managed folder. How an office-joined phone renews its binding and lease, and
+how it is removed, is drafted in [`Contracts/office-check-in.md`](../../Contracts/office-check-in.md)
+(draft v1, 2026-10-04, design only: no code or fixture on either side). The earlier standalone
 Device Lab pairing is a separate feasibility protocol, not a substitute for vendor authority.
 
 ## Messages, manuals and receipts

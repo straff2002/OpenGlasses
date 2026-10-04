@@ -39,7 +39,9 @@ this contract.
 - **Gone when the binding is.** On revocation, a lapsed lease, removal of the enrolment, or
   replacement by another office, each side removes the peer from every managed folder and stops
   serving them. Records the phone has not had receipted stay in the phone's own queue, not in
-  the folder, and are published again under a new binding.
+  the folder, and are published again under a new binding. The one exception is an orderly
+  removal: the office keeps `control`, holding only the removal, and `records` until the phone
+  has acknowledged it or the last binding ends ([check-in contract](office-check-in.md) §8).
 - A newer binding **generation** for the same office keeps the same folders. A different office
   has a different `officeID` and therefore different folders (§2).
 
@@ -86,6 +88,9 @@ never opened, never imported, never served, and counted for diagnostics.
 | `recordings/<bundleID>.status.envelope.json` | Recording acknowledgement and status | Recorded session §6 |
 | `learning/set.envelope.json` | The current learning set | Team learning §5 |
 | `learning/status/<candidateID>-<revision>.envelope.json` | Candidate status | Team learning §4 |
+| `checkin/<challengeID>.challenge.envelope.json` | Check-in challenge | [Check-in](office-check-in.md) §4.1 |
+| `checkin/<challengeID>.result.envelope.json` | Check-in result, carrying the renewed binding | Check-in §4.3 |
+| `removal/<removalID>.envelope.json` | Administrator-signed removal | Check-in §8 |
 
 **`records` (phone → office)**
 
@@ -96,6 +101,8 @@ never opened, never imported, never served, and counted for diagnostics.
 | `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job (for an assignment: *not yet specified*, §9.2) | Managed job receipt |
 | `recordings/<bundleID>/…` | A recorded-session bundle, laid out as its contract says | Recorded session §3 |
 | `learning/candidates/<candidateID>-<revision>.envelope.json` | A learning candidate | Team learning §3 |
+| `checkin/<challengeID>.envelope.json` | The phone's check-in | Check-in §4.2 |
+| `removal/<removalID>.envelope.json` | The phone's removal receipt | Check-in §8 |
 
 **`bulk` (office → phone)**
 
@@ -189,5 +196,6 @@ refused).
 5. **Scale.** Three folders per phone is simple and keeps indexes separate. An office with
    hundreds of phones holds hundreds of folders; whether that needs a different shape is
    unmeasured.
-6. **Administrator overlay and check-in** (Plan FX control payloads) will take paths under
-   `control` and `records` when their contracts exist.
+6. **Administrator overlay** (Plan FX control payloads) will take paths under `control` and
+   `records` when its contract exists. Check-in, renewal and removal now have theirs
+   ([office-check-in.md](office-check-in.md), design only) and the paths in §3.
