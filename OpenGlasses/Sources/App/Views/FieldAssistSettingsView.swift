@@ -167,6 +167,9 @@ struct FieldAssistSettingsView: View {
             if orgProfile.record?.source == .office {
                 Section {
                     OfficeFieldConnectionRow(connection: appState.officeField)
+                    if let officeCheckIn = appState.officeCheckIn {
+                        OfficeCheckInRow(checkIn: officeCheckIn)
+                    }
                     if let officeJobs = appState.officeJobs {
                         OfficeManagedJobIntakeRow(intake: officeJobs)
                     }

@@ -1452,8 +1452,22 @@ class AppState: ObservableObject, AppStateProtocol {
     /// transport in the build it never runs and shows nothing.
     lazy var officeField: OfficeFieldConnection = {
         var seams = OfficeFieldConnection.Seams()
-        seams.takeIn = { [weak self] in try? await self?.officeJobs?.sweep() }
+        seams.takeIn = { [weak self] in
+            // Check-in first: a phone the office has removed takes in nothing else.
+            if let checkIn = self?.officeCheckIn, (try? await checkIn.sweep()) == .removed { return }
+            try? await self?.officeJobs?.sweep()
+        }
         return OfficeFieldConnection(seams: seams)
+    }()
+
+    /// Check-in, renewal and removal over the managed connection: what keeps a phone that joined
+    /// an office by its code joined, and ends it when the office says so. Nil in a build without
+    /// the office transport.
+    lazy var officeCheckIn: OfficeCheckInService? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else { return nil }
+        var seams = OfficeCheckInService.Seams.app(transport: transport)
+        seams.bindingChanged = { [weak self] in self?.officeField.approvalChanged() }
+        return OfficeCheckInService(seams: seams)
     }()
 
     /// Jobs the office has sent over the managed connection, taken to the job review. Nil in a
