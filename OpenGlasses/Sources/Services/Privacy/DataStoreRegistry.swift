@@ -742,12 +742,13 @@ enum SensitiveStore: String, CaseIterable {
             // as it happened, which carries tool names and no words). Written straight into the
             // job's own folder, never to the temporary directory, the Recordings folder or Photos.
             // It lasts as long as the recording does: stopping seals it into the bundle and the
-            // parts are removed; a recording the app was closed in the middle of is sealed from
-            // what it had at the next launch. It goes with its job, and has no way off the phone
-            // of its own — the bundle is the only exit.
+            // parts are removed; a recording the app was closed in the middle of can be carried on
+            // while its job is open, and is sealed from what it had once the job has closed. It
+            // goes with its job, and has no way off the phone of its own — the bundle is the
+            // only exit.
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
                           protection: .completeUnlessOpen, backupExcluded: true,
-                          retention: .policy("removed when the recording is sealed into its bundle; an interrupted recording is sealed at the next launch"),
+                          retention: .policy("removed when the recording is sealed into its bundle; one interrupted by the app closing is carried on or sealed once its job has closed"),
                           deleteAll: .api("JobRecordingCaptureStore.remove(sessionID:)"),
                           deleteSubject: .unavailable("a recording is not indexed by who appears in it"),
                           owner: "JobRecordingCaptureStore",
