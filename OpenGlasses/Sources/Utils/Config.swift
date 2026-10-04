@@ -3417,6 +3417,15 @@ struct Config {
         UserDefaults.standard.set(name, forKey: "accentColorName")
     }
 
+    /// The accent the organisation's profile locks every screen to, as `#RRGGBB`. Nil — no
+    /// profile, or one that does not say — leaves the colour to the person. Written only by a
+    /// profile; there is no setter on purpose.
+    static var organizationAccentColor: String? {
+        let stored = UserDefaults.standard.string(forKey: "organizationAccentColor") ?? ""
+        let raw = PolicyEnvelope.string(.organizationAccentColor, stored: stored)
+        return AppAccent.hexValue(raw) == nil ? nil : raw
+    }
+
     // MARK: - Mic Route (Plan CL P3)
 
     /// Unified capture route: phone / glasses / headset. Migrates the old

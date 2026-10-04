@@ -40,7 +40,7 @@ struct SafetyAssessmentReportView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Safety Assessment").font(.headline)
                 Text("AI HECA · \(report.createdAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption2.weight(.semibold)).foregroundStyle(AppAccent.aiCoral)
+                    .font(.caption2.weight(.semibold)).foregroundStyle(AppAccent.color)
             }
             Spacer()
             if let onDismiss {

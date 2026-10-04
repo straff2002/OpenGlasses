@@ -170,6 +170,7 @@ struct PersonaPickerTab: View {
 /// The Modes tab's Field Assist row: opens Settings › Field Assist, where the switch (and, when
 /// not entitled, the paywall) lives.
 struct FieldAssistShortcutRow: View {
+    @Environment(\.appAccent) private var accent
     let shortcut: ModesTabPresentation.FieldAssistShortcut
     let onOpen: () -> Void
 
@@ -178,7 +179,7 @@ struct FieldAssistShortcutRow: View {
             HStack(spacing: 12) {
                 Image(systemName: ModesTabPresentation.fieldAssistSymbol)
                     .font(.title3)
-                    .foregroundStyle(AccentColors.aiCoral)
+                    .foregroundStyle(OGTheme.tintedAccentLabel(accent))
                     .frame(width: 32)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {

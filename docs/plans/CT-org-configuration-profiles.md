@@ -903,9 +903,19 @@ applies to the assistive surface and the privacy filter, instead of special-casi
 
 | Kind | Keys | What a profile may do |
 |---|---|---|
-| **Profile-owned** — organisation identity, never a user preference | `organizationDisplayName`, `organizationJobSigningKey`, `organizationJobReportChannel`, `organizationReportRecipients` | set; there is no user surface to override them, and removal clears them |
+| **Profile-owned** — organisation identity, never a user preference | `organizationDisplayName`, `organizationJobSigningKey`, `organizationJobReportChannel`, `organizationReportRecipients`, `organizationAccentColor` (added 2026-10-04) | set; there is no user surface to override them, and removal clears them |
 | **Ceiling, tighten only** | `organizationAllowsUnsignedVaults` → `false`; `organizationRequiresSignedJobFiles` → `true`; `organizationRequiresCustomerSignOff` → `true`; `privacyFilterEnabled` → `true`; `remoteInvokeObserveEnabled` / `remoteInvokeOutputEnabled` / `remoteInvokeCaptureEnabled` → `false`; `mcpServerEnabled` → `false`; `agentModeEnabled` → `false` | pin in the stated direction; the other direction is refused and reported |
-| **Default** | `fieldAssistEnabled`, `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode`, `supportReportEmail` (added 2026-09-26, Plan FV) | set a starting value the person may change afterwards |
+| **Default** | `fieldAssistEnabled`, `fieldAssistDefaultVaultId`, `fieldAssistDefaultMode`, `supportReportEmail` (added 2026-09-26, Plan FV), `accentColorName` (added 2026-10-04) | set a starting value the person may change afterwards |
+
+**Accent colour (added 2026-10-04).** An organisation states its accent as `#RRGGBB` — never a
+preset id, which is an app detail — and chooses how firmly by which key it sets:
+`accentColorName` is a starting value the technician may change (the picker keeps the
+organisation's colour as its first swatch), `organizationAccentColor` locks it (the picker shows
+the colour and "Set by …"). Look & Feel stays a category no organisation can lock; the locked
+accent is one read-only control inside it, and every accent — the organisation's included — still
+passes through the contrast correction, so a pale or dark brand colour cannot make the app
+unreadable. The lock is clamped on read: the technician's own choice is kept and returns when the
+profile goes.
 
 Four notes on that cut:
 

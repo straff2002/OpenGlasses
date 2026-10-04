@@ -914,6 +914,21 @@ struct LookFeelSettingsScreen: View {
     @AppStorage("appAppearance") private var appearance: String = "system"
     @ScaledMetric(relativeTo: .body) private var swatch: CGFloat = 28
     @ScaledMetric(relativeTo: .body) private var swatchTarget: CGFloat = 44
+    /// Redraws the picker when a profile arrives, changes or goes.
+    @ObservedObject private var orgProfile = OrgProfileManager.shared
+
+    /// The presets, led by the organisation's own colour when its profile offered one as a
+    /// starting value — kept so a technician who tried another colour can go back to it.
+    private var swatches: [AppAccent.Preset] {
+        var custom: [AppAccent.Preset] = []
+        if let name = AppAccent.organizationDefaultName {
+            custom.append(.init(id: name, name: "Organisation", color: AppAccent.color(for: name)))
+        }
+        if AppAccent.hexValue(accentColorName) != nil, !custom.contains(where: { $0.id == accentColorName }) {
+            custom.append(.init(id: accentColorName, name: "Custom", color: AppAccent.color(for: accentColorName)))
+        }
+        return custom + AppAccent.presets
+    }
 
     var body: some View {
         Form {
@@ -928,34 +943,51 @@ struct LookFeelSettingsScreen: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Accent Colour")
                         .font(.subheadline)
-                    // The ring is drawn *outside* the swatch in the label colour, not
-                    // in white on top of it: a white stroke vanished on the pale presets
-                    // in light mode, which made the selected accent a guess. The target
-                    // is a full 44pt square around a swatch that scales with Dynamic Type.
-                    HStack(spacing: 8) {
-                        ForEach(AppAccent.presets) { preset in
-                            let selected = accentColorName == preset.id
-                            Button {
-                                accentColorName = preset.id
-                                Config.setAccentColorName(preset.id)
-                            } label: {
-                                Circle()
-                                    .fill(preset.color)
-                                    .frame(width: swatch, height: swatch)
-                                    .padding(4)
-                                    .overlay {
-                                        Circle()
-                                            .strokeBorder(
-                                                selected ? Color.primary : Color.clear,
-                                                lineWidth: 2
-                                            )
-                                    }
-                                    .frame(width: swatchTarget, height: swatchTarget)
-                                    .contentShape(Rectangle())
+                    if let locked = Config.organizationAccentColor {
+                        // The organisation's profile locks the accent: show the colour in force
+                        // and who set it, rather than swatches that would not take.
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(AppAccent.color(for: locked))
+                                .frame(width: swatch, height: swatch)
+                                .accessibilityHidden(true)
+                            ManagedLockNote(organization: ManagedLockReason.organization)
+                        }
+                        .frame(minHeight: swatchTarget)
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        // The ring is drawn *outside* the swatch in the label colour, not
+                        // in white on top of it: a white stroke vanished on the pale presets
+                        // in light mode, which made the selected accent a guess. The target
+                        // is a full 44pt square around a swatch that scales with Dynamic Type.
+                        // A grid, not a row: nine 44pt targets are wider than any iPhone, and a
+                        // row pushed the panel past the screen edge with the last swatches unreachable.
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: swatchTarget), spacing: 8)],
+                                  alignment: .leading, spacing: 8) {
+                            ForEach(swatches) { preset in
+                                let selected = accentColorName == preset.id
+                                Button {
+                                    accentColorName = preset.id
+                                    Config.setAccentColorName(preset.id)
+                                } label: {
+                                    Circle()
+                                        .fill(preset.color)
+                                        .frame(width: swatch, height: swatch)
+                                        .padding(4)
+                                        .overlay {
+                                            Circle()
+                                                .strokeBorder(
+                                                    selected ? Color.primary : Color.clear,
+                                                    lineWidth: 2
+                                                )
+                                        }
+                                        .frame(width: swatchTarget, height: swatchTarget)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(preset.name) accent colour")
+                                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("\(preset.name) accent colour")
-                            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                         }
                     }
                 }

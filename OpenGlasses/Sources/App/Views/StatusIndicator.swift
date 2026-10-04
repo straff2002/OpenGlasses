@@ -125,10 +125,10 @@ struct StatusIndicator: View {
 
             // Tool call / reconnecting
             if isGemini && session.toolCallStatus.isActive {
-                toolCallPill(session.toolCallStatus.displayText, color: AppAccent.aiCoral)
+                toolCallPill(session.toolCallStatus.displayText, color: accent)
                     .padding(.bottom, 10)
             } else if !isRealtime && appState.llmService.toolCallStatus.isActive {
-                toolCallPill(appState.llmService.toolCallStatus.displayText, color: AppAccent.aiCoral)
+                toolCallPill(appState.llmService.toolCallStatus.displayText, color: accent)
                     .padding(.bottom, 10)
             }
 
@@ -641,7 +641,7 @@ struct StatusIndicator: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .font(.caption.weight(.semibold))
-            .foregroundStyle(OGTheme.warnLabel)
+            .foregroundStyle(OGTheme.tintedAccentLabel(accent))
             .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
             .contentShape(Rectangle())
         }

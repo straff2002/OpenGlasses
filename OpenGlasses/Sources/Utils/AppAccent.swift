@@ -42,15 +42,46 @@ enum AppAccent {
         Preset(id: "white",   name: "White",   color: .white),
     ]
 
-    /// Resolve a color name to its Color value.
+    /// A custom accent as its stored spelling, `#RRGGBB` — the one form an organisation's
+    /// profile may supply. Nil for anything else: no shorthand, no alpha, no missing `#`, so the
+    /// office, the minting script and the phone can never read one value three ways.
+    static func hexValue(_ text: String) -> UInt32? {
+        let digits = text.dropFirst()
+        guard text.first == "#", digits.count == 6, digits.allSatisfy(\.isHexDigit) else { return nil }
+        return UInt32(digits, radix: 16)
+    }
+
+    /// Resolve a stored accent — a preset id or a `#RRGGBB` custom colour — to its Color value.
+    /// A custom colour is one value in both schemes; `OGTheme.tintedAccentLabel` and
+    /// `onAccentLabel` are what keep it legible wherever it is text or ground.
     static func color(for name: String) -> Color {
-        presets.first(where: { $0.id == name })?.color
+        if let hex = hexValue(name) {
+            return Color(red: Double((hex >> 16) & 0xFF) / 255,
+                         green: Double((hex >> 8) & 0xFF) / 255,
+                         blue: Double(hex & 0xFF) / 255)
+        }
+        return presets.first(where: { $0.id == name })?.color
             ?? presets.first(where: { $0.id == defaultPresetID })!.color
+    }
+
+    /// The accent in force for a stored choice: the organisation's own colour while its profile
+    /// locks one, otherwise the person's choice. Clamped on read — the stored choice is untouched
+    /// and comes back when the profile goes.
+    static func effectiveName(stored: String) -> String {
+        Config.organizationAccentColor ?? stored
+    }
+
+    /// The colour the organisation's profile offered as a starting value, if it offered one.
+    /// The picker keeps it as a swatch so a technician who tried another colour can go back.
+    static var organizationDefaultName: String? {
+        guard case .string(let name)? = PolicyEnvelope.current.startingValues[.accentColorName],
+              hexValue(name) != nil else { return nil }
+        return name
     }
 
     /// The current accent color (non-reactive, use for one-off reads).
     static var color: Color {
-        color(for: Config.accentColorName)
+        color(for: effectiveName(stored: Config.accentColorName))
     }
 }
 

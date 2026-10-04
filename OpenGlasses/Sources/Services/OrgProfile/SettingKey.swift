@@ -21,6 +21,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case organizationReportRecipients
     /// Transcripts in reports to the office: `always` or `never` (Plan HD).
     case organizationReportTranscriptInternal
+    /// The organisation's accent, locked: every screen takes it and the picker is read-only.
+    /// To offer a colour the technician may change, the profile sets `accentColorName` instead.
+    case organizationAccentColor
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -42,6 +45,8 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case fieldAssistDefaultVaultId
     case fieldAssistDefaultMode
     case supportReportEmail
+    /// The accent colour the phone starts with; the technician may pick another afterwards.
+    case accentColorName
 
     enum ValueType: Equatable, Sendable {
         case bool
@@ -62,7 +67,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     var kind: Kind {
         switch self {
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
-             .organizationReportTranscriptInternal:
+             .organizationReportTranscriptInternal, .organizationAccentColor:
             return .profileOwned(.string)
         case .organizationReportRecipients:
             return .profileOwned(.strings)
@@ -76,7 +81,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: false)
         case .fieldAssistEnabled:
             return .startingValue(.bool)
-        case .fieldAssistDefaultVaultId, .fieldAssistDefaultMode, .supportReportEmail:
+        case .fieldAssistDefaultVaultId, .fieldAssistDefaultMode, .supportReportEmail, .accentColorName:
             return .startingValue(.string)
         }
     }
@@ -117,6 +122,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case (.supportReportEmail, .string(let address)):
             return SupportReportRecipient.isPlausible(address.trimmingCharacters(in: .whitespacesAndNewlines))
                 ? nil : "not an email address"
+        case (.organizationAccentColor, .string(let colour)), (.accentColorName, .string(let colour)):
+            // A profile names a colour, never one of this build's presets: preset ids are an
+            // app detail that may change, and a hex code means the same thing on every build.
+            return AppAccent.hexValue(colour) == nil ? "not a colour written as #RRGGBB" : nil
         default:
             return nil
         }

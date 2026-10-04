@@ -17,7 +17,7 @@ struct BiometricLockView: View {
             VStack(spacing: 24) {
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: heroGlyph))
-                    .foregroundStyle(AppAccent.aiCoral)
+                    .foregroundStyle(AppAccent.color)
 
                 Text("Avenkin")
                     .font(.title.bold())
@@ -39,10 +39,10 @@ struct BiometricLockView: View {
                 } label: {
                     Label("Unlock", systemImage: biometricIcon)
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OGTheme.onAccentLabel(AppAccent.color))
                         .padding(.horizontal, 32)
                         .padding(.vertical, 14)
-                        .background(AppAccent.aiCoral)
+                        .background(AppAccent.color)
                         .clipShape(Capsule())
                 }
                 .padding(.top, 16)
