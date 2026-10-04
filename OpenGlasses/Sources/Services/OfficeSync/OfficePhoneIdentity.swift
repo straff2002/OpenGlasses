@@ -12,6 +12,7 @@ actor OfficePhoneIdentity {
         case invalidReceipt
         case invalidCheckIn
         case invalidRemovalReceipt
+        case invalidReport
     }
 
     static let shared = OfficePhoneIdentity()
@@ -83,6 +84,16 @@ actor OfficePhoneIdentity {
     func signRemovalReceipt(_ payload: Data) throws -> Data {
         guard OfficeCheckIn.removalReceiptPayload(payload) != nil else { throw Refusal.invalidRemovalReceipt }
         return try key().signature(for: OfficeCheckIn.removalReceiptDomain + payload)
+    }
+
+    /// Sign the report for one record this phone is sending to its office
+    /// (Contracts/office-reports.md §4). `payload` is the exact bytes; the signature is over the
+    /// report domain followed by them. Only a closed report payload within the contract's field
+    /// rules is signed here. That it names this phone's own pairing and the record's real bytes is
+    /// the caller's check, and the transport's again before it publishes.
+    func signOfficeReport(_ payload: Data) throws -> Data {
+        guard OfficeReport.reportPayload(payload) != nil else { throw Refusal.invalidReport }
+        return try key().signature(for: OfficeReport.reportDomain + payload)
     }
 
     private func key() throws -> Curve25519.Signing.PrivateKey {

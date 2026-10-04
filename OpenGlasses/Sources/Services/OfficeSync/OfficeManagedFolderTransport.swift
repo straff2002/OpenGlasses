@@ -58,6 +58,26 @@ protocol OfficeManagedFolderTransport: Sendable {
     /// the exact envelope published.
     func publishRemovalReceipt(removalID: String, signatureBase64: String) async throws -> String
 
+    /// `PublishManagedReport`: publishes one report at `records/reports/` with the record and the
+    /// manifest it names, and returns the exact envelope published. Each argument is standard
+    /// base64. The transport checks all of it as the office will; publishing the same report again
+    /// returns the envelope already there.
+    func publishReport(payloadBase64: String, signatureBase64: String, recordBase64: String,
+                       manifestBase64: String) async throws -> String
+
+    /// `PublishManagedReportAttachment`: publishes one attachment a published report names, at
+    /// `records/attachments/<sha256>`, from a file in the app's own storage that holds exactly the
+    /// bytes the manifest gave.
+    func publishReportAttachment(sha256: String, path: String) async throws
+
+    /// `ManagedReportReceipts`: the office's receipts for the reports this phone has published,
+    /// as a JSON array of `OfficeManagedFolders.ReportReceipt`. Listing is not acting.
+    func reportReceipts() async throws -> String
+
+    /// `WithdrawManagedReport`: takes a published report out of `records`, with the files no
+    /// other published report names.
+    func withdrawReport(reportID: String) async throws
+
     /// `Stop`: closes the connection and its folders. What was committed stays committed.
     func stop() async
 }
@@ -89,6 +109,15 @@ enum OfficeManagedFolders {
         let removals: [PendingEnvelope]
     }
 
+    /// One receipt from `control/receipts/`, as the transport read it.
+    struct ReportReceipt: Decodable, Equatable, Sendable {
+        let reportID: String
+        /// The word in the file's name: `pending`, `record` or `full`.
+        let stage: String
+        /// The exact bytes of the file, standard base64.
+        let envelope: String
+    }
+
     enum DecodingFailure: Error, Equatable {
         case malformed
     }
@@ -98,6 +127,13 @@ enum OfficeManagedFolders {
             throw DecodingFailure.malformed
         }
         return pending
+    }
+
+    static func decodeReportReceipts(_ json: String) throws -> [ReportReceipt] {
+        guard let receipts = try? JSONDecoder().decode([ReportReceipt].self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return receipts
     }
 
     static func decodeCheckInPending(_ json: String) throws -> CheckInPending {
