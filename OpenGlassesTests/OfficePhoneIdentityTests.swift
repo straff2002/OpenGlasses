@@ -159,6 +159,42 @@ final class OfficePhoneIdentityTests: XCTestCase {
         }
     }
 
+    func testOnlyAJobUpdateReceiptOrARecordingManifestIsSignedUnderItsOwnDomain() async throws {
+        let account = "office.phone.identity.tests.\(UUID().uuidString)"
+        defer { try? KeychainService.deleteItem(account) }
+        let identity = OfficePhoneIdentity(account: account)
+        let verifier = try Curve25519.Signing.PublicKey(rawRepresentation: await identity.publicKey())
+        let receipt = try OfficeCheckInFixtures.payload("job-update-receipt-v1")
+        let manifest = try OfficeCheckInFixtures.payload("recording-bundle-manifest-v1")
+
+        let receiptSignature = try await identity.signJobUpdateReceipt(receipt)
+        XCTAssertTrue(verifier.isValidSignature(receiptSignature, for: OfficeJobUpdate.receiptDomain + receipt))
+        XCTAssertFalse(verifier.isValidSignature(receiptSignature, for: OfficeBulk.receiptDomain + receipt))
+        let manifestSignature = try await identity.signRecordingManifest(manifest)
+        XCTAssertTrue(verifier.isValidSignature(manifestSignature, for: BundleManifest.signingDomain + manifest))
+        XCTAssertFalse(verifier.isValidSignature(manifestSignature, for: OfficeRecordingReceipt.domain + manifest))
+
+        for other in [manifest, try OfficeCheckInFixtures.payload("job-update-parts-v1"),
+                      try OfficeCheckInFixtures.payload("office-bulk-assignment-receipt-received-v1"),
+                      Data(repeating: 7, count: 32)] {
+            do {
+                _ = try await identity.signJobUpdateReceipt(other)
+                XCTFail("the update-receipt signer signed something that is not one")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidJobUpdateReceipt)
+            }
+        }
+        for other in [receipt, try OfficeCheckInFixtures.payload("recording-receipt-received-v1"),
+                      manifest + Data(" ".utf8), Data(repeating: 7, count: 32)] {
+            do {
+                _ = try await identity.signRecordingManifest(other)
+                XCTFail("the manifest signer signed something that is not a manifest")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidRecordingManifest)
+            }
+        }
+    }
+
     func testCorruptStoredIdentityFailsClosed() async throws {
         let account = "office.phone.identity.tests.\(UUID().uuidString)"
         defer { try? KeychainService.deleteItem(account) }

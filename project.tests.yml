@@ -58,6 +58,15 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/job-update-receipt-v1.json
         buildPhase: resources
+      # The recorded-job bundle's signed manifest and three things an office may say about it.
+      - path: Contracts/fixtures/recording-bundle-manifest-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/recording-receipt-received-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/recording-receipt-refused-v1.json
+        buildPhase: resources
+      - path: Contracts/fixtures/recording-receipt-published-v1.json
+        buildPhase: resources
       # The report contract's golden report, record, manifest and receipts.
       - path: Contracts/fixtures/office-report-v1.json
         buildPhase: resources
