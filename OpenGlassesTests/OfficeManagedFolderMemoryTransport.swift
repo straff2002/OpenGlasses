@@ -33,6 +33,7 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
         case notThisPhonesReport, anotherReportUnderThatOperation, noSuchAttachment, notTheBytesNamed
         case invalidBulkRequest, noSuchBulkContent, noSuchAssignment
         case noSuchUpdate
+        case notThisPhonesManifest, notTheBundlesBytes, anotherManifestUnderThatBundle, noSuchRecording
     }
 
     static let bindingFields: Set<String> = [
@@ -366,6 +367,125 @@ actor OfficeManagedFolderMemoryTransport: OfficeManagedFolderTransport {
         let envelope = Self.sealed(payload, signatureBase64)
         updateReceipts[updateID] = envelope
         return String(decoding: envelope, as: UTF8.self)
+    }
+
+    // MARK: Recorded-job bundles
+
+    /// One bundle in `records/recordings/`: what its manifest lists, and what has been published.
+    struct Recording {
+        var envelope: Data
+        var manifestSHA256: String
+        /// Path → (digest, bytes), as the manifest lists them.
+        var files: [String: (sha256: String, bytes: Int)]
+        var published: [String: Data]
+        /// Out of `records` and not served; what the office says later is still listed.
+        var withdrawn = false
+    }
+
+    private(set) var recordings: [String: Recording] = [:]
+    private(set) var withdrawnRecordings: [String] = []
+    private(set) var recordingChunkPublishes = 0
+    private var recordingStatusFiles: [String: [String: Data]] = [:]
+    /// The published paths the office has taken, by bundle: what the test's office holds.
+    private var officeHolds: [String: Set<String>] = [:]
+
+    /// The office takes everything published so far for a bundle, or just the paths given.
+    func officeTakes(_ bundleID: String, paths: Set<String>? = nil) {
+        guard let recording = recordings[bundleID] else { return }
+        officeHolds[bundleID, default: []].formUnion(paths ?? Set(recording.published.keys).union(["manifest.envelope.json"]))
+    }
+
+    /// The office says something about a bundle, under the name that status has.
+    func put(recordingStatus: Data, bundleID: String, status: String) {
+        recordingStatusFiles[bundleID, default: [:]][status] = recordingStatus
+    }
+
+    func publishRecordingManifest(payloadBase64: String, signatureBase64: String, timelinePath: String,
+                                  transcriptPath: String) async throws -> String {
+        guard isOpen, let phoneKey else { throw Failure.notOpen }
+        guard let payload = Data(base64Encoded: payloadBase64),
+              let signature = Data(base64Encoded: signatureBase64), signature.count == 64,
+              phoneKey.isValidSignature(signature, for: Data("Avenkin.RecordingBundle.v1\0".utf8) + payload),
+              let manifest = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+              let bundleID = manifest["bundleID"] as? String,
+              let listed = manifest["files"] as? [[String: Any]] else { throw Failure.notThisPhonesManifest }
+        var files: [String: (sha256: String, bytes: Int)] = [:]
+        for file in listed {
+            guard let path = file["path"] as? String, let sha256 = file["sha256"] as? String,
+                  let bytes = file["bytes"] as? Int else { throw Failure.notThisPhonesManifest }
+            files[path] = (sha256, bytes)
+        }
+        let digest = OfficeReport.digest(payload)
+        if let held = recordings[bundleID] {
+            guard held.manifestSHA256 == digest else { throw Failure.anotherManifestUnderThatBundle }
+            if !held.withdrawn { return String(decoding: held.envelope, as: UTF8.self) }
+        }
+        var published: [String: Data] = [:]
+        for (name, path) in [("timeline.json", timelinePath), ("transcript.json", transcriptPath)] {
+            guard let bytes = try? Data(contentsOf: URL(fileURLWithPath: path)), let stated = files[name],
+                  bytes.count == stated.bytes, OfficeReport.digest(bytes) == stated.sha256 else {
+                throw Failure.notTheBundlesBytes
+            }
+            published[name] = bytes
+        }
+        let envelope = Self.sealed(payload, signatureBase64)
+        recordings[bundleID] = Recording(envelope: envelope, manifestSHA256: digest, files: files, published: published)
+        officeHolds[bundleID] = nil
+        return String(decoding: envelope, as: UTF8.self)
+    }
+
+    func publishRecordingChunk(bundleID: String, sha256: String, path: String) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        let name = "media/\(sha256).chunk"
+        guard var recording = recordings[bundleID], !recording.withdrawn, let stated = recording.files[name] else {
+            throw Failure.noSuchRecording
+        }
+        if recording.published[name] != nil { return }
+        guard let bytes = try? Data(contentsOf: URL(fileURLWithPath: path)), bytes.count == stated.bytes,
+              OfficeReport.digest(bytes) == sha256 else { throw Failure.notTheBundlesBytes }
+        recording.published[name] = bytes
+        recordings[bundleID] = recording
+        recordingChunkPublishes += 1
+    }
+
+    func recordingProgress(bundleID: String) async throws -> String {
+        guard isOpen else { throw Failure.notOpen }
+        guard let recording = recordings[bundleID], !recording.withdrawn else { throw Failure.noSuchRecording }
+        let held = officeHolds[bundleID] ?? []
+        let total = recording.files.values.reduce(0) { $0 + $1.bytes }
+        let published = recording.published.values.reduce(0) { $0 + $1.count }
+        let served = recording.published.filter { held.contains($0.key) }.values.reduce(0) { $0 + $1.count }
+        let all = held.contains("manifest.envelope.json") && recording.files.keys.allSatisfy {
+            recording.published[$0] != nil && held.contains($0)
+        }
+        let progress: [String: Any] = ["bundleID": bundleID, "totalBytes": total, "publishedBytes": published,
+                                       "servedBytes": served, "allServed": all]
+        return String(decoding: try JSONSerialization.data(withJSONObject: progress), as: UTF8.self)
+    }
+
+    func recordingStatuses() async throws -> String {
+        guard isOpen else { return "[]" }
+        var listed: [[String: String]] = []
+        for bundleID in recordings.keys.sorted() {
+            for (status, envelope) in (recordingStatusFiles[bundleID] ?? [:]).sorted(by: { $0.key < $1.key }) {
+                listed.append(["bundleID": bundleID, "status": status, "envelope": envelope.base64EncodedString()])
+            }
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: listed), as: UTF8.self)
+    }
+
+    func withdrawRecording(bundleID: String, forget: Bool) async throws {
+        guard isOpen else { throw Failure.notOpen }
+        guard recordings[bundleID] != nil else { return }
+        if forget {
+            recordings[bundleID] = nil
+            recordingStatusFiles[bundleID] = nil
+        } else {
+            recordings[bundleID]?.withdrawn = true
+            recordings[bundleID]?.published = [:]
+        }
+        officeHolds[bundleID] = nil
+        withdrawnRecordings.append(bundleID)
     }
 
     // MARK: Reports

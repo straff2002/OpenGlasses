@@ -5,8 +5,10 @@ is wired into the app, and nothing records, stores or sends. The two signed mess
 and the office's receipt — have a reference implementation and golden fixtures in
 `Transport/mobile-core/recordingbundle`, and the phone's own Swift for them (`BundleManifest`,
 `OfficeRecordingReceipt`, a signer that signs only a manifest) writes and reads the same bytes
-(2026-10-05; see "P0 as built"). P1–P4 are unbuilt, and P2 is
-still blocked on Plan FX. Drafted 2026-10-02 and **revised the same day:**
+(2026-10-05; see "P0 as built"). **P2's headless part is built** (2026-10-05, opt-in build): the
+transport for a bundle, the bundle on disk, and the service that sends it and keeps it until the
+office's receipt — tested against the golden bundle, and started by nothing yet. P1 (capture and
+consent), the rest of P2, P3 and P4 are unbuilt. Drafted 2026-10-02 and **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
 [`Contracts/recorded-session.md`](../../Contracts/recorded-session.md).
@@ -381,6 +383,63 @@ transport seam, acknowledgement verification, retention, the owed item and job-p
 `BundleBuilderTests`, `BundleBlurPassTests` (synthetic MP4, every frame filtered, drops counted),
 `BundleSyncServiceTests` (fake transport: interruption, resume, office away, refused manifest),
 `RecordingReceiptTests`, `JobDayComposerTests` (owed wording).
+
+**P2, the headless part, as built (2026-10-05)** — in the opt-in office transport build; nothing
+in the app starts it yet, because nothing records until P1.
+
+- **Transport** (`Transport/mobile-core/managed_recordings.go`). `PublishManagedRecordingManifest`
+  checks a manifest and its signature as the office will and publishes it with the timeline and
+  transcript it lists, under `records/recordings/<bundleID>/`; the same manifest again publishes
+  nothing new and another under the same bundle is refused. `PublishManagedRecordingChunk`
+  publishes one chunk the manifest lists, only as its exact bytes, **linked** into the folder so
+  a recording is not held twice (copied where a link is not possible). `ManagedRecordingProgress`
+  says how much is in the folder and how much of that the office no longer needs — progress,
+  never acknowledgement. `ManagedRecordingStatuses` lists the office's statuses that verify for a
+  bundle this phone published, including one sealed before a renewal. `WithdrawManagedRecording`
+  takes a bundle out of the folder and, unless told to forget it, keeps listening for what the
+  office says later. The outbound guard serves a bundle's manifest and the files published for
+  it, and nothing else.
+- **`JobRecordingBundleStore`**. Sealing cuts each recorded part into chunk files named by
+  digest, reading the part in pieces; lists exactly those files in a `BundleManifest`; has the
+  phone application key sign it; and writes the phone's record of the bundle, under the job's own
+  folder (`Documents/FieldSessions/{id}/recording/bundle/`). The recorder's part files are removed
+  once the bundle is sealed: the chunks are the recording from then on. Half a bundle is no
+  bundle. Registered in `DataStoreRegistry`, `completeUnlessOpen` and out of backup.
+- **`JobRecordingSyncService`**. Each pass, for each bundle: while `SyncEligibility` says the
+  moment is wrong it says why and publishes nothing more; otherwise, through the pairing gate, it
+  publishes the manifest and then chunks **two ahead of what the office has taken**, so a route
+  that stops being a good one has at most that much exposed to it. Every office status is
+  verified with `OfficeRecordingReceipt` against the binding held and the record of the manifest
+  sealed, and acted on once. *Received* acknowledges, keeps the receipt, and takes the bundle out
+  of the folder; a week later the media is trimmed and nothing else. *Refused* keeps everything
+  and stops; thirty days without a receipt keeps everything and stops; either waits for the
+  technician's *keep waiting* or *delete*. What the office says later — reviewed, published,
+  rejected — is kept as the recording's outcome.
+
+As tests: `JobRecordingSyncServiceTests` seals the fixture recording as the golden bundle byte for
+byte; shows nothing is published on mobile data, without power or on a pairing that does not
+verify; that only two chunks go ahead; that everything served is *sent* and never *received*; that
+only the office's own receipt for this manifest acknowledges; that the media goes at seven days
+and only the media; that a refusal and an expiry remove nothing. The transport's own tests cover
+what it publishes, serves and lists.
+
+Choices made:
+
+- **Chunks are linked, not copied**, into the office's folder: a 2 GB recording is on the phone
+  once.
+- **Two chunks ahead.** Eligibility cannot pause a folder that also carries reports, so a
+  recording is fed to it a little at a time instead.
+- **An acknowledged bundle leaves the folder at once** and is still listened for.
+- **`completeUnlessOpen`**, as this plan says: a chunk being read when the phone locks can be
+  finished, and nothing new can be opened. Whether a transfer survives a locked phone is P4's
+  question.
+- **The transcript stays after the trim**, with the timeline, manifest and receipts.
+
+**Still owed for P2:** `BundleBlurPass`; the service started from the app, with real conditions
+(network, power, posture, policy, what else is waiting); the owed item on the Jobs list and the
+job-day card, and the job page's size, progress and delete control; deleting a job with an
+unacknowledged recording asking first; the organisation's leaving rule for recordings. All of them
+wait on P1: until something records, there is nothing to prepare, send or show.
 
 **P3 — Office feedback on the phone.** Signed status messages, the job's "what came of it" line,
 the published procedure arriving as a vault. Tests: `RecordingStatusMessageTests`,

@@ -24,6 +24,10 @@ against an in-memory stand-in for the transport, not yet on a physical phone aga
 **Updates on a job** (Plan HO P3): the transport lists `control/updates/`, publishes the
 phone's receipt at `records/updates/<updateID>.envelope.json` once the phone application key has
 signed it, serves it, and lets it go once the office has taken the update away.
+**Recorded-job bundles** (Plan HE P2): the transport publishes a sealed bundle's manifest, its
+timeline and transcript, and its media chunks under `records/recordings/<bundleID>/`, serves only
+those, says how much of a bundle the office no longer needs, lists the office's statuses for it
+from `control/recordings/`, and takes it out of `records` once the office has acknowledged it.
 **Check-in, renewal and removal use the same two folders** (Plan HO P1): the transport reads
 `control/checkin/` and `control/removal/`, publishes `records/checkin/<challengeID>.envelope.json`
 and `records/removal/<removalID>.envelope.json` once the phone application key has signed them,

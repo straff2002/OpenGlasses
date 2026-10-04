@@ -90,6 +90,7 @@ enum SensitiveStore: String, CaseIterable {
     case officeManuals
     case officeJobAttachments
     case officeJobUpdates
+    case jobRecordingBundles
 
     // Clinical
     case healthSummaryCache
@@ -183,6 +184,9 @@ enum SensitiveStore: String, CaseIterable {
         /// and the backup-excluded column describes that state; a file created in a folder that
         /// was protected while the mode was on still inherits the folder's class.
         case completeUnlessOpenInComplianceMode
+        /// `FileProtectionType.completeUnlessOpen`, set explicitly and always: a file being
+        /// written or sent when the phone locks can be finished, and nothing new can be opened.
+        case completeUnlessOpen
         /// No attribute set by the app: whatever the container's default is.
         case platformDefault
         case keychainAfterFirstUnlockThisDeviceOnly
@@ -712,6 +716,23 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "OfficeJobUpdateService",
                           ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeJobUpdateService.swift"],
                           location: "Application Support/AvenkinOffice/job-updates.json")
+
+        case .jobRecordingBundles:
+            // A recorded job sealed for the office: the video and sound of the job cut into chunks,
+            // its timeline (which carries the words said) and transcript, the signed manifest, the
+            // office's receipts, and this phone's record of where the bundle stands. Unblurred
+            // unless the organisation requires otherwise, so the pictures are of whoever was
+            // there. It lives under the job's own folder and goes when the job goes. The media is
+            // removed a week after the office's verified receipt, and never before one; what is
+            // left is the record that it was sent. It has no other way off the phone.
+            return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUnlessOpen, backupExcluded: true,
+                          retention: .policy("media removed 7 days after the office's verified receipt; nothing unacknowledged is removed automatically"),
+                          deleteAll: .api("JobRecordingSyncService.delete(bundleID:)"),
+                          deleteSubject: .unavailable("a recording is not indexed by who appears in it"),
+                          owner: "JobRecordingBundleStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/JobRecordingBundleStore.swift"],
+                          location: "Documents/FieldSessions/{id}/recording/bundle/")
 
         case .orgEnrolment:
             // Plan CT: the organisation profile this phone is enrolled with — the signed document,

@@ -129,6 +129,8 @@ type inboxState struct {
 	AssignmentReceipts []assignmentReceiptRecord `json:"assignmentReceipts,omitempty"`
 	// UpdateReceipts are the receipts this phone made for updates on jobs.
 	UpdateReceipts []updateReceiptRecord `json:"updateReceipts,omitempty"`
+	// Recordings are the recorded-job bundles this phone has published and not withdrawn.
+	Recordings []publishedRecording `json:"recordings,omitempty"`
 }
 
 type committedJob struct {
@@ -398,7 +400,7 @@ func (i *managedInbox) publishReceipt(messageID string, signature []byte) error 
 func (i *managedInbox) outbound(name string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if i.outboundCheckIn(name) || i.outboundReport(name) || i.outboundAssignmentReceipt(name) || i.outboundUpdateReceipt(name) {
+	if i.outboundCheckIn(name) || i.outboundReport(name) || i.outboundAssignmentReceipt(name) || i.outboundUpdateReceipt(name) || i.outboundRecording(name) {
 		return true
 	}
 	id, ok := strings.CutSuffix(strings.TrimPrefix(name, "receipts/"), ".envelope.json")

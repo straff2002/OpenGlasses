@@ -121,6 +121,30 @@ enum OfficeManagedFolderMobilecoreTransport {
                 updateID: updateID, signatureBase64: signatureBase64)
         }
 
+        func publishRecordingManifest(payloadBase64: String, signatureBase64: String, timelinePath: String,
+                                      transcriptPath: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.publishManagedRecordingManifest(
+                payloadBase64: payloadBase64, signatureBase64: signatureBase64,
+                timelinePath: timelinePath, transcriptPath: transcriptPath)
+        }
+
+        func publishRecordingChunk(bundleID: String, sha256: String, path: String) async throws {
+            try await OfficeTransportIdentity.shared.publishManagedRecordingChunk(
+                bundleID: bundleID, sha256: sha256, path: path)
+        }
+
+        func recordingProgress(bundleID: String) async throws -> String {
+            try await OfficeTransportIdentity.shared.managedRecordingProgress(bundleID: bundleID)
+        }
+
+        func recordingStatuses() async throws -> String {
+            try await OfficeTransportIdentity.shared.managedRecordingStatuses()
+        }
+
+        func withdrawRecording(bundleID: String, forget: Bool) async throws {
+            try await OfficeTransportIdentity.shared.withdrawManagedRecording(bundleID: bundleID, forget: forget)
+        }
+
         func stop() async {
             await OfficeTransportIdentity.shared.stop()
         }

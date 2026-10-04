@@ -119,6 +119,31 @@ protocol OfficeManagedFolderTransport: Sendable {
     /// the exact envelope published.
     func publishJobUpdateReceipt(updateID: String, signatureBase64: String) async throws -> String
 
+    /// `PublishManagedRecordingManifest`: publishes a sealed recorded-job bundle's manifest at
+    /// `records/recordings/<bundleID>/` with the timeline and transcript it lists, and returns
+    /// the exact envelope published. The payload is the manifest's one spelling and the
+    /// signature the phone application key's over it, each standard base64; the two paths are
+    /// files in the app's own storage. The same manifest again publishes nothing new.
+    func publishRecordingManifest(payloadBase64: String, signatureBase64: String, timelinePath: String,
+                                  transcriptPath: String) async throws -> String
+
+    /// `PublishManagedRecordingChunk`: publishes one media chunk a published manifest lists, from
+    /// a file in the app's own storage that holds exactly that chunk.
+    func publishRecordingChunk(bundleID: String, sha256: String, path: String) async throws
+
+    /// `ManagedRecordingProgress`: how much of a published bundle is in `records` and how much of
+    /// that the office no longer needs, as a JSON `OfficeManagedFolders.RecordingProgress`.
+    /// Progress, never acknowledgement.
+    func recordingProgress(bundleID: String) async throws -> String
+
+    /// `ManagedRecordingStatuses`: what the office has said about the bundles this phone has
+    /// published, as a JSON array of `OfficeManagedFolders.RecordingStatus`. Listing is not acting.
+    func recordingStatuses() async throws -> String
+
+    /// `WithdrawManagedRecording`: takes a published bundle out of `records`. Without `forget`
+    /// the office's later statuses for it are still listed; with it the bundle is gone altogether.
+    func withdrawRecording(bundleID: String, forget: Bool) async throws
+
     /// `Stop`: closes the connection and its folders. What was committed stays committed.
     func stop() async
 }
@@ -188,6 +213,40 @@ enum OfficeManagedFolders {
             throw DecodingFailure.malformed
         }
         return pending
+    }
+
+    /// How far a published bundle has gone, as the transport counts it.
+    struct RecordingProgress: Decodable, Equatable, Sendable {
+        let bundleID: String
+        let totalBytes: Int64
+        let publishedBytes: Int64
+        /// Bytes in published files the office no longer needs.
+        let servedBytes: Int64
+        /// Every listed file is published and the office needs none. Not the office's receipt.
+        let allServed: Bool
+    }
+
+    /// One status file from `control/recordings/`, as the transport read it.
+    struct RecordingStatus: Decodable, Equatable, Sendable {
+        let bundleID: String
+        /// The word in the file's name.
+        let status: String
+        /// The exact bytes of the file, standard base64.
+        let envelope: String
+    }
+
+    static func decodeRecordingProgress(_ json: String) throws -> RecordingProgress {
+        guard let progress = try? JSONDecoder().decode(RecordingProgress.self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return progress
+    }
+
+    static func decodeRecordingStatuses(_ json: String) throws -> [RecordingStatus] {
+        guard let statuses = try? JSONDecoder().decode([RecordingStatus].self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return statuses
     }
 
     static func decodeUpdatesPending(_ json: String) throws -> [PendingEnvelope] {

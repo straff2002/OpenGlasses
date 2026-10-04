@@ -302,6 +302,58 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    func publishManagedRecordingManifest(payloadBase64: String, signatureBase64: String, timelinePath: String,
+                                         transcriptPath: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().publishManagedRecordingManifest(
+            payloadBase64, signatureBase64: signatureBase64, timelinePath: timelinePath,
+            transcriptPath: transcriptPath, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedRecordingChunk(bundleID: String, sha256: String, path: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().publishManagedRecordingChunk(bundleID, sha256Hex: sha256, path: path)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedRecordingProgress(bundleID: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedRecordingProgress(bundleID, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedRecordingStatuses() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedRecordingStatuses(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func withdrawManagedRecording(bundleID: String, forget: Bool) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().withdrawManagedRecording(bundleID, forget: forget)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?
