@@ -107,6 +107,18 @@ protocol OfficeManagedFolderTransport: Sendable {
     func publishAssignmentReceipt(assignmentID: String, outcome: String,
                                   signatureBase64: String) async throws -> String
 
+    /// `ManagedJobUpdatesPending`: the job updates in `control` that read as their own messages
+    /// for this phone now, as a JSON array of `OfficeManagedFolders.PendingEnvelope`.
+    func jobUpdatesPending() async throws -> String
+
+    /// `ManagedJobUpdateReceiptPayload`: the exact bytes (standard base64) of the receipt for one
+    /// job update, for the phone application key to sign.
+    func jobUpdateReceiptPayload(updateID: String, jobState: String, at: Int64) async throws -> String
+
+    /// `PublishManagedJobUpdateReceipt`: publishes that receipt at `records/updates/` and returns
+    /// the exact envelope published.
+    func publishJobUpdateReceipt(updateID: String, signatureBase64: String) async throws -> String
+
     /// `Stop`: closes the connection and its folders. What was committed stays committed.
     func stop() async
 }
@@ -173,6 +185,13 @@ enum OfficeManagedFolders {
 
     static func decodeBulkPending(_ json: String) throws -> BulkPending {
         guard let pending = try? JSONDecoder().decode(BulkPending.self, from: Data(json.utf8)) else {
+            throw DecodingFailure.malformed
+        }
+        return pending
+    }
+
+    static func decodeUpdatesPending(_ json: String) throws -> [PendingEnvelope] {
+        guard let pending = try? JSONDecoder().decode([PendingEnvelope].self, from: Data(json.utf8)) else {
             throw DecodingFailure.malformed
         }
         return pending
