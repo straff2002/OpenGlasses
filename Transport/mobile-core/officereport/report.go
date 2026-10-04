@@ -91,12 +91,16 @@ type Report struct {
 	OfficeID         string `json:"officeID"`
 	PhoneTransportID string `json:"phoneTransportID"`
 	JobReference     string `json:"jobReference"`
-	RecordSHA256     string `json:"recordSHA256"`
-	RecordBytes      int64  `json:"recordBytes"`
-	ManifestSHA256   string `json:"manifestSHA256"`
-	ManifestBytes    int64  `json:"manifestBytes"`
-	Transcript       string `json:"transcript"`
-	CreatedAt        int64  `json:"createdAt"`
+	// JobID and JobRevision are the office's own identifier and revision of the job the record
+	// was written against, from a format-2 job file; empty and 0 for any other job.
+	JobID          string `json:"jobID"`
+	JobRevision    int64  `json:"jobRevision"`
+	RecordSHA256   string `json:"recordSHA256"`
+	RecordBytes    int64  `json:"recordBytes"`
+	ManifestSHA256 string `json:"manifestSHA256"`
+	ManifestBytes  int64  `json:"manifestBytes"`
+	Transcript     string `json:"transcript"`
+	CreatedAt      int64  `json:"createdAt"`
 }
 
 // Attachment is one piece of evidence a report names.
@@ -136,7 +140,7 @@ type Receipt struct {
 	ReceivedAt             int64  `json:"receivedAt"`
 }
 
-var reportFields = []string{"version", "kind", "reportID", "operationID", "recordKind", "recordID", "revision", "organizationID", "enrolmentID", "officeID", "phoneTransportID", "jobReference", "recordSHA256", "recordBytes", "manifestSHA256", "manifestBytes", "transcript", "createdAt"}
+var reportFields = []string{"version", "kind", "reportID", "operationID", "recordKind", "recordID", "revision", "organizationID", "enrolmentID", "officeID", "phoneTransportID", "jobReference", "jobID", "jobRevision", "recordSHA256", "recordBytes", "manifestSHA256", "manifestBytes", "transcript", "createdAt"}
 var receiptFields = []string{"version", "kind", "reportID", "reportSHA256", "recordSHA256", "manifestSHA256", "organizationID", "enrolmentID", "officeID", "phoneTransportID", "outcome", "attachmentsCommitted", "attachmentsOutstanding", "receivedAt"}
 
 var mediaTypes = map[string]bool{"application/pdf": true, "application/json": true, "image/jpeg": true, "image/png": true, "video/mp4": true, "video/quicktime": true}
@@ -276,7 +280,9 @@ func (r Report) valid() bool {
 		(r.RecordKind == RecordWorkRecord || r.RecordKind == RecordPartsRequest || r.RecordKind == RecordAddendum) &&
 		safeIdentifier(r.RecordID) && instant(r.Revision) &&
 		safeIdentifier(r.OrganizationID) && safeIdentifier(r.EnrolmentID) && safeIdentifier(r.OfficeID) && transportID(r.PhoneTransportID) &&
-		plain(r.JobReference, 120) && lowerHex(r.RecordSHA256, 64) && r.RecordBytes > 0 && r.RecordBytes <= MaximumRecord &&
+		plain(r.JobReference, 120) &&
+		(r.JobID == "" && r.JobRevision == 0 || safeIdentifier(r.JobID) && instant(r.JobRevision)) &&
+		lowerHex(r.RecordSHA256, 64) && r.RecordBytes > 0 && r.RecordBytes <= MaximumRecord &&
 		lowerHex(r.ManifestSHA256, 64) && r.ManifestBytes > 0 && r.ManifestBytes <= MaximumManifest &&
 		(r.Transcript == TranscriptAttached || r.Transcript == TranscriptOmitted || r.Transcript == TranscriptNone) && instant(r.CreatedAt)
 }

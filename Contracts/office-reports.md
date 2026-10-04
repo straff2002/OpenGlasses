@@ -106,6 +106,7 @@ published once.
 | `revision` | Positive, and higher for each later report of the same `recordKind` and `recordID` from this enrolment |
 | `organizationID`, `enrolmentID`, `officeID`, `phoneTransportID` | The pairing it is sent under |
 | `jobReference` | The job's reference as the technician knows it, or empty. Up to 120 printable ASCII characters that need no JSON escape. For a person; it decides nothing |
+| `jobID`, `jobRevision` | The office's own identifier and revision of the job the record was written against, from the [format-2 job file](job-file.md) it was added from; empty and `0` for a job that began any other way. Both or neither |
 | `recordSHA256`, `recordBytes` | The record file: 1 to 1,048,576 bytes |
 | `manifestSHA256`, `manifestBytes` | The manifest file: at most 131,072 bytes |
 | `transcript` | `attached`, `omitted` or `none` (§6) |
@@ -261,7 +262,8 @@ In `Contracts/fixtures/`, made by `officereport.Fixtures()` and kept current by 
 tests, with the check-in fixtures' fictional office and phone keys
 (`office-check-in-fixture-keys.json`) and the clock at 1800000000:
 
-- `office-report-v1.json` — a work record at revision 1, transcript attached;
+- `office-report-v1.json` — a work record at revision 1, written against job `job-2031` at its
+  revision 2, transcript attached;
 - `office-report-record-v1.json` — the fictional record bytes it names;
 - `office-report-manifest-v1.json` — three attachments: a required work order, a required
   transcript for the office only, an optional photograph. The attachments themselves are not in
@@ -277,6 +279,7 @@ REPORT_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./office
 Negative cases, covered in the Go tests and to be covered by each app's verifier: a report
 signed by a key other than the binding's phone application key; a report for another
 organisation, enrolment, office or phone; a `reportID` that is not its operation's digest; a
+job identifier without a revision or a revision without an identifier; a
 record or manifest that is not the size or digest named; a manifest that is not canonical, names
 a digest twice, has a name that is a path, an unlisted role or media type, or a transcript for
 the customer; a report and manifest that disagree about the transcript; a receipt signed by a

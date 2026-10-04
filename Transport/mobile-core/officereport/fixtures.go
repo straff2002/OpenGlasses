@@ -45,7 +45,7 @@ func Fixtures() (map[string][]byte, error) {
 	report := ReportFor(Report{OperationID: "7C9E6679-7425-40DE-944B-E07FC1F90AE7", RecordKind: RecordWorkRecord,
 		RecordID: "3F2504E0-4F89-11D3-9A0C-0305E82C3301", Revision: 1,
 		OrganizationID: "fixture-organisation", EnrolmentID: "fixture-enrolment", OfficeID: OfficeID(office.Public().(ed25519.PublicKey)),
-		PhoneTransportID: phoneTransport, JobReference: "JOB-1042", Transcript: TranscriptAttached, CreatedAt: FixtureNow},
+		PhoneTransportID: phoneTransport, JobReference: "JOB-1042", JobID: "job-2031", JobRevision: 2, Transcript: TranscriptAttached, CreatedAt: FixtureNow},
 		[]byte(FixtureRecord), manifest)
 	envelope, e := SignReport(report, phone)
 	if e != nil {

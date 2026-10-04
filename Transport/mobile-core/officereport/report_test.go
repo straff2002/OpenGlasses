@@ -137,10 +137,17 @@ func TestAnOfficeReadsOnlyAReportFromThePhoneItsBindingNames(t *testing.T) {
 		"a record over the cap":                            func(r *Report) { r.RecordBytes = MaximumRecord + 1 },
 		"a transcript state v1 does not have":              func(r *Report) { r.Transcript = "customer" },
 		"a job reference that needs an escape":             func(r *Report) { r.JobReference = `JOB "1042"` },
+		"a job revision with no job identifier":            func(r *Report) { r.JobID = "" },
+		"a job identifier with no revision":                func(r *Report) { r.JobRevision = 0 },
+		"a job identifier that is a path":                  func(r *Report) { r.JobID = "../job" },
 		"an operation that is a path":                      func(r *Report) { r.OperationID = ".."; r.ReportID = ReportID("..") },
 	} {
 		_, e = ReadReport(resign(change, w.phone), w.trust)
 		refused(t, name, e, ErrFields)
+	}
+	// A job that did not come from a format-2 file names neither.
+	if _, e = ReadReport(resign(func(r *Report) { r.JobID, r.JobRevision = "", 0 }, w.phone), w.trust); e != nil {
+		t.Fatal(e)
 	}
 	// Closed objects: extra, missing, duplicate, nested and fractional members, and trailing data.
 	text := string(payload)
