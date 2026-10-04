@@ -11,6 +11,10 @@ import UIKit
 ///   forbids it or requires a blur the app cannot apply, Medical Compliance on, too much already
 ///   waiting, no camera — each is a refusal with a sentence, and nothing is recorded. The same
 ///   rules are asked again every second while it runs (`JobRecordingAvailability.mustStop`).
+/// - **Where the organisation requires faces blurred, nothing unblurred is sealed.** Each recorded
+///   part goes through the blur pass first; the bundle is made only of parts the journal says
+///   were blurred and checked, and is not made at all while an unblurred part is still in the
+///   folder. When the blur cannot run — the app is not in front — the recording waits.
 /// - **The frames are raw, and they go to one place.** The recorder is handed the camera's own
 ///   publisher (`OutboundFrameConsumer.jobRecordingCapture`) and a file inside the job's own
 ///   folder. There is no call here to a share sheet, to Photos, to the Recordings folder or to a
@@ -53,6 +57,11 @@ final class JobRecordingCoordinator: ObservableObject {
     /// The jobs whose stopped recordings are being transcribed and sealed right now. Sealing a
     /// long recording takes minutes, and does not hold up recording another job meanwhile.
     @Published private(set) var preparing: Set<String> = []
+    /// The jobs whose recordings must have faces blurred and are waiting for the app to be open
+    /// to do it: the blur runs only in the foreground.
+    @Published private(set) var deferredForBlur: Set<String> = []
+    /// How far the blurring of a recording being prepared has got, 0…1.
+    @Published private(set) var blurProgress: [String: Double] = [:]
     /// Seconds since this recording began, pauses included.
     @Published private(set) var elapsed: TimeInterval = 0
     /// The media this recording holds so far.
@@ -115,6 +124,9 @@ final class JobRecordingCoordinator: ObservableObject {
         var bundles: JobRecordingBundleStore
         /// Signs a manifest with the phone's application key.
         var sign: (Data) async throws -> Data
+        /// Blurs a recorded part, where the organisation requires it. Nil in an app that cannot:
+        /// recording is then refused under that rule, and nothing recorded under it is sealed.
+        var blur: JobPartBlur?
         /// The words in one recorded part, timed from that part's own first audio sample.
         var transcribe: @MainActor (URL) async -> [TimedTranscript.Utterance] = { _ in [] }
         /// The job log's lines that belong on a timeline.
@@ -156,6 +168,7 @@ final class JobRecordingCoordinator: ObservableObject {
             officeBindingCurrent: binding != nil,
             organizationForbidsRecording: rules.organizationForbidsRecording,
             organizationRequiresBlur: rules.organizationRequiresBlur,
+            blurPassAvailable: seams.blur != nil,
             medicalComplianceMode: rules.medicalComplianceMode,
             officeRouteRefused: rules.officeRouteRefused,
             jobIsOpen: job != nil,
@@ -189,6 +202,16 @@ final class JobRecordingCoordinator: ObservableObject {
     func hasUnsealedRecording(sessionID: String) -> Bool {
         status.sessionID != sessionID && !preparing.contains(sessionID)
             && seams.capture.hasJournal(sessionID: sessionID)
+    }
+
+    /// Where a stopped recording that is not sealed yet stands: being prepared, or waiting for the
+    /// app to be open so that faces can be blurred. Nil for a job with no such recording.
+    func preparationPhase(sessionID: String) -> BundleSyncState.Phase? {
+        guard status.sessionID != sessionID, seams.capture.hasJournal(sessionID: sessionID) else { return nil }
+        var state = BundleSyncState(bundleID: sessionID)
+        state.apply(.recordingStopped)
+        if deferredForBlur.contains(sessionID), !preparing.contains(sessionID) { state.apply(.preparationDeferred) }
+        return state.phase
     }
 
     // MARK: - Consent
@@ -324,6 +347,9 @@ final class JobRecordingCoordinator: ObservableObject {
             journal = .init(sessionID: job.sessionID, jobNumber: job.jobNumber, wallStart: now, consentAt: consent.at)
             resumed = false
         }
+        // What is recorded under the organisation's blur rule is blurred before it is sealed,
+        // whatever the rule says by then.
+        if seams.rules().organizationRequiresBlur { journal.blurRequired = true }
         // The monotonic clock restarts with the phone, so a carried-on recording joins the old
         // zero through the wall clock: the reading the old zero would have now.
         clock = SessionClock(wallStart: journal.wallStart,
@@ -502,10 +528,16 @@ final class JobRecordingCoordinator: ObservableObject {
             return
         }
         let rules = seams.rules()
+        if rules.organizationRequiresBlur, self.journal?.mustBeBlurred == false {
+            // The rule came into force while this was being recorded: it is blurred before it is
+            // sealed, and stays so whatever the rule says later.
+            self.journal?.blurRequired = true
+            if let marked = self.journal { try? seams.capture.save(marked) }
+        }
         let standing = JobRecordingAvailability.Facts(
             officeTransportInBuild: rules.officeTransportInBuild, fieldAssistEntitled: rules.fieldAssistEntitled,
             officeBindingCurrent: true, organizationForbidsRecording: rules.organizationForbidsRecording,
-            organizationRequiresBlur: rules.organizationRequiresBlur,
+            organizationRequiresBlur: rules.organizationRequiresBlur, blurPassAvailable: seams.blur != nil,
             medicalComplianceMode: rules.medicalComplianceMode, officeRouteRefused: rules.officeRouteRefused,
             jobIsOpen: true, jobAlreadyRecorded: false, unsyncedBytes: 0)
         if let reason = JobRecordingAvailability.mustStop(standing) {
@@ -548,6 +580,9 @@ final class JobRecordingCoordinator: ObservableObject {
         case sealed(bundleID: String)
         /// Saved on the phone; it could not be sealed yet and will be tried again.
         case waitingToPrepare
+        /// Saved on the phone, with faces still to be blurred: that runs only while the app is
+        /// open, and is done the next time it is.
+        case waitingForBlur
         /// Nothing had been recorded, so there is nothing to keep.
         case nothingRecorded
     }
@@ -557,7 +592,7 @@ final class JobRecordingCoordinator: ObservableObject {
     func stop(_ reason: StopReason = .asked) async -> Outcome? {
         guard let journal = await inTurn({ await self.stopCapture(reason) }) else { return nil }
         let outcome = await seal(journal)
-        lastNote = Self.sentence(for: outcome, reason: reason)
+        lastNote = Self.sentence(for: outcome, reason: reason, droppedFrames: droppedAtSeal[journal.sessionID] ?? 0)
         lastNoteSessionID = journal.sessionID
         refreshUnsealed()
         return outcome
@@ -596,7 +631,7 @@ final class JobRecordingCoordinator: ObservableObject {
         ])
     }
 
-    static func sentence(for outcome: Outcome, reason: StopReason) -> String {
+    static func sentence(for outcome: Outcome, reason: StopReason, droppedFrames: Int64 = 0) -> String {
         let lead: String
         switch reason {
         case .asked: lead = ""
@@ -608,9 +643,14 @@ final class JobRecordingCoordinator: ObservableObject {
         }
         switch outcome {
         case .sealed:
-            return lead + "The recording is ready to go to the office."
+            // Pictures the blur could not process are left out, and the technician is told.
+            let left = droppedFrames > 0 ? " Some of the video couldn't have faces blurred and was left out." : ""
+            return lead + "The recording is ready to go to the office." + left
         case .waitingToPrepare:
             return lead + "The recording is saved on this phone, and will be prepared for the office later."
+        case .waitingForBlur:
+            return lead + "The recording is saved on this phone. Faces have to be blurred before it goes to the office. "
+                + BundleSyncState.WaitReason.openAppToPrepare.explanation
         case .nothingRecorded:
             return lead + "Nothing was recorded, so there is nothing to send."
         }
@@ -633,7 +673,12 @@ final class JobRecordingCoordinator: ObservableObject {
                 try? seams.capture.save(journal)
                 logStopped(journal, reason: .interrupted)
             }
-            await seal(journal)
+            let outcome = await seal(journal)
+            // What the job's page last said about this recording is no longer how it stands.
+            if lastNoteSessionID == journal.sessionID, outcome != .waitingToPrepare {
+                lastNote = Self.sentence(for: outcome, reason: .asked,
+                                         droppedFrames: droppedAtSeal[journal.sessionID] ?? 0)
+            }
         }
         refreshUnsealed()
     }
@@ -653,7 +698,8 @@ final class JobRecordingCoordinator: ObservableObject {
         }
         guard let stopped else { return nil }
         let outcome = await seal(stopped)
-        lastNote = Self.sentence(for: outcome, reason: .interrupted)
+        lastNote = Self.sentence(for: outcome, reason: .interrupted,
+                                 droppedFrames: droppedAtSeal[stopped.sessionID] ?? 0)
         lastNoteSessionID = stopped.sessionID
         refreshUnsealed()
         return outcome
@@ -664,17 +710,64 @@ final class JobRecordingCoordinator: ObservableObject {
     private var sealRetryAfter: [String: Date] = [:]
     static let sealRetryInterval: TimeInterval = 15 * 60
 
-    /// Transcribes a stopped recording, puts its timeline together and seals the bundle. The
-    /// recorded parts are removed only once the bundle is sealed; on any failure they stay.
+    /// How many pictures the blur left out of each recording sealed in this run of the app, for
+    /// the sentence that says so.
+    private var droppedAtSeal: [String: Int64] = [:]
+
+    /// Blurs a stopped recording where the organisation requires it, transcribes it, puts its
+    /// timeline together and seals the bundle. The recorded parts are removed only once the
+    /// bundle is sealed — or, for an unblurred part, once its blurred replacement is whole and
+    /// written down; on any failure they stay.
     @discardableResult
-    private func seal(_ journal: JobRecordingCaptureStore.Journal) async -> Outcome {
-        let sessionID = journal.sessionID
+    private func seal(_ stopped: JobRecordingCaptureStore.Journal) async -> Outcome {
+        let sessionID = stopped.sessionID
         // One sealing of a recording at a time: a pass that finds it already under way leaves it.
         guard preparing.insert(sessionID).inserted else { return .waitingToPrepare }
-        defer { preparing.remove(sessionID) }
+        defer {
+            preparing.remove(sessionID)
+            blurProgress[sessionID] = nil
+        }
+        var journal = stopped
+
+        // The organisation's blur rule as it stands now, as well as how it stood while the job was
+        // recorded: a recording that waited is blurred if the rule has come in since, and one
+        // made under the rule is blurred even if the rule has gone.
+        if seams.rules().organizationRequiresBlur, !journal.mustBeBlurred {
+            journal.blurRequired = true
+            guard (try? seams.capture.save(journal)) != nil else { return .waitingToPrepare }
+        }
+        if journal.mustBeBlurred {
+            switch await blurParts(of: &journal) {
+            case .done:
+                deferredForBlur.remove(sessionID)
+            case .deferred:
+                deferredForBlur.insert(sessionID)
+                return .waitingForBlur
+            case .failed:
+                deferredForBlur.remove(sessionID)
+                sealRetryAfter[sessionID] = seams.wallNow().addingTimeInterval(Self.sealRetryInterval)
+                return .waitingToPrepare
+            }
+            // Nothing is sealed as blurred while an unblurred part is still in the folder.
+            guard !seams.capture.holdsUnblurredParts(sessionID: sessionID) else {
+                sealRetryAfter[sessionID] = seams.wallNow().addingTimeInterval(Self.sealRetryInterval)
+                return .waitingToPrepare
+            }
+        } else {
+            deferredForBlur.remove(sessionID)
+        }
+        let blurred = journal.mustBeBlurred
+
+        /// The file a part is sealed from. Where blur is required that is the blurred part the
+        /// journal names, and never the recorder's own file.
+        func media(_ part: RecordingTimebase.PlacedPart) -> URL? {
+            guard blurred else { return seams.capture.partFile(sessionID: sessionID, partID: part.partID) }
+            guard journal.blurredPart(part.partID) != nil else { return nil }
+            return seams.capture.blurredPartFile(sessionID: sessionID, partID: part.partID)
+        }
         // Only parts that are really there. The timeline and the manifest must name the same ones.
-        let parts = journal.parts.filter {
-            JobRecordingCaptureStore.size(of: seams.capture.partFile(sessionID: sessionID, partID: $0.partID)) > 0
+        let parts = journal.parts.filter { part in
+            media(part).map { JobRecordingCaptureStore.size(of: $0) > 0 } ?? false
         }
         guard !parts.isEmpty else {
             seams.capture.remove(sessionID: sessionID)
@@ -685,25 +778,33 @@ final class JobRecordingCoordinator: ObservableObject {
 
         var words: [RecordedJobAssembly.PartWords] = []
         for part in parts where part.audio != nil {
-            let file = seams.capture.partFile(sessionID: sessionID, partID: part.partID)
+            guard let file = media(part) else { continue }
             words.append(.init(partID: part.partID, utterances: await seams.transcribe(file)))
         }
+        // The rule may have come into force while the words were being read. An unblurred bundle
+        // sealed now could never be sent, and cannot be blurred once it is signed: it is left as
+        // it is, and the next pass blurs it.
+        if !blurred, seams.rules().organizationRequiresBlur { return .waitingToPrepare }
+
+        let blurRecords = blurred ? (journal.blurred ?? []) : []
+        let droppedFrames = BlurredPart.droppedFrames(blurRecords)
         let assembled = RecordedJobAssembly.assemble(
             clock: SessionClock(wallStart: journal.wallStart, monotonicStart: 0), parts: parts,
             noted: journal.noted.compactMap(\.event), log: seams.logEntries(sessionID), words: words,
-            endedAt: journal.stoppedAt ?? .zero)
+            endedAt: journal.stoppedAt ?? .zero, blurred: blurRecords)
         do {
             let input = JobRecordingBundleStore.SealInput(
                 bundleID: seams.newBundleID(), sessionID: sessionID,
                 jobNumber: BundleManifest.writableJobNumber(journal.jobNumber), binding: binding,
                 consentAt: journal.consentAt,
-                // Nothing here blurs. A recording is only made where the organisation does not
-                // require it, and an unblurred bundle is never sent where it does.
-                blurred: false, droppedFrames: 0,
+                // Blurred means every part listed below came out of the blur pass. Otherwise the
+                // organisation does not require it, and nothing here blurs.
+                blurred: blurred, droppedFrames: droppedFrames,
                 timeline: try assembled.timeline.encoded(), transcript: try assembled.transcript.encoded(),
-                parts: parts.map { part in
-                    .init(partID: part.partID, track: part.video != nil ? .video : .audio, container: "mp4",
-                          file: seams.capture.partFile(sessionID: sessionID, partID: part.partID))
+                parts: parts.compactMap { part -> JobRecordingBundleStore.PartFile? in
+                    guard let file = media(part) else { return nil }
+                    return JobRecordingBundleStore.PartFile(
+                        partID: part.partID, track: part.video != nil ? .video : .audio, container: "mp4", file: file)
                 })
             let record = try await seams.bundles.seal(input, now: seams.wallNow(), sign: seams.sign)
             seams.capture.remove(sessionID: sessionID)
@@ -713,8 +814,11 @@ final class JobRecordingCoordinator: ObservableObject {
                 "bytes": AnyCodable(Int(record.totalBytes)),
                 "parts": AnyCodable(parts.count),
                 "utterances": AnyCodable(assembled.transcript.utterances.count),
+                "blurred": AnyCodable(blurred),
+                "dropped_frames": AnyCodable(Int(droppedFrames)),
             ])
             sealRetryAfter[sessionID] = nil
+            droppedAtSeal[sessionID] = droppedFrames
             seams.sealed()
             return .sealed(bundleID: record.bundleID)
         } catch {
@@ -724,11 +828,136 @@ final class JobRecordingCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Blurring
+
+    /// How many recordings are having their parts blurred at this moment.
+    private var passesRunning = 0
+
+    private enum BlurStep {
+        /// Every part that is there has been blurred, checked and written down.
+        case done
+        /// The blur cannot run now. Everything is as it was; it is done when the app is next open.
+        case deferred
+        /// Something went wrong. Everything is as it was; it is tried again later.
+        case failed
+    }
+
+    /// Puts every recorded part that has not been blurred through the blur pass.
+    ///
+    /// One part at a time, and each in three steps that can be stopped between any two and done
+    /// again: the pass writes a new file beside the unblurred part; the new file takes the blurred
+    /// part's name and the journal says so; only then is the unblurred part removed. A blurred
+    /// part the journal does not name was never checked, and is made again.
+    private func blurParts(of journal: inout JobRecordingCaptureStore.Journal) async -> BlurStep {
+        let sessionID = journal.sessionID
+        let manager = FileManager.default
+        // Whatever is in the folder that the journal does not name is no part of this recording:
+        // a file a pass was writing, a blurred file that was never written down, a part that
+        // never finished. None of it is kept, and none of it is ever sealed.
+        seams.capture.removeBlurScratch(sessionID: sessionID)
+        seams.capture.removeUnfinishedParts(journal)
+        for part in journal.parts {
+            let raw = seams.capture.partFile(sessionID: sessionID, partID: part.partID)
+            // Blurred, checked and written down on an earlier pass: the unblurred part goes, if
+            // it is still here. So does one with nothing in it.
+            if journal.blurredPart(part.partID) != nil || JobRecordingCaptureStore.size(of: raw) == 0 {
+                seams.capture.removePart(sessionID: sessionID, partID: part.partID)
+            }
+        }
+        let waiting = journal.parts.filter { part in
+            journal.blurredPart(part.partID) == nil
+                && JobRecordingCaptureStore.size(of: seams.capture.partFile(sessionID: sessionID, partID: part.partID)) > 0
+        }
+        guard !waiting.isEmpty else { return .done }
+        guard let blur = seams.blur else { return .failed }
+        guard blur.isAvailable() else { return .deferred }
+        // Blurring a long part takes minutes, and a phone that locks itself stops it. Two
+        // recordings can be blurred at once; the phone is let go when the last has finished.
+        passesRunning += 1
+        if passesRunning == 1 { blur.keepAwake(true) }
+        defer {
+            passesRunning -= 1
+            if passesRunning == 0 { blur.keepAwake(false) }
+        }
+
+        for (index, part) in waiting.enumerated() {
+            guard blur.isAvailable() else { return .deferred }
+            let raw = seams.capture.partFile(sessionID: sessionID, partID: part.partID)
+            let scratch = seams.capture.blurScratchFile(sessionID: sessionID, partID: part.partID)
+            let finished = seams.capture.blurredPartFile(sessionID: sessionID, partID: part.partID)
+            let result = await blur.blur(raw, scratch) { [weak self] fraction in
+                self?.blurProgress[sessionID] = (Double(index) + min(1, max(0, fraction))) / Double(waiting.count)
+            }
+            let report: BlurredPart.Report
+            switch result {
+            case .success(let made):
+                report = made
+            case .failure(let failure):
+                try? manager.removeItem(at: scratch)
+                return failure == .interrupted ? .deferred : .failed
+            }
+
+            var next = journal
+            next.blurred = (next.blurred ?? []) + [BlurredPart(partID: part.partID, report: report, video: part.video)]
+            if report.keptNothing {
+                // No picture could be blurred and there was no sound: nothing of this part is kept.
+                next.parts.removeAll { $0.partID == part.partID }
+            } else if let at = next.parts.firstIndex(where: { $0.partID == part.partID }) {
+                next.parts[at] = .init(partID: part.partID, video: report.keptPictures ? part.video : nil,
+                                       audio: report.keptSound ? part.audio : nil, endedBy: part.endedBy)
+            }
+            do {
+                if report.keptNothing {
+                    try? manager.removeItem(at: scratch)
+                } else {
+                    guard JobRecordingCaptureStore.size(of: scratch) > 0 else { throw JobPartBlur.Failure.failed }
+                    try manager.moveItem(at: scratch, to: finished)
+                    seams.capture.protect(partAt: finished)
+                }
+                try seams.capture.save(next)
+            } catch {
+                // Not written down, so not a blurred part. The unblurred part is still where it was.
+                try? manager.removeItem(at: scratch)
+                try? manager.removeItem(at: finished)
+                return .failed
+            }
+            journal = next
+            // Only now: its replacement is whole, checked by the pass, and in the journal.
+            seams.capture.removePart(sessionID: sessionID, partID: part.partID)
+        }
+        return .done
+    }
+
     private func releaseClaimedStream() async {
         guard holdsStreamClaim else { return }
         holdsStreamClaim = false
         await seams.releaseStream()
     }
+}
+
+// MARK: - The blur seam
+
+/// What blurs one recorded part, as the coordinator needs it (Plan HE §1, "Blur when required").
+/// A set of closures so the whole of the joining — when a part is blurred, what waits, what is
+/// removed and when — is testable without a decoder, an encoder or a face detector.
+struct JobPartBlur {
+    enum Failure: Error, Equatable {
+        /// The blur stopped being able to run part-way: the app left the foreground, or the phone
+        /// was locked. Nothing was kept of the attempt.
+        case interrupted
+        /// The part could not be read, written or checked. Nothing was kept of the attempt.
+        case failed
+    }
+
+    /// Whether the blur can run at this moment. It runs only with the app in front.
+    var isAvailable: @MainActor () -> Bool
+    /// Writes a copy of the part at the first address to the second, every picture through the
+    /// face blur and the sound carried over, and reports what it wrote and what it dropped. On a
+    /// failure it leaves nothing at the second address. It never touches the first.
+    var blur: (_ part: URL, _ output: URL, _ progress: @escaping @MainActor (Double) -> Void) async
+        -> Result<BlurredPart.Report, Failure>
+    /// Keeps the phone from locking itself while parts are being blurred, and lets it again.
+    var keepAwake: @MainActor (Bool) -> Void = { _ in }
 }
 
 // MARK: - The recorder seam

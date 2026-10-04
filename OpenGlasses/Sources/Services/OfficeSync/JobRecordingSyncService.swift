@@ -172,7 +172,13 @@ final class JobRecordingSyncService: ObservableObject {
             try seams.store.save(record)
             return
         }
-        if case .notEligible(let reason) = SyncEligibility.evaluate(seams.conditions()) {
+        var conditions = seams.conditions()
+        // The caller reports the organisation's rule; whether this bundle meets it is read from
+        // the bundle's own signed manifest. One that cannot be read is not taken to be blurred.
+        if conditions.blurRequiredAndNotDone, seams.store.isBlurred(record) {
+            conditions.blurRequiredAndNotDone = false
+        }
+        if case .notEligible(let reason) = SyncEligibility.evaluate(conditions) {
             waiting[record.bundleID] = reason
             return
         }
@@ -334,6 +340,9 @@ final class JobRecordingSyncService: ObservableObject {
             return "Preparing the recording."
         case .sealed:
             return "Recording waiting to sync. \(size)."
+        case .waiting(.notEligible(.blurRequired)):
+            // Not waiting for anything: it cannot be blurred now, and is not sent as it is.
+            return "This recording is held on this phone. \(SyncEligibility.Reason.blurRequired.explanation)"
         case .waiting(let reason):
             return "Recording waiting to sync. \(reason.explanation)"
         case .transferring(let sent, let total):

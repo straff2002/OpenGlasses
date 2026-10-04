@@ -146,6 +146,14 @@ struct JobRecordingBundleStore: Sendable {
                 try Data(contentsOf: directory.appendingPathComponent("manifest.signature")))
     }
 
+    /// Whether the bundle's own manifest says faces were blurred before it was sealed. A manifest
+    /// that is missing or cannot be read says nothing, and that is not yes.
+    func isBlurred(_ record: Record) -> Bool {
+        guard let payload = try? manifest(record).payload, BundleManifest.digest(payload) == record.manifestSHA256
+        else { return false }
+        return BundleManifest(payload: payload)?.blurred == true
+    }
+
     // MARK: - Sealing
 
     /// Cuts the recorded parts into chunks, lists the bundle in a manifest, has it signed, and
