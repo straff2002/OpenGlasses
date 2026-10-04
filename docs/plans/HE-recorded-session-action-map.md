@@ -1,6 +1,10 @@
 # Plan HE — Recorded Job and Sync to the Office
 
-**Status:** 📝 Drafted (not scheduled) 2026-10-02 — nothing implemented. **Revised the same day:**
+**Status:** 🚧 P0 built 2026-10-05 — the pure core and the contract's fixtures, headless; nothing
+is wired into the app, and nothing records, stores or sends. Two things P0 lists are **not** in it:
+the signed bundle manifest and the office's receipt, which are being written separately as a
+reference implementation with golden fixtures (see "P0 as built"). P1–P4 are unbuilt, and P2 is
+still blocked on Plan FX. Drafted 2026-10-02 and **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
 [`Contracts/recorded-session.md`](../../Contracts/recorded-session.md).
@@ -252,6 +256,98 @@ timeline, action events, agreement cases, index). If GY is not built: `TimedTran
 `BundleSyncStateTests` (every transition; delivery is not acknowledgement; replayed receipt),
 `SyncEligibilityTests` (network × power × policy × medical table), `RetentionDecisionTests`
 (never before acknowledgement), and `Contracts/tests` portable checks over the fixtures.
+
+**P0 as built (2026-10-05).** In `OpenGlasses/Sources/Services/FieldAssist/JobRecording/`, Foundation
+only (CryptoKit for SHA-256), no singleton, no disk, no network, no production caller:
+
+- `SessionClock` (with `SessionTime`), `SessionTimeline` and its `timeline.json` codec,
+  `TimedTranscript` and its `transcript.json` codec, `WalkthroughSegmenter`, `TurnAligner`,
+  `ProcedureCandidateDetector`, `ChunkPlan`, `BundleSyncState`, `SyncEligibility`,
+  `RetentionDecision`;
+- the contract's shared rules as reference code: `RecordingText` (how words are read),
+  `ActionEventValidator` (§7.2), `SpeechAgreement` (§7.3), `CrossReferenceIndex` (§7.4);
+- fixtures in `Contracts/fixtures/`: `recorded-session-timeline-v1.json` and
+  `recorded-session-transcript-v1.json` (one fictional job, byte for byte as the phone writes it),
+  `walkthrough-segments-v1.json`, `action-events-v1.json`, `agreement-v1.json`,
+  `cross-reference-v1.json`. Each rules fixture carries its inputs, the expected result of every
+  case and a `rules` block; the expected results were worked out by hand from the rules, not taken
+  from the code;
+- tests, one class a subject: `SessionClockTests`, `SessionTimelineCodingTests`,
+  `TimedTranscriptCodingTests`, `WalkthroughSegmenterTests`, `TurnAlignerTests`,
+  `ProcedureCandidateDetectorTests`, `ChunkPlanTests`, `BundleSyncStateTests`,
+  `SyncEligibilityTests`, `RetentionDecisionTests`, `RecordingTextTests`,
+  `ActionEventValidatorTests`, `SpeechAgreementTests`, `CrossReferenceIndexTests`; and the portable
+  check `Contracts/tests/test_recorded_session_contracts.py`, which runs all of them outside the app.
+
+**Not in P0.** `BundleManifest` (payload codec, signing bytes, envelope, signature domain),
+`BundleManifestTests` and the verification of the office's receipt: written separately, as the
+reference implementation and golden fixtures for the two signed messages. Until they land,
+`ChunkPlan` gives the digests and lengths a manifest lists for a part and no manifest type exists,
+and `BundleSyncState` is handed a receipt that someone else has already verified — it only decides
+whether that receipt is about this bundle and this manifest. The `PowerPosture` flag
+`defersBulkTransfer` is P1; `SyncEligibility` takes it as a plain input.
+
+**Choices made where this plan, GY or the contract left room.** The ones an office has to match
+are also in the fixtures' `rules` blocks.
+
+- *Times.* Held as whole milliseconds; written as a decimal with at most three places; a value
+  read with more is rounded to the nearest millisecond, halves away from zero.
+- *`timeline.json`.* No version member, as the contract's shape has none — the manifest states
+  it. Written with sorted keys and no white space; video before audio; parts, gaps and candidates
+  by time; events by `t`, and at the same `t` in the order they were added. `ref` is the job
+  log's id on `turn_logged`, the procedure's id on `procedure_started` / `procedure_completed`,
+  the step's id on `procedure_step`, the tool's name on `tool_call`; `speaker` is `technician` or
+  `assistant`. A reader passes over unknown members and event kinds, a track of an unknown kind
+  (with its gaps) and a candidate of an unknown certainty; it keeps a gap whose reason it does
+  not know; it refuses a file missing one of the five members or with `monotonicZero` not 0.
+- *`transcript.json`.* GY's utterance gains the `id` the contract needs; the phone numbers
+  utterances `u1`, `u2`, … in time order. An empty or repeated id is refused.
+- *Segmenter (GY gave no numbers).* A silence longer than 4 s opens a segment; a segment under 3
+  words is a fragment. Markers are GY's list with only the grammatical variants ("now I am going
+  to", "once that is done", "step" with any number), after any fillers ("okay", "and", "so" …),
+  and count only at the start of a sentence. A sentence ends at `.`, `!` or `?` followed by white
+  space or the end; an utterance that does not end one is taken to carry on into the next. A
+  sentence inside an utterance is placed by how far along the text it begins. A fragment joins
+  the segment after it — always when it is a marker on its own, otherwise only when no long
+  silence lies between. **Step-like** means opened on a marker or on "new step"; a pause alone
+  does not make a step.
+- *Candidates.* Reasons `procedure_run`, `user_marker`, `step_run`. A run never completed ends at
+  its last step. A spoken mark reaches 30 s each way, kept inside the recording. `likely` is
+  three or more step-like segments, each beginning within 180 s of the end of the one before,
+  other segments passed over; one that lies wholly inside a certain candidate is dropped.
+- *`TurnAligner`.* Looks back 60 s from the stamp and allows 1 s after it; an utterance belongs to
+  a turn when 60 % of its words are the turn's, and the turn is aligned when the matched
+  utterances hold half of its words; an utterance is given to one turn only; the assistant's turns
+  are never aligned.
+- *`ChunkPlan`.* 32 MiB as proposed (the contract's open point); two chunks with the same bytes
+  are one file; a part with no bytes has no plan.
+- *`BundleSyncState`.* "Open Avenkin to prepare" is a wait before sealing, so `waiting` has two
+  kinds. A verified `received` for this bundle and manifest acknowledges from any phase after
+  sealing, including `failed` and `expired`; a `refused` cannot undo an acknowledgement and does
+  not answer an expired recording. Keep-waiting returns an expired recording to where it was and
+  a refused one to `sealed` with nothing counted as sent.
+- *`SyncEligibility`.* Battery floor 50 % when not charging; when several things are in the way
+  the one named is the first of: medical mode, profile, licence, pairing, network, power, office
+  reachable, smaller traffic first.
+- *`RetentionDecision`.* A gigabyte is 10⁹ bytes. Trimming removes media only — the transcript
+  stays with the timeline, manifest and receipt (the plan did not say). Choosing to keep waiting
+  starts the 30 days again.
+- *§7.2.* Rejected, first that applies: not an object, no id (or over 80 characters), id used
+  twice, a time missing, `start` not before `end`, outside the analysed span, not wholly on video
+  (inside one part and touching no gap — stricter than "both ends inside a part"), `action` empty
+  or over 200, `object` or `tool` over 80, no evidence left. Repaired: evidence outside the event
+  and utterance ids the transcript lacks are taken out. A confidence that is missing, not a
+  number or outside 0…1 is no confidence and the event is low-confidence. Lengths count Unicode
+  scalars after trimming. `partial_view` is true unless the model says `false`.
+- *§7.3.* Words are runs of a–z and 0–9 (ASCII only; apostrophes dropped); a fixed English
+  stop-word list; a small suffix stemmer; a negator reaches to the end of its clause (`. , ; : !
+  ?` or "but"); a word said both ways in one utterance counts as said. "Overlaps" is closed:
+  exactly 5 s apart counts. `said_not_seen` is per step-like segment, with the same 5 s, and a
+  low-confidence event counts as an event near it. Text in another language confirms nothing.
+- *§7.4.* One row an event (`e-<id>`), and one for each stretch of clear video under a
+  said-not-seen segment (`s-<segment>-<n>`); words said while no video was recorded have no row.
+  `step` is the last `procedure_step` at or before the row's start while a procedure is running.
+  Ties in `video.from` are broken by the bytes of `rowID`.
 
 **P1 — Capture, consent, timeline.** `RecordingTimebase` and the destination/frame-source inputs
 on `VideoRecordingService`; `JobRecordingCoordinator`; the `officeRecording` scope and roster
