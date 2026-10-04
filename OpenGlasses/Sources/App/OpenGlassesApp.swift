@@ -1140,6 +1140,62 @@ class AppState: ObservableObject, AppStateProtocol {
         return OfficeJobAttachmentStore(seams: seams)
     }()
 
+    /// Recorded jobs on their way to the office, kept until the office's verified receipt (Plan
+    /// HE). Nil in a build without the office transport.
+    lazy var officeJobRecordings: JobRecordingSyncService? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable(),
+              let root = JobRecordingBundleStore.defaultSessionsRoot() else { return nil }
+        return JobRecordingSyncService(seams: .app(
+            transport: transport, store: JobRecordingBundleStore(sessionsRoot: root),
+            conditions: { [weak self] in self?.recordingSyncConditions() ?? AppState.noRecordingSync }))
+    }()
+
+    /// "Record this job": starts and stops a recording of the open job and seals it for the
+    /// office. Nil in a build without the office transport — no office, no recording.
+    lazy var jobRecordings: JobRecordingCoordinator? = {
+        guard OfficeTransportIdentity.isAvailable,
+              let root = JobRecordingBundleStore.defaultSessionsRoot() else { return nil }
+        var seams = JobRecordingCoordinator.Seams.app(
+            cameraService: cameraService, audio: captureAudioRouter, hipaa: hipaaService,
+            bundles: JobRecordingBundleStore(sessionsRoot: root))
+        // A sealed recording is offered to the office on the next pass, and shown at once.
+        seams.sealed = { [weak self] in
+            Task { @MainActor in try? await self?.officeJobRecordings?.sweep() }
+        }
+        return JobRecordingCoordinator(seams: seams)
+    }()
+
+    /// Whether a recorded job may be sent to the office now: the network, power, the phone's
+    /// standing with its organisation and office, medical mode, and what else is waiting.
+    private func recordingSyncConditions() -> SyncEligibility.Conditions {
+        let manager = OrgProfileManager.shared
+        let pairing = JobRecordingSyncService.pairing(officeField.state)
+        return SyncEligibility.Conditions(
+            // A link the system calls expensive — mobile data or a personal hotspot — is treated
+            // as mobile data. Nothing here lets a recording use it: there is no setting for the
+            // technician to allow it yet, so it waits for Wi-Fi whatever the organisation says.
+            network: !reachability.isOnline ? .none : (reachability.isExpensive ? .cellular : .wifi),
+            cellularAllowedByUser: false,
+            cellularForbiddenByOrganization: Config.organizationForbidsRecordingSyncOnCellular,
+            isCharging: powerPolicy.phoneCharging(),
+            batteryLevel: powerPolicy.phoneBatteryFraction(),
+            powerDefersBulkTransfer: powerPolicy.posture.defersBulkTransfer,
+            profileIsCurrent: JobRecordingSyncService.profileIsCurrent(manager),
+            leaseIsCurrent: manager.evaluateLease()?.isInForce == true,
+            bindingIsCurrent: pairing.bindingIsCurrent,
+            medicalModeOn: Config.hipaaMode || MedicalEgressGuard.blocks(.jobRecordingOfficeSync),
+            // Nothing on this phone blurs a recording yet, so every bundle is unblurred.
+            blurRequiredAndNotDone: Config.organizationRequiresBlurBeforeOfficeSync,
+            officeIsReachable: pairing.officeIsReachable,
+            // Job reports and receipts go first.
+            smallerItemsWaiting: offlineQueue.pendingCount > 0)
+    }
+
+    /// The conditions when the app itself has gone: nothing may be sent.
+    private static let noRecordingSync = SyncEligibility.Conditions(
+        network: .none, isCharging: false, profileIsCurrent: false, leaseIsCurrent: false,
+        bindingIsCurrent: false, officeIsReachable: false)
+
     /// Reads the office's receipts on the connection's poll and offers waiting records again.
     lazy var officeReportPump: OfficeReportPump? = {
         guard let reports = officeReports else { return nil }
@@ -1252,6 +1308,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 StagedExportCoordinator.fieldSession.revokeAll()
                 // The turn records name the organisation's manuals and jobs.
                 TurnTraceStore.shared.removeAll()
+                // Consent to record was given for this organisation's office. Another asks again.
+                Config.jobRecordingConsent = nil
             },
             // An office is somewhere records are delivered to, as an endpoint is.
             hasEndpoint: { Config.deliverySettings.hasEndpoint || AppState.officeIsReportDestination },
@@ -1261,11 +1319,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 let ops = self.offlineQueue.all(limit: 500)
                 // To an office, a record is owed until the office has everything its report
                 // named: record accepted is delivered, and is not yet a reason to erase.
+                // A recording the office has not acknowledged is owed too.
                 return ids.reduce(0) { $0 + QueuedRecordRows.outstandingCount(in: ops, sessionId: $1) }
                     + (self.officeReports?.notFullyAccepted(recordIDs: Set(ids)) ?? 0)
+                    + (self.officeJobRecordings?.unacknowledged(sessionIDs: Set(ids)) ?? 0)
             },
             eraseRecords: { [weak self] ids in
                 guard let self else { return }
+                // A job's recording goes with the job: out of the office's folder first, while
+                // the phone still knows which bundles they are.
+                self.officeJobRecordings?.withdrawForRemoval(sessionIDs: Set(ids))
                 FieldSessionService.shared.deleteSessions(ids: Set(ids))
                 self.jobSends.queue.removeAll()
                 for op in self.offlineQueue.all(limit: 500) where ids.contains(op.sessionId) {
@@ -1570,6 +1633,10 @@ class AppState: ObservableObject, AppStateProtocol {
             try? await self?.officeJobUpdates?.sweep()
             try? await self?.officeManuals?.sweep()
             await self?.officeReportPump?.tick()
+            // Reports and receipts first; a recording is large and never urgent. One the phone
+            // could not seal earlier is sealed now that the pairing has verified.
+            await self?.jobRecordings?.sealPending()
+            try? await self?.officeJobRecordings?.sweep()
         }
         return OfficeFieldConnection(seams: seams)
     }()
@@ -3092,9 +3159,31 @@ class AppState: ObservableObject, AppStateProtocol {
         let captureSpeakingToken = speechService.$isSpeaking
             .removeDuplicates()
             .sink { [weak self] speaking in
-                self?.captureAudioRouter.setAssistantSpeaking(speaking)
+                guard let self else { return }
+                let wasSilenced = self.captureAudioRouter.isCaptureSilenced
+                self.captureAudioRouter.setAssistantSpeaking(speaking)
+                // Plan HE: a recorded job's timeline says when the assistant spoke and when the
+                // capture could not hear, because its words are not reliably in the sound.
+                guard let recordings = self.jobRecordings, recordings.status.isActive else { return }
+                recordings.note(speaking ? .assistantSpeakingBegan : .assistantSpeakingEnded)
+                let silenced = self.captureAudioRouter.isCaptureSilenced
+                if silenced != wasSilenced { recordings.note(silenced ? .captureSilenced : .capturePassed) }
             }
         cancellables.append(captureSpeakingToken)
+        // …and when the microphone went live for a turn, and which tools were called.
+        let turnStartedToken = $isListening
+            .removeDuplicates()
+            .sink { [weak self] listening in
+                guard listening, let recordings = self?.jobRecordings, recordings.status.isActive else { return }
+                recordings.note(.turnStarted)
+            }
+        cancellables.append(turnStartedToken)
+        nativeToolRouter.onToolDispatched = { [weak self] name in
+            Task { @MainActor in
+                guard let recordings = self?.jobRecordings, recordings.status.isActive else { return }
+                recordings.note(.toolCall, ref: name)
+            }
+        }
 
         // CY: the broadcast health readout counts frames that never reached the wire, which
         // includes the ones the privacy relay dropped to keep up. The relay is the only thing

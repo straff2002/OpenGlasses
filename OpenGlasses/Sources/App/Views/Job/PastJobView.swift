@@ -154,6 +154,9 @@ struct PastJobView: View {
                 Text("The visit")
             }
 
+            // Where this job's recording stands with the office, when it has one (Plan HE).
+            JobRecordingSection(sessionID: sessionId, isOpenJob: false)
+
             Section {
                 ForEach(Array(job.summaryLines.enumerated()), id: \.offset) { _, line in
                     Text(line)
