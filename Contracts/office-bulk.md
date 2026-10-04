@@ -1,4 +1,4 @@
-# Bulk content contract — draft v1: manuals and job attachments (messages, reference implementation and fixtures; no app uses it yet)
+# Bulk content contract — draft v1: manuals and job attachments (messages, fixtures, and the phone's half for manuals in the opt-in build; job attachments not yet)
 
 Drafted 2026-10-05 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P4. This is the
 agreement between the phone app and Avenkin Office about the large things an office sends a
@@ -10,12 +10,24 @@ be carried into the office repository.
 **It asserts nothing about the office app's internals.** Statements about the office are
 requirements or marked *Assumption*.
 
-**Built so far:** `Transport/mobile-core/officebulk` implements the publisher grant and the
+**Built so far.** `Transport/mobile-core/officebulk` implements the publisher grant and the
 assignment receipt — signing, the two-step signing a phone needs, and each side's checks —
-`jobfile.ReadNeeds` reads what a job names, and the golden fixtures are in §9. **Neither app
-uses any of it yet:** the phone transport opens no `bulk` folder, no Swift code reads a grant or
-signs an assignment receipt, and the phone's job-file validator still refuses the job members
-§5 adds.
+`jobfile.ReadNeeds` reads what a job names, and the golden fixtures are in §9.
+
+**The phone's half for manuals is built, in the opt-in office transport build only** (Plan
+[HO](../docs/plans/HO-office-delivery-phone-half.md) P4, first part, 2026-10-05). The phone
+transport opens the `bulk` folder paused and ignoring everything, takes only the files it has
+been asked for and only as a checked private copy, lists the grants and assignments in
+`control`, and publishes assignment receipts. In Swift, `OfficeBulk` is the verifier;
+`OfficeManualService` keeps grants by sequence, commits an assignment that moves its set
+forward, asks for exactly its archive, runs the existing import preflight with the
+organisation's granted publisher, hands the result to the existing installer, and receipts
+*received* and *installed*. That is tested headless against the golden fixtures and an
+in-memory stand-in for the transport. **No manual has reached a physical phone from an office.**
+
+**Not built on the phone:** job attachments and the `manuals` a job names (§5) — the job-file
+validator still refuses those members — and anything on a job's screen about what is still
+downloading. The default app build links no transport and opens no `bulk` folder.
 
 **Builds on, unchanged:** the [manual assignment](README.md) (which phone may receive which
 archive), the vault archive and its publisher signature, the administrator key the vendor-signed
@@ -222,7 +234,9 @@ go -C Transport/mobile-core test -tags noassets ./officebulk/ ./jobfile/
 BULK_WRITE_FIXTURES=1 JOBFILE_WRITE_FIXTURES=1 go -C Transport/mobile-core test -tags noassets ./officebulk/ ./jobfile/   # regenerate
 ```
 
-Negative cases, covered in the Go tests and to be covered by the phone's verifier: a grant
+Negative cases, covered in the Go tests and, for the grant, the receipt and the assignment
+intake, in the phone's tests (`OfficeBulkTests` in the portable checks, `OfficeManualServiceTests`
+in the app's); the job-file cases are still to be covered on the phone: a grant
 signed by the office application key or by the publisher itself; a grant for another
 organisation or profile; a `publisherID` outside the organisation's own prefix, including one
 that only looks like it; a revoked grant relied on, and an older grant after a revocation; other

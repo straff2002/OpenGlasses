@@ -6,9 +6,10 @@ build: contract, reference implementation, fixture and the phone's import; headl
 P2 (reports back) built 2026-10-05 in the opt-in build, tested headless: the contract, the
 transport, the report service and a sink that waits, and the app's wiring — a phone that joined
 an office sends each job's record there with its work order, audit export and transcript, and
-counts it delivered only on the office's receipt. What P2 still owes is listed under it. P4's
-contract (the `bulk` folder, manuals and job attachments) is drafted 2026-10-05 with its
-reference implementation and fixtures; its phone half, and P3, P5 and P6, are planned. A build order, not a new design:
+counts it delivered only on the office's receipt. What P2 still owes is listed under it. P4
+(the `bulk` folder): the contract and the manuals half are built 2026-10-05 in the opt-in build —
+an assigned manual is verified under the organisation's own granted publisher, installed and
+receipted, headless; job attachments, and P3, P5 and P6, are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -52,7 +53,7 @@ and nothing more.
 | Job to the phone | managed job + receipt, fixtures; [job file](../../Contracts/job-file.md) format 2, fixture | intake, durable commit, receipt offered for signing; job-file format 2 reference | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published. **P0b built** (every build): a format-2 job keeps the office's identifier and revision; a later revision revises the job, the same one twice is one job | one signed format-2 job to a physical phone and its receipt accepted by the office |
 | Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
 | Attachments with a job | [bulk content](../../Contracts/office-bulk.md) §5: a job names them by digest and they follow in `bulk` | `jobfile.ReadNeeds` | the validator refuses the new members | P4's phone half |
-| Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, and the grant and receipt messages; `bulk` folder not built | preflight to the vault installer | P4's phone half: the `bulk` folder, the grant and assignment taken in, durable install state, the receipts |
+| Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, the grant and receipt messages, and the phone's `bulk` folder | **P4 first part built** (opt-in build): a grant kept, an assignment committed and receipted, its archive taken from `bulk` when the route allows, verified under the organisation's granted publisher and handed to the installer | a manual from a real office to a physical phone; the office side of `bulk` |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
 | Transcript to the office | travels with the report, under HD's audience rule | an attachment like any other | **P2 built**: its own document for the office only, and inside the audit export, unless the organisation's rule is *never* — then the report says *omitted* | the same physical run |
 | Recorded job to the office | recorded-session draft, no fixtures | none | none | Plan HE |
@@ -503,6 +504,59 @@ contract settled:
 
 Open in the contract (its §10): who decides a route is metered; size caps; erasing a job's
 attachments before the job goes; narrowing a publishing key to named vaults.
+
+**Phone half, first part — manuals, as built (2026-10-05).** In the opt-in build:
+
+- **Transport** (`Transport/mobile-core/managed_bulk.go`). The managed connection now has a
+  third folder, `bulk`: receive-only, **paused when it starts**, and ignoring everything.
+  `SetManagedBulkWanted` names exactly the files it may take, by kind, digest and size;
+  `ManagedBulkStatus` says whether each is *ready*, *offered* by the office or *waiting*, and a
+  file is ready only as a private copy whose size and digest were checked; `ManagedBulkFile`
+  hands over that copy's path; `SetManagedBulkPaused` resumes or pauses the folder.
+  `ManagedBulkPending` lists the grants and assignments in `control`. The assignment receipt is
+  offered as exact bytes and published under `records/assignments/`, which the outbound guard
+  serves; nothing in `bulk` is ever served.
+- **`OfficeBulk`** reads a grant under the administrator key of the phone's own vendor-verified
+  profile, and the assignment receipt. `OfficePhoneIdentity.signAssignmentReceipt` signs
+  nothing else.
+- **`OfficeManualService`**, on the connection's poll: keeps a grant per publisher by sequence
+  (a revocation replaces a grant and the grant never comes back); commits an assignment that
+  verifies against the binding and moves its set forward, and receipts it *received*; asks the
+  folder for exactly that archive; resumes the folder only on a direct route over a network the
+  system does not call expensive. When the archive is ready it verifies the kept assignment
+  again, runs the existing import preflight with the vendor's catalogue plus — only for a
+  publisher under this organisation's own `org.` prefix — the live grant, hands the result to
+  the existing installer, and receipts it *installed*. An archive nothing assigned is never
+  asked for. A manual that cannot be installed is recorded once with a reason and gets no
+  further receipt. Its record is `Application Support/AvenkinOffice/manuals.json`, apart from
+  the installed vaults, so removing a manual does not let an old assignment bring it back.
+- **Shown** under Field Assist settings, one line per assigned manual: *Waiting for the office
+  to send it*, *Waiting for Wi-Fi*, *Still downloading*, *Ready*, or why it was not installed.
+
+Exit, as tests (`OfficeManualServiceTests`): the fixture vault is assigned, verified under the
+granted publisher, handed to the installer and receipted, with both golden receipts byte for
+byte; while the folder is paused nothing is fetched; an archive with no assignment is never
+asked for.
+
+Choices made where the contract left room:
+
+- **The installer is the existing one.** The service stops at the vault installer's own
+  request; keeping the previous version of a vault until the new one is committed is that
+  installer's behaviour, not something added here.
+- **An install that fails is not retried.** It is recorded once; the office assigns again
+  under a higher sequence.
+- **"Metered" is the system's word.** A relayed route, or a network iOS calls expensive, keeps
+  `bulk` paused. Nothing lets a person start it there yet.
+
+**Still owed for P4:**
+
+- Job attachments and the manual sets a job names: the job-file validator, the job keeping
+  them, asking `bulk` for an attachment a held job names, and the job's screen saying *still
+  downloading*, *waiting for Wi-Fi* or *ready*.
+- A person's explicit choice to download on a metered or relayed route.
+- The headless install test stops at the installer's request; the installer itself runs only
+  in the app. A manual from a real office to a physical phone is owed.
+- A revoked publisher's already-installed vaults are not yet flagged.
 
 ### P5 — Recorded jobs
 
