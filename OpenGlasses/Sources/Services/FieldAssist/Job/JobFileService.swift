@@ -19,6 +19,9 @@ final class JobFileService: ObservableObject {
         case refused(String)
         /// Added, with the job's title — shown once, so the technician knows where it went.
         case added(String)
+        /// This exact job is already on this phone: the same office job at the same revision.
+        /// Nothing to review and nothing added.
+        case alreadyHeld(String)
     }
 
     struct Seams {
@@ -29,6 +32,9 @@ final class JobFileService: ObservableObject {
         var now: () -> Date = { Date() }
         /// Upcoming jobs live on the Job tab, which exists only while Field Assist is on.
         var fieldAssistActive: () -> Bool = { true }
+        /// The job files of jobs already started on this phone, so a file for one of them is not
+        /// offered as a new job.
+        var startedJobFiles: () -> [JobFileProvenance] = { [] }
     }
 
     static let fieldAssistOffMessage = "Field Assist is off on this phone, so a job file has nowhere to go. Turn it on under Settings → Field Assist, then open the file again."
@@ -69,25 +75,46 @@ final class JobFileService: ObservableObject {
         switch assess(data) {
         case .refuse(let message):
             stage = .refused(message)
-        case .offer(let file, let signature, let signer):
+        case .held(let title):
+            stage = .alreadyHeld(title)
+        case .offer(let file, let signature, let signer, let revises):
             let provenance = JobFileProvenance(fileName: fileName, signature: signature, signer: signer,
-                                               receivedAt: seams.now(), digest: JobFile.digest(data))
+                                               receivedAt: seams.now(), digest: JobFile.digest(data),
+                                               identity: file.identity)
             stage = .review(JobFileReview.make(file: file, provenance: provenance,
-                                               existing: seams.store()?.jobs ?? [], now: seams.now()))
+                                               existing: seams.store()?.jobs ?? [], revises: revises,
+                                               now: seams.now()))
         }
     }
 
-    /// Why `handle` would refuse these bytes now, or nil when it would raise the review. Raises
-    /// nothing and changes nothing: for a caller that has to know before it offers a file.
+    /// Why `handle` would refuse these bytes now, or nil when it would not. Raises nothing and
+    /// changes nothing: for a caller that has to know before it offers a file.
     func refusal(for data: Data) -> String? {
         if case .refuse(let message) = assess(data) { return message }
         return nil
     }
 
+    /// Whether these bytes are a job this phone already has: the same office job at the same
+    /// revision, ahead or already started. There is nothing to review and nothing to add.
+    func isAlreadyHeld(_ data: Data) -> Bool {
+        if case .held = assess(data) { return true }
+        return false
+    }
+
     private enum Assessment {
         case refuse(String)
-        case offer(JobFile, JobFileProvenance.Signature, signer: String?)
+        /// Already here, with the job's title.
+        case held(String)
+        case offer(JobFile, JobFileProvenance.Signature, signer: String?, revises: UpcomingJob?)
     }
+
+    static func alreadyHeldMessage(_ title: String) -> String {
+        "\(title) is already on this phone, at this revision."
+    }
+    static let olderRevisionMessage = "This phone already has a newer revision of this job, so this file wasn't added."
+    static let conflictingRevisionMessage = "This job file says it is the same revision of a job this phone already has, but what it says is different. Ask the office to send it again as a new revision."
+    static let unsignedRevisionMessage = "This job file isn't signed by your organisation, so it can't change a job that was. Ask the office to send it again, signed."
+    static let startedJobMessage = "This job has already been started on this phone, so a job file doesn't change it. Ask the office to tell you what has changed."
 
     /// Validation, the signature check and the import policy, in that order.
     private func assess(_ data: Data) -> Assessment {
@@ -105,8 +132,48 @@ final class JobFileService: ObservableObject {
         case .refuse(let message):
             return .refuse(message)
         case .offer(let signature, let signer):
-            return .offer(file, signature, signer: signer)
+            return standing(file, signature: signature, signer: signer)
         }
+    }
+
+    /// Where a file the policy would offer stands to what this phone already holds for the same
+    /// office job (Contracts/job-file.md §5). A format-1 file has no identity and is always offered.
+    private func standing(_ file: JobFile, signature: JobFileProvenance.Signature,
+                          signer: String?) -> Assessment {
+        guard let arriving = file.identity else { return .offer(file, signature, signer: signer, revises: nil) }
+        func latest<T>(_ held: [(T, JobFileProvenance)]) -> (T, JobFile.Identity, JobFileProvenance)? {
+            held.compactMap { item, provenance -> (T, JobFile.Identity, JobFileProvenance)? in
+                guard let identity = provenance.identity, identity.jobID == arriving.jobID else { return nil }
+                return (item, identity, provenance)
+            }.max { $0.1.revision < $1.1.revision }
+        }
+        // A job ahead first: it can be revised.
+        let ahead = (seams.store()?.jobs ?? []).compactMap { job in job.provenance.map { (job, $0) } }
+        if let (job, held, provenance) = latest(ahead) {
+            switch JobFile.relation(held: held, arriving: arriving) {
+            case .same?: return .held(job.title)
+            case .older?: return .refuse(Self.olderRevisionMessage)
+            case .conflict?: return .refuse(Self.conflictingRevisionMessage)
+            case .newer?:
+                // An unsigned identifier is only a claim: it never revises a job that came signed.
+                if provenance.signature == .signed, signature != .signed {
+                    return .refuse(Self.unsignedRevisionMessage)
+                }
+                return .offer(file, signature, signer: signer, revises: job)
+            case nil: break
+            }
+        }
+        // A job already started is not changed by a job file, and is not offered a second time.
+        if let (title, held, _) = latest(seams.startedJobFiles().map { ("This job", $0) }) {
+            switch JobFile.relation(held: held, arriving: arriving) {
+            case .same?: return .held(title)
+            case .older?: return .refuse(Self.olderRevisionMessage)
+            case .conflict?: return .refuse(Self.conflictingRevisionMessage)
+            case .newer?: return .refuse(Self.startedJobMessage)
+            case nil: break
+            }
+        }
+        return .offer(file, signature, signer: signer, revises: nil)
     }
 
     /// The technician's answer. The only write in the whole path.
@@ -114,9 +181,10 @@ final class JobFileService: ObservableObject {
     func accept(_ decision: JobFileDecision) -> UpcomingJob? {
         guard case .review(let review) = stage, let store = seams.store() else { return nil }
         let written: UpcomingJob
-        switch decision {
+        // A revision replaces the job it revises, whatever was tapped: it is never a second job.
+        switch review.revises != nil ? JobFileDecision.update : decision {
         case .update:
-            guard let existing = review.duplicate else { return nil }
+            guard let existing = review.revises ?? review.duplicate else { return nil }
             // Same identity and place in the list; everything the file says replaces what was
             // there, including the brief, which described the job as it used to be.
             written = review.proposed.replacingIdentity(with: existing)

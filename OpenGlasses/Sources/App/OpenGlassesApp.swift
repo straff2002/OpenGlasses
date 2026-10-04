@@ -1264,7 +1264,8 @@ class AppState: ObservableObject, AppStateProtocol {
             policy: { JobFileImportPolicy.current() },
             organisationKey: { Config.organizationJobSigningKey },
             organisationName: { Config.organizationDisplayName },
-            fieldAssistActive: { Config.fieldAssistActive }))
+            fieldAssistActive: { Config.fieldAssistActive },
+            startedJobFiles: { FieldSessionService.shared.history.compactMap(\.jobFile) }))
         // The blur the phone-sourced evidence goes through. Wired here rather than constructed
         // with the service, because `privacyFilter` is built alongside it and a filter that is
         // merely absent would fail every attachment closed.

@@ -14,16 +14,22 @@ extension OfficeManagedJobIntake.Seams {
             raise: { data, fileName in
                 // Never over something the technician is already looking at.
                 guard jobFiles.stage == .idle else { return .busy }
+                // The same office job at the same revision is already here: nothing to show.
+                guard !jobFiles.isAlreadyHeld(data) else { return .held }
                 jobFiles.handle(data: data, fileName: fileName)
                 switch jobFiles.stage {
                 case .review:
                     return .raised
                 case .refused(let message):
                     return .refused(message)
+                case .alreadyHeld:
+                    jobFiles.dismiss()
+                    return .held
                 case .idle, .added:
                     return .busy
                 }
             })
+        seams.alreadyHeld = { jobFiles.isAlreadyHeld($0) }
         if let ledgerFile {
             seams.load = { OfficeManagedJobIntake.readLedger(ledgerFile) }
             seams.save = { try OfficeManagedJobIntake.writeLedger($0, to: ledgerFile) }

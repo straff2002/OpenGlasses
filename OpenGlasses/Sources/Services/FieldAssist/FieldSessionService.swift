@@ -543,6 +543,10 @@ final class FieldSessionService: ObservableObject {
             payload["signer"] = AnyCodable(provenance.signer ?? "")
             payload["received_at"] = AnyCodable(ISO8601DateFormatter().string(from: provenance.receivedAt))
             payload["digest"] = AnyCodable(provenance.digest)
+            if let identity = provenance.identity {
+                payload["job_id"] = AnyCodable(identity.jobID)
+                payload["revision"] = AnyCodable(Int(identity.revision))
+            }
         }
         logger?.append(.init(timestamp: Date(), kind: .jobAheadStarted,
                              text: job.provenance?.recordLine ?? job.title, payload: payload))
