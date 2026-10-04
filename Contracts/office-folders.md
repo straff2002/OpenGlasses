@@ -97,7 +97,7 @@ never opened, never imported, never served, and counted for diagnostics.
 | `jobs/<messageID>.envelope.json` | Managed-job envelope | Managed job transport reference |
 | `jobs/<jobSHA256>.ogjob` | The exact job-file bytes that envelope names | same |
 | `assignments/<assignmentID>.envelope.json` | Manual assignment | Manual assignment contract |
-| `receipts/<sha256(op_id)>.envelope.json` | The office's receipt for a record | *Not yet specified* (§9.1) |
+| `receipts/<reportID>.pending.envelope.json`, `….record.envelope.json`, `….full.envelope.json` | The office's receipts for a report, one file per outcome | [Reports](office-reports.md) §8 |
 | `recordings/<bundleID>.status.envelope.json` | Recording acknowledgement and status | Recorded session §6 |
 | `learning/set.envelope.json` | The current learning set | Team learning §5 |
 | `learning/status/<candidateID>-<revision>.envelope.json` | Candidate status | Team learning §4 |
@@ -109,7 +109,9 @@ never opened, never imported, never served, and counted for diagnostics.
 
 | Path | Contents | Defined by |
 |---|---|---|
-| `reports/<sha256(op_id)>.envelope.json` | A queued operation: work record or parts request | *Envelope not yet specified* (§9.1) |
+| `reports/<reportID>.envelope.json` | The signed report for one queued record; `reportID` is the SHA-256 of its operation identifier | [Reports](office-reports.md) §4 |
+| `reports/<recordSHA256>.record.json` | The exact record bytes that report names | same |
+| `reports/<manifestSHA256>.manifest.json` | The attachment manifest that report names | Reports §5 |
 | `attachments/<sha256>` | Evidence named by a report's attachment manifest | same |
 | `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job (for an assignment: *not yet specified*, §9.2) | Managed job receipt |
 | `recordings/<bundleID>/…` | A recorded-session bundle, laid out as its contract says | Recorded session §3 |
@@ -195,10 +197,9 @@ refused).
 
 ## 9. Open points
 
-1. **Reports over the folder.** The work record and parts request have an endpoint envelope for
-   an organisation's HTTP endpoint and no signed form for an office. A signed report envelope,
-   its attachment manifest and the office's receipt need their own contract before
-   `reports/`, `attachments/` and the office's `receipts/` are used.
+1. **Reports over the folder.** The signed report, its attachment manifest and the office's
+   receipts now have their contract ([office-reports.md](office-reports.md), draft v1: messages,
+   reference implementation and fixtures). Neither app publishes or reads a report yet.
 2. **The phone's receipt for an assignment** is required by Plan FX and not yet specified. The
    receipt for a managed job is ([README](README.md), "Managed job receipt").
 3. **Deletion.** Whether receivers should also set the engine's ignore-deletes on their
