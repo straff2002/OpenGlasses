@@ -36,6 +36,8 @@ private struct JobRecordingRows: View {
 
     private var row: JobRecordingSyncService.Row? { sync.rows.first { $0.sessionID == sessionID } }
     private var isRecordingHere: Bool { coordinator.status.sessionID == sessionID }
+    /// Stopped, and being transcribed and sealed.
+    private var isBeingPrepared: Bool { coordinator.preparing.contains(sessionID) }
 
     /// What last happened to this job's recording. Another job's is not shown here.
     private var noteForThisJob: String? {
@@ -43,7 +45,7 @@ private struct JobRecordingRows: View {
     }
 
     private var hasSomethingToShow: Bool {
-        if isRecordingHere || row != nil { return true }
+        if isRecordingHere || isBeingPrepared || row != nil { return true }
         guard isOpenJob else { return coordinator.hasUnsealedRecording(sessionID: sessionID) }
         return coordinator.unsealed != nil || coordinator.verdict != .notOffered
     }
@@ -54,6 +56,12 @@ private struct JobRecordingRows: View {
                 Section {
                     if isRecordingHere {
                         running
+                    } else if isBeingPrepared {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Preparing the recording.")
+                                .font(.callout)
+                        }
                     } else if let row {
                         sent(row)
                     } else if !isOpenJob {
@@ -164,12 +172,6 @@ private struct JobRecordingRows: View {
         case .waitingForVideo:
             statusLine("Waiting for the glasses", detail: "They stopped sending video. What was recorded is saved, and recording carries on when they come back.")
             stopButton
-        case .preparing:
-            HStack(spacing: 10) {
-                ProgressView()
-                Text("Preparing the recording.")
-                    .font(.callout)
-            }
         case .idle:
             EmptyView()
         }

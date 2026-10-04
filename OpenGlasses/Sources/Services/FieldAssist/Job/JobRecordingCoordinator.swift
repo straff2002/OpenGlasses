@@ -36,27 +36,23 @@ final class JobRecordingCoordinator: ObservableObject {
         /// The glasses stopped sending pictures. The part is saved; a new one begins when they
         /// come back.
         case waitingForVideo(sessionID: String)
-        /// Stopped, and being transcribed and sealed.
-        case preparing(sessionID: String)
 
         /// The job being recorded, when one is.
         var sessionID: String? {
             switch self {
             case .idle: return nil
-            case let .recording(id), let .paused(id), let .waitingForVideo(id), let .preparing(id): return id
+            case let .recording(id), let .paused(id), let .waitingForVideo(id): return id
             }
         }
 
         /// A recording is under way: running, paused, or waiting for the glasses.
-        var isActive: Bool {
-            switch self {
-            case .recording, .paused, .waitingForVideo: return true
-            case .idle, .preparing: return false
-            }
-        }
+        var isActive: Bool { self != .idle }
     }
 
     @Published private(set) var status: Status = .idle
+    /// The jobs whose stopped recordings are being transcribed and sealed right now. Sealing a
+    /// long recording takes minutes, and does not hold up recording another job meanwhile.
+    @Published private(set) var preparing: Set<String> = []
     /// Seconds since this recording began, pauses included.
     @Published private(set) var elapsed: TimeInterval = 0
     /// The media this recording holds so far.
@@ -148,7 +144,7 @@ final class JobRecordingCoordinator: ObservableObject {
 
     // MARK: - Whether it is offered
 
-    /// The facts as they stand now. Asks the pairing gate.
+    /// The facts as they stand now, given what the pairing gate just said.
     private func facts(binding: BundleManifest.Binding?) -> JobRecordingAvailability.Facts {
         let rules = seams.rules()
         let job = seams.job()
@@ -167,6 +163,7 @@ final class JobRecordingCoordinator: ObservableObject {
             // was closed in the middle of can still be carried on. One whose journal is there and
             // cannot be read is left alone: starting over it would lose what it holds.
             jobAlreadyRecorded: hasBundle || journal?.isStopped == true
+                || job.map { preparing.contains($0.sessionID) } == true
                 || (journal == nil && job.map { seams.capture.hasJournal(sessionID: $0.sessionID) } == true),
             unsyncedBytes: seams.bundles.unsyncedBytes() + seams.capture.totalBytes())
     }
@@ -179,7 +176,7 @@ final class JobRecordingCoordinator: ObservableObject {
     }
 
     private func refreshUnsealed() {
-        guard !status.isActive, status.sessionID == nil, let job = seams.job(),
+        guard !status.isActive, let job = seams.job(), !preparing.contains(job.sessionID),
               let journal = seams.capture.journal(sessionID: job.sessionID) else {
             unsealed = nil
             return
@@ -190,7 +187,8 @@ final class JobRecordingCoordinator: ObservableObject {
     /// Whether a job that is not being recorded now has a recording on this phone that is still
     /// to be sealed for the office. For a finished job's page.
     func hasUnsealedRecording(sessionID: String) -> Bool {
-        status.sessionID != sessionID && seams.capture.hasJournal(sessionID: sessionID)
+        status.sessionID != sessionID && !preparing.contains(sessionID)
+            && seams.capture.hasJournal(sessionID: sessionID)
     }
 
     // MARK: - Consent
@@ -250,10 +248,11 @@ final class JobRecordingCoordinator: ObservableObject {
         }
     }
 
-    /// One change at a time. Starting, pausing, carrying on, stopping and sealing each wait for
-    /// the one before to finish: the recorder must never be asked to begin a part while it is
-    /// still finishing the last, and a part being finished must be written down before anything
-    /// is sealed.
+    /// One change to the recorder at a time. Starting, pausing, carrying on and stopping each wait
+    /// for the one before to finish: the recorder must never be asked to begin a part while it is
+    /// still finishing the last, and a part being finished must be written down before the
+    /// recording is handed on to be sealed. Sealing itself is not one of these — it can take
+    /// minutes, and a stop must never wait behind it.
     private var lastChange: Task<Void, Never>?
 
     private func inTurn<T: Sendable>(_ change: @escaping @MainActor () async -> T) async -> T {
@@ -410,9 +409,14 @@ final class JobRecordingCoordinator: ObservableObject {
             guard case .recording(let sessionID) = self.status else { return }
             self.closePart(timebase, endedBy: .stall)
             self.status = .waitingForVideo(sessionID: sessionID)
-            self.frameWait = self.seams.frames().first().receive(on: DispatchQueue.main).sink { [weak self] _ in
-                Task { @MainActor in await self?.videoReturned() }
-            }
+            self.waitForVideo()
+        }
+    }
+
+    /// The next picture to arrive begins the next part.
+    private func waitForVideo() {
+        frameWait = seams.frames().first().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            Task { @MainActor in await self?.videoReturned() }
         }
     }
 
@@ -551,34 +555,36 @@ final class JobRecordingCoordinator: ObservableObject {
     /// Stop the recording and seal it. Nil when nothing was being recorded.
     @discardableResult
     func stop(_ reason: StopReason = .asked) async -> Outcome? {
-        await inTurn { await self.stopInTurn(reason) }
+        guard let journal = await inTurn({ await self.stopCapture(reason) }) else { return nil }
+        let outcome = await seal(journal)
+        lastNote = Self.sentence(for: outcome, reason: reason)
+        lastNoteSessionID = journal.sessionID
+        refreshUnsealed()
+        return outcome
     }
 
-    private func stopInTurn(_ reason: StopReason) async -> Outcome? {
-        guard status.isActive, var journal, let clock else { return nil }
-        let sessionID = journal.sessionID
-        status = .preparing(sessionID: sessionID)
+    /// Ends the capture: the part being written is finished and written down, the glasses are
+    /// given back, and the journal says the recording has stopped. From here nothing more is
+    /// recorded, whatever becomes of the sealing.
+    private func stopCapture(_ reason: StopReason) async -> JobRecordingCaptureStore.Journal? {
+        guard status.isActive, journal != nil, let clock else { return nil }
         ticker?.invalidate()
         ticker = nil
         frameWait = nil
         if openPartID != nil {
             closePart(await seams.recorder.finishPart(), endedBy: nil)
-            journal = self.journal ?? journal
         }
         await releaseClaimedStream()
+        // Read only now: what was noted while the part was being finished is in it.
+        guard var journal else { return nil }
 
         journal.stoppedAt = max(clock.time(monotonic: seams.monotonicNow()), journal.parts.compactMap(\.end).max() ?? .zero)
         try? seams.capture.save(journal)
         self.journal = nil
         self.clock = nil
-        logStopped(journal, reason: reason)
-
-        let outcome = await seal(journal)
         status = .idle
-        lastNote = Self.sentence(for: outcome, reason: reason)
-        lastNoteSessionID = sessionID
-        refreshUnsealed()
-        return outcome
+        logStopped(journal, reason: reason)
+        return journal
     }
 
     private func logStopped(_ journal: JobRecordingCaptureStore.Journal, reason: StopReason) {
@@ -604,8 +610,7 @@ final class JobRecordingCoordinator: ObservableObject {
         case .sealed:
             return lead + "The recording is ready to go to the office."
         case .waitingToPrepare:
-            return lead + "The recording is saved on this phone. It will be prepared for the office "
-                + "when this phone can reach its pairing with the office again."
+            return lead + "The recording is saved on this phone, and will be prepared for the office later."
         case .nothingRecorded:
             return lead + "Nothing was recorded, so there is nothing to send."
         }
@@ -617,48 +622,56 @@ final class JobRecordingCoordinator: ObservableObject {
     /// sealed when it stopped, and one the app was closed in the middle of whose job has since
     /// closed. A recording of the job that is still open is left to be carried on. Safe to repeat.
     func sealPending() async {
-        await inTurn {
-            for var journal in self.seams.capture.journals() where journal.sessionID != self.status.sessionID {
-                if !journal.isStopped {
-                    guard self.seams.job()?.sessionID != journal.sessionID else { continue }
-                    self.seams.capture.removeUnfinishedParts(journal)
-                    journal.stoppedAt = journal.parts.compactMap(\.end).max() ?? .zero
-                    try? self.seams.capture.save(journal)
-                    self.logStopped(journal, reason: .interrupted)
-                }
-                await self.seal(journal)
+        let now = seams.wallNow()
+        for var journal in seams.capture.journals()
+        where journal.sessionID != status.sessionID && !preparing.contains(journal.sessionID) {
+            if let retry = sealRetryAfter[journal.sessionID], now < retry { continue }
+            if !journal.isStopped {
+                guard seams.job()?.sessionID != journal.sessionID else { continue }
+                seams.capture.removeUnfinishedParts(journal)
+                journal.stoppedAt = journal.parts.compactMap(\.end).max() ?? .zero
+                try? seams.capture.save(journal)
+                logStopped(journal, reason: .interrupted)
             }
-            self.refreshUnsealed()
+            await seal(journal)
         }
+        refreshUnsealed()
     }
 
     /// Finish a recording of the open job that the app was closed in the middle of, as it is.
     @discardableResult
     func finishInterrupted() async -> Outcome? {
-        await inTurn { await self.finishInterruptedInTurn() }
-    }
-
-    private func finishInterruptedInTurn() async -> Outcome? {
-        guard status == .idle, let job = seams.job(),
-              var journal = seams.capture.journal(sessionID: job.sessionID), !journal.isStopped else { return nil }
-        seams.capture.removeUnfinishedParts(journal)
-        journal.stoppedAt = journal.parts.compactMap(\.end).max() ?? .zero
-        try? seams.capture.save(journal)
-        logStopped(journal, reason: .interrupted)
-        status = .preparing(sessionID: job.sessionID)
-        let outcome = await seal(journal)
-        status = .idle
+        let stopped = await inTurn { () -> JobRecordingCaptureStore.Journal? in
+            guard self.status == .idle, let job = self.seams.job(),
+                  var journal = self.seams.capture.journal(sessionID: job.sessionID), !journal.isStopped,
+                  !self.preparing.contains(job.sessionID) else { return nil }
+            self.seams.capture.removeUnfinishedParts(journal)
+            journal.stoppedAt = journal.parts.compactMap(\.end).max() ?? .zero
+            try? self.seams.capture.save(journal)
+            self.logStopped(journal, reason: .interrupted)
+            return journal
+        }
+        guard let stopped else { return nil }
+        let outcome = await seal(stopped)
         lastNote = Self.sentence(for: outcome, reason: .interrupted)
-        lastNoteSessionID = job.sessionID
+        lastNoteSessionID = stopped.sessionID
         refreshUnsealed()
         return outcome
     }
+
+    /// When a recording that could not be sealed may next be tried. Sealing transcribes the whole
+    /// recording, so one that keeps failing — the phone is full — is not tried on every pass.
+    private var sealRetryAfter: [String: Date] = [:]
+    static let sealRetryInterval: TimeInterval = 15 * 60
 
     /// Transcribes a stopped recording, puts its timeline together and seals the bundle. The
     /// recorded parts are removed only once the bundle is sealed; on any failure they stay.
     @discardableResult
     private func seal(_ journal: JobRecordingCaptureStore.Journal) async -> Outcome {
         let sessionID = journal.sessionID
+        // One sealing of a recording at a time: a pass that finds it already under way leaves it.
+        guard preparing.insert(sessionID).inserted else { return .waitingToPrepare }
+        defer { preparing.remove(sessionID) }
         // Only parts that are really there. The timeline and the manifest must name the same ones.
         let parts = journal.parts.filter {
             JobRecordingCaptureStore.size(of: seams.capture.partFile(sessionID: sessionID, partID: $0.partID)) > 0
@@ -701,9 +714,12 @@ final class JobRecordingCoordinator: ObservableObject {
                 "parts": AnyCodable(parts.count),
                 "utterances": AnyCodable(assembled.transcript.utterances.count),
             ])
+            sealRetryAfter[sessionID] = nil
             seams.sealed()
             return .sealed(bundleID: record.bundleID)
         } catch {
+            // Everything is still where it was. Tried again later, not on the very next pass.
+            sealRetryAfter[sessionID] = seams.wallNow().addingTimeInterval(Self.sealRetryInterval)
             return .waitingToPrepare
         }
     }

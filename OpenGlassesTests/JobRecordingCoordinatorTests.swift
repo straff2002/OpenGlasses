@@ -88,6 +88,10 @@ final class JobRecordingCoordinatorTests: XCTestCase {
     private var logged: [(sessionID: String, kind: SessionLogger.Event.Kind, payload: [String: AnyCodable])] = []
     private var auditedConsents: [RecordingConsent.Acknowledgement] = []
     private var signed = 0
+    private var signFailuresLeft = 0
+    private var holdTranscription = false
+    private var transcriptionWaiters: [CheckedContinuation<Void, Never>] = []
+    private struct Failed: Error {}
     private var sealedCalls = 0
     private var bundleIDs = 0
 
@@ -145,10 +149,21 @@ final class JobRecordingCoordinatorTests: XCTestCase {
             capture: capture,
             bundles: bundles,
             sign: { [unowned self] _ in
-                await MainActor.run { self.signed += 1 }
+                let fails = await MainActor.run { () -> Bool in
+                    self.signed += 1
+                    guard self.signFailuresLeft > 0 else { return false }
+                    self.signFailuresLeft -= 1
+                    return true
+                }
+                if fails { throw Failed() }
                 return Data(repeating: 7, count: 64)
             },
-            transcribe: { [unowned self] _ in self.words },
+            transcribe: { [unowned self] _ in
+                if self.holdTranscription {
+                    await withCheckedContinuation { self.transcriptionWaiters.append($0) }
+                }
+                return self.words
+            },
             logEntries: { [unowned self] _ in self.logEntries },
             log: { [unowned self] sessionID, kind, payload in self.logged.append((sessionID, kind, payload)) },
             auditConsent: { [unowned self] in self.auditedConsents.append($0) },
@@ -659,6 +674,61 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertNil(capture.journal(sessionID: sessionID))
         XCTAssertNil(coordinator.unsealed)
         XCTAssertFalse(coordinator.hasUnsealedRecording(sessionID: sessionID))
+    }
+
+    /// Sealing transcribes the whole recording and can take minutes. It must never hold up
+    /// stopping — or starting — another recording meanwhile.
+    func testSealingOneRecordingDoesNotHoldUpAnother() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        holdTranscription = true
+        let stopping = Task { await coordinator.stop() }
+        await settle { !self.transcriptionWaiters.isEmpty }
+        XCTAssertEqual(coordinator.status, .idle, "the capture has ended; only the sealing is still going")
+        XCTAssertEqual(coordinator.preparing, [sessionID])
+        XCTAssertEqual(recorder.finished, 1)
+        await assertRefused(coordinator, .unavailable(.alreadyRecorded))
+
+        // Another job is opened, recorded and stopped while the first is still being prepared.
+        let second = "second-job"
+        job = .init(sessionID: second, jobNumber: nil)
+        holdTranscription = false
+        await started(coordinator)
+        XCTAssertEqual(coordinator.status, .recording(sessionID: second))
+        advance(10)
+        let outcome = await coordinator.stop()
+        guard case .sealed = outcome else { return XCTFail("the second recording was held up") }
+        XCTAssertEqual(bundles.records().map(\.sessionID), [second])
+
+        transcriptionWaiters.forEach { $0.resume() }
+        transcriptionWaiters = []
+        _ = await stopping.value
+        XCTAssertEqual(Set(bundles.records().map(\.sessionID)), [sessionID, second])
+        XCTAssertTrue(coordinator.preparing.isEmpty)
+    }
+
+    /// A recording that could not be sealed — the phone is full — is kept and tried again later,
+    /// not on every pass: each try transcribes it from the start.
+    func testARecordingThatCouldNotBeSealedIsKeptAndTriedAgainLater() async throws {
+        signFailuresLeft = 1
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(20)
+        let outcome = await coordinator.stop()
+        XCTAssertEqual(outcome, .waitingToPrepare)
+        XCTAssertEqual(signed, 1)
+        XCTAssertEqual(capture.bytes(sessionID: sessionID), 2_048, "the recorded part is still there")
+        XCTAssertTrue(bundles.records().isEmpty, "half a bundle is no bundle")
+
+        await coordinator.sealPending()
+        XCTAssertEqual(signed, 1, "not tried again on the very next pass")
+
+        advance(Coordinator.sealRetryInterval + 1)
+        await coordinator.sealPending()
+        XCTAssertEqual(signed, 2)
+        XCTAssertEqual(bundles.records().count, 1)
+        XCTAssertNil(capture.journal(sessionID: sessionID))
     }
 
     // MARK: - While it runs
