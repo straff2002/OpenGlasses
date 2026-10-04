@@ -76,9 +76,9 @@ The rest are format 1's, with format 1's meaning and limits: `job_reference`, `s
 never embedded) and `issued_by`. `format`, `format_version` and `signature` are members of the
 file, not of the job. A format-2 job may also name what follows it in the `bulk` folder: an
 attachment may carry `sha256`, `bytes` and `media_type`, and the job may have a `manuals` member
-naming manual sets it needs ([bulk content](office-bulk.md) §5). **The phone does not read
-those yet**: its validator refuses them as members it does not know, until that contract's
-phone half is built. A member not listed here is refused, as in format 1: a file that carries
+naming manual sets it needs ([bulk content](office-bulk.md) §5). The phone reads those in
+format 2 and refuses them in format 1; what it then fetches is that contract's business. A
+member not listed here is refused, as in format 1: a file that carries
 something the phone cannot show is a file whose review would not be the whole truth. Text is
 plain — no markup, no control characters beyond a line break in `fault_report` and `notes` —
 and within format 1's length limits. A job needs a job number, a site or a fault report.

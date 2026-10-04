@@ -111,9 +111,12 @@ final class OfficeManualServiceTests: XCTestCase {
         let service = makeService()
         try await officeGrants()
         try await officeAssigns()
+        XCTAssertEqual(service.standing(ofSet: "fixture-manuals"), .notYetAvailable,
+                       "a set nobody has assigned is not yet available, whatever a job says")
 
         // The assignment is committed and receipted before its archive is anywhere.
         try await service.sweep()
+        XCTAssertEqual(service.standing(ofSet: "fixture-manuals"), .onItsWay)
         var receipts = await transport.assignmentReceipts
         XCTAssertEqual(receipts["\(assignmentID).received"], try F.data("office-bulk-assignment-receipt-received-v1"),
                        "the golden receipt, byte for byte")
@@ -150,6 +153,8 @@ final class OfficeManualServiceTests: XCTestCase {
         XCTAssertEqual(receipts["\(assignmentID).installed"], try F.data("office-bulk-assignment-receipt-installed-v1"))
         XCTAssertEqual(service.rows.map(\.state), [.installed])
         XCTAssertEqual(Service.status(service.rows[0]).detail, "Ready.")
+        XCTAssertEqual(service.standing(ofSet: "fixture-manuals"), .ready)
+        XCTAssertEqual(service.standing(ofSet: "another-set"), .notYetAvailable)
 
         // Nothing more is asked of the folder, and another pass, or a relaunch, installs nothing.
         try await service.sweep()

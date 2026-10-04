@@ -78,6 +78,9 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// The job file this visit was proposed by, when it was (Plan FO §8): which file, whether it
     /// was signed and by whom, and when it arrived.
     var jobFile: JobFileProvenance?
+    /// What the job file said follows the job from the office, kept so a started job still has
+    /// the attachments it was sent.
+    var jobNeeds: JobNeeds?
     /// A new scope on equipment change prevents carrying work onto another machine (FM).
     var continuityScope: String = "initial"
     var taskEquipmentScopes: [String: String] = [:]
@@ -199,7 +202,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case minutesPerBillingUnit, equipment
         case jobReference, tasks, partsRequests, identityFields, jobEvidence
         case media, evidenceSelection, signOff, debriefs
-        case site, faultReport, brief, jobFile
+        case site, faultReport, brief, jobFile, jobNeeds
         case continuityScope, taskEquipmentScopes, identityEquipmentScopes, procedureEquipmentScope
         case conversationThreadId, conversationThreadDetached, jobIntake, pendingUnitChange
         case visitedUnits
@@ -248,6 +251,7 @@ extension FieldSession {
         faultReport = try c.decodeIfPresent(FaultReport.self, forKey: .faultReport)
         brief = try c.decodeIfPresent(JobBrief.self, forKey: .brief)
         jobFile = try c.decodeIfPresent(JobFileProvenance.self, forKey: .jobFile)
+        jobNeeds = try c.decodeIfPresent(JobNeeds.self, forKey: .jobNeeds)
         continuityScope = try c.decodeIfPresent(String.self, forKey: .continuityScope) ?? "initial"
         taskEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .taskEquipmentScopes) ?? [:]
         identityEquipmentScopes = try c.decodeIfPresent([String: String].self, forKey: .identityEquipmentScopes) ?? [:]

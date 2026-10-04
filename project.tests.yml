@@ -36,6 +36,8 @@ targets:
       # The format-2 job file, signed with a fictional key derived from a public label.
       - path: Contracts/fixtures/job-file-v2.ogjob
         buildPhase: resources
+      - path: Contracts/fixtures/job-file-v2-needs.ogjob
+        buildPhase: resources
       # The bulk-content contract: a publisher grant, a vault it signed, its assignment and receipts.
       - path: Contracts/fixtures/office-publisher-grant-v1.json
         buildPhase: resources

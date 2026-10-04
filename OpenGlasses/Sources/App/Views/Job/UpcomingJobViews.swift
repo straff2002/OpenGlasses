@@ -24,6 +24,7 @@ struct UpcomingJobView: View {
             if let job {
                 List {
                     detailsSection(job)
+                    JobNeedsSection(needs: job.needs)
                     actionsSection(job)
                     if let brief = job.brief {
                         ForEach(brief.sections, id: \.kind) { section in
@@ -76,6 +77,7 @@ struct UpcomingJobView: View {
                 row("Equipment", job.equipment.map(\.summary).joined(separator: "\n"))
             }
             if let notes = job.notes { row("Notes", notes) }
+            // Only the ones the file merely named. One it named by digest has its own row below.
             if !job.attachments.isEmpty {
                 row("Attachments (not included)", job.attachments.joined(separator: "\n"))
             }

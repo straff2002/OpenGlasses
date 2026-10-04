@@ -72,11 +72,36 @@ struct JobFile: Equatable {
         let serial: String?
     }
 
-    /// Named, never embedded. The app does not fetch it.
+    /// Named, never embedded. In format 1 the app never fetches it. In format 2 an attachment may
+    /// also give its exact digest, size and type: it then follows the job in the office's `bulk`
+    /// folder (Contracts/office-bulk.md §5). All three, or none.
     struct Attachment: Codable, Equatable {
         let name: String
         let reference: String?
+        var sha256: String?
+        var bytes: Int64?
+        var mediaType: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name, reference, sha256, bytes
+            case mediaType = "media_type"
+        }
     }
+
+    /// A manual set a format-2 job says it needs. Naming it is all the job does: the manual is
+    /// installed only under its own assignment and its publisher's signature.
+    struct ManualSet: Codable, Equatable {
+        let setID: String
+
+        enum CodingKeys: String, CodingKey {
+            case setID = "set_id"
+        }
+    }
+
+    /// The media types a job attachment may have.
+    static let attachmentMediaTypes: [String: String] = [
+        "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"]
+    static let maximumManualSets = 10
 
     /// Everything the signature covers.
     struct Body: Codable, Equatable {
@@ -89,6 +114,8 @@ struct JobFile: Equatable {
         let scheduledFor: String?
         let notes: String?
         let attachments: [Attachment]?
+        /// Format 2 only: the manual sets the job needs.
+        var manuals: [ManualSet]?
         /// Who the file *says* issued it. Shown only as a claim; the signer on the record is the
         /// organisation whose key verified it, never this.
         let issuedBy: String?
@@ -101,7 +128,7 @@ struct JobFile: Equatable {
             case faultReport = "fault_report"
             case equipment
             case scheduledFor = "scheduled_for"
-            case notes, attachments
+            case notes, attachments, manuals
             case issuedBy = "issued_by"
         }
 
@@ -149,6 +176,17 @@ struct JobFile: Equatable {
         return arriving.sha256 == held.sha256 ? .same : .conflict
     }
 
+    /// What the job says follows it: attachments it names by digest, and manual sets it needs.
+    var needs: JobNeeds {
+        JobNeeds(
+            attachments: (body.attachments ?? []).compactMap { attachment in
+                guard let sha256 = attachment.sha256, let bytes = attachment.bytes,
+                      let mediaType = attachment.mediaType else { return nil }
+                return .init(name: attachment.name, sha256: sha256, bytes: bytes, mediaType: mediaType)
+            },
+            manualSets: (body.manuals ?? []).map(\.setID))
+    }
+
     /// The scheduled time, when the file gave one it could parse (the validator refuses one it
     /// cannot).
     var scheduledDate: Date? { body.scheduledFor.flatMap(JobFileValidator.parseDate) }
@@ -167,11 +205,14 @@ struct JobFile: Equatable {
             equipment: (body.equipment ?? []).map { KnownEquipment(model: $0.model, serial: $0.serial) },
             scheduledFor: scheduledDate,
             notes: body.notes,
-            attachments: (body.attachments ?? []).map { attachment in
+            // Only the ones the file merely names. One it names by digest follows the job, and is
+            // in `needs`.
+            attachments: (body.attachments ?? []).filter { $0.sha256 == nil }.map { attachment in
                 attachment.reference.map { "\(attachment.name) (\($0))" } ?? attachment.name
             },
             origin: .jobFile,
             provenance: provenance,
+            needs: needs.isEmpty ? nil : needs,
             createdAt: createdAt)
     }
 
@@ -268,7 +309,7 @@ enum JobFileValidator {
     /// The members a format-2 file itself has, and the two its job adds to format 1's.
     private static let fileKeysV2: Set<String> = ["format", "format_version", "job", "signature"]
     private static let jobKeysV2: Set<String> = topLevelKeys
-        .subtracting(["format", "format_version", "signature"]).union(["job_id", "revision"])
+        .subtracting(["format", "format_version", "signature"]).union(["job_id", "revision", "manuals"])
 
     static func validate(_ data: Data) -> Result<JobFile, Refusal> {
         guard data.count <= JobFile.maximumBytes else { return .failure(.tooLarge(data.count)) }
@@ -284,7 +325,7 @@ enum JobFileValidator {
             return .failure(.unexpectedField(unknown))
         }
         do {
-            try checkContent(root)
+            try checkContent(root, format2: false)
             try checkSignature(root)
         } catch let refusal as Refusal {
             return .failure(refusal)
@@ -324,7 +365,7 @@ enum JobFileValidator {
             return .failure(.noIdentity)
         }
         do {
-            try checkContent(jobRoot)
+            try checkContent(jobRoot, format2: true)
             try checkSignature(root)
         } catch let refusal as Refusal {
             return .failure(refusal)
@@ -358,8 +399,8 @@ enum JobFileValidator {
         return value
     }
 
-    /// The job's own fields, in either format.
-    private static func checkContent(_ root: [String: Any]) throws {
+    /// The job's own fields, in either format. Only a format-2 job may name what follows it.
+    private static func checkContent(_ root: [String: Any], format2: Bool) throws {
         try checkText(root, "job_reference")
         try checkText(root, "fault_report")
         try checkText(root, "notes")
@@ -386,7 +427,8 @@ enum JobFileValidator {
             for entry in list {
                 guard let attachment = entry as? [String: Any],
                       attachment["name"] is String else { throw Refusal.wrongType("attachments") }
-                try checkKeys(attachment, allowed: ["name", "reference"])
+                try checkKeys(attachment, allowed: format2
+                              ? ["name", "reference", "sha256", "bytes", "media_type"] : ["name", "reference"])
                 try checkText(attachment, "name")
                 try checkText(attachment, "reference")
                 if let reference = attachment["reference"] as? String,
@@ -394,10 +436,43 @@ enum JobFileValidator {
                     throw Refusal.embeddedAttachment
                 }
             }
+            // An attachment that travels gives its digest, size and type: all three or none, and
+            // no digest twice.
+            var digests = Set<String>()
+            for entry in list {
+                guard let attachment = entry as? [String: Any] else { continue }
+                let named = ["sha256", "bytes", "media_type"].filter { attachment[$0] != nil }
+                guard !named.isEmpty else { continue }
+                guard named.count == 3, let digest = attachment["sha256"] as? String,
+                      digest.utf8.count == 64,
+                      digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+                      let size = wholeNumber(attachment["bytes"]), size > 0,
+                      let mediaType = attachment["media_type"] as? String,
+                      JobFile.attachmentMediaTypes[mediaType] != nil,
+                      digests.insert(digest).inserted else { throw Refusal.wrongType("attachments") }
+            }
+        }
+        if let manuals = root["manuals"] {
+            guard let list = manuals as? [Any] else { throw Refusal.wrongType("manuals") }
+            guard list.count <= JobFile.maximumManualSets else { throw Refusal.tooMany("manual sets") }
+            var sets = Set<String>()
+            for entry in list {
+                guard let manual = entry as? [String: Any], Set(manual.keys) == ["set_id"],
+                      let set = manual["set_id"] as? String, OfficeManualAssignment.safeIdentifier(set),
+                      sets.insert(set).inserted else { throw Refusal.wrongType("manuals") }
+            }
         }
         if let scheduled = root["scheduled_for"] as? String, parseDate(scheduled) == nil {
             throw Refusal.badDate
         }
+    }
+
+    /// A JSON number that is a whole number within the safe range, and not a boolean.
+    private static func wholeNumber(_ value: Any?) -> Int64? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+              !CFNumberIsFloatType(number) else { return nil }
+        let whole = number.int64Value
+        return whole <= 9_007_199_254_740_991 ? whole : nil
     }
 
     /// The file's `signature` member, when it has one.
@@ -750,8 +825,17 @@ struct JobFileReview: Equatable, Identifiable {
             lines.append(Line(label: "Booked for", value: scheduled.formatted(date: .abbreviated, time: .shortened)))
         }
         if let notes = job.notes { lines.append(Line(label: "Notes", value: notes)) }
+        // An attachment the job names by digest follows it from the office; one it only names
+        // does not come at all.
+        if let following = job.needs?.attachments, !following.isEmpty {
+            lines.append(Line(label: "Attachments (follow from the office)",
+                              value: following.map(\.name).joined(separator: "\n")))
+        }
         if !job.attachments.isEmpty {
             lines.append(Line(label: "Attachments (not included)", value: job.attachments.joined(separator: "\n")))
+        }
+        if let sets = job.needs?.manualSets, !sets.isEmpty {
+            lines.append(Line(label: "Manuals it needs", value: sets.joined(separator: "\n")))
         }
 
         let signatureLine: String
@@ -783,4 +867,34 @@ enum JobFileDecision: Equatable {
     case update
     /// Add it beside the one already there.
     case keepBoth
+}
+
+// MARK: - What follows a job
+
+/// What a format-2 job says follows it from the office: attachments it names by exact digest and
+/// size, and manual sets it needs (Contracts/office-bulk.md §5). Naming is all a job does.
+struct JobNeeds: Codable, Equatable, Sendable {
+    struct Attachment: Codable, Equatable, Sendable, Identifiable {
+        let name: String
+        let sha256: String
+        let bytes: Int64
+        let mediaType: String
+
+        var id: String { sha256 }
+
+        enum CodingKeys: String, CodingKey {
+            case name, sha256, bytes
+            case mediaType = "media_type"
+        }
+    }
+
+    var attachments: [Attachment] = []
+    var manualSets: [String] = []
+
+    var isEmpty: Bool { attachments.isEmpty && manualSets.isEmpty }
+
+    enum CodingKeys: String, CodingKey {
+        case attachments
+        case manualSets = "manual_sets"
+    }
 }

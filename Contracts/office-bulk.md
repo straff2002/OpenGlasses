@@ -1,4 +1,4 @@
-# Bulk content contract — draft v1: manuals and job attachments (messages, fixtures, and the phone's half for manuals in the opt-in build; job attachments not yet)
+# Bulk content contract — draft v1: manuals and job attachments (messages, fixtures, and the phone's half in the opt-in build)
 
 Drafted 2026-10-05 for Plan [HO](../docs/plans/HO-office-delivery-phone-half.md) P4. This is the
 agreement between the phone app and Avenkin Office about the large things an office sends a
@@ -25,9 +25,20 @@ organisation's granted publisher, hands the result to the existing installer, an
 *received* and *installed*. That is tested headless against the golden fixtures and an
 in-memory stand-in for the transport. **No manual has reached a physical phone from an office.**
 
-**Not built on the phone:** job attachments and the `manuals` a job names (§5) — the job-file
-validator still refuses those members — and anything on a job's screen about what is still
-downloading. The default app build links no transport and opens no `bulk` folder.
+**The phone's half for what a job names is built** (Plan HO P4, second part, 2026-10-05). In
+every build the job-file validator reads the §5 members of a format-2 job and refuses them in
+format 1, and the job keeps what it named — ahead, and once started. In the opt-in build
+`OfficeJobAttachmentStore` asks `bulk` for the attachments of the **signed** jobs this phone
+holds, through `OfficeManualService` (the one owner of the folder's list, attachments before
+archives), checks each file's size and digest again, and keeps it under its digest and the
+extension of its stated type. The job's screen says *ready*, *still downloading*, *waiting for
+Wi-Fi*, *waiting for the office* or *not enough space* for each attachment, and *ready*, *on
+its way* or *not yet available* for each manual set. Tested headless against the golden job and
+the in-memory stand-in. **No attachment has reached a physical phone from an office.**
+
+**Not built on the phone:** a person's choice to start `bulk` on a metered or relayed route,
+and a free-space check before a manual archive. The default app build links no transport and
+opens no `bulk` folder: there a job shows what it names and fetches nothing.
 
 **Builds on, unchanged:** the [manual assignment](README.md) (which phone may receive which
 archive), the vault archive and its publisher signature, the administrator key the vendor-signed
@@ -178,6 +189,19 @@ says. A job that names a set nobody assigns shows that manual as *not yet availa
 The phone opens an attachment only after checking its size and digest, treats it as untrusted
 content of the stated type, and never executes it. An attachment belongs to the job that named
 it: it is removed with the job, and it is never sent anywhere by the phone.
+
+As built on the phone:
+
+- **Only a signed job fetches.** A format-2 file the organisation's key did not sign is shown
+  with what it names, and asks the folder for nothing: its digest is only a claim.
+- **"With the job" means while it is ahead or open.** An attachment is kept while a job that
+  names it is ahead of the technician or started and not finished, and removed on the next
+  pass after that; leaving the organisation removes them all.
+- **The phone has its own ceiling**, 50 MiB an attachment, which no job raises, and it leaves
+  100 MiB free: an attachment over either is shown as *too large* or *not enough space* and is
+  not asked for.
+- **The file's name on the phone is its digest** and the extension of its stated type. The
+  job's `name` is shown and is never a path.
 
 ## 6. Networks, pausing and space
 

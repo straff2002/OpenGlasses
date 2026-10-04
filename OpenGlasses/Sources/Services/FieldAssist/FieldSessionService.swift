@@ -530,6 +530,7 @@ final class FieldSessionService: ObservableObject {
             session.faultReport = job.faultReport
             session.brief = job.brief
             session.jobFile = job.provenance
+            session.jobNeeds = job.needs
         }
         var payload: [String: AnyCodable] = [
             "origin": AnyCodable(job.origin.rawValue),

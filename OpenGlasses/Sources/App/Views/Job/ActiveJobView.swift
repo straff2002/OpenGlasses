@@ -48,6 +48,7 @@ struct ActiveJobView: View {
             if let unitQuestion { questionCard(unitQuestion) }
             if let leaveThread { threadQuestionCard(leaveThread) }
             jobNumberSection
+            JobNeedsSection(needs: FieldSessionService.shared.activeSession?.jobNeeds)
             timeSection
             unitSection
             workSection
