@@ -1049,8 +1049,55 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The queue's delivery target. `EndpointSyncSink` posts job records and stock checks to the
     /// organisation's endpoint when one is configured (Plan EM P2) and hands everything else — and
     /// everything, when no endpoint is set — to the local sink that was there before.
-    lazy var syncEngine = SyncEngine(queue: offlineQueue,
-                                     sink: EndpointSyncSink(fallback: LocalSyncSink()))
+    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: makeSyncSink())
+
+    /// A phone that joined an office by its code sends job records and stock checks there, over
+    /// the managed folders, and waits for the office's receipt. Any other phone, and any build
+    /// without the office transport, sends as it did before.
+    private func makeSyncSink() -> SyncSink {
+        let endpoint = EndpointSyncSink(fallback: LocalSyncSink())
+        guard let reports = officeReports, let evidence = officeReportEvidence else { return endpoint }
+        return OfficeReportSink(seams: .init(
+            fallback: endpoint,
+            officeIsDestination: { AppState.officeIsReportDestination },
+            reports: reports,
+            evidence: { try await evidence.evidence(for: $0) }))
+    }
+
+    static var officeIsReportDestination: Bool {
+        let record = OrgProfileManager.shared.record
+        return OfficeReportSink.officeIsDestination(source: record?.source, revoked: record?.revoked == true,
+                                                    transportAvailable: OfficeTransportIdentity.isAvailable)
+    }
+
+    /// Records on their way to the office, and what the office has said about each. Nil in a
+    /// build without the office transport.
+    lazy var officeReports: OfficeReportService? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else { return nil }
+        return OfficeReportService(seams: .app(transport: transport))
+    }()
+
+    /// The documents that go with a job's record, kept as the exact bytes named until the office
+    /// has them.
+    lazy var officeReportEvidence: OfficeReportEvidenceStore? = {
+        guard OfficeTransportIdentity.isAvailable,
+              let directory = OfficeReportEvidenceStore.defaultDirectory() else { return nil }
+        let documents = OfficeReportDocuments.Seams.app()
+        return OfficeReportEvidenceStore(directory: directory) { op in
+            try OfficeReportDocuments.render(sessionID: op.sessionId, seams: documents)
+        }
+    }()
+
+    /// Reads the office's receipts on the connection's poll and offers waiting records again.
+    lazy var officeReportPump: OfficeReportPump? = {
+        guard let reports = officeReports else { return nil }
+        return OfficeReportPump(seams: .init(
+            sweep: { (try? await reports.sweep()) ?? false },
+            recordsWaiting: { [weak self] in (self?.offlineQueue.pendingCount ?? 0) > 0 },
+            flush: { [weak self] in _ = await self?.syncEngine.flush() },
+            settled: { reports.settledOperationIDs },
+            forget: { [weak self] in self?.officeReportEvidence?.remove(operationIDs: $0) }))
+    }()
 
     /// Alternative hands-free triggers (Additional Capabilities #5) — shake/acoustic/volume, all
     /// opt-in, each routing to the same entry point as the wake word.
@@ -1150,12 +1197,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 // The turn records name the organisation's manuals and jobs.
                 TurnTraceStore.shared.removeAll()
             },
-            hasEndpoint: { Config.deliverySettings.hasEndpoint },
+            // An office is somewhere records are delivered to, as an endpoint is.
+            hasEndpoint: { Config.deliverySettings.hasEndpoint || AppState.officeIsReportDestination },
             flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
             outstanding: { [weak self] ids in
                 guard let self else { return 0 }
                 let ops = self.offlineQueue.all(limit: 500)
+                // To an office, a record is owed until the office has everything its report
+                // named: record accepted is delivered, and is not yet a reason to erase.
                 return ids.reduce(0) { $0 + QueuedRecordRows.outstandingCount(in: ops, sessionId: $1) }
+                    + (self.officeReports?.notFullyAccepted(recordIDs: Set(ids)) ?? 0)
             },
             eraseRecords: { [weak self] ids in
                 guard let self else { return }
@@ -1164,6 +1215,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 for op in self.offlineQueue.all(limit: 500) where ids.contains(op.sessionId) {
                     self.offlineQueue.delete(id: op.id)
                 }
+                // What this phone kept for the office about those records goes with them.
+                self.officeReports?.forget(recordIDs: Set(ids))
+                self.officeReportEvidence?.removeAll()
                 DeliverySettings.clearStored()
             })
         OrgDepartureService.shared.loadAtLaunch()
@@ -1457,6 +1511,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Check-in first: a phone the office has removed takes in nothing else.
             if let checkIn = self?.officeCheckIn, (try? await checkIn.sweep()) == .removed { return }
             try? await self?.officeJobs?.sweep()
+            await self?.officeReportPump?.tick()
         }
         return OfficeFieldConnection(seams: seams)
     }()

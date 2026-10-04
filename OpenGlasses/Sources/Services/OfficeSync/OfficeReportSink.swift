@@ -24,6 +24,13 @@ final class OfficeReportSink: SyncSink {
             -> (evidence: [OfficeReportService.Evidence], transcript: OfficeReport.Transcript)
     }
 
+    /// Whether a phone's records go to an office over the managed folders: it joined one by its
+    /// code and has not been removed, and this build links the office transport. Whether the
+    /// pairing verifies and the office is in reach is asked again on every send.
+    static func officeIsDestination(source: ProfileSource?, revoked: Bool, transportAvailable: Bool) -> Bool {
+        transportAvailable && source == .office && !revoked
+    }
+
     /// Ops a report can carry; everything else is the fallback's.
     static let handledKinds: Set<OpKind> = [.workRecord, .partsRequest]
 

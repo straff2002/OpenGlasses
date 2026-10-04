@@ -81,6 +81,13 @@ enum SensitiveStore: String, CaseIterable {
     case orgEnrolment
     case safetyAssessments
 
+    // The connection to the organisation's office (the opt-in office transport build)
+    case officeTransportFolders
+    case officeJobIntake
+    case officeCheckIn
+    case officeReports
+    case officeReportEvidence
+
     // Clinical
     case healthSummaryCache
     case clinicalTranscripts
@@ -584,6 +591,79 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "UpcomingJobStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/UpcomingJobStore.swift"],
                           location: "Application Support/FieldAssist/upcoming-jobs.json")
+
+        case .officeTransportFolders:
+            // The embedded engine's own home, in the opt-in office transport build: its
+            // certificate, and the two folders it shares with the one office the binding names.
+            // Jobs the office sent are committed here as the exact files it signed; the records
+            // and documents on their way to the office sit here from the moment they are
+            // published until the office has them and they are withdrawn. The organisation's work
+            // orders, issued to and written by this technician: the wearer's, as the session log
+            // is. Nothing in the app deletes it whole; a published report is withdrawn file by
+            // file, and the folders stop being served when the pairing ends.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
+                          retention: .policy("a published report is withdrawn once the office has all of it"),
+                          deleteAll: .unavailable("the engine's home has no delete; it is emptied by withdrawing what was published and removed with the app"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeTransportIdentity",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeTransportIdentity.swift"],
+                          location: "Application Support/AvenkinTransport/")
+
+        case .officeJobIntake:
+            // Which jobs the office sent were offered to the technician, refused, or reviewed, and
+            // the receipt signature given for each. Message identifiers, digests and a bounded
+            // reason: no job content, which is in `upcomingJobs` once it is accepted.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
+                          retention: .cap(OfficeManagedJobIntake.maximumEntries),
+                          deleteAll: .unavailable("a receipt given to the office has to be reproducible byte for byte; the record is bounded and holds no job content"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeManagedJobIntake",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeManagedJobIntake+JobFiles.swift"],
+                          location: "Application Support/AvenkinOffice/managed-jobs.json")
+
+        case .officeCheckIn:
+            // The one check-in this phone is waiting on (its exact bytes, nonce and signature) and
+            // whether the office has removed the phone. Identifiers, digests and dates.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
+                          retention: .policy("one check-in at a time; forgotten on renewal or when its challenge expires"),
+                          deleteAll: .unavailable("holds no content; a check-in is forgotten when it is answered"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeCheckInService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeCheckInService.swift"],
+                          location: "Application Support/AvenkinOffice/check-in.json")
+
+        case .officeReports:
+            // Each record on its way to the office: the report's signed bytes, its manifest, which
+            // documents were published and what the office has said. It names the job and the
+            // documents by identifier and digest; the record and the documents themselves are in
+            // the queue and in `officeReportEvidence`. The wearer's, as the queue is.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: false,
+                          retention: .cap(OfficeReportService.maximumEntries),
+                          deleteAll: .api("OfficeReportService.forget(recordIDs:)"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeReportService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeReportService.swift"],
+                          location: "Application Support/AvenkinOffice/reports.json")
+
+        case .officeReportEvidence:
+            // The documents that go to the office with a job's record — the work order, the audit
+            // export, and the transcript when the organisation's rule lets it leave the phone —
+            // kept as the exact bytes the report named until the office has them. The same content
+            // a staged export holds, for longer; the organisation's record, written by this
+            // technician. Excluded from backup: a restored copy would be documents the office
+            // already has, or was never sent.
+            return Record(store: self, dataClass: .exportArtifact, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("removed when the office has all of a report, or a later report replaces it"),
+                          deleteAll: .api("OfficeReportEvidenceStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OfficeReportEvidenceStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OfficeSync/OfficeReportEvidenceStore.swift"],
+                          location: "Application Support/AvenkinOffice/report-evidence/")
 
         case .orgEnrolment:
             // Plan CT: the organisation profile this phone is enrolled with — the signed document,
