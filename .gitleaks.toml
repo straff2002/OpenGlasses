@@ -161,11 +161,11 @@ commits = ["0fe3fb9bb570680d33e3a5dcee41ee06978a1c46"]
 paths = ['''docs/MAIA-FIX-HANDOFF\.md''']
 
 [[allowlists]]
-description = "Public Ed25519 office application key in the deterministic managed-job contract fixture; two exact historical and current public values in this file only."
+description = "Public Ed25519 keys in the deterministic managed-job contract fixture: the office application key (two exact historical and current values) and the fictional phone application key that signs the golden receipt. All are public halves derived from public labels in Contracts/generate-fixture.go; these exact values in this file only."
 condition = "AND"
 paths = ['''^Contracts/fixtures/managed-job-fixture-keys\.json$''']
 regexTarget = "line"
-regexes = ['''11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=''', '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''']
+regexes = ['''11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=''', '''XNmlSele8WL46e\+W0GPnZwzSH0xVSbHoBuy5wsSIPCg=''', '''C3z2tBLoeeGHkAnZ1Jx4xi7gCQyi9B\+T560splcpjig=''']
 
 [[allowlists]]
 description = """
