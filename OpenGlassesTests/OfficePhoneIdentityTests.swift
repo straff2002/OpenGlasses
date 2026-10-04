@@ -24,6 +24,35 @@ final class OfficePhoneIdentityTests: XCTestCase {
         XCTAssertEqual(retainedKey, publicKey)
     }
 
+    func testOnlyAManagedJobReceiptIsSignedUnderTheReceiptDomain() async throws {
+        let account = "office.phone.identity.tests.\(UUID().uuidString)"
+        defer { try? KeychainService.deleteItem(account) }
+        let identity = OfficePhoneIdentity(account: account)
+        let verifier = try Curve25519.Signing.PublicKey(rawRepresentation: await identity.publicKey())
+        // The exact bytes the transport offers: here, the golden receipt's payload.
+        let fixture = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: "managed-job-receipt-v1", withExtension: "json")))
+        let envelope = try JSONDecoder().decode(OfficeManagedJobReceipt.Envelope.self, from: fixture)
+        let payload = try XCTUnwrap(Data(base64Encoded: envelope.payload))
+        let signature = try await identity.signManagedJobReceipt(payload)
+        XCTAssertTrue(verifier.isValidSignature(signature, for: OfficeManagedJobReceipt.domain + payload))
+        XCTAssertFalse(verifier.isValidSignature(signature, for: payload))
+
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        fields["outcome"] = "accepted"
+        let notAReceipt = [try JSONSerialization.data(withJSONObject: fields),
+                           Data(#"{"kind":"avenkin.commission-redemption"}"#.utf8),
+                           Data(repeating: 7, count: 32)]
+        for other in notAReceipt {
+            do {
+                _ = try await identity.signManagedJobReceipt(other)
+                XCTFail("the receipt signer signed something that is not a receipt")
+            } catch {
+                XCTAssertEqual(error as? OfficePhoneIdentity.Refusal, .invalidReceipt)
+            }
+        }
+    }
+
     func testCorruptStoredIdentityFailsClosed() async throws {
         let account = "office.phone.identity.tests.\(UUID().uuidString)"
         defer { try? KeychainService.deleteItem(account) }

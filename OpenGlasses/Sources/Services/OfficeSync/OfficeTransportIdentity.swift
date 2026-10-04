@@ -48,6 +48,48 @@ actor OfficeTransportIdentity {
         #endif
     }
 
+    /// The managed connection with its two folders (`OfficeManagedFolderTransport`): `control`,
+    /// which this phone only receives, and `records`, which it only sends. The engine verifies
+    /// nothing of the binding's chain; only `OfficePairingService.openFoldersWithApprovedOffice`
+    /// calls this, with a binding it has rechecked at that moment.
+    func startManagedOfficeFolders(bindingJSON: String, policy: String, lanHint: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().startManagedOfficeFolders(bindingJSON, policy: policy, lanHint: lanHint)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedJobsPending() throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedJobsPending(&error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func managedJobFile(messageID: String) throws -> String {
+        #if AVENKIN_OFFICE_TRANSPORT
+        var error: NSError?
+        let value = try preparedClient().managedJobFile(messageID, error: &error)
+        if let error { throw error }
+        return value
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
+    func publishManagedJobReceipt(messageID: String, signatureBase64: String) throws {
+        #if AVENKIN_OFFICE_TRANSPORT
+        try preparedClient().publishManagedJobReceipt(messageID, signatureBase64: signatureBase64)
+        #else
+        throw Refusal.unavailable
+        #endif
+    }
+
     func snapshot() throws -> String {
         #if AVENKIN_OFFICE_TRANSPORT
         var error: NSError?

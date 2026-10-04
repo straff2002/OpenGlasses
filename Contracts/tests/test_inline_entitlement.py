@@ -16,10 +16,13 @@ SOURCES = [
     "OpenGlasses/Sources/Services/OfficeSync/OfficeInlineEntitlement.swift",
     "OpenGlasses/Sources/Services/OfficeSync/OfficeSetupPackage.swift",
     "OpenGlasses/Sources/Services/OfficeSync/OfficePairingService.swift",
+    "OpenGlasses/Sources/Services/OfficeSync/OfficeManagedFolderTransport.swift",
+    "OpenGlasses/Sources/Services/OfficeSync/OfficeManagedJobReceipt.swift",
 ]
 TESTS = [
     "OpenGlassesTests/OfficeInlineEntitlementTests.swift",
     "Contracts/tests/PortableOfficePairingGateTests.swift",
+    "OpenGlassesTests/OfficeManagedFolderMemoryTransport.swift",
 ]
 
 

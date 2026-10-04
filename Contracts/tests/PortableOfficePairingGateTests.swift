@@ -89,6 +89,21 @@ final class PortableOfficePairingGateTests: XCTestCase {
         let notStarted = await OfficeTransportIdentity.shared.isRunning()
         XCTAssertFalse(notStarted)
 
+        // The managed folders open only through the same gate, with the binding verified just now.
+        let folders = OfficeManagedFolderMemoryTransport()
+        try await service.openFoldersWithApprovedOffice(folders)
+        let opened = await folders.starts
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(opened.first?.policy, "privateLan")
+        XCTAssertEqual(opened.first?.lanHint, "tcp://192.168.1.2:22000")
+        let handed = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(XCTUnwrap(opened.first?.bindingJSON).utf8)) as? [String: Any])
+        XCTAssertEqual(Set(handed.keys), OfficeManagedFolderMemoryTransport.bindingFields)
+        XCTAssertEqual(handed["enrolmentID"] as? String, "phone-one")
+        XCTAssertEqual(handed["phoneApplicationKey"] as? String,
+                       phone.publicKey.rawRepresentation.base64EncodedString())
+        await folders.stop()
+
         manager.status = .lapsed
         do {
             _ = try await service.currentApprovedPeer()
@@ -104,5 +119,15 @@ final class PortableOfficePairingGateTests: XCTestCase {
         }
         let stopped = await OfficeTransportIdentity.shared.isRunning()
         XCTAssertFalse(stopped)
+        do {
+            try await service.openFoldersWithApprovedOffice(folders)
+            XCTFail("lapsed management lease opened the managed folders")
+        } catch {
+            XCTAssertEqual(error as? OfficePairingService.Refusal, .inactiveLease)
+        }
+        let handedAgain = await folders.starts
+        let open = await folders.isOpen
+        XCTAssertEqual(handedAgain.count, 1, "the transport was not handed a binding again")
+        XCTAssertFalse(open)
     }
 }

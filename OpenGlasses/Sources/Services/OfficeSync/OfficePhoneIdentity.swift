@@ -9,6 +9,7 @@ actor OfficePhoneIdentity {
         case corruptIdentity
         case invalidChallenge
         case invalidRedemption
+        case invalidReceipt
     }
 
     static let shared = OfficePhoneIdentity()
@@ -53,6 +54,16 @@ actor OfficePhoneIdentity {
             throw Refusal.invalidRedemption
         }
         return try privateKey.signature(for: signingInput)
+    }
+
+    /// Sign the receipt for a managed job this phone has verified and committed
+    /// (Contracts/README.md, "Managed job receipt"). `payload` is the exact bytes the transport
+    /// offers; the signature is over the receipt domain followed by them. Only a receipt is signed
+    /// here: anything that is not a closed receipt payload within the contract's field rules is
+    /// refused, so this method cannot be used to make the key sign anything else.
+    func signManagedJobReceipt(_ payload: Data) throws -> Data {
+        guard OfficeManagedJobReceipt.payload(payload) != nil else { throw Refusal.invalidReceipt }
+        return try key().signature(for: OfficeManagedJobReceipt.domain + payload)
     }
 
     private func key() throws -> Curve25519.Signing.PrivateKey {

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCES = [
     "Services/OfficeSync/OfficeManualAssignment.swift",
     "Services/OfficeSync/OfficeManagedJob.swift",
+    "Services/OfficeSync/OfficeManagedJobReceipt.swift",
     "Services/OfficeSync/OfficeManualImport.swift",
     "Services/Vault/VaultArchive.swift",
     "Services/Vault/VaultPublisher.swift",
@@ -21,7 +22,7 @@ SOURCES = [
     "Services/SkillPacks/SkillPackSignature.swift",
     "Services/Reading/BookFileExtractor.swift",
 ]
-TESTS = ["OfficeManualAssignmentTests.swift", "OfficeManagedJobTests.swift", "OfficeManualImportTests.swift", "VaultArchiveFixtures.swift"]
+TESTS = ["OfficeManualAssignmentTests.swift", "OfficeManagedJobTests.swift", "OfficeManagedJobReceiptTests.swift", "OfficeManualImportTests.swift", "VaultArchiveFixtures.swift"]
 
 
 def main():

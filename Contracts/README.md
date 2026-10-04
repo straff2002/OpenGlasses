@@ -63,8 +63,8 @@ reviewed identities. A QR code, transport ID or network response cannot substitu
 This remains a **verification contract**, not a functioning delivery flow. The phone now keeps an
 Ed25519 application key in device-only Keychain storage, signs fresh possession challenges and
 retains the accepted binding generation there with an atomic update. The default main-app build
-does not embed the mobile transport. It does not call this verifier from a production delivery path.
-In particular, successful binding verification alone does not grant an
+does not embed the mobile transport. In the opt-in build the binding is rechecked before the
+managed folders open (below); successful binding verification alone still does not grant an
 entitlement, open a Syncthing share, install a manual or accept a job. The main-app path must also
 check the current enrolment, lease, entitlement and administrator approval before sharing data.
 
@@ -110,8 +110,17 @@ as a relay client, through the office's community relay. The phone announces not
 listener) and uses no local discovery, NAT mapping or STUN. A lookup shows the discovery server
 the phone's IP address and the office ID it asked for; a relay sees both devices' IP addresses and
 IDs, timing and byte counts, while the content stays TLS end to end between the pinned identities.
-`StartManagedOffice(officeTransportID, address)` is the `privateLan` form. The connection still
+`StartManagedOffice(officeTransportID, address)` is the `privateLan` form. That connection
 carries no job or manual.
+
+**Managed folders in the phone app.** In the opt-in build,
+`OfficePairingService.openFoldersWithApprovedOffice` calls `StartManagedOfficeFolders` under the
+same policy and hint rules. It is the only caller. The binding object it hands over is built from
+the approval verified at that moment — vendor profile and licence, live lease, administrator
+signature, this phone's actual transport and application keys, and the generation high-water —
+and from nothing else. The approval is verified again once the engine has started; if it fails,
+or is no longer the same binding under the same policy, the folders are closed. While the app is
+open the connection is kept by `OfficeFieldConnection`, which repeats the check every 30 seconds.
 
 ## Managed job transport reference — draft v1
 
@@ -134,8 +143,11 @@ re-encoded, so the office's record of a message and what a phone verifies are th
 helper exposes it as the one-shot operation `sign-managed-job`; its reply carries the envelope and
 no key.
 
-These functions are a contract boundary only. No managed folder, durable job high-water/commit,
-receipt, office job-signing key, or phone UI caller is enabled. The fixture contains public test
+The Go transport takes managed jobs out of the `control` folder, keeps the high-water mark and
+commits them. In the opt-in phone build `OfficeManagedJobIntake` then hands each committed job's
+exact bytes to `JobFileService` — the same validation, signature rule and review as a file opened
+from Mail — and only a job that import would offer is receipted. The default build has none of
+this, and no physical-phone run is claimed. The fixture contains public test
 keys and a synthetic unsigned `.ogjob`; it cannot satisfy an organisation policy requiring a
 separately signed job file. The Device Lab preview signature must not be treated as this contract.
 
@@ -181,9 +193,15 @@ stand-in phones have.
 In the [managed office folders](office-folders.md) the receipt is
 `records/receipts/<messageID>.envelope.json`. The golden fixture `managed-job-receipt-v1.json` is
 the receipt for `managed-job-v1.json`, signed by a fictional phone key whose public half is in
-`managed-job-fixture-keys.json`. The Go transport produces a receipt for each job it commits
-(`ManagedJobsPending`, `PublishManagedJobReceipt`); **no Swift code calls it yet, so no phone
-build gives one.**
+`managed-job-fixture-keys.json`. The Go transport offers a receipt for each job it commits
+(`ManagedJobsPending`, `PublishManagedJobReceipt`). In the opt-in phone build
+`OfficeManagedJobIntake` signs it with the phone application key
+(`OfficePhoneIdentity.signManagedJobReceipt`, which refuses anything that is not a closed receipt
+payload) once the job-file import would offer the job and the offer is recorded; a job file the
+import refuses is recorded with a bounded reason and gets none. The phone keeps the signature, so
+a job listed again gets the same receipt byte for byte. `OfficeManagedJobReceipt` is the Swift
+form of `VerifyReceipt`, checked against the golden fixture in the portable checks. The default
+build gives no receipt, and none has been given by a physical phone yet.
 
 ## Inline desktop licence and profile
 

@@ -1450,7 +1450,20 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// A paired phone's connection to its office while the app is open. Without the office
     /// transport in the build it never runs and shows nothing.
-    lazy var officeField = OfficeFieldConnection()
+    lazy var officeField: OfficeFieldConnection = {
+        var seams = OfficeFieldConnection.Seams()
+        seams.takeIn = { [weak self] in try? await self?.officeJobs?.sweep() }
+        return OfficeFieldConnection(seams: seams)
+    }()
+
+    /// Jobs the office has sent over the managed connection, taken to the job review. Nil in a
+    /// build without the office transport.
+    lazy var officeJobs: OfficeManagedJobIntake? = {
+        guard let transport = OfficeManagedFolderMobilecoreTransport.makeIfAvailable() else { return nil }
+        let intake = OfficeManagedJobIntake(seams: .app(transport: transport, jobFiles: jobFiles))
+        cancellables.append(jobFiles.$stage.sink { [weak intake] in intake?.reviewStageChanged($0) })
+        return intake
+    }()
 
     /// A code read by the in-app scanner: an office's code joins that office; anything else is an
     /// organisation enrolment code, as before.
