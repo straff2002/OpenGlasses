@@ -1,4 +1,4 @@
-# Recorded-session contract — draft v1 (shared rules, signed messages and fixtures built; capture and transport not)
+# Recorded-session contract — draft v1 (shared rules, signed messages and fixtures built; the phone records, seals and sends in the opt-in build; no office, and no device run, yet)
 
 Drafted 2026-10-02 with Plan [HE](../docs/plans/HE-recorded-session-action-map.md). This is the
 agreement between the phone app and Avenkin Office about a recorded job: what the phone sends,
@@ -22,13 +22,18 @@ Plan HE under "P0 as built". **The two signed messages have a reference implemen
 `Transport/mobile-core/recordingbundle` signs and reads the manifest (§3) and the office's
 receipt and later status (§6), with golden fixtures (§11). The phone's own code for them writes
 the golden manifest byte for byte and reads the golden receipts, tested headless; nothing in the
-app calls it. **The phone can seal and send a bundle, in the opt-in
-office transport build, and nothing starts it yet** (Plan HE P2, headless part, 2026-10-05): the
-transport publishes exactly what a sealed manifest lists under `records/recordings/<bundleID>/`
-and serves nothing else of it, the phone feeds it a couple of chunks ahead of what the office
-has taken, and only the office's verified *received* lets the phone let go of anything. **Not
-yet built:** anything that records; the blur pass; anything on the office side. No bundle has
-left a physical phone. Nothing on the phone records, bundles or sends a recorded job yet.
+app calls it. **The phone records, seals and sends a bundle, in the opt-in office
+transport build** (Plan HE P1 and the headless part of P2, 2026-10-05). "Record this job" writes
+the glasses' frames and the microphone into the job's own folder on one clock, behind a recording
+consent whose time is the manifest's `consentAt`; stopping builds `timeline.json` and
+`transcript.json` (§4, §5) and seals the bundle (§3). The transport publishes exactly what a
+sealed manifest lists under `records/recordings/<bundleID>/` and serves nothing else of it, the
+phone feeds it a couple of chunks ahead of what the office has taken, and only the office's
+verified *received* lets the phone let go of anything. **Every bundle is `blurred: false`:** the
+phone cannot blur a recording yet, so where an organisation requires blur no job is recorded,
+and an unblurred bundle already on the phone is not sent. **Not yet built:** the blur pass;
+anything on the office side. **No bundle has left a physical phone**, and nothing here has been
+run on one: what a phone and glasses have still to show is listed in Plan HE under "P1 as built".
 
 ## 1. Roles
 
@@ -130,6 +135,22 @@ candidates: [{ from, to, certainty: "certain"|"likely", reason }]
 - `turn_logged` carries the speaker, the text, and `precision: "aligned"|"coarse"`.
 - **The assistant's words are in events, not reliably in the audio.** The capture is silenced
   while replies play from the phone speaker.
+- **A part is one file holding its pictures and its sound.** The manifest lists it once, as
+  `track: "video"`, `container: "mp4"` (as `audio` only when it holds no pictures). The
+  timeline's `audio` track names the same `partID`, with the sound's own `tZero` and `duration`.
+  Inside the file each track begins at zero at its own first sample, so the sound is offset from
+  the pictures by the difference of the two `tZero`s; a reader that needs them in step applies it.
+- **A gap** lies between one part of a track and the next, from where the earlier ends to where
+  the later begins, with the reason the earlier one ended. A recording carried on after the app
+  was closed has a `restart` gap, and the parts after it are placed through the wall clock.
+- Events the phone notes as they happen (`turn_started`, the assistant speaking, the capture
+  silenced, `tool_call`, `user_marker`) are to the millisecond. Events taken from the job's log
+  (`turn_logged` before alignment, `photo`, the `procedure_*` kinds) are to the second: the log
+  stamps in whole seconds. `ref` on `photo` is the photograph's file name in the job; on a
+  `turn_logged` the log gave no id for, it is `log-N`.
+- The transcript's utterances are the phone's own, on-device, one for each ten-second window of
+  sound that held words; with no on-device recogniser the transcript is empty and every turn is
+  `coarse`.
 - `candidates` are advisory. The office may ignore them, and must not treat their absence as
   "no procedure".
 
