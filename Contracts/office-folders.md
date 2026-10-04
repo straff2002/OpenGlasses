@@ -96,6 +96,7 @@ never opened, never imported, never served, and counted for diagnostics.
 |---|---|---|
 | `jobs/<messageID>.envelope.json` | Managed-job envelope | Managed job transport reference |
 | `jobs/<jobSHA256>.ogjob` | The exact job-file bytes that envelope names | same |
+| `updates/<updateID>.envelope.json` | An update on a job the phone already has | [Job updates](job-updates.md) §3 |
 | `assignments/<assignmentID>.envelope.json` | Manual assignment | Manual assignment contract |
 | `publishers/<grantID>.envelope.json` | Administrator-signed grant of the organisation's own publishing key | [Bulk content](office-bulk.md) §3 |
 | `receipts/<reportID>.pending.envelope.json`, `….record.envelope.json`, `….full.envelope.json` | The office's receipts for a report, one file per outcome | [Reports](office-reports.md) §8 |
@@ -115,6 +116,7 @@ never opened, never imported, never served, and counted for diagnostics.
 | `reports/<manifestSHA256>.manifest.json` | The attachment manifest that report names | Reports §5 |
 | `attachments/<sha256>` | Evidence named by a report's attachment manifest | same |
 | `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job | Managed job receipt |
+| `updates/<updateID>.envelope.json` | The phone's receipt for a job update | [Job updates](job-updates.md) §6 |
 | `assignments/<assignmentID>.received.envelope.json`, `….installed.envelope.json` | The phone's receipts for a manual assignment, one file per outcome | [Bulk content](office-bulk.md) §4 |
 | `recordings/<bundleID>/…` | A recorded-session bundle, laid out as its contract says | Recorded session §3 |
 | `learning/candidates/<candidateID>-<revision>.envelope.json` | A learning candidate | Team learning §3 |

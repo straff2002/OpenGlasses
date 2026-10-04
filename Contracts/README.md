@@ -7,7 +7,8 @@ and revision, signed over exact bytes; reference implementation, fixture and the
 [bulk content](office-bulk.md) (an organisation's own publisher, the assignment receipt, and what
 a job names; messages, fixtures, and the phone's half in the opt-in build),
 [office reports](office-reports.md) (messages, fixtures and the phone's half in the opt-in
-build; no office reads a report yet) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
+build; no office reads a report yet), [job updates](job-updates.md) (an update on a job the phone
+already has, and the phone's receipt; messages and fixtures) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
 folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
 key-holder operations and fixtures, the phone's half in that build, and no office app caller).
 

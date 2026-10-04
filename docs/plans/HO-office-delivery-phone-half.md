@@ -52,7 +52,7 @@ and nothing more.
 | Stay joined: check-in and renewal | draft v1, fixtures | messages, the office key holder's operations, and the phone's folder handling | **P1 built** (opt-in build): the challenge answered once, the result through the pairing gate, the lease renewed, the folders restarted under the new generation | a phone renewed by a real office, and one left unreachable past a challenge then renewed on return. The office app does not yet call the key holder's operations |
 | Removal by the office | same contract | messages, and the phone's folder handling | **P1 built** (opt-in build): a removal revokes as a signed revocation does and is receipted | a removal delivered to a physical phone and its receipt reaching the office |
 | Job to the phone | managed job + receipt, fixtures; [job file](../../Contracts/job-file.md) format 2, fixture | intake, durable commit, receipt offered for signing; job-file format 2 reference | **P0 built** (opt-in build): the folders open through the pairing gate, the job goes to the job review, the receipt is signed and published. **P0b built** (every build): a format-2 job keeps the office's identifier and revision; a later revision revises the job, the same one twice is one job | one signed format-2 job to a physical phone and its receipt accepted by the office |
-| Update or note on a job the phone holds | none (Plan HN) | none | none | HN's contract, then P3 |
+| Update or note on a job the phone holds | [job updates](../../Contracts/job-updates.md), draft v1, fixtures | messages: the update and the phone's receipt | none | P3's phone half |
 | Attachments with a job | [bulk content](../../Contracts/office-bulk.md) §5: a job names them by digest and they follow in `bulk` | `jobfile.ReadNeeds` | **P4 second part built**: the validator reads them in format 2, the job keeps them, and (opt-in build) an attachment a signed job names is taken from `bulk`, checked and opened from the job | an attachment from a real office to a physical phone |
 | Manual to the phone | assignment + preflight, fixtures; [bulk content](../../Contracts/office-bulk.md) draft v1 (publisher grant, assignment receipt), fixtures | verifier, the grant and receipt messages, and the phone's `bulk` folder | **P4 first part built** (opt-in build): a grant kept, an assignment committed and receipted, its archive taken from `bulk` when the route allows, verified under the organisation's granted publisher and handed to the installer | a manual from a real office to a physical phone; the office side of `bulk` |
 | Report and parts request to the office | [office reports](../../Contracts/office-reports.md), draft v1, fixtures | messages, and the phone's publishing, receipts and outbound list | **P2 built** (opt-in build): a phone that joined an office sends job records and stock checks there, waits rather than counting attempts, and treats a record as delivered only on the office's receipt | a report from a physical phone to a real office; the office reading one; photographs and clips as their own attachments; the report composer offering the office |
@@ -460,6 +460,27 @@ Choices made where the contract left room:
 
 HN owns the design. This phase is its message contract and the intake beside P0's: a signed
 update on a job the phone holds, information only, shown when the technician opens the job.
+
+**Contract drafted (2026-10-05):** [`Contracts/job-updates.md`](../../Contracts/job-updates.md),
+with `Transport/mobile-core/jobupdate` as its reference implementation and golden fixtures
+(three updates on the golden format-2 job — a part dispatched, the visit moved, a note — and the
+phone's receipt for the first). The phone half has not started. What the contract settled:
+
+- **One closed, flat payload for every kind.** `parts`, `schedule` and `note` share one list
+  of members; one that does not apply is empty. A kind word this version does not define still
+  verifies and is shown as a note, so an office can add a kind that needs no new member
+  without a phone refusing it.
+- **A sequence within the job, taken once.** Unlike a job, an update is not superseded: each
+  is kept under its job and sequence, arrival order means nothing, and other bytes at a held
+  sequence are a conflict that is refused.
+- **Named by the office's job identifier** — format 2's `job_id` — so P0b was its prerequisite.
+- **One receipt, *received*, that also says what the phone held for the job** (`held`,
+  `finished` or `unknown`). An update for a job the phone does not hold is kept and waits: the
+  job may still be in the technician's review.
+- **Delivered is not read.** No message says an update was opened; that stays on the phone
+  (HN's open question 1).
+- **Left out of v1:** a reply from the phone, attachments on an update (a job's files travel
+  as the job's own attachments), and applying a new time to the job.
 
 ### P4 — The `bulk` folder: job attachments and manuals (*contract first* for three pieces)
 
