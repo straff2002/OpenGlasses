@@ -1,8 +1,9 @@
 # Plan HO — Office Delivery on the Phone (jobs, updates, manuals out; reports, transcripts back)
 
 **Status:** 🚧 P0 and P1 built 2026-10-04 (opt-in office transport build only; both headless
-exits met, the physical-phone runs are owed). P2's contract drafted 2026-10-04 with its reference
-implementation and fixtures; its phone half, and P3–P6, planned. A build order, not a new design:
+exits met, the physical-phone runs are owed). The contracts for P0b (job-file format 2,
+2026-10-05) and P2 (reports back, 2026-10-04) are drafted with reference implementations and
+fixtures; their phone halves, and P3–P6, are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -166,6 +167,27 @@ Decided 2026-10-04: before P0's run on a physical phone.
 
 **Exit:** the golden fixture imports, reviews and round-trips; a version-1 file still imports;
 the same identifier and revision twice is one job; an older revision never replaces a newer one.
+
+**Contract drafted (2026-10-05):** [`Contracts/job-file.md`](../../Contracts/job-file.md), with
+`Transport/mobile-core/jobfile` as its reference implementation and the signed golden fixture
+`job-file-v2.ogjob`. The phone half has not started: the app still reads format 1 only. What the
+contract settled:
+
+- **The file wraps the job's exact bytes.** A signature cannot cover a file it sits inside, so a
+  format-2 file is `format`, `format_version`, `job` (the job's bytes, base64) and `signature`,
+  and the signature is over `Avenkin.JobFile.v2`, a zero byte and those bytes. A format-1 reader
+  still sees a job file at a version it cannot read.
+- **`job_id` and `revision` are required members of the job.** The rest are format 1's fields
+  with format 1's limits.
+- **Same identifier and revision: the same bytes are one job, other bytes are a conflict.** A
+  higher revision is a revision of that job; a lower one is refused.
+- **An unsigned file never revises a job that arrived signed.** Otherwise the unsigned rule is
+  format 1's.
+- **The report names the job.** The report contract gained `jobID` and `jobRevision` (empty and
+  0 for a job that began any other way), and its fixtures were regenerated.
+
+Open in the contract (its §9): attachments still only named; what a revision does to a job in
+progress (Plan HN); whether format 2 should always be signed; no signed cancellation.
 
 ### P1 — Check-in, renewal and removal on the phone
 
