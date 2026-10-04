@@ -138,6 +138,51 @@ receipt, office job-signing key, or phone UI caller is enabled. The fixture cont
 keys and a synthetic unsigned `.ogjob`; it cannot satisfy an organisation policy requiring a
 separately signed job file. The Device Lab preview signature must not be treated as this contract.
 
+## Managed job receipt — draft v1
+
+A receipt is the phone's signed statement that it **verified one managed job and committed its
+exact bytes durably to its own private store**, ready for the technician's review. It is what
+lets the office stop holding the job as pending. It is not the technician accepting or starting
+the job, and a file finishing its transfer never produces one.
+
+`manageddelivery.Receipt` is a closed, flat payload under its own signature domain,
+`Avenkin.ManagedJobReceipt.v1` followed by a zero byte, signed with the **phone application
+key** the binding names. The envelope is the same two base64 strings as every other contract
+here, capped at 8 KiB.
+
+| Payload field | Meaning |
+| --- | --- |
+| `version`, `kind` | Exactly `1`, `avenkin.managed-job-receipt` |
+| `messageID`, `sequence` | The managed job this answers |
+| `organizationID`, `enrolmentID`, `officeID`, `generation` | The binding the job was sent under |
+| `phoneTransportID` | The phone's transport identity under that binding |
+| `payloadSHA256` | SHA-256 of the signed managed-job payload bytes the phone verified |
+| `jobSHA256` | SHA-256 of the job-file bytes it committed |
+| `outcome` | `received` — the only outcome in v1 |
+| `receivedAt` | Unix UTC seconds on the phone's clock when it committed |
+
+The phone gives a receipt only after `Verify` and `VerifyBytes` pass against the freshly
+rechecked binding and the bytes are committed. An exact replay of a committed message gives the
+same receipt again. A job the phone refuses gets no receipt in v1; the office sees it as not
+received and re-issues.
+
+`VerifyReceipt` is the office's check: closed envelope and payload, the signature over the exact
+payload bytes under the phone application key **from the binding, never from the receipt**, the
+binding fields, the field rules, and that message id, sequence, payload digest and job digest
+are exactly those of the message the office sent — so a receipt for one message cannot complete
+another. The office's own clock, not `receivedAt`, records when it accepted the receipt.
+
+The phone application key lives in device-only storage outside the transport, so signing is in
+two steps: `ReceiptPayload` gives the exact bytes to sign, and `SealReceipt` wraps them with the
+signature. `SignReceipt` does both for a key held in process, which only fixtures, tests and
+stand-in phones have.
+
+In the [managed office folders](office-folders.md) the receipt is
+`records/receipts/<messageID>.envelope.json`. The golden fixture `managed-job-receipt-v1.json` is
+the receipt for `managed-job-v1.json`, signed by a fictional phone key whose public half is in
+`managed-job-fixture-keys.json`. **No phone build produces a receipt yet, and no Swift code
+reads or writes one.**
+
 ## Inline desktop licence and profile
 
 New desktop licence codes retain the existing vendor Ed25519 signature and add two signed,

@@ -96,10 +96,20 @@ func main() {
 	must(err)
 	must(os.WriteFile(filepath.Join(root, "managed-job-v1.json"), append(managedEnvelope, '\n'), 0644))
 	must(os.WriteFile(filepath.Join(root, "managed-job-v1.ogjob"), job, 0644))
+	// The phone's receipt for that job, signed by a fictional phone application key.
+	phoneSeed := sha256.Sum256([]byte("Avenkin public fixture phone application key v1"))
+	phone := ed25519.NewKeyFromSeed(phoneSeed[:])
+	office_ := office.Public().(ed25519.PublicKey)
+	verified, err := manageddelivery.Verify(managedEnvelope, manageddelivery.Trust{OrganizationID: "fixture-org", EnrolmentID: "fixture-phone", OfficeID: "fixture-office", OfficeTransportID: officeTransportID, PhoneTransportID: phoneTransportID, Generation: 1, OfficeApplicationKey: office_}, 1800000000, nil)
+	must(err)
+	receipt, err := manageddelivery.SignReceipt(manageddelivery.ReceiptFor(verified, 1800000100), phone)
+	must(err)
+	must(os.WriteFile(filepath.Join(root, "managed-job-receipt-v1.json"), append(receipt, '\n'), 0644))
 	managedKeys, err := json.MarshalIndent(map[string]any{
 		"fixtureOnly": true, "now": 1800000000,
-		"officeApplicationKey": base64.StdEncoding.EncodeToString(office.Public().(ed25519.PublicKey)),
+		"officeApplicationKey": base64.StdEncoding.EncodeToString(office_),
 		"officeTransportID":    officeTransportID, "phoneTransportID": phoneTransportID,
+		"phoneApplicationKey": base64.StdEncoding.EncodeToString(phone.Public().(ed25519.PublicKey)),
 	}, "", "  ")
 	must(err)
 	must(os.WriteFile(filepath.Join(root, "managed-job-fixture-keys.json"), append(managedKeys, '\n'), 0644))

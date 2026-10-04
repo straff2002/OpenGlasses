@@ -84,7 +84,7 @@ never opened, never imported, never served, and counted for diagnostics.
 |---|---|---|
 | `reports/<sha256(op_id)>.envelope.json` | A queued operation: work record or parts request | *Envelope not yet specified* (§9.1) |
 | `attachments/<sha256>` | Evidence named by a report's attachment manifest | same |
-| `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job or assignment | *Not yet specified* (§9.2) |
+| `receipts/<messageID>.envelope.json` | The phone's receipt for a managed job (for an assignment: *not yet specified*, §9.2) | Managed job receipt |
 | `recordings/<bundleID>/…` | A recorded-session bundle, laid out as its contract says | Recorded session §3 |
 | `learning/candidates/<candidateID>-<revision>.envelope.json` | A learning candidate | Team learning §3 |
 
@@ -170,8 +170,8 @@ refused).
    an organisation's HTTP endpoint and no signed form for an office. A signed report envelope,
    its attachment manifest and the office's receipt need their own contract before
    `reports/`, `attachments/` and the office's `receipts/` are used.
-2. **The phone's receipt for a job and for an assignment** is required by Plan FX and not yet
-   specified.
+2. **The phone's receipt for an assignment** is required by Plan FX and not yet specified. The
+   receipt for a managed job is ([README](README.md), "Managed job receipt").
 3. **Deletion.** Whether receivers should also set the engine's ignore-deletes on their
    receive-only folders, or rely on §4's rule that a committed record is independent of the
    folder.
