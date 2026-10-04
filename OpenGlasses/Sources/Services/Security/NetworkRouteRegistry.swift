@@ -159,6 +159,9 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case offlineEndpointSync
     case webRTCBrowserStreaming
     case twitchChatSocket
+    /// A recorded job's bundle sent to the organisation's office over the managed connection
+    /// (Plan HE). Not a `URLSession`: the bytes are carried by the embedded office engine.
+    case jobRecordingOfficeSync
 
     // MARK: Catalogs
     case clawHubCatalog
@@ -227,6 +230,7 @@ extension NetworkRoute {
         case .webRTCBrowserStreaming: return "Relay camera frames to a browser viewer through the signaling server."
         case .offlineEndpointSync: return "Flush queued offline records to the configured sync endpoint."
         case .twitchChatSocket: return "Read and post broadcast chat messages."
+        case .jobRecordingOfficeSync: return "Send a recorded job — its video, sound, timeline and transcript — to the organisation's own office, the one this phone is paired with."
         case .clawHubCatalog: return "Fetch the published skill-pack catalog."
         case .vaultPackCatalog: return "Fetch the published vault-pack catalog."
         case .playbookHTTPStep: return "Call the URL an active playbook step names, with variables the run has filled in."
@@ -293,6 +297,8 @@ extension NetworkRoute {
             return [.transcript, .location]
         case .expertSignaling, .webRTCBrowserStreaming:
             return [.frame, .audio]
+        case .jobRecordingOfficeSync:
+            return [.frame, .audio, .transcript]
         case .offlineEndpointSync:
             return [.transcript, .healthFact, .credential]
         case .twitchChatSocket:
@@ -333,7 +339,7 @@ extension NetworkRoute {
              .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession,
-             .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener:
+             .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener, .jobRecordingOfficeSync:
             return .localNetwork
         case .loopbackOAuthCallback:
             return .loopback
@@ -376,9 +382,22 @@ extension NetworkRoute {
         }
     }
 
+    /// The type that sends on this route when its transport is the embedded office engine rather
+    /// than a `URLSession`. The scrape below looks for `URLSession` and its kin and so can never
+    /// see such a route; naming the sender here is what keeps it from looking like an omission,
+    /// and `NetworkRouteRegistryTests` checks that the type exists and calls the medical guard for
+    /// this route. Nil for every route the scrape can see.
+    var officeEngineSender: String? {
+        switch self {
+        case .jobRecordingOfficeSync: return "JobRecordingSyncService"
+        default: return nil
+        }
+    }
+
     /// The types that actually own the transport for this route. `NetworkRouteRegistryTests`
     /// checks this against a scrape of the source tree, so the mapping cannot silently rot.
-    /// Empty exactly when ``transportDelegatedTo`` names the route whose transport is borrowed.
+    /// Empty exactly when ``transportDelegatedTo`` names the route whose transport is borrowed, or
+    /// ``officeEngineSender`` names the type that sends over the embedded office engine.
     var owningTypes: [String] {
         switch self {
         case .deepgramLiveTranscription: return ["DeepgramSTTService"]
@@ -414,6 +433,7 @@ extension NetworkRoute {
         case .offlineEndpointSync: return ["EndpointSyncSink"]
         case .webRTCBrowserStreaming: return ["WebRTCStreamingService"]
         case .twitchChatSocket: return ["URLSessionChatSocket"]
+        case .jobRecordingOfficeSync: return []
         case .clawHubCatalog: return ["ClawHubService"]
         case .vaultPackCatalog: return ["VaultPackCatalogService"]
         case .playbookHTTPStep: return ["PlaybookStore"]

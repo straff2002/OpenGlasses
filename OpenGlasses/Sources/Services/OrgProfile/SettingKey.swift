@@ -31,6 +31,13 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case organizationRequiresCustomerSignOff
     /// Only the office addresses the organisation set up may receive a transcript (Plan HD).
     case organizationForbidsCustomerTranscript
+    /// "Record this job" is not offered on this organisation's phones (Plan HE).
+    case organizationForbidsJobRecording
+    /// A recorded job's faces must be blurred before it goes to the office. Until the app can
+    /// blur a recording, this means no job is recorded at all — never one sent unblurred.
+    case organizationRequiresBlurBeforeOfficeSync
+    /// A recorded job is never sent over mobile data, whatever the technician would allow.
+    case organizationForbidsRecordingSyncOnCellular
 
     // Capability ceilings — tighten only.
     case privacyFilterEnabled
@@ -74,7 +81,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .organizationAllowsUnsignedVaults:
             return .ceiling(pinnedTo: false)
         case .organizationRequiresSignedJobFiles, .organizationRequiresCustomerSignOff,
-             .organizationForbidsCustomerTranscript, .privacyFilterEnabled:
+             .organizationForbidsCustomerTranscript, .organizationForbidsJobRecording,
+             .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
+             .privacyFilterEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled:

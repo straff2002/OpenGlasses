@@ -407,6 +407,46 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         XCTAssertEqual(published.count, 1)
     }
 
+    /// The medical local-only rule is asked by the service itself, where the bytes would leave —
+    /// not only taken on trust from whoever reports the conditions.
+    func testNothingIsPublishedWhileMedicalLocalOnlyRefusesTheRoute() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        let previous = MedicalEgressGuard.currentMode
+        MedicalEgressGuard.currentMode = { .localOnly }
+        defer { MedicalEgressGuard.currentMode = previous }
+        do {
+            try await service.sweep()
+            XCTFail("the pass should have been refused")
+        } catch let refusal as MedicalEgressRefusal {
+            XCTAssertEqual(refusal.route, .jobRecordingOfficeSync)
+        }
+        var published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(gateCalls, 0, "refused before the pairing is even asked")
+
+        MedicalEgressGuard.currentMode = { .off }
+        try await service.sweep()
+        published = await transport.recordings
+        XCTAssertEqual(published.count, 1)
+    }
+
+    /// An unblurred recording is not sent where the organisation requires blur. It is kept, and
+    /// the line on the job says why.
+    func testAnUnblurredRecordingIsHeldWhereTheOrganisationRequiresBlur() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        conditions.blurRequiredAndNotDone = true
+        try await service.sweep()
+        let published = await transport.recordings
+        XCTAssertTrue(published.isEmpty)
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.blurRequired)))
+        XCTAssertTrue(Service.words(try XCTUnwrap(service.rows.first)).contains("blurred"))
+        XCTAssertEqual(store.records().count, 1, "it is kept")
+    }
+
     func testDeletingARecordingRemovesAllOfItAndAsksFirstWhenTheOfficeHasNotGotIt() async throws {
         try await openFolders()
         let record = try await seal()

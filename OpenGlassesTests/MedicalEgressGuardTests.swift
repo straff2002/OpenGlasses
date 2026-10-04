@@ -58,6 +58,21 @@ final class MedicalEgressGuardTests: XCTestCase {
         ])
     }
 
+    /// Plan HE: a recorded job's route to the office is refused in Local Only like any other
+    /// route that carries what the glasses captured — it holds video, sound and words.
+    func testARecordedJobsRouteToTheOfficeIsRefusedInLocalOnly() throws {
+        let route = NetworkRoute.jobRecordingOfficeSync
+        XCTAssertTrue(route.medicalPolicy.blocksLocalOnly)
+        XCTAssertTrue(MedicalEgressGuard.decide(route, mode: off).isAllowed)
+        XCTAssertTrue(MedicalEgressGuard.decide(route, mode: medicalWithoutLocalOnly).isAllowed,
+                      "the egress guard binds in Local Only; Medical Compliance by itself is refused elsewhere")
+        XCTAssertEqual(MedicalEgressGuard.decide(route, mode: localOnly), .refuse(MedicalEgressRefusal(route: route)))
+        try withMode(localOnly) {
+            XCTAssertThrowsError(try MedicalEgressGuard.check(.jobRecordingOfficeSync))
+            XCTAssertTrue(MedicalEgressGuard.blockedRoutes.contains(.jobRecordingOfficeSync))
+        }
+    }
+
     func testCheckThrowsARefusalNamingTheRoute() throws {
         try withMode(localOnly) {
             XCTAssertThrowsError(try MedicalEgressGuard.check(.elevenLabsSpeechSynthesis)) { error in

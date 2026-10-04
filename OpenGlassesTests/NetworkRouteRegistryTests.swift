@@ -140,12 +140,42 @@ final class NetworkRouteRegistryTests: XCTestCase {
 
     func testEveryRouteDescribesItself() {
         for route in NetworkRoute.allCases {
-            XCTAssertTrue(!route.owningTypes.isEmpty || route.transportDelegatedTo != nil,
-                          "\(route.rawValue) names neither an owning type nor a borrowed transport")
+            XCTAssertTrue(!route.owningTypes.isEmpty || route.transportDelegatedTo != nil
+                              || route.officeEngineSender != nil,
+                          "\(route.rawValue) names neither an owning type, a borrowed transport, "
+                              + "nor a sender over the office engine")
             XCTAssertFalse(route.dataClasses.isEmpty, "\(route.rawValue) declares no data classes")
             XCTAssertGreaterThan(route.purpose.count, 20, "\(route.rawValue) needs a real purpose line")
             XCTAssertTrue(route.purpose.hasSuffix("."), "\(route.rawValue)'s purpose should read as a sentence")
         }
+    }
+
+    /// A route carried by the embedded office engine has no `URLSession` for the scrape to find,
+    /// so it is held to its own rule instead of escaping one: it names exactly one sender, owns
+    /// and borrows no other transport, that type exists, and its source calls the medical guard
+    /// for this very route. Kept to the one route that needs it — the escape hatch stays narrow.
+    func testARouteOverTheOfficeEngineNamesASenderThatGuardsIt() throws {
+        let overEngine = NetworkRoute.allCases.filter { $0.officeEngineSender != nil }
+        XCTAssertEqual(overEngine, [.jobRecordingOfficeSync])
+        for route in overEngine {
+            let sender = try XCTUnwrap(route.officeEngineSender)
+            XCTAssertTrue(route.owningTypes.isEmpty && route.transportDelegatedTo == nil,
+                          "\(route.rawValue) names a sender over the office engine and another transport")
+            guard let walker = FileManager.default.enumerator(at: Self.appSourcesDirectory,
+                                                              includingPropertiesForKeys: nil) else {
+                return XCTFail("Could not enumerate the sources")
+            }
+            var declaring: [String] = []
+            for case let url as URL in walker where url.pathExtension == "swift" {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                if text.contains("final class \(sender)") { declaring.append(text) }
+            }
+            XCTAssertEqual(declaring.count, 1, "\(sender) should be declared exactly once")
+            XCTAssertTrue(declaring.first?.contains("MedicalEgressGuard.check(.\(route.rawValue))") == true,
+                          "\(sender) sends on \(route.rawValue) without asking the medical guard")
+        }
+        XCTAssertEqual(NetworkRoute.jobRecordingOfficeSync.medicalPolicy, .blockedWhenLocalOnly)
+        XCTAssertEqual(NetworkRoute.jobRecordingOfficeSync.dataClasses, [.frame, .audio, .transcript])
     }
 
     func testEveryMedicalExceptionCarriesAJustification() {
