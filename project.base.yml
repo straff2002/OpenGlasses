@@ -134,6 +134,10 @@ targets:
       - path: GlassesActivityWidget/AccentColors.swift
       # Shared with widget target — UserDefaults-backed listening state
       - path: GlassesActivityWidget/SharedAppState.swift
+      # Shared with widget target — the "Ask Avenkin" control's intent must be in the app too,
+      # so iOS opens the app and runs it here; it hands the press over as a pending request.
+      - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
+      - path: GlassesActivityWidget/PendingAskRequest.swift
     configFiles:
       Debug: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig
       Release: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig
@@ -158,7 +162,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "458"
+        CURRENT_PROJECT_VERSION: "459"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -263,7 +267,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "458"
+        CURRENT_PROJECT_VERSION: "459"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -301,7 +305,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "458"
+        CURRENT_PROJECT_VERSION: "459"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic

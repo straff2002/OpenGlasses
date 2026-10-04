@@ -349,6 +349,12 @@ struct OpenGlassesApp: App {
                         }
                     }
                 }
+                // The "Ask Avenkin" control: a press while the app runs arrives as a Darwin
+                // notification; a press that launched the app is waiting in the App Group.
+                PendingAskObserver.shared.start {
+                    Task { @MainActor in appState.takePendingAskRequest(trigger: "notification") }
+                }
+                appState.takePendingAskRequest(trigger: "launch")
             }
                 .onReceive(NotificationCenter.default.publisher(
                     for: UIApplication.protectedDataWillBecomeUnavailableNotification
@@ -556,6 +562,8 @@ struct OpenGlassesApp: App {
                 appState.restoreFromBackground()
                 // A paired phone reconnects to its office whenever the app is open.
                 appState.officeField.appBecameActive()
+                // A press of the "Ask Avenkin" control that brought the app forward.
+                appState.takePendingAskRequest(trigger: "active")
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
                 // brought back — but it runs the same gate, so a session the wearer stopped stays
                 // stopped and a repeated activation does not stack a second start on the first.

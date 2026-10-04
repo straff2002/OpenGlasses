@@ -9,6 +9,7 @@ struct GlassesActivityWidgetBundle: WidgetBundle {
         GlassesActivityWidget()
         OpenGlassesHomeWidget()
         if #available(iOS 18.0, *) {
+            AskAvenkinControlWidget()
             ListeningControlWidget()
         }
     }

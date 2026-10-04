@@ -25,7 +25,7 @@ targets:
         # project.local.yml when rebranding, or Watch install fails.
         WK_COMPANION_APP_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "458"
+        CURRENT_PROJECT_VERSION: "459"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
@@ -60,7 +60,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "458"
+        CURRENT_PROJECT_VERSION: "459"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: "YES"

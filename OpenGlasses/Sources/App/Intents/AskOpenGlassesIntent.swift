@@ -25,16 +25,7 @@ struct AskOpenGlassesIntent: AppIntent, AudioRecordingIntent {
             throw IntentError.appNotRunning
         }
 
-        // Switch to direct mode if not already
-        if appState.currentMode != .direct {
-            appState.switchMode(to: .direct)
-            try await Task.sleep(nanoseconds: 500_000_000)
-        }
-
-        // Skip wake word — go straight to transcription
-        appState.wakeWordService.stopListening()
-        appState.startDirectTranscription()
-
+        try await appState.startAskWithoutWakeWord()
         return .result()
     }
 
