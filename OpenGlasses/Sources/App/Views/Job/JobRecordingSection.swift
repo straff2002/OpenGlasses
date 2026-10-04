@@ -37,9 +37,14 @@ private struct JobRecordingRows: View {
     private var row: JobRecordingSyncService.Row? { sync.rows.first { $0.sessionID == sessionID } }
     private var isRecordingHere: Bool { coordinator.status.sessionID == sessionID }
 
+    /// What last happened to this job's recording. Another job's is not shown here.
+    private var noteForThisJob: String? {
+        coordinator.lastNoteSessionID == sessionID ? coordinator.lastNote : nil
+    }
+
     private var hasSomethingToShow: Bool {
         if isRecordingHere || row != nil { return true }
-        guard isOpenJob else { return false }
+        guard isOpenJob else { return coordinator.hasUnsealedRecording(sessionID: sessionID) }
         return coordinator.unsealed != nil || coordinator.verdict != .notOffered
     }
 
@@ -51,12 +56,15 @@ private struct JobRecordingRows: View {
                         running
                     } else if let row {
                         sent(row)
+                    } else if !isOpenJob {
+                        // A finished job whose recording is still to be sealed.
+                        notYetSealed(.waitingToPrepare)
                     } else if let unsealed = coordinator.unsealed {
                         notYetSealed(unsealed)
                     } else {
                         offer
                     }
-                    if let line = problem ?? (isRecordingHere ? reminder : coordinator.lastNote) {
+                    if let line = problem ?? (isRecordingHere ? reminder : noteForThisJob) {
                         Text(verbatim: line)
                             .font(.caption)
                             .foregroundStyle(problem == nil ? Color.secondary : OGTheme.warnLabel)
@@ -149,7 +157,9 @@ private struct JobRecordingRows: View {
             stopButton
         case .paused:
             statusLine("Recording paused", detail: sizeAndTime)
-            choice("Carry on recording") { problem = coordinator.resume()?.explanation }
+            choice("Carry on recording") {
+                Task { problem = await coordinator.resume()?.explanation }
+            }
             stopButton
         case .waitingForVideo:
             statusLine("Waiting for the glasses", detail: "They stopped sending video. What was recorded is saved, and recording carries on when they come back.")

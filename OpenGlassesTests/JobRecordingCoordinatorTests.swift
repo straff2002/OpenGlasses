@@ -405,7 +405,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(recorder.started.count, 1, "nothing is recorded while there are no pictures")
 
         advance(6.5)
-        coordinator.videoReturned()
+        await coordinator.videoReturned()
         XCTAssertEqual(coordinator.status, .recording(sessionID: sessionID))
         XCTAssertEqual(recorder.started.count, 2)
         XCTAssertEqual(recorder.started[1].file.lastPathComponent, "part-2.mp4")
@@ -436,6 +436,40 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(recorder.started.count, 2)
     }
 
+    /// The glasses come back and the next part cannot begin — the phone has filled up. The
+    /// recording is finished with what it has rather than left waiting.
+    func testARecordingThatCannotCarryOnAfterAStallIsSealedWithWhatItHas() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(40)
+        recorder.stall()
+        await settle { coordinator.status == .waitingForVideo(sessionID: self.sessionID) }
+        recorder.failNextStart = .notEnoughStorage
+        advance(5)
+        await coordinator.videoReturned()
+
+        XCTAssertEqual(coordinator.status, .idle)
+        XCTAssertEqual(try timeline(try XCTUnwrap(bundles.records().first)).tracks.first?.parts.map(\.partID), ["part-1"])
+        XCTAssertEqual(logged.first { $0.kind == .recordingStopped }?.payload["reason"]?.value as? String,
+                       "could_not_carry_on")
+        XCTAssertEqual(coordinator.lastNoteSessionID, sessionID)
+    }
+
+    /// Pausing and stopping at once must not lose the part the pause is still finishing.
+    func testStoppingWhileAPauseIsStillFinishingKeepsThePart() async throws {
+        let coordinator = makeCoordinator()
+        await started(coordinator)
+        advance(30)
+        async let paused: Void = coordinator.pause()
+        async let stopped = coordinator.stop()
+        _ = await (paused, stopped)
+
+        XCTAssertEqual(coordinator.status, .idle)
+        let record = try XCTUnwrap(bundles.records().first, "the part was sealed, not dropped")
+        XCTAssertEqual(try timeline(record).tracks.first?.parts.map(\.partID), ["part-1"])
+        XCTAssertEqual(recorder.finished, 1, "the recorder is asked to finish the part once")
+    }
+
     func testAPauseEndsThePartAndCarryingOnStartsANewOne() async throws {
         let coordinator = makeCoordinator()
         await started(coordinator)
@@ -443,7 +477,8 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         await coordinator.pause()
         XCTAssertEqual(coordinator.status, .paused(sessionID: sessionID))
         advance(70)
-        XCTAssertNil(coordinator.resume())
+        let carriedOn = await coordinator.resume()
+        XCTAssertNil(carriedOn)
         XCTAssertEqual(coordinator.status, .recording(sessionID: sessionID))
         advance(30)
         await coordinator.stop()
@@ -613,6 +648,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(capture.journal(sessionID: sessionID)?.isStopped, true)
         XCTAssertEqual(capture.bytes(sessionID: sessionID), 2_048, "the recorded part is still there")
         XCTAssertEqual(coordinator.unsealed, .waitingToPrepare)
+        XCTAssertTrue(coordinator.hasUnsealedRecording(sessionID: sessionID))
 
         await coordinator.sealPending()
         XCTAssertTrue(bundles.records().isEmpty, "still no pairing, still nothing sealed")
@@ -622,6 +658,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(bundles.records().count, 1)
         XCTAssertNil(capture.journal(sessionID: sessionID))
         XCTAssertNil(coordinator.unsealed)
+        XCTAssertFalse(coordinator.hasUnsealedRecording(sessionID: sessionID))
     }
 
     // MARK: - While it runs
@@ -657,7 +694,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         advance(30)
         await first.pause()          // part-1 finished and written down
         advance(5)
-        XCTAssertNil(first.resume()) // part-2 being written when the app goes away
+        await first.resume()         // part-2 being written when the app goes away
         advance(10)
 
         // A new launch: a new coordinator, a new recorder, and a monotonic clock that started again.
@@ -712,7 +749,7 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         advance(30)
         await first.pause()
         advance(5)
-        XCTAssertNil(first.resume())
+        await first.resume()
 
         recorder = FakeRecorder { [unowned self] in self.monotonic }
         let second = makeCoordinator()
@@ -816,7 +853,8 @@ final class JobRecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(logged[1].payload["parts"]?.value as? Int, 1)
         XCTAssertEqual(logged[1].payload["seconds"]?.value as? Int, 30)
 
-        let allowedWords: Set<String> = ["asked", "size_limit", "job_closed", "not_allowed", "interrupted"]
+        let allowedWords: Set<String> = ["asked", "size_limit", "job_closed", "not_allowed", "interrupted",
+                                         "could_not_carry_on"]
         for line in logged {
             XCTAssertEqual(line.sessionID, sessionID)
             for (key, value) in line.payload {
