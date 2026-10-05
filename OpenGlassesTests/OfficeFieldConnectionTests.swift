@@ -27,8 +27,9 @@ final class OfficeFieldConnectionTests: XCTestCase {
         var now = Date(timeIntervalSince1970: 1_800_000_000)
         var pausesMoveTheClock = true
 
-        static func snapshot(running: Bool = true, connected: Bool, type: String = "") -> String {
-            #"{"running":\#(running),"managedOffice":true,"connected":\#(connected),"observedConnectionType":"\#(type)"}"#
+        static func snapshot(running: Bool = true, connected: Bool, type: String = "", local: Bool? = nil) -> String {
+            let localField = local.map { #","observedConnectionLocal":\#($0)"# } ?? ""
+            return #"{"running":\#(running),"managedOffice":true,"connected":\#(connected),"observedConnectionType":"\#(type)"\#(localField)}"#
         }
     }
 
@@ -462,5 +463,21 @@ final class OfficeFieldConnectionTests: XCTestCase {
             XCTAssertEqual(Policy.status(.stopped(reason))?.detail, "Pair this phone again at the office.")
         }
         XCTAssertNil(Policy.status(.unavailable))
+    }
+
+    /// The phone is on its office's own network only when the engine says the connection is
+    /// direct and local. A relay, the internet, or a snapshot that does not say, is not.
+    func testOnTheOfficesOwnNetworkOnlyWhenTheEngineSaysDirectAndLocal() {
+        XCTAssertTrue(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: true, type: "tcp-client", local: true)))
+        XCTAssertTrue(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: true, type: "quic-client", local: true)))
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: true, type: "tcp-client", local: false)))
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: true, type: "tcp-client")),
+                       "an engine that does not say is not taken to be local")
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: true, type: "relay-client", local: true)))
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: World.snapshot(connected: false, type: "tcp-client", local: true)))
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: World.snapshot(running: false, connected: true, type: "tcp-client", local: true)))
+        XCTAssertFalse(Policy.onOfficeNetwork(snapshot: "not json"))
+        XCTAssertFalse(Policy.onOfficeNetwork(
+            snapshot: #"{"running":true,"managedOffice":true,"connected":true,"observedConnectionType":"tcp-client","observedConnectionLocal":"true"}"#))
     }
 }

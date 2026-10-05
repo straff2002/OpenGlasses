@@ -201,6 +201,10 @@ are prioritised `control` and `records` messages first, then evidence and record
   route is the person's explicit choice.
 - Each side checks free space before taking a file in and reports "not enough space" as a
   state of its own; staging is kept so a transfer resumes.
+- **Recorded-job bundles go only on the office's own network.** The phone publishes a bundle's
+  files in `records` only while it is connected straight to the office on a private network;
+  across the internet or through a relay they wait. Everything else in `records` is small and
+  travels on any route.
 
 ## 8. Fixtures to add
 

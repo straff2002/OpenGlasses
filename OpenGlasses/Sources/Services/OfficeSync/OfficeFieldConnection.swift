@@ -70,6 +70,9 @@ final class OfficeFieldConnection: ObservableObject {
     }
 
     @Published private(set) var state: State
+    /// Whether the phone is connected straight to its office on the office's own network, as of
+    /// the last look. False whenever it is not connected, or connected any other way.
+    @Published private(set) var onOfficeNetwork = false
 
     private let enabled: Bool
     private let seams: Seams
@@ -188,6 +191,7 @@ final class OfficeFieldConnection: ObservableObject {
         reportFirstStart(NotStarted.superseded)
         running = false
         if state != .unavailable { state = .paused }
+        onOfficeNetwork = false
         guard enabled else { return }
         let stop = seams.stop
         work = Task {
@@ -278,12 +282,16 @@ final class OfficeFieldConnection: ObservableObject {
                 }
             }
             let observed: Policy.Observation
+            var local = false
             if let snapshot = try? await seams.snapshot() {
                 observed = Policy.observe(snapshot: snapshot)
+                local = Policy.onOfficeNetwork(snapshot: snapshot)
             } else {
                 observed = .notRunning
             }
             guard isCurrent(run) else { return .ended }
+            // Before anything is taken in or sent on this look: what is sent depends on it.
+            if onOfficeNetwork != local { onOfficeNetwork = local }
             if observed != .notRunning {
                 // A job committed while the office was out of reach is still taken in.
                 await seams.takeIn()
@@ -339,6 +347,7 @@ final class OfficeFieldConnection: ObservableObject {
         guard isCurrent(run) else { return }
         running = false
         state = .stopped(reason)
+        onOfficeNetwork = false
     }
 
     private func reportFirstStart(_ error: Error?) {

@@ -903,6 +903,17 @@ On the open points raised as the phases were built: **keep each as built.**
 6. **Each frame is blurred on its own.** `blurred: true` means every picture went through the
    blur. Carrying a face forward from frame to frame belongs in the blur itself, later.
 
+7. **A recording goes only on the office's own network** (decided the same day, after the
+   transport was shown to reach an office across the internet): the phone sends a bundle only
+   while it is connected straight to its office on a private network. Across the internet, or
+   through a relay, it waits — on Wi-Fi or not, plugged in or not — and says "Waiting until this
+   phone is on the office's own network. Recordings aren't sent over the internet." The
+   transport reports whether the office connection is direct and its far end a private or
+   link-local address (`observedConnectionLocal`); anything it cannot tell is not local.
+   Reports, receipts, updates and check-ins are small and still travel on any route; manuals
+   and job attachments keep their own rule (a direct route on a network the system does not
+   call expensive).
+
 Still limits rather than decisions: sealing needs the recording's size again in free space;
 there is no resume inside a part being blurred; the blur runs on the main thread. Each is a
 device check under P4.

@@ -329,3 +329,31 @@ func TestReceiptBindsExactFixtureBytes(t *testing.T) {
 		}
 	}
 }
+
+// A connection is local only when it is straight to the office and the far end is a private or
+// link-local address: never a relay, never a public address, never something that cannot be read.
+func TestOnlyADirectConnectionToAPrivateAddressIsLocal(t *testing.T) {
+	for _, c := range []struct {
+		kind, address string
+		local         bool
+	}{
+		{"tcp-client", "192.168.1.20:22000", true},
+		{"tcp-server", "10.0.4.7:51000", true},
+		{"quic-client", "172.16.9.1:22000", true},
+		{"tcp-client", "[fe80::1%en0]:22000", false}, // a zone is not an address this can read
+		{"tcp-client", "[fd12:3456::1]:22000", true},
+		{"tcp-client", "169.254.10.2:22000", true},
+		{"tcp-client", "203.0.113.9:22000", false},
+		{"quic-client", "[2001:db8::1]:22000", false},
+		{"tcp-client", "100.64.0.5:22000", false}, // carrier-grade and overlay ranges are not the office's own network
+		{"relay-client", "192.168.1.20:22067", false},
+		{"relay-server", "10.0.4.7:22067", false},
+		{"tcp-client", "192.168.1.20", false},
+		{"tcp-client", "", false},
+		{"", "192.168.1.20:22000", false},
+	} {
+		if got := localRoute(c.kind, c.address); got != c.local {
+			t.Fatalf("%s to %q: local=%v, want %v", c.kind, c.address, got, c.local)
+		}
+	}
+}

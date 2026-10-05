@@ -105,11 +105,15 @@ func newEngineWorld(t *testing.T) *engineWorld {
 	})
 	w.until("the phone to connect", func() bool {
 		var status struct {
-			Connected     bool `json:"connected"`
-			SharedFolders int  `json:"sharedFolders"`
+			Connected     bool   `json:"connected"`
+			SharedFolders int    `json:"sharedFolders"`
+			Type          string `json:"observedConnectionType"`
+			Local         bool   `json:"observedConnectionLocal"`
 		}
 		raw, err := client.Snapshot()
-		return err == nil && json.Unmarshal([]byte(raw), &status) == nil && status.Connected && status.SharedFolders == 3
+		// Straight to the office on a private network: the engine says so, and says it is local.
+		return err == nil && json.Unmarshal([]byte(raw), &status) == nil && status.Connected && status.SharedFolders == 3 &&
+			strings.HasPrefix(status.Type, "tcp-") && status.Local
 	})
 	return w
 }
