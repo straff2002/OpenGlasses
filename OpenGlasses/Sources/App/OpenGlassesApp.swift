@@ -1104,6 +1104,9 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         // The same folder carries the attachments of jobs this phone holds; the manual service
         // is the one that tells the folder what to take.
+        seams.freeBytes = {
+            OfficeManualService.defaultLedgerFile().flatMap { OfficeJobAttachmentStore.volumeFreeBytes($0) }
+        }
         seams.attachmentsWanted = { [weak self] in self?.officeJobAttachments?.wanted ?? [] }
         seams.attachmentsStatus = { [weak self] status, allowed in
             await self?.officeJobAttachments?.took(status: status, allowed: allowed)
@@ -1124,6 +1127,20 @@ class AppState: ObservableObject, AppStateProtocol {
                     session.jobFile?.identity.map { ($0.jobID, session.endedAt != nil) }
                 })
         }
+        // The technician is told there is an update: the job's number and the kind, never the
+        // office's text. The job's row on the Jobs list carries the same mark.
+        seams.arrived = { [weak self] update in
+            let ahead = self?.upcomingJobs.jobs.first { $0.provenance?.identity?.jobID == update.jobID }?.jobReference
+            let open = FieldSessionService.shared.activeSession.flatMap {
+                $0.jobFile?.identity?.jobID == update.jobID ? $0.jobReference : nil
+            }
+            let reference = (open ?? ahead).flatMap { $0.isEmpty ? nil : $0 }
+            JobUpdateNotifications.post(jobID: update.jobID,
+                                        jobLabel: reference.map { JobDaySession.label(reference: $0) },
+                                        updateKind: update.updateKind)
+        }
+        seams.opened = { JobUpdateNotifications.clear(jobID: $0) }
+        seams.cleared = { JobUpdateNotifications.clearAll() }
         return OfficeJobUpdateService(seams: seams)
     }()
 

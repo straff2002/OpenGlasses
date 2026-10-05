@@ -103,6 +103,9 @@ final class OfficeManualService: ObservableObject {
         /// Where each wanted attachment is after a pass, by digest (`ready`, `offered` or
         /// `waiting`), and whether the route allows large content now.
         var attachmentsStatus: @MainActor ([String: String], Bool) async -> Void = { _, _ in }
+        /// Free space on the volume a manual is taken to and installed on, when the system will
+        /// say.
+        var freeBytes: () -> Int64? = { nil }
         var clock: () -> Date = Date.init
         var load: () -> Ledger = { Ledger() }
         var save: (Ledger) throws -> Void = { _ in }
@@ -116,6 +119,8 @@ final class OfficeManualService: ObservableObject {
             /// It is there, and the route is one large content does not use unasked.
             case waitingForWiFi
             case downloading
+            /// The office has it and this phone has no room to take and unpack it.
+            case notEnoughSpace
             case installed
             case notInstalled(String)
         }
@@ -142,6 +147,9 @@ final class OfficeManualService: ObservableObject {
     /// Whether the last pass asked the folder for attachments, so the pass after the last one
     /// has arrived still tells the folder to let it go.
     private var askedForAttachments = false
+    /// The archives the folder had taken at the last pass. One already here is installed, not
+    /// let go, however little space is left.
+    private var arrivedArchives: Set<String> = []
 
     init(seams: Seams) {
         self.seams = seams
@@ -182,8 +190,15 @@ final class OfficeManualService: ObservableObject {
 
         // Only the archives of assignments this phone has accepted, and the attachments of jobs
         // it holds, are asked of the folder, and only while the route allows large content.
-        let wanted = ledger.entries.filter { $0.state == .received && $0.enrolmentID == held.enrolmentID }
-        let archives = Set(wanted.map(\.archiveSHA256))
+        let accepted = ledger.entries.filter { $0.state == .received && $0.enrolmentID == held.enrolmentID }
+        // And only the archives this phone has room to take and unpack. One that does not fit is
+        // not asked for; it says so, and is asked for on a later pass when there is room.
+        let free = seams.freeBytes()
+        let noRoom = Set(accepted.filter {
+            !arrivedArchives.contains($0.archiveSHA256) && !Self.fits(archiveBytes: $0.archiveBytes, free: free)
+        }.map(\.archiveSHA256))
+        let wanted = accepted.filter { !noRoom.contains($0.archiveSHA256) }
+        let archives = Set(accepted.map(\.archiveSHA256))
         let wantedAttachments = attachments.filter { !archives.contains($0.sha256) }
         let allowed = seams.bulkAllowed()
         var offered: Set<String> = []
@@ -196,6 +211,7 @@ final class OfficeManualService: ObservableObject {
             let status = try OfficeManagedFolders.decodeBulkStatus(try await self.seams.transport.bulkStatus())
             offered = Set(status.filter { $0.state == "offered" }.map(\.sha256))
             let arrived = Set(status.filter { $0.state == "ready" }.map(\.sha256))
+            self.arrivedArchives = arrived.intersection(archives)
             ready = wanted.filter { arrived.contains($0.archiveSHA256) }.map(\.assignmentID)
             for attachment in wantedAttachments {
                 attachmentStates[attachment.sha256] = status.first { $0.sha256 == attachment.sha256 }?.state ?? "waiting"
@@ -206,7 +222,7 @@ final class OfficeManualService: ObservableObject {
         for assignmentID in ready {
             await attempt { try await self.install(assignmentID, held: held, now: now) }
         }
-        rows = Self.rows(ledger, offered: offered, allowed: allowed)
+        rows = Self.rows(ledger, offered: offered, allowed: allowed, noRoom: noRoom)
         if let firstFailure { throw firstFailure }
     }
 
@@ -440,14 +456,27 @@ final class OfficeManualService: ObservableObject {
         return String(decoding: try JSONSerialization.data(withJSONObject: items), as: UTF8.self)
     }
 
-    static func rows(_ ledger: Ledger, offered: Set<String>, allowed: Bool) -> [Row] {
+    /// Space left alone beyond the manual itself, so taking one never fills the phone.
+    static let spaceMargin: Int64 = 100 * 1_048_576
+
+    /// Whether there is room for a manual: its archive, and the same twice over for what it
+    /// unpacks to — the proportion this phone's own ceilings on a manual allow. A phone that
+    /// will not say how much is free is not held back.
+    static func fits(archiveBytes: Int64, free: Int64?) -> Bool {
+        guard let free else { return true }
+        return free - spaceMargin >= archiveBytes * 3
+    }
+
+    static func rows(_ ledger: Ledger, offered: Set<String>, allowed: Bool, noRoom: Set<String> = []) -> [Row] {
         ledger.entries.map { entry in
             let state: Row.State
             switch entry.state {
             case .installed: state = .installed
             case .refused: state = .notInstalled(entry.reason ?? "")
             case .received:
-                if !offered.contains(entry.archiveSHA256) {
+                if noRoom.contains(entry.archiveSHA256) {
+                    state = .notEnoughSpace
+                } else if !offered.contains(entry.archiveSHA256) {
                     state = .waitingForOffice
                 } else {
                     state = allowed ? .downloading : .waitingForWiFi
@@ -483,6 +512,9 @@ final class OfficeManualService: ObservableObject {
             return .init(title: name, detail: "Waiting for Wi-Fi.", systemImage: "wifi.exclamationmark")
         case .downloading:
             return .init(title: name, detail: "Still downloading.", systemImage: "arrow.down.circle")
+        case .notEnoughSpace:
+            return .init(title: name, detail: "Not enough space on this phone. Free some space and it will download.",
+                         systemImage: "externaldrive.badge.exclamationmark")
         case .installed:
             return .init(title: name, detail: "Ready.", systemImage: "checkmark.circle")
         case .notInstalled(let reason):

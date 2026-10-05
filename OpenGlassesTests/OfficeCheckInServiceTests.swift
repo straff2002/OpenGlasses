@@ -201,6 +201,67 @@ final class OfficeCheckInServiceTests: XCTestCase {
                        try F.administrator().publicKey.rawRepresentation.base64EncodedString())
     }
 
+    /// A check-in the office never answers is said once its challenge has run out, survives a
+    /// relaunch, and stops being said when a later check-in is answered.
+    func testACheckInNobodyAnsweredIsSaidUntilALaterOneIsAnswered() async throws {
+        let w = try await world()
+        try await setGoldenChallenge(w)
+        at(60)
+        try await w.service.sweep()
+        XCTAssertEqual(w.service.state, .checkedIn)
+        XCTAssertNil(OfficeCheckInService.status(w.service.state), "a check-in that is still waiting needs nobody")
+        let expiresAt = try XCTUnwrap(w.service.ledger.waiting?.expiresAt)
+
+        // The challenge runs out with no result.
+        at(OfficeCheckIn.maximumChallengeLifetime)
+        await w.folders.withdraw(challenge: w.challengeID)
+        try await w.service.sweep()
+        XCTAssertNil(w.service.ledger.waiting)
+        XCTAssertEqual(w.service.state, .unanswered(since: expiresAt))
+        XCTAssertEqual(w.makeService().state, .unanswered(since: expiresAt), "it is in the record, not only in memory")
+        let status = try XCTUnwrap(OfficeCheckInService.status(w.service.state, dateText: { "\(Int64($0.timeIntervalSince1970))" }))
+        XCTAssertEqual(status.title, "The office hasn't answered a check-in")
+        XCTAssertEqual(status.detail, "This phone checked in and had heard nothing back by \(expiresAt). "
+                       + "It checks in again when the office next asks. If this stays, tell your office.")
+        // It says what happened, and blames nobody: the office may be off, or out of reach.
+        for word in ["failed", "error", "refused", "offline"] {
+            XCTAssertFalse((status.title + (status.detail ?? "")).lowercased().contains(word), word)
+        }
+        // Nothing else moved: the lease and the pairing are as they were.
+        let generationAfter = try await generation(w)
+        XCTAssertEqual(generationAfter, 1)
+        XCTAssertEqual(bindingChanges, 0)
+    }
+
+    func testAnAnsweredCheckInClearsAnEarlierOneNobodyAnswered() async throws {
+        let w = try await world()
+        w.box.ledger.unansweredSince = F.now - 86_400
+        let service = w.makeService()
+        XCTAssertEqual(service.state, .unanswered(since: F.now - 86_400))
+        try await setGoldenChallenge(w)
+        at(60)
+        try await service.sweep()
+        XCTAssertEqual(service.state, .unanswered(since: F.now - 86_400), "a check-in alone is not an answer")
+        await w.folders.put(result: try F.data("office-check-in-result-v1"), id: w.challengeID)
+        at(200)
+        let renewed = try await service.sweep()
+        XCTAssertEqual(renewed, .renewed)
+        XCTAssertNil(service.ledger.unansweredSince)
+        XCTAssertEqual(service.state, .idle)
+    }
+
+    /// A check-in that was never published was never the office's to answer.
+    func testACheckInThatWasNeverPublishedIsNotSaidToBeUnanswered() {
+        var ledger = OfficeCheckInService.Ledger()
+        XCTAssertEqual(OfficeCheckInService.state(of: ledger), .idle)
+        ledger.unansweredSince = 5
+        XCTAssertEqual(OfficeCheckInService.state(of: ledger), .unanswered(since: 5))
+        // A removal is said before anything else.
+        ledger.removal = .init(enrolmentID: "e", removalID: "r", removalSHA256: "s", reason: OfficeCheckIn.reasonRevoked,
+                               actedAt: 1, signature: nil, receiptPublished: false)
+        XCTAssertEqual(OfficeCheckInService.state(of: ledger), .removed(reason: OfficeCheckIn.reasonRevoked))
+    }
+
     func testAReplayedResultChangesNothing() async throws {
         let w = try await world()
         try await setGoldenChallenge(w)

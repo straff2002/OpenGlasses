@@ -69,7 +69,16 @@ extension OfficeManagedJobIntake {
     func reviewStageChanged(_ stage: JobFileService.Stage) {
         var showing: String?
         if case .review(let review) = stage { showing = review.proposed.provenance?.digest }
-        if let ended = reviewShowing, ended != showing { reviewEnded(jobSHA256: ended) }
+        if let ended = reviewShowing, ended != showing {
+            // Added (or found to be here already) is an answer. Closed, or replaced by another
+            // file, is the job put aside.
+            let added: Bool
+            switch stage {
+            case .added, .alreadyHeld: added = true
+            case .idle, .review, .refused: added = false
+            }
+            reviewEnded(jobSHA256: ended, added: added)
+        }
         reviewShowing = showing
     }
 }

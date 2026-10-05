@@ -149,13 +149,25 @@ final class OfficeManagedJobIntakeTests: XCTestCase {
                             payloadSHA256: sent.payloadSHA256, jobSHA256: sent.payload.jobSHA256))
         XCTAssertEqual(receipt.outcome, "received")
 
-        // Answering the review ends the offer; the job is not raised again.
+        // Closing the review without adding the job puts it aside: no pass raises it again, and
+        // it is said to be there for the technician to review when they choose.
         intake.reviewStageChanged(jobFiles.stage)
         jobFiles.dismiss()
         intake.reviewStageChanged(jobFiles.stage)
-        XCTAssertEqual(intake.state, .waitingForOffice)
+        XCTAssertEqual(intake.state, .jobPutAside(1))
         try await intake.sweep()
         XCTAssertEqual(jobFiles.stage, .idle)
+
+        // Asked for, it is the same review again, through the real import.
+        let again = try await intake.reviewPutAside()
+        XCTAssertEqual(again, .raised)
+        guard case .review(let second) = jobFiles.stage else {
+            return XCTFail("the job put aside did not reach the review again: \(jobFiles.stage)")
+        }
+        XCTAssertEqual(second.proposed.provenance?.digest, try goldenJob().jobSHA256)
+        XCTAssertEqual(intake.state, .jobReceived(1))
+        let receiptsAfter = await transport.receipts
+        XCTAssertEqual(receiptsAfter, published, "no second receipt")
     }
 
     // MARK: - Once
@@ -204,6 +216,75 @@ final class OfficeManagedJobIntakeTests: XCTestCase {
         XCTAssertEqual(relaunched.state, .waitingForOffice)
         try await makeIntake().sweep()
         XCTAssertEqual(raisedFiles.count, 2, "an answered review stays answered")
+    }
+
+    /// A job the technician closes without adding is put aside: it is not raised again unasked,
+    /// it is said to be there, and the technician can have its review again.
+    func testAJobPutAsideIsNotRaisedAgainUnaskedAndCanBeReviewedAgain() async throws {
+        try await openFolders()
+        await transport.commit(try goldenJob())
+        let intake = makeIntake()
+        try await intake.sweep()
+        XCTAssertEqual(raisedFiles.count, 1)
+        let digest = try goldenJob().jobSHA256
+
+        // Closed without adding.
+        intake.reviewEnded(jobSHA256: digest, added: false)
+        XCTAssertEqual(intake.state, .jobPutAside(1))
+        let status = try XCTUnwrap(Intake.status(intake.state))
+        XCTAssertEqual(status.title, "A job from the office was put aside")
+        XCTAssertEqual(status.detail, "It hasn't been added to your jobs. You can review it again.")
+
+        // No pass brings it back, now or after a relaunch.
+        try await intake.sweep()
+        let relaunched = makeIntake()
+        XCTAssertEqual(relaunched.state, .jobPutAside(1))
+        try await relaunched.sweep()
+        XCTAssertEqual(raisedFiles.count, 1)
+
+        // The technician asks: the same file is raised, from the bytes the office sent, with no
+        // second receipt.
+        let outcome = try await relaunched.reviewPutAside()
+        XCTAssertEqual(outcome, .raised)
+        XCTAssertEqual(raisedFiles.count, 2)
+        XCTAssertEqual(raisedFiles.last, raisedFiles.first)
+        XCTAssertEqual(relaunched.state, .jobReceived(1))
+        XCTAssertEqual(signs, 1)
+        let publishes = await transport.publishes
+        XCTAssertEqual(publishes, 1)
+
+        // Put aside again, asked for again while the review is showing something else: it waits.
+        relaunched.reviewEnded(jobSHA256: digest, added: false)
+        reviewBusy = true
+        let busy = try await relaunched.reviewPutAside()
+        XCTAssertEqual(busy, .busy)
+        XCTAssertEqual(relaunched.state, .jobPutAside(1))
+        reviewBusy = false
+
+        // Added this time: answered, and nothing is left to review.
+        _ = try await relaunched.reviewPutAside()
+        relaunched.reviewEnded(jobSHA256: digest, added: true)
+        XCTAssertEqual(relaunched.state, .waitingForOffice)
+        let nothing = try await relaunched.reviewPutAside()
+        XCTAssertNil(nothing)
+        XCTAssertEqual(raisedFiles.count, 3)
+    }
+
+    /// The review's own stage says which it was: added is an answer, closed is put aside.
+    func testClosingAReviewPutsTheJobAsideAndAddingItAnswers() async throws {
+        try await openFolders()
+        await transport.commit(try goldenJob())
+        let digest = try goldenJob().jobSHA256
+        for (stage, expected) in [(JobFileService.Stage.idle, Intake.State.jobPutAside(1)),
+                                  (.added("Job FX-2031"), .waitingForOffice),
+                                  (.alreadyHeld("Job FX-2031"), .waitingForOffice)] {
+            saved = Intake.Ledger()
+            let intake = makeIntake()
+            try await intake.sweep()
+            intake.reviewShowing = digest
+            intake.reviewStageChanged(stage)
+            XCTAssertEqual(intake.state, expected, "\(stage)")
+        }
     }
 
     func testEveryJobIsReceiptedButReviewsAreRaisedOneAtATimeLowestSequenceFirst() async throws {

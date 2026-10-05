@@ -14,6 +14,8 @@ final class OfficeManualServiceTests: XCTestCase {
     private var saved = Service.Ledger()
     private var now = OfficeCheckInFixtures.now + 60
     private var bulkAllowed = false
+    /// Free space on the phone, when it says.
+    private var freeBytes: Int64?
     private var policyExpiry: Date?
     private var catalogue: [VaultPublisher] = []
     private var installed: [OfficeManualImport.Prepared] = []
@@ -55,6 +57,7 @@ final class OfficeManualServiceTests: XCTestCase {
         seams.policyExpiry = { [unowned self] in self.policyExpiry }
         seams.cataloguePublishers = { [unowned self] in self.catalogue }
         seams.bulkAllowed = { [unowned self] in self.bulkAllowed }
+        seams.freeBytes = { [unowned self] in self.freeBytes }
         // The golden receipts' own signatures for the golden payloads (CryptoKit's signatures are
         // randomised); the fixture phone key for anything else.
         seams.sign = { payload in
@@ -166,6 +169,50 @@ final class OfficeManualServiceTests: XCTestCase {
         XCTAssertTrue(paused)
         XCTAssertTrue(taken.isEmpty)
         XCTAssertEqual(installed.count, 1)
+    }
+
+    /// A manual this phone has no room for is not asked of the folder: it says so, the
+    /// assignment keeps its receipt, and it is asked for once there is room.
+    func testAManualThereIsNoRoomForIsNotFetchedUntilThereIs() async throws {
+        try await openFolders()
+        let service = makeService()
+        try await officeGrants()
+        try await officeAssigns()
+        try await officeOffersArchive()
+        bulkAllowed = true
+        let bytes = Int64(try archive().count)
+
+        // The margin and one byte short of the archive three times over.
+        freeBytes = Service.spaceMargin + bytes * 3 - 1
+        try await service.sweep()
+        var wanted = await transport.bulkWanted
+        var taken = await transport.bulkTaken
+        XCTAssertTrue(wanted.isEmpty, "an archive there is no room for is not asked for")
+        XCTAssertTrue(taken.isEmpty)
+        XCTAssertTrue(installed.isEmpty)
+        XCTAssertEqual(service.rows.map(\.state), [.notEnoughSpace])
+        XCTAssertEqual(Service.status(service.rows[0]).detail,
+                       "Not enough space on this phone. Free some space and it will download.")
+        XCTAssertEqual(service.standing(ofSet: "fixture-manuals"), .onItsWay, "still assigned, still to come")
+        let receipts = await transport.assignmentReceipts
+        XCTAssertNotNil(receipts["\(assignmentID).received"], "the assignment is received whatever the space")
+        XCTAssertNil(receipts["\(assignmentID).installed"])
+
+        // Room made: asked for, taken, installed.
+        freeBytes = Service.spaceMargin + bytes * 3
+        now = F.now + 600
+        try await service.sweep()
+        wanted = await transport.bulkWanted
+        taken = await transport.bulkTaken
+        XCTAssertEqual(installed.count, 1)
+        XCTAssertEqual(service.rows.map(\.state), [.installed])
+    }
+
+    func testThereIsRoomForAManualWithItsArchiveThreeTimesOverAndAMargin() {
+        XCTAssertTrue(Service.fits(archiveBytes: 200 * 1_048_576, free: nil), "a phone that will not say is not held back")
+        XCTAssertTrue(Service.fits(archiveBytes: 10, free: Service.spaceMargin + 30))
+        XCTAssertFalse(Service.fits(archiveBytes: 10, free: Service.spaceMargin + 29))
+        XCTAssertFalse(Service.fits(archiveBytes: 10, free: 0))
     }
 
     func testAnUnassignedArchiveIsNeverFetched() async throws {

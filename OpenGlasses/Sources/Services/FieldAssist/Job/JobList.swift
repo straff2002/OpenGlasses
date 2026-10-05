@@ -34,6 +34,8 @@ struct JobListSession: Equatable {
     var vaultName: String
     /// The machine, as the record names it, when one was identified.
     var equipment: String?
+    /// The office's identifier for the job, when it came from an office: what an update names.
+    var officeJobID: String?
     /// "Resolved", "Deferred", "Cancelled" — the session's own outcome label.
     var outcomeLabel: String = ""
     /// The record's own billing phrase.
@@ -56,6 +58,8 @@ struct JobListInputs {
     var signOffRequired = false
     /// Recorded jobs not yet with the office (Plan HE), on whichever job they were made.
     var recordings: [JobDayRecording] = []
+    /// Updates from the office the technician has not had open, by office job identifier.
+    var newUpdates: [String: Int] = [:]
     /// What is typed in the search field. Blank is no search.
     var query = ""
     /// "Mon 29 Sep, 2:15 PM". Injected so tests do not depend on a locale.
@@ -84,6 +88,9 @@ struct JobList: Equatable {
             case parts
             case recordingAttention
             case recording
+            /// The office has said something about this job that has not been opened yet. Not
+            /// owed work: it is there to be read.
+            case officeUpdate
 
             static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -111,6 +118,7 @@ struct JobList: Equatable {
                 case .parts: return JobDay.Todo.Kind.parts.symbol
                 case .recordingAttention: return JobDay.Todo.Kind.recordingAttention.symbol
                 case .recording: return JobDay.Todo.Kind.recording.symbol
+                case .officeUpdate: return "envelope.badge"
                 }
             }
 
@@ -126,6 +134,12 @@ struct JobList: Equatable {
         var symbol: String { kind.symbol }
         var isWarning: Bool { kind.isWarning }
 
+        /// The mark for updates not yet opened. Nil when there are none.
+        static func officeUpdate(count: Int) -> Badge? {
+            guard count > 0 else { return nil }
+            return Badge(kind: .officeUpdate, label: label(.officeUpdate, parts: count))
+        }
+
         static func label(_ kind: Kind, parts: Int = 1) -> String {
             switch kind {
             case .overdue: return "Overdue"
@@ -139,6 +153,7 @@ struct JobList: Equatable {
             // (`JobDayRecording.sentence`); these are what it says when it has only the kind.
             case .recordingAttention: return JobDayRecording.attentionTitle
             case .recording: return JobDayRecording.waitingTitle
+            case .officeUpdate: return parts > 1 ? "\(parts) new updates from the office" : "New update from the office"
             }
         }
     }
@@ -281,8 +296,15 @@ enum JobListComposer {
         func badges(_ sessionId: String) -> [JobList.Badge] {
             (badgesBySession[sessionId] ?? []).sorted { $0.kind < $1.kind }
         }
+        // An update is live on a job ahead or open. A finished job's record is closed: what the
+        // office says about it afterwards is kept and not flagged.
+        func updates(_ officeJobID: String?) -> [JobList.Badge] {
+            officeJobID.flatMap { JobList.Badge.officeUpdate(count: inputs.newUpdates[$0] ?? 0) }.map { [$0] } ?? []
+        }
 
-        let open = inputs.open.map { openItem($0, badges: badges($0.facts.id), inputs: inputs) }
+        let open = inputs.open.map {
+            openItem($0, badges: badges($0.facts.id) + updates($0.officeJobID), inputs: inputs)
+        }
         let scheduled = UpcomingJobStore.ordered(inputs.upcoming).map {
             upcomingItem($0, startOfToday: startOfToday, startOfTomorrow: startOfTomorrow, inputs: inputs)
         }
@@ -352,7 +374,10 @@ enum JobListComposer {
             detail: [site, when].compactMap { $0 }.joined(separator: " · "),
             note: note, noteIsWarning: note != nil && job.provenance?.signature != .signed,
             status: status,
-            badges: status == .overdue ? [JobList.Badge(kind: .overdue, label: JobList.Badge.label(.overdue))] : [])
+            badges: (status == .overdue ? [JobList.Badge(kind: .overdue, label: JobList.Badge.label(.overdue))] : [])
+                + (job.provenance?.identity.flatMap {
+                    JobList.Badge.officeUpdate(count: inputs.newUpdates[$0.jobID] ?? 0)
+                }.map { [$0] } ?? []))
     }
 
     private static func finishedItem(_ session: JobListSession, badges: [JobList.Badge],
