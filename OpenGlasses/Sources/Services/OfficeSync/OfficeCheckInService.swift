@@ -14,6 +14,11 @@ import Foundation
 ///   kept until a result arrives or the challenge expires, and the same bytes are published again
 ///   rather than a second check-in.
 ///
+/// A check-in the office never answers is said, once its challenge has run out: the phone signed
+/// and published it and no result came. That stands until a later check-in is answered. It is a
+/// statement about the exchange, not a fault found — the office may be switched off, or this
+/// phone may not have reached it — and nothing is done about it but saying so.
+///
 /// A file that does not verify is left where it is and recorded once with a bounded reason; one
 /// that is only not valid yet waits. No engine, key or trust chain of its own: everything it
 /// touches is a seam, so it runs headless.
@@ -61,6 +66,9 @@ final class OfficeCheckInService: ObservableObject {
         var version = 1
         var waiting: WaitingCheckIn?
         var lastRenewedAt: Date?
+        /// When the challenge of a check-in this phone published ran out with no result, if the
+        /// office has answered none since. Seconds since 1970.
+        var unansweredSince: Int64?
         var removal: RemovalRecord?
         var refused: [Refused] = []
     }
@@ -95,6 +103,9 @@ final class OfficeCheckInService: ObservableObject {
         case idle
         /// A check-in has been published and the office has not answered yet.
         case checkedIn
+        /// A check-in was published and its challenge ran out with no answer, at `since`; the
+        /// office has answered none since.
+        case unanswered(since: Int64)
         /// The office removed this phone; `reason` is the removal's.
         case removed(reason: String)
     }
@@ -137,7 +148,10 @@ final class OfficeCheckInService: ObservableObject {
         let pending = try OfficeManagedFolders.decodeCheckInPending(try await seams.transport.checkInPending())
         // A removal ends one enrolment. A phone that has since joined again is another.
         if let removal = ledger.removal, let current = seams.enrolmentID(), current != removal.enrolmentID {
-            try update { $0.removal = nil }
+            try update {
+                $0.removal = nil
+                $0.unansweredSince = nil
+            }
         }
         // A removal is final: nothing else is taken in once one has been acted on.
         for removal in pending.removals {
@@ -234,6 +248,7 @@ final class OfficeCheckInService: ObservableObject {
         // Renewed. The nonce is forgotten: this result, taken in again, fits no check-in.
         try update {
             $0.waiting = nil
+            $0.unansweredSince = nil
             $0.lastRenewedAt = self.seams.clock()
         }
         seams.bindingChanged()
@@ -245,7 +260,14 @@ final class OfficeCheckInService: ObservableObject {
     private func answer(_ challenges: [OfficeManagedFolders.PendingEnvelope]) async throws -> Bool {
         let now = Int64(seams.clock().timeIntervalSince1970)
         if let waiting = ledger.waiting, now >= waiting.expiresAt {
-            try update { $0.waiting = nil }
+            try update {
+                // Published and never answered is worth saying; one never published was never
+                // the office's to answer.
+                if waiting.checkInSHA256 != nil, $0.unansweredSince == nil {
+                    $0.unansweredSince = waiting.expiresAt
+                }
+                $0.waiting = nil
+            }
         }
         guard !challenges.isEmpty else { return false }
         // The gate first: no challenge is answered on a pairing that does not verify now.
@@ -381,16 +403,25 @@ final class OfficeCheckInService: ObservableObject {
 
     static func state(of ledger: Ledger) -> State {
         if let removal = ledger.removal { return .removed(reason: removal.reason) }
+        if let since = ledger.unansweredSince { return .unanswered(since: since) }
         if ledger.waiting?.checkInSHA256 != nil { return .checkedIn }
         return .idle
     }
 
     /// The words for each state. Nil when nothing is shown: a check-in and its renewal need
-    /// nobody, so only a removal is said.
-    static func status(_ state: State) -> OfficeFieldConnectionPolicy.Status? {
+    /// nobody, so only a removal, and a check-in nobody answered, are said.
+    static func status(_ state: State,
+                       dateText: (Date) -> String = { $0.formatted(date: .abbreviated, time: .omitted) })
+        -> OfficeFieldConnectionPolicy.Status? {
         switch state {
         case .idle, .checkedIn:
             return nil
+        case .unanswered(let since):
+            return .init(title: "The office hasn't answered a check-in",
+                         detail: "This phone checked in and had heard nothing back by "
+                            + "\(dateText(Date(timeIntervalSince1970: TimeInterval(since)))). "
+                            + "It checks in again when the office next asks. If this stays, tell your office.",
+                         systemImage: "questionmark.bubble")
         case .removed(let reason):
             return .init(title: "Removed by your organisation",
                          detail: reason == OfficeCheckIn.reasonRevoked

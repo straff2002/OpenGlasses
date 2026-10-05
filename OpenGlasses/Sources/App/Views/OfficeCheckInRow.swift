@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// What the office has said about this phone's place in it. A check-in and its renewal need
-/// nobody and show nothing; a removal is said, in the office's own terms.
+/// nobody and show nothing; a removal is said, in the office's own terms, and so is a check-in
+/// the office never answered.
 struct OfficeCheckInRow: View {
     @ObservedObject var checkIn: OfficeCheckInService
 
