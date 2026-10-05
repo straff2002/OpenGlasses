@@ -884,6 +884,29 @@ its on-phone drafting now overlap the office's — see open question 4; GY is no
 5. **Ownership of the five FX items (§4):** FX owns the transport and the outbound guard; this plan
    owns the bundle contract and the phone's sync state machine.
 
+## Answered by Greig (2026-10-05)
+
+On the open points raised as the phases were built: **keep each as built.**
+
+1. **Agreement (contract §7.3) stays as written**: one shared content word within five seconds
+   of an event confirms it, and a low-confidence event still counts as an event near a step.
+   The fixtures are the reference. A stricter rule is a change to the contract, not to the code.
+2. **The transcript stays on the phone after the media is trimmed**, with the timeline, the
+   manifest and the receipts.
+3. **Consent is per phone**, asked again when the wording or the organisation changes. A shared
+   phone does not ask a second technician.
+4. **Transcription is on the phone only.** The cloud transcriber is not used for a recorded job,
+   whatever keys are set; with no on-device model the transcript is empty.
+5. **A part whose every frame the blur refuses is kept as sound only, and the unblurred part is
+   removed.** Closed for privacy first; the dropped-frame count, the gap on the timeline and the
+   note at sealing are the record of it.
+6. **Each frame is blurred on its own.** `blurred: true` means every picture went through the
+   blur. Carrying a face forward from frame to frame belongs in the blur itself, later.
+
+Still limits rather than decisions: sealing needs the recording's size again in free space;
+there is no resume inside a part being blurred; the blur runs on the main thread. Each is a
+device check under P4.
+
 ## Out of scope
 
 Everything the office does (contract); any video analysis on the phone; sharing or exporting the
