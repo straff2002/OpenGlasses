@@ -48,6 +48,12 @@ func (i *managedInbox) updateReceipt(updateID string) *updateReceiptRecord {
 	return nil
 }
 
+func (i *managedInbox) updateReceiptCount() int {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return len(i.state.UpdateReceipts)
+}
+
 // updatesPending lists the updates in control that read as their own messages for this phone
 // now, and lets go of the receipts whose updates the office has taken away. The native caller
 // verifies each again through its own gate before it keeps one.
@@ -207,9 +213,15 @@ func (c *Client) ManagedJobUpdatesPending() (string, error) {
 	if inbox == nil {
 		return "[]", nil
 	}
+	before := inbox.updateReceiptCount()
 	pending, err := inbox.updatesPending(officepreview.Now())
 	if err != nil {
 		return "", err
+	}
+	if inbox.updateReceiptCount() != before {
+		// A receipt was let go: the engine is told now, rather than at its next rescan, so the
+		// office sees it leave the folder.
+		_ = c.scanRecords()
 	}
 	return stringJSON(pending)
 }

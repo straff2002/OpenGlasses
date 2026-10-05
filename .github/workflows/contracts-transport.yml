@@ -141,9 +141,21 @@ jobs:
         working-directory: Transport/mobile-core
         run: GOMODCACHE="$GITHUB_WORKSPACE/Transport/.tools/gomod" go vet -tags noassets ./...
 
+      # The tests that run the phone's real embedded engine against a synthetic office need a
+      # private IPv4 address named: a managed phone dials nothing else. Without one they skip,
+      # and this step says so rather than leaving it to be noticed.
       - name: go test -race
         working-directory: Transport/mobile-core
-        run: GOMODCACHE="$GITHUB_WORKSPACE/Transport/.tools/gomod" go test -race -tags noassets ./...
+        run: |
+          set -euo pipefail
+          address=$(hostname -I | tr ' ' '\n' | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)' | head -n 1 || true)
+          if [ -n "$address" ]; then
+            export AVENKIN_MANUAL_TEST_IP="$address"
+            echo "Real-engine tests will run over $address"
+          else
+            echo "::warning::No private IPv4 address on this runner: the real-engine tests are skipped"
+          fi
+          GOMODCACHE="$GITHUB_WORKSPACE/Transport/.tools/gomod" go test -race -tags noassets ./...
 
       - name: Source preparer unit test
         working-directory: Transport/scripts
