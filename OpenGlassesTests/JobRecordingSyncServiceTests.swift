@@ -260,6 +260,74 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         XCTAssertTrue(withdrawn.isEmpty)
     }
 
+    /// Through a relay a recording's manifest, timeline and transcript go and its video does not:
+    /// no chunk is offered until the connection is straight to the office, and none is added to
+    /// the ones already there when a direct connection becomes a relayed one.
+    func testThroughARelayTheVideoWaitsAndEverythingElseGoes() async throws {
+        try await openFolders()
+        try await seal()
+        let service = makeService()
+        let id = try bundleID()
+
+        conditions.officeIsThroughRelay = true
+        try await service.sweep()
+        var published = await transport.recordings
+        XCTAssertEqual(published[id]?.envelope, try F.data("recording-bundle-manifest-v1"))
+        XCTAssertEqual(Set(published[id]?.published.keys.filter { !$0.hasPrefix("media/") } ?? []),
+                       ["timeline.json", "transcript.json"])
+        var chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 0, "no video is offered through a relay")
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.videoNeedsDirectRoute)))
+        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)),
+                       "Recording waiting to sync. The video is waiting for a direct connection to the office. "
+                           + "Video is never sent through a relay.")
+
+        // The office takes the small files through the relay; the video still waits.
+        await transport.officeTakes(id)
+        try await service.sweep()
+        chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 0)
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.videoNeedsDirectRoute)))
+
+        // Straight to the office: the video starts.
+        conditions.officeIsThroughRelay = false
+        try await service.sweep()
+        chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 2)
+        guard case .transferring? = service.rows.first?.phase else {
+            return XCTFail("\(String(describing: service.rows.first?.phase))")
+        }
+
+        // Back on a relay part-way: the office has taken what was there, and nothing is added.
+        await transport.officeTakes(id)
+        conditions.officeIsThroughRelay = true
+        try await service.sweep()
+        chunkPublishes = await transport.recordingChunkPublishes
+        XCTAssertEqual(chunkPublishes, 2)
+        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.videoNeedsDirectRoute)))
+
+        // Direct again, to the end. A recording all of which the office has taken is sent,
+        // whatever the route is by then.
+        conditions.officeIsThroughRelay = false
+        try await sendEverything(service)
+        conditions.officeIsThroughRelay = true
+        try await service.sweep()
+        XCTAssertEqual(service.rows.first?.phase, .delivered)
+        published = await transport.recordings
+        XCTAssertEqual(published[id]?.published.keys.filter { $0.hasPrefix("media/") }.count,
+                       store.records().first?.chunks.count)
+    }
+
+    /// The route the connection reports is what holds the video: a relay is in reach and is not
+    /// a connection straight to the office.
+    func testARelayedConnectionIsInReachAndNotDirect() {
+        let relay = Service.pairing(.connected(.relay))
+        XCTAssertTrue(relay.bindingIsCurrent && relay.officeIsReachable && relay.officeIsThroughRelay)
+        let direct = Service.pairing(.connected(.direct))
+        XCTAssertTrue(direct.officeIsReachable)
+        XCTAssertFalse(direct.officeIsThroughRelay)
+    }
+
     func testOnlyTheOfficesReceiptLetsARecordingGoAndTheMediaIsTrimmedAWeekLater() async throws {
         try await openFolders()
         let sealed = try await seal()
