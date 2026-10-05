@@ -70,6 +70,23 @@ type recordingStatus struct {
 
 func recordingName(bundleID, path string) string { return "recordings/" + bundleID + "/" + path }
 
+// recordingMedia says whether a name in records is a media chunk of a recorded-job bundle:
+// recordings/<bundleID>/media/<sha256>.chunk. A chunk is video and sound, and is the one thing
+// this phone never serves through a relay; the bundle's manifest, timeline and transcript, and
+// everything else in records, go by any route.
+func recordingMedia(name string) bool {
+	rest, ok := strings.CutPrefix(name, "recordings/")
+	if !ok {
+		return false
+	}
+	bundleID, path, ok := strings.Cut(rest, "/")
+	if !ok || !lowerHex(bundleID, 32) {
+		return false
+	}
+	digest, ok := strings.CutSuffix(strings.TrimPrefix(path, "media/"), ".chunk")
+	return ok && strings.HasPrefix(path, "media/") && lowerHex(digest, 64)
+}
+
 func (i *managedInbox) recording(bundleID string) *publishedRecording {
 	for n := range i.state.Recordings {
 		if i.state.Recordings[n].BundleID == bundleID {

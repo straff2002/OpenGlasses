@@ -600,6 +600,8 @@ func (c *Client) startLocked(bindingJSON string, preview *officepreview.Phone, r
 			t := route.inbox.trust
 			c.guard.allowedFolder = managedFolderID(t.OrganizationID, t.EnrolmentID, t.OfficeID, roleRecords)
 			c.guard.allowedName = route.inbox.outbound
+			// And of that, a recording's video and sound only straight to the office.
+			c.guard.directOnly = recordingMedia
 		} else if managed {
 			// The handshake-only connection has no folder and serves nothing.
 			c.guard.allowedName = func(string) bool { return false }
@@ -731,6 +733,7 @@ func (c *Client) Snapshot() (string, error) {
 		status["outboundRequestsDenied"] = c.guard.denied.Load()
 		status["temporaryRequestsDenied"] = c.guard.temporaryDenied.Load()
 		status["manualRequestsDenied"] = c.guard.manualDenied.Load()
+		status["relayRequestsDenied"] = c.guard.relayDenied.Load()
 	}
 	c.routeMu.Lock()
 	status["observedConnectionType"] = c.route

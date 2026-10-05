@@ -3,6 +3,7 @@ package mobilecore
 import (
 	"github.com/syncthing/syncthing/lib/model"
 	"github.com/syncthing/syncthing/lib/protocol"
+	"strings"
 	"sync/atomic"
 )
 
@@ -16,8 +17,12 @@ type requestGuard struct {
 	allowedFolder string
 	// allowedName, when set, decides which names in allowedFolder may be served: the managed
 	// office connection's sealed outbound list. Unset, only the lab's one receipt may be.
-	allowedName     func(string) bool
+	allowedName func(string) bool
+	// directOnly, when set, names what is served only on a connection straight to the office:
+	// never through a relay. It is asked after allowedName, so it can only take away.
+	directOnly      func(string) bool
 	denied          atomic.Uint64
+	relayDenied     atomic.Uint64
 	temporaryDenied atomic.Uint64
 	manualDenied    atomic.Uint64
 }
@@ -43,5 +48,20 @@ func (g *requestGuard) Request(conn protocol.Connection, req *protocol.Request) 
 		}
 		return nil, protocol.ErrNoSuchFile
 	}
+	if g.directOnly != nil && g.directOnly(req.Name) && !directConnection(conn) {
+		g.denied.Add(1)
+		g.relayDenied.Add(1)
+		return nil, protocol.ErrNoSuchFile
+	}
 	return g.Model.Request(conn, req)
+}
+
+// directConnection says whether a request came in on a TCP or QUIC connection straight to the
+// peer. A relay, or a connection whose kind cannot be read, is not direct.
+func directConnection(conn protocol.Connection) bool {
+	if conn == nil {
+		return false
+	}
+	kind := conn.Type()
+	return strings.HasPrefix(kind, "tcp-") || strings.HasPrefix(kind, "quic-")
 }
