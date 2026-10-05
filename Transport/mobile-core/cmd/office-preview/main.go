@@ -3,7 +3,10 @@
 // Every operation but one is one JSON request on stdin and one JSON reply on stdout
 // ("sign-managed-job" among them: it lends the office application key's signature to a managed-job
 // payload the desktop built, after checking it; "sign-check-in-challenge", "renew-peer-binding"
-// and "sign-office-removal" are the check-in contract's, each checked here before a key signs). The
+// and "sign-office-removal" are the check-in contract's, each checked here before a key signs;
+// "sign-job-update", "sign-report-receipt", "sign-recording-receipt" and "sign-manual-assignment"
+// lend the office application key to one message each, and "sign-publisher-grant" the
+// administrator key, on the same terms). The
 // exception is "commission-serve": a long-running, line-delimited conversation for one
 // commissioning invitation, whose protocol is documented at the top of
 // commission/bootstrap/converse.go.
@@ -12,8 +15,13 @@ package main
 import (
 	"avenkin.dev/mobilecore/checkin"
 	"avenkin.dev/mobilecore/commission/bootstrap"
+	"avenkin.dev/mobilecore/jobupdate"
 	"avenkin.dev/mobilecore/manageddelivery"
+	"avenkin.dev/mobilecore/manualassignment"
+	"avenkin.dev/mobilecore/officebulk"
 	p "avenkin.dev/mobilecore/officepreview"
+	"avenkin.dev/mobilecore/officereport"
+	"avenkin.dev/mobilecore/recordingbundle"
 	"bufio"
 	"bytes"
 	"crypto/ed25519"
@@ -43,7 +51,8 @@ type Request struct {
 	PhoneTransportID    string     `json:"phoneTransportID"`
 	PhoneApplicationKey string     `json:"phoneApplicationKey"`
 	// Payload is the exact payload bytes to sign, base64 ("sign-managed-job",
-	// "sign-check-in-challenge", "sign-office-removal").
+	// "sign-check-in-challenge", "sign-office-removal", "sign-job-update", "sign-report-receipt",
+	// "sign-recording-receipt", "sign-manual-assignment", "sign-publisher-grant").
 	Payload string `json:"payload"`
 	// The exact envelopes of one check-in exchange ("renew-peer-binding").
 	Challenge string `json:"challenge"`
@@ -136,6 +145,59 @@ func run(root string, b []byte) (any, error) {
 			return nil, errors.New("malformed removal payload")
 		}
 		envelope, e := checkin.Remove(o.Authority(), o.Key.Public().(ed25519.PublicKey), r.ProfileDocument, raw, p.Now())
+		return map[string]string{"envelope": envelope}, e
+	case "sign-job-update":
+		// The office application key signs an update on a job the desktop built and recorded,
+		// after checking it is one, for this office, and live (Contracts/job-updates.md §3).
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed job update payload")
+		}
+		envelope, e := jobupdate.SignPayload(raw, o.Key, o.ManagedOfficeID(), p.Now())
+		return map[string]string{"envelope": envelope}, e
+	case "sign-report-receipt":
+		// The office application key signs the desktop's statement of how much of a report it
+		// has committed (Contracts/office-reports.md §8). The helper sees no report: that the
+		// receipt answers one the office read is the desktop's record. What is checked here is
+		// that it is a receipt, in form, for this office, and not dated ahead of the clock.
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed report receipt payload")
+		}
+		envelope, e := officereport.SignReceiptPayload(raw, o.Key, p.Now())
+		return map[string]string{"envelope": envelope}, e
+	case "sign-recording-receipt":
+		// The office application key signs a recorded-job bundle's acknowledgement or later
+		// status (Contracts/recorded-session.md §6), checked the same way.
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed recording receipt payload")
+		}
+		envelope, e := recordingbundle.SignReceiptPayload(raw, o.Key, o.ManagedOfficeID(), p.Now())
+		return map[string]string{"envelope": envelope}, e
+	case "sign-manual-assignment":
+		// The office application key signs a manual assignment the desktop built and recorded
+		// (Contracts/README.md), after checking it is one, for this office, and live. It says
+		// which phone may receive which archive; it makes no key a publisher.
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed manual assignment payload")
+		}
+		envelope, e := manualassignment.SignPayload(raw, o.Key, o.ManagedOfficeID(), p.Now())
+		return map[string]string{"envelope": string(envelope)}, e
+	case "sign-publisher-grant":
+		// The administrator key signs a grant of the organisation's own publishing key
+		// (Contracts/office-bulk.md §3) only under a vendor-signed profile that names this
+		// computer's administrator key, and only for that profile's organisation.
+		raw, e := base64.StdEncoding.Strict().DecodeString(r.Payload)
+		if e != nil {
+			return nil, errors.New("malformed publisher grant payload")
+		}
+		administrator, e := o.Authority().Administrator(r.ProfileDocument, p.Now())
+		if e != nil {
+			return nil, e
+		}
+		envelope, e := officebulk.SignGrantPayload(raw, administrator.OrganizationID, administrator.ProfileID, administrator.Sign, p.Now())
 		return map[string]string{"envelope": envelope}, e
 	case "receipt":
 		if e := o.VerifyReceipt(r.Receipt); e != nil {

@@ -18,6 +18,11 @@ const Domain = "Avenkin.ManualAssignment.v1\x00"
 const MaximumEnvelopeBytes = 32768
 const MaximumSafeInteger int64 = 9007199254740991
 
+// MaximumIssueSkew is how far ahead of the signer's clock a payload's issuedAt may be.
+const MaximumIssueSkew = 300
+
+var payloadFields = []string{"version", "kind", "assignmentID", "organizationID", "enrolmentID", "officeID", "generation", "setID", "sequence", "issuedAt", "expiresAt", "vaultID", "vaultVersion", "publisherID", "archiveSHA256", "archiveBytes"}
+
 type Payload struct {
 	Version        int    `json:"version"`
 	Kind           string `json:"kind"`
@@ -93,7 +98,7 @@ func Verify(data []byte, trust Trust, now int64, previous *HighWater) (Verified,
 		return empty, ErrSignature
 	}
 	var p Payload
-	if !flatObject(raw, []string{"version", "kind", "assignmentID", "organizationID", "enrolmentID", "officeID", "generation", "setID", "sequence", "issuedAt", "expiresAt", "vaultID", "vaultVersion", "publisherID", "archiveSHA256", "archiveBytes"}) || json.Unmarshal(raw, &p) != nil {
+	if !flatObject(raw, payloadFields) || json.Unmarshal(raw, &p) != nil {
 		return empty, ErrMalformed
 	}
 	if p.Version != 1 || p.Kind != "avenkin.manual-assignment" {
@@ -102,12 +107,7 @@ func Verify(data []byte, trust Trust, now int64, previous *HighWater) (Verified,
 	if p.OrganizationID != trust.OrganizationID || p.EnrolmentID != trust.EnrolmentID || p.OfficeID != trust.OfficeID || p.Generation != trust.Generation || p.SetID != trust.SetID {
 		return empty, ErrAuthority
 	}
-	for _, id := range []string{p.OrganizationID, p.EnrolmentID, p.OfficeID, p.SetID, p.VaultID, p.PublisherID} {
-		if !safeID(id) {
-			return empty, ErrFields
-		}
-	}
-	if !isHex(p.AssignmentID, 32) || !isHex(p.ArchiveSHA256, 64) || !safeVersion(p.VaultVersion) || p.Generation <= 0 || p.Generation > MaximumSafeInteger || p.Sequence <= 0 || p.Sequence > MaximumSafeInteger || p.IssuedAt <= 0 || p.ExpiresAt <= p.IssuedAt || p.ExpiresAt > MaximumSafeInteger || p.ArchiveBytes <= 0 || p.ArchiveBytes > MaximumSafeInteger {
+	if !p.valid() {
 		return empty, ErrFields
 	}
 	if now < p.IssuedAt || now >= p.ExpiresAt {
@@ -129,6 +129,52 @@ func Verify(data []byte, trust Trust, now int64, previous *HighWater) (Verified,
 		}
 	}
 	return v, nil
+}
+
+// valid says whether every field is in form, whoever the assignment is for and whatever the time.
+func (p Payload) valid() bool {
+	for _, id := range []string{p.OrganizationID, p.EnrolmentID, p.OfficeID, p.SetID, p.VaultID, p.PublisherID} {
+		if !safeID(id) {
+			return false
+		}
+	}
+	return isHex(p.AssignmentID, 32) && isHex(p.ArchiveSHA256, 64) && safeVersion(p.VaultVersion) && p.Generation > 0 && p.Generation <= MaximumSafeInteger && p.Sequence > 0 && p.Sequence <= MaximumSafeInteger && p.IssuedAt > 0 && p.ExpiresAt > p.IssuedAt && p.ExpiresAt <= MaximumSafeInteger && p.ArchiveBytes > 0 && p.ArchiveBytes <= MaximumSafeInteger
+}
+
+// SignPayload signs exact payload bytes the caller built, so nothing is re-encoded between an
+// office's record of an assignment and what a phone verifies. It is for a process that holds
+// the office application key on behalf of one that does not: the payload must be the closed,
+// flat assignment with valid fields, name officeID (the identity of the key about to sign), be
+// issued no later than a few minutes from now, and not have expired. It grants no publisher
+// authority: the archive's own signature is checked by the phone.
+func SignPayload(raw []byte, privateKey ed25519.PrivateKey, officeID string, now int64) ([]byte, error) {
+	if len(privateKey) != ed25519.PrivateKeySize {
+		return nil, ErrSignature
+	}
+	if len(raw) == 0 || len(raw) > MaximumEnvelopeBytes || !flatObject(raw, payloadFields) {
+		return nil, ErrMalformed
+	}
+	var p Payload
+	if json.Unmarshal(raw, &p) != nil {
+		return nil, ErrMalformed
+	}
+	if p.Version != 1 || p.Kind != "avenkin.manual-assignment" {
+		return nil, ErrVersion
+	}
+	if !p.valid() {
+		return nil, ErrFields
+	}
+	if officeID == "" || p.OfficeID != officeID {
+		return nil, ErrAuthority
+	}
+	if p.IssuedAt > now+MaximumIssueSkew || now >= p.ExpiresAt {
+		return nil, ErrTime
+	}
+	out, err := json.Marshal(Envelope{base64.StdEncoding.EncodeToString(raw), base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, append([]byte(Domain), raw...)))})
+	if err != nil || len(out) > MaximumEnvelopeBytes {
+		return nil, ErrMalformed
+	}
+	return out, nil
 }
 
 // Sign runs only on the issuing desktop/test side. It does not grant vendor entitlements or

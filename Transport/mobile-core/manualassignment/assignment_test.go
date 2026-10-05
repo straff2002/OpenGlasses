@@ -136,3 +136,51 @@ func TestAmbiguousOrExtendedJSONIsRejected(t *testing.T) {
 		t.Fatal("ambiguous envelope accepted")
 	}
 }
+
+// A process that holds the office application key for one that does not signs exactly the
+// payload it is handed — the golden assignment, byte for byte — and only an assignment, in
+// form, for its own office, issued by now and not expired.
+func TestAKeyHolderSignsExactlyThePayloadItIsHandedAndOnlyItsOwn(t *testing.T) {
+	golden, p := fixture(t)
+	var e Envelope
+	_ = json.Unmarshal(golden, &e)
+	payload, _ := base64.StdEncoding.DecodeString(e.Payload)
+	signed, err := SignPayload(payload, testKey(), "fixture-office", 1800000000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Envelope
+	if json.Unmarshal(signed, &again) != nil || again != e {
+		t.Fatalf("not the golden envelope: %s", signed)
+	}
+	if _, err := Verify(signed, trust(), 1800000000, nil); err != nil {
+		t.Fatal(err)
+	}
+	changed := func(edit func(*Payload)) []byte {
+		q := p
+		edit(&q)
+		b, _ := json.Marshal(q)
+		return b
+	}
+	for name, c := range map[string]struct {
+		payload  []byte
+		key      ed25519.PrivateKey
+		officeID string
+		now      int64
+		want     error
+	}{
+		"another office":    {payload, testKey(), "another-office", 1800000000, ErrAuthority},
+		"no office":         {payload, testKey(), "", 1800000000, ErrAuthority},
+		"issued ahead":      {payload, testKey(), "fixture-office", p.IssuedAt - MaximumIssueSkew - 1, ErrTime},
+		"expired":           {payload, testKey(), "fixture-office", p.ExpiresAt, ErrTime},
+		"another kind":      {changed(func(q *Payload) { q.Kind = "avenkin.managed-job" }), testKey(), "fixture-office", 1800000000, ErrVersion},
+		"a vault as a path": {changed(func(q *Payload) { q.VaultID = ".." }), testKey(), "fixture-office", 1800000000, ErrFields},
+		"an extra member":   {[]byte(strings.Replace(string(payload), `{"version"`, `{"extra":1,"version"`, 1)), testKey(), "fixture-office", 1800000000, ErrMalformed},
+		"nothing":           {nil, testKey(), "fixture-office", 1800000000, ErrMalformed},
+		"no key":            {payload, nil, "fixture-office", 1800000000, ErrSignature},
+	} {
+		if _, err := SignPayload(c.payload, c.key, c.officeID, c.now); err != c.want {
+			t.Fatalf("%s: got %v, want %v", name, err, c.want)
+		}
+	}
+}

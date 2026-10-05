@@ -158,7 +158,11 @@ rules, issued no more than five minutes ahead and not expired — and that it na
 key belongs to, then returns the same envelope `Sign` produces for those bytes. Nothing is
 re-encoded, so the office's record of a message and what a phone verifies are the same bytes. The
 helper exposes it as the one-shot operation `sign-managed-job`; its reply carries the envelope and
-no key.
+no key. The other messages an office signs for the managed folders are lent a key on the same
+terms, one operation each: `sign-job-update`, `sign-report-receipt`, `sign-recording-receipt`
+and `sign-manual-assignment` (office application key), and `sign-publisher-grant`
+(administrator key, under a vendor-signed profile that names it). Each signs only its own kind
+of payload under its own domain.
 
 The Go transport takes managed jobs out of the `control` folder, keeps the high-water mark and
 commits them. In the opt-in phone build `OfficeManagedJobIntake` then hands each committed job's

@@ -229,3 +229,53 @@ func TestAnAssignmentReceiptIsThePhonesAndForExactlyTheAssignmentSent(t *testing
 		t.Fatal("a payload that is not a receipt was sealed")
 	}
 }
+
+// A process that holds the administrator key for one that does not signs exactly the grant
+// payload it is handed — the golden grant, byte for byte — and only a grant, in form, for the
+// organisation and profile it has verified, issued by now and, unless it revokes, not expired.
+func TestAKeyHolderSignsExactlyTheGrantItIsHandedAndOnlyForItsOwnProfile(t *testing.T) {
+	w := fixtureWorld(t)
+	golden := string(w.files["office-publisher-grant-v1.json"])
+	var e envelope
+	_ = json.Unmarshal([]byte(golden), &e)
+	payload := must(base64.StdEncoding.DecodeString(e.Payload))
+	sign := func(message []byte) []byte { return ed25519.Sign(w.administrator, message) }
+	signed, err := SignGrantPayload(payload, "fixture-organisation", "fixture-profile", sign, FixtureNow)
+	if err != nil || signed != golden {
+		t.Fatalf("%v\n%s\n%s", err, signed, golden)
+	}
+	changed := func(edit func(*Grant)) []byte {
+		g := w.grant
+		edit(&g)
+		return must(json.Marshal(g))
+	}
+	// A revocation is signed whatever its dates: it is how an expired grant is still withdrawn.
+	revoked := changed(func(g *Grant) { g.Status, g.Sequence = StatusRevoked, 2 })
+	if _, err := SignGrantPayload(revoked, "fixture-organisation", "fixture-profile", sign, w.grant.ExpiresAt+1); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		payload                   []byte
+		organizationID, profileID string
+		sign                      func([]byte) []byte
+		now                       int64
+		want                      error
+	}{
+		"another organisation's profile":   {payload, "another-organisation", "fixture-profile", sign, FixtureNow, ErrOther},
+		"another profile":                  {payload, "fixture-organisation", "another-profile", sign, FixtureNow, ErrOther},
+		"no profile":                       {payload, "", "", sign, FixtureNow, ErrOther},
+		"issued ahead":                     {payload, "fixture-organisation", "fixture-profile", sign, w.grant.IssuedAt - MaximumIssueSkew - 1, ErrTime},
+		"already expired":                  {payload, "fixture-organisation", "fixture-profile", sign, w.grant.ExpiresAt, ErrTime},
+		"another organisation's publisher": {changed(func(g *Grant) { g.PublisherID = "org.another-organisation" }), "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrFields},
+		"an assignment receipt": {must(base64.StdEncoding.DecodeString(func() string {
+			var r envelope
+			_ = json.Unmarshal(w.files["office-bulk-assignment-receipt-received-v1.json"], &r)
+			return r.Payload
+		}())), "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
+		"nothing": {nil, "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
+		"no key":  {payload, "fixture-organisation", "fixture-profile", nil, FixtureNow, ErrSignature},
+	} {
+		_, err := SignGrantPayload(c.payload, c.organizationID, c.profileID, c.sign, c.now)
+		refused(t, name, err, c.want)
+	}
+}
