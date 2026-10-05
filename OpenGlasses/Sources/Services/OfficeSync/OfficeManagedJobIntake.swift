@@ -34,8 +34,12 @@ final class OfficeManagedJobIntake: ObservableObject {
         enum State: String, Codable, Sendable {
             /// On this phone; the technician has not answered its review yet.
             case awaitingReview
-            /// The technician answered: added, updated, or put aside.
+            /// The technician answered: added or updated. Also a job put aside before this
+            /// phone told the two apart.
             case reviewed
+            /// The technician closed the review without adding the job. It is still on this
+            /// phone and can be reviewed again.
+            case putAside
             /// The job-file import refused it. No receipt.
             case refused
         }
@@ -80,6 +84,9 @@ final class OfficeManagedJobIntake: ObservableObject {
         case waitingForOffice
         /// This many jobs are on the phone and waiting for the technician's review.
         case jobReceived(Int)
+        /// This many jobs were put aside without being added, and none is waiting for a first
+        /// review.
+        case jobPutAside(Int)
         /// The latest job from the office could not be added, and none is waiting.
         case jobRefused(String)
     }
@@ -219,12 +226,47 @@ final class OfficeManagedJobIntake: ObservableObject {
         }
     }
 
-    /// The technician answered (or put aside) the review of the job file with this digest.
-    func reviewEnded(jobSHA256: String) {
+    /// The review of the job file with this digest has ended: `added` when the technician took
+    /// the job, false when they closed the review without it. A job put aside stays on this
+    /// phone, is not raised again unasked, and can be reviewed again (`reviewPutAside`).
+    func reviewEnded(jobSHA256: String, added: Bool = true) {
         for entry in ledger.entries
         where entry.jobSHA256 == jobSHA256 && entry.state == .awaitingReview && raised.contains(entry.receiptID) {
-            try? update(entry.receiptID) { $0.state = .reviewed }
+            try? update(entry.receiptID) { $0.state = added ? .reviewed : .putAside }
         }
+    }
+
+    /// Raises the review of the lowest-sequence job put aside, from the bytes the office sent.
+    /// The technician's act, never a pass's: nothing put aside comes back on its own.
+    @discardableResult
+    func reviewPutAside() async throws -> Raised? {
+        let aside = ledger.entries.filter { $0.state == .putAside }.sorted { $0.sequence < $1.sequence }
+        guard let next = aside.first else { return nil }
+        guard let bytes = Data(base64Encoded: try await seams.transport.jobFile(messageID: next.messageID)),
+              Self.sha256(bytes) == next.jobSHA256 else {
+            try update(next.receiptID) {
+                $0.state = .refused
+                $0.reason = "The job file on this phone is not the one the office sent."
+            }
+            return .refused("The job file on this phone is not the one the office sent.")
+        }
+        let outcome = seams.raise(bytes, Self.fileName(sequence: next.sequence))
+        switch outcome {
+        case .raised:
+            // Its review is open again: it is answered, or put aside, as the first time.
+            raised.insert(next.receiptID)
+            try update(next.receiptID) { $0.state = .awaitingReview }
+        case .busy:
+            break
+        case .held:
+            try update(next.receiptID) { $0.state = .reviewed }
+        case .refused(let reason):
+            try update(next.receiptID) {
+                $0.state = .refused
+                $0.reason = Self.bounded(reason)
+            }
+        }
+        return outcome
     }
 
     // MARK: - The record
@@ -278,11 +320,16 @@ final class OfficeManagedJobIntake: ObservableObject {
     static func state(of ledger: Ledger) -> State {
         let waiting = ledger.entries.filter { $0.state == .awaitingReview }.count
         if waiting > 0 { return .jobReceived(waiting) }
+        let aside = ledger.entries.filter { $0.state == .putAside }.count
+        if aside > 0 { return .jobPutAside(aside) }
         if let last = ledger.entries.last, last.state == .refused {
             return .jobRefused(last.reason ?? "")
         }
         return .waitingForOffice
     }
+
+    /// What the button that reviews a put-aside job again says.
+    static let reviewAgainTitle = "Review it now"
 
     /// The words for each state. Nil when nothing is shown: while nothing has arrived, the
     /// connection's own line says whether the phone is waiting for the office. A job is "received"
@@ -296,6 +343,11 @@ final class OfficeManagedJobIntake: ObservableObject {
                          detail: count == 1 ? "A job from the office is ready for your review."
                                             : "\(count) jobs from the office are ready for your review.",
                          systemImage: "tray.and.arrow.down")
+        case .jobPutAside(let count):
+            return .init(title: count == 1 ? "A job from the office was put aside" : "\(count) jobs from the office were put aside",
+                         detail: count == 1 ? "It hasn't been added to your jobs. You can review it again."
+                                            : "They haven't been added to your jobs. You can review them again, one at a time.",
+                         systemImage: "tray")
         case .jobRefused(let reason):
             return .init(title: "A job from the office couldn't be added",
                          detail: reason.isEmpty ? nil : reason,

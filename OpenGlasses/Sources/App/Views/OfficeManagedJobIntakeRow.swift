@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// What has arrived from the office, in a sentence: a job received and ready for review, or one
-/// that could not be added and why. Shows nothing while nothing has arrived; the connection's own
-/// row says whether the phone is waiting for the office.
+/// What has arrived from the office, in a sentence: a job received and ready for review, one put
+/// aside that can be reviewed again, or one that could not be added and why. Shows nothing while
+/// nothing has arrived; the connection's own row says whether the phone is waiting for the office.
 struct OfficeManagedJobIntakeRow: View {
     @ObservedObject var intake: OfficeManagedJobIntake
 
@@ -22,6 +22,12 @@ struct OfficeManagedJobIntakeRow: View {
                 Image(systemName: status.systemImage)
             }
             .accessibilityElement(children: .combine)
+            if case .jobPutAside = intake.state {
+                // The technician's own act: a job put aside never comes back unasked.
+                Button(OfficeManagedJobIntake.reviewAgainTitle) {
+                    Task { try? await intake.reviewPutAside() }
+                }
+            }
         }
     }
 }
