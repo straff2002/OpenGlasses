@@ -735,7 +735,8 @@ func (c *Client) Snapshot() (string, error) {
 	c.routeMu.Lock()
 	status["observedConnectionType"] = c.route
 	// Whether that connection is straight to the office on a private network, rather than
-	// across the internet or through a relay. Large recordings wait for this.
+	// across the internet or through a relay. Reported for the native caller to show or to
+	// decide on; nothing in the transport depends on it.
 	status["observedConnectionLocal"] = c.routeLocal
 	c.routeMu.Unlock()
 	if c.app != nil {

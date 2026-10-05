@@ -16,7 +16,7 @@ final class JobRecordingSyncServiceTests: XCTestCase {
     private var now = Date(timeIntervalSince1970: TimeInterval(OfficeCheckInFixtures.now))
     private var conditions = SyncEligibility.Conditions(
         network: .wifi, isCharging: true, batteryLevel: 1, profileIsCurrent: true, leaseIsCurrent: true,
-        bindingIsCurrent: true, officeIsReachable: true, officeOnItsOwnNetwork: true)
+        bindingIsCurrent: true, officeIsReachable: true)
     private var gateFailure: Error?
     private var gateCalls = 0
     /// What the service wrote into jobs' logs.
@@ -392,35 +392,6 @@ final class JobRecordingSyncServiceTests: XCTestCase {
         guard case .transferring? = service.rows.first?.phase else {
             return XCTFail("\(String(describing: service.rows.first?.phase))")
         }
-    }
-
-    func testARecordingIsNeverSentAcrossTheInternet() async throws {
-        try await openFolders()
-        try await seal()
-        let service = makeService()
-        // On Wi-Fi, on power, the office in reach — but across the internet or through a relay.
-        conditions.officeOnItsOwnNetwork = false
-        try await service.sweep()
-        try await service.sweep()
-        var published = await transport.recordings
-        XCTAssertTrue(published.isEmpty, "nothing of a recording leaves the phone on that route")
-        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.waitingForOfficeNetwork)))
-        XCTAssertEqual(Service.words(try XCTUnwrap(service.rows.first)),
-                       "Recording waiting to sync. Waiting until this phone is on the office's own network. Recordings aren't sent over the internet.")
-        XCTAssertEqual(gateCalls, 0)
-
-        // Back on the office's network it goes; leaving it part way, nothing more is added.
-        conditions.officeOnItsOwnNetwork = true
-        try await service.sweep()
-        published = await transport.recordings
-        XCTAssertEqual(published.count, 1)
-        let sent = await transport.recordingChunkPublishes
-        conditions.officeOnItsOwnNetwork = false
-        await transport.officeTakes(try bundleID())
-        try await service.sweep()
-        let after = await transport.recordingChunkPublishes
-        XCTAssertEqual(after, sent)
-        XCTAssertEqual(service.rows.first?.phase, .waiting(.notEligible(.waitingForOfficeNetwork)))
     }
 
     func testNothingIsPublishedOnAPairingThatDoesNotVerify() async throws {

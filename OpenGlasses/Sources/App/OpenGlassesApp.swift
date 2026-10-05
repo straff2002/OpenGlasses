@@ -1245,9 +1245,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // The organisation's rule. Whether a bundle meets it is read from that bundle's own
             // signed manifest, where it is sent (`JobRecordingSyncService`).
             blurRequiredAndNotDone: Config.organizationRequiresBlurBeforeOfficeSync,
+            // In reach by any route. A recording waits for Wi-Fi (`network` above), not for the
+            // office's own network: from the technician's home it goes across the internet.
             officeIsReachable: pairing.officeIsReachable,
-            // A recording never crosses the internet or a relay: only the office's own network.
-            officeOnItsOwnNetwork: pairing.officeIsReachable && officeField.onOfficeNetwork,
             // Job reports and receipts go first.
             smallerItemsWaiting: offlineQueue.pendingCount > 0)
     }
@@ -1255,7 +1255,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The conditions when the app itself has gone: nothing may be sent.
     private static let noRecordingSync = SyncEligibility.Conditions(
         network: .none, isCharging: false, profileIsCurrent: false, leaseIsCurrent: false,
-        bindingIsCurrent: false, officeIsReachable: false, officeOnItsOwnNetwork: false)
+        bindingIsCurrent: false, officeIsReachable: false)
 
     /// Reads the office's receipts on the connection's poll and offers waiting records again.
     lazy var officeReportPump: OfficeReportPump? = {

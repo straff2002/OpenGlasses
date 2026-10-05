@@ -5,8 +5,7 @@ import Foundation
 /// A recording is large and never urgent, so it waits for the right moment: no medical privacy
 /// mode, no organisation rule it does not meet, a current profile, licence and pairing, Wi-Fi
 /// (mobile data only when the person allows it and the organisation does not forbid it), power or
-/// a well-charged battery, an office that can be reached **on its own network** (never across the internet, never through a
-/// relay), and nothing smaller waiting — job
+/// a well-charged battery, an office that can be reached, and nothing smaller waiting — job
 /// reports and receipts always go first.
 ///
 /// Pure: everything it weighs is an input. When several things are in the way it names the first
@@ -39,10 +38,10 @@ enum SyncEligibility {
         /// manifest is signed — so one sealed before the rule applied stays held for as long as
         /// the rule does.
         var blurRequiredAndNotDone = false
+        /// The office is in reach by any route: on its own network, straight across the internet,
+        /// or through a relay. A recording waits for Wi-Fi, not for the office's own network, so
+        /// one made on a Friday can go from the technician's home.
         var officeIsReachable: Bool
-        /// The phone is connected straight to the office on the office's own network, not across
-        /// the internet and not through a relay. A recording is sent on no other route.
-        var officeOnItsOwnNetwork: Bool
         /// Job reports or receipts are still waiting to go.
         var smallerItemsWaiting = false
     }
@@ -65,8 +64,6 @@ enum SyncEligibility {
         case waitingForPower
         case savingPower
         case officeNotReachable
-        /// The office is in reach, but across the internet or through a relay.
-        case waitingForOfficeNetwork
         case smallerItemsFirst
 
         /// The reason as a sentence for the technician.
@@ -96,8 +93,6 @@ enum SyncEligibility {
                 return "The phone is saving power. Plug it in to send the recording."
             case .officeNotReachable:
                 return "The office can't be reached from here. The recording will be sent when it can."
-            case .waitingForOfficeNetwork:
-                return "Waiting until this phone is on the office's own network. Recordings aren't sent over the internet."
             case .smallerItemsFirst:
                 return "Job reports are being sent first."
             }
@@ -144,12 +139,7 @@ enum SyncEligibility {
                 reasons.append(.waitingForPower)
             }
         }
-        if !c.officeIsReachable {
-            reasons.append(.officeNotReachable)
-        } else if !c.officeOnItsOwnNetwork {
-            // In reach is not enough: a recording never crosses the internet or a relay.
-            reasons.append(.waitingForOfficeNetwork)
-        }
+        if !c.officeIsReachable { reasons.append(.officeNotReachable) }
         if c.smallerItemsWaiting { reasons.append(.smallerItemsFirst) }
         return reasons
     }
