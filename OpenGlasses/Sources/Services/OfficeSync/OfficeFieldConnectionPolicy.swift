@@ -100,6 +100,16 @@ enum OfficeFieldConnectionPolicy {
         return nil
     }
 
+    /// Whether a snapshot says the phone is connected straight to its office on a private
+    /// network (`observedConnectionLocal`): not across the internet, not through a relay. Anything
+    /// the snapshot does not say plainly is not local.
+    static func onOfficeNetwork(snapshot: String) -> Bool {
+        guard case .connected(.direct) = observe(snapshot: snapshot),
+              let data = snapshot.data(using: .utf8),
+              let fields = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return fields["observedConnectionLocal"] as? Bool == true
+    }
+
     /// What one engine snapshot (the bridge's public status JSON) says.
     static func observe(snapshot: String) -> Observation {
         guard let data = snapshot.data(using: .utf8),
