@@ -24,9 +24,13 @@ it, and shows a job's updates on the job, newest first, when the technician open
 tested headless against the golden fixtures and an in-memory stand-in for the transport. **No
 update has reached a physical phone from an office, and no office sends one.**
 
-**Not built on the phone:** a notification, an unread mark outside the job's own screen, the
-update in the visit's exported record, reading an update aloud, and anything that applies an
-update to the job. The default app build links no transport and takes in no updates.
+**Also built on the phone (2026-10-05):** a local notification when an update is committed for
+a job that is ahead or open — the job's number and the update's kind, never its text — and a
+mark on the job's row until the technician has the job open. Neither is a message: the office
+learns nothing from them (§9.1).
+
+**Not built on the phone:** the update in the visit's exported record, reading an update aloud,
+and anything that applies an update to the job. The default app build links no transport and takes in no updates.
 
 **Builds on, unchanged:** the [managed folders](office-folders.md) and the peer binding they
 are opened under, the [job file](job-file.md) (format 2's `job_id` is what an update names),
@@ -179,7 +183,9 @@ change.
 - **Attachments on an update.** A file for a job travels as the job's own attachment, named by
   a new revision of the job file ([bulk content](office-bulk.md) §5).
 - **Applying an update.** Nothing here changes a job's booked time or its parts list.
-- **A notification's wording**, and whether an update's text may appear on a locked screen.
+- **Whether an update's text may appear on a locked screen.** As built, the phone's notification
+  carries the job's number and the kind (`parts`, `schedule`, `note`; any other kind is "update")
+  and no text from the update.
 - **Withdrawing an update.** The office sends another that says so.
 
 ## 8. Fixtures

@@ -13,7 +13,10 @@ attachment a signed job names by digest follows it and opens from the job. What 
 is listed under it. Every managed flow now also runs across the phone's real embedded engine
 against a synthetic office, in Go (see P6). P3 (updates on a job) built 2026-10-05 in the opt-in build, tested headless:
 the contract, the transport, and a service that keeps, receipts and shows on the job what the
-office says about it. P5 and P6 are planned. A build order, not a new design:
+office says about it. Four gaps closed 2026-10-05 before the first phone run, tested headless:
+the technician is told of an update and its job's row is marked until it is opened; a check-in
+the office never answers is said; a job put aside at its review can be reviewed again; a manual
+is not fetched without room for it. P5 and P6 are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
 existing.
 **Track:** Field Assist (B2B), phone half.
@@ -154,8 +157,11 @@ Choices made where the plan left room:
   app itself has since been built (with P1, 2026-10-04): a Debug simulator build and a Release
   device build, installed and launched on a phone that is not paired with an office. No bridge
   call has yet run against an office.
-- A job whose review the technician puts aside is not offered again, though the office holds its
-  receipt. Reopening a received job from the phone is not built.
+- ~~A job whose review the technician puts aside is not offered again.~~ **Built 2026-10-05:**
+  closing a review without adding the job puts it aside (`OfficeManagedJobIntake.Entry.State
+  .putAside`). No pass raises it again; the office row in Settings says a job was put aside and
+  offers "Review it now", which raises the same review from the bytes the office sent, with no
+  second receipt. A job put aside before this build is recorded as answered and is not listed.
 - The review does not yet say that a job came over the office connection; it shows the file name
   `office-job-<sequence>.ogjob` and the job file's own signature state.
 - A refused job stays listed by the transport as pending with no receipt. The office sees it as
@@ -318,8 +324,11 @@ Choices made where the plan and contract left room:
   renewed on return; a removal delivered and its receipt accepted. The opt-in app builds, and
   launches on a phone, but nothing here was run against the Go engine from Swift, and the office
   app does not yet set challenges or renew.
-- A check-in the office never answers is not shown; the technician sees the lease date on the
-  managed row and nothing about the office having gone quiet.
+- ~~A check-in the office never answers is not shown.~~ **Built 2026-10-05:** when the challenge
+  of a check-in this phone published runs out with no result, the office row says "The office
+  hasn't answered a check-in" with the date, until a later check-in is answered. It states the
+  exchange and finds no fault: the office may be off, or the phone may not have reached it — the
+  phone cannot tell which. A check-in still inside its challenge's life is not mentioned.
 - A managed job signed under the old generation and not yet committed is refused after a
   renewal, as the contract says; the office has to issue it again. Not exercised end to end.
 - If the transport loses its own record of a check-in the phone already signed, that challenge
@@ -516,9 +525,10 @@ kept or receipted; nothing is taken in on a pairing that does not verify.
 
 Choices made where the contract and Plan HN left room:
 
-- **No notification, and no unread mark outside the job.** HN's §3 and §4 — the notification,
-  the switch that starts a clock, the read-out — are HN's own phases and need its several-open-
-  jobs model first. Here an update waits on the job's screen.
+- **No switch and no read-out.** HN's §4 — the switch that starts a clock, the read-out — is
+  HN's own phase and needs its several-open-jobs model first. The notification and the mark on
+  the job's row (HN §3) were added afterwards and are listed under *Still owed* below; neither
+  opens a job.
 - **Not in the exported record yet.** HN wants each update written to the job's record when
   received and when first opened. Both times are kept in the phone's own record of updates; the
   work record does not carry them.
@@ -529,7 +539,16 @@ Choices made where the contract and Plan HN left room:
 **Still owed for P3:**
 
 - An update from a real office to a physical phone, and its receipt read by the office.
-- The notification, the unread mark on the Jobs list, and reading an update aloud (Plan HN P3).
+- ~~The notification and the unread mark on the Jobs list.~~ **Built 2026-10-05:** an update
+  committed for a job that is ahead or open raises one local notification a job — "Job 1007:
+  parts update", the job's number and the kind, never the office's text — and marks the job's
+  row on the Jobs list ("New update from the office") until the technician has the job open.
+  It is shown with the app open, because that is the only time the phone talks to the office;
+  no other notification's behaviour changes. A tap opens the Job tab, not the job: opening a job
+  that is not the running one is HN's switch, which is not built. A finished job's update, and
+  one for a job not on the phone, tell nobody.
+- Reading an update aloud, the mark on the session card's job pill, and the organisation's
+  choice to allow the text on the lock screen (Plan HN P3).
 - The update in the visit's exported record.
 - The reply (Plan HN P4), which needs its own contract.
 
@@ -661,7 +680,11 @@ Choices made where the contract left room:
 
 - An attachment from a real office to a physical phone.
 - A person's explicit choice to download on a metered or relayed route.
-- A free-space check before a manual archive is taken; attachments have one.
+- ~~A free-space check before a manual archive is taken.~~ **Built 2026-10-05:** an archive is
+  asked of the folder only with room for it three times over (the archive and what it unpacks
+  to, by this phone's own ceilings) and 100 MB to spare. Without it the manual's row says "Not
+  enough space on this phone", the assignment keeps its *received* receipt, and it is asked for
+  on a later pass when there is room. An archive already taken is installed, not let go.
 - The headless install test stops at the installer's request; the installer itself runs only
   in the app. A manual from a real office to a physical phone is owed.
 - A revoked publisher's already-installed vaults are not yet flagged.
