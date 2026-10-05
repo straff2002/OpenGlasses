@@ -102,7 +102,7 @@ final class JobRecordingPolicyKeysTests: XCTestCase {
 
         var conditions = SyncEligibility.Conditions(network: .cellular, cellularAllowedByUser: true, isCharging: true,
                                                     batteryLevel: 1, profileIsCurrent: true, leaseIsCurrent: true,
-                                                    bindingIsCurrent: true, officeIsReachable: true, officeOnItsOwnNetwork: true)
+                                                    bindingIsCurrent: true, officeIsReachable: true)
         XCTAssertEqual(SyncEligibility.evaluate(conditions), .eligible)
         conditions.cellularForbiddenByOrganization = true
         XCTAssertEqual(SyncEligibility.evaluate(conditions), .notEligible(.cellularForbiddenByOrganization))

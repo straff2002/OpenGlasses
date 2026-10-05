@@ -9,7 +9,7 @@ final class SyncEligibilityTests: XCTestCase {
     /// Everything in order: on Wi-Fi, on power, current, the office in reach, nothing else waiting.
     private func ready(_ change: (inout E.Conditions) -> Void = { _ in }) -> E.Conditions {
         var conditions = E.Conditions(network: .wifi, isCharging: true, batteryLevel: 0.2, profileIsCurrent: true,
-                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true, officeOnItsOwnNetwork: true)
+                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true)
         change(&conditions)
         return conditions
     }
@@ -46,7 +46,7 @@ final class SyncEligibilityTests: XCTestCase {
 
     func testMobileDataIsOffUnlessThePersonTurnsItOn() {
         let conditions = E.Conditions(network: .cellular, isCharging: true, batteryLevel: 1, profileIsCurrent: true,
-                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true, officeOnItsOwnNetwork: true)
+                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true)
         XCTAssertFalse(conditions.cellularAllowedByUser)
         XCTAssertEqual(E.evaluate(conditions), .notEligible(.waitingForWiFi))
     }
@@ -102,7 +102,7 @@ final class SyncEligibilityTests: XCTestCase {
         XCTAssertEqual(E.evaluate(ready { $0.medicalModeOn = true }), .notEligible(.medicalMode))
         let everythingWrong = E.Conditions(network: .none, isCharging: false, batteryLevel: 0.1, profileIsCurrent: false,
                                            leaseIsCurrent: false, bindingIsCurrent: false, medicalModeOn: true,
-                                           officeIsReachable: false, officeOnItsOwnNetwork: false, smallerItemsWaiting: true)
+                                           officeIsReachable: false, smallerItemsWaiting: true)
         XCTAssertEqual(E.evaluate(everythingWrong), .notEligible(.medicalMode))
     }
 
@@ -136,7 +136,7 @@ final class SyncEligibilityTests: XCTestCase {
         let everythingWrong = E.Conditions(network: .cellular, cellularForbiddenByOrganization: true, isCharging: false,
                                            batteryLevel: 0.1, profileIsCurrent: false, leaseIsCurrent: false,
                                            bindingIsCurrent: false, medicalModeOn: true, blurRequiredAndNotDone: true,
-                                           officeIsReachable: false, officeOnItsOwnNetwork: false, smallerItemsWaiting: true)
+                                           officeIsReachable: false, smallerItemsWaiting: true)
         XCTAssertEqual(E.reasons(everythingWrong), [
             .medicalMode, .blurRequired, .profileNotCurrent, .leaseNotCurrent, .bindingNotCurrent, .cellularForbiddenByOrganization,
             .waitingForPower, .officeNotReachable, .smallerItemsFirst,
@@ -166,25 +166,19 @@ final class SyncEligibilityTests: XCTestCase {
         XCTAssertEqual(E.Reason.smallerItemsFirst.explanation, "Job reports are being sent first.")
     }
 
-    /// A recording never crosses the internet: with the office in reach but not on its own
-    /// network — across the internet, or through a relay — it waits, and says so.
-    func testARecordingWaitsForTheOfficesOwnNetwork() {
+    /// A recording waits for Wi-Fi, any Wi-Fi: it does not have to be the office's own network.
+    /// Mobile data and a personal hotspot are what it never uses unless the person allows it.
+    func testARecordingGoesOnAnyWiFiWithTheOfficeInReachAndNeverOnMobileDataUnasked() {
         var conditions = E.Conditions(network: .wifi, isCharging: true, batteryLevel: 1, profileIsCurrent: true,
-                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true,
-                                      officeOnItsOwnNetwork: false)
-        XCTAssertEqual(E.evaluate(conditions), .notEligible(.waitingForOfficeNetwork))
-        XCTAssertEqual(E.Reason.waitingForOfficeNetwork.explanation,
-                       "Waiting until this phone is on the office's own network. Recordings aren't sent over the internet.")
-        // Mobile data the person has allowed does not change it: that is still the internet.
-        conditions.network = .cellular
-        conditions.cellularAllowedByUser = true
-        XCTAssertEqual(E.evaluate(conditions), .notEligible(.waitingForOfficeNetwork))
-        // An office that is not in reach at all is said to be out of reach, once.
-        conditions.officeIsReachable = false
-        XCTAssertEqual(E.reasons(conditions), [.officeNotReachable])
-        conditions.network = .wifi
-        conditions.officeIsReachable = true
-        conditions.officeOnItsOwnNetwork = true
+                                      leaseIsCurrent: true, bindingIsCurrent: true, officeIsReachable: true)
+        // Nothing here says which network the Wi-Fi is, or how the office is reached.
         XCTAssertEqual(E.evaluate(conditions), .eligible)
+        conditions.network = .cellular
+        XCTAssertEqual(E.evaluate(conditions), .notEligible(.waitingForWiFi))
+        conditions.network = .wifi
+        conditions.officeIsReachable = false
+        XCTAssertEqual(E.evaluate(conditions), .notEligible(.officeNotReachable))
+        XCTAssertFalse(E.Reason.allCases.contains { $0.explanation.lowercased().contains("own network") },
+                       "no reason asks for the office's own network")
     }
 }
