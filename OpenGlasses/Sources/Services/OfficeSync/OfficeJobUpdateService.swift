@@ -7,8 +7,10 @@ import Foundation
 /// sequence, and receipted. The receipt says the phone has it; nothing here says anyone read
 /// it. An update is shown on its job when the technician opens the job, newest first.
 ///
-/// **Information only.** An update never edits a job, starts or pauses one, raises anything
-/// that interrupts, or reaches a model: its text is the office's words, shown as such.
+/// **Information only.** An update never edits a job, starts or pauses one, or reaches a model:
+/// its text is the office's words, shown as such. When one arrives for a job this phone holds
+/// the technician is told that there is one — the job and the kind, never the text — and the
+/// job's row is marked until they have had it open.
 ///
 /// No engine, key or trust chain of its own: everything it touches is a seam, so it runs
 /// headless.
@@ -54,6 +56,13 @@ final class OfficeJobUpdateService: ObservableObject {
         /// What this phone holds for an office job identifier now.
         var jobState: @MainActor (String) -> OfficeJobUpdate.JobState = { _ in .unknown }
         var sign: (Data) async throws -> Data = { try await OfficePhoneIdentity.shared.signJobUpdateReceipt($0) }
+        /// A new update has been committed for a job this phone holds, ahead or open. Told once
+        /// an update; a finished job's, and one for a job not here, tell nobody.
+        var arrived: @MainActor (OfficeJobUpdate.Update) -> Void = { _ in }
+        /// The technician has had this job's updates open.
+        var opened: @MainActor (String) -> Void = { _ in }
+        /// Every update has gone: the phone left the organisation.
+        var cleared: @MainActor () -> Void = {}
         var clock: () -> Date = Date.init
         var load: () -> Ledger = { Ledger() }
         var save: (Ledger) throws -> Void = { _ in }
@@ -155,9 +164,12 @@ final class OfficeJobUpdateService: ObservableObject {
             return nil
         }
         guard Self.makeRoom(in: &next, forJob: update.jobID) else { return nil }   // it waits
+        let jobState = seams.jobState(update.jobID)
         next.entries.append(Entry(update: update, payloadSHA256: verified.payloadSHA256, envelopeSHA256: digest,
-                                  envelope: data, jobState: seams.jobState(update.jobID), receivedAt: now))
+                                  envelope: data, jobState: jobState, receivedAt: now))
         try commit(next)
+        // Said once, after it is kept, and only for a job that is live on this phone.
+        if jobState == .held { seams.arrived(update) }
         return update.updateID
     }
 
@@ -194,9 +206,18 @@ final class OfficeJobUpdateService: ObservableObject {
         ledger.entries.filter { $0.update.jobID == jobID && $0.openedAt == nil }.count
     }
 
+    /// How many updates the technician has not had open yet, by office job identifier. Only
+    /// jobs with some are listed.
+    var unopenedByJob: [String: Int] {
+        ledger.entries.reduce(into: [:]) { counts, entry in
+            if entry.openedAt == nil { counts[entry.update.jobID, default: 0] += 1 }
+        }
+    }
+
     /// The technician has the job open with its updates on it.
     func markOpened(jobID: String) {
         guard unopened(forJob: jobID) > 0 else { return }
+        defer { seams.opened(jobID) }
         let now = Int64(seams.clock().timeIntervalSince1970)
         var next = ledger
         for index in next.entries.indices where next.entries[index].update.jobID == jobID
@@ -209,6 +230,7 @@ final class OfficeJobUpdateService: ObservableObject {
     /// Everything kept, for leaving the organisation.
     func removeAll() {
         try? commit(Ledger())
+        seams.cleared()
     }
 
     // MARK: - The record

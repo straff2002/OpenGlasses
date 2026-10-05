@@ -15,6 +15,10 @@ final class OfficeJobUpdateServiceTests: XCTestCase {
     private var now = OfficeCheckInFixtures.now + 60
     private var states: [String: U.JobState] = ["job-2031": .held]
     private var gateCalls = 0
+    /// What the service told the technician had arrived, and which jobs it said were opened.
+    private var told: [(jobID: String, kind: String)] = []
+    private var openedJobs: [String] = []
+    private var clears = 0
     private var gateFailure: Error?
 
     private struct Failed: Error {}
@@ -45,6 +49,9 @@ final class OfficeJobUpdateServiceTests: XCTestCase {
             return try OfficeJobUpdateTests.trust()
         })
         seams.jobState = { [unowned self] in self.states[$0] ?? .unknown }
+        seams.arrived = { [unowned self] in self.told.append(($0.jobID, $0.updateKind)) }
+        seams.opened = { [unowned self] in self.openedJobs.append($0) }
+        seams.cleared = { [unowned self] in self.clears += 1 }
         // The golden receipt's own signature for the golden payload (CryptoKit's signatures are
         // randomised); the fixture phone key for anything else.
         seams.sign = { payload in
@@ -129,6 +136,53 @@ final class OfficeJobUpdateServiceTests: XCTestCase {
         XCTAssertEqual(relaunched.entries.map(\.openedAt), service.entries.map(\.openedAt))
         let after = await transport.updateReceipts
         XCTAssertEqual(after, receipts)
+    }
+
+    /// The technician is told once an update, for a job that is live on this phone, with the job
+    /// and the kind and nothing else; the job's count of unopened updates is what its row shows.
+    func testTheTechnicianIsToldOnceOfAnUpdateOnAHeldJobAndTheJobIsMarkedUntilOpened() async throws {
+        try await openFolders()
+        let service = makeService()
+        try await officeSends("job-update-parts-v1")
+        try await service.sweep()
+        XCTAssertEqual(told.map(\.jobID), ["job-2031"])
+        XCTAssertEqual(told.map(\.kind), ["parts"])
+        XCTAssertEqual(service.unopenedByJob, ["job-2031": 1])
+
+        // The same file again, another pass, the app launched again: nobody is told twice.
+        try await service.sweep()
+        try await makeService().sweep()
+        XCTAssertEqual(told.count, 1)
+
+        try await officeSends("job-update-schedule-v1")
+        try await service.sweep()
+        XCTAssertEqual(told.map(\.kind), ["parts", "schedule"])
+        XCTAssertEqual(service.unopenedByJob, ["job-2031": 2])
+
+        // Opening the job clears its mark and says so, once.
+        service.markOpened(jobID: "job-2031")
+        XCTAssertEqual(service.unopenedByJob, [:])
+        XCTAssertEqual(openedJobs, ["job-2031"])
+        service.markOpened(jobID: "job-2031")
+        XCTAssertEqual(openedJobs, ["job-2031"], "nothing was unopened the second time")
+
+        service.removeAll()
+        XCTAssertEqual(clears, 1)
+    }
+
+    /// An update on a finished job, or on a job that is not on this phone, is kept and receipted
+    /// and tells nobody: there is no live job to read it on.
+    func testAnUpdateOnAFinishedOrUnknownJobTellsNobody() async throws {
+        try await openFolders()
+        for state in [U.JobState.finished, .unknown] {
+            saved = Service.Ledger()
+            states["job-2031"] = state
+            let service = makeService()
+            try await officeSends("job-update-parts-v1")
+            try await service.sweep()
+            XCTAssertEqual(service.entries.count, 1, state.rawValue)
+            XCTAssertTrue(told.isEmpty, state.rawValue)
+        }
     }
 
     func testTheReceiptSaysWhatThePhoneHeldForTheJob() async throws {

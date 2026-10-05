@@ -69,9 +69,11 @@ enum JobSendNotifications {
 
 /// Routes a tap on the staged-send notification to the Job tab.
 ///
-/// Deliberately minimal: it implements **only** `didReceive`, so the app's foreground behaviour
-/// for every other notification — timers, alarms, geofences, the digest — is exactly what it was
-/// before this existed. A delegate that also answered `willPresent` would have changed all of them.
+/// Deliberately minimal. A tap is routed by `didReceive`. With the app open, `willPresent` shows
+/// one kind of notification and no other: an update from the office, which only ever arrives
+/// while the app is open, because that is when the phone talks to the office. For everything
+/// else — timers, alarms, geofences, the digest, the staged-send line — it answers what the
+/// system does when a delegate does not answer at all, so their behaviour is what it was.
 @MainActor
 final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 
@@ -87,6 +89,17 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     static func requestedTab(from userInfo: [AnyHashable: Any]) -> MainTab? {
         guard let raw = userInfo[JobSendNotifications.openTabKey] as? String else { return nil }
         return MainTab(rawValue: raw)
+    }
+
+    /// How a notification is presented while the app is open. Pure, so the test is a value test.
+    nonisolated static func presentation(identifier: String) -> UNNotificationPresentationOptions {
+        JobUpdateNotifications.isUpdate(identifier: identifier) ? [.banner, .list, .sound] : []
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler(Self.presentation(identifier: notification.request.identifier))
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,

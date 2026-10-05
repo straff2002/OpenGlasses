@@ -32,10 +32,11 @@ final class JobListComposerTests: XCTestCase {
     private func inputs(open: JobListSession? = nil, finished: [JobListSession] = [],
                         upcoming: [UpcomingJob] = [], queue: [QueuedSend] = [],
                         debrief: JobDayDebrief? = nil, signOffRequired: Bool = false,
-                        recordings: [JobDayRecording] = [], query: String = "") -> JobListInputs {
+                        recordings: [JobDayRecording] = [], newUpdates: [String: Int] = [:],
+                        query: String = "") -> JobListInputs {
         JobListInputs(now: now, calendar: calendar, open: open, finished: finished, upcoming: upcoming,
                       queue: queue, debrief: debrief, signOffRequired: signOffRequired,
-                      recordings: recordings, query: query, dateText: date, timeText: time)
+                      recordings: recordings, newUpdates: newUpdates, query: query, dateText: date, timeText: time)
     }
 
     private func session(_ id: String, ref: String?, started: Date, ended: Date? = nil,
@@ -373,5 +374,39 @@ final class JobListComposerTests: XCTestCase {
         XCTAssertEqual(all.shown.count, 60)
         XCTAssertEqual(all.remaining, 0)
         XCTAssertEqual(list.olderTitle, "Older jobs (60)")
+    }
+
+    // MARK: - Updates from the office
+
+    /// An update the technician has not opened is marked on its job's row while the job is ahead
+    /// or open. A finished job's record is closed: nothing is flagged on it.
+    func testAnUnopenedUpdateIsMarkedOnAJobAheadOrOpenAndNeverOnAFinishedOne() {
+        func office(_ jobID: String) -> JobFileProvenance {
+            JobFileProvenance(fileName: "office-job-1.ogjob", signature: .signed, signer: "Fixture Service",
+                              receivedAt: at(day: 1, hour: 9), digest: String(repeating: "a", count: 64),
+                              identity: JobFile.Identity(jobID: jobID, revision: 1, sha256: String(repeating: "b", count: 64)))
+        }
+        var open = session("s-open", ref: "1007", started: at(day: 2, hour: 7))
+        open.officeJobID = "job-open"
+        var done = session("s-done", ref: "1001", started: at(day: 1, hour: 9), ended: at(day: 1, hour: 11))
+        done.officeJobID = "job-done"
+        let list = JobListComposer.compose(inputs(
+            open: open, finished: [done],
+            upcoming: [upcoming("u1", ref: "1009", customer: "Smith", at: at(day: 3, hour: 9), provenance: office("job-ahead")),
+                       upcoming("u2", ref: "1010", customer: "Jones", at: at(day: 3, hour: 11), provenance: office("job-quiet")),
+                       upcoming("u3", ref: "1011", customer: "Typed", at: at(day: 3, hour: 13))],
+            newUpdates: ["job-open": 1, "job-ahead": 3, "job-done": 2, "job-nowhere": 1]))
+
+        XCTAssertEqual(list.open?.badges.map(\.kind), [.officeUpdate])
+        XCTAssertEqual(list.open?.badges.map(\.label), ["New update from the office"])
+        let ahead = Dictionary(uniqueKeysWithValues: list.scheduled.map { ($0.id, $0.badges) })
+        XCTAssertEqual(ahead["upcoming-u1"]?.map(\.label), ["3 new updates from the office"])
+        XCTAssertEqual(ahead["upcoming-u2"], [])
+        XCTAssertEqual(ahead["upcoming-u3"], [])
+        XCTAssertTrue((list.recent + list.older).allSatisfy { !$0.badges.contains { $0.kind == .officeUpdate } })
+        // It is something to read, not something gone wrong.
+        XCTAssertEqual(list.open?.badges.first?.isWarning, false)
+        // With none unopened there is no mark.
+        XCTAssertEqual(JobListComposer.compose(inputs(open: open)).open?.badges, [])
     }
 }

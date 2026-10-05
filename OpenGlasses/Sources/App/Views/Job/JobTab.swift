@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Where a technician goes to see their jobs (Plan FO P2; a list since Plan HC).
@@ -47,7 +48,11 @@ private struct JobTabContent: View {
             sessions: .shared, flow: flow, upcoming: upcoming, sends: sends,
             // A recording not yet with the office is flagged on its job's row (Plan HE).
             recordings: { [weak appState] in appState?.owedRecordings() ?? [] },
-            recordingChanges: appState.owedRecordingChanges))
+            recordingChanges: appState.owedRecordingChanges,
+            // An update from the office not yet opened is marked on its job's row.
+            newUpdates: { [weak appState] in appState?.officeJobUpdates?.unopenedByJob ?? [:] },
+            updateChanges: appState.officeJobUpdates?.$entries.map { _ in () }.eraseToAnyPublisher()
+                ?? Empty().eraseToAnyPublisher()))
     }
 
     @State private var path: [JobRoute] = []
