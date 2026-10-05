@@ -56,6 +56,10 @@ glasses have still to show is listed in Plan HE under "P1 as built" and "The blu
   office named in its current administrator-signed binding. This contract adds no transport.
 - *Assumption (FX, not built):* a phone → office managed folder, send-only on the phone, and an
   outbound guard that serves only files named in a sealed manifest.
+- **A bundle never crosses the internet.** The phone publishes a bundle's files only while it
+  is connected straight to its office on a private network: not across the internet and not
+  through a relay. *Requirement on the office:* it expects a recording to arrive when the phone
+  is next on the office's own network, and shows one that has not as waiting, not failed.
 - Authority is never taken from the bundle. The office verifies the manifest signature with the
   phone application key it already holds from the binding; the phone verifies office messages
   with the office key from the same binding. Both recheck the binding generation.
