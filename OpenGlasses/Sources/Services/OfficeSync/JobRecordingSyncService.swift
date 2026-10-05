@@ -223,7 +223,11 @@ final class JobRecordingSyncService: ObservableObject {
         // the two small files with the media; they are taken first, so they are set aside here.
         let documents = record.totalBytes - record.mediaBytes
         var ahead = max(0, progress.publishedBytes - documents) - max(0, progress.servedBytes - documents)
-        while record.publishedChunks < record.chunks.count,
+        // The video goes only straight to the office. Through a relay the manifest, timeline and
+        // transcript above still go; no further chunk is offered, and the transport itself
+        // refuses to serve the ones already there.
+        let media = SyncEligibility.evaluateMedia(conditions)
+        while media.isEligible, record.publishedChunks < record.chunks.count,
               ahead < Int64(seams.chunksAhead) * record.chunkBytes {
             let chunk = record.chunks[record.publishedChunks]
             try await seams.transport.publishRecordingChunk(
@@ -236,7 +240,11 @@ final class JobRecordingSyncService: ObservableObject {
         progress = try OfficeManagedFolders.decodeRecordingProgress(
             try await seams.transport.recordingProgress(bundleID: record.bundleID))
         state.apply(.progress(sentBytes: min(max(progress.servedBytes, record.sentBytes), record.totalBytes)))
-        if progress.allServed, record.publishedChunks == record.chunks.count { state.apply(.allChunksServed) }
+        if progress.allServed, record.publishedChunks == record.chunks.count {
+            state.apply(.allChunksServed)
+        } else if case .notEligible(let reason) = media {
+            waiting[record.bundleID] = reason
+        }
         Self.keep(state, in: &record)
         try seams.store.save(record)
     }
@@ -449,11 +457,14 @@ extension JobRecordingSyncService {
     /// reach. While the engine runs the saved approval has verified and is verified again every
     /// half minute; stopped, it has not. The gate asks again before anything is published either
     /// way — this only decides what a waiting recording says.
-    static func pairing(_ state: OfficeFieldConnectionPolicy.State) -> (bindingIsCurrent: Bool, officeIsReachable: Bool) {
+    /// A connection through a relay is in reach, and is not one a recording's video goes by.
+    static func pairing(_ state: OfficeFieldConnectionPolicy.State)
+        -> (bindingIsCurrent: Bool, officeIsReachable: Bool, officeIsThroughRelay: Bool) {
         switch state {
-        case .connected: return (true, true)
-        case .waiting, .paused: return (true, false)
-        case .unavailable, .stopped: return (false, false)
+        case .connected(.relay): return (true, true, true)
+        case .connected: return (true, true, false)
+        case .waiting, .paused: return (true, false, false)
+        case .unavailable, .stopped: return (false, false, false)
         }
     }
 

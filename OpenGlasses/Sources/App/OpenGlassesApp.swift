@@ -1248,6 +1248,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // In reach by any route. A recording waits for Wi-Fi (`network` above), not for the
             // office's own network: from the technician's home it goes across the internet.
             officeIsReachable: pairing.officeIsReachable,
+            // Through a relay the recording's manifest, timeline and transcript go and its video
+            // waits for a connection straight to the office.
+            officeIsThroughRelay: pairing.officeIsThroughRelay,
             // Job reports and receipts go first.
             smallerItemsWaiting: offlineQueue.pendingCount > 0)
     }
