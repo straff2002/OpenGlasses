@@ -20,7 +20,9 @@ counts, the order rejections are tried in, how rows are named — the fixture's 
 its cases are the reference until this text is revised to say the same; the choices are listed in
 Plan HE under "P0 as built". **The two signed messages have a reference implementation** (2026-10-05):
 `Transport/mobile-core/recordingbundle` signs and reads the manifest (§3) and the office's
-receipt and later status (§6), with golden fixtures (§11). The phone's own code for them writes
+receipt and later status (§6), with golden fixtures (§11); the connection helper
+(`cmd/office-preview`) exposes the office key-holder's signing of a receipt as
+`sign-recording-receipt`. The phone's own code for them writes
 the golden manifest byte for byte and reads the golden receipts, tested headless; nothing in the
 app calls it. **The phone records, seals and sends a bundle, in the opt-in office
 transport build** (Plan HE P1 and the headless part of P2, 2026-10-05). "Record this job" writes

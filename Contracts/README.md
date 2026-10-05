@@ -158,7 +158,14 @@ rules, issued no more than five minutes ahead and not expired — and that it na
 key belongs to, then returns the same envelope `Sign` produces for those bytes. Nothing is
 re-encoded, so the office's record of a message and what a phone verifies are the same bytes. The
 helper exposes it as the one-shot operation `sign-managed-job`; its reply carries the envelope and
-no key.
+no key. The other messages an office signs for the managed folders are lent a key the same way,
+one operation each: `sign-job-update`, `sign-report-receipt`, `sign-recording-receipt` and
+`sign-manual-assignment` (office application key, for the office it belongs to), and
+`sign-publisher-grant` (administrator key, for the organisation and profile of a vendor-signed
+profile that names it). Each signs the exact payload it is handed, only its own kind, under its
+own domain, in form, and dated no more than five minutes ahead. What "live" means differs by
+message and is each contract's: an update and an assignment must not have expired, a receipt
+has no expiry, and a revocation of a grant is signed whatever its dates.
 
 The Go transport takes managed jobs out of the `control` folder, keeps the high-water mark and
 commits them. In the opt-in phone build `OfficeManagedJobIntake` then hands each committed job's

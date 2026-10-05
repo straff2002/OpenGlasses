@@ -18,7 +18,12 @@ import (
 	"avenkin.dev/mobilecore/checkin"
 	"avenkin.dev/mobilecore/commission"
 	"avenkin.dev/mobilecore/commission/bootstrap"
+	"avenkin.dev/mobilecore/jobupdate"
+	"avenkin.dev/mobilecore/manualassignment"
+	"avenkin.dev/mobilecore/officebulk"
 	p "avenkin.dev/mobilecore/officepreview"
+	"avenkin.dev/mobilecore/officereport"
+	"avenkin.dev/mobilecore/recordingbundle"
 
 	"github.com/syncthing/syncthing/lib/protocol"
 	"github.com/syncthing/syncthing/lib/tlsutil"
@@ -318,6 +323,165 @@ func TestSignCheckInChallengeLendsTheApplicationKeyToItsOwnOfficeOnly(t *testing
 	} {
 		if status, reply := ask(body); status != 1 || reply["error"] == "" || len(reply) != 1 {
 			t.Fatalf("%s: exit %d, %v", name, status, reply)
+		}
+	}
+}
+
+// The four messages the office application key signs for the managed folders beyond a job and
+// a check-in challenge: each is signed as sent, verifies as the phone verifies it, and is
+// refused for another office, out of form, under another message's operation, or out of time.
+func TestTheApplicationKeySignsEachFolderMessageForItsOwnOfficeOnly(t *testing.T) {
+	root := t.TempDir()
+	office, err := p.OpenOffice(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	officePublic := office.Key.Public().(ed25519.PublicKey)
+	own, other := office.ManagedOfficeID(), "office-000000000000000000000000"
+	device := func(label string) string {
+		digest := sha256.Sum256([]byte(label))
+		return protocol.DeviceID(digest).String()
+	}
+	now := p.Now()
+	encode := func(v any) string { return base64.StdEncoding.EncodeToString(mustJSON(v)) }
+	ask := func(op, payload string) (int, map[string]string) {
+		var out bytes.Buffer
+		status := helper([]string{"helper", root}, strings.NewReader(`{"op":"`+op+`","payload":"`+payload+`"}`), &out)
+		var reply map[string]string
+		_ = json.Unmarshal(out.Bytes(), &reply)
+		return status, reply
+	}
+	// signed asks for a signature and checks the reply is one envelope over exactly what was sent.
+	signed := func(op, payload string) string {
+		t.Helper()
+		status, reply := ask(op, payload)
+		if status != 0 || len(reply) != 1 {
+			t.Fatalf("%s: exit %d: %v", op, status, reply)
+		}
+		var envelope struct{ Payload, Signature string }
+		if json.Unmarshal([]byte(reply["envelope"]), &envelope) != nil || envelope.Payload != payload {
+			t.Fatalf("%s: the payload was not signed as sent: %s", op, reply["envelope"])
+		}
+		return reply["envelope"]
+	}
+	refused := func(op string, cases map[string]string) {
+		t.Helper()
+		for name, payload := range cases {
+			if status, reply := ask(op, payload); status != 1 || reply["error"] == "" || len(reply) != 1 {
+				t.Fatalf("%s, %s: exit %d, %v", op, name, status, reply)
+			}
+		}
+	}
+
+	update := func(officeID string, issuedAt, expiresAt int64) jobupdate.Update {
+		return jobupdate.Update{Version: 1, Kind: jobupdate.Kind, UpdateID: strings.Repeat("ab", 16),
+			OrganizationID: "test-organisation", EnrolmentID: "phone-1", OfficeID: officeID, Generation: 1,
+			OfficeTransportID: device("office"), PhoneTransportID: device("phone"), JobID: "job-1", Sequence: 1,
+			IssuedAt: issuedAt, ExpiresAt: expiresAt, UpdateKind: jobupdate.KindNote, Body: "Gate code is 4412."}
+	}
+	message := signed("sign-job-update", encode(update(own, now, now+3600)))
+	if _, e := jobupdate.Read(message, jobupdate.Trust{OrganizationID: "test-organisation", EnrolmentID: "phone-1", OfficeID: own,
+		OfficeTransportID: device("office"), PhoneTransportID: device("phone"), Generation: 1, OfficeApplicationKey: officePublic}, now); e != nil {
+		t.Fatal(e)
+	}
+	note := update(own, now, now+3600)
+	note.Part = "A part on a note"
+	refused("sign-job-update", map[string]string{
+		"another office":  encode(update(other, now, now+3600)),
+		"expired":         encode(update(own, now-7200, now-3600)),
+		"from the future": encode(update(own, now+3600, now+7200)),
+		"out of form":     encode(note),
+		"not base64":      "***",
+		"no payload":      "",
+	})
+
+	receipt := func(officeID string, receivedAt int64) officereport.Receipt {
+		return officereport.Receipt{Version: 1, Kind: officereport.ReceiptKind, ReportID: strings.Repeat("ab", 32),
+			ReportSHA256: strings.Repeat("cd", 32), RecordSHA256: strings.Repeat("ef", 32), ManifestSHA256: strings.Repeat("01", 32),
+			OrganizationID: "test-organisation", EnrolmentID: "phone-1", OfficeID: officeID, PhoneTransportID: device("phone"),
+			Outcome: officereport.OutcomeRecordAccepted, AttachmentsCommitted: 2, AttachmentsOutstanding: 1, ReceivedAt: receivedAt}
+	}
+	message = signed("sign-report-receipt", encode(receipt(own, now)))
+	var sealed struct{ Payload, Signature string }
+	_ = json.Unmarshal([]byte(message), &sealed)
+	raw, _ := base64.StdEncoding.DecodeString(sealed.Payload)
+	signature, _ := base64.StdEncoding.DecodeString(sealed.Signature)
+	if !ed25519.Verify(officePublic, officereport.SigningInput(officereport.ReceiptDomain, raw), signature) {
+		t.Fatal("the report receipt does not verify under the office application key")
+	}
+	impossible := receipt(own, now)
+	impossible.Outcome = officereport.OutcomeFullyAccepted
+	refused("sign-report-receipt", map[string]string{
+		"another office":  encode(receipt(other, now)),
+		"from the future": encode(receipt(own, now+3600)),
+		"counts and outcome that cannot both hold": encode(impossible),
+		"a job update": encode(update(own, now, now+3600)),
+		"not base64":   "***",
+	})
+
+	status := func(officeID string, at int64) recordingbundle.Receipt {
+		return recordingbundle.Receipt{Version: 1, Kind: recordingbundle.ReceiptKind, BundleID: strings.Repeat("ab", 16),
+			ManifestSHA256: strings.Repeat("cd", 32), OrganizationID: "test-organisation", EnrolmentID: "phone-1",
+			OfficeID: officeID, Generation: 1, PhoneTransportID: device("phone"), Status: recordingbundle.StatusReceived, At: at}
+	}
+	message = signed("sign-recording-receipt", encode(status(own, now)))
+	if _, e := recordingbundle.ReadReceipt(message, recordingbundle.Trust{OrganizationID: "test-organisation", EnrolmentID: "phone-1",
+		OfficeID: own, PhoneTransportID: device("phone"), Generation: 1, Key: officePublic},
+		recordingbundle.Sent{BundleID: strings.Repeat("ab", 16), ManifestSHA256: strings.Repeat("cd", 32), Generation: 1}); e != nil {
+		t.Fatal(e)
+	}
+	reasoned := status(own, now)
+	reasoned.Reason = "tooLarge"
+	refused("sign-recording-receipt", map[string]string{
+		"another office":            encode(status(other, now)),
+		"from the future":           encode(status(own, now+3600)),
+		"a reason on an acceptance": encode(reasoned),
+		"a report receipt":          encode(receipt(own, now)),
+		"not base64":                "***",
+	})
+
+	assignment := func(officeID string, issuedAt, expiresAt int64) manualassignment.Payload {
+		return manualassignment.Payload{Version: 1, Kind: "avenkin.manual-assignment", AssignmentID: strings.Repeat("ab", 16),
+			OrganizationID: "test-organisation", EnrolmentID: "phone-1", OfficeID: officeID, Generation: 1, SetID: "service-manuals",
+			Sequence: 1, IssuedAt: issuedAt, ExpiresAt: expiresAt, VaultID: "org-vault", VaultVersion: "2027.1",
+			PublisherID: "org.test-organisation", ArchiveSHA256: strings.Repeat("cd", 32), ArchiveBytes: 2048}
+	}
+	message = signed("sign-manual-assignment", encode(assignment(own, now, now+3600)))
+	if _, e := manualassignment.Verify([]byte(message), manualassignment.Trust{OrganizationID: "test-organisation", EnrolmentID: "phone-1",
+		OfficeID: own, SetID: "service-manuals", Generation: 1, MaximumArchiveBytes: 1 << 20, PublicKey: officePublic}, now, nil); e != nil {
+		t.Fatal(e)
+	}
+	path := assignment(own, now, now+3600)
+	path.VaultID = ".."
+	refused("sign-manual-assignment", map[string]string{
+		"another office":          encode(assignment(other, now, now+3600)),
+		"expired":                 encode(assignment(own, now-7200, now-3600)),
+		"from the future":         encode(assignment(own, now+3600, now+7200)),
+		"a vault named as a path": encode(path),
+		"a job update":            encode(update(own, now, now+3600)),
+		"not base64":              "***",
+	})
+
+	// Each operation signs under its own domain: one message's envelope is not another's.
+	if _, e := jobupdate.Read(signed("sign-report-receipt", encode(receipt(own, now))), jobupdate.Trust{OfficeApplicationKey: officePublic}, now); e == nil {
+		t.Fatal("a report receipt read as a job update")
+	}
+
+	// The administrator key grants a publisher only under a vendor-signed profile that names it.
+	grant := encode(officebulk.Grant{Version: 1, Kind: officebulk.GrantKind, GrantID: strings.Repeat("ab", 16),
+		OrganizationID: "test-organisation", ProfileID: "profile-1", PublisherID: "org.test-organisation", PublisherName: "Test Organisation",
+		PublisherKey: base64.StdEncoding.EncodeToString(officePublic), Sequence: 1, Status: officebulk.StatusActive, IssuedAt: now, ExpiresAt: now + 86400})
+	for name, body := range map[string]string{
+		"no profile":          `{"op":"sign-publisher-grant","payload":"` + grant + `"}`,
+		"an unsigned profile": `{"op":"sign-publisher-grant","profileDocument":"x.y","payload":"` + grant + `"}`,
+		"not base64":          `{"op":"sign-publisher-grant","profileDocument":"x.y","payload":"***"}`,
+	} {
+		var out bytes.Buffer
+		status := helper([]string{"helper", root}, strings.NewReader(body), &out)
+		var reply map[string]string
+		_ = json.Unmarshal(out.Bytes(), &reply)
+		if status != 1 || reply["error"] == "" || len(reply) != 1 {
+			t.Fatalf("grant, %s: exit %d, %v", name, status, reply)
 		}
 	}
 }

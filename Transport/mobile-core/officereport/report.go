@@ -63,6 +63,8 @@ const (
 	MaximumRecord      = 1 << 20
 	MaximumManifest    = 131072
 	MaximumAttachments = 256
+	// MaximumIssueSkew is how far ahead of the signer's clock a receipt's receivedAt may be.
+	MaximumIssueSkew = 300
 
 	maximumSafeInteger = int64(9007199254740991)
 )
@@ -73,6 +75,7 @@ var (
 	ErrFields    = errors.New("invalid office report message fields")
 	ErrOther     = errors.New("office report message is for another binding or report")
 	ErrContent   = errors.New("the record or manifest is not the one the report names")
+	ErrTime      = errors.New("office report receipt is dated too far ahead of the clock")
 )
 
 // Report is the phone's signed statement that one record, at one revision, is exactly these
@@ -489,6 +492,8 @@ func (r Receipt) valid() bool {
 		lowerHex(r.RecordSHA256, 64) && lowerHex(r.ManifestSHA256, 64) &&
 		safeIdentifier(r.OrganizationID) && safeIdentifier(r.EnrolmentID) && safeIdentifier(r.OfficeID) && transportID(r.PhoneTransportID) &&
 		Stage(r.Outcome) != "" && r.AttachmentsCommitted >= 0 && r.AttachmentsOutstanding >= 0 &&
+		// Each is bounded before they are added, so a sum that wraps cannot pass.
+		r.AttachmentsCommitted <= MaximumAttachments && r.AttachmentsOutstanding <= MaximumAttachments &&
 		r.AttachmentsCommitted+r.AttachmentsOutstanding <= MaximumAttachments &&
 		(r.Outcome == OutcomeFullyAccepted) == (r.AttachmentsOutstanding == 0) && instant(r.ReceivedAt)
 }
@@ -521,6 +526,35 @@ func SignReceipt(r Receipt, officeKey ed25519.PrivateKey) (string, error) {
 		return "", ErrFields
 	}
 	return SignReceiptWith(r, func(message []byte) []byte { return ed25519.Sign(officeKey, message) })
+}
+
+// SignReceiptPayload signs exact payload bytes the caller built, so nothing is re-encoded
+// between an office's record of a receipt and what a phone verifies. It is for a process that
+// holds the office application key on behalf of one that does not: the payload is checked as a
+// verifier would check it, must name the office the key belongs to, and be dated no later than
+// a few minutes from now. Whether the report it answers was read, and how much of it is
+// committed, is the caller's record; the key holder does not see the report.
+func SignReceiptPayload(payload []byte, officeKey ed25519.PrivateKey, now int64) (string, error) {
+	if len(officeKey) != ed25519.PrivateKeySize {
+		return "", ErrSignature
+	}
+	if len(payload) == 0 || len(payload) > MaximumReceipt || !officepreview.Flat(payload, receiptFields) {
+		return "", ErrMalformed
+	}
+	var r Receipt
+	if json.Unmarshal(payload, &r) != nil {
+		return "", ErrMalformed
+	}
+	if !r.valid() {
+		return "", ErrFields
+	}
+	if r.OfficeID != OfficeID(officeKey.Public().(ed25519.PublicKey)) {
+		return "", ErrOther
+	}
+	if r.ReceivedAt > now+MaximumIssueSkew {
+		return "", ErrTime
+	}
+	return seal(payload, ed25519.Sign(officeKey, SigningInput(ReceiptDomain, payload)), MaximumReceipt)
 }
 
 // ReadReceipt is the phone's check of a receipt: signed by the office application key its

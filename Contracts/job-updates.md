@@ -11,7 +11,8 @@ requirements or marked *Assumption*.
 
 **Built so far.** `Transport/mobile-core/jobupdate` implements both messages — signing, the
 two-step signing a phone needs, the signing an office key-holder does over exact bytes, and
-each side's checks — and the golden fixtures are in §8.
+each side's checks — and the golden fixtures are in §8. The connection helper
+(`cmd/office-preview`) exposes the key-holder's signing as `sign-job-update`.
 
 **The phone's half is built, in the opt-in office transport build only** (Plan HO P3,
 2026-10-05). The phone transport lists the updates in `control/updates/` that read as their own

@@ -338,3 +338,59 @@ func TestAPhoneAcceptsOnlyTheOfficesReceiptForExactlyTheReportItPublished(t *tes
 	_, e = ReadReceipt(pending, officeKey, w.envelope, w.report, optional)
 	refused(t, "evidence pending with nothing required", e, ErrFields)
 }
+
+// A process that holds the office application key for one that does not signs exactly the
+// receipt payload it is handed — the golden receipts, byte for byte — and only a receipt, in
+// form, for its own office, not dated ahead of its clock.
+func TestAKeyHolderSignsExactlyTheReceiptItIsHandedAndOnlyItsOwn(t *testing.T) {
+	w := fixtureWorld(t)
+	payloadOf := func(message string) []byte {
+		var e envelope
+		if json.Unmarshal([]byte(message), &e) != nil {
+			t.Fatal("bad envelope")
+		}
+		return must(base64.StdEncoding.DecodeString(e.Payload))
+	}
+	for stage, golden := range w.receipts {
+		signed, e := SignReceiptPayload(payloadOf(golden), w.office, FixtureNow)
+		if e != nil || signed != golden {
+			t.Fatalf("%s: %v\n%s\n%s", stage, e, signed, golden)
+		}
+		if _, e := ReadReceipt(signed, w.office.Public().(ed25519.PublicKey), w.envelope, w.report, w.manifest); e != nil {
+			t.Fatal(stage, e)
+		}
+	}
+	payload := payloadOf(w.receipts["record"])
+	var receipt Receipt
+	_ = json.Unmarshal(payload, &receipt)
+	changed := func(edit func(*Receipt)) []byte {
+		r := receipt
+		edit(&r)
+		return must(json.Marshal(r))
+	}
+	for name, c := range map[string]struct {
+		payload []byte
+		key     ed25519.PrivateKey
+		now     int64
+		want    error
+	}{
+		"another office's key":   {payload, w.phone, FixtureNow, ErrOther},
+		"another office named":   {changed(func(r *Receipt) { r.OfficeID = "office-000000000000000000000000" }), w.office, FixtureNow, ErrOther},
+		"dated ahead":            {payload, w.office, receipt.ReceivedAt - MaximumIssueSkew - 1, ErrTime},
+		"counts with no outcome": {changed(func(r *Receipt) { r.AttachmentsOutstanding = 0 }), w.office, FixtureNow, ErrFields},
+		"counts whose sum wraps": {changed(func(r *Receipt) { r.AttachmentsCommitted, r.AttachmentsOutstanding = 9223372036854775807, 2 }), w.office, FixtureNow, ErrFields},
+		"a member twice":         {[]byte(strings.Replace(string(payload), `{"version":1,`, `{"version":1,"version":1,`, 1)), w.office, FixtureNow, ErrMalformed},
+		"larger than a receipt":  {[]byte(strings.Replace(string(payload), `{"version"`, `{`+strings.Repeat(" ", MaximumReceipt)+`"version"`, 1)), w.office, FixtureNow, ErrMalformed},
+		"a report":               {payloadOf(w.envelope), w.office, FixtureNow, ErrMalformed},
+		"an extra member":        {[]byte(strings.Replace(string(payload), `{"version"`, `{"extra":1,"version"`, 1)), w.office, FixtureNow, ErrMalformed},
+		"nothing":                {nil, w.office, FixtureNow, ErrMalformed},
+		"no key":                 {payload, nil, FixtureNow, ErrSignature},
+	} {
+		_, e := SignReceiptPayload(c.payload, c.key, c.now)
+		refused(t, name, e, c.want)
+	}
+	// Up to the skew ahead is signed; one second more is not.
+	if _, e := SignReceiptPayload(payload, w.office, receipt.ReceivedAt-MaximumIssueSkew); e != nil {
+		t.Fatal(e)
+	}
+}

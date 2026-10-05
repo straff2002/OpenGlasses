@@ -38,6 +38,8 @@ const (
 	MaximumMessage = 4096
 	// MaximumGrantLifetime is how long a grant may be valid, in seconds.
 	MaximumGrantLifetime = 400 * 86400
+	// MaximumIssueSkew is how far ahead of the signer's clock a grant's issuedAt may be.
+	MaximumIssueSkew = 300
 	// PublisherPrefix begins every organisation publisher's identifier, followed by the
 	// organisation's own identifier. No other publisher's identifier may begin with it.
 	PublisherPrefix = "org."
@@ -236,6 +238,35 @@ func SignGrant(g Grant, administratorKey ed25519.PrivateKey) (string, error) {
 		return "", ErrSignature
 	}
 	return SignGrantWith(g, func(message []byte) []byte { return ed25519.Sign(administratorKey, message) })
+}
+
+// SignGrantPayload signs exact payload bytes the caller built, so nothing is re-encoded between
+// an office's record of a grant and what a phone verifies. It is for a process that holds the
+// administrator key on behalf of one that does not. organizationID and profileID are those of
+// the vendor-signed profile the key holder has verified names its key; the grant must name
+// both, be in form, be issued no later than a few minutes from now and, unless it is a
+// revocation, not have expired. sign is given the exact bytes to sign.
+func SignGrantPayload(payload []byte, organizationID, profileID string, sign func(message []byte) []byte, now int64) (string, error) {
+	if sign == nil {
+		return "", ErrSignature
+	}
+	if len(payload) == 0 || len(payload) > MaximumMessage || !officepreview.Flat(payload, grantFields) {
+		return "", ErrMalformed
+	}
+	var g Grant
+	if json.Unmarshal(payload, &g) != nil {
+		return "", ErrMalformed
+	}
+	if !g.valid() {
+		return "", ErrFields
+	}
+	if organizationID == "" || profileID == "" || g.OrganizationID != organizationID || g.ProfileID != profileID {
+		return "", ErrOther
+	}
+	if g.IssuedAt > now+MaximumIssueSkew || (g.Status == StatusActive && now >= g.ExpiresAt) {
+		return "", ErrTime
+	}
+	return seal(payload, sign(SigningInput(GrantDomain, payload)))
 }
 
 // ReadGrant is the phone's check of a grant: signed by the administrator key from its

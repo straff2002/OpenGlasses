@@ -12,7 +12,12 @@ requirements or marked *Assumption*.
 
 **Built so far.** `Transport/mobile-core/officebulk` implements the publisher grant and the
 assignment receipt — signing, the two-step signing a phone needs, and each side's checks —
-`jobfile.ReadNeeds` reads what a job names, and the golden fixtures are in §9.
+`jobfile.ReadNeeds` reads what a job names, and the golden fixtures are in §9. For an office
+whose keys are held by one process on behalf of another, `officebulk.SignGrantPayload` and
+`manualassignment.SignPayload` sign the exact payload they are handed after checking it; the
+connection helper (`cmd/office-preview`) exposes them as `sign-publisher-grant` — the
+administrator key, and only under a vendor-signed profile that names it, for that profile's
+organisation — and `sign-manual-assignment` — the office application key, for its own office.
 
 **The phone's half for manuals is built, in the opt-in office transport build only** (Plan
 [HO](../docs/plans/HO-office-delivery-phone-half.md) P4, first part, 2026-10-05). The phone
