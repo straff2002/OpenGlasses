@@ -55,7 +55,9 @@ type Client struct {
 	cancel    context.CancelFunc
 	mode      string
 	route     string
-	routeMu   sync.Mutex
+	// routeLocal: the office connection is direct and its far end is a private address.
+	routeLocal bool
+	routeMu    sync.Mutex
 }
 
 type binding struct {
@@ -659,13 +661,29 @@ func (c *Client) noteRoute(event events.Event, office string) {
 	if !ok || data["id"] != office {
 		return
 	}
-	route := ""
+	route, local := "", false
 	if event.Type == events.DeviceConnected {
 		route = data["type"]
+		local = localRoute(route, data["addr"])
 	}
 	c.routeMu.Lock()
-	c.route = route
+	c.route, c.routeLocal = route, local
 	c.routeMu.Unlock()
+}
+
+// localRoute says whether a connection is straight to the office on a private network: a TCP or
+// QUIC connection (never a relay) whose far end is a private or link-local address. Anything it
+// cannot tell is not local.
+func localRoute(connectionType, address string) bool {
+	if !strings.HasPrefix(connectionType, "tcp-") && !strings.HasPrefix(connectionType, "quic-") {
+		return false
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsPrivate() || ip.IsLinkLocalUnicast())
 }
 
 func networkConfig(id protocol.DeviceID, mode string) config.Configuration {
@@ -716,6 +734,9 @@ func (c *Client) Snapshot() (string, error) {
 	}
 	c.routeMu.Lock()
 	status["observedConnectionType"] = c.route
+	// Whether that connection is straight to the office on a private network, rather than
+	// across the internet or through a relay. Large recordings wait for this.
+	status["observedConnectionLocal"] = c.routeLocal
 	c.routeMu.Unlock()
 	if c.app != nil {
 		status["connected"] = c.app.Internals.IsConnectedTo(c.peer)
@@ -843,7 +864,7 @@ func (c *Client) Stop() {
 		engineActive.Store(false)
 	}
 	c.routeMu.Lock()
-	c.route = ""
+	c.route, c.routeLocal = "", false
 	c.routeMu.Unlock()
 }
 
