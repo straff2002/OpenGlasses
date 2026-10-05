@@ -63,6 +63,14 @@ glasses have still to show is listed in Plan HE under "P1 as built" and "The blu
   personal hotspot — whenever the office is in reach, directly or through a relay. *Requirement
   on the office:* a recording may arrive from anywhere, hours after the job, slowly and in
   pieces; it is shown as on its way, not failed.
+- **The video goes only straight to the office.** Through a relay the phone sends a bundle's
+  manifest, timeline and transcript and holds its media chunks: it offers no more of them, and
+  refuses to serve the ones already offered, until the connection is direct (TCP or QUIC, on
+  the office's network or across the internet). The rule is by what the file is, not its size.
+  *Requirement on the office:* a bundle may sit with its manifest and transcript arrived and
+  no media for as long as the only route is a relay; that is on its way, not failed. An office
+  that can only ever be reached through a relay receives the video when the phone is next on
+  its network.
 - Authority is never taken from the bundle. The office verifies the manifest signature with the
   phone application key it already holds from the binding; the phone verifies office messages
   with the office key from the same binding. Both recheck the binding generation.
