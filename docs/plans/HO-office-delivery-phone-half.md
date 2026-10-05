@@ -10,7 +10,8 @@ counts it delivered only on the office's receipt. What P2 still owes is listed u
 (the `bulk` folder) built 2026-10-05 in the opt-in build, tested headless: an assigned manual
 is verified under the organisation's own granted publisher, installed and receipted, and an
 attachment a signed job names by digest follows it and opens from the job. What P4 still owes
-is listed under it. P3 (updates on a job) built 2026-10-05 in the opt-in build, tested headless:
+is listed under it. Every managed flow now also runs across the phone's real embedded engine
+against a synthetic office, in Go (see P6). P3 (updates on a job) built 2026-10-05 in the opt-in build, tested headless:
 the contract, the transport, and a service that keeps, receipts and shows on the job what the
 office says about it. P5 and P6 are planned. A build order, not a new design:
 nothing else in it is built beyond what the table under *Where each flow stands* marks as
@@ -671,6 +672,30 @@ Plan HE, unchanged; listed so the order is whole. Its own phases are in that pla
 (HE P0) was built 2026-10-05.
 
 ### P6 — Physical evidence
+
+**Before a phone (2026-10-05): every flow across the real embedded engine.**
+`Transport/mobile-core/managed_engine_integration_test.go` runs the phone's own engine against a
+synthetic office over BEP (`Transport/mobile-core/laboffice`) — real TLS, real indexes, real
+block requests, the outbound guard in the path — and takes each flow end to end with messages
+signed by the fixture application keys under the two ends' real transport identities:
+
+- a job and its file out, committed, and the phone's receipt back and verified;
+- a report with its record, manifest and evidence back, the office's receipts out and verified,
+  and the report withdrawn;
+- an update out and its receipt back, and the receipt leaving the folder once the office takes
+  the update away;
+- a publisher grant and a manual assignment out; the archive and a job's attachment through
+  `bulk` only after the phone asked for exactly them and let the folder run, with an archive
+  nobody assigned never taken; the assignment receipt back;
+- a recorded-job bundle back as exactly what its manifest lists, each chunk a link to the app's
+  own file, counted as served and never as received until the office's signed receipt comes
+  out through `control`; then withdrawn and still listened for.
+
+In each, the office also asks for what it should not be given — what the phone received, what
+it has not published, another folder — and is refused. The tests need a private IPv4 address
+named (`AVENKIN_MANUAL_TEST_IP`), because a managed phone dials nothing else; CI names the
+runner's. **This is the transport half only**: the Swift services have still not driven the
+engine, and no phone or real office has run any of it.
 
 One phone, one office: join, a job and its receipt, a renewal after time away, a report and a
 transcript back with the office switched off in between, a manual, a removal. Screen lock,

@@ -28,6 +28,10 @@ signed it, serves it, and lets it go once the office has taken the update away.
 timeline and transcript, and its media chunks under `records/recordings/<bundleID>/`, serves only
 those, says how much of a bundle the office no longer needs, lists the office's statuses for it
 from `control/recordings/`, and takes it out of `records` once the office has acknowledged it.
+**Across the real engine** (2026-10-05): `managed_engine_integration_test.go` runs the phone's
+embedded engine against a synthetic office peer (`laboffice`) and takes a job, a report, an
+update, a manual, an attachment and a recorded-job bundle end to end through these folders, with
+the office refused everything it should not be given. Go only; no Swift, no phone.
 **Check-in, renewal and removal use the same two folders** (Plan HO P1): the transport reads
 `control/checkin/` and `control/removal/`, publishes `records/checkin/<challengeID>.envelope.json`
 and `records/removal/<removalID>.envelope.json` once the phone application key has signed them,
