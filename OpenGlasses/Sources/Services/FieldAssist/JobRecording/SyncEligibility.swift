@@ -8,6 +8,11 @@ import Foundation
 /// a well-charged battery, an office that can be reached, and nothing smaller waiting — job
 /// reports and receipts always go first.
 ///
+/// One more rule is about the video alone (`evaluateMedia`): it goes only on a connection straight
+/// to the office, never through a relay. A relay is somebody else's server; it sees no content,
+/// but a recording is far more traffic than a relay is offered for. The recording's small files —
+/// its signed manifest, timeline and transcript — go by any route, as job reports do.
+///
 /// Pure: everything it weighs is an input. When several things are in the way it names the first
 /// in the order above, which is the order a person would have to put them right.
 enum SyncEligibility {
@@ -42,6 +47,9 @@ enum SyncEligibility {
         /// or through a relay. A recording waits for Wi-Fi, not for the office's own network, so
         /// one made on a Friday can go from the technician's home.
         var officeIsReachable: Bool
+        /// The route to the office is a relay, not a connection straight to it. That holds the
+        /// video and nothing else (`evaluateMedia`).
+        var officeIsThroughRelay = false
         /// Job reports or receipts are still waiting to go.
         var smallerItemsWaiting = false
     }
@@ -65,6 +73,8 @@ enum SyncEligibility {
         case savingPower
         case officeNotReachable
         case smallerItemsFirst
+        /// Reached only through a relay. Of a recording, only the video waits for this.
+        case videoNeedsDirectRoute
 
         /// The reason as a sentence for the technician.
         var explanation: String {
@@ -95,6 +105,8 @@ enum SyncEligibility {
                 return "The office can't be reached from here. The recording will be sent when it can."
             case .smallerItemsFirst:
                 return "Job reports are being sent first."
+            case .videoNeedsDirectRoute:
+                return "The video is waiting for a direct connection to the office. Video is never sent through a relay."
             }
         }
     }
@@ -110,7 +122,15 @@ enum SyncEligibility {
         reasons(conditions).first.map(Verdict.notEligible) ?? .eligible
     }
 
-    /// Everything in the way, most pressing first. Empty when the recording may go.
+    /// Whether the recording's video may be sent now: everything `evaluate` asks, and a
+    /// connection straight to the office.
+    static func evaluateMedia(_ conditions: Conditions) -> Verdict {
+        if let reason = reasons(conditions).first { return .notEligible(reason) }
+        return conditions.officeIsThroughRelay ? .notEligible(.videoNeedsDirectRoute) : .eligible
+    }
+
+    /// Everything in the way of the recording as a whole, most pressing first. Empty when it may
+    /// go. The route's kind is not here: it holds only the video.
     static func reasons(_ c: Conditions) -> [Reason] {
         var reasons: [Reason] = []
         if c.medicalModeOn { reasons.append(.medicalMode) }

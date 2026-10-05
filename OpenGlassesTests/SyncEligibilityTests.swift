@@ -130,6 +130,25 @@ final class SyncEligibilityTests: XCTestCase {
         XCTAssertEqual(E.evaluate(ready { $0.smallerItemsWaiting = true }), .notEligible(.smallerItemsFirst))
     }
 
+    // MARK: - The video and a relay
+
+    /// Through a relay the recording itself may go — its manifest, timeline and transcript — and
+    /// the video may not. Straight to the office, both.
+    func testThroughARelayEverythingButTheVideoMayGo() {
+        let relayed = ready { $0.officeIsThroughRelay = true }
+        XCTAssertEqual(E.evaluate(relayed), .eligible)
+        XCTAssertEqual(E.evaluateMedia(relayed), .notEligible(.videoNeedsDirectRoute))
+        XCTAssertEqual(E.evaluateMedia(ready()), .eligible)
+        XCTAssertFalse(E.reasons(relayed).contains(.videoNeedsDirectRoute), "a relay holds only the video")
+        // Whatever holds the whole recording is named before the route: it has to be put right first.
+        XCTAssertEqual(E.evaluateMedia(ready {
+            $0.officeIsThroughRelay = true
+            $0.network = .cellular
+        }), .notEligible(.waitingForWiFi))
+        XCTAssertEqual(E.Reason.videoNeedsDirectRoute.explanation,
+                       "The video is waiting for a direct connection to the office. Video is never sent through a relay.")
+    }
+
     // MARK: - Which reason is named
 
     func testWhenSeveralThingsAreInTheWayTheyAreNamedInOrder() {

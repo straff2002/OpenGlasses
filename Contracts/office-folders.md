@@ -197,13 +197,20 @@ are prioritised `control` and `records` messages first, then evidence and record
   transport policy allows.
 - `bulk`, recording media and large evidence follow the organisation's content and network
   policy and the phone's own setting; a phone may keep `bulk` paused, and neither side treats a
-  paused or deferred transfer as an error. Starting a large transfer on a metered or relayed
-  route is the person's explicit choice.
+  paused or deferred transfer as an error. Starting a large transfer on a metered route is the
+  person's explicit choice.
 - Each side checks free space before taking a file in and reports "not enough space" as a
   state of its own; staging is kept so a transfer resumes.
 - **Recorded-job bundles wait for Wi-Fi.** The phone publishes a bundle's files in `records`
-  only on a network the system does not call expensive, by any route to the office, direct or
-  relayed, a couple of chunks ahead of what the office has taken.
+  only on a network the system does not call expensive, a couple of chunks ahead of what the
+  office has taken.
+- **Recording media is never served through a relay; everything else in `records` is.** The
+  phone's outbound guard refuses a request for `recordings/<bundleID>/media/<sha256>.chunk` on
+  any connection that is not straight to the office (TCP or QUIC), and the phone offers no
+  further chunk while its route is a relay. A bundle's `manifest.envelope.json`,
+  `timeline.json` and `transcript.json`, and every report, receipt and update, are served on
+  any route. *Requirement on the office:* a refused chunk request is a transfer that waits, not
+  an error; it is asked for again when the connection is direct.
 
 ## 8. Fixtures to add
 

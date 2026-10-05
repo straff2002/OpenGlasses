@@ -207,7 +207,8 @@ a finished chunk is never sent twice and progress is countable.
   the organisation does not forbid), power (charging, or battery above a floor and posture
   normal — a new `PowerPosture` flag `defersBulkTransfer`), policy (profile, lease and binding
   current), medical mode, and "job reports and receipts first" — a bundle never starves small
-  traffic. Returns a reason in plain words when not eligible.
+  traffic. Returns a reason in plain words when not eligible. `evaluateMedia` asks one thing
+  more of the video alone: a connection straight to the office, never a relay (decision 8).
 - **`BundleSyncState`** (pure state machine):
   `recording → preparing (transcript, blur pass if required) → sealed → waiting(reason) →
   transferring(sent/total) → delivered (all chunks served) → acknowledged → trimmed`, with
@@ -742,7 +743,7 @@ carrying the title and the reason in one line. What it says:
 | Stopped, to be prepared on a later pass | Recording waiting to sync | The recording is saved on this phone, and will be prepared for the office later. |
 | The app was closed while it ran, job still open | Recording waiting to sync | A recording of this job was interrupted. What had been recorded is saved. |
 | Sealed, no pass yet | Recording waiting to sync | — |
-| Sealed, the moment is wrong | Recording waiting to sync | `SyncEligibility.Reason.explanation`: Wi-Fi, power, the office not in reach, reports first, the profile, licence or pairing, a medical privacy mode |
+| Sealed, the moment is wrong | Recording waiting to sync | `SyncEligibility.Reason.explanation`: Wi-Fi, power, the office not in reach, reports first, the profile, licence or pairing, a medical privacy mode; or, with the rest of the recording already going, the video waiting for a direct connection |
 | On its way | Sending the recording to the office | 25% of 1.2 GB. |
 | Every file served | Recording sent | Waiting for the office to confirm it. |
 | The office's verified receipt taken in | *nothing* | |
@@ -913,6 +914,21 @@ On the open points raised as the phases were built: **keep each as built.**
    "save for Wi-Fi" — and was put right the same day. The transport still reports whether the
    office connection is direct and local, `observedConnectionLocal`; nothing holds a recording
    on it.)
+8. **Video never goes through a relay; everything else may.** A relay is somebody else's
+   server, lent for small traffic: it sees no content, but a recording is gigabytes. So of a
+   recording, the signed manifest, the timeline and the transcript go by any route, as reports,
+   receipts and updates do, and the media chunks go only on a connection straight to the office
+   (TCP or QUIC, on its network or across the internet). The rule is by what the file is, not by
+   size: there is no threshold to tune. It is held in two places. The transport's guard refuses
+   a request for `recordings/<bundle>/media/<digest>.chunk` on any connection that is not
+   direct — a relay, or a kind it cannot read — before the engine or the disk is touched, and
+   counts it (`relayRequestsDenied`). The app offers no further chunk while the route is a
+   relay (`SyncEligibility.evaluateMedia`) and says so: "The video is waiting for a direct
+   connection to the office. Video is never sent through a relay." What this costs: where the
+   office can only ever be reached through a relay — no port open to it from outside — the
+   transcript arrives from the technician's home and the video waits until the phone is on the
+   office's network. *Requirement on the office:* a bundle whose manifest and transcript have
+   arrived and whose media has not is on its way, not failed, for as long as the phone says so.
 
 Still limits rather than decisions: sealing needs the recording's size again in free space;
 there is no resume inside a part being blurred; the blur runs on the main thread. Each is a
