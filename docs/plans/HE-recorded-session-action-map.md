@@ -16,8 +16,14 @@ implementation and golden fixtures in `Transport/mobile-core/recordingbundle`, a
 Swift for them writes and reads the same bytes (see "P0 as built"). **P3 is mostly there already**,
 built with P2: the office's later statuses are verified and kept, and the job's page says when a
 procedure was published — without its title, and with no words for *reviewed* or *rejected* (see
-P3 below). Still unbuilt: the owed item on the Jobs list and the job-day card, starting a recording
-by voice, the rest of P3, and P4. No bundle has left a physical phone. Drafted 2026-10-02 and
+P3 below). **Outside the job's page (2026-10-05):** a recording the office has not confirmed is
+now among what is owed on the Jobs list and the job-day card, with the reason it waits and nothing
+once the office has confirmed it; a recording that is not sealed yet can be deleted, after being
+asked, with any pass that is preparing it stopped first; and the job's log is written a line when
+the office's verified receipt is taken in, when the media is trimmed, and when a recording is
+deleted (see "Outside the job's page, as built"). Still unbuilt: starting, stopping and marking a
+recording by voice (left out on purpose — see that section), a setting to allow mobile data, the
+rest of P3, and P4. No bundle has left a physical phone. Drafted 2026-10-02 and
 **revised the same day:**
 Greig moved the video analysis and the review surface to Avenkin Office. This plan is now the
 phone half — record, timeline, bundle, sync; the office half is specified in
@@ -504,9 +510,10 @@ job's page; deleting a recording asks first and says when the office has not rec
 - **Nothing deletes a job from a screen today**, so `unacknowledgedDeletionWarning` has no
   caller; the same rule is on the recording's own delete.
 
-**Still owed after P1:** starting and marking by voice (not built — no tool was added); the owed
-item on the Jobs list and the job-day card; a setting to allow mobile data; a live phone-camera
-session; the rest of P3; P4. (`BundleBlurPass` was owed here and is built — see below.)
+**Still owed after P1:** starting and marking by voice (not built — no tool was added, and why
+is under "Outside the job's page, as built"); a setting to allow mobile data; a live phone-camera
+session; the rest of P3; P4. (`BundleBlurPass` and the owed item on the Jobs list and the job-day
+card were owed here and are built — see below.)
 
 **What only a phone and glasses can show (owed):**
 
@@ -581,10 +588,11 @@ Choices made:
   question.
 - **The transcript stays after the trim**, with the timeline, manifest and receipts.
 
-**Still owed for P2:** the owed item on the Jobs list and the job-day card — which is also where
-"Open Avenkin to prepare the recording" is meant to be read when the app is *not* open; today
-those words are on the job's page and in the note left when a recording stops. And every device
-check of the blur pass, listed at the end of the next section.
+**Still owed for P2:** every device check of the blur pass, listed at the end of the next
+section. The owed item on the Jobs list and the job-day card was owed here and is built (see
+"Outside the job's page, as built") — "Open Avenkin to prepare the recording" is now read there
+as well as on the job's page. It is still read only *in* the app: nothing tells a technician
+whose app is closed that a recording is waiting for it to be opened.
 Done with P1 (2026-10-05): the service is started from the app with real conditions, the job's
 page shows where the recording stands and has the delete control (which asks first, and says
 when the office has not received the recording), and a phone leaving its organisation owes an
@@ -715,6 +723,113 @@ check 1 of P1's own list and has not been seen here.
    times in a row.
 10. What a player at the office shows where the first frames of a part were dropped: in the
     test's decoder that stretch reads back as one black picture before the first kept frame.
+
+**Outside the job's page, as built (2026-10-05)** — in the opt-in office transport build. In the
+default build neither recording service exists, nothing is gathered, and the Jobs list and the
+job-day card are exactly as they were; the same is true of a job that was never recorded.
+
+*The owed item.* `JobDayComposer.owed` — the one rule the job-day card and the Jobs list's badges
+share — takes the recordings the office has not confirmed. `JobRecordingOwed` gathers them from
+the two services that know: the sync service's rows for a sealed recording, and the coordinator's
+`unsealedRecordings()` for one that has stopped and is not sealed. One row a job, under
+"Still to do" on the card and in the day view, and a badge on that job's row in the Jobs list
+carrying the title and the reason in one line. What it says:
+
+| Where the recording is | Title | Reason |
+|---|---|---|
+| Stopped, being prepared now | Recording waiting to sync | Preparing the recording. |
+| Stopped, faces to be blurred, app not in front | Recording waiting to sync | Open Avenkin to prepare the recording. |
+| Stopped, to be prepared on a later pass | Recording waiting to sync | The recording is saved on this phone, and will be prepared for the office later. |
+| The app was closed while it ran, job still open | Recording waiting to sync | A recording of this job was interrupted. What had been recorded is saved. |
+| Sealed, no pass yet | Recording waiting to sync | — |
+| Sealed, the moment is wrong | Recording waiting to sync | `SyncEligibility.Reason.explanation`: Wi-Fi, power, the office not in reach, reports first, the profile, licence or pairing, a medical privacy mode |
+| On its way | Sending the recording to the office | 25% of 1.2 GB. |
+| Every file served | Recording sent | Waiting for the office to confirm it. |
+| The office's verified receipt taken in | *nothing* | |
+| Refused by the office, 30 days unconfirmed, or held unblurred under the blur rule | Recording needs attention | the job page's own sentence for it |
+
+Every reason is a sentence one of the services already produced; the four titles are the only new
+words, and `JobRecordingSyncService.words` now builds the job page's sentences from the same
+titles so the three places cannot drift. A test holds every owed state to never saying
+"received".
+
+**Choices made for the owed item.**
+
+- **Nothing once the office has confirmed it.** §4 lists "Recording received by the office" as
+  a third stage of the owed item. It is not owed any more, so it is not among what is owed; the
+  job's page still says it, on the receipt.
+- **Not scoped to today.** The card's other admin is today's. A recording is the only copy until
+  the office confirms it, so it stays on the card and on its job's row whichever day the job
+  was — including one held under the blur rule, which stays until it is deleted or the rule goes.
+- **A recording that is running is not owed.** It is owed from the moment it stops.
+- **Two kinds, last in the strip.** One that needs the technician — refused, unconfirmed for
+  thirty days, or held — is a warning, as a failed send is, and comes before one that only waits.
+  Both come after the admin a technician can act on now; the card shows two to-dos and says how
+  many more there are.
+- **"Sending the recording to the office"** is a title of its own rather than "waiting to sync"
+  with a percentage under it.
+- **A job the phone no longer knows** (it should not happen) is still shown, as "No job number".
+
+*Delete for a recording that is not sealed.* The job's page now has **Delete recording** beside
+an interrupted recording, one waiting to be prepared and one being prepared. The coordinator
+hands over the question (`askToDeleteUnsealed`: "The office hasn't received this recording yet.
+Deleting it removes the only copy." — always, since an unsealed recording has never left the
+phone) and `deleteUnsealed` takes that question and nothing else, so there is no call that
+deletes without having asked. It removes the capture folder — the recorded parts, blurred or
+not, and the journal — and the `recording` folder when nothing else is in it; a sealed bundle
+beside it and everything else of the job are left. A recording that is running is not deleted:
+it is stopped first.
+
+*Stopping a pass safely.* Sealing now runs as a task of its own for each recording, so deleting
+can cancel exactly that pass and wait for it before anything is removed. The pass asks whether
+it has been cancelled after every wait: the blur pass stops at its next frame and removes what
+it had written (and whatever it reports, nothing more is written); the on-device transcriber
+stops at its next window; the signer is not asked; and if the signer had already been asked,
+the seal finishes, the bundle it made is taken back out of the office's folder and removed, and
+nothing is told of it. Nothing else about sealing changed.
+
+*The job log* (§5). `recording_sync_acknowledged` — the manifest's digest, the receipt's digest,
+the number of chunks and the bytes — is written when the office's verified receipt has been
+taken in *and kept*, so a receipt that could not be kept is written down on the pass that keeps
+it, once. `recording_trimmed` — the manifest's digest, the chunks and the media bytes removed —
+is written when the media goes at seven days. Both are written by `JobRecordingSyncService`
+through a seam, as the coordinator writes its own.
+
+**Choices made there.**
+
+- **A third line, `recording_deleted`**, which §5 does not list: a deleted recording would
+  otherwise end in the log at `recording_stopped` or `recording_bundle_sealed` with nothing to
+  say where it went. Whether it had been sealed, whether the office had it, and the bytes — for
+  both deletes, the sealed one included.
+- **Written after the record is saved**, not before: a line can be missed if the app dies in
+  that instant, and cannot be written twice.
+
+**Voice: not built, on purpose.** "Record this job", "stop recording" and "mark that" would be
+one small tool over `JobRecordingCoordinator.start()`, `stop()` and `mark()` — and `start()`
+already refuses without the on-screen consent, so the rule that voice never starts a first
+recording unasked is met by construction. What is not small is everything a new tool has to be
+entered in, each with a guard test and the first two a decision rather than a mechanical entry:
+the outbound-frame roster, where a recording started by a tool is a consumer of its own and the
+standing rule is that such a recording is fed from the blur relay — a raw one needs its own
+argued entry; its effect class (starting a recording that leaves the phone for the office is
+not obviously a plain local write, and the class decides whether a turn stops to ask); and then
+its offline and phone-camera policies and the field tool profile. It is left for a change of
+its own.
+
+**Tested, and not.** The wording in every state, the scoping and the order are composer tests;
+deleting — at rest, interrupted, with a journal that cannot be read, during the blur, during the
+words, at the moment of signing — is tested against the fake recorder and a fake pass; the three
+log lines are tested against the in-memory transport. **Not tested:** the joining in the app —
+`AppState.owedRecordings`, the publisher that tells the two feeds something moved, and the
+feeds taking them — is compiled and nothing more, and the Delete button and its dialog are
+SwiftUI with no test.
+
+**Still owed here:** the wording of the four titles and of the owed reasons has not been read by
+anyone but its author; nothing has been seen on a phone — the badge's length on a narrow screen
+(the reason for a held recording is four sentences), a row appearing and going as a recording
+moves, deleting a long recording part-way through its blur. A delete waits for the pass it
+stopped: one stuck in something that never returns would leave the delete waiting with it, and
+there is no time limit on that wait. Voice, as above.
 
 **P3 — Office feedback on the phone.** Signed status messages, the job's "what came of it" line,
 the published procedure arriving as a vault. Tests: `RecordingStatusMessageTests`,

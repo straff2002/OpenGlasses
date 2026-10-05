@@ -23,15 +23,20 @@ final class JobListFeed: ObservableObject {
     private let upcoming: UpcomingJobStore
     private let sends: JobSendService
     private let vaultName: (String) -> String
+    /// Recorded jobs not yet with the office (Plan HE). None in a build with no office transport.
+    private let recordings: @MainActor () -> [JobDayRecording]
     private var reportSent: [String: Bool] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     init(sessions: FieldSessionService, flow: GuidedJobFlow, upcoming: UpcomingJobStore,
-         sends: JobSendService, vaultName: ((String) -> String)? = nil) {
+         sends: JobSendService, vaultName: ((String) -> String)? = nil,
+         recordings: @escaping @MainActor () -> [JobDayRecording] = { [] },
+         recordingChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()) {
         self.sessions = sessions
         self.flow = flow
         self.upcoming = upcoming
         self.sends = sends
+        self.recordings = recordings
         self.vaultName = vaultName ?? { VaultRegistry.shared.manifest(id: $0)?.name ?? $0 }
 
         // A send — staged, sent or failed — is what changes whether a report went out.
@@ -49,6 +54,7 @@ final class JobListFeed: ObservableObject {
             upcoming.$jobs.map { _ in () }.eraseToAnyPublisher(),
             sends.$revision.map { _ in () }.eraseToAnyPublisher(),
             sends.queue.$queue.map { _ in () }.eraseToAnyPublisher(),
+            recordingChanges,
             // "Overdue", "today" and "recent" roll over on their own.
             Timer.publish(every: 60, tolerance: 5, on: .main, in: .common).autoconnect()
                 .map { _ in () }.eraseToAnyPublisher(),
@@ -83,7 +89,7 @@ final class JobListFeed: ObservableObject {
         let next = JobListComposer.compose(JobListInputs(
             now: now, calendar: calendar, open: open, finished: finished,
             upcoming: upcoming.jobs, queue: sends.queue.queue.entries, debrief: debrief,
-            signOffRequired: sessions.customerSignOffRequired, query: query))
+            signOffRequired: sessions.customerSignOffRequired, recordings: recordings(), query: query))
         if next != list { list = next }
     }
 

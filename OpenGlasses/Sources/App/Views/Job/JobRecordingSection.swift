@@ -29,6 +29,9 @@ private struct JobRecordingRows: View {
 
     @State private var showingConsent = false
     @State private var confirmingDelete = false
+    /// The question the coordinator hands over before a recording that is not sealed is deleted.
+    /// Deleting one takes this and nothing else.
+    @State private var unsealedDeletion: JobRecordingCoordinator.UnsealedDeletion?
     /// Why the last tap did nothing, when it did nothing.
     @State private var problem: String?
     /// The line shown at each start.
@@ -59,7 +62,7 @@ private struct JobRecordingRows: View {
                     } else if isBeingPrepared {
                         HStack(spacing: 10) {
                             ProgressView()
-                            Text("Preparing the recording.")
+                            Text(verbatim: JobRecordingCoordinator.preparingNote)
                                 .font(.callout)
                         }
                         if let fraction = coordinator.blurProgress[sessionID] {
@@ -70,6 +73,8 @@ private struct JobRecordingRows: View {
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        // Deleting it stops the preparing.
+                        deleteUnsealedButton
                     } else if let row {
                         sent(row)
                     } else if !isOpenJob {
@@ -108,18 +113,25 @@ private struct JobRecordingRows: View {
         }
         .confirmationDialog("Delete this recording?", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("Delete recording", role: .destructive) {
-                guard let row else { return }
+                let asked = unsealedDeletion
+                unsealedDeletion = nil
                 Task {
-                    try? await sync.delete(bundleID: row.id)
+                    // Not sealed when the question was put: its parts and journal go, and a pass
+                    // that is preparing it is stopped first.
+                    if let asked { await coordinator.deleteUnsealed(asked) }
+                    // Sealed — before the question, or while it was on screen. Read from the
+                    // phone's own records, not from what this screen last drew.
+                    try? await sync.deleteRecording(sessionID: sessionID)
                     await coordinator.refresh()
                 }
             }
-            Button("Keep it", role: .cancel) {}
+            Button("Keep it", role: .cancel) { unsealedDeletion = nil }
         } message: {
-            if let row, sync.deletionNeedsConfirmation(bundleID: row.id) {
-                Text(verbatim: RetentionDecision.unacknowledgedRecordingDeletionWarning)
-            } else {
+            if let row, !sync.deletionNeedsConfirmation(bundleID: row.id) {
                 Text("The office has this recording. This removes what is left of it from this phone.")
+            } else {
+                // Not sealed, or sealed and not confirmed by the office: the only copy.
+                Text(verbatim: unsealedDeletion?.warning ?? RetentionDecision.unacknowledgedRecordingDeletionWarning)
             }
         }
     }
@@ -148,7 +160,7 @@ private struct JobRecordingRows: View {
     private func notYetSealed(_ unsealed: JobRecordingCoordinator.Unsealed) -> some View {
         switch unsealed {
         case .interrupted:
-            Text("A recording of this job was interrupted. What had been recorded is saved.")
+            Text(verbatim: JobRecordingCoordinator.interruptedNote)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
             choice("Carry on recording") { Task { await beginAfterConsent() } }
@@ -166,6 +178,22 @@ private struct JobRecordingRows: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        deleteUnsealedButton
+    }
+
+    /// Delete for a recording that is on this phone and not sealed: interrupted, waiting to be
+    /// prepared, or being prepared now. It asks first, as the sealed one's does — this recording
+    /// has never left the phone, so it is always the only copy.
+    @ViewBuilder
+    private var deleteUnsealedButton: some View {
+        Button("Delete recording", role: .destructive) {
+            // No question, no dialog, no delete: there was nothing unsealed to delete.
+            guard let asked = coordinator.askToDeleteUnsealed(sessionID: sessionID) else { return }
+            unsealedDeletion = asked
+            confirmingDelete = true
+        }
+        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+        .accessibilityHint("Asks first. Removes this recording from this phone; the job is kept.")
     }
 
     // MARK: - While it runs
@@ -234,8 +262,11 @@ private struct JobRecordingRows: View {
         default:
             EmptyView()
         }
-        Button("Delete recording", role: .destructive) { confirmingDelete = true }
-            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+        Button("Delete recording", role: .destructive) {
+            unsealedDeletion = nil
+            confirmingDelete = true
+        }
+        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
     }
 
     // MARK: - Starting

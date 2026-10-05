@@ -34,6 +34,8 @@ final class JobRecordingSyncService: ObservableObject {
         /// How many chunks may be in the office's folder beyond what it has taken.
         var chunksAhead = 2
         var clock: () -> Date = Date.init
+        /// Writes one line into a job's log: counts and digests, never content (Plan HE §5).
+        var log: @MainActor (String, SessionLogger.Event.Kind, [String: AnyCodable]) -> Void = { _, _, _ in }
     }
 
     /// Where one recording is, for a screen.
@@ -115,10 +117,12 @@ final class JobRecordingSyncService: ObservableObject {
                 continue
             }
             var state = Self.state(of: record)
+            var acknowledgedNow = false
             switch status {
             case .received:
                 guard state.apply(.receipt(.init(bundleID: record.bundleID, manifestSHA256: record.manifestSHA256,
                                                  status: .received))) else { break }
+                acknowledgedNow = true
                 record.acknowledgedAt = record.acknowledgedAt ?? seams.clock()
                 // The office has it: out of the folder, and still listened for.
                 try await seams.transport.withdrawRecording(bundleID: record.bundleID, forget: false)
@@ -138,6 +142,16 @@ final class JobRecordingSyncService: ObservableObject {
             record.seenReceipts.append(digest)
             try seams.store.keepReceipt(record, status: receipt.status, envelope: envelope)
             try seams.store.save(record)
+            // Only once the phone's own record says so, so the line is written once: a receipt
+            // that could not be kept is taken in again on the next pass, and written down then.
+            if acknowledgedNow {
+                seams.log(record.sessionID, .recordingSyncAcknowledged, [
+                    "manifest_sha256": AnyCodable(record.manifestSHA256),
+                    "receipt_sha256": AnyCodable(digest),
+                    "chunks": AnyCodable(record.chunks.count),
+                    "bytes": AnyCodable(Int(record.totalBytes)),
+                ])
+            }
         }
     }
 
@@ -159,6 +173,13 @@ final class JobRecordingSyncService: ObservableObject {
             state.apply(.mediaTrimmed)
             Self.keep(state, in: &record)
             try seams.store.save(record)
+            // After the record says trimmed, so it is written once: the next pass finds a
+            // trimmed recording and leaves it.
+            seams.log(record.sessionID, .recordingTrimmed, [
+                "manifest_sha256": AnyCodable(record.manifestSHA256),
+                "chunks": AnyCodable(record.chunks.count),
+                "bytes": AnyCodable(Int(record.mediaBytes)),
+            ])
             return
         case .sealed, .delivered:
             break
@@ -245,7 +266,22 @@ final class JobRecordingSyncService: ObservableObject {
         try? await seams.transport.withdrawRecording(bundleID: bundleID, forget: true)
         try seams.store.delete(record)
         waiting[bundleID] = nil
+        seams.log(record.sessionID, .recordingDeleted, [
+            "sealed": AnyCodable(true),
+            "acknowledged": AnyCodable(record.acknowledgedAt != nil),
+            "manifest_sha256": AnyCodable(record.manifestSHA256),
+            // What was still on the phone: nothing of the media once it has been trimmed.
+            "bytes": AnyCodable(Int(record.stage == .trimmed ? record.totalBytes - record.mediaBytes : record.totalBytes)),
+        ])
         refresh()
+    }
+
+    /// Delete whatever sealed recording a job has, for a caller that knows the job and not the
+    /// bundle. Read from the records on disk, so one sealed a moment ago is found.
+    func deleteRecording(sessionID: String) async throws {
+        for record in seams.store.records() where record.sessionID == sessionID {
+            try await delete(bundleID: record.bundleID)
+        }
     }
 
     /// How many recordings of these jobs the office has not acknowledged. A phone leaving its
@@ -333,23 +369,22 @@ final class JobRecordingSyncService: ObservableObject {
 
     /// Where a recording is, as a sentence for the technician. "Received by the office" only on
     /// the office's own receipt.
-    static func words(_ row: Row) -> String {
+    nonisolated static func words(_ row: Row) -> String {
         let size = ByteCountFormatter.string(fromByteCount: row.totalBytes, countStyle: .file)
         switch row.phase {
         case .recording, .preparing:
-            return "Preparing the recording."
+            return JobRecordingCoordinator.preparingNote
         case .sealed:
-            return "Recording waiting to sync. \(size)."
+            return "\(JobDayRecording.waitingTitle). \(size)."
         case .waiting(.notEligible(.blurRequired)):
             // Not waiting for anything: it cannot be blurred now, and is not sent as it is.
             return "This recording is held on this phone. \(SyncEligibility.Reason.blurRequired.explanation)"
         case .waiting(let reason):
-            return "Recording waiting to sync. \(reason.explanation)"
+            return "\(JobDayRecording.waitingTitle). \(reason.explanation)"
         case .transferring(let sent, let total):
-            let percent = total > 0 ? Int((Double(sent) / Double(total) * 100).rounded(.down)) : 0
-            return "Sending the recording to the office: \(percent)% of \(size)."
+            return "\(JobDayRecording.sendingTitle): \(progressWords(sentBytes: sent, totalBytes: total))"
         case .delivered:
-            return "Recording sent. Waiting for the office to confirm it."
+            return "\(JobDayRecording.sentTitle). \(awaitingConfirmation)"
         case .acknowledged, .trimmed:
             if let outcome = row.outcome, outcome.status == OfficeRecordingReceipt.Status.published.rawValue {
                 return "Recording received by the office. A procedure was published from it."
@@ -362,7 +397,16 @@ final class JobRecordingSyncService: ObservableObject {
         }
     }
 
-    static func refusalWords(_ reason: BundleSyncState.RefusalReason) -> String {
+    /// Said of a recording every file of which has been served: sent, and not yet the office's.
+    nonisolated static let awaitingConfirmation = "Waiting for the office to confirm it."
+
+    /// "25% of 1.2 GB." — how much of a recording the office has taken so far.
+    nonisolated static func progressWords(sentBytes: Int64, totalBytes: Int64) -> String {
+        let percent = totalBytes > 0 ? Int((Double(sentBytes) / Double(totalBytes) * 100).rounded(.down)) : 0
+        return "\(percent)% of \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))."
+    }
+
+    nonisolated static func refusalWords(_ reason: BundleSyncState.RefusalReason) -> String {
         switch reason {
         case .signature: return "it couldn't check this phone's signature"
         case .binding: return "this phone's pairing with the office has changed"
@@ -379,6 +423,7 @@ extension JobRecordingSyncService.Seams {
     @MainActor
     static func app(transport: any OfficeManagedFolderTransport, store: JobRecordingBundleStore,
                     pairing: @escaping @MainActor () -> OfficePairingService = { OfficePairingService() },
+                    sessions: @escaping @MainActor () -> FieldSessionService = { .shared },
                     conditions: @escaping @MainActor () -> SyncEligibility.Conditions) -> Self {
         Self(
             transport: transport, store: store,
@@ -392,7 +437,10 @@ extension JobRecordingSyncService.Seams {
                     officeID: binding.officeID, phoneTransportID: binding.phoneTransportID,
                     officeApplicationKey: officeKey)
             },
-            conditions: conditions)
+            conditions: conditions,
+            log: { sessionID, kind, payload in
+                sessions().logRecording(kind, sessionId: sessionID, payload: payload)
+            })
     }
 }
 

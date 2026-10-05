@@ -122,7 +122,7 @@ struct JobDayHomeCard: View {
                 groupLabel("Still to do")
                 ForEach(day.todos.prefix(Self.cardTodos)) { todo in
                     cardLine(symbol: todo.kind.symbol, title: todo.title, detail: todo.detail,
-                             warn: todo.kind == .reportFailed)
+                             warn: todo.kind.isWarning)
                 }
             }
 
@@ -239,7 +239,7 @@ struct JobDayView: View {
                     Section("Still to do") {
                         ForEach(day.todos) { todo in
                             row(symbol: todo.kind.symbol, title: todo.title, detail: todo.detail,
-                                warn: todo.kind == .reportFailed, destination: todo.destination)
+                                warn: todo.kind.isWarning, destination: todo.destination)
                         }
                     }
                 }

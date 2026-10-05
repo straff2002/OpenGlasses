@@ -217,7 +217,9 @@ struct TimedTranscriptSource {
             let engine = held.engine
             guard engine.isReady, let reader = await RecordedPartAudioReader(file: file) else { return [] }
             var utterances: [TimedTranscript.Utterance] = []
-            while let window = await reader.next(seconds: windowSeconds) {
+            // A recording deleted while its words are being read is not read to the end: the
+            // pass that asked is cancelled, and throws away what comes back.
+            while !Task.isCancelled, let window = await reader.next(seconds: windowSeconds) {
                 guard let text = try? await engine.transcribe(samples: window.samples, sampleRate: window.sampleRate)
                 else { continue }
                 if let utterance = utterance(text: text, offset: window.offset, duration: window.duration) {

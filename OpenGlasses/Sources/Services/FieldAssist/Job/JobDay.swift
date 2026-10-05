@@ -52,6 +52,34 @@ struct JobDayDebrief: Equatable {
     let label: String
 }
 
+/// A job's recording that is not yet with the office (Plan HE §4), as the day and the Jobs list
+/// show it. Gathered by `JobRecordingOwed` from the two services that know where a recording
+/// stands; the words are theirs.
+///
+/// **A recording the office has confirmed has no entry here.** Nothing built from this type says
+/// the office has a recording: that is said only on the office's own verified receipt, on the
+/// job's page.
+struct JobDayRecording: Equatable {
+    static let waitingTitle = "Recording waiting to sync"
+    static let sendingTitle = "Sending the recording to the office"
+    static let sentTitle = "Recording sent"
+    static let attentionTitle = "Recording needs attention"
+
+    let sessionId: String
+    /// "Job 1005". Carried, because the job need not be one of today's.
+    let label: String
+    /// One of the titles above.
+    let title: String
+    /// Why it is where it is, as a sentence, when there is something to say.
+    let reason: String?
+    /// The technician has something to decide: the office refused it, has not confirmed it in a
+    /// long time, or the organisation's rules hold it on the phone.
+    var needsAttention = false
+
+    /// The title and the reason as one line, for a row that has no second line of its own.
+    var sentence: String { reason.map { "\(title). \($0)" } ?? title }
+}
+
 /// Everything the day is composed from.
 struct JobDayInputs {
     var now: Date
@@ -63,6 +91,9 @@ struct JobDayInputs {
     var debrief: JobDayDebrief?
     /// Whether the organisation requires a customer sign-off before a report goes.
     var signOffRequired = false
+    /// Recorded jobs not yet with the office. Not scoped to today: the only copy of a recording
+    /// is owed for as long as it is the only copy.
+    var recordings: [JobDayRecording] = []
     /// My Day's items, or nil when the personal part is not shown (`HomeDayCard`).
     var personal: [MyDayItem]?
     /// "10:30". Injected so tests do not depend on the simulator's locale.
@@ -124,6 +155,11 @@ struct JobDay: Equatable {
             case reportNotSent
             case signOff
             case parts
+            /// A recording the technician has to decide about (Plan HE): refused, unconfirmed
+            /// for too long, or held on the phone by the organisation's rules.
+            case recordingAttention
+            /// A recording not yet with the office: waiting, on its way, or sent and unconfirmed.
+            case recording
 
             static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -135,10 +171,15 @@ struct JobDay: Equatable {
                 case .reportNotSent: return "doc.text"
                 case .signOff: return "signature"
                 case .parts: return "shippingbox"
+                case .recordingAttention: return "exclamationmark.triangle"
+                case .recording: return "video"
                 }
             }
 
             var isReport: Bool { self == .reportFailed || self == .reportStaged || self == .reportNotSent }
+
+            /// The ones a technician must not read past: a send that failed, a recording stuck.
+            var isWarning: Bool { self == .reportFailed || self == .recordingAttention }
 
             /// "1 report to send" — the summary's phrase when every to-do is this kind.
             func phrase(_ count: Int) -> String {
@@ -150,6 +191,10 @@ struct JobDay: Equatable {
                 case .reportNotSent: return many ? "\(count) reports not sent" : "1 report not sent"
                 case .signOff: return many ? "\(count) sign-offs owed" : "1 sign-off owed"
                 case .parts: return many ? "\(count) parts requests waiting" : "1 parts request waiting"
+                case .recordingAttention:
+                    return many ? "\(count) recordings need attention" : "1 recording needs attention"
+                case .recording:
+                    return many ? "\(count) recordings not yet with the office" : "1 recording not yet with the office"
                 }
             }
         }
@@ -213,7 +258,8 @@ enum JobDayComposer {
         let todos = owed(sessions: relevantSessions,
                          finishedInScope: relevantSessions.filter { !$0.isOpen && ($0.endedAt.map(isToday) ?? false) },
                          queue: inputs.queue, debrief: inputs.debrief,
-                         signOffRequired: inputs.signOffRequired, now: inputs.now)
+                         signOffRequired: inputs.signOffRequired, recordings: inputs.recordings,
+                         now: inputs.now)
 
         let next: JobDay.Next? = jobs.isEmpty ? nextJob(inputs, after: startOfTomorrow) : nil
 
@@ -288,8 +334,12 @@ enum JobDayComposer {
     ///   the card, the recent ones for the list. Their `reportSent` must have been read.
     /// - The send queue is scoped by itself: waiting and staged entries, and failures from the last
     ///   `failedSendWindow` not superseded by a later send.
+    /// - `recordings` are scoped by themselves too (Plan HE): every recording on the phone the
+    ///   office has not confirmed, whichever day its job was. One a job; a job with no recording,
+    ///   and a build with no office to record for, has none.
     static func owed(sessions: [JobDaySession], finishedInScope: [JobDaySession], queue: [QueuedSend],
-                     debrief: JobDayDebrief?, signOffRequired: Bool, now: Date) -> [JobDay.Todo] {
+                     debrief: JobDayDebrief?, signOffRequired: Bool, recordings: [JobDayRecording] = [],
+                     now: Date) -> [JobDay.Todo] {
         var todos: [JobDay.Todo] = []
         let byId = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         func route(_ sessionId: String) -> JobDayDestination {
@@ -345,6 +395,17 @@ enum JobDayComposer {
                              title: count == 1 ? "Parts request waiting" : "\(count) parts requests waiting",
                              detail: session.label, destination: route(session.id), sessionId: session.id)
             }
+
+        var recorded: Set<String> = []
+        todos += recordings.compactMap { recording in
+            // One recording a job, so one row a job.
+            guard recorded.insert(recording.sessionId).inserted else { return nil }
+            return .init(id: "recording-\(recording.sessionId)",
+                         kind: recording.needsAttention ? .recordingAttention : .recording,
+                         title: recording.title,
+                         detail: [recording.label, recording.reason].compactMap { $0 }.joined(separator: " — "),
+                         destination: route(recording.sessionId), sessionId: recording.sessionId)
+        }
 
         // Stable within a kind: the order each kind was gathered in.
         return todos.enumerated()

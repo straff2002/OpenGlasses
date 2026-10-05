@@ -43,8 +43,11 @@ private struct JobTabContent: View {
         self.flow = flow
         self.sends = sends
         self.upcoming = upcoming
-        _feed = StateObject(wrappedValue: JobListFeed(sessions: .shared, flow: flow, upcoming: upcoming,
-                                                      sends: sends))
+        _feed = StateObject(wrappedValue: JobListFeed(
+            sessions: .shared, flow: flow, upcoming: upcoming, sends: sends,
+            // A recording not yet with the office is flagged on its job's row (Plan HE).
+            recordings: { [weak appState] in appState?.owedRecordings() ?? [] },
+            recordingChanges: appState.owedRecordingChanges))
     }
 
     @State private var path: [JobRoute] = []

@@ -18,6 +18,8 @@ final class JobDayFeed: ObservableObject {
     private let upcoming: UpcomingJobStore
     private let sends: JobSendService
     private let myDay: MyDayService
+    /// Recorded jobs not yet with the office (Plan HE). None in a build with no office transport.
+    private let recordings: @MainActor () -> [JobDayRecording]
     private var cancellables: Set<AnyCancellable> = []
 
     /// Whether My Day's items are folded in (`HomeDayCard.jobDay(showsPersonal:)`). Set by the card,
@@ -27,12 +29,15 @@ final class JobDayFeed: ObservableObject {
     }
 
     init(sessions: FieldSessionService, flow: GuidedJobFlow, upcoming: UpcomingJobStore,
-         sends: JobSendService, myDay: MyDayService) {
+         sends: JobSendService, myDay: MyDayService,
+         recordings: @escaping @MainActor () -> [JobDayRecording] = { [] },
+         recordingChanges: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()) {
         self.sessions = sessions
         self.flow = flow
         self.upcoming = upcoming
         self.sends = sends
         self.myDay = myDay
+        self.recordings = recordings
 
         // `@Published` fires before the value lands, so the changes are coalesced and read a beat
         // later — which also folds a burst (a job closing moves the session, the history and the
@@ -45,6 +50,7 @@ final class JobDayFeed: ObservableObject {
             sends.$revision.map { _ in () }.eraseToAnyPublisher(),
             sends.queue.$queue.map { _ in () }.eraseToAnyPublisher(),
             myDay.$state.map { _ in () }.eraseToAnyPublisher(),
+            recordingChanges,
             Timer.publish(every: 60, tolerance: 5, on: .main, in: .common).autoconnect()
                 .map { _ in () }.eraseToAnyPublisher(),
         ]
@@ -93,6 +99,7 @@ final class JobDayFeed: ObservableObject {
             queue: sends.queue.queue.entries,
             debrief: debrief,
             signOffRequired: sessions.customerSignOffRequired,
+            recordings: recordings(),
             personal: personal))
         if next != day { day = next }
     }

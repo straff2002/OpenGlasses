@@ -1168,8 +1168,40 @@ class AppState: ObservableObject, AppStateProtocol {
         seams.sealed = { [weak self] in
             Task { @MainActor in try? await self?.officeJobRecordings?.sweep() }
         }
+        // A recording deleted in the moment it was sealed: out of the office's folder as well.
+        seams.withdrawSealed = { [weak self] sessionID in
+            self?.officeJobRecordings?.withdrawForRemoval(sessionIDs: [sessionID])
+        }
         return JobRecordingCoordinator(seams: seams)
     }()
+
+    /// Recorded jobs the office has not confirmed, for the Jobs list and the job-day card (Plan
+    /// HE §4). Empty in a build without the office transport — both services are nil there — and
+    /// on a phone that has recorded nothing.
+    func owedRecordings() -> [JobDayRecording] {
+        JobRecordingOwed.gather(coordinator: jobRecordings, sync: officeJobRecordings) { sessionID in
+            let sessions = FieldSessionService.shared
+            let session = sessions.activeSession?.id == sessionID
+                ? sessions.activeSession : sessions.history.first { $0.id == sessionID }
+            return JobDaySession.label(reference: session?.jobReference)
+        }
+    }
+
+    /// Fires when what is owed on a recording may have changed: one stopped, was prepared, sealed
+    /// or deleted, or moved on with the office. Not the recorder's once-a-second size and time.
+    var owedRecordingChanges: AnyPublisher<Void, Never> {
+        var changes: [AnyPublisher<Void, Never>] = []
+        if let recordings = jobRecordings {
+            changes += [recordings.$status.map { _ in () }.eraseToAnyPublisher(),
+                        recordings.$preparing.map { _ in () }.eraseToAnyPublisher(),
+                        recordings.$deferredForBlur.map { _ in () }.eraseToAnyPublisher(),
+                        recordings.$lastNote.map { _ in () }.eraseToAnyPublisher()]
+        }
+        if let sync = officeJobRecordings {
+            changes.append(sync.$rows.map { _ in () }.eraseToAnyPublisher())
+        }
+        return Publishers.MergeMany(changes).eraseToAnyPublisher()
+    }
 
     /// A recording the phone could not seal when it stopped is sealed once the pairing verifies
     /// again. Looked for every half minute while the office connection runs, and off the poll's
@@ -1749,7 +1781,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The job-day card's facts (Plan HB). Held here rather than by the card, because the card yields
     /// its place to every turn and the full-screen day view it opens must not go with it.
     lazy var jobDayFeed = JobDayFeed(sessions: FieldSessionService.shared, flow: guidedJobFlow,
-                                     upcoming: upcomingJobs, sends: jobSends, myDay: myDayService)
+                                     upcoming: upcomingJobs, sends: jobSends, myDay: myDayService,
+                                     // A recording not yet with the office is still to do (Plan HE).
+                                     recordings: { [weak self] in self?.owedRecordings() ?? [] },
+                                     recordingChanges: owedRecordingChanges)
 
     /// Open one settings category, from wherever the wearer is.
     func openSettings(_ category: SettingsCategoryID) {

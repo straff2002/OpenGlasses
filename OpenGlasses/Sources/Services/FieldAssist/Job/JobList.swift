@@ -54,6 +54,8 @@ struct JobListInputs {
     var queue: [QueuedSend] = []
     var debrief: JobDayDebrief?
     var signOffRequired = false
+    /// Recorded jobs not yet with the office (Plan HE), on whichever job they were made.
+    var recordings: [JobDayRecording] = []
     /// What is typed in the search field. Blank is no search.
     var query = ""
     /// "Mon 29 Sep, 2:15 PM". Injected so tests do not depend on a locale.
@@ -80,6 +82,8 @@ struct JobList: Equatable {
             case reportNotSent
             case signOff
             case parts
+            case recordingAttention
+            case recording
 
             static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
 
@@ -91,6 +95,8 @@ struct JobList: Equatable {
                 case .reportNotSent: self = .reportNotSent
                 case .signOff: self = .signOff
                 case .parts: self = .parts
+                case .recordingAttention: self = .recordingAttention
+                case .recording: self = .recording
                 }
             }
 
@@ -103,11 +109,14 @@ struct JobList: Equatable {
                 case .reportNotSent: return JobDay.Todo.Kind.reportNotSent.symbol
                 case .signOff: return JobDay.Todo.Kind.signOff.symbol
                 case .parts: return JobDay.Todo.Kind.parts.symbol
+                case .recordingAttention: return JobDay.Todo.Kind.recordingAttention.symbol
+                case .recording: return JobDay.Todo.Kind.recording.symbol
                 }
             }
 
-            /// Late, or a send that failed — the two a technician must not read past.
-            var isWarning: Bool { self == .overdue || self == .reportFailed }
+            /// Late, a send that failed, or a recording stuck on the phone — the ones a technician
+            /// must not read past.
+            var isWarning: Bool { self == .overdue || self == .reportFailed || self == .recordingAttention }
         }
 
         let kind: Kind
@@ -126,6 +135,10 @@ struct JobList: Equatable {
             case .reportNotSent: return "Report not sent"
             case .signOff: return "Sign-off owed"
             case .parts: return parts > 1 ? "\(parts) parts requests waiting" : "Parts request waiting"
+            // A recording's badge says where that recording stands, with the reason
+            // (`JobDayRecording.sentence`); these are what it says when it has only the kind.
+            case .recordingAttention: return JobDayRecording.attentionTitle
+            case .recording: return JobDayRecording.waitingTitle
             }
         }
     }
@@ -247,7 +260,10 @@ enum JobListComposer {
             // A cancelled visit has no report to owe, as on the card.
             finishedInScope: recentSessions.map(\.facts).filter { !$0.cancelled },
             queue: inputs.queue, debrief: inputs.debrief,
-            signOffRequired: inputs.signOffRequired, now: inputs.now)
+            signOffRequired: inputs.signOffRequired, recordings: inputs.recordings, now: inputs.now)
+        // A recording's badge carries its reason: "Recording waiting to sync. Waiting for Wi-Fi."
+        let recordingBySession = Dictionary(inputs.recordings.map { ($0.sessionId, $0.sentence) },
+                                            uniquingKeysWith: { first, _ in first })
         let partsBySession = Dictionary(everySession.map { ($0.facts.id, $0.facts.openPartsRequests) },
                                         uniquingKeysWith: { first, _ in first })
         var badgesBySession: [String: [JobList.Badge]] = [:]
@@ -256,8 +272,11 @@ enum JobListComposer {
             let kind = JobList.Badge.Kind(todo.kind)
             // One badge per kind: a failed work order and a failed addendum are one "didn't send".
             guard badgesBySession[sessionId]?.contains(where: { $0.kind == kind }) != true else { continue }
+            let isRecording = kind == .recording || kind == .recordingAttention
             badgesBySession[sessionId, default: []].append(
-                JobList.Badge(kind: kind, label: JobList.Badge.label(kind, parts: partsBySession[sessionId] ?? 1)))
+                JobList.Badge(kind: kind,
+                              label: (isRecording ? recordingBySession[sessionId] : nil)
+                                  ?? JobList.Badge.label(kind, parts: partsBySession[sessionId] ?? 1)))
         }
         func badges(_ sessionId: String) -> [JobList.Badge] {
             (badgesBySession[sessionId] ?? []).sorted { $0.kind < $1.kind }
