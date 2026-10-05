@@ -176,6 +176,7 @@ func TestAKeyHolderSignsExactlyThePayloadItIsHandedAndOnlyItsOwn(t *testing.T) {
 		"another kind":      {changed(func(q *Payload) { q.Kind = "avenkin.managed-job" }), testKey(), "fixture-office", 1800000000, ErrVersion},
 		"a vault as a path": {changed(func(q *Payload) { q.VaultID = ".." }), testKey(), "fixture-office", 1800000000, ErrFields},
 		"an extra member":   {[]byte(strings.Replace(string(payload), `{"version"`, `{"extra":1,"version"`, 1)), testKey(), "fixture-office", 1800000000, ErrMalformed},
+		"a member twice":    {[]byte(strings.Replace(string(payload), `{"version":1,`, `{"version":1,"version":1,`, 1)), testKey(), "fixture-office", 1800000000, ErrMalformed},
 		"nothing":           {nil, testKey(), "fixture-office", 1800000000, ErrMalformed},
 		"no key":            {payload, nil, "fixture-office", 1800000000, ErrSignature},
 	} {

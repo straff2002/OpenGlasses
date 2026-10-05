@@ -75,7 +75,7 @@ var (
 	ErrFields    = errors.New("invalid office report message fields")
 	ErrOther     = errors.New("office report message is for another binding or report")
 	ErrContent   = errors.New("the record or manifest is not the one the report names")
-	ErrTime      = errors.New("office report receipt is dated ahead of the clock")
+	ErrTime      = errors.New("office report receipt is dated too far ahead of the clock")
 )
 
 // Report is the phone's signed statement that one record, at one revision, is exactly these
@@ -492,6 +492,8 @@ func (r Receipt) valid() bool {
 		lowerHex(r.RecordSHA256, 64) && lowerHex(r.ManifestSHA256, 64) &&
 		safeIdentifier(r.OrganizationID) && safeIdentifier(r.EnrolmentID) && safeIdentifier(r.OfficeID) && transportID(r.PhoneTransportID) &&
 		Stage(r.Outcome) != "" && r.AttachmentsCommitted >= 0 && r.AttachmentsOutstanding >= 0 &&
+		// Each is bounded before they are added, so a sum that wraps cannot pass.
+		r.AttachmentsCommitted <= MaximumAttachments && r.AttachmentsOutstanding <= MaximumAttachments &&
 		r.AttachmentsCommitted+r.AttachmentsOutstanding <= MaximumAttachments &&
 		(r.Outcome == OutcomeFullyAccepted) == (r.AttachmentsOutstanding == 0) && instant(r.ReceivedAt)
 }

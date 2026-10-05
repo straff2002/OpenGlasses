@@ -272,8 +272,10 @@ func TestAKeyHolderSignsExactlyTheGrantItIsHandedAndOnlyForItsOwnProfile(t *test
 			_ = json.Unmarshal(w.files["office-bulk-assignment-receipt-received-v1.json"], &r)
 			return r.Payload
 		}())), "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
-		"nothing": {nil, "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
-		"no key":  {payload, "fixture-organisation", "fixture-profile", nil, FixtureNow, ErrSignature},
+		"an extra member": {[]byte(strings.Replace(string(payload), `{"version"`, `{"extra":1,"version"`, 1)), "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
+		"a member twice":  {[]byte(strings.Replace(string(payload), `{"version":1,`, `{"version":1,"version":1,`, 1)), "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
+		"nothing":         {nil, "fixture-organisation", "fixture-profile", sign, FixtureNow, ErrMalformed},
+		"no key":          {payload, "fixture-organisation", "fixture-profile", nil, FixtureNow, ErrSignature},
 	} {
 		_, err := SignGrantPayload(c.payload, c.organizationID, c.profileID, c.sign, c.now)
 		refused(t, name, err, c.want)

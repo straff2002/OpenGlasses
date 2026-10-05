@@ -378,6 +378,9 @@ func TestAKeyHolderSignsExactlyTheReceiptItIsHandedAndOnlyItsOwn(t *testing.T) {
 		"another office named":   {changed(func(r *Receipt) { r.OfficeID = "office-000000000000000000000000" }), w.office, FixtureNow, ErrOther},
 		"dated ahead":            {payload, w.office, receipt.ReceivedAt - MaximumIssueSkew - 1, ErrTime},
 		"counts with no outcome": {changed(func(r *Receipt) { r.AttachmentsOutstanding = 0 }), w.office, FixtureNow, ErrFields},
+		"counts whose sum wraps": {changed(func(r *Receipt) { r.AttachmentsCommitted, r.AttachmentsOutstanding = 9223372036854775807, 2 }), w.office, FixtureNow, ErrFields},
+		"a member twice":         {[]byte(strings.Replace(string(payload), `{"version":1,`, `{"version":1,"version":1,`, 1)), w.office, FixtureNow, ErrMalformed},
+		"larger than a receipt":  {[]byte(strings.Replace(string(payload), `{"version"`, `{`+strings.Repeat(" ", MaximumReceipt)+`"version"`, 1)), w.office, FixtureNow, ErrMalformed},
 		"a report":               {payloadOf(w.envelope), w.office, FixtureNow, ErrMalformed},
 		"an extra member":        {[]byte(strings.Replace(string(payload), `{"version"`, `{"extra":1,"version"`, 1)), w.office, FixtureNow, ErrMalformed},
 		"nothing":                {nil, w.office, FixtureNow, ErrMalformed},
@@ -385,5 +388,9 @@ func TestAKeyHolderSignsExactlyTheReceiptItIsHandedAndOnlyItsOwn(t *testing.T) {
 	} {
 		_, e := SignReceiptPayload(c.payload, c.key, c.now)
 		refused(t, name, e, c.want)
+	}
+	// Up to the skew ahead is signed; one second more is not.
+	if _, e := SignReceiptPayload(payload, w.office, receipt.ReceivedAt-MaximumIssueSkew); e != nil {
+		t.Fatal(e)
 	}
 }

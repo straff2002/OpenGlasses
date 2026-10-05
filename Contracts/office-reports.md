@@ -13,8 +13,8 @@ requirements or marked *Assumption*.
 the two-step signing a phone needs, the manifest's one spelling and each side's checks — and the
 golden fixtures in §10. For an office whose application key is held by one process on behalf of
 another, `officereport.SignReceiptPayload` signs the exact receipt payload it is handed, after
-checking it is a receipt, in form, for the office the key belongs to and not dated ahead of the
-clock; the connection helper (`cmd/office-preview`) exposes it as `sign-report-receipt`. The key
+checking it is a receipt, in form, for the office the key belongs to and dated no more than five
+minutes ahead of the clock; the connection helper (`cmd/office-preview`) exposes it as `sign-report-receipt`. The key
 holder never sees the report: that a receipt answers a report the office read, and says how much
 of it is committed, is the office's own record.
 
