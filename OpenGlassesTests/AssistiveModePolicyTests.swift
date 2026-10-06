@@ -65,7 +65,8 @@ final class AssistiveModePolicyTests: XCTestCase {
     }
 
     func testSceneModeIsUnaffectedByTheRefusal() {
-        for decision in [Policy.Decision.offered] + Policy.Refusal.allCases.map { .notOffered($0) } {
+        let decisions = [Policy.Decision.offered] + Policy.Refusal.allCases.map { .notOffered($0) }
+        for decision in decisions {
             XCTAssertEqual(AssistiveRouter.route(transcription: "describe the room", social: decision), .scene)
             XCTAssertEqual(AssistiveRouter.route(transcription: nil, social: decision), .scene)
         }
