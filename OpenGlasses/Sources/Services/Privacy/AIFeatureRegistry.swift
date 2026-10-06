@@ -19,6 +19,8 @@ enum AIFeature: String, CaseIterable {
     // Biometric
     case faceRecognition
     case speakerIdentification
+    /// Assistive Mode's Social mode: the apparent emotional state of the person in view (Plan HP).
+    case assistiveSocial
 
     // Health
     case healthVault
@@ -83,6 +85,9 @@ enum AIFeature: String, CaseIterable {
         let dataRetainedWhenDisabled: String
         /// What erases that data, or why nothing does.
         let erasure: SensitiveStore.Deletion
+        /// Why the feature sits in the categories it does, where that is not obvious from its title
+        /// — most of all a `.none` that a reader would otherwise expect to be sensitive.
+        var screeningNote: String? = nil
     }
 
     // MARK: - The inventory
@@ -103,8 +108,9 @@ enum AIFeature: String, CaseIterable {
                           erasure: .api("FaceRecognitionService.forgetAllFaces()"))
 
         case .speakerIdentification:
+            // Screened `.none`, not `.biometric` (EU AI Act review §3.7, Plan HP P1 item 5).
             return Record(feature: self, title: "Speaker identification",
-                          sensitiveCategories: [.biometric],
+                          sensitiveCategories: [.none],
                           disableSwitch: Switch(key: "diarizationEnabled",
                                                 isEnabled: { Config.diarizationEnabled },
                                                 setEnabled: { Config.diarizationEnabled = $0 },
@@ -112,7 +118,24 @@ enum AIFeature: String, CaseIterable {
                           toolNames: [],
                           stores: [.speakerNames],
                           dataRetainedWhenDisabled: "Names the wearer attached to voice clusters stay in preferences; they are cleared one speaker at a time.",
-                          erasure: .api("SpeakerRegistry.setName(nil, for:)"))
+                          erasure: .api("SpeakerRegistry.setName(nil, for:)"),
+                          screeningNote: "Not biometric: the label is a name the wearer typed against the transcription service's per-session speaker cluster id, and no voiceprint, embedding or cross-session voice match exists.")
+
+        case .assistiveSocial:
+            // Not a tool: Assistive Mode routes to it from what the wearer says. Its switch is read
+            // through `AssistiveModePolicy`, which also refuses it outright on a managed phone and
+            // under a Field Assist edition — inferring emotions at work is prohibited, whatever the
+            // switch says.
+            return Record(feature: self, title: "Assistive Social mode",
+                          sensitiveCategories: [.biometric],
+                          disableSwitch: Switch(key: "assistiveSocialEnabled",
+                                                isEnabled: { Config.assistiveSocialEnabled },
+                                                setEnabled: { Config.assistiveSocialEnabled = $0 },
+                                                preexisting: false),
+                          toolNames: [],
+                          stores: [],
+                          dataRetainedWhenDisabled: "Nothing retained — advice is spoken and not written.",
+                          erasure: .notSubjectLinked)
 
         case .healthVault:
             return Record(feature: self, title: "Health vault access",
@@ -151,6 +174,9 @@ enum AIFeature: String, CaseIterable {
                           erasure: .notSubjectLinked)
 
         case .firstAidAssist:
+            // Covers camera triage as well as coaching: `vision_assess` refuses
+            // `kind: first_aid_triage` while this switch is off (Plan HP P1 item 4), so turning it
+            // off stops both. `vision_assess` itself is not listed — its other kinds are not first aid.
             return Record(feature: self, title: "First-aid coaching and triage",
                           sensitiveCategories: [.health],
                           disableSwitch: Switch(key: "firstAidAssistEnabled",

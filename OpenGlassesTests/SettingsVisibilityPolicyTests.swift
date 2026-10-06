@@ -103,7 +103,13 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         XCTAssertTrue(Policy.presentation(.area(.requestRouting), in: context).isShown)
         XCTAssertEqual(Policy.presentation(.key(.privacyFilterEnabled), in: context), .readOnly,
                        "bystander blurring, pinned on, is shown read-only to the technician")
-        XCTAssertEqual(Policy.alwaysShown, [.key(.privacyFilterEnabled), .area(.requestRouting)])
+        XCTAssertEqual(Policy.alwaysShown, [.key(.privacyFilterEnabled), .area(.requestRouting),
+                                            .key(.faceRecognitionEnabled), .key(.aiConnectionCueEnabled)])
+        // Plan HP P2: face recognition pinned off and the AI cue pinned on are both drawn read-only
+        // for the technician — one protects bystanders, the other is a disclosure.
+        let hpContext = technician(lockEverything, keys: [.faceRecognitionEnabled, .aiConnectionCueEnabled])
+        XCTAssertEqual(Policy.presentation(.key(.faceRecognitionEnabled), in: hpContext), .readOnly)
+        XCTAssertEqual(Policy.presentation(.key(.aiConnectionCueEnabled), in: hpContext), .readOnly)
     }
 
     func testPinnedKeysAndClosedToolsAreHiddenFromTheTechnician() {

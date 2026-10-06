@@ -62,6 +62,10 @@ final class DataStoreRegistryTests: XCTestCase {
             "cached list of the provider's own model names",
 
         // Operational bookkeeping with no content in it.
+        "OpenGlasses/Sources/Services/Privacy/CapabilityDefaultMigration.swift":
+            "the one-time seeding of a capability's default: it writes two booleans (the feature "
+                + "switch and its own done-marker) and only reads the face database, whose owner is "
+                + "registered as faceDatabase. It holds no record of anyone",
         "OpenGlasses/Sources/Services/AgentHarness/AgentDeliveryRecordStore.swift":
             "the delivery record for an agent result: the endpoint's own run id, which revision "
                 + "of the result it was, and two closed-vocabulary state tokens. It deliberately "

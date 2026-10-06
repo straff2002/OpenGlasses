@@ -251,6 +251,82 @@ final class ToolEffectClassPolicyTests: XCTestCase {
         XCTAssertFalse(profile.definitionDigest.isEmpty)
     }
 
+    // MARK: - Face enrolment (Plan HP P2 item 9)
+
+    /// Enrolling a face stores a template of somebody who was not asked, so it is held for the
+    /// wearer's approval; recognising, listing and forgetting are not, or the one prompt that
+    /// matters would be lost among routine ones.
+    func testOnlyEnrollingAFaceIsHeldForApproval() {
+        let semantics = ToolExecutionSemantics.local()
+        let remember = ToolEffectClassifier.nativeClass(
+            name: "face_recognition", args: ["action": "remember", "name": "Maria"], semantics: semantics)
+        XCTAssertEqual(remember, .biometricEnrolment)
+        XCTAssertTrue(remember.requiresBoundApproval(on: .native))
+        XCTAssertEqual(ToolEffectClassifier.nativeClass(
+            name: "face_recognition", args: ["action": " Remember "], semantics: semantics),
+                       .biometricEnrolment, "parsing can only over-classify")
+
+        for action in ["forget", "list", "toggle", "on", "off", "status"] {
+            let effectClass = ToolEffectClassifier.nativeClass(
+                name: "face_recognition", args: ["action": action, "name": "Maria"], semantics: semantics)
+            XCTAssertEqual(effectClass, .write, action)
+            XCTAssertFalse(effectClass.requiresBoundApproval(on: .native), action)
+        }
+        XCTAssertEqual(ToolEffectClassifier.nativeClass(name: "face_recognition", args: [:],
+                                                        semantics: semantics), .write,
+                       "no action is no enrolment — the tool refuses it")
+    }
+
+    /// The ask names the person and says the one thing the wearer most needs to weigh — and it is
+    /// the same ask with agent mode on or off, and however the call arrived.
+    func testEnrollingAFaceAsksTheWearerFirstWhateverAgentModeSays() {
+        for agentMode in [false, true] {
+            for origin in [ToolInvocationOrigin.model, .user] {
+                let call = ResolvedToolCall.root(name: "face_recognition",
+                                                 arguments: ["action": "remember", "name": "Maria"],
+                                                 origin: origin)
+                let decision = ToolAuthorizationPolicy.evaluate(.init(
+                    call: call, agentModeEnabled: agentMode, seam: .native,
+                    effectClass: .biometricEnrolment))
+                XCTAssertEqual(decision, .confirm(summary: "Remember this face as Maria? They won't be told."),
+                               "agentMode=\(agentMode) origin=\(origin.rawValue)")
+            }
+        }
+        let forget = ResolvedToolCall.root(name: "face_recognition",
+                                           arguments: ["action": "forget", "name": "Maria"], origin: .model)
+        XCTAssertEqual(ToolAuthorizationPolicy.evaluate(.init(
+            call: forget, agentModeEnabled: false, seam: .native, effectClass: .write)), .allow)
+
+        let spoken = RemoteActionConsentRequest(
+            source: .assistant,
+            summary: PromptInjectionPolicy.actionSummary(toolName: "face_recognition",
+                                                         args: ["action": "remember", "name": "Maria"]))
+            .spokenPrompt
+        XCTAssertEqual(spoken, "The assistant wants: Remember this face as Maria? They won't be told. Approve?")
+    }
+
+    /// The router classifies the live tool the same way, so the card is actually raised.
+    func testTheRouterHoldsAFaceEnrolmentForApproval() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("face-enrol-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let faces = FaceRecognitionService(directory: workspace)
+        let camera = CameraService()
+        let registry = NativeToolRegistry(locationService: LocationService())
+        registry.register(FaceRecognitionTool(faceService: faces, cameraService: camera))
+        let router = NativeToolRouter(registry: registry)
+
+        let enrol = router.dispatchProfile(for: .root(
+            name: "face_recognition", arguments: ["action": "remember", "name": "Maria"], origin: .model))
+        XCTAssertEqual(enrol.seam, .native)
+        XCTAssertEqual(enrol.effectClass, .biometricEnrolment)
+        let list = router.dispatchProfile(for: .root(
+            name: "face_recognition", arguments: ["action": "list"], origin: .model))
+        XCTAssertEqual(list.effectClass, .write)
+        withExtendedLifetime((faces, camera)) {}
+    }
+
     // MARK: - Helpers
 
     /// The widest registry this process can build headlessly, mirroring the fixture the execution

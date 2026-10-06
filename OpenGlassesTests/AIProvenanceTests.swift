@@ -204,6 +204,122 @@ final class AIProvenanceTests: XCTestCase {
         }
     }
 
+    // MARK: - Conversation and translation surfaces (Plan HP P1 item 7)
+
+    /// Each surface discloses once per session, independently: hearing one disclosure does not
+    /// count as having been told about another.
+    func testConversationAndTranslationDiscloseOncePerSessionEach() {
+        let ledger = AIDisclosureLedger()
+        let conversation = ledger.consume(.conversation)
+        XCTAssertNotNil(conversation)
+        XCTAssertNil(ledger.consume(.conversation))
+        XCTAssertFalse(ledger.hasDelivered(.translation), "one surface consumed another")
+        XCTAssertFalse(ledger.hasDelivered(.assessment))
+
+        let translation = ledger.consume(.translation)
+        XCTAssertNotNil(translation)
+        XCTAssertNil(ledger.consume(.translation))
+        XCTAssertNotNil(ledger.consume(.assessment), "the assessment surface is still its own")
+    }
+
+    /// A new conversation is a new session: every surface discloses again.
+    func testResetClearsEverySurface() {
+        let ledger = AIDisclosureLedger()
+        for surface in AIDisclosureLedger.Surface.allCases { _ = ledger.consume(surface) }
+        for surface in AIDisclosureLedger.Surface.allCases { XCTAssertTrue(ledger.hasDelivered(surface)) }
+
+        ledger.reset()
+        for surface in AIDisclosureLedger.Surface.allCases {
+            XCTAssertFalse(ledger.hasDelivered(surface), "\(surface)")
+            XCTAssertEqual(ledger.consume(surface), AIDisclosureLedger.text(for: surface), "\(surface)")
+        }
+    }
+
+    /// The copy resolves through the catalog as one whole sentence per surface.
+    func testConversationAndTranslationCopyResolves() {
+        XCTAssertEqual(AIDisclosureLedger.text(for: .conversation),
+                       String(localized: "Connecting to Avenkin AI."))
+        XCTAssertEqual(AIDisclosureLedger.text(for: .translation),
+                       String(localized: "Starting Avenkin AI translation."))
+        XCTAssertEqual(AIDisclosureLedger.text(for: .translationForListener),
+                       String(localized: "This is a live AI translation by Avenkin AI."))
+        XCTAssertEqual(AIDisclosureLedger.text(for: .translationForListener),
+                       TranslationDisclosureLanguage.listenerLineKey,
+                       "the listener line's catalog key is its English source")
+        XCTAssertEqual(AIDisclosureLedger.conversationIntroduction,
+                       String(localized: "Connecting to Avenkin AI, your AI assistant. It can be wrong, so check anything important."))
+        let all = AIDisclosureLedger.Surface.allCases.map(AIDisclosureLedger.text(for:))
+            + [AIDisclosureLedger.conversationIntroduction]
+        XCTAssertEqual(Set(all).count, all.count, "two surfaces share copy")
+        for text in all {
+            XCTAssertTrue(text.contains("AI"), text)
+            XCTAssertFalse(text.contains("Plan") || text.contains("HP"), text)
+        }
+    }
+
+    // MARK: - The "Connecting to Avenkin AI" cue (Plan HP P2 item 10)
+
+    /// The install's first conversation ever gets the longer introduction, once; every launch
+    /// after that gets the short line.
+    func testTheFirstConversationEverGetsTheIntroductionAndOnlyOnce() {
+        let marker = AIDisclosureLedger.IntroductionMarker.inMemory(given: false)
+        let firstLaunch = AIDisclosureLedger(introduction: marker)
+        XCTAssertEqual(firstLaunch.consume(.conversation), AIDisclosureLedger.conversationIntroduction)
+        XCTAssertNil(firstLaunch.consume(.conversation), "once per launch")
+        XCTAssertTrue(marker.isGiven(), "the introduction marks itself given")
+
+        let nextLaunch = AIDisclosureLedger(introduction: marker)
+        XCTAssertEqual(nextLaunch.consume(.conversation), AIDisclosureLedger.text(for: .conversation))
+    }
+
+    /// The wearer's switch silences the short lines only. The first-ever introduction, the
+    /// assessment disclosure and the line for the other person are said whatever it says.
+    func testTheCueSwitchSilencesOnlyTheShortLines() {
+        let introduced = AIDisclosureLedger(introduction: .inMemory(given: true))
+        XCTAssertNil(introduced.consume(.conversation, cueEnabled: false))
+        XCTAssertNil(introduced.consume(.translation, cueEnabled: false))
+        XCTAssertFalse(introduced.hasDelivered(.conversation),
+                       "a silenced line is not marked, so switching the cue back on says it")
+        XCTAssertEqual(introduced.consume(.conversation, cueEnabled: true), AIDisclosureLedger.text(for: .conversation))
+        XCTAssertNotNil(introduced.consume(.assessment, cueEnabled: false))
+        XCTAssertNotNil(introduced.consume(.translationForListener, cueEnabled: false))
+        XCTAssertNil(introduced.consume(.translationForListener), "the listener line is once per launch too")
+
+        let marker = AIDisclosureLedger.IntroductionMarker.inMemory(given: false)
+        let first = AIDisclosureLedger(introduction: marker)
+        XCTAssertEqual(first.consume(.conversation, cueEnabled: false), AIDisclosureLedger.conversationIntroduction,
+                       "the introduction ignores the switch")
+        XCTAssertTrue(marker.isGiven())
+    }
+
+    /// The rule on its own, every corner.
+    func testTheLineRuleCorners() {
+        typealias L = AIDisclosureLedger
+        XCTAssertEqual(L.line(for: .conversation, firstEver: true, cueEnabled: false), L.conversationIntroduction)
+        XCTAssertEqual(L.line(for: .conversation, firstEver: true, cueEnabled: true), L.conversationIntroduction)
+        XCTAssertEqual(L.line(for: .conversation, firstEver: false, cueEnabled: true), L.text(for: .conversation))
+        XCTAssertNil(L.line(for: .conversation, firstEver: false, cueEnabled: false))
+        XCTAssertEqual(L.line(for: .translation, firstEver: false, cueEnabled: true), L.text(for: .translation))
+        XCTAssertNil(L.line(for: .translation, firstEver: true, cueEnabled: false),
+                     "only the conversation has a first-ever form")
+        for cue in [false, true] {
+            XCTAssertEqual(L.line(for: .assessment, firstEver: false, cueEnabled: cue), L.text(for: .assessment))
+            XCTAssertEqual(L.line(for: .translationForListener, firstEver: false, cueEnabled: cue),
+                           L.text(for: .translationForListener))
+        }
+    }
+
+    /// The shipped switch defaults on, and an organisation can pin it on but never off.
+    func testTheCueSwitchDefaultsOnAndCanOnlyBePinnedOn() {
+        let saved = UserDefaults.standard.object(forKey: "aiConnectionCueEnabled")
+        defer { UserDefaults.standard.set(saved, forKey: "aiConnectionCueEnabled") }
+        UserDefaults.standard.removeObject(forKey: "aiConnectionCueEnabled")
+        XCTAssertTrue(Config.aiConnectionCueEnabled)
+        XCTAssertEqual(SettingKey.aiConnectionCueEnabled.kind, .ceiling(pinnedTo: true))
+        XCTAssertEqual(SettingKey.aiConnectionCueEnabled.rawValue, "aiConnectionCueEnabled")
+        XCTAssertNotEqual(SettingKey.aiConnectionCueEnabled.ceilingDescription, "aiConnectionCueEnabled")
+    }
+
     // MARK: - Helper
 
     private static func contains(_ data: Data, _ needle: String) -> Bool {

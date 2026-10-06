@@ -63,6 +63,12 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     // Camera streaming control
     var onRequestStartCamera: (() async -> Bool)?
 
+    /// Awaited as a session starts, before the camera, the audio session or the socket are touched
+    /// — the moment `AppState` says "Connecting to Avenkin AI." through the app's own voice, once
+    /// per launch (Plan HP P2 item 10). Before the session takes the audio route, so the line is
+    /// not captured by the microphone and sent to the model as speech.
+    var onWillConnect: (() async -> Void)?
+
     /// Give back the camera this session started — see the Gemini manager's twin for why a claim
     /// rather than a bare stop.
     var onRequestStopCamera: (() async -> Void)?
@@ -113,6 +119,10 @@ class OpenAIRealtimeSessionManager: ObservableObject {
         micMuted = false
         sessionIdentity += 1
         errorMessage = nil
+
+        await onWillConnect?()
+        // Stopped while the cue played.
+        guard isActive else { return }
 
         // Try to start camera
         if let startCamera = onRequestStartCamera {

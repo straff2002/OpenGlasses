@@ -56,6 +56,11 @@ enum ToolEffectClass: String, Sendable, Equatable, CaseIterable, Codable, Compar
     /// Writes state the wearer owns and can see — a note, a timer, a saved location, the torch,
     /// a recording on this device.
     case write
+    /// Stores a biometric template of somebody else on this device — a face enrolled for
+    /// recognition (EU AI Act review, Plan HP P2 item 9). Nothing leaves the phone, so it is not a
+    /// disclosure; but the person enrolled is neither asked nor told, so the wearer is asked on
+    /// their behalf, every time, whichever way the call arrived.
+    case biometricEnrolment
     /// Sends a communication to another person or another person's system.
     case messaging
     /// Actuates something in the physical world that the wearer cannot trivially undo — a lock,
@@ -74,11 +79,12 @@ enum ToolEffectClass: String, Sendable, Equatable, CaseIterable, Codable, Compar
         switch self {
         case .readOnly:            return 0
         case .write:               return 1
-        case .messaging:           return 2
-        case .physicalActuation:   return 3
-        case .sensitiveDisclosure: return 4
-        case .financial:           return 5
-        case .unknown:             return 6
+        case .biometricEnrolment:  return 2
+        case .messaging:           return 3
+        case .physicalActuation:   return 4
+        case .sensitiveDisclosure: return 5
+        case .financial:           return 6
+        case .unknown:             return 7
         }
     }
 
@@ -105,14 +111,16 @@ enum ToolEffectClass: String, Sendable, Equatable, CaseIterable, Codable, Compar
     /// * **Native** — the implementation is in this repository and the wearer's own surfaces drive
     ///   it, so a `write` to the wearer's own device or stores is authorized by their asking for it.
     ///   The classes that reach another person, the physical world, sensitive data, or money are
-    ///   not: those are bound whatever the arrival path and whatever agent mode says.
+    ///   not, and nor is enrolling somebody else's face: those are bound whatever the arrival path
+    ///   and whatever agent mode says.
     func requiresBoundApproval(on seam: ToolDispatchSeam) -> Bool {
         switch self {
         case .readOnly:
             return false
         case .write:
             return seam.isExternal
-        case .messaging, .physicalActuation, .sensitiveDisclosure, .financial, .unknown:
+        case .biometricEnrolment, .messaging, .physicalActuation, .sensitiveDisclosure, .financial,
+             .unknown:
             return true
         }
     }
@@ -169,6 +177,12 @@ enum ToolEffectClassifier {
             return PromptInjectionPolicy.isDispatchingAgentRun(args) ? .unknown : .write
         }
 
+        // Enrolling a face stores a template of somebody who was not asked (Plan HP P2 item 9).
+        // Recognising, listing and forgetting do not, and stay as routine as they were.
+        if name == "face_recognition" {
+            return isFaceEnrolment(args) ? .biometricEnrolment : semanticsClass(semantics)
+        }
+
         // The security-relevant half of the actuation tools, decided by the same floor the router
         // has always consulted rather than by a second hand-kept list.
         if HighImpactToolPolicy.mayRequireConfirmation(tool: name),
@@ -176,7 +190,19 @@ enum ToolEffectClassifier {
             return .physicalActuation
         }
 
-        return semantics.effect == .readOnly ? .readOnly : .write
+        return semanticsClass(semantics)
+    }
+
+    private static func semanticsClass(_ semantics: ToolExecutionSemantics) -> ToolEffectClass {
+        semantics.effect == .readOnly ? .readOnly : .write
+    }
+
+    /// Whether a `face_recognition` call would enrol a face. Mirrors the tool's own parsing, which
+    /// lower-cases the action; surrounding space is trimmed here and not there, which can only
+    /// over-classify, never under-classify.
+    static func isFaceEnrolment(_ args: [String: Any]) -> Bool {
+        guard let action = args["action"] as? String else { return false }
+        return action.trimmingCharacters(in: .whitespaces).lowercased() == "remember"
     }
 
     // MARK: External

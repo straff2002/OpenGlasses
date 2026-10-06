@@ -14,21 +14,28 @@ final class RecordingTranscriber {
     private let deepgram: DeepgramBatchService
     private let onDeviceEngine: OnDeviceASREngine
     private let chunkDuration: TimeInterval
+    /// Whether a saved recording may be uploaded to Deepgram. The cloud-diarization opt-in, a key,
+    /// and HIPAA mode off — `Config.isDiarizationConfigured`, the gate every diarization path takes.
+    /// It used to be key-and-not-HIPAA alone, so a recording went to Deepgram with the diarization
+    /// switch off (Plan HP P1 item 5). Injectable so a test can show the upload is attempted or not
+    /// without a Keychain key.
+    private let deepgramAllowed: () -> Bool
 
     init(
         deepgram: DeepgramBatchService = DeepgramBatchService(),
         onDeviceEngine: OnDeviceASREngine? = nil,
-        chunkDuration: TimeInterval = 30
+        chunkDuration: TimeInterval = 30,
+        deepgramAllowed: @escaping () -> Bool = { Config.isDiarizationConfigured }
     ) {
         self.deepgram = deepgram
         self.onDeviceEngine = onDeviceEngine ?? OnDeviceASREngine()
         self.chunkDuration = chunkDuration
+        self.deepgramAllowed = deepgramAllowed
     }
 
     func transcribe(fileURL: URL) async -> RecordingTranscriptionOutcome {
         var providerFailures: [String] = []
-        let canUseDeepgram = !Config.deepgramAPIKey.isEmpty
-            && !Config.hipaaMode
+        let canUseDeepgram = deepgramAllowed()
 
         if canUseDeepgram {
             do {

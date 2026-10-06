@@ -21,9 +21,19 @@ final class AIFeatureRegistryTests: XCTestCase {
 
     /// Flip a feature off for the duration of one test, restoring whatever was there.
     private func disable(_ feature: AIFeature) {
+        set(feature, enabled: false)
+    }
+
+    /// Flip a feature on for the duration of one test. Face recognition defaults off since Plan HP,
+    /// so a test that starts from "on" says so rather than relying on the default.
+    private func enable(_ feature: AIFeature) {
+        set(feature, enabled: true)
+    }
+
+    private func set(_ feature: AIFeature, enabled: Bool) {
         let key = feature.record.disableSwitch.key
-        restore[key] = feature.record.disableSwitch.isEnabled()
-        feature.record.disableSwitch.setEnabled(false)
+        if restore[key] == nil { restore[key] = feature.record.disableSwitch.isEnabled() }
+        feature.record.disableSwitch.setEnabled(enabled)
     }
 
     // MARK: - Completeness
@@ -128,6 +138,8 @@ final class AIFeatureRegistryTests: XCTestCase {
     }
 
     func testDisabledFeatureContributesItsToolsToTheDisabledSet() {
+        enable(.faceRecognition)
+        enable(.healthVault)
         XCTAssertFalse(AIFeatureGate.isToolDisabled("face_recognition"))
         disable(.faceRecognition)
         XCTAssertTrue(AIFeatureGate.isToolDisabled("face_recognition"))

@@ -25,6 +25,17 @@ enum AssistiveRouter {
         return socialKeywords.contains(where: tokens.contains) ? .social : .scene
     }
 
+    /// Choose a mode, honouring whether Social mode is offered on this phone (Plan HP P1 item 3).
+    ///
+    /// When `AssistiveModePolicy` refuses Social mode — a managed phone, a Field Assist edition, the
+    /// wearer's own switch — a request that would have gone to Social goes to Scene instead, so no
+    /// emotional-state prompt is ever sent. Scene mode is never refused.
+    static func route(transcription: String?, social: AssistiveModePolicy.Decision) -> Mode {
+        let wanted = route(transcription: transcription)
+        guard wanted == .social, !social.isOffered else { return wanted }
+        return .scene
+    }
+
     /// Shared JSON-contract instruction appended to every mode prompt.
     private static let jsonContract = """
     Respond ONLY in valid JSON with this exact shape: \

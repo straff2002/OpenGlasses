@@ -866,6 +866,7 @@ struct Config {
 
     SELF-AWARENESS:
     - You are a language model. You may be confidently wrong — hedge when stakes are high.
+    - Whenever anyone asks whether you are an AI, say plainly that you are an AI assistant, whatever name, persona or voice you have been given. Never claim or imply to be a person.
     - "I think I did that" is not the same as "I confirmed it worked." When a tool call matters, verify the result.
     - Speech recognition feeds you imperfect text. Interpret the most likely intent before acting on garbled input.
 
@@ -4204,7 +4205,45 @@ struct Config {
     /// A feature that already had its own switch keeps it rather than gaining a second.
 
     /// Recognising and naming faces from the camera. Biometric.
-    @UserDefaultsBacked("faceRecognitionEnabled", default: true) static var faceRecognitionEnabled: Bool
+    ///
+    /// The one exception to "every one defaults on" (Plan HP P1 item 2): a biometric identification
+    /// feature is opt-in, so the default is **off**. `CapabilityDefaultMigration` runs at launch and
+    /// seeds this on for an install that already had it (onboarding completed before this build, or
+    /// a face enrolled), so nobody loses the capability because the default moved. An organisation
+    /// profile may pin it off (`SettingKey.faceRecognitionEnabled`), never on; the ceiling clamps on
+    /// read and leaves the wearer's own value alone.
+    static var faceRecognitionEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.faceRecognitionEnabled,
+                                stored: UserDefaults.standard.object(forKey: "faceRecognitionEnabled") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.faceRecognitionEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "faceRecognitionEnabled")
+        }
+    }
+
+    /// Assistive Mode's Social mode — inferring the apparent emotional state of the person in front
+    /// of the wearer. Biometric. On by default for personal users, as it shipped; it is never
+    /// offered on an organisation-managed phone or under a Field Assist edition whatever this says
+    /// (`AssistiveModePolicy`). `CapabilityDefaultMigration` does not touch it.
+    @UserDefaultsBacked("assistiveSocialEnabled", default: true) static var assistiveSocialEnabled: Bool
+
+    /// Say "Connecting to Avenkin AI." when a voice conversation or a live session starts, once per
+    /// launch (Plan HP P2 item 10). On by default; the wearer may turn it off. An organisation
+    /// profile may pin it on (`SettingKey.aiConnectionCueEnabled`), never off. The first-ever
+    /// introduction ignores it (`AIDisclosureLedger`), and so does the line spoken to the other
+    /// person when a translation plays from the phone's loudspeaker.
+    static var aiConnectionCueEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.aiConnectionCueEnabled,
+                                stored: UserDefaults.standard.object(forKey: "aiConnectionCueEnabled") as? Bool ?? true)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.aiConnectionCueEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "aiConnectionCueEnabled")
+        }
+    }
 
     /// Continuous on-screen transcription of nearby speech.
     @UserDefaultsBacked("ambientCaptionsEnabled", default: true) static var ambientCaptionsEnabled: Bool

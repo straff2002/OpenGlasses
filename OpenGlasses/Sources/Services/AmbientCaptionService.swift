@@ -59,6 +59,11 @@ class AmbientCaptionService: ObservableObject {
     /// split overlay.
     var translationActive: Bool { translator != nil || onDeviceTranslator != nil }
 
+    /// Called each time a translated-caption session starts (either tier) — where the app says,
+    /// once per launch, that an AI translation is starting (Plan HP P2 item 10). Recognition
+    /// restarts call it again; the disclosure ledger is what keeps it to once.
+    var onTranslationSessionStarted: (() -> Void)?
+
     /// Maps diarization speaker ids to names/colours for the caption chips.
     let speakerRegistry = SpeakerRegistry()
 
@@ -215,6 +220,7 @@ class AmbientCaptionService: ObservableObject {
         // diarization (whether the two compose is an open BY decision, deferred with the
         // speaker-chip rail). An unavailable tier falls through to plain transcription.
         if Config.translationCaptionsEnabled, startTranslationSession() {
+            onTranslationSessionStarted?()
             return
         }
 

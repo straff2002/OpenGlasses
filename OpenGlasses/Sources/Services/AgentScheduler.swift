@@ -121,7 +121,8 @@ class AgentScheduler: ObservableObject {
         let onboardingPrompt = """
         This is your first interaction with your new user. You don't know anything about them yet.
 
-        Introduce yourself warmly (you're their private AI assistant). Then ask them \
+        Introduce yourself warmly as their private Avenkin AI assistant, and say plainly that \
+        you're an AI. Then ask them \
         3-4 friendly questions to get to know them:
         - Their name
         - What they mainly want your help with

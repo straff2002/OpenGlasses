@@ -94,7 +94,15 @@ enum SettingsVisibilityPolicy {
     /// Everything else the person needs regardless of locks is already out of any lock's reach:
     /// Accessibility, Look & Feel and Diagnostics & Support (`ManagedLockdown.pinnedOpen`), About
     /// and the Organisation section (on the hub, not in a category), and the Glasses screen.
-    static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting)]
+    /// - **Face Recognition**, pinned off (Plan HP P2): a protection for the people in front of the
+    ///   glasses. The wearer is told it is off rather than left looking for a switch that is gone,
+    ///   and the Enrolled Faces list beside it stays usable — forgetting a face never waits on a
+    ///   setting.
+    /// - **The "Connecting to Avenkin AI" cue**, pinned on (Plan HP P2): a disclosure, so the
+    ///   person must be able to see it is being said.
+    static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting),
+                                                   .key(.faceRecognitionEnabled),
+                                                   .key(.aiConnectionCueEnabled)]
 
     /// Whether the organisation's policy stops whoever is looking from changing `setting`.
     static func isLocked(_ setting: ManagedSetting, in context: ManagedSettingsContext) -> Bool {

@@ -46,6 +46,13 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case remoteInvokeCaptureEnabled
     case mcpServerEnabled
     case agentModeEnabled
+    /// Face recognition (Plan HP P1 item 2): an organisation may switch it off on its phones, never
+    /// on — enrolling a bystander's face is the wearer's choice, not an employer's.
+    case faceRecognitionEnabled
+    /// The "Connecting to Avenkin AI" line at voice startup (Plan HP P2 item 10): an organisation
+    /// may make sure it is always said, never silence it — it is the disclosure that the person is
+    /// talking to an AI.
+    case aiConnectionCueEnabled
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -83,10 +90,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .organizationRequiresSignedJobFiles, .organizationRequiresCustomerSignOff,
              .organizationForbidsCustomerTranscript, .organizationForbidsJobRecording,
              .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
-             .privacyFilterEnabled:
+             .privacyFilterEnabled, .aiConnectionCueEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
-             .mcpServerEnabled, .agentModeEnabled:
+             .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled:
             return .ceiling(pinnedTo: false)
         case .fieldAssistEnabled:
             return .startingValue(.bool)

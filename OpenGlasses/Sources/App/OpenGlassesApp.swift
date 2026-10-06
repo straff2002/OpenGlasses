@@ -252,6 +252,11 @@ struct OpenGlassesApp: App {
         // Temple taps became remappable (Plan GJ): a wearer who had the single-gesture switch on
         // keeps double tap = start talking; everyone else gets the new defaults. Once, behind a flag.
         TempleGestureSettingsMigration.run()
+        // Face recognition now defaults off (Plan HP P1). An install that already had it — onboarding
+        // done before this build, or a face enrolled — is seeded on; a fresh install is seeded off;
+        // a switch the wearer already set is left alone. Once, behind a flag, and before anything
+        // reads `AIFeatureGate`.
+        CapabilityDefaultMigration.run()
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,
@@ -2492,6 +2497,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self?.speechService.speak(translation)
             }
         }
+        // "Connecting to Avenkin AI" and the translation disclosures (Plan HP P2 item 10), and the
+        // live translator itself (item 13).
+        wireAIDisclosures()
         llmService.localLLMService = localLLMService
         llmService.conversationStore = conversationStore
         geminiLiveSession.nativeToolRouter = nativeToolRouter
@@ -5968,6 +5976,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self, self.isPhotoCommand(text) else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("photo"))
                 self.isProcessing = true
+                // Plan HP P2 item 10: the first answer of the launch is preceded by "Connecting to
+                // Avenkin AI." — before the shutter tone and the thinking sound, not after.
+                await self.speakConversationCueIfDue()
                 // Start capture immediately — play the shutter tone, no spoken "taking a picture"
                 self.speechService.playAcknowledgmentTone()
                 self.speechService.startThinkingSound()
@@ -6383,6 +6394,12 @@ class AppState: ObservableObject, AppStateProtocol {
             .route(text) != nil {
             return
         }
+
+        // Plan HP P2 item 10: everything below answers the wearer — the agent, a direct tool, the
+        // phone's own model or the cloud — so the first answer of the launch is preceded by
+        // "Connecting to Avenkin AI." Here, before any thinking sound starts; once per launch, so
+        // every later turn passes straight through.
+        await speakConversationCueIfDue()
 
         // A temple tap assigned to "ask my agent" opened this turn (Plan GJ): the utterance goes to
         // the agent. After the stop/goodbye handlers, so those still end the conversation.

@@ -158,9 +158,10 @@ class FaceRecognitionService: ObservableObject {
 
             case .ambiguous(let contenders):
                 let names = contenders.map { knownFaces[$0.index].name }
+                // Plan HP P2 item 8: "in Settings" now names a screen that exists.
                 return "That face is too close to call between \(Self.spokenList(names)) — I won't "
-                     + "rename the wrong person. Remove the one that's wrong in Settings, then "
-                     + "save \(name) again."
+                     + "rename the wrong person. Remove the one that's wrong in "
+                     + "\(EnrolledFacesPresentation.screenPath), then save \(name) again."
 
             case .none:
                 break

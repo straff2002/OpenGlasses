@@ -29,6 +29,10 @@ final class RemoteActionConsentTests: XCTestCase {
         XCTAssertEqual(
             RemoteActionConsentRequest(source: .gateway, summary: "take a photo").spokenPrompt,
             "The gateway wants: take a photo. Approve?")
+        // A summary that already ends its sentence is not given a second full stop.
+        XCTAssertEqual(
+            RemoteActionConsentRequest(source: .assistant, summary: "Remember this face as Maria? They won't be told.").spokenPrompt,
+            "The assistant wants: Remember this face as Maria? They won't be told. Approve?")
         XCTAssertEqual(
             RemoteActionConsentRequest(source: .opsPeer(label: "Ops platform"), summary: "take a photo").attributedSummary,
             "Ops platform wants: take a photo")

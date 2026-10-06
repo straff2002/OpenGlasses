@@ -140,6 +140,10 @@ enum PromptInjectionPolicy {
             return "Export / share clinical data (\(str("action") ?? "export"))"
         case "execute":
             return "Ask the OpenClaw gateway to: \(preview(str("task") ?? compactArgs(args)))"
+        case "face_recognition":
+            // Only `remember` reaches a confirmation prompt (`ToolEffectClassifier.isFaceEnrolment`).
+            // The second sentence is the point of asking: the person being enrolled is not told.
+            return "Remember this face as \(str("name") ?? "this person")? They won't be told."
         case "code_agent":
             // Only `start` reaches a confirmation prompt (see `isDispatchingAgentRun`).
             let project = str("project").map { " on \($0)" } ?? ""

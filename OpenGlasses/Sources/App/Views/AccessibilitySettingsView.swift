@@ -29,6 +29,12 @@ struct AccessibilitySettingsView: View {
     /// over the first — which, for a control whose whole purpose is teaching sounds apart, would
     /// teach the wrong thing.
     @State private var tourRunning = false
+    /// Assistive Mode's Social mode switch (Plan HP P2 item 11) — the same key as
+    /// `Config.assistiveSocialEnabled`.
+    @AppStorage("assistiveSocialEnabled") private var socialEnabled: Bool = true
+    /// Why Social mode is not offered on this phone, re-read on appear and whenever a switch here
+    /// moves: whether the phone is managed or under an edition is not this screen's to observe.
+    @State private var socialRefusal: AssistiveModePolicy.Refusal? = AssistiveModePolicy.current().refusal
 
     /// Re-read the launch decision. Cheap — no registration wait — and re-run on appear and on
     /// every change, because the answer depends on settings and permissions this screen does not
@@ -102,11 +108,26 @@ struct AccessibilitySettingsView: View {
                     AssistiveModeToggleView()
                         .frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
+                    Toggle("Social Mode", isOn: $socialEnabled)
+                        .tint(AppAccent.color)
+                        .disabled(!SocialModeCopy.switchIsEditable(socialRefusal))
+                        .onChange(of: socialEnabled) { _, _ in
+                            socialRefusal = AssistiveModePolicy.current().refusal
+                        }
+                    if let line = SocialModeCopy.refusalLine(socialRefusal) {
+                        Text(line)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("Assistive Mode")
                 } footer: {
-                    Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (e.g. someone in distress) speaks faster. Pauses the normal wake-word assistant while active.")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (e.g. someone in distress) speaks faster. Pauses the normal wake-word assistant while active.")
+                        Text(SocialModeCopy.standingFooter)
+                    }
                 }
+                .onAppear { socialRefusal = AssistiveModePolicy.current().refusal }
             }
 
             Section {

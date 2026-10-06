@@ -900,6 +900,17 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("Health", systemImage: "heart.text.square")
                 }
+                // Plan HP P2 item 12: the switch the privacy notice names. It existed only as a
+                // release switch (`AIFeature.firstAidAssist`), so the wearer had no way to turn
+                // first-aid coaching and camera triage off.
+                InfoToggle(
+                    title: String(localized: "First-Aid Coaching and Triage"),
+                    isOn: Binding(
+                        get: { Config.firstAidAssistEnabled },
+                        set: { Config.firstAidAssistEnabled = $0 }
+                    ),
+                    info: String(localized: "First-aid coaching talks you through a protocol, such as CPR, and camera triage gives an AI assessment of an injury the camera can see. Both are advisory: they are not a medical device, and they don't replace a trained first aider or calling emergency services. Turning this off stops both.")
+                )
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
@@ -1169,6 +1180,26 @@ struct GlassesSettingsView: View {
                 Text("The glasses run their own companion app for developer access, updated separately from the firmware and from the Meta AI app on your phone. If streaming is refused as needing an update, this is usually the one to open.")
             }
 
+            // Plan HP P2 item 8: face recognition only runs on the glasses camera, so its switch
+            // and the people it can name live here, under the glasses.
+            Section {
+                NavigationLink {
+                    EnrolledFacesView(faceService: appState.faceRecognition)
+                } label: {
+                    HStack {
+                        Label("Enrolled Faces", systemImage: "person.crop.square")
+                        Spacer()
+                        Text(EnrolledFacesPresentation.linkStatus(
+                            enabled: Config.faceRecognitionEnabled,
+                            enrolled: appState.faceRecognition.knownFaces.count))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Face Recognition")
+            } footer: {
+                Text("Off unless you turn it on. Names only the people you enrol, and they aren't told.")
+            }
         }
         .navigationTitle("Glasses")
     }
