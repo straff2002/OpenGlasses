@@ -134,7 +134,7 @@ Deployer obligations a business customer carries today: Art. 4 literacy (obligat
 ### 3.9 🟢 Other screens
 
 - **Art. 5 otherwise:** no social scoring (social memory stores facts, scores nothing), no manipulation, no untargeted scraping (enrolment is one face at a time by the wearer), no biometric categorisation (no code infers ethnicity, religion, politics, orientation, age or gender; the clinician types the Fitzpatrick type).
-- **Emotion-aware TTS:** sentiment of the assistant's own reply text; and the flag is read nowhere but the Settings toggle, so it is inert. Not emotion recognition. Remove the dead toggle or wire it.
+- **Emotion-aware TTS:** sentiment of the assistant's own reply text; and the flag is read nowhere but the Settings toggle, so it is inert. Not emotion recognition. Remove the dead toggle or wire it. **Done 2026-10-07 ([HQ](plans/HQ-eu-ai-act-second-tranche.md) item 8):** the "Expressive Voice" toggle and its `Config` accessor are gone; the old `emotionAwareTTSEnabled` defaults value is left in place, unread.
 - **Accessibility preset "describe expressions":** observation, not inference. Fine, and the model for §3.2's redesign.
 - **HECA safety assessment:** hazard checklist of a scene, no per-person analysis; not an infrastructure safety component. Provenance already attached.
 - **Body pose, Live Coach, fingerspelling:** landmarks and posture, nothing stored, no categorisation. `check_form` reads the raw frame and analyses whichever body Vision returns first; outside the Act but worth a wearer-only guard.
