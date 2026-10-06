@@ -356,6 +356,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                         mirrorToHUD: Bool = true,
                         onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
         guard !text.isEmpty else { return .failed(reason: "nothing to say") }
+        // Markup with no words in it — a table's rule line, a lone "---" — leaves nothing to say
+        // once it is taken out, and an empty request is an error to a cloud voice.
+        guard !SpokenSymbolExpander.spokenForm(of: text).isEmpty else {
+            return .failed(reason: "nothing to say")
+        }
         lastSpokenText = text
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
@@ -481,9 +486,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                          onDeviceOnly: Bool = false) async {
         // Any engine callback from here on belongs to this generation (Plan FE P4).
         deliveryLedger.beginUtterance(generation: gen)
-        // What is actually spoken: the reply, plus a one-off line when the cloud voice has just
-        // turned it down for a reason the wearer has to act on.
-        var text = text
+        // What is actually spoken: the reply with its symbols written out as words
+        // (no engine can be trusted with "22°C" or "80 km/h"), plus a one-off line when the cloud voice has
+        // just turned it down for a reason the wearer has to act on.
+        var text = SpokenSymbolExpander.spokenForm(of: text)
         let elevenLabsKey = Config.elevenLabsAPIKey
         // ElevenLabs is "ready" only with a key, online, and not quota-exhausted. Kokoro is "ready"
         // only with the model present *and* the binary compiled in (always false in the shipped
