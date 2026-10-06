@@ -2321,6 +2321,10 @@ class AppState: ObservableObject, AppStateProtocol {
             return try await TurnRecorder.offTurn { try await self.llmService.sendMessage(prompt) }
         }
         audioRecorder.wakeWordService = wakeWordService
+        // Plan HQ: the audio-only recorder honours "Include Assistant Voice" through the capture
+        // router's gate — the same decision, from the same speaking subscription, as a video or a
+        // stream.
+        audioRecorder.assistantVoiceGate = captureAudioRouter
         audioRecorder.ambientCaptionService = ambientCaptions
         audioRecorder.meetingAssistant = meetingAssistant
         audioRecorder.llmClosure = { [weak self] prompt in

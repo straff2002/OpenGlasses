@@ -181,6 +181,37 @@ struct SessionTimeline: Equatable, Sendable {
         }
         return copy
     }
+
+    /// Whether the assistant's synthetic voice may be in this recording's sound (Plan HQ P1
+    /// item 3): true when the assistant spoke at least once without the capture being silenced
+    /// for it — "Include Assistant Voice" was on, or the reply played somewhere the gate does not
+    /// silence. False when every reply was silenced, or the assistant never spoke.
+    ///
+    /// Derived, not stored: the events already say it. The app notes `capture_silenced` straight
+    /// after `assistant_speaking_began` whenever the gate silences a reply, so a reply with no
+    /// silence noted between its start and its end (or the end of the timeline) was let through.
+    /// "May": the timeline does not record the output route, and a reply played into the glasses
+    /// is let through without reaching the microphone.
+    var assistantVoiceMayBeIncluded: Bool {
+        var speaking = false
+        var silencedDuringReply = false
+        for event in normalized().events {
+            switch event.kind {
+            case .assistantSpeakingBegan:
+                if speaking, !silencedDuringReply { return true }
+                speaking = true
+                silencedDuringReply = false
+            case .captureSilenced:
+                if speaking { silencedDuringReply = true }
+            case .assistantSpeakingEnded:
+                if speaking, !silencedDuringReply { return true }
+                speaking = false
+            default:
+                break
+            }
+        }
+        return speaking && !silencedDuringReply
+    }
 }
 
 // MARK: - timeline.json

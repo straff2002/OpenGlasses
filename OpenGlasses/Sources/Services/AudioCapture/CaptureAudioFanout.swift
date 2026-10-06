@@ -33,6 +33,13 @@ final class CaptureAudioFanout: @unchecked Sendable {
         lock.withLock { $0.consumers.isEmpty }
     }
 
+    /// Called from the audio thread: one buffer through the gate alone, for a consumer that is fed
+    /// by another source but must honour the same decision (`AssistantVoiceGating`).
+    func gate(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let silenced = lock.withLock { $0.silenced }
+        return silenced ? (CaptureAudioSilencer.silence(like: buffer) ?? buffer) : buffer
+    }
+
     /// Called from the audio thread: fan one buffer out to every consumer from a single snapshot.
     func dispatch(_ buffer: AVAudioPCMBuffer) {
         let snapshot = lock.withLock { $0 }

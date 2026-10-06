@@ -373,6 +373,12 @@ class VideoRecordingService: ObservableObject {
         audioInput.expectsMediaDataInRealTime = true
         writer.add(audioInput)
 
+        // Plan HQ: the file says when the assistant's synthetic voice may be in it — decided now,
+        // because the writer takes its metadata before the first sample. No mic, no claim; a mic
+        // source without the assistant-voice gate may carry the voice, so it is claimed.
+        RecordingProvenanceMetadata.apply(to: writer, assistantVoiceMayBeIncluded: Self.assistantVoiceMayBeIncluded(
+            audioProvider: audioProvider))
+
         guard writer.startWriting() else {
             Self.logWriterFailure(writer.error, stage: "start")
             try? FileManager.default.removeItem(at: url)
@@ -751,6 +757,14 @@ class VideoRecordingService: ObservableObject {
                       + "photos: \(photosState), "
                       + "chosen folder: \(outcome.folderCopyURL == nil ? (outcome.folderRequested ? "failed" : "none") : "yes")")
         return outcome.primaryURL
+    }
+
+    /// Whether a recording starting now with this mic source may hold the assistant's voice: never
+    /// without a mic; the gate's answer for a gated source; and yes for a source with no gate,
+    /// which passes replies from the phone speaker straight through.
+    static func assistantVoiceMayBeIncluded(audioProvider: (any BroadcastAudioProviding)?) -> Bool {
+        guard let audioProvider else { return false }
+        return (audioProvider as? any AssistantVoiceGating)?.assistantVoiceMayBeIncluded ?? true
     }
 
     /// The writer's failure, with the **underlying** error the framework wraps it in (Plan GB P4:
