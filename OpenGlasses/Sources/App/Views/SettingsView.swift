@@ -900,6 +900,17 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("Health", systemImage: "heart.text.square")
                 }
+                // Plan HP P2 item 12: the switch the privacy notice names. It existed only as a
+                // release switch (`AIFeature.firstAidAssist`), so the wearer had no way to turn
+                // first-aid coaching and camera triage off.
+                InfoToggle(
+                    title: String(localized: "First-Aid Coaching and Triage"),
+                    isOn: Binding(
+                        get: { Config.firstAidAssistEnabled },
+                        set: { Config.firstAidAssistEnabled = $0 }
+                    ),
+                    info: String(localized: "First-aid coaching talks you through a protocol, such as CPR, and camera triage gives an AI assessment of an injury the camera can see. Both are advisory: they are not a medical device, and they don't replace a trained first aider or calling emergency services. Turning this off stops both.")
+                )
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,

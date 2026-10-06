@@ -63,7 +63,7 @@
 <main>
 
 <h1>Avenkin Privacy Policy</h1>
-<p class="meta">Effective 3 October 2026</p>
+<p class="meta">Effective 7 October 2026</p>
 
 <div class="summary">
 <p><strong>The short version</strong></p>
@@ -106,7 +106,7 @@
   <li><strong>Conversation history</strong> with the assistant. You can lock it behind Face ID or your passcode (Settings, "Encrypt Conversations").</li>
   <li><strong>Memories and knowledge</strong>: things you ask the assistant to remember, the people and topics it links together, and documents you add for it to search.</li>
   <li><strong>Notes, saved places, location reminders, voice skills, playbooks, teleprompter scripts and study decks</strong>, plus any meeting summaries you ask it to save.</li>
-  <li><strong>Faces you teach it.</strong> Face recognition keeps a numerical description of each face you enrol, with the name you gave it. It never stores a photo. Matching happens on your phone using Apple's Vision framework.</li>
+  <li><strong>Faces you teach it.</strong> Face recognition is off unless you turn it on, in Settings, "Devices &amp; Privacy", "Glasses", "Enrolled Faces". It only ever names people you have enrolled, and the app asks you to approve each enrolment before it is saved. The person you enrol isn't told. For each one it keeps a numerical description of the face, with the name you gave it. It never stores a photo. Matching happens on your phone using Apple's Vision framework, and the face descriptions are never uploaded.</li>
   <li><strong>Memory rewind audio.</strong> When you turn memory rewind on, the app keeps a rolling buffer of up to the last 10 minutes of audio. The buffer is held in memory and is never saved to storage. If you ask for a recap, the requested minutes are transcribed. The temporary audio file used for that is deleted straight afterwards.</li>
   <li><strong>Captions.</strong> Captions only run once you start them. Recent captions are held in memory while the session runs.</li>
   <li><strong>Recordings and meeting records</strong> that you choose to make, and their transcripts.</li>
@@ -218,6 +218,7 @@
 <p><strong>Diagnostics reports</strong> are only created when you ask for one in Settings, "Diagnostics &amp; Support". You see the whole report before anything leaves the phone, and it's only sent if you share it yourself: by emailing it to us, through the share sheet, or as a pre-filled public GitHub issue that you choose to submit. An emailed report reaches us like any other email you send us, and you can add to it or change it before you send it.</p>
 <p><strong>Support reports</strong> are fuller, and are made the same way: in "Diagnostics &amp; Support", from the Job tab, or from the offer the app shows when an AI request fails. Unlike a diagnostics report, a support report contains your conversations from the day or job you choose (what was said, as transcribed, and what the assistant replied), together with the AI turn records, the Field Assist job log, your phone and glasses details and the app's event log. Keys and tokens are masked. Nothing is created until you tap to make one, you see it before anything leaves the phone, and it's only sent if you send it yourself, through the share sheet or by email to the support address shown on the screen. On a personal phone that address is ours unless you enter another one in "Diagnostics &amp; Support". On a phone set up by an organisation, or running on an organisation's licence, it is always the organisation's own address and never ours: the support address it set, or else the office that receives its job reports.</p>
 <p><strong>TestFlight.</strong> If you test a pre-release build through Apple's TestFlight, Apple may share crash reports and any feedback you submit with us, under Apple's TestFlight terms. The app itself sends no crash reports.</p>
+<p><strong>A voice you choose.</strong> If you paste an ElevenLabs voice ID into the app, which voice the assistant speaks with is your choice and your responsibility. Don't use a voice that imitates a real person without their permission.</p>
 <p class="note">You can see and switch off individual tools, check what context is sent to the assistant, and review recorded network requests in the app's settings.</p>
 
 <h2 id="camera">4. Camera, microphone and people around you</h2>
@@ -229,6 +230,11 @@
 </ul>
 <p>In video, faces are detected several times a second and the blur follows them in between. Someone stepping into view can therefore be visible briefly before the next detection catches them.</p>
 <p>If you record, broadcast or use face recognition around other people, you are responsible for doing so lawfully and with their consent where it is required. You can remove any face you enrolled at any time. See <a href="#retention">Retention and deletion</a>.</p>
+<p><strong>Face recognition</strong> is off by default and only runs once you turn it on. It names only the people you have enrolled, after you approve each enrolment, and the people it recognises aren't told. If you used face recognition before this version, it stays on for you.</p>
+<p><strong>Social mode.</strong> Assistive Mode's Social mode looks at the person in front of you through the camera and describes how they seem to feel, so you can respond to them. That is a guess by an AI model from their expression and posture, not a fact about them, and nothing about it is kept. It is for personal use, not for use at work or at school. It isn't available on a phone managed by an organisation or in a Field Assist edition, and you can turn it off in Settings, "Accessibility".</p>
+<p><strong>First-aid triage.</strong> First-aid coaching talks you through a protocol, and camera triage gives an AI assessment of an injury the camera can see. Both are advisory. They are not a medical device, and they don't replace a trained first aider or calling emergency services. Triage results aren't saved. You can turn both off with "First-Aid Coaching and Triage" in Settings, "Devices &amp; Privacy", "Hardware &amp; Privacy".</p>
+<p><strong>The Clinical Assistant persona</strong> is a documentation aid for healthcare professionals. It can describe what the camera shows, suggest possibilities to consider and draft notes, but it does not make a diagnosis and it is not a medical device. The clinician using it remains responsible for every clinical decision.</p>
+<p><strong>Knowing you're talking to an AI.</strong> The assistant says it is an AI whenever it is asked, whatever name or voice you give it. The first time you talk to it, it introduces itself as Avenkin AI. After that, each time you open the app it says "Connecting to Avenkin AI" before its first answer or as a live session connects, and "Starting Avenkin AI translation" when a translation starts. You can turn those two lines off in Settings, under "Voice", unless your organisation has set them to always be said. When a live translation plays from the phone's loudspeaker, the person you are talking to is told once, in their language where the app has it, that it is a live AI translation. That line can't be turned off.</p>
 
 <h2 id="health">5. Health data</h2>
 <p>With your permission, Avenkin reads your heart rate, resting heart rate, sleep and steps from Apple Health to answer questions like "how did I sleep?", and the fitness coach reads your workouts and can save workouts you log to Apple Health. Avenkin never writes heart rate, sleep or steps. Step count and walking distance may also come from your phone's motion sensors.</p>
@@ -273,7 +279,7 @@
 <p>Because your data is on your phone, you control how long it's kept.</p>
 <ul>
   <li><strong>Conversation history and memories</strong> are kept until you delete them, unless you choose a period in Settings, "History" (30 days, 90 days, 6 months or 1 year). Anything older is deleted, not hidden, the next time the app opens or returns to the foreground. You can delete conversations one at a time or all at once from the conversation list.</li>
-  <li><strong>Faces</strong>: say "forget [name]" to remove someone. Face recognition can also be switched off.</li>
+  <li><strong>Faces</strong>: remove someone in Settings, "Devices &amp; Privacy", "Glasses", "Enrolled Faces", or say "forget [name]". "Forget Everyone" on the same screen removes them all. Face recognition can also be switched off there.</li>
   <li><strong>Recordings, notes, places, documents and vaults</strong> can be deleted individually in the app. Notes are capped at the 50 most recent.</li>
   <li><strong>Memory rewind</strong> audio is never saved, and it's cleared when you turn the feature off.</li>
   <li><strong>Export files</strong> the app prepares for sharing are temporary, and it deletes them automatically.</li>
