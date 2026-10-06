@@ -1,18 +1,22 @@
 import Foundation
 import UIKit
 
-/// Tool for face recognition — remember, forget, and list known faces.
-/// The actual recognition happens continuously via FaceRecognitionService;
-/// this tool handles the "remember this person" / "who do I know" commands.
+/// Tool for face recognition — enrol, forget and list the people the wearer has enrolled, and switch
+/// recognition on or off. Matching runs in `FaceRecognitionService`, and only after `toggle`/`on`
+/// has started it; with nobody enrolled there is nothing to match.
+///
+/// `remember` is the one action that is asked about first: it is classed `.biometricEnrolment`
+/// (`ToolEffectClassifier.isFaceEnrolment`), so the shared approval card and the spoken "Approve?"
+/// come before any template is stored (Plan HP P2 item 9).
 struct FaceRecognitionTool: NativeTool {
     let name = "face_recognition"
-    let description = "Remember, forget, or list known faces. Say 'remember this person as [name]' to save a face, 'forget [name]' to remove, or 'list faces' to see who you know. Faces are recognized automatically when the camera is active."
+    let description = "Enrol, forget or list the faces of people the user has chosen to enrol, and switch face recognition on or off. Recognition only runs after it has been switched on ('on' or 'toggle'), and it only ever names people the user enrolled with 'remember'; nobody is recognised automatically before that. Enrolling asks the user to approve first, and the person being enrolled isn't told. Use 'remember' with a name while the person is in view, 'forget' with a name to remove them, 'list' to say who is enrolled."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'remember' (save face with name), 'forget' (remove by name), 'list' (show all known faces), 'toggle' (enable/disable recognition)"
+                "description": "Action: 'remember' (enrol the face in view under a name, after the user approves), 'forget' (remove by name), 'list' (who is enrolled), 'toggle', 'on' or 'off' (start or stop recognising enrolled people)"
             ],
             "name": [
                 "type": "string",

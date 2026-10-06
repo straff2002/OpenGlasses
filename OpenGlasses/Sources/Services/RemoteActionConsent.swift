@@ -29,8 +29,12 @@ struct RemoteActionConsentRequest: Equatable {
     /// Source-attributed line for the card + audit: "The gateway wants: take a photo".
     var attributedSummary: String { "\(source.line) wants: \(summary)" }
 
-    /// The spoken form.
-    var spokenPrompt: String { "\(attributedSummary). Approve?" }
+    /// The spoken form. A summary that already ends a sentence (a question, say) is not given a
+    /// second full stop.
+    var spokenPrompt: String {
+        let ended = attributedSummary.last.map { ".?!".contains($0) } ?? false
+        return ended ? "\(attributedSummary) Approve?" : "\(attributedSummary). Approve?"
+    }
 }
 
 /// The versioned, withdrawable half of the shared consent surface (W04.3).
