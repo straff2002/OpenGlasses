@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="referrer" content="no-referrer">
 <title>Avenkin Office · Avenkin</title>
-<meta name="description" content="Avenkin Office: a desktop app that brings jobs, manuals and devices together for teams in the field, on the organisation's own computer.">
+<meta name="description" content="Avenkin Office: the desktop app for the organisation behind the technicians. Jobs go out, reports come back, and the manuals your people rely on are kept in one place, on your own computer.">
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -23,10 +23,14 @@
   </nav>
 </header>
 <section class="page-hero">
-  <span class="pill">In development</span>
+  <span class="pill">Early release</span>
   <p class="kicker">For the organisation</p>
   <h1>Avenkin Office</h1>
-  <p class="lede">A desktop app that brings jobs, manuals and devices together for teams in the field.</p>
+  <p class="lede">A desktop app for the dispatcher's computer. Jobs go out, reports come back, and the knowledge your technicians rely on is kept in one place.</p>
+  <div class="actions">
+    <a class="button" href="/office/download/">Download for macOS</a>
+    <a class="button ghost" href="mailto:g@skunkworks.kiwi">Ask for a licence</a>
+  </div>
 </section>
 </div>
 <main>
@@ -35,13 +39,60 @@
       <div class="section-head">
         <p class="eyebrow">What it is for</p>
         <h2>One desk for the whole field team.</h2>
-        <p>This page describes what Avenkin Office is being built to do.</p>
+        <p>The office end of <a href="/field-assist/">Field Assist</a>: the technician's phone does the work on site, and the office is where jobs start and records end up.</p>
       </div>
-      <div class="trio">
-        <div><p class="num">1</p><h3>Devices</h3><p>Link the organisation's phones to the office and set the rules they follow.</p></div>
-        <div><p class="num">2</p><h3>Manuals</h3><p>Assign the organisation's own manuals and knowledge vaults to the phones that need them.</p></div>
-        <div><p class="num">3</p><h3>Jobs</h3><p>Issue a job to a phone and receive the report and session record when the work is done.</p></div>
+      <div class="tiles">
+        <article class="tile">
+          <p class="eyebrow">Send</p>
+          <h3>Jobs out</h3>
+          <p>Number, site, fault report and the equipment on file, prepared here and sent to the technician's phone. They review it before it is added.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Receive</p>
+          <h3>Reports back</h3>
+          <p>Work records, customer PDFs, clips and parts requests return from the phone and are filed by job and visit.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Keep</p>
+          <h3>Manuals, procedures, vaults</h3>
+          <p>Import manuals, write and approve procedures, and release them to every phone as one checked package.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Learn</p>
+          <h3>Learnings</h3>
+          <p>Short findings from completed jobs, reviewed at the office and shown to the technician on the next similar job.</p>
+        </article>
       </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Phones</p>
+        <h2>Phones you can trust, and let go of.</h2>
+      </div>
+      <div class="tiles">
+        <article class="tile">
+          <p class="eyebrow">Pairing</p>
+          <h3>Pair by scan</h3>
+          <p>The office shows a code, the phone scans it, both screens show the same check code, and the office approves.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Trust</p>
+          <h3>Everything signed</h3>
+          <p>Jobs, manuals, reports and receipts carry a signature from the office or the phone. A name or network address is never trusted on its own.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Contact</p>
+          <h3>Kept in touch</h3>
+          <p>A pairing is time-limited and renews while the phone stays in contact. Out of touch for too long, it lapses and the phone is paired again.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Leaving</p>
+          <h3>Remove or revoke</h3>
+          <p>Staff leaving? Remove the phone in good order, or revoke it at once: sharing stops, queued jobs are cancelled, and licensed content on the phone locks.</p>
+        </article>
+      </div>
+      <p class="meta">The office keeps the record: which phone was given what, when, and the signed receipt that came back.</p>
     </section>
   </div>
 
@@ -56,36 +107,76 @@
   <div class="wrap">
     <section class="section">
       <div class="section-head">
-        <p class="eyebrow">How it will be delivered</p>
+        <p class="eyebrow">Your office, your computer, your data</p>
+        <h2>No dependence on us.</h2>
+      </div>
+      <div class="tiles">
+        <article class="tile">
+          <p class="eyebrow">Storage</p>
+          <h3>On your computer</h3>
+          <p>Jobs, reports, manuals and device records live on the office machine. No vendor server or cloud database holds them.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Sync</p>
+          <h3>Phone to office, directly</h3>
+          <p>Over your Wi-Fi when they share it, otherwise over mobile data through a relay that passes traffic on and keeps nothing.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Availability</p>
+          <h3>Keeps working without us</h3>
+          <p>The only call to us is licence activation. If our service is unreachable, your office keeps working.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Backup</p>
+          <h3>Backup is a copy</h3>
+          <p>The office folder is plain files: copy it with the app closed and keep it with your other backups.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Formats</p>
+          <h3>Open formats</h3>
+          <p>Jobs export as CSV. Reports are PDF plus structured JSON for your own systems.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Scope</p>
+          <h3>One office per organisation</h3>
+          <p>A single office computer holds the record for all of your phones.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">How it is delivered</p>
         <h2>A download, not a service.</h2>
       </div>
       <div class="tiles">
         <article class="tile">
           <p class="eyebrow">Platforms</p>
-          <h3>macOS and Windows</h3>
-          <p>Planned as a direct download from this site.</p>
+          <h3>macOS now, Windows to follow</h3>
+          <p>Version 0.5.0 runs on Apple silicon Macs with macOS 13 or later. A Windows build is planned.</p>
+          <p class="more"><a href="/office/download/">Download for macOS</a></p>
         </article>
         <article class="tile">
           <p class="eyebrow">Trust</p>
           <h3>Signed and checkable</h3>
-          <p>Signed installers, with published checksums so you can verify what you downloaded.</p>
+          <p>A Developer ID-signed, notarised disk image, with published checksums so you can verify what you downloaded.</p>
         </article>
         <article class="tile">
           <p class="eyebrow">Licence</p>
           <h3>Per organisation</h3>
-          <p>One licence for the organisation, arranged with us directly.</p>
+          <p>One licence for the organisation, arranged with us directly and activated from a file we send you.</p>
         </article>
       </div>
     </section>
   </div>
 
   <section class="closing">
-    <span class="pill">In development</span>
-    <h2>Talk to us early.</h2>
-    <p>Avenkin Office has not been released and there is no download yet. If it sounds like a fit for your organisation, we would like to hear what you need.</p>
+    <span class="pill">Early release</span>
+    <h2>Try it in your office.</h2>
+    <p>Avenkin Office 0.5.0 is an early release for organisations that want to see the office end working with their own phones. Download it, read the guide, and write to us for a licence.</p>
     <div class="actions">
-      <a class="button" href="mailto:g@skunkworks.kiwi">Get in touch</a>
-      <a class="button ghost" href="/field-assist/">About Field Assist</a>
+      <a class="button" href="/office/download/">Download for macOS</a>
+      <a class="button ghost" href="mailto:g@skunkworks.kiwi">Get in touch</a>
     </div>
   </section>
 </main>

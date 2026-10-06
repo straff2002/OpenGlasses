@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Download Avenkin Office · Avenkin</title>
+<meta name="description" content="Download Avenkin Office 0.5.0 for macOS: a signed and notarised disk image, the user guide, and the checksums to verify them.">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="stage">
+<header class="site-header">
+  <a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="30" height="30">Avenkin</a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/app/">The app</a>
+    <a href="/field-assist/">Field Assist</a>
+    <a href="/office/" aria-current="page">Office</a>
+    <a href="/pricing/">Plans</a>
+  </nav>
+</header>
+<section class="page-hero">
+  <span class="pill">Version 0.5.0</span>
+  <p class="kicker">Avenkin Office</p>
+  <h1>Download</h1>
+  <p class="lede">A signed and notarised disk image for Apple silicon Macs, and the guide that walks you through setting up an office. A Windows build will follow.</p>
+  <div class="actions">
+    <a class="button" href="https://github.com/straff2002/avenkin-office-releases/releases/download/v0.5.0/Avenkin-Office-0.5.0-arm64.dmg">Download for macOS</a>
+    <a class="button ghost" href="https://github.com/straff2002/avenkin-office-releases/releases/download/v0.5.0/Avenkin-Office-Guide.pdf">Read the guide (PDF)</a>
+  </div>
+</section>
+</div>
+<main>
+  <div class="wrap">
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">This release</p>
+        <h2>Avenkin Office 0.5.0 for macOS.</h2>
+        <p>An early release for organisations trying the office end of Avenkin. It needs a licence from us to activate.</p>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <tr><td>Version</td><td>0.5.0, built 6 October 2026</td></tr>
+          <tr><td>Runs on</td><td>macOS 13 Ventura or later, on an Apple silicon Mac (M1 and later). Intel Macs and Windows are not supported by this build.</td></tr>
+          <tr><td>File</td><td><code>Avenkin-Office-0.5.0-arm64.dmg</code>, 31 MB</td></tr>
+          <tr><td>Signed by</td><td>Developer ID Application: Greig Strafford (B9L8ANZQZX), notarised by Apple and stapled, so it opens without a Gatekeeper warning</td></tr>
+          <tr><td>Licence</td><td>One per organisation, <a href="mailto:g@skunkworks.kiwi">arranged with us directly</a>. The app runs without one, but cannot pair phones until it is activated.</td></tr>
+          <tr><td>Also in the release</td><td>The <a href="https://github.com/straff2002/avenkin-office-releases/releases/download/v0.5.0/Avenkin-Office-Guide.pdf">user guide</a> (PDF) and a <a href="https://github.com/straff2002/avenkin-office-releases/releases/download/v0.5.0/SHA256SUMS"><code>SHA256SUMS</code></a> file, on the <a href="https://github.com/straff2002/avenkin-office-releases/releases/tag/v0.5.0">release page</a></td></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2>Open, drag, open.</h2>
+      </div>
+      <div class="trio">
+        <div><p class="num">1</p><h3>Open the disk image</h3><p>Double-click the downloaded file. A window opens with the app and a link to your Applications folder.</p></div>
+        <div><p class="num">2</p><h3>Drag it to Applications</h3><p>Drop <strong>Avenkin Office</strong> onto the Applications link, then eject the disk image.</p></div>
+        <div><p class="num">3</p><h3>Open it and follow the guide</h3><p>The first run asks where the office keeps its records and takes the licence file we send you. The guide covers each step with screenshots.</p></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Checksums</p>
+        <h2>Check what you downloaded.</h2>
+        <p>The SHA-256 of each file in the release. Compare them with the ones your computer calculates.</p>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <tr><th>File</th><th>SHA-256</th></tr>
+          <tr><td><code>Avenkin-Office-0.5.0-arm64.dmg</code></td><td><code>3c5145b00c80a4df1e39413216bc5e98819685ca22654a32c406e4bca84506b9</code></td></tr>
+          <tr><td><code>Avenkin-Office-Guide.pdf</code></td><td><code>ea3619abd3cb095bbcb43062705ca29f7c2b7d749675b216303d1d21d2c9959c</code></td></tr>
+        </table>
+      </div>
+      <div class="note">
+        <p><strong>In Terminal, from your Downloads folder.</strong> The checksum: <code>shasum -a 256 Avenkin-Office-0.5.0-arm64.dmg</code>. Apple's notarisation of the disk image: <code>spctl -a -vv -t open --context context:primary-signature Avenkin-Office-0.5.0-arm64.dmg</code>, which should report <em>Notarized Developer ID</em> and the signer above. The stapled ticket: <code>xcrun stapler validate Avenkin-Office-0.5.0-arm64.dmg</code>.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">What this version does</p>
+        <h2>In 0.5.0.</h2>
+      </div>
+      <div class="tiles">
+        <article class="tile">
+          <p class="eyebrow">Jobs</p>
+          <h3>Jobs out, reports back</h3>
+          <p>Prepare a job with its number, site, fault report and equipment on file, send it to a paired phone, and file the work record and customer PDF that come back.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Manuals</p>
+          <h3>Manuals, procedures and vaults</h3>
+          <p>Import manuals, keep the organisation's own procedures beside them, and release them to the phones that need them as one checked package.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Devices</p>
+          <h3>Pair by scan</h3>
+          <p>The office shows a code, the phone scans it, both show the same check code, and the office approves. Remove a phone in good order or revoke it at once.</p>
+        </article>
+        <article class="tile">
+          <p class="eyebrow">Records</p>
+          <h3>Recordings, scenarios, learnings</h3>
+          <p>Session recordings arrive from the phone, scenarios can be sent to devices, and short learnings from completed jobs are kept for the next similar job.</p>
+        </article>
+      </div>
+      <p class="meta">Known limits in this version: Apple silicon Macs only; activation is by a request file and a reply file rather than online; the office's settings cannot be changed after activation; recordings are stored but cannot yet be played back in the app; one office computer per organisation.</p>
+    </section>
+  </div>
+
+  <section class="statement">
+    <div class="wrap">
+      <p class="kicker">Where your information lives</p>
+      <h2>Your records stay <span>on your own computer.</span></h2>
+      <p class="lede">The office folder is plain files on the Mac you install this on. Phones sync with it directly. We do not host a server that holds an organisation's data, and the only call to us is licence activation.</p>
+    </div>
+  </section>
+
+  <section class="closing">
+    <h2>Set up your office.</h2>
+    <p>Download the app, read the guide, and write to us for a licence. If something does not work as the guide says, tell us and we will sort it out.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/straff2002/avenkin-office-releases/releases/download/v0.5.0/Avenkin-Office-0.5.0-arm64.dmg">Download for macOS</a>
+      <a class="button ghost" href="mailto:g@skunkworks.kiwi">Ask for a licence</a>
+    </div>
+  </section>
+</main>
+<footer class="site-footer">
+  <a href="/privacy.html">Privacy</a>
+  <a href="/support.html">Support</a>
+  <a href="/security.html">Security</a>
+  <a href="/source/">Source licence</a>
+  <a href="/terms/">Terms</a>
+  <span>&copy; 2026 Skunkworks NZ Ltd</span>
+</footer>
+</body>
+</html>
