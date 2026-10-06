@@ -124,9 +124,15 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// Deliberately re-derivable rather than cached: it is called once before the policy runs and
     /// again before an approval is spent, and the second call is what notices that the definition
     /// or the routing moved while a person was being asked.
+    ///
+    /// A tool whose AI feature is switched off is `.unrouted`, on every seam (Plan HR P2 item 6):
+    /// `execute(_:)` refuses it before anything dispatches, so the profile says the same — nothing
+    /// will run, and there is nothing to hold a confirmation in front of or bind an approval to.
     func dispatchProfile(for call: ResolvedToolCall) -> DispatchProfile {
         let name = call.name
         let args = call.arguments.rawValues
+
+        if AIFeatureGate.disabledFeature(forTool: name) != nil { return .unrouted }
 
         if let tool = registry.tool(named: name) {
             let digest = ToolDefinitionDigest.digest(name: tool.name, description: tool.description,
@@ -205,6 +211,12 @@ final class NativeToolRouter: ToolExecutionAuthority {
         turnToolNames.append(name)
         onToolDispatched?(name)
 
+        // A switched-off AI feature is unreachable, whatever reached for it (Plan HR P2 item 6).
+        // Checked first — ahead of the egress screen, the policy and every seam — so a model turn
+        // in any mode, Siri, a skill pack and a composed child are all refused the same way, with
+        // the same words the tool's own inline check gives. The inline checks stay as a second line.
+        if let refusal = featureGateRefusal(call) { return refusal }
+
         let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
         // Resolved before the policy runs, because both the effect-class floor and the binding an
         // approval is issued against need to know what will actually be dispatched — a native tool,
@@ -281,6 +293,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 PrivacyLog.toolGate(.declinedByUser, tool: name)
                 return .rejected(reason: ToolAuthorizationPolicy.declineMessage(name))
             case .approved(let nonce):
+                // Switched off while the wearer was being asked: the feature's own refusal, not a
+                // binding mismatch, because that is what actually changed.
+                if let refusal = featureGateRefusal(call) { return refusal }
                 // Spend the grant against the call as it stands *now*, re-derived rather than
                 // reused. A yes given for one recipient, one body, one server or one definition
                 // cannot pay for a different call that arrives behind it, and it cannot pay twice.
@@ -368,6 +383,20 @@ final class NativeToolRouter: ToolExecutionAuthority {
         }
 
         return .failedBeforeExecution(reason: "Unknown tool: \(name)")
+    }
+
+    // MARK: - AI feature gate (Plan HR P2 item 6)
+
+    /// The refusal for a call whose AI feature is switched off, or nil when it may proceed.
+    ///
+    /// `rejected` because policy stopped it before anything ran and repeating it reaches the same
+    /// answer until the wearer turns the feature back on; the text is `AIFeatureGate.disabledMessage`,
+    /// exactly what the tool's own inline check returns, so the model hears one sentence whichever
+    /// gate caught the call. Recorded as a content-free security event like every other refusal.
+    private func featureGateRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
+        guard let feature = AIFeatureGate.disabledFeature(forTool: call.name) else { return nil }
+        authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
+        return .rejected(reason: AIFeatureGate.disabledMessage(feature))
     }
 
     // MARK: - At-most-once dispatch

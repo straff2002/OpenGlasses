@@ -120,7 +120,14 @@ final class AssistiveModePolicyTests: XCTestCase {
 
     func testSocialModeIsInTheAIFeatureInventory() {
         let record = AIFeature.assistiveSocial.record
-        XCTAssertEqual(record.sensitiveCategories, [.biometric])
+        // Plan HR P1 item 4: observe-only, so screened `.none`, with the reason written down.
+        XCTAssertEqual(record.sensitiveCategories, [.none])
+        let note = record.screeningNote ?? ""
+        XCTAssertTrue(note.contains("Article 3(39)"), "no screening note: \(note)")
+        XCTAssertTrue(note.contains("infers no emotional state or intention"), note)
+        // The workplace refusals stay in this plan: the policy is unchanged.
+        XCTAssertEqual(Policy.evaluate(facts(managed: true)), .notOffered(.organisationManaged))
+        XCTAssertEqual(Policy.evaluate(facts(fieldAssist: true)), .notOffered(.fieldAssistEdition))
         XCTAssertEqual(record.disableSwitch.key, "assistiveSocialEnabled")
         XCTAssertTrue(record.toolNames.isEmpty, "Social mode is routed to, not called as a tool")
         XCTAssertTrue(record.stores.isEmpty)
