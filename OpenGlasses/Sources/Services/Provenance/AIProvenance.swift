@@ -183,11 +183,13 @@ struct AIProvenance: Codable, Equatable {
     /// The whole-second ISO-8601 form, for manifests and footers.
     var isoTimestamp: String { Self.timestampFormatter.string(from: generatedAt) }
 
-    /// PDF document metadata keys, for `UIGraphicsPDFRendererFormat.documentInfo`.
+    /// PDF document metadata keys, for `UIGraphicsPDFRendererFormat.documentInfo`. A renderer goes
+    /// through `PDFProvenanceStamp`, which adds the document's title and the XMP packet.
     var pdfDocumentInfo: [String: Any] {
         [
             kCGPDFContextCreator as String: "Avenkin \(appVersion) — AI-generated",
             kCGPDFContextSubject as String: footerLine,
+            kCGPDFContextKeywords as String: PDFProvenanceStamp.aiGeneratedKeyword,
         ]
     }
 }

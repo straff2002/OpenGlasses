@@ -4,19 +4,25 @@ import UIKit
 /// (docs/plans/safety-assessment.md). Advisory only — verify on site; not a certified inspection.
 enum SafetyReportPDF {
 
+    /// The document's own title: the printed heading and the PDF `Title`.
+    static let documentTitle = "Safety Assessment — High-Energy Control Assessment"
+
     /// Render the report to PDF data (US Letter, single page).
     ///
     /// The document carries its own provenance twice: as a printed footer a reader sees, and as PDF
     /// document metadata (`Creator` / `Subject`) a machine can read without parsing the page. Both
     /// name the model and the digest of the instructions it was given — never the instructions.
+    /// The metadata half is `PDFProvenanceStamp`: the Info dictionary plus an XMP packet with the
+    /// IPTC digital source type.
     static func data(for report: SafetyReport) -> Data {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
         let margin: CGFloat = 50
+        let title = documentTitle
+        let stamp = PDFProvenanceStamp.aiGenerated(
+            provenance: report.provenance, title: title, composite: false,
+            unrecordedSubject: "AI-generated safety assessment. Model not recorded.")
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = report.provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "Avenkin — AI-generated",
-            kCGPDFContextSubject as String: "AI-generated safety assessment. Model not recorded.",
-        ]
+        format.documentInfo = stamp.documentInfo
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
 
         let df = DateFormatter()
@@ -24,9 +30,9 @@ enum SafetyReportPDF {
         df.timeStyle = .short
 
         return renderer.pdfData { ctx in
+            stamp.apply(to: ctx.cgContext)
             ctx.beginPage()
 
-            let title = "Safety Assessment — High-Energy Control Assessment"
             title.draw(at: CGPoint(x: margin, y: margin), withAttributes: [
                 .font: UIFont.boldSystemFont(ofSize: 16), .foregroundColor: UIColor.black])
 
