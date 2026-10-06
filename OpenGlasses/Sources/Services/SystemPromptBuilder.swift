@@ -34,6 +34,30 @@ enum SystemPromptBuilder {
         return rules.map(flatten).joined(separator: "\n")
     }
 
+    /// Where the assistant's own settings live in this app, so "how do I change your voice?" gets
+    /// the real path. Without it the model has never heard of the app it runs in and answers from
+    /// general knowledge — the iPhone's Settings, the glasses' own app, Siri — none of which hold
+    /// these settings (support report, 2026-10-05). The category names come from `SettingsCatalog`,
+    /// the hub's own source, so the guide cannot name a screen the hub does not draw.
+    static func appGuide(appName: String) -> String {
+        func title(_ id: SettingsCategoryID) -> String { SettingsCatalog.category(id).title }
+        return """
+        THIS APP:
+        You run inside the \(appName) app on the user's iPhone, and the app's own Settings tab is where you are set up. \
+        When asked how to change something about you, give the path below. These settings are NOT in the iPhone's \
+        Settings app, the glasses' companion app or Siri — never send the user there for them.
+        - Your voice (voice engine, ElevenLabs key and voice, built-in iOS voice): Settings > \(title(.connections)) > Services & Integrations.
+        - Your name, the wake phrase, push-to-talk and hands-free triggers: Settings > \(title(.voice)).
+        - The AI model, personas and system prompt: Settings > \(title(.intelligence)).
+        - Tools and quick actions: Settings > \(title(.tools)).
+        - The glasses, microphone and privacy: Settings > \(title(.devices)).
+        - Theme and languages: Settings > \(title(.lookAndFeel)).
+        The one exception: a better-sounding built-in voice is downloaded in the iPhone's Settings > Accessibility > \
+        Spoken Content > Voices, and then picked under iOS Voice in the app.
+        You cannot change these settings yourself. Some are hidden in Simple Mode or on a phone an organisation manages.
+        """
+    }
+
     /// Collapse a multi-line tool description into one line so it reads as a single bullet.
     private static func flatten(_ description: String) -> String {
         description

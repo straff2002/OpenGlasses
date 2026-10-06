@@ -33,6 +33,21 @@ func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
     }
 }
 
+/// Which of the app's own actions a link asked for, when that is one of a fixed few. Never a
+/// persona or quick-action id: those are the wearer's own and identify them.
+func privacyAction(for url: URL) -> PrivacyToken? {
+    switch url.host {
+    case "connect", "disconnect":
+        return url.host.map { PrivacyToken($0) }
+    case "action", "listen":
+        let action = url.lastPathComponent
+        return ["ask", "photo", "describe", "on", "off", "toggle"].contains(action)
+            ? PrivacyToken(action) : nil
+    default:
+        return nil
+    }
+}
+
 private func processWearablesCallbackURL(_ url: URL, source: String) {
     let sourceToken = PrivacyToken(source)
     PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .received)
@@ -159,7 +174,18 @@ final class BackgroundSessionCompletionStore {
 final class OpenGlassesSceneDelegate: NSObject, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         for context in URLContexts {
-            processWearablesCallbackURL(context.url, source: "SceneDelegate")
+            let url = context.url
+            // The app's own links (widget, Control Centre, Action Button) arrive here as well as
+            // at the SwiftUI `onOpenURL`, which is what acts on them. They used to be handed to
+            // the glasses SDK and logged as its callback, so a photo asked for from a widget read
+            // as Meta AI calling back (support report, 2026-10-05). Named here for what they are.
+            let route = privacyRoute(for: url)
+            if DeepLinkScheme.isApp(url), route != .other {
+                PrivacyLog.deepLink(route: route, source: PrivacyToken("SceneDelegate"),
+                                    verdict: .received, action: privacyAction(for: url))
+                continue
+            }
+            processWearablesCallbackURL(url, source: "SceneDelegate")
         }
     }
 
@@ -2204,6 +2230,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // Let the TTS engine selector know whether we're online, so a configured ElevenLabs key
         // isn't preferred while offline (it'd fail the network call and fall back anyway).
         speechService.reachability = reachability
+
+        // The cloud voice ran out of credit or refused the key: say so on screen, once. The
+        // wearer otherwise only hears a different voice (the spoken half is the service's own).
+        speechService.onCloudVoiceRejected = { [weak self] rejection in
+            self?.errorMessage = rejection.banner
+        }
 
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService

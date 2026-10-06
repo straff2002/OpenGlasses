@@ -90,6 +90,9 @@ enum JobTranscriptExport {
         var jobEvents: [String: [SessionLogger.Event]] = [:]
         /// The phone, app and glasses, one fact per line.
         var phone: [String] = []
+        /// Which copy of the app wrote this (`AppBuildIdentity.summary`), for the header: the
+        /// first thing anyone reading a report needs, and it used to sit below the transcript.
+        var app: String?
         /// The app's event log (`DiagnosticRing`) within the scope's window.
         var appEvents: [AppEvent] = []
         /// The newest lines of the in-app debug log.
@@ -313,9 +316,9 @@ enum JobTranscriptExport {
         var out: [String] = [
             "Avenkin — \(title)",
             "Exported \(format.dateTime(exportedAt)) (\(format.offset(exportedAt)))",
-            "",
-            preamble,
         ]
+        if let app = details?.app { out.append("App \(app)") }
+        out += ["", preamble]
         if troubleshooting { out += ["", troubleshootingPreamble] }
 
         // Which traces belong where. A trace is claimed by the first thing it matches, so no turn
@@ -586,6 +589,7 @@ enum JobTranscriptExporter {
     /// the configured secrets to mask.
     struct Environment {
         var phone: [String] = []
+        var app: String?
         var appEvents: [JobTranscriptExport.AppEvent] = []
         var debugLog: [String] = []
         var secrets: [String] = []
@@ -680,6 +684,7 @@ enum JobTranscriptExporter {
                 traces: scoped,
                 jobEvents: events,
                 phone: environment.phone,
+                app: environment.app,
                 appEvents: environment.appEvents.filter { $0.at >= window.start && $0.at < window.end },
                 debugLog: environment.debugLog)
         }

@@ -145,6 +145,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// further ElevenLabs calls and go straight to iOS TTS for the session.
     private var elevenLabsQuotaExhausted = false
 
+    /// Why ElevenLabs turned down the request in flight, when it is something only the wearer can
+    /// fix. Set where the response is read, consumed where the chain falls through.
+    private var pendingCloudVoiceRejection: CloudVoiceRejection?
+    private var cloudVoiceAnnouncer = CloudVoiceFallbackAnnouncer()
+    /// The first such rejection of each kind this session, for the screen. Wired by `AppState`.
+    var onCloudVoiceRejected: ((CloudVoiceRejection) -> Void)?
+    private var cloudVoiceRejectionsShown: Set<CloudVoiceRejection> = []
+
     /// A voice available on the user's ElevenLabs account (from GET /v1/voices).
     struct ElevenLabsVoice: Identifiable, Hashable, Codable {
         let voiceId: String
@@ -290,6 +298,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Reset the ElevenLabs quota cache (call when API key changes or credits are added).
     func resetElevenLabsQuota() {
         elevenLabsQuotaExhausted = false
+        cloudVoiceAnnouncer.episodeEnded()
+        cloudVoiceRejectionsShown = []
         PrivacyLog.tts(.quotaCacheReset, engine: PrivacyToken("elevenLabs"))
     }
 
@@ -471,6 +481,9 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                          onDeviceOnly: Bool = false) async {
         // Any engine callback from here on belongs to this generation (Plan FE P4).
         deliveryLedger.beginUtterance(generation: gen)
+        // What is actually spoken: the reply, plus a one-off line when the cloud voice has just
+        // turned it down for a reason the wearer has to act on.
+        var text = text
         let elevenLabsKey = Config.elevenLabsAPIKey
         // ElevenLabs is "ready" only with a key, online, and not quota-exhausted. Kokoro is "ready"
         // only with the model present *and* the binary compiled in (always false in the shipped
@@ -515,6 +528,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 TurnRecorder.noteSpeechEngine(engine)
                 switch engine {
                 case .elevenLabs:
+                    pendingCloudVoiceRejection = nil
                     try await speakWithElevenLabs(text: text, apiKey: elevenLabsKey)
                 case .kokoro:
                     try await speakWithKokoro(text: text)
@@ -535,6 +549,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 }
                 PrivacyLog.tts(.engineFallback, engine: PrivacyToken(engine.rawValue),
                                error: SafeErrorSummary(error))
+                if engine == .elevenLabs, let rejection = pendingCloudVoiceRejection {
+                    pendingCloudVoiceRejection = nil
+                    if cloudVoiceRejectionsShown.insert(rejection).inserted {
+                        onCloudVoiceRejected?(rejection)
+                    }
+                    if let line = cloudVoiceAnnouncer.lineToSpeak(
+                        for: rejection, plainReply: urgency == .low && !onDeviceOnly) {
+                        text += " " + line
+                    }
+                }
                 continue
             }
         }
@@ -914,15 +938,19 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
               httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             PrivacyLog.tts(.engineFailed, engine: PrivacyToken("elevenLabs"), status: statusCode)
-            if let errorStr = String(data: data, encoding: .utf8) {
-                // Cache quota exhaustion so we skip ElevenLabs for the rest of this session
-                if errorStr.contains("quota_exceeded") {
-                    PrivacyLog.tts(.quotaExhausted, engine: PrivacyToken("elevenLabs"))
-                    elevenLabsQuotaExhausted = true
-                }
+            let rejection = CloudVoiceRejection.classify(
+                statusCode: statusCode, body: String(data: data, encoding: .utf8) ?? "")
+            // Cache quota exhaustion so we skip ElevenLabs for the rest of this session
+            if rejection == .outOfCredit {
+                PrivacyLog.tts(.quotaExhausted, engine: PrivacyToken("elevenLabs"))
+                elevenLabsQuotaExhausted = true
             }
+            pendingCloudVoiceRejection = rejection
             throw TTSError.apiError(statusCode: statusCode)
         }
+
+        // The cloud voice answered: whatever turned it away before is over.
+        cloudVoiceAnnouncer.episodeEnded()
 
         // Play the MP3 audio
         try await playAudioData(data)

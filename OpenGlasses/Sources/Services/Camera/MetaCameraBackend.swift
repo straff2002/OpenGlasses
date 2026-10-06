@@ -301,7 +301,18 @@ final class MetaCameraBackend: GlassesCameraBackend {
     }
 
     private func ensureSessionLocked() async throws {
-        guard streamSession == nil else { return }
+        if streamSession != nil {
+            // A stream is only as alive as the session it hangs off. A session that has stopped
+            // under a parked stream (device-reported 2026-10-05: an `unexpectedError` half a
+            // minute after a capture, then nothing for sixteen minutes) leaves a stream whose
+            // `start()` fails at once, and the next capture spent its first attempt finding that
+            // out. Anything short of stopped is left alone — a hold lifts on its own.
+            guard let session = deviceSession,
+                  session.state == .stopped || session.state == .stopping else { return }
+            PrivacyLog.camera(.glasses, .staleSessionDropped,
+                              state: PrivacyToken(String(describing: session.state)))
+            await resetSessionLocked()
+        }
 
         // Fresh attempt, fresh verdict: an error from a previous attempt must not abort this one.
         lastSessionError = nil
@@ -775,24 +786,13 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
     // MARK: - Photo Capture
 
-    /// Capture a photo from the glasses camera. Returns JPEG data.
+    /// Bring the session up, waiting out the windows in which a healthy pair cannot be reached.
     ///
-    /// NOTE (device-reported, unverified here): `capturePhoto` also works on a stream that
-    /// was added but never `start()`ed, and capturing on a *streaming* stream has been
-    /// reported to race the frame flow and trip the glasses-side frame-stall watchdog.
-    /// Our start-then-capture path is field-traced and carries the frame fallback, so it
-    /// stays; if captures ever start stalling the stream, try the no-start discrete path
-    /// before reaching for bigger hammers.
-    func capturePhoto() async throws -> Data {
-        isCaptureInProgress = true
-        defer { isCaptureInProgress = false }
-        // Cleared as well as cancelled: a cancelled task that is still referenced would keep
-        // counting towards `scheduledWorkCount`, which is meant to be the truth about what is armed.
-        idleTeardownTask?.cancel()   // a capture during the idle grace keeps the session
-        idleTeardownTask = nil
-
-        try await ensurePermission()
-
+    /// Shared by the first start of a capture and the rebuild after a failed warm-up. The rebuild
+    /// used to get a single try with no wait, so a session the glasses refused in the first second
+    /// back from the background ended the capture there (device-reported 2026-10-05), in exactly
+    /// the window the first start is given twelve seconds to sit out.
+    private func ensureSessionWithRetry() async throws {
         // The DAT link drops when the glasses idle (battery saving) and discovery lags app
         // launch by seconds — a session created in that window throws noEligibleDevice
         // ("all discovered devices are powered off or disconnected") even though the glasses
@@ -846,6 +846,27 @@ final class MetaCameraBackend: GlassesCameraBackend {
             }
             throw rootError
         }
+    }
+
+    /// Capture a photo from the glasses camera. Returns JPEG data.
+    ///
+    /// NOTE (device-reported, unverified here): `capturePhoto` also works on a stream that
+    /// was added but never `start()`ed, and capturing on a *streaming* stream has been
+    /// reported to race the frame flow and trip the glasses-side frame-stall watchdog.
+    /// Our start-then-capture path is field-traced and carries the frame fallback, so it
+    /// stays; if captures ever start stalling the stream, try the no-start discrete path
+    /// before reaching for bigger hammers.
+    func capturePhoto() async throws -> Data {
+        isCaptureInProgress = true
+        defer { isCaptureInProgress = false }
+        // Cleared as well as cancelled: a cancelled task that is still referenced would keep
+        // counting towards `scheduledWorkCount`, which is meant to be the truth about what is armed.
+        idleTeardownTask?.cancel()   // a capture during the idle grace keeps the session
+        idleTeardownTask = nil
+
+        try await ensurePermission()
+
+        try await ensureSessionWithRetry()
 
         // Wait for stream to be ready (start if needed). Both attempts get the full warmup window
         // — see `StreamRecoveryPolicy.warmupTimeout` for why a shortened first attempt punished
@@ -863,7 +884,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 if attempt < 2 {
                     // Reset session and retry
                     await resetSession()
-                    try await ensureSession()
+                    try await ensureSessionWithRetry()
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }

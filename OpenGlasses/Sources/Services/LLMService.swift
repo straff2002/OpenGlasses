@@ -484,6 +484,11 @@ class LLMService: ObservableObject {
 
         closeBlock("vision guidance")
 
+        // Where the assistant's own settings live. Unconditional and in the stable head: a question
+        // about the app matches no classifier section, and the text never changes turn to turn.
+        prompt += "\n\n" + SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName)
+        closeBlock("app guide")
+
         if includeTools && shouldInclude(.tools) {
             var toolSection = """
 

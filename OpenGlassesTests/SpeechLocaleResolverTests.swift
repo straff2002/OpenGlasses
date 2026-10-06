@@ -28,6 +28,19 @@ final class SpeechLocaleResolverTests: XCTestCase {
         XCTAssertEqual(resolve("fr-CA"), "fr-FR")
     }
 
+    func testAnUnsupportedRegionFallsToTheLanguagesHomeRegionNotTheFirstInTheAlphabet() {
+        // An English phone in Mexico: Apple has no en-MX recogniser, and en-AE sorts first.
+        let english = ["en-AE", "en-AU", "en-CA", "en-GB", "en-IN", "en-US", "en-ZA", "es-MX", "pt-PT", "pt-BR"]
+        func resolve(_ device: String) -> String {
+            SpeechLocaleResolver.resolve(preference: SpeechLocaleResolver.automatic,
+                                         deviceLanguages: [device], supported: english)
+        }
+        XCTAssertEqual(resolve("en-MX"), "en-US")
+        XCTAssertEqual(resolve("pt-AO"), "pt-BR")
+        XCTAssertEqual(resolve("en-GB"), "en-GB", "an exact region still wins")
+        XCTAssertEqual(resolve("es-AR"), "es-MX", "no home region on offer: any Spanish beats English")
+    }
+
     func testUnsupportedPreferenceFallsBackToDeviceThenEnglish() {
         XCTAssertEqual(resolve("xx-XX", device: ["de-DE"]), "de-DE")
         XCTAssertEqual(resolve("xx-XX", device: ["yy-YY"]), "en-US")

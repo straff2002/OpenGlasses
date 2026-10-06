@@ -122,6 +122,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>AvenkinSourceCommit</key>
+	<string>$(AVENKIN_SOURCE_COMMIT)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fb-viewapp</string>
