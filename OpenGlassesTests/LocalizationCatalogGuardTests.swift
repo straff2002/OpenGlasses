@@ -49,8 +49,12 @@ final class LocalizationCatalogGuardTests: XCTestCase {
         let isEnglishSuffix: Bool
     }
 
+    /// The flags are `-`, `+`, `#` and `0`. The space flag is left out on purpose: no string in
+    /// the app pads a number with it, and accepting it turns a percentage followed by a word
+    /// ("80% of a limit", "al 80% de un límite") into an octal or integer specifier that the
+    /// translation then "drops".
     private static let specifierPattern = try! NSRegularExpression(
-        pattern: #"%(?:(\d+)\$)?[-+ #0]*\d*(?:\.\d+)?(?:hh|h|ll|l|q|z|t|j|L)?([@dDiuUxXoOfFeEgGaAcCsSp%])"#
+        pattern: #"%(?:(\d+)\$)?[-+#0]*\d*(?:\.\d+)?(?:hh|h|ll|l|q|z|t|j|L)?([@dDiuUxXoOfFeEgGaAcCsSp%])"#
     )
 
     static func specifiers(in text: String) -> [Specifier] {
@@ -204,5 +208,14 @@ final class LocalizationCatalogGuardTests: XCTestCase {
                        ["argument 2 is missing"])
         XCTAssertEqual(Self.specifierProblems(source: "%@", translation: "%1$@ %2$@"),
                        ["argument 2 does not exist in the source"])
+    }
+
+    func testAPercentageBeforeAWordIsNotASpecifier() {
+        XCTAssertEqual(Self.specifiers(in: "At 80% of a limit you'll hear a warning."), [])
+        XCTAssertEqual(Self.specifiers(in: "Al llegar al 80% de un límite"), [])
+        XCTAssertEqual(Self.specifierProblems(source: "At 80% of a limit", translation: "Al 80% de un límite"), [])
+        // A real specifier beside a percentage is still held to parity.
+        XCTAssertEqual(Self.specifierProblems(source: "%lld%% of %@", translation: "%lld%% de"),
+                       ["argument 2 is missing"])
     }
 }
