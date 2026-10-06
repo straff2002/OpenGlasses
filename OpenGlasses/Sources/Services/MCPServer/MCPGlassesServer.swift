@@ -8,9 +8,13 @@ import UIKit
 /// compile-time ``LocalServiceExposurePolicy``. Release builds refuse this cleartext transport.
 ///
 /// Exposes three REST endpoints on port 8765, mirroring the planned MCP tools:
-///   - `GET  /see_glasses`     → `{ image_b64, timestamp }` — latest camera frame
-///   - `GET  /glasses_status`  → `{ connected, frame_age_ms, last_frame_iso }`
-///   - `POST /send_to_glasses` → body `{ text, mode: "tts"|"display" }` → speaks/logs, returns `{ ok }`
+///   - `GET  /see_glasses`     → `{ image_b64, timestamp }` — the current camera frame, or a fresh
+///                               glasses capture when the stream is idle
+///   - `GET  /glasses_status`  → `{ connected, streaming, has_frame, permission_granted,
+///                               capture_in_progress, frame_age_ms, last_frame_iso }`
+///   - `POST /send_to_glasses` → body `{ text, mode: "tts"|"display" }` → speaks, or shows the text
+///                               on the in-lens display (on a pair without one: a phone notice,
+///                               spoken as well), returns `{ ok, mode, delivered }`
 ///
 /// Every request must carry `Authorization: Bearer <token>` (Plan BC) — the token is generated per
 /// enable and shown in Settings. Without it these endpoints would be an unauthenticated LAN camera
@@ -41,6 +45,7 @@ final class MCPGlassesServer: ObservableObject {
     private var connections: Set<ObjectIdentifier> = []
     private weak var camera: CameraService?
     private weak var tts: TextToSpeechService?
+    private weak var glassesDisplay: GlassesDisplayService?
 
     /// Min interval a frame is reused, so a tight Claude Code poll loop can't blow up tokens.
     private var lastServedFrameAt: Date?
@@ -88,9 +93,11 @@ final class MCPGlassesServer: ObservableObject {
         self.defaults = defaults
     }
 
-    func configure(camera: CameraService, tts: TextToSpeechService) {
+    func configure(camera: CameraService, tts: TextToSpeechService,
+                   glassesDisplay: GlassesDisplayService? = nil) {
         self.camera = camera
         self.tts = tts
+        self.glassesDisplay = glassesDisplay
     }
 
     // MARK: - Lifecycle
@@ -249,10 +256,23 @@ final class MCPGlassesServer: ObservableObject {
     /// Serves a still to whatever client asked for one — another process, often another machine.
     /// That is an egress by any reading, so it goes through the chokepoint under
     /// `.remoteFrameRequest`, and an unfilterable frame is a 503 rather than a raw one (W04.1).
+    ///
+    /// The stream is idle most of the time the glasses are worn, and an idle stream has no cached
+    /// frame, so a "current frame only" read answered "no frame available" to every peer whose
+    /// first question was what the wearer is looking at. The chokepoint takes a fresh glasses
+    /// photo in that case — never the phone camera, which would show the peer the desk.
     private func seeGlasses() async -> Data {
-        guard let jpeg = await camera?.filteredStill(for: .remoteFrameRequest)
-            .jpegData(compressionQuality: 0.7) else {
-            return Self.httpResponse(status: "503 Service Unavailable", json: ["error": "no frame available"])
+        guard let camera else {
+            return Self.httpResponse(status: "503 Service Unavailable",
+                                     json: ["error": "no frame available", "connected": false])
+        }
+        let result = await camera.filteredStill(for: .remoteFrameRequest, source: .cachedFrameThenPhoto)
+        guard let jpeg = result.jpegData(compressionQuality: 0.7) else {
+            return Self.httpResponse(status: "503 Service Unavailable", json: [
+                "error": "no frame available",
+                "reason": result.unavailableReason?.rawValue ?? FilteredStillResult.Reason.noStill.rawValue,
+                "connected": camera.isGlassesLinkUp(),
+            ])
         }
         lastServedFrameAt = Date()
         return Self.httpResponse(status: "200 OK", json: [
@@ -262,13 +282,42 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     private func glassesStatus() -> Data {
-        let hasFrame = camera?.hasLatestStill ?? false
-        var payload: [String: Any] = ["connected": hasFrame]
+        let payload = Self.statusPayload(
+            linkUp: camera?.isGlassesLinkUp() ?? false,
+            streaming: camera?.isStreaming ?? false,
+            hasFrame: camera?.hasLatestStill ?? false,
+            permissionGranted: camera?.permissionGranted ?? false,
+            captureInProgress: camera?.isCaptureInProgress ?? false,
+            lastServedFrameAt: lastServedFrameAt, now: Date())
+        return Self.httpResponse(status: "200 OK", json: payload)
+    }
+
+    /// The `/glasses_status` body. `connected` is the glasses link, which is what a peer about to
+    /// ask for a picture needs to know; it used to mean "a frame is cached", which an idle stream
+    /// never has, so a connected, worn pair reported itself disconnected.
+    static func statusPayload(linkUp: Bool, streaming: Bool, hasFrame: Bool, permissionGranted: Bool,
+                              captureInProgress: Bool, lastServedFrameAt: Date?, now: Date) -> [String: Any] {
+        var payload: [String: Any] = [
+            "connected": linkUp,
+            "streaming": streaming,
+            "has_frame": hasFrame,
+            "permission_granted": permissionGranted,
+            "capture_in_progress": captureInProgress,
+        ]
         if let served = lastServedFrameAt {
-            payload["frame_age_ms"] = Int(Date().timeIntervalSince(served) * 1000)
+            payload["frame_age_ms"] = Int(now.timeIntervalSince(served) * 1000)
             payload["last_frame_iso"] = ISO8601DateFormatter().string(from: served)
         }
-        return Self.httpResponse(status: "200 OK", json: payload)
+        return payload
+    }
+
+    /// Where a `mode: "display"` message goes. A pair with an in-lens display shows it there; a
+    /// pair without one gets it as a phone notice, spoken as well, because silently dropping a
+    /// peer's message on the floor is the one outcome the peer cannot tell from success.
+    enum DisplayDelivery: String {
+        case hud, phone
+
+        static func route(hasDisplay: Bool) -> DisplayDelivery { hasDisplay ? .hud : .phone }
     }
 
     private func sendToGlasses(body: Data?) async -> Data {
@@ -277,11 +326,22 @@ final class MCPGlassesServer: ObservableObject {
             return Self.httpResponse(status: "400 Bad Request", json: ["error": "expected {text, mode}"])
         }
         let mode = (json["mode"] as? String) ?? "tts"
-        // No display surface yet — both modes speak. The "display" text used to be logged whole;
-        // it is a message a LAN peer sends to the wearer, so only the fact is recorded.
-        if mode == "display" { PrivacyLog.mcpServer(.forwardUnsupported, route: .sendToGlasses) }
-        await tts?.speak(text, urgency: .low)
-        return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode])
+        guard mode == "display" else {
+            await tts?.speak(text, urgency: .low)
+            return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode, "delivered": "tts"])
+        }
+        // The text is a message a LAN peer sends to the wearer, so only the fact is recorded.
+        let delivery = DisplayDelivery.route(hasDisplay: glassesDisplay?.hasDisplayCapability ?? false)
+        switch delivery {
+        case .hud:
+            PrivacyLog.mcpServer(.forwardedToDisplay, route: .sendToGlasses)
+            glassesDisplay?.showNotification(title: nil, body: text, icon: .info, duration: 8)
+        case .phone:
+            PrivacyLog.mcpServer(.forwardedToPhone, route: .sendToGlasses)
+            NoticeCenter.shared.post(text, severity: .advisory, source: .app)
+            await tts?.speak(text, urgency: .low)
+        }
+        return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode, "delivered": delivery.rawValue])
     }
 
     // MARK: - HTTP helpers
