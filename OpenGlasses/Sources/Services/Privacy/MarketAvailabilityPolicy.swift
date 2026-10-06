@@ -18,7 +18,9 @@ enum MarketAvailabilityPolicy {
     enum Capability: String, CaseIterable, Equatable {
         /// Naming enrolled people from the camera (Annex III 1(a)).
         case faceRecognition
-        /// Assistive Social mode's emotional-state inference (Annex III 1(c)).
+        /// Assistive Social mode. Since Plan HR it describes visible cues and infers no emotional
+        /// state, so it is observation rather than emotion recognition (Art. 3(39)); the row stays so
+        /// a region restriction could still be expressed if a later design crossed back over the line.
         case emotionInference
         /// Camera first-aid triage under a business edition (Annex III 5(d), decision pending).
         case firstAidTriageBusiness
@@ -87,7 +89,7 @@ enum MarketAvailabilityPolicy {
         case .faceRecognition:
             return String(localized: "Face recognition isn't available in your region.")
         case .emotionInference:
-            return String(localized: "Describing how someone seems to feel isn't available in your region.")
+            return String(localized: "Social mode isn't available in your region.")
         case .firstAidTriageBusiness:
             return String(localized: "Camera first-aid triage isn't available for work use in your region.")
         }
