@@ -20,6 +20,7 @@ final class LocalizationCatalogGuardTests: XCTestCase {
 
     /// Languages whose catalog is filled end to end, with the plural categories each requires.
     private static let completeLanguages: [String: Set<String>] = [
+        "es-MX": ["one", "many", "other"],
         "ru": ["one", "few", "many", "other"],
     ]
 

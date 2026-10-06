@@ -1,8 +1,8 @@
 # Plan EC — Automatic UI Localization
 
-**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-09-30). One P1 prerequisite fix,
-two catalog syncs and the first complete catalog (Russian) have landed; P1 items 1 and 2, English
-plural variants, the rest of P2 and the other P3 languages remain.
+**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-10-06). One P1 prerequisite fix,
+three catalog syncs and two complete catalogs (Russian, then Mexican Spanish) have landed; P1
+items 1 and 2, English plural variants, the rest of P2 and the other P3 languages remain.
 **Origin:** The design-kit `LocalizedStringKey` conversion ([#394](https://github.com/straff2002/OpenGlasses/pull/394))
 made the string catalog able to see the app's authored copy, and the owner decision followed the same
 day: the UI should render in the phone's language. iOS does the "automatic" part natively — the
@@ -16,9 +16,31 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 
 ---
 
-## Progress (2026-09-30)
+## Progress (2026-10-06)
 
 **Landed.**
+- **Mexican Spanish is the second complete catalog (2026-10-06).** By owner request `es-MX` is
+  filled end to end instead of staying an override layer over `es`; this replaces the 2026-09-02
+  decision below. It was filled on top of the sync in the next entry, so it covers the same keys
+  `ru` does: 2,915 of the 2,916 translatable keys, the 28 earlier overrides among them and kept
+  as they were. The one key left in English is the same spending-limit footer, for the same
+  reason. It was done the way `ru` was. Stale keys, and keys that are only symbols or specifiers,
+  are left alone. The same 28 single-count strings carry plural variants, here
+  `one`/`many`/`other` with `many` worded as `other`. The English `"file%@"` suffix tricks, and
+  counts that share a sentence with other arguments, use the number-neutral colon form
+  (`«Archivos: %lld»`), with positional specifiers skipping the suffix argument. The register is
+  `tú` with Mexican vocabulary (`lentes`, `celular`, `computadora`) and Apple's own iOS names for
+  system things (Configuración, Atajos, Recordatorios). `es-MX` was already in
+  `LocalizationManager.bundledLanguages`, so nothing moved there and no downloadable pack is
+  involved. It joins `completeLanguages` in `LocalizationCatalogGuardTests`, which now holds it
+  to the coverage floor, specifier parity and its plural categories. Two things are still owed.
+  Human review of the flagged subset (below), as for `ru`. And `es` itself, which is still the
+  179-key slice: a phone set to Mexican Spanish gets the full catalog, but another Spanish region
+  can still resolve to `es` and so to mostly English (which regions iOS sends where has not been
+  checked on a device). The copy also quotes things to say ("navigate to …", "include all",
+  "Run <action> on Avenkin"); those were translated as `ru`'s were, but the matchers behind some
+  of them list English phrases only, so for those the translated example names a phrase that is
+  not yet recognised. That is a code gap for both languages, not something a catalog can close.
 - **Catalog sync and Russian top-up (2026-10-06).** The catalog was synced with the current
   sources: 403 keys added, none removed, taking it to 2,964 keys (2,916 translatable). The sync
   is add-only: the extraction proposed stale marks on 60 existing keys and those were left out,
@@ -63,7 +85,7 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   `String`.
 - P1 items 3 and 4: runtime-composed sentences, and plural variants (the catalog has none).
 - The rest of P2: a coverage floor for partial languages and the `knownRegions` prune. Of P3,
-  every language except `ru`.
+  every language except `ru` and `es-MX` — `es` included.
 
 ---
 
@@ -75,6 +97,9 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   language matching falls back es-MX → es, so it never needs a full fill. Ten full catalogs total.
   **ru added 2026-09-30** (owner request), making eleven; it shipped first, ahead of the P3 order.
   Its plural rules (`one`/`few`/`many`) are the same shape as uk's, so it also exercises plurals.
+  **es-MX filled 2026-10-06** (owner request): it is a complete catalog of its own, no longer an
+  override layer, which makes twelve. `es` is still to fill and is not replaced by it: `es` is
+  what the other Spanish regions can resolve to.
 - **Machine translation is the first pass.** A flagged subset (below) gets human review before any
   store-listing claim of support; everything else ships MT and improves opportunistically.
 - **English stays the development and fallback language.** An untranslated key renders English, by
@@ -147,8 +172,8 @@ Deterministic, headless, en-locale-independent tests over the catalog file itsel
 - **Human-review flag list** (before claiming support in store metadata): onboarding, the
   Glasses Analytics / telemetry disclosures, diagnostics privacy copy, Medical Compliance
   paywall + legal lines, first-aid coaching strings. Tracked as a checklist here; MT ships first.
-- es-MX: review the existing 28 overrides still make sense over the new es fill; add overrides
-  only where es reads wrong for Mexico.
+- es-MX: complete since 2026-10-06 (see Progress); the 28 earlier overrides were kept. When `es`
+  is filled, seed it from `es-MX` and change only what reads wrong outside Mexico.
 
 ## Non-goals
 

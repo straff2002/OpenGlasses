@@ -2,7 +2,7 @@ import Foundation
 
 /// Manages downloadable language packs for on-demand localization.
 ///
-/// Bundled languages (en, fr, es, de, ja, pl, ru, zh-Hans, zh-Hant, uk) are built into
+/// Bundled languages (en, fr, es, es-MX, de, ja, pl, ru, zh-Hans, zh-Hant, uk) are built into
 /// the app via Localizable.xcstrings. Additional languages can be downloaded from
 /// GitHub and cached locally.
 @MainActor
