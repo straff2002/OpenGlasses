@@ -5541,16 +5541,64 @@
     },
     "AI translation" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Übersetzung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traducción con IA"
+          }
+        },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Traducción con IA"
           }
         },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduction par IA"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 翻訳"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tłumaczenie AI"
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "ИИ-перевод"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ШІ-переклад"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 翻译"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 翻譯"
           }
         }
       }
@@ -52305,16 +52353,64 @@
     },
     "This is a live AI translation by Avenkin AI." : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dies ist eine Live-Übersetzung durch KI von Avenkin AI."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta es una traducción en vivo hecha con IA por Avenkin AI."
+          }
+        },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Esta es una traducción en vivo hecha con IA por Avenkin AI."
           }
         },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ceci est une traduction en direct réalisée par l'IA Avenkin AI."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは Avenkin AI による AI のリアルタイム翻訳です。"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To jest tłumaczenie na żywo wykonywane przez AI Avenkin AI."
+          }
+        },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Это перевод в реальном времени от ИИ Avenkin AI."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Це переклад у реальному часі від ШІ Avenkin AI."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是由 Avenkin AI 提供的 AI 实时翻译。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是由 Avenkin AI 提供的 AI 即時翻譯。"
           }
         }
       }
