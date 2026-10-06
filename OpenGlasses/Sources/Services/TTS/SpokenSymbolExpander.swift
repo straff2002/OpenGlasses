@@ -13,9 +13,12 @@ import NaturalLanguage
 /// agreement, and an English "degrees" dropped into a Spanish sentence is worse than the symbol
 /// it replaced. The one rule that holds in every language is subscript digits (CO₂).
 ///
-/// Deliberately not here: abbreviations made of plain letters (km, kg, mph), which engines read
-/// well; currency and percent signs, likewise; and Markdown, which is not a symbol with a
-/// spoken form.
+/// Unit abbreviations in plain letters (km, kg, mph, GB) are written out too, but only behind a
+/// number: "5 km" is five kilometers, a bare "km" could be anything.
+///
+/// Deliberately not here: single-letter units (m, g, s, V, A, L) and "in", which mean too many
+/// other things — "5m" is metres, minutes or millions; currency and percent signs, which engines
+/// read well; and Markdown, which is not a symbol with a spoken form.
 enum SpokenSymbolExpander {
 
     // MARK: - Entry points
@@ -23,14 +26,14 @@ enum SpokenSymbolExpander {
     /// The copy of `text` to hand a voice engine.
     static func spokenForm(of text: String) -> String {
         // Checked first: language detection is not free, and most replies carry no symbol.
-        guard text.unicodeScalars.contains(where: triggers.contains) else { return text }
+        guard needsWork(text) else { return text }
         let phone = Locale.preferredLanguages.first
             .flatMap { Locale.Language(identifier: $0).languageCode?.identifier } ?? "en"
         return expand(text, languageCode: languageCode(of: text, fallback: phone))
     }
 
     static func expand(_ text: String, languageCode: String) -> String {
-        guard text.unicodeScalars.contains(where: triggers.contains) else { return text }
+        guard needsWork(text) else { return text }
         var result = String(text.map { subscripts[$0] ?? $0 })
         guard languageCode == "en" else { return result }
         for rule in englishRules { result = rule(result) }
@@ -80,6 +83,64 @@ enum SpokenSymbolExpander {
         ("Ω", "ohm", "ohms"),
     ]
 
+    /// Abbreviations in plain letters, as (one, many). Matched by exact case, behind a number.
+    private static let letterUnits: [(symbol: String, one: String, many: String)] = [
+        // Length and speed
+        ("km", "kilometer", "kilometers"), ("cm", "centimeter", "centimeters"),
+        ("mm", "millimeter", "millimeters"), ("ft", "foot", "feet"), ("yd", "yard", "yards"),
+        ("mi", "mile", "miles"),
+        ("mph", "mile per hour", "miles per hour"),
+        ("kph", "kilometer per hour", "kilometers per hour"),
+        ("kmh", "kilometer per hour", "kilometers per hour"),
+        // Weight and volume
+        ("kg", "kilogram", "kilograms"), ("mg", "milligram", "milligrams"),
+        ("lb", "pound", "pounds"), ("lbs", "pound", "pounds"), ("oz", "ounce", "ounces"),
+        ("ml", "milliliter", "milliliters"), ("mL", "milliliter", "milliliters"),
+        ("gal", "gallon", "gallons"),
+        // Time
+        ("ms", "millisecond", "milliseconds"), ("sec", "second", "seconds"),
+        ("secs", "second", "seconds"), ("min", "minute", "minutes"), ("mins", "minute", "minutes"),
+        ("hr", "hour", "hours"), ("hrs", "hour", "hours"),
+        // Electrical, pressure, sound
+        ("kWh", "kilowatt hour", "kilowatt hours"), ("kW", "kilowatt", "kilowatts"),
+        ("MW", "megawatt", "megawatts"), ("kV", "kilovolt", "kilovolts"),
+        ("mV", "millivolt", "millivolts"), ("mA", "milliamp", "milliamps"),
+        ("Hz", "hertz", "hertz"), ("kHz", "kilohertz", "kilohertz"),
+        ("MHz", "megahertz", "megahertz"), ("GHz", "gigahertz", "gigahertz"),
+        ("kPa", "kilopascal", "kilopascals"), ("hPa", "hectopascal", "hectopascals"),
+        ("inWC", "inch of water column", "inches of water column"),
+        ("dB", "decibel", "decibels"),
+        // Health
+        ("bpm", "beat per minute", "beats per minute"),
+        ("mmHg", "millimeter of mercury", "millimeters of mercury"),
+        ("mg/dL", "milligram per deciliter", "milligrams per deciliter"),
+        ("mmol/L", "millimole per liter", "millimoles per liter"),
+        ("kcal", "kilocalorie", "kilocalories"),
+        // Data
+        ("KB", "kilobyte", "kilobytes"), ("kB", "kilobyte", "kilobytes"),
+        ("MB", "megabyte", "megabytes"), ("GB", "gigabyte", "gigabytes"),
+        ("TB", "terabyte", "terabytes"),
+        ("kbps", "kilobit per second", "kilobits per second"),
+        ("Mbps", "megabit per second", "megabits per second"),
+        ("Gbps", "gigabit per second", "gigabits per second"),
+    ]
+
+    /// A number, then one of `letterUnits`, ending there: not "5 kmart", and not the first half
+    /// of a compound this table does not know ("5 mg/kg").
+    private static let letterUnitPattern: String = {
+        let symbols = letterUnits.map(\.symbol).sorted { $0.count > $1.count }
+            .map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        return #"(?<![\p{L}\p{N}])(\#(number))\#(gap)(\#(symbols))(?![\p{L}\p{N}/])"#
+    }()
+    private static let letterUnitTrigger = try! NSRegularExpression(pattern: letterUnitPattern)
+
+    /// Whether any rule could apply. Checked before language detection, which is not free.
+    private static func needsWork(_ text: String) -> Bool {
+        if text.unicodeScalars.contains(where: triggers.contains) { return true }
+        return letterUnitTrigger.firstMatch(
+            in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil
+    }
+
     private static let number = #"[-−]?\d+(?:[.,]\d+)?"#
     private static let gap = #"[   ]?"#
 
@@ -105,6 +166,12 @@ enum SpokenSymbolExpander {
         rule(#"(?<![\p{L}\p{N}])(?:(\#(number))\#(gap))?(\#(units.map { NSRegularExpression.escapedPattern(for: $0.symbol) }.joined(separator: "|")))(?![\p{L}\p{N}])"#) { groups, _ in
             guard let symbol = groups[2], let unit = units.first(where: { $0.symbol == symbol }) else { return groups[0] ?? "" }
             guard let amount = groups[1] else { return unit.many }
+            return amount + " " + (isOne(amount) ? unit.one : unit.many)
+        },
+        // 5 km, 72 bpm, 16 GB. After the units above, so "35 km/h" is already words.
+        rule(letterUnitPattern) { groups, _ in
+            guard let amount = groups[1], let symbol = groups[2],
+                  let unit = letterUnits.first(where: { $0.symbol == symbol }) else { return groups[0] ?? "" }
             return amount + " " + (isOne(amount) ? unit.one : unit.many)
         },
         // 1½, 2¼ — then the fractions standing alone.

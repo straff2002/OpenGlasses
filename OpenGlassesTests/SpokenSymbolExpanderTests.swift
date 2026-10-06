@@ -48,6 +48,43 @@ final class SpokenSymbolExpanderTests: XCTestCase {
         XCTAssertEqual(expand("and/or 24/7 km/hour"), "and/or 24/7 km/hour")
     }
 
+    // MARK: - Units in plain letters
+
+    func testAbbreviationsBehindANumberAreSpelledOut() {
+        XCTAssertEqual(expand("Walk 5 km, about 12 min."), "Walk 5 kilometers, about 12 minutes.")
+        XCTAssertEqual(expand("It weighs 2.5kg and holds 750 ml."), "It weighs 2.5 kilograms and holds 750 milliliters.")
+        XCTAssertEqual(expand("Limit is 60 mph, or 100 kph."), "Limit is 60 miles per hour, or 100 kilometers per hour.")
+        XCTAssertEqual(expand("Heart rate 72 bpm, pressure 120 mmHg, glucose 95 mg/dL."),
+                       "Heart rate 72 beats per minute, pressure 120 millimeters of mercury, glucose 95 milligrams per deciliter.")
+        XCTAssertEqual(expand("Static pressure is 0.28 inWC at 60 Hz, drawing 3 kW."),
+                       "Static pressure is 0.28 inches of water column at 60 hertz, drawing 3 kilowatts.")
+        XCTAssertEqual(expand("A 16 GB phone on 50 Mbps used 3 kWh."), "A 16 gigabytes phone on 50 megabits per second used 3 kilowatt hours.")
+    }
+
+    func testOneOfAThingIsSingular() {
+        XCTAssertEqual(expand("1 km in 1 hr with 1 lb"), "1 kilometer in 1 hour with 1 pound")
+        XCTAssertEqual(expand("1.0 km"), "1.0 kilometers")
+    }
+
+    func testAnAbbreviationWithoutANumberIsLeftAlone() {
+        let text = "The km markers, the min and max, an MB of data, Hz and kg labels."
+        XCTAssertEqual(expand(text), text)
+    }
+
+    func testSingleLettersAndLookalikesAreLeftAlone() {
+        // "5m" is metres, minutes or millions; "5 in" is rarely inches.
+        let text = "Raised $5m in 5 m of water, 3 g of salt, 5 in the morning, 10 kmart, 4 mg/kg, 12V, 5G."
+        XCTAssertEqual(expand(text), text)
+    }
+
+    func testTheCaseOfAnAbbreviationMatters() {
+        XCTAssertEqual(expand("5 MW and 5 mA, 3 Ms later"), "5 megawatts and 5 milliamps, 3 Ms later")
+    }
+
+    func testAnotherLanguageKeepsItsAbbreviations() {
+        XCTAssertEqual(expand("Camina 5 km en 12 min.", "es"), "Camina 5 km en 12 min.")
+    }
+
     // MARK: - Numbers
 
     func testRangesApproximationsAndFractions() {
