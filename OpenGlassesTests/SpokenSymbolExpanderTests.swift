@@ -154,6 +154,40 @@ final class SpokenSymbolExpanderTests: XCTestCase {
         XCTAssertEqual(expand("Try:\n```swift\nprint(1)\n```\nThen run it."), "Try:\nprint(1)\nThen run it.")
     }
 
+    func testATableIsReadARowAtATimeBehindItsColumnNames() {
+        let reply = """
+        Here are the parts:
+
+        | Part | Qty | Price |
+        |------|:---:|------:|
+        | Bolt | 4 | $2 |
+        | **Nut** | 1 |  |
+
+        That's all.
+        """
+        let spoken = """
+        Here are the parts:
+
+        Part: Bolt, Qty: 4, Price: $2.
+        Part: Nut, Qty: 1.
+
+        That's all.
+        """
+        XCTAssertEqual(expand(reply, "es"), spoken)
+    }
+
+    func testATableSpokenALineAtATimeStillLosesItsPipes() {
+        // Streamed speech hands over one line per utterance, so a row arrives without its header.
+        XCTAssertEqual(expand("| Bolt | 4 | $2 |", "es"), "Bolt, 4, $2.")
+        XCTAssertEqual(expand("| Part | Qty |\n|---|---|", "es"), "Part, Qty.")
+        XCTAssertEqual(expand("|------|:---:|------:|", "es"), "", "a rule line has nothing to say")
+    }
+
+    func testAPipeInASentenceIsNotATable() {
+        let text = "Run ls | grep txt to filter, or use a || b."
+        XCTAssertEqual(expand(text, "es"), text)
+    }
+
     func testAnUnclosedPairLeavesNoAsterisksBehind() {
         // A reply spoken a sentence at a time can split a pair across two utterances.
         XCTAssertEqual(expand("**Note: this is the first half."), "Note: this is the first half.")

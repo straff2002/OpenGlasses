@@ -18,9 +18,11 @@ import NaturalLanguage
 /// Unit abbreviations in plain letters (km, kg, mph, GB) are written out too, but only behind a
 /// number: "5 km" is five kilometers, a bare "km" could be anything.
 ///
+/// A Markdown table is read a row at a time, each cell behind its column's name.
+///
 /// Deliberately not here: single-letter units (m, g, s, V, A, L) and "in", which mean too many
-/// other things — "5m" is metres, minutes or millions; currency and percent signs, which engines
-/// read well; and Markdown tables, whose pipes have no spoken form worth guessing at.
+/// other things — "5m" is metres, minutes or millions; and currency and percent signs, which
+/// engines read well.
 enum SpokenSymbolExpander {
 
     // MARK: - Entry points
@@ -59,7 +61,7 @@ enum SpokenSymbolExpander {
 
     // MARK: - Tables
 
-    private static let triggers = CharacterSet(charactersIn: "°℃℉×÷±≈≤≥≠→›><~–—&#½¼¾²³µμΩ/₀₁₂₃₄₅₆₇₈₉*_`[•")
+    private static let triggers = CharacterSet(charactersIn: "°℃℉×÷±≈≤≥≠→›><~–—&#½¼¾²³µμΩ/₀₁₂₃₄₅₆₇₈₉*_`[•|")
 
     /// A "- item" or "+ item" line: the one piece of Markdown made only of characters that are
     /// too common to be triggers.
@@ -157,6 +159,8 @@ enum SpokenSymbolExpander {
 
     /// Markup taken out, text kept. Every language.
     private static let markdownRules: [(String) -> String] = [
+        // Tables first, while their rows are still whole lines.
+        { flattenedTables($0) },
         // Code fences, with their language tag. What is inside is still read.
         rule(#"(?m)^[ \t]*```[^\n]*\n?"#) { _, _ in "" },
         // [text](url) and ![alt](url): the words, not the address.
@@ -180,6 +184,72 @@ enum SpokenSymbolExpander {
         // footnote mark. Kept between two numbers, where it is a multiplication.
         rule(#"(?<![\d*])(?<!\d[ \t])\*++|\*++(?![ \t]?\d)"#) { _, _ in "" },
     ]
+
+    // MARK: - Tables
+
+    /// The row under a table's header: `|---|:---:|`. A rule line with no pipe in it is not one.
+    private static let delimiterRow = try! NSRegularExpression(
+        pattern: #"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$"#)
+
+    private static func isDelimiterRow(_ line: String) -> Bool {
+        line.contains("|") && delimiterRow.firstMatch(
+            in: line, range: NSRange(location: 0, length: (line as NSString).length)) != nil
+    }
+
+    private static func cells(_ line: String) -> [String] {
+        var row = line.trimmingCharacters(in: .whitespaces)
+        if row.hasPrefix("|") { row.removeFirst() }
+        if row.hasSuffix("|") { row.removeLast() }
+        return row.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// One row as a sentence: "Part: Bolt, Qty: 4." An empty cell is skipped, and a cell with no
+    /// column name is read on its own.
+    private static func sentence(row: [String], header: [String]) -> String {
+        let parts = row.enumerated().compactMap { index, value -> String? in
+            guard !value.isEmpty else { return nil }
+            let name = index < header.count ? header[index] : ""
+            return name.isEmpty ? value : "\(name): \(value)"
+        }
+        let joined = parts.joined(separator: ", ")
+        guard let last = joined.last else { return "" }
+        return ".!?:;".contains(last) ? joined : joined + "."
+    }
+
+    /// A table has no spoken form, but its rows do. Under a header each row is read as
+    /// "Column: value, Column: value."; a row of cells with no header — which is all an utterance
+    /// holds when a reply is spoken a line at a time — is read as its cells.
+    private static func flattenedTables(_ text: String) -> String {
+        guard text.contains("|") else { return text }
+        let lines = text.components(separatedBy: "\n")
+        var spoken: [String] = []
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            if index + 1 < lines.count, line.contains("|"), !isDelimiterRow(line), isDelimiterRow(lines[index + 1]) {
+                let header = cells(line)
+                index += 2
+                var rows = 0
+                while index < lines.count, lines[index].contains("|") {
+                    spoken.append(sentence(row: cells(lines[index]), header: header))
+                    rows += 1
+                    index += 1
+                }
+                if rows == 0 { spoken.append(sentence(row: header, header: [])) }
+            } else if isDelimiterRow(line) {
+                index += 1
+            } else if line.trimmingCharacters(in: .whitespaces).hasPrefix("|"),
+                      line.trimmingCharacters(in: .whitespaces).hasSuffix("|"),
+                      line.trimmingCharacters(in: .whitespaces).count > 1 {
+                spoken.append(sentence(row: cells(line), header: []))
+                index += 1
+            } else {
+                spoken.append(line)
+                index += 1
+            }
+        }
+        return spoken.joined(separator: "\n")
+    }
 
     // MARK: - English
 
@@ -292,6 +362,6 @@ enum SpokenSymbolExpander {
                 in: result, range: NSRange(location: 0, length: (result as NSString).length),
                 withTemplate: expression === doubledSpaces ? " " : "")
         }
-        return result.trimmingCharacters(in: .whitespaces)
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

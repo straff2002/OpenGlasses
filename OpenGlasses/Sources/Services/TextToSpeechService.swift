@@ -356,6 +356,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                         mirrorToHUD: Bool = true,
                         onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
         guard !text.isEmpty else { return .failed(reason: "nothing to say") }
+        // Markup with no words in it — a table's rule line, a lone "---" — leaves nothing to say
+        // once it is taken out, and an empty request is an error to a cloud voice.
+        guard !SpokenSymbolExpander.spokenForm(of: text).isEmpty else {
+            return .failed(reason: "nothing to say")
+        }
         lastSpokenText = text
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + text
