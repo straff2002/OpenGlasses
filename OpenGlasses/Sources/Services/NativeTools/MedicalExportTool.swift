@@ -52,16 +52,21 @@ struct MedicalExportTool: NativeTool {
             return "Medical export service not available."
         }
 
-        // Get transcript — from args or from the most recent recording
+        // Get transcript — from args or from the most recent recording. Who wrote it is decided
+        // here, where it is known: text in the `transcript` argument came from the model, however
+        // closely it follows what was said; the recorder's transcript is raw speech-to-text.
         let transcript: String
+        let origin: MedicalExportOrigin
         if let provided = args["transcript"] as? String, !provided.isEmpty {
             transcript = provided
+            origin = .modelAuthoredByActiveModel()
         } else if let recorder = videoRecorder {
             let recorderTranscript = await MainActor.run { recorder.recordingTranscript }
             if recorderTranscript.isEmpty {
                 return "No transcript available. Start a recording with transcription enabled first, or provide the transcript text."
             }
             transcript = recorderTranscript
+            origin = .automaticTranscription
         } else {
             return "No transcript available and no recording service connected."
         }
@@ -71,7 +76,8 @@ struct MedicalExportTool: NativeTool {
 
         switch action {
         case "export_fhir":
-            let result = await service.exportToFHIR(transcript: transcript, duration: duration, date: now)
+            let result = await service.exportToFHIR(transcript: transcript, duration: duration, date: now,
+                                                    origin: origin)
             await MainActor.run { service.lastExportResult = result }
 
             if result.success {
@@ -85,7 +91,7 @@ struct MedicalExportTool: NativeTool {
             do {
                 let lease = try await MainActor.run {
                     try service.createExportLease(transcript: transcript, duration: duration,
-                                                  date: now, format: format)
+                                                  date: now, format: format, origin: origin)
                 }
                 return "Export file created: \(lease.displayName) (\(format.rawValue)). It is held in protected storage for sharing and is removed once the share finishes."
             } catch {
@@ -97,7 +103,7 @@ struct MedicalExportTool: NativeTool {
             do {
                 let lease = try await MainActor.run {
                     try service.createExportLease(transcript: transcript, duration: duration,
-                                                  date: now, format: format)
+                                                  date: now, format: format, origin: origin)
                 }
                 // The share sheet is presented by AppState, which owns releasing the lease when
                 // the provider finishes — success, cancel, or error alike.

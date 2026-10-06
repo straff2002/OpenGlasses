@@ -55,8 +55,12 @@ class MedicalExportService: ObservableObject {
     /// protected storage at request-construction time.
     ///
     /// Submission is entirely in memory — it creates no file. A share file is only ever produced
-    /// by an explicit ``createExportLease(transcript:duration:date:format:)`` call.
-    func exportToFHIR(transcript: String, duration: String, date: Date) async -> ExportResult {
+    /// by an explicit ``createExportLease(transcript:duration:date:format:origin:)`` call.
+    ///
+    /// `origin` says who wrote `transcript` — the caller knows, this service does not guess — and
+    /// the resource sent states it (see `MedicalExportOrigin`).
+    func exportToFHIR(transcript: String, duration: String, date: Date,
+                      origin: MedicalExportOrigin) async -> ExportResult {
         let context: FHIRRequestContext
         do {
             context = try configurationStore.requestContext()
@@ -64,45 +68,33 @@ class MedicalExportService: ObservableObject {
             return ExportResult(success: false, platform: .fhir,
                                 message: error.localizedDescription, timestamp: Date())
         }
-        return await exportToFHIR(transcript: transcript, duration: duration, date: date, context: context)
+        return await exportToFHIR(transcript: transcript, duration: duration, date: date,
+                                  origin: origin, context: context)
     }
 
     /// Submit against an already-resolved context. Callers that have to surface a resolution
     /// failure themselves resolve first and call this.
     func exportToFHIR(transcript: String, duration: String, date: Date,
+                      origin: MedicalExportOrigin,
                       context: FHIRRequestContext) async -> ExportResult {
         isExporting = true
         defer { isExporting = false }
 
-        let config = context.configuration
-        let resource = buildFHIRDocumentReference(
-            transcript: transcript, duration: duration, date: date, privateContext: context.privateContext
-        )
-
-        // The destination is the operator's own record system, so local-only does not block it —
-        // but the endpoint rules still apply, and a credential must be in a header, not the URL.
-        guard let candidate = config.endpoint(for: "DocumentReference"),
-              let url = try? EndpointPolicy.requireOpenable(url: candidate, for: .fhirExport) else {
+        let request: URLRequest
+        do {
+            guard let built = try fhirSubmissionRequest(transcript: transcript, duration: duration, date: date,
+                                                        origin: origin, context: context) else {
+                return ExportResult(success: false, platform: .fhir,
+                                    message: "Invalid FHIR server URL", timestamp: Date())
+            }
+            request = built
+        } catch {
             return ExportResult(success: false, platform: .fhir,
-                                message: "Invalid FHIR server URL", timestamp: Date())
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/fhir+json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/fhir+json", forHTTPHeaderField: "Accept")
-
-        if let token = context.credential.bearerToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        } else if !config.clientID.isEmpty {
-            // SMART on FHIR OAuth flow would go here — for now, support pre-obtained tokens
-            PrivacyLog.medical(.export, .exportUnsupported)
+                                message: "Export failed: \(error.localizedDescription)",
+                                timestamp: Date())
         }
 
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: resource)
-            request.httpBody = jsonData
-
             let (_, response) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
             let statusCode = httpResponse?.statusCode ?? 0
@@ -125,15 +117,54 @@ class MedicalExportService: ObservableObject {
         }
     }
 
+    /// The POST a FHIR submission sends, or nil when the configured endpoint is not one the app
+    /// may open. Split out so the body that leaves the device — origin tag included — can be read
+    /// without sending it.
+    func fhirSubmissionRequest(transcript: String, duration: String, date: Date,
+                               origin: MedicalExportOrigin,
+                               context: FHIRRequestContext) throws -> URLRequest? {
+        let config = context.configuration
+        let resource = buildFHIRDocumentReference(
+            transcript: transcript, duration: duration, date: date, origin: origin,
+            privateContext: context.privateContext
+        )
+
+        // The destination is the operator's own record system, so local-only does not block it —
+        // but the endpoint rules still apply, and a credential must be in a header, not the URL.
+        guard let candidate = config.endpoint(for: "DocumentReference"),
+              let url = try? EndpointPolicy.requireOpenable(url: candidate, for: .fhirExport) else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/fhir+json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/fhir+json", forHTTPHeaderField: "Accept")
+
+        if let token = context.credential.bearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else if !config.clientID.isEmpty {
+            // SMART on FHIR OAuth flow would go here — for now, support pre-obtained tokens
+            PrivacyLog.medical(.export, .exportUnsupported)
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: resource)
+        return request
+    }
+
     /// Build a FHIR R4 DocumentReference resource from a transcript.
-    private func buildFHIRDocumentReference(transcript: String, duration: String,
-                                             date: Date, privateContext: FHIRPrivateContext) -> [String: Any] {
+    ///
+    /// `meta.tag` and the end of `description` state who wrote the text (`MedicalExportOrigin`).
+    private func buildFHIRDocumentReference(transcript: String, duration: String, date: Date,
+                                             origin: MedicalExportOrigin,
+                                             privateContext: FHIRPrivateContext) -> [String: Any] {
         let isoFormatter = ISO8601DateFormatter()
         let dateString = isoFormatter.string(from: date)
         let base64Content = Data(transcript.utf8).base64EncodedString()
 
         var resource: [String: Any] = [
             "resourceType": "DocumentReference",
+            "meta": ["tag": origin.fhirTags],
             "status": "current",
             "type": [
                 "coding": [[
@@ -150,7 +181,7 @@ class MedicalExportService: ObservableObject {
                 ]]
             ]],
             "date": dateString,
-            "description": "Clinical recording transcript (\(duration))",
+            "description": "Clinical recording transcript (\(duration)). \(origin.statement)",
             "content": [[
                 "attachment": [
                     "contentType": "text/plain",
@@ -182,21 +213,26 @@ class MedicalExportService: ObservableObject {
     ///
     /// The date is used for the human-readable display name only. The on-disk name is a UUID, so
     /// nothing about the recording is legible from the filesystem.
+    ///
+    /// `origin` says who wrote `transcript`; every format states it (see `MedicalExportOrigin`).
     func createExportLease(transcript: String, duration: String, date: Date,
-                           format: ExportFormat = .plainText) throws -> MedicalExportLease {
+                           format: ExportFormat = .plainText,
+                           origin: MedicalExportOrigin) throws -> MedicalExportLease {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd_HHmm"
         let dateString = dateFormatter.string(from: date)
 
         switch format {
         case .plainText:
-            return try leases.makeLease(data: Data(transcript.utf8), format: format,
+            return try leases.makeLease(data: Data(Self.plainText(transcript: transcript, origin: origin).utf8),
+                                        format: format,
                                         displayName: "clinical_transcript_\(dateString).txt")
 
         case .pdf:
             return try leases.makeLease(format: format,
                                         displayName: "clinical_transcript_\(dateString).pdf") { url in
-                guard createPDF(transcript: transcript, duration: duration, date: date, outputURL: url) else {
+                guard createPDF(transcript: transcript, duration: duration, date: date, origin: origin,
+                                outputURL: url) else {
                     throw MedicalExportError.exportWriteFailed
                 }
             }
@@ -206,7 +242,8 @@ class MedicalExportService: ObservableObject {
             // rather than silently emitting a document with the references stripped out.
             let privateContext = try configurationStore.loadPrivateContext()
             let resource = buildFHIRDocumentReference(
-                transcript: transcript, duration: duration, date: date, privateContext: privateContext
+                transcript: transcript, duration: duration, date: date, origin: origin,
+                privateContext: privateContext
             )
             guard let data = try? JSONSerialization.data(withJSONObject: resource, options: .prettyPrinted) else {
                 throw MedicalExportError.exportWriteFailed
@@ -215,25 +252,39 @@ class MedicalExportService: ObservableObject {
                                         displayName: "clinical_document_\(dateString).fhir.json")
 
         case .hl7:
-            let message = buildHL7Message(transcript: transcript, duration: duration, date: date)
+            let message = buildHL7Message(transcript: transcript, duration: duration, date: date, origin: origin)
             return try leases.makeLease(data: Data(message.utf8), format: format,
                                         displayName: "clinical_message_\(dateString).hl7")
         }
     }
 
+    /// The plain-text file: the origin statement as its first line, then the transcript.
+    static func plainText(transcript: String, origin: MedicalExportOrigin) -> String {
+        "\(origin.statement)\n\n\(transcript)"
+    }
+
     // MARK: - PDF Generation
 
-    private func createPDF(transcript: String, duration: String, date: Date, outputURL: URL) -> Bool {
+    static let pdfTitle = "Clinical Recording Transcript"
+
+    private func createPDF(transcript: String, duration: String, date: Date,
+                           origin: MedicalExportOrigin, outputURL: URL) -> Bool {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         let margin: CGFloat = 50
 
-        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        // The document says who wrote the text in its metadata (Info dictionary and XMP) and in a
+        // printed line above the transcript.
+        let stamp = origin.pdfStamp(title: Self.pdfTitle, date: date)
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = stamp.documentInfo
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         let dateFormatter = DateFormatter()
         dateFormatter.dateStyle = .long
         dateFormatter.timeStyle = .short
 
         do {
             try renderer.writePDF(to: outputURL) { context in
+                stamp.apply(to: context.cgContext)
                 context.beginPage()
 
                 // Header
@@ -241,7 +292,7 @@ class MedicalExportService: ObservableObject {
                     .font: UIFont.boldSystemFont(ofSize: 16),
                     .foregroundColor: UIColor.black
                 ]
-                let header = "Clinical Recording Transcript"
+                let header = Self.pdfTitle
                 header.draw(at: CGPoint(x: margin, y: margin), withAttributes: headerAttrs)
 
                 // Metadata
@@ -252,8 +303,17 @@ class MedicalExportService: ObservableObject {
                 let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: Avenkin Smart Glasses"
                 meta.draw(at: CGPoint(x: margin, y: margin + 24), withAttributes: metaAttrs)
 
+                // Who wrote the text, above the text.
+                let originAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.italicSystemFont(ofSize: 9),
+                    .foregroundColor: UIColor.darkGray
+                ]
+                (origin.statement as NSString).draw(
+                    in: CGRect(x: margin, y: margin + 70, width: pageRect.width - margin * 2, height: 26),
+                    withAttributes: originAttrs)
+
                 // Separator
-                let separatorY = margin + 70
+                let separatorY = margin + 100
                 context.cgContext.setStrokeColor(UIColor.lightGray.cgColor)
                 context.cgContext.move(to: CGPoint(x: margin, y: separatorY))
                 context.cgContext.addLine(to: CGPoint(x: pageRect.width - margin, y: separatorY))
@@ -279,29 +339,40 @@ class MedicalExportService: ObservableObject {
 
     // MARK: - HL7 v2 Message
 
-    /// Build a basic HL7 v2.x MDM (Medical Document Management) message.
-    /// Used by older systems that don't support FHIR.
-    private func buildHL7Message(transcript: String, duration: String, date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMddHHmmss"
-        let timestamp = formatter.string(from: date)
-        let msgId = UUID().uuidString.prefix(20)
-
-        // Escape HL7 special characters. The escape character "\" MUST be escaped first, otherwise
-        // it corrupts the backslashes introduced by the field/component escapes below.
-        let escapedText = transcript
+    /// Escape HL7 special characters. The escape character "\" MUST be escaped first, otherwise it
+    /// corrupts the backslashes introduced by the field/component escapes below.
+    private static func hl7Escaped(_ text: String) -> String {
+        text
             .replacingOccurrences(of: "\\", with: "\\E\\")
             .replacingOccurrences(of: "|", with: "\\F\\")
             .replacingOccurrences(of: "^", with: "\\S\\")
             .replacingOccurrences(of: "&", with: "\\T\\")
             .replacingOccurrences(of: "~", with: "\\R\\")
             .replacingOccurrences(of: "\n", with: "\\.br\\")
+    }
+
+    /// Build a basic HL7 v2.x MDM (Medical Document Management) message.
+    /// Used by older systems that don't support FHIR.
+    ///
+    /// Who wrote the text is an `NTE` (notes and comments) segment. MDM^T02's grammar carries notes
+    /// in the observation group, so the `NTE` follows the `OBX` it annotates rather than sitting
+    /// between `TXA` and `OBX`, where a strict parser would refuse the message.
+    private func buildHL7Message(transcript: String, duration: String, date: Date,
+                                 origin: MedicalExportOrigin) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        let timestamp = formatter.string(from: date)
+        let msgId = UUID().uuidString.prefix(20)
+
+        let escapedText = Self.hl7Escaped(transcript)
+        let escapedOrigin = Self.hl7Escaped(origin.statement)
 
         return """
         MSH|^~\\&|OpenGlasses|SmartGlasses|EMR|Hospital|\(timestamp)||MDM^T02|MSG\(msgId)|P|2.5.1
         EVN|T02|\(timestamp)
         TXA|1|CN|TX|\(timestamp)|||\(timestamp)||||||||AU
         OBX|1|TX|11506-3^Progress note^LN||Duration: \(duration)\\.br\\\(escapedText)||||||F
+        NTE|1||\(escapedOrigin)
         """
     }
 }
