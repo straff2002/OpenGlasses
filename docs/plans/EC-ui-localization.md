@@ -19,6 +19,15 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 ## Progress (2026-09-30)
 
 **Landed.**
+- **Catalog sync and Russian top-up (2026-10-06).** The catalog was synced with the current
+  sources: 403 keys added, none removed, taking it to 2,964 keys (2,916 translatable). The sync
+  is add-only: the extraction proposed stale marks on 60 existing keys and those were left out,
+  so no existing entry changed. That left `ru` at 86%, under the guard's floor, so 402 keys were
+  machine-translated (the new translatable keys and one older gap), one of them with plural
+  variants. `ru` now covers 2,915 of 2,916. The key left in
+  English is the spending-limit footer beginning "At 80% of a limit": the guard reads `% o` there
+  as a format specifier, so no translation passes specifier parity until the English copy or the
+  guard's pattern changes. Human review of the flagged subset is still owed for `ru`.
 - **Russian is the first complete catalog (2026-09-30).** Added to the language set by owner
   request. Every current catalog key with words in it now has a machine-translated `ru` value;
   that is the whole catalog, not the old 178-key slice. Stale keys, and keys that are only symbols
