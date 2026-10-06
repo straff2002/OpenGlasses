@@ -19,6 +19,8 @@ enum AIFeature: String, CaseIterable {
     // Biometric
     case faceRecognition
     case speakerIdentification
+    /// Assistive Mode's Social mode: the apparent emotional state of the person in view (Plan HP).
+    case assistiveSocial
 
     // Health
     case healthVault
@@ -113,6 +115,22 @@ enum AIFeature: String, CaseIterable {
                           stores: [.speakerNames],
                           dataRetainedWhenDisabled: "Names the wearer attached to voice clusters stay in preferences; they are cleared one speaker at a time.",
                           erasure: .api("SpeakerRegistry.setName(nil, for:)"))
+
+        case .assistiveSocial:
+            // Not a tool: Assistive Mode routes to it from what the wearer says. Its switch is read
+            // through `AssistiveModePolicy`, which also refuses it outright on a managed phone and
+            // under a Field Assist edition — inferring emotions at work is prohibited, whatever the
+            // switch says.
+            return Record(feature: self, title: "Assistive Social mode",
+                          sensitiveCategories: [.biometric],
+                          disableSwitch: Switch(key: "assistiveSocialEnabled",
+                                                isEnabled: { Config.assistiveSocialEnabled },
+                                                setEnabled: { Config.assistiveSocialEnabled = $0 },
+                                                preexisting: false),
+                          toolNames: [],
+                          stores: [],
+                          dataRetainedWhenDisabled: "Nothing retained — advice is spoken and not written.",
+                          erasure: .notSubjectLinked)
 
         case .healthVault:
             return Record(feature: self, title: "Health vault access",

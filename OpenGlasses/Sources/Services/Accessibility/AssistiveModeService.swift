@@ -13,6 +13,14 @@ final class AssistiveModeService: ObservableObject {
     @Published private(set) var isActive = false
     @Published private(set) var currentMode: AssistiveRouter.Mode = .scene
     @Published private(set) var latestAdvice: AssistiveAdvice?
+    /// Why Social mode is not offered on this phone, or nil when it is (Plan HP P1 item 3). Updated
+    /// at start and on every analysis, so the UI can say why a request about a person was answered
+    /// as a scene. The copy is the UI's job (P2); this is the reason it reads.
+    @Published private(set) var socialRefusal: AssistiveModePolicy.Refusal?
+
+    /// The Social mode decision, read fresh each analysis. Injectable so a test can drive the
+    /// routing without an organisation profile or an edition.
+    var socialPolicy: () -> AssistiveModePolicy.Decision = { AssistiveModePolicy.current() }
 
     /// Seconds between ambient analyses. Conservative to limit battery + API cost.
     var interval: TimeInterval = 6
@@ -43,6 +51,7 @@ final class AssistiveModeService: ObservableObject {
         self.llm = llm
         self.tts = tts
         isActive = true
+        socialRefusal = socialPolicy().refusal
         throttle.reset()   // first analysis runs immediately
         PrivacyLog.vision(.assistiveMode, .started, seconds: interval)
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
@@ -87,8 +96,7 @@ final class AssistiveModeService: ObservableObject {
 
         guard let imageData = await currentFrameData(camera) else { return }
 
-        let mode = AssistiveRouter.route(transcription: pendingTranscription)
-        currentMode = mode
+        let mode = routeNextAnalysis(transcription: pendingTranscription)
         // CJ item 4: the ambient loop points a camera at the world continuously — the
         // category-only privacy guarantee rides on every frame prompt (default on).
         var systemPrompt = AssistiveRouter.systemPrompt(for: mode)
@@ -108,6 +116,19 @@ final class AssistiveModeService: ObservableObject {
         var spoken = advice.advice
         if let followup = advice.followup, !followup.isEmpty { spoken += " " + followup }
         await tts.speak(spoken, urgency: advice.urgency.speechUrgency)
+    }
+
+    /// Pick the mode for the next analysis under the current Social mode policy, and publish both
+    /// the mode and the refusal. Social mode routes to Scene whenever the policy refuses it, so a
+    /// managed phone or a Field Assist edition never sends an emotional-state prompt. Internal so
+    /// the routing is testable without a camera, a model or a voice.
+    @discardableResult
+    func routeNextAnalysis(transcription: String?) -> AssistiveRouter.Mode {
+        let decision = socialPolicy()
+        socialRefusal = decision.refusal
+        let mode = AssistiveRouter.route(transcription: transcription, social: decision)
+        currentMode = mode
+        return mode
     }
 
     /// The ambient loop points a camera at the world continuously and sends what it sees to a
