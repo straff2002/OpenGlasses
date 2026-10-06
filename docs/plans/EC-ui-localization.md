@@ -19,6 +19,13 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 ## Progress (2026-10-06)
 
 **Landed.**
+- **The guard no longer reads a percentage as a specifier (2026-10-06).** The specifier pattern
+  accepted the printf space flag, so "80% of a limit" parsed as `% o`, an octal argument, and any
+  translation of that footer failed parity. No string in the app uses the space flag, and that
+  footer was the only string in the catalog the flag changed the reading of, so it is dropped
+  from the pattern, with a fixture for the case. The footer is now translated, and `ru` and
+  `es-MX` each cover all 2,916 translatable keys. The two entries below describe the catalog as
+  it stood before this.
 - **Mexican Spanish is the second complete catalog (2026-10-06).** By owner request `es-MX` is
   filled end to end instead of staying an override layer over `es`; this replaces the 2026-09-02
   decision below. It was filled on top of the sync in the next entry, so it covers the same keys
