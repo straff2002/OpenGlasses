@@ -249,6 +249,8 @@ struct OpenGlassesApp: App {
         // And the default wake phrase (Plan FY P3.2): a stored former default becomes "avenkin",
         // in the setting and on the personas. Once, behind a flag; a phrase the wearer chose stays.
         Config.migrateWakePhraseToAvenkinIfNeeded()
+        // The Researcher mode dropped its physicist's name: an installed, untouched copy follows.
+        Config.renameResearcherPersonaIfNeeded()
         // Temple taps became remappable (Plan GJ): a wearer who had the single-gesture switch on
         // keeps double tap = start talking; everyone else gets the new defaults. Once, behind a flag.
         TempleGestureSettingsMigration.run()
