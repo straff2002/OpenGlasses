@@ -93,6 +93,32 @@ final class MCPTransportTests: XCTestCase {
         XCTAssertEqual(sentPayload?["method"] as? String, "tools/list")
     }
 
+    func testToolCallsGetALongerDeadlineThanProtocolCalls() {
+        XCTAssertEqual(HTTPTransport.timeoutInterval(forMethod: "tools/call"), HTTPTransport.toolCallTimeout)
+        XCTAssertEqual(HTTPTransport.timeoutInterval(forMethod: "tools/list"), HTTPTransport.protocolCallTimeout)
+        XCTAssertEqual(HTTPTransport.timeoutInterval(forMethod: "initialize"), HTTPTransport.protocolCallTimeout)
+        XCTAssertEqual(HTTPTransport.timeoutInterval(forMethod: nil), HTTPTransport.protocolCallTimeout)
+        XCTAssertGreaterThanOrEqual(HTTPTransport.toolCallTimeout, 60,
+                                    "a tool that delegates to an agent routinely runs past 15 s")
+        XCTAssertLessThanOrEqual(HTTPTransport.protocolCallTimeout, 15, "a server slow to say hello is down")
+    }
+
+    func testToolCallRequestCarriesTheLongDeadline() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.responseBody = Data(#"{"jsonrpc":"2.0","id":1,"result":{"content":[]}}"#.utf8)
+        let server = MCPServerConfig(id: "s", label: "Slow", url: "https://example.test/mcp",
+                                     headers: [:], enabled: true)
+        let transport = HTTPTransport(session: MockURLProtocol.session())
+
+        _ = try await transport.request(
+            ["jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": ["name": "ask", "arguments": [:] as [String: Any]] as [String: Any]],
+            server: server)
+
+        let captured = try XCTUnwrap(MockURLProtocol.lastRequest)
+        XCTAssertEqual(captured.timeoutInterval, HTTPTransport.toolCallTimeout)
+    }
+
     func testHTTPTransportThrowsOnBadURL() async {
         let server = MCPServerConfig(id: "s", label: "Bad", url: "", headers: [:], enabled: true)
         do {
