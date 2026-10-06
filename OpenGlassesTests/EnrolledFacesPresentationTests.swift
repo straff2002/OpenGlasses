@@ -28,11 +28,11 @@ final class EnrolledFacesPresentationTests: XCTestCase {
         XCTAssertEqual(Set(rows.map(\.id)).count, 3)
     }
 
-    func testAFutureTimestampReadsAsNow() {
-        let ahead = EnrolledFacesPresentation.lastSeenText(now.addingTimeInterval(120), now: now, locale: locale)
-        let atNow = EnrolledFacesPresentation.lastSeenText(now, now: now, locale: locale)
-        XCTAssertEqual(ahead, atNow)
-        XCTAssertFalse(ahead.contains("in "), ahead)
+    func testUnderAMinuteAndAFutureTimestampReadAsJustNow() {
+        for offset: TimeInterval in [120, 0, -30, -59] {
+            XCTAssertEqual(EnrolledFacesPresentation.lastSeenText(now.addingTimeInterval(offset), now: now, locale: locale),
+                           "Last seen just now", "\(offset)")
+        }
     }
 
     func testNoFacesIsAnEmptyList() {

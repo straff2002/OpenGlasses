@@ -53,12 +53,14 @@ enum EnrolledFacesPresentation {
     }
 
     /// "Last seen 2 days ago". A face is "seen" when it is enrolled and each time it is recognised.
+    /// Under a minute — including a record stamped a moment after `now`, or a clock that moved
+    /// backwards — is "just now"; the formatter would say "in 0 seconds".
     static func lastSeenText(_ lastSeen: Date, now: Date = Date(), locale: Locale = .current) -> String {
+        guard now.timeIntervalSince(lastSeen) >= 60 else { return String(localized: "Last seen just now") }
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = locale
         formatter.unitsStyle = .full
-        // A clock that has moved backwards, or a record stamped a moment after `now`, is "now".
-        let relative = formatter.localizedString(for: min(lastSeen, now), relativeTo: now)
+        let relative = formatter.localizedString(for: lastSeen, relativeTo: now)
         return String(localized: "Last seen \(relative)")
     }
 
