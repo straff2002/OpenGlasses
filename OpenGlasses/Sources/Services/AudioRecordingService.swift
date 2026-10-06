@@ -19,6 +19,12 @@ class AudioRecordingService: ObservableObject {
     var autoTranscribe = true
 
     weak var wakeWordService: WakeWordService?
+    /// The assistant-voice gate (the capture router). The recorder reads the listener's tap
+    /// directly, so the router's fan-out never sees these buffers; each one is passed through the
+    /// router's gate instead, so "Include Assistant Voice" holds for audio-only recordings too.
+    /// Unset (tests), nothing is silenced and the recording is marked as possibly holding the
+    /// assistant's voice — which, ungated, it may.
+    weak var assistantVoiceGate: (any AssistantVoiceGating)?
     weak var ambientCaptionService: AmbientCaptionService?
     weak var meetingAssistant: MeetingAssistantService?
     var llmClosure: ((String) async throws -> String)?
@@ -69,6 +75,12 @@ class AudioRecordingService: ObservableObject {
         audioInput.expectsMediaDataInRealTime = true
         writer.add(audioInput)
 
+        // The file says when the assistant's voice may be in it. Decided now: the writer takes its
+        // metadata before the first sample.
+        let gate = assistantVoiceGate
+        RecordingProvenanceMetadata.apply(to: writer,
+                                          assistantVoiceMayBeIncluded: gate?.assistantVoiceMayBeIncluded ?? true)
+
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
@@ -87,10 +99,12 @@ class AudioRecordingService: ObservableObject {
         self.recordingDuration = 0
         self.isRecording = true
 
-        // Subscribe to audio buffers from the shared engine
-        wakeWordService?.addAudioBufferConsumer(id: Self.audioConsumerId) { [weak self] buffer in
-            self?.appendAudioBuffer(buffer)
-        }
+        // Subscribe to audio buffers from the shared engine, through the assistant-voice gate.
+        wakeWordService?.addAudioBufferConsumer(
+            id: Self.audioConsumerId,
+            handler: Self.gatedConsumer(gate: gate) { [weak self] buffer in
+                self?.appendAudioBuffer(buffer)
+            })
 
         // Live transcription
         if autoTranscribe, let captions = ambientCaptionService {
@@ -200,6 +214,17 @@ class AudioRecordingService: ObservableObject {
     }
 
     // MARK: - Audio Buffer (nonisolated — called from audio thread)
+
+    /// The mic handler: every buffer through the assistant-voice gate, then on to `append`. The
+    /// gate hands back a silent buffer of the same shape rather than dropping one, so the
+    /// recording's timeline is unchanged by it.
+    nonisolated static func gatedConsumer(
+        gate: (any AssistantVoiceGating)?,
+        append: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        guard let gate else { return append }
+        return { buffer in append(gate.gatedBuffer(buffer)) }
+    }
 
     private nonisolated func appendAudioBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let audioInput, audioInput.isReadyForMoreMediaData else { return }

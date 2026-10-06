@@ -325,6 +325,9 @@ enum SessionExporter {
 
     // MARK: - PDF
 
+    /// The work order's heading and its PDF `Title`.
+    static let workOrderTitle = "Field Assist Session Record"
+
     /// Render the work order at exactly `url`. As with `writeJSON`, the caller owns the location.
     ///
     /// - Parameter photosDirectory: the session's `photos/` directory, when the evidence the
@@ -339,17 +342,20 @@ enum SessionExporter {
                          clipPlan: ClipDeliveryPlan = .undecided,
                          debriefs: [JobDebrief] = []) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        // Composite: the record mixes the technician's speech-to-text and entered values with
+        // the assistant's AI-generated turns.
+        let stamp = PDFProvenanceStamp.aiGenerated(
+            provenance: document.provenance, title: workOrderTitle, composite: true,
+            unrecordedSubject: "Field session record with AI-generated assistant turns. Model not recorded.")
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = document.provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
-            kCGPDFContextSubject as String: "Field session record with AI-generated assistant turns. Model not recorded.",
-        ]
+        format.documentInfo = stamp.documentInfo
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         let layout = PDFLayout(pageRect: pageRect, margin: 50)
 
         try renderer.writePDF(to: url) { context in
+            stamp.apply(to: context.cgContext)
             layout.begin(context)
-            layout.heading("Field Assist Session Record")
+            layout.heading(workOrderTitle)
             layout.body("\(document.vaultName)  •  Session \(document.sessionId.prefix(8))")
             layout.spacer(6)
 
@@ -556,14 +562,16 @@ enum SessionExporter {
     static func writeAddendumPDF(record: WorkRecord, debriefs: [JobDebrief], to url: URL,
                                  provenance: AIProvenance? = nil) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        // Composite: the job's own details beside the model's summary of what was said.
+        let stamp = PDFProvenanceStamp.aiGenerated(
+            provenance: provenance, title: DebriefDocumentPolicy.addendumTitle, composite: true,
+            unrecordedSubject: "Field job debrief addendum. Model not recorded.")
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
-            kCGPDFContextSubject as String: "Field job debrief addendum. Model not recorded.",
-        ]
+        format.documentInfo = stamp.documentInfo
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         let layout = PDFLayout(pageRect: pageRect, margin: 50)
         try renderer.writePDF(to: url) { context in
+            stamp.apply(to: context.cgContext)
             layout.begin(context)
             layout.heading(DebriefDocumentPolicy.addendumTitle)
             layout.body(record.reportSubject)
@@ -592,14 +600,16 @@ enum SessionExporter {
     static func writeTranscriptPDF(record: WorkRecord, lines: [JobTranscriptExport.Line],
                                    to url: URL, provenance: AIProvenance? = nil) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
+        // Composite: the technician's speech-to-text beside the assistant's AI-generated replies.
+        let stamp = PDFProvenanceStamp.aiGenerated(
+            provenance: provenance, title: transcriptTitle, composite: true,
+            unrecordedSubject: "Internal job transcript: unchecked speech-to-text and AI-generated replies. Model not recorded.")
         let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = provenance?.pdfDocumentInfo ?? [
-            kCGPDFContextCreator as String: "Avenkin — contains AI-generated content",
-            kCGPDFContextSubject as String: "Internal job transcript: unchecked speech-to-text and AI-generated replies. Model not recorded.",
-        ]
+        format.documentInfo = stamp.documentInfo
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
         let layout = PDFLayout(pageRect: pageRect, margin: 50)
         try renderer.writePDF(to: url) { context in
+            stamp.apply(to: context.cgContext)
             layout.begin(context)
             layout.heading(transcriptTitle)
             layout.body(record.reportSubject)

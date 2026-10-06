@@ -3430,20 +3430,6 @@ struct Config {
         SharedAppState.defaults.set(enabled, forKey: "listeningEnabled")
     }
 
-    // MARK: - Emotion-Aware TTS
-
-    static var emotionAwareTTSEnabled: Bool {
-        let key = "emotionAwareTTSEnabled"
-        if UserDefaults.standard.object(forKey: key) == nil {
-            return true // Default enabled
-        }
-        return UserDefaults.standard.bool(forKey: key)
-    }
-
-    static func setEmotionAwareTTSEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "emotionAwareTTSEnabled")
-    }
-
     // MARK: - Scene Narration (Plan CV)
 
     /// Whether continuous scene narration is available. Off by default: it runs the on-device VLM

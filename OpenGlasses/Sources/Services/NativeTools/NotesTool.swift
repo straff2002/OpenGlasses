@@ -2,10 +2,19 @@ import Foundation
 
 /// Stores and retrieves notes in UserDefaults. Two tools: save_note and list_notes.
 
+/// Who wrote a saved note (Plan HQ P1 item 4). `save_note`'s text is whatever the model passed it,
+/// so a note says it was written by the assistant; a reader (Spotlight, a list, an export) can show
+/// that without guessing from where the note happens to be stored.
+enum SavedNoteOrigin {
+    static let assistant = "assistant"
+}
+
 private struct SavedNote: Codable {
     let title: String?
     let content: String
     let timestamp: Date
+    /// `SavedNoteOrigin`. Optional so notes saved before the field existed decode unchanged.
+    let origin: String?
 }
 
 private enum NotesStorage {
@@ -57,7 +66,8 @@ struct SaveNoteTool: NativeTool {
         let title = args["title"] as? String
 
         var notes = NotesStorage.loadNotes()
-        let note = SavedNote(title: title, content: content, timestamp: Date())
+        let note = SavedNote(title: title, content: content, timestamp: Date(),
+                             origin: SavedNoteOrigin.assistant)
         notes.append(note)
         NotesStorage.saveNotes(notes)
 

@@ -8,7 +8,8 @@
 <title>Avenkin Privacy Policy</title>
 <!-- Self-contained on purpose, like index.html: no external CSS, script, font or image, and no
      analytics or third-party embed. The only outbound references are plain links to the privacy
-     policies of the services named below and to the Office of the Privacy Commissioner. -->
+     policies of the services named below, to the Office of the Privacy Commissioner, and to the
+     data protection authorities named under "Your rights". -->
 <style>
   :root {
     --bg: #fbfaf8;
@@ -89,6 +90,7 @@
   <li><a href="#retention">Retention and deletion</a></li>
   <li><a href="#security">Security</a></li>
   <li><a href="#transfers">International transfers</a></li>
+  <li><a href="#jurisdictions">Jurisdictions and legal basis</a></li>
   <li><a href="#rights">Your rights</a></li>
   <li><a href="#changes">Changes to this policy</a></li>
   <li><a href="#website">This website</a></li>
@@ -325,18 +327,41 @@
 </ul>
 <p>The aircraft, defibrillator and exchange-rate look-ups (adsb.fi, the Overpass API and Frankfurter) are public data services that receive only the look-up described in section 3. Servers you configure yourself (a self-hosted AI, an agent gateway, an MCP server, Home Assistant, a streaming server, a browser-streaming relay or your organisation's systems) are governed by whoever runs them.</p>
 
-<h2 id="rights">12. Your rights</h2>
-<p>Under the New Zealand Privacy Act 2020 you have the right to ask for access to personal information we hold about you and to ask us to correct it. We hold very little: usually just what's in any email you send us. Contact us at the address below. For information on your phone, you can view, change and delete it in the app. For information held by a service you chose, contact that service.</p>
-<p>If you are not satisfied with how we handle a privacy concern, you can complain to the Office of the Privacy Commissioner at <a href="https://www.privacy.org.nz/">privacy.org.nz</a>.</p>
+<h2 id="jurisdictions">12. Jurisdictions and legal basis</h2>
+<p>Skunkworks NZ Ltd is the company responsible for the personal information we handle (the "controller", in the words of the GDPR). The New Zealand Privacy Act 2020 applies to everyone who uses Avenkin. If you are in the European Union, the European Economic Area or the United Kingdom, the GDPR or the UK GDPR applies as well.</p>
+<p>We handle very little ourselves, because most of what the app does happens on your phone or between your phone and a service you chose. Where the law asks what that rests on, these are the grounds we rely on:</p>
+<ul>
+  <li><strong>Your own decision.</strong> The app only uses a feature, and only sends anything to a service, because you turned the feature on, used it, or connected that service yourself. Nothing reaches us when you do.</li>
+  <li><strong>The subscription you bought.</strong> We provide what you paid for. Purchases are handled by Apple, and the app checks what you're entitled to on your phone.</li>
+  <li><strong>Our legitimate interest in fixing problems.</strong> When you choose to send us a diagnostics or support report, or email us, we use it to look into the problem and answer you, and for nothing else.</li>
+</ul>
+<p>If your employer or another organisation gave you Avenkin, that organisation decides which job records, reports and transcripts its own systems receive, and it is responsible for what it does with them.</p>
+<p>We have not appointed a representative in the EU or the UK. If you are there, contact us directly at the address under <a href="#contact">Contact</a>.</p>
+<p>If you are in the EU, the EEA or the UK, you have the GDPR rights listed under <a href="#rights">Your rights</a>, as well as the New Zealand ones.</p>
 
-<h2 id="changes">13. Changes to this policy</h2>
+<h3>AI-generated content is marked</h3>
+<p>When something the assistant wrote, or a recording that may contain its voice, is saved to a file that can leave your phone, the file says so in a form that both people and software can read:</p>
+<ul>
+  <li><strong>PDFs</strong> the assistant helped write (safety assessments, Field Assist job records, debrief notes and transcripts, and clinical transcripts) carry a title, the keyword "AI-generated" and standard document metadata naming the app, the model and when it was made, including the IPTC code that identifies content made by an AI model. A clinical transcript that is speech-to-text is labelled "Automatic transcription" instead.</li>
+  <li><strong>Clinical exports</strong> in Medical Compliance mode say in every format (PDF, FHIR, HL7 and plain text), and in what is sent to your organisation's record system, whether the text is an automatic transcription of what was said or was written by an AI model, and for model-written text, which model.</li>
+  <li><strong>Recordings</strong> made with "Include Assistant Voice" on carry a note in the file that they may contain synthetic speech from Avenkin AI. With it off, video and audio recordings are silenced while the assistant speaks from the phone's speaker, and no note is added.</li>
+  <li><strong>Saved text.</strong> Entries the assistant writes into a notes vault end with "Written by Avenkin AI from your dictation". A chat you share starts by saying the assistant's turns are AI-generated, and by which model where the app recorded it. An exported agent archive marks its documents as AI-generated and points to the file that records how they were made.</li>
+</ul>
+<p>Some things are not marked: spoken answers, because no file is made; messages the assistant drafts, because you read, change and send them yourself; live broadcasts, because there is no file to carry a mark; and camera photos, because nothing in them was made by AI.</p>
+
+<h2 id="rights">13. Your rights</h2>
+<p>Under the New Zealand Privacy Act 2020 you have the right to ask for access to personal information we hold about you and to ask us to correct it. We hold very little: usually just what's in any email you send us. Contact us at the address below. For information on your phone, you can view, change and delete it in the app. For information held by a service you chose, contact that service.</p>
+<p>If you are in the EU, the EEA or the UK, you also have the right to ask us to delete the personal information we hold about you, to restrict how we use it, to have it in a portable form, and to object to our using it for our legitimate interest. Ask at the same address.</p>
+<p>If you are not satisfied with how we handle a privacy concern, you can complain to the Office of the Privacy Commissioner at <a href="https://www.privacy.org.nz/">privacy.org.nz</a>. In the EU or the EEA you can also complain to the <a href="https://www.edpb.europa.eu/about-edpb/about-edpb/members_en">data protection authority</a> where you live or work, and in the UK to the <a href="https://ico.org.uk/">Information Commissioner's Office</a>.</p>
+
+<h2 id="changes">14. Changes to this policy</h2>
 <p>If the app's handling of data changes, we will update this page and its effective date.</p>
 
-<h2 id="website">14. This website</h2>
+<h2 id="website">15. This website</h2>
 <p>avenkin.com is a static website. It sets no cookies, runs no analytics or advertising, and loads nothing from other sites: no hosted fonts, embedded video or social widgets.</p>
 <p>The site is hosted on GitHub Pages. Like any web host, GitHub receives your IP address and browser details when you load a page and may keep them in its logs, under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub privacy statement</a>. We do not receive those logs.</p>
 
-<h2 id="contact">15. Contact</h2>
+<h2 id="contact">16. Contact</h2>
 <p>Skunkworks NZ Ltd, New Zealand<br>
 Privacy enquiries: <a href="mailto:g@skunkworks.kiwi">g@skunkworks.kiwi</a></p>
 

@@ -76,6 +76,15 @@ class AgentDataExporter {
         return lease
     }
 
+    /// The header line every exported agent document opens with (Plan HQ P1 item 4). An HTML
+    /// comment, so a Markdown reader renders nothing for it and a machine finds it on line one.
+    nonisolated static let agentDocumentHeader = "<!-- ai-generated: see provenance.json -->"
+
+    /// An agent document as the archive writes it: the header, then the document unchanged.
+    nonisolated static func markedAgentDocument(_ text: String) -> String {
+        "\(agentDocumentHeader)\n\(text)"
+    }
+
     /// Write the readable bundle. Split out so the staging tree has exactly one producer and the
     /// lease path above stays about the lifecycle.
     private static func writeBundle(
@@ -86,10 +95,14 @@ class AgentDataExporter {
     ) throws {
         let fm = FileManager.default
 
-        // Agent documents
-        try agentDocs.soul.write(to: tempDir.appendingPathComponent("soul.md"), atomically: true, encoding: .utf8)
-        try agentDocs.skills.write(to: tempDir.appendingPathComponent("skills.md"), atomically: true, encoding: .utf8)
-        try agentDocs.memory.write(to: tempDir.appendingPathComponent("memory.md"), atomically: true, encoding: .utf8)
+        // Agent documents — each opens with a comment naming the archive's provenance, so a file
+        // read on its own, away from `provenance.json`, still says it was machine-written.
+        try markedAgentDocument(agentDocs.soul)
+            .write(to: tempDir.appendingPathComponent("soul.md"), atomically: true, encoding: .utf8)
+        try markedAgentDocument(agentDocs.skills)
+            .write(to: tempDir.appendingPathComponent("skills.md"), atomically: true, encoding: .utf8)
+        try markedAgentDocument(agentDocs.memory)
+            .write(to: tempDir.appendingPathComponent("memory.md"), atomically: true, encoding: .utf8)
 
         // User memories (key-value store)
         let memoriesData = try JSONEncoder().encode(memoryStore.memories)

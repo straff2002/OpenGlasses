@@ -459,17 +459,19 @@ final class MedicalComplianceTests: XCTestCase {
         let harness = makeExportHarness()
         let transcript = "Patient presented with symptoms of..."
         let lease = try harness.service.createExportLease(
-            transcript: transcript, duration: "05:30", date: Date(), format: .plainText
+            transcript: transcript, duration: "05:30", date: Date(), format: .plainText, origin: .automaticTranscription
         )
         XCTAssertEqual(lease.fileURL.pathExtension, "txt")
-        XCTAssertEqual(try String(contentsOf: lease.fileURL, encoding: .utf8), transcript)
+        // The transcript, under a first line that says who wrote it.
+        XCTAssertEqual(try String(contentsOf: lease.fileURL, encoding: .utf8),
+                       MedicalExportOrigin.automaticTranscription.statement + "\n\n" + transcript)
         harness.service.leases.release(lease)
     }
 
     func testExportServiceCreatesPDFLease() throws {
         let harness = makeExportHarness()
         let lease = try harness.service.createExportLease(
-            transcript: "Test transcript for PDF", duration: "02:00", date: Date(), format: .pdf
+            transcript: "Test transcript for PDF", duration: "02:00", date: Date(), format: .pdf, origin: .automaticTranscription
         )
         let data = try Data(contentsOf: lease.fileURL)
         XCTAssertGreaterThan(data.count, 0)
@@ -480,7 +482,7 @@ final class MedicalComplianceTests: XCTestCase {
     func testExportServiceCreatesFHIRJsonLease() throws {
         let harness = makeExportHarness()
         let lease = try harness.service.createExportLease(
-            transcript: "FHIR test", duration: "01:00", date: Date(), format: .fhirJson
+            transcript: "FHIR test", duration: "01:00", date: Date(), format: .fhirJson, origin: .automaticTranscription
         )
         let data = try Data(contentsOf: lease.fileURL)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -492,7 +494,7 @@ final class MedicalComplianceTests: XCTestCase {
     func testExportServiceCreatesHL7Lease() throws {
         let harness = makeExportHarness()
         let lease = try harness.service.createExportLease(
-            transcript: "HL7 test transcript", duration: "03:00", date: Date(), format: .hl7
+            transcript: "HL7 test transcript", duration: "03:00", date: Date(), format: .hl7, origin: .automaticTranscription
         )
         let content = try String(contentsOf: lease.fileURL, encoding: .utf8)
         XCTAssertTrue(content.contains("MSH|"))
@@ -505,7 +507,7 @@ final class MedicalComplianceTests: XCTestCase {
         let harness = makeExportHarness()
         let transcript = "Patient said: \"blood pressure is 120|80\" & temp was ~37°C"
         let lease = try harness.service.createExportLease(
-            transcript: transcript, duration: "01:00", date: Date(), format: .hl7
+            transcript: transcript, duration: "01:00", date: Date(), format: .hl7, origin: .automaticTranscription
         )
         let content = try String(contentsOf: lease.fileURL, encoding: .utf8)
         XCTAssertFalse(content.contains("120|80"),
@@ -519,7 +521,7 @@ final class MedicalComplianceTests: XCTestCase {
         try harness.store.storePrivateContext(FHIRPrivateContext(patientID: "patient-42"))
 
         let lease = try harness.service.createExportLease(
-            transcript: "test", duration: "00:30", date: Date(), format: .fhirJson
+            transcript: "test", duration: "00:30", date: Date(), format: .fhirJson, origin: .automaticTranscription
         )
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: lease.fileURL)) as? [String: Any]
         let subject = json?["subject"] as? [String: Any]
@@ -530,7 +532,7 @@ final class MedicalComplianceTests: XCTestCase {
     func testFHIRDocumentExcludesPatientWhenEmpty() throws {
         let harness = makeExportHarness()
         let lease = try harness.service.createExportLease(
-            transcript: "test", duration: "00:30", date: Date(), format: .fhirJson
+            transcript: "test", duration: "00:30", date: Date(), format: .fhirJson, origin: .automaticTranscription
         )
         let json = try JSONSerialization.jsonObject(with: Data(contentsOf: lease.fileURL)) as? [String: Any]
         XCTAssertNil(json?["subject"], "subject should be omitted when no patient id is stored")

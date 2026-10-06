@@ -15,6 +15,8 @@ struct StoredQuickNote: Codable, Equatable {
     let title: String?
     let content: String
     let timestamp: Date
+    /// `SavedNoteOrigin` — `"assistant"` for every note `save_note` writes; nil on older notes.
+    var origin: String? = nil
 }
 
 /// Mirrors `SaveLocationTool.SavedLocation` (private there) — key `saved_locations`.

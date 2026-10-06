@@ -152,10 +152,12 @@ struct VideoRecordingTool: NativeTool {
                 if Config.autoExportEnabled, let exportService = medicalExportService {
                     let config = await MainActor.run { exportService.configurationStore.configuration }
                     if config.isConfigured && config.platform.usesFHIR {
+                        // The recorder's own transcript: speech-to-text, not model text.
                         let exportResult = await exportService.exportToFHIR(
                             transcript: transcript,
                             duration: duration,
-                            date: Date()
+                            date: Date(),
+                            origin: .automaticTranscription
                         )
                         if exportResult.success {
                             response += " Auto-exported to FHIR server."
@@ -171,7 +173,8 @@ struct VideoRecordingTool: NativeTool {
                                 transcript: transcript,
                                 duration: duration,
                                 date: Date(),
-                                format: Config.defaultExportFormat
+                                format: Config.defaultExportFormat,
+                                origin: .automaticTranscription
                             )) != nil
                         }
                         if created {

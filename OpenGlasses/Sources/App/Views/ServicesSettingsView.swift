@@ -14,7 +14,6 @@ struct ServicesSettingsView: View {
     // Text-to-Speech — self-contained: seeded from Config, persisted on change.
     @State private var elevenLabsKeyInput: String = Config.elevenLabsAPIKey
     @State private var selectedVoice: String = Config.elevenLabsVoiceId
-    @State private var emotionAwareTTSEnabled: Bool = Config.emotionAwareTTSEnabled
 
     // Web Search
     @State private var perplexityKeyInput: String = Config.perplexityAPIKey
@@ -170,15 +169,6 @@ struct ServicesSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(OGTheme.errorLabel)
                     }
-                }
-
-                InfoToggle(
-                    title: "Expressive Voice",
-                    isOn: $emotionAwareTTSEnabled,
-                    info: "Detects the emotional tone of responses (happy, calm, concerned, excited) and adjusts the voice to match. ElevenLabs voices change stability and style parameters; iOS voices adjust rate and pitch. Makes the assistant sound more natural and empathetic."
-                )
-                .onChange(of: emotionAwareTTSEnabled) { _, newValue in
-                    Config.setEmotionAwareTTSEnabled(newValue)
                 }
             } header: {
                 Text("Text-to-Speech")

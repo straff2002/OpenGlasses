@@ -16,7 +16,7 @@ import Foundation
 /// Wake-word recognition is not routed through here at all — the recognizer keeps reading the
 /// listener's own tap directly, so none of this can affect wake-word detection.
 @MainActor
-final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
+final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding, AssistantVoiceGating {
     /// The id this router registers under on whichever source is active.
     static let sourceConsumerId = "capture_audio_router"
 
@@ -202,6 +202,18 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding {
 
     private func publishConsumers() {
         fanout.setConsumers(Array(consumers.values))
+    }
+
+    // MARK: - AssistantVoiceGating
+
+    /// Whether the assistant's voice may end up in a capture that starts now (Plan HQ P1 item 3).
+    /// The setting, as the gate reads it: with it off the gate silences the assistant on the phone
+    /// speaker and nothing else reaches the mic, so a capture started now cannot hold the voice.
+    var assistantVoiceMayBeIncluded: Bool { includeAssistantVoice() }
+
+    /// The gate's current decision, for a recorder fed by another source.
+    nonisolated func gatedBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        fanout.gate(buffer)
     }
 
     /// Whether the shared session's current output route is the phone's own speaker (or receiver) —

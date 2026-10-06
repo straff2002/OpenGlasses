@@ -36,14 +36,24 @@ final class NotesVaultTool: NativeTool {
         }
     }
 
-    private func log(args: [String: Any], store: VaultStore) -> String {
+    /// The line under every logged entry (Plan HQ P1 item 4): the entry's text is the model's
+    /// rendering of what the wearer said, so the file says who wrote it. A fixed English marker —
+    /// it lives in the wearer's Markdown, where a later read must find the same words.
+    static let aiMarker = "_Written by Avenkin AI from your dictation._"
+
+    /// An entry as it is appended: the text, then the marker on its own line.
+    static func markedEntry(_ entry: String) -> String {
+        "\(entry)\n\n\(aiMarker)"
+    }
+
+    func log(args: [String: Any], store: VaultStore) -> String {
         let fileKey = (args["file"] as? String)?.lowercased() ?? "general"
         let file = Self.files.contains(fileKey) ? fileKey : "general"
         guard let entry = (args["entry"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !entry.isEmpty else {
             return "What should I note?"
         }
         do {
-            try store.append("\(file).md", entry: entry)
+            try store.append("\(file).md", entry: Self.markedEntry(entry))
             return "Noted in \(file): \"\(entry)\"."
         } catch {
             return "Could not save the note: \(error.localizedDescription)"

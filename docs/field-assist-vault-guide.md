@@ -300,6 +300,8 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
 
 At the end of a visit there is one record: what was recommended, what the technician decided, what was done and on what evidence, and what base is being asked for. It leaves in three shapes off the same data — a PDF a person reads, a JSON file a job system parses, and a short summary that fits in a message — so they cannot disagree with each other.
 
+What your organisation receives from the phones, what it never receives, and what it owes when staff use the assistant are set out in the [deployer information sheet](../docs/deployer-information-sheet.md).
+
 ### Set the destinations once
 
 In **Settings › Field Assist › Job Reports**:

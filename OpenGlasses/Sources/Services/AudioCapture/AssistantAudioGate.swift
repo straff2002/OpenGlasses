@@ -1,4 +1,23 @@
+import AVFoundation
 import Foundation
+
+/// A capture source that applies `AssistantAudioGate`, for a recorder that reads the mic some
+/// other way (Plan HQ P1 item 3).
+///
+/// The audio-only recorder takes the always-on listener's tap directly rather than registering
+/// through `CaptureAudioRouter`, so the router's fan-out never sees its buffers. It still needs the
+/// router's decision — made from the one subscription to the assistant's speaking state, the
+/// output route and the "Include Assistant Voice" setting — so the setting means the same thing
+/// for an audio-only recording as for a video or a stream.
+protocol AssistantVoiceGating: AnyObject, Sendable {
+    /// Whether the assistant's voice may end up in a capture that starts now: the "Include
+    /// Assistant Voice" setting, read at the start. Decides the recording's metadata, which the
+    /// writer needs before its first sample.
+    @MainActor var assistantVoiceMayBeIncluded: Bool { get }
+    /// The gate's current decision applied to one buffer: the buffer itself, or a silent buffer of
+    /// the same shape. Called from the audio thread.
+    nonisolated func gatedBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer
+}
 
 /// What to do with a mic buffer on its way to capture consumers.
 enum CaptureAudioGateDecision: String, Equatable, Sendable {

@@ -657,7 +657,7 @@ final class MedicalExportServiceLifecycleTests: XCTestCase {
         configStore.save(config)
         try? configStore.storeCredential(FHIRCredential(bearerToken: "token"))
 
-        let result = await service.exportToFHIR(transcript: "clinical", duration: "01:00", date: Date())
+        let result = await service.exportToFHIR(transcript: "clinical", duration: "01:00", date: Date(), origin: .automaticTranscription)
 
         XCTAssertFalse(result.success)
         XCTAssertEqual(service.leases.activeLeaseCount, 0)
@@ -671,7 +671,7 @@ final class MedicalExportServiceLifecycleTests: XCTestCase {
         config.authMode = .bearerToken
         configStore.save(config)
 
-        let result = await service.exportToFHIR(transcript: "clinical", duration: "01:00", date: Date())
+        let result = await service.exportToFHIR(transcript: "clinical", duration: "01:00", date: Date(), origin: .automaticTranscription)
 
         XCTAssertFalse(result.success)
         XCTAssertEqual(result.message, MedicalExportError.credentialMissing.errorDescription)
@@ -681,7 +681,7 @@ final class MedicalExportServiceLifecycleTests: XCTestCase {
     func testLockedStoreBlocksFHIRJsonExport() {
         secrets.loadError = KeychainService.KeychainError.unavailable(errSecInteractionNotAllowed)
         XCTAssertThrowsError(try service.createExportLease(
-            transcript: "clinical", duration: "01:00", date: Date(), format: .fhirJson
+            transcript: "clinical", duration: "01:00", date: Date(), format: .fhirJson, origin: .automaticTranscription
         )) { error in
             XCTAssertEqual(error as? MedicalExportError, .credentialLocked)
         }
@@ -689,7 +689,7 @@ final class MedicalExportServiceLifecycleTests: XCTestCase {
 
     func testExportLeaseTracksThroughTheCoordinator() throws {
         let lease = try service.createExportLease(
-            transcript: "clinical", duration: "01:00", date: Date(), format: .plainText
+            transcript: "clinical", duration: "01:00", date: Date(), format: .plainText, origin: .automaticTranscription
         )
         XCTAssertEqual(service.leases.activeLeaseCount, 1)
         service.leases.finishShare(lease, outcome: .completed)
