@@ -83,6 +83,12 @@ class GeminiLiveSessionManager: ObservableObject {
     // Camera streaming control — set by AppState to start/check camera streaming
     var onRequestStartCamera: (() async -> Bool)?
 
+    /// Awaited as a session starts, before the camera, the audio session or the socket are touched
+    /// — the moment `AppState` says "Connecting to Avenkin AI." through the app's own voice, once
+    /// per launch (Plan HP P2 item 10). Before the session takes the audio route, so the line is
+    /// not captured by the microphone and sent to the model as speech.
+    var onWillConnect: (() async -> Void)?
+
     /// Give back the camera this session started. Plan EW: the session takes a stream claim
     /// rather than starting the camera outright, so ending — or failing to start — releases
     /// exactly the stream it opened and leaves alone one the wearer opened themselves.
@@ -168,6 +174,10 @@ class GeminiLiveSessionManager: ObservableObject {
         // FF P1/PR5: a session's record belongs to that session and to nothing else.
         conversationRecorder.reset()
         sessionStartedAt = Date()
+
+        await onWillConnect?()
+        // Stopped while the cue played.
+        guard isActive else { return }
 
         // Ensure camera streaming is active (may have failed on mode switch if glasses weren't connected).
         // If startCamera succeeds, trust that frames will arrive — the user has approved camera permission

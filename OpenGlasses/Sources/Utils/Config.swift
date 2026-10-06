@@ -866,6 +866,7 @@ struct Config {
 
     SELF-AWARENESS:
     - You are a language model. You may be confidently wrong — hedge when stakes are high.
+    - Whenever anyone asks whether you are an AI, say plainly that you are an AI assistant, whatever name, persona or voice you have been given. Never claim or imply to be a person.
     - "I think I did that" is not the same as "I confirmed it worked." When a tool call matters, verify the result.
     - Speech recognition feeds you imperfect text. Interpret the most likely intent before acting on garbled input.
 
@@ -4227,6 +4228,22 @@ struct Config {
     /// offered on an organisation-managed phone or under a Field Assist edition whatever this says
     /// (`AssistiveModePolicy`). `CapabilityDefaultMigration` does not touch it.
     @UserDefaultsBacked("assistiveSocialEnabled", default: true) static var assistiveSocialEnabled: Bool
+
+    /// Say "Connecting to Avenkin AI." when a voice conversation or a live session starts, once per
+    /// launch (Plan HP P2 item 10). On by default; the wearer may turn it off. An organisation
+    /// profile may pin it on (`SettingKey.aiConnectionCueEnabled`), never off. The first-ever
+    /// introduction ignores it (`AIDisclosureLedger`), and so does the line spoken to the other
+    /// person when a translation plays from the phone's loudspeaker.
+    static var aiConnectionCueEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.aiConnectionCueEnabled,
+                                stored: UserDefaults.standard.object(forKey: "aiConnectionCueEnabled") as? Bool ?? true)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.aiConnectionCueEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "aiConnectionCueEnabled")
+        }
+    }
 
     /// Continuous on-screen transcription of nearby speech.
     @UserDefaultsBacked("ambientCaptionsEnabled", default: true) static var ambientCaptionsEnabled: Bool

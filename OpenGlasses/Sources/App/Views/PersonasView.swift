@@ -182,6 +182,8 @@ struct PersonaEditorView: View {
                     TextField("Name", text: $name)
                 } header: {
                     Text("Persona Name")
+                } footer: {
+                    Text("Whatever it's called, a persona is still an AI assistant, and it says so whenever anyone asks.")
                 }
 
                 Section {

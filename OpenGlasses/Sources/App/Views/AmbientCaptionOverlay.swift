@@ -141,6 +141,14 @@ struct AmbientCaptionOverlay: View {
                 // The arrow is drawn punctuation; VoiceOver reads it as "right arrow".
                 .accessibilityLabel("Translated into \(TranslationLanguages.displayName(for: legLanguage))")
                 .accessibilityAddTraits(.isHeader)
+            if !wearer {
+                // Plan HP P2 item 10: the other person reads this half, so it tells them, in their
+                // own language where the catalog has it, that what they are reading is an AI's.
+                Text(TranslationDisclosureLanguage.captionLabel(forTarget: legLanguage))
+                    .font(.system(size: legLabelSize, weight: .regular))
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
+                    .accessibilityLabel(Text("AI translation"))
+            }
             if entries.isEmpty {
                 Text("…")
                     .font(.system(size: legPlaceholderSize))

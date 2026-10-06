@@ -17,6 +17,11 @@ struct VoiceTriggersSettingsScreen: View {
     @State private var assistantName = Config.assistantDisplayName
     @State private var nameRefused = false
 
+    // Plan HP P2 item 10 — the "Connecting to Avenkin AI" line, read back through `Config` so an
+    // organisation's pin wins.
+    @State private var aiConnectionCueEnabled = Config.aiConnectionCueEnabled
+    @ObservedObject private var adminGate = AdminGate.shared
+
     private let wakePhrasePresets = Config.wakePhrasePresets
 
     /// The misrecognitions currently being listened for alongside the phrase. Shown because a
@@ -149,6 +154,24 @@ struct VoiceTriggersSettingsScreen: View {
                     ),
                     info: "When you say \"Hey Siri, ask Avenkin…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says Avenkin isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
                 )
+
+                // Plan HP P2 item 10. An organisation may pin it on (drawn read-only, with its
+                // name), never off.
+                if adminGate.presentation(.key(.aiConnectionCueEnabled)).isShown {
+                    InfoToggle(
+                        title: String(localized: "Say \"Connecting to Avenkin AI\" at Voice Startup"),
+                        isOn: Binding(
+                            get: { aiConnectionCueEnabled },
+                            set: { newValue in
+                                Config.aiConnectionCueEnabled = newValue
+                                aiConnectionCueEnabled = Config.aiConnectionCueEnabled
+                            }
+                        ),
+                        info: String(localized: "Once each time you open the app, before the first answer or as a live session connects, the assistant says \"Connecting to Avenkin AI.\" — and \"Starting Avenkin AI translation.\" when a translation starts. The very first conversation always gives a longer introduction, whatever this says. When a translation plays from the iPhone's loudspeaker, the person you're talking to is told it's an AI translation in their language; that line isn't affected by this switch.")
+                    )
+                    .disabled(PolicyEnvelope.isLocked(.aiConnectionCueEnabled))
+                    ManagedSettingNote(key: .aiConnectionCueEnabled)
+                }
             } header: {
                 Text("Voice")
             } footer: {
