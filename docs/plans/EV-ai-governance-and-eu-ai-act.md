@@ -8,6 +8,8 @@ ISO/IEC **42001:2023** is the AI management system standard relevant to the user
 
 ## 1. Current legal baseline and source limitations
 
+**Update 2026-10-06:** the positions this plan left open (face recognition, emotion inference, triage, Article 50 dates) are taken in [docs/eu-ai-act-review-2026-10.md](../eu-ai-act-review-2026-10.md), against the final Article 50 Guidelines (20 July 2026), the Code of Practice (10 June 2026) and the draft high-risk classification guidelines (19 May 2026). Read that review first; the table below is the September baseline.
+
 The Commission reports that the **AI Omnibus entered into force on 27 July 2026**, including revised high-risk dates, changes to AI literacy and registration, and other amendments. It would be inaccurate to describe it simply as a pending proposal or use the original high-risk dates without qualification. [Commission enactment announcement](https://digital-strategy.ec.europa.eu/en/news/ai-omnibus-enters-force).
 
 | Provision family | Planning position as of 4 September 2026 | OpenGlasses action |
