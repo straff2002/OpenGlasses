@@ -531,6 +531,9 @@ enum PrivacyLog {
         /// that error is then thrown instead of the generic "stream not ready", so the attempt
         /// carries the real reason.
         case sessionStartAborted
+        /// A parked stream's session had stopped underneath it, so both were dropped and rebuilt
+        /// rather than reused.
+        case staleSessionDropped
         case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture

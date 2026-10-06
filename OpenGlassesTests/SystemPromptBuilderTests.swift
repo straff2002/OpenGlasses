@@ -76,4 +76,28 @@ final class SystemPromptBuilderTests: XCTestCase {
         XCTAssertTrue(line.contains(weather.description.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""),
                       "generated line should reflect the tool's own description")
     }
+
+    // MARK: - The app's own settings
+
+    func testTheGuideSaysWhereTheVoiceIsChangedInTheHubsOwnWords() {
+        let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
+        let connections = SettingsCatalog.category(.connections).title
+        XCTAssertTrue(guide.contains("Your voice"))
+        XCTAssertTrue(guide.contains("Settings > \(connections) > Services & Integrations"))
+        XCTAssertTrue(guide.contains("Avenkin app"))
+    }
+
+    func testTheGuideNamesOnlyCategoriesTheHubDraws() {
+        let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
+        for id in [SettingsCategoryID.voice, .intelligence, .tools, .devices, .lookAndFeel] {
+            XCTAssertTrue(guide.contains("Settings > \(SettingsCatalog.category(id).title)"), id.rawValue)
+        }
+    }
+
+    func testTheGuideSteersAwayFromTheWrongApps() {
+        // The answer this replaces sent the wearer to the iPhone's Settings, the glasses' own app
+        // and Siri for a setting none of them holds.
+        let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
+        XCTAssertTrue(guide.contains("never send the user there"))
+    }
 }

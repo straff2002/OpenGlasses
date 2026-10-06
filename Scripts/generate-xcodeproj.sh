@@ -38,6 +38,11 @@ if [[ -f project.local.yml ]] && [[ -f "$personal_entitlements" ]] \
   echo "         requests will fail on device. Run ./Scripts/setup-local-dev.sh to add it." >&2
 fi
 
+# The commit this project is generated at, for support reports (AppBuildIdentity). Xcode Cloud
+# names it; anywhere else git does. "unknown" outside a checkout, which the app reads as unstamped.
+AVENKIN_SOURCE_COMMIT="${CI_COMMIT:-$(git rev-parse HEAD 2>/dev/null || true)}"
+export AVENKIN_SOURCE_COMMIT="${AVENKIN_SOURCE_COMMIT:-unknown}"
+
 spec_file=.xcodegen-spec.yml
 {
   echo "include:"

@@ -661,6 +661,9 @@ class GeminiLiveSessionManager: ObservableObject {
             """
         }
 
+        // Where the assistant's own settings live — the same block Direct Mode carries.
+        prompt += "\n\n" + SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName)
+
         // Add tool instructions
         let hasNativeTools = nativeToolRouter != nil
         let hasOpenClaw = Config.isOpenClawAgentActive   // BK P0: don't advertise the gateway with Agent Mode off

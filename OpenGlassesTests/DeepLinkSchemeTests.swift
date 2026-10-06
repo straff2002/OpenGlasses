@@ -111,4 +111,18 @@ final class DeepLinkSchemeTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - What a link asked for, in the log
+
+    func testAFixedActionIsNamed() {
+        XCTAssertEqual(privacyAction(for: URL(string: "avenkin://action/describe")!)?.description, "describe")
+        XCTAssertEqual(privacyAction(for: URL(string: "avenkin://listen/toggle")!)?.description, "toggle")
+        XCTAssertEqual(privacyAction(for: URL(string: "avenkin://disconnect")!)?.description, "disconnect")
+    }
+
+    func testAWearersOwnIdentifierIsNeverNamed() {
+        XCTAssertNil(privacyAction(for: URL(string: "avenkin://quickaction/6F1C0A52-my-action")!))
+        XCTAssertNil(privacyAction(for: URL(string: "avenkin://persona/work-persona")!))
+        XCTAssertNil(privacyAction(for: URL(string: "avenkin://action/something-else")!))
+    }
 }

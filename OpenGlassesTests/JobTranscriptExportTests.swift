@@ -253,6 +253,20 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertTrue(lines.contains("09:30:00  [network] request event=failed"))
     }
 
+    func testASupportReportNamesTheAppCopyInItsHeader() {
+        let app = "2026.10 (460) · 9f9f57e28 · TestFlight · com.example.app"
+        let stamped = JobTranscriptExport.document(
+            scope: .day(Self.date(26, 0, 0)), jobs: [], exportedAt: Self.date(26, 14, 0),
+            timeZone: Self.utc, details: .init(app: app))
+        // Third line: under the title and the export time, above everything said.
+        XCTAssertEqual(stamped.body.components(separatedBy: "\n")[2], "App \(app)")
+
+        let unstamped = JobTranscriptExport.document(
+            scope: .day(Self.date(26, 0, 0)), jobs: [], exportedAt: Self.date(26, 14, 0),
+            timeZone: Self.utc, details: .init())
+        XCTAssertEqual(unstamped.body.components(separatedBy: "\n")[2], "")
+    }
+
     func testAPlainTranscriptCarriesNoTroubleshootingLayer() {
         let job = JobTranscriptExport.job(
             session: Self.session("s1", startedAt: Self.date(26, 9, 12)), vaultName: "Refrigeration",

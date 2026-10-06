@@ -104,19 +104,28 @@ extension AppState {
     /// What only the running app knows: the phone, the glasses, the app's event log and the
     /// debug log, and the configured secrets the report is masked with.
     func supportEnvironment() -> JobTranscriptExporter.Environment {
-        let info = Bundle.main.infoDictionary
+        let app = AppBuildIdentity.current
         var phone = [
-            "App: \(info?["CFBundleShortVersionString"] as? String ?? "–") (\(info?["CFBundleVersion"] as? String ?? "–"))",
+            "App: \(app.version) (\(app.build))",
+            "Source: " + (app.commit.map { "\($0) when the Xcode project was generated" } ?? "not stamped"),
+            "Installed from: \(app.channel.rawValue) (\(app.bundleID))",
             "System: \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
             "Device: \(Self.hardwareIdentifier)",
+            // The app's language and region, then the phone's own list: `en_MX` alone cannot say
+            // whether the phone is in English or in a language the app does not ship.
             "Language: \(Locale.current.identifier)",
+            "Phone languages: \(Locale.preferredLanguages.prefix(3).joined(separator: ", "))",
             "Mode: \(currentMode.rawValue)",
             "AI model: \(Config.activeModel?.name ?? "none set")",
             "Transcription preference: \(Config.asrEnginePreference.rawValue)",
         ]
         if isConnected {
             var glasses = "Glasses: connected"
-            if let name = glassesService.deviceName { glasses += " — \(name)" }
+            // A pair the SDK has not named yet reports an empty name, not a missing one.
+            if let name = glassesService.deviceName?.trimmingCharacters(in: .whitespaces),
+               !name.isEmpty {
+                glasses += " — \(name)"
+            }
             if let battery = glassesService.batteryLevel { glasses += ", battery \(battery)%" }
             phone.append(glasses)
             phone.append("Glasses display: \(glassesDisplay.hasDisplayCapability ? "yes" : "no")")
@@ -130,7 +139,7 @@ extension AppState {
         let events = (ring.previousEntries + ring.entries).map {
             JobTranscriptExport.AppEvent(at: $0.timestamp, line: $0.line)
         }
-        return .init(phone: phone, appEvents: events, debugLog: Array(debugEvents.suffix(60)),
+        return .init(phone: phone, app: app.summary, appEvents: events, debugLog: Array(debugEvents.suffix(60)),
                      secrets: Config.knownSecretValues)
     }
 
