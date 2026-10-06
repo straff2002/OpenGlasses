@@ -4801,13 +4801,17 @@ class AppState: ObservableObject, AppStateProtocol {
         // turn spine — they predate `ConversationTurnRunner` and never went through it, so the marks
         // that spine carries have to be repeated here or every "take a photo and…" turn is invisible.
         TurnRecorder.beginTurn()
+        didNarrateModelSwitchThisTurn = false
         do {
             TurnRecorder.mark(.commit)
-            let rawResponse = try await llmService.sendMessage(
+            let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: imageData,
-                memoryContext: memoryContextForPrompt(query: prompt)
+                memoryContext: memoryContextForPrompt(query: prompt),
+                onModelSwitch: { [self] from, to, failure in
+                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                }
             )
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
@@ -4825,7 +4829,7 @@ class AppState: ObservableObject, AppStateProtocol {
             TurnRecorder.noteFailure(error)
             isProcessing = false
             speechService.stopThinkingSound()
-            errorMessage = error.localizedDescription
+            errorMessage = "Photo analysis failed: \(error.localizedDescription)"
         }
         TurnRecorder.endTurn()
     }
@@ -4841,6 +4845,11 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.startThinkingSound()
         TurnRecorder.beginTurn()
         TurnRecorder.mark(.commit)
+        didNarrateModelSwitchThisTurn = false
+        // Which half failed decides what the wearer is told: a camera that would not take the
+        // picture, or a picture taken that no model could answer about (a missing key, an
+        // exhausted cascade). The second used to be reported as the first.
+        var photoCaptured = false
         do {
             let grabStartedAt = Date()
             let photoData = try await cameraService.capturePhoto()
@@ -4849,11 +4858,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 cameraService.restoreAudioForWakeWord()
             }
 
-            let rawResponse = try await llmService.sendMessage(
+            photoCaptured = true
+            let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: photoData,
-                memoryContext: memoryContextForPrompt(query: prompt)
+                memoryContext: memoryContextForPrompt(query: prompt),
+                onModelSwitch: { [self] from, to, failure in
+                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                }
             )
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
@@ -4880,7 +4893,9 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             isProcessing = false
             speechService.stopThinkingSound()
-            errorMessage = "Photo failed: \(error.localizedDescription)"
+            errorMessage = photoCaptured
+                ? "Photo analysis failed: \(error.localizedDescription)"
+                : "Photo failed: \(error.localizedDescription)"
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
         }
@@ -5128,6 +5143,11 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.startThinkingSound()
         TurnRecorder.beginTurn()
         TurnRecorder.mark(.commit)
+        didNarrateModelSwitchThisTurn = false
+        // Which half failed decides what the wearer is told: a camera that would not take the
+        // picture, or a picture taken that no model could answer about (a missing key, an
+        // exhausted cascade). The second used to be reported as the first.
+        var photoCaptured = false
         do {
             let grabStartedAt = Date()
             let photoData = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
@@ -5137,11 +5157,15 @@ class AppState: ObservableObject, AppStateProtocol {
             }
 
             let prompt = "Describe what you see in this image."
-            let rawResponse = try await llmService.sendMessage(
+            photoCaptured = true
+            let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
                 imageData: photoData,
-                memoryContext: memoryContextForPrompt(query: prompt)
+                memoryContext: memoryContextForPrompt(query: prompt),
+                onModelSwitch: { [self] from, to, failure in
+                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                }
             )
             TurnRecorder.mark(.generationDone)
             var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
@@ -5173,7 +5197,9 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             isProcessing = false
             speechService.stopThinkingSound()
-            errorMessage = "Photo failed: \(error.localizedDescription)"
+            errorMessage = photoCaptured
+                ? "Photo analysis failed: \(error.localizedDescription)"
+                : "Photo failed: \(error.localizedDescription)"
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
         }
@@ -5991,6 +6017,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 // so an answer that arrives after one is stale and must reach neither the
                 // transcript nor the speaker.
                 let turnGeneration = self.conversationReset.currentGeneration
+                // Which half failed decides what is spoken (see `capturePhotoAndSend`).
+                var photoCaptured = false
+                self.didNarrateModelSwitchThisTurn = false
 
                 self.currentLLMTask = Task {
                     await ConversationTurnRunner.run(.init(
@@ -6002,12 +6031,16 @@ class AppState: ObservableObject, AppStateProtocol {
                             try Task.checkCancellation()
                             // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                             self.cameraService.restoreAudioForWakeWord()
+                            photoCaptured = true
 
-                            return try await self.llmService.sendMessage(
+                            return try await self.llmService.sendMessageCascading(
                                 query,
                                 locationContext: self.locationService.locationContext,
                                 imageData: photoData,
-                                memoryContext: self.memoryContextForPrompt(query: query)
+                                memoryContext: self.memoryContextForPrompt(query: query),
+                                onModelSwitch: { [weak self] from, to, failure in
+                                    await self?.narrateModelSwitch(from: from, to: to, failure: failure)
+                                }
                             )
                         },
                         postProcess: { rawResponse in
@@ -6047,13 +6080,19 @@ class AppState: ObservableObject, AppStateProtocol {
                         },
                         onError: { error in
                             self.cameraService.restoreAudioForWakeWord()
-                            PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
-                            self.lastResponse = "Photo failed: \(error.localizedDescription)"
                             // Speak a human sentence; raw error internals (DecodingError
                             // paths, model module trees) go to the log only — live-traced:
                             // TTS once read out "keyNotFound(path: [language_model…".
-                            await self.speechService.speak(
-                                "Sorry, I couldn't take a photo or process the image. \(SpokenErrorPolicy.spokenReason(for: error))")
+                            let reason = SpokenErrorPolicy.spokenReason(for: error)
+                            if photoCaptured {
+                                self.lastResponse = "Photo analysis failed: \(error.localizedDescription)"
+                                await self.speechService.speak(
+                                    "I took the photo, but couldn't get an answer about it. \(reason)")
+                            } else {
+                                PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
+                                self.lastResponse = "Photo failed: \(error.localizedDescription)"
+                                await self.speechService.speak("Sorry, I couldn't take a photo. \(reason)")
+                            }
                         },
                         finish: {
                             self.isProcessing = false

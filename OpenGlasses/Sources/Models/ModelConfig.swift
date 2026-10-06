@@ -86,7 +86,7 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         case .openrouter:
             // OpenRouter supports vision for many models
             let lowerModel = model.lowercased()
-            return lowerModel.contains("claude") || lowerModel.contains("gpt-4") || lowerModel.contains("gemini") || lowerModel.contains("vision") || lowerModel.contains("llava")
+            return lowerModel.contains("claude") || lowerModel.contains("gpt-4") || lowerModel.contains("gemini") || lowerModel.contains("vision") || lowerModel.contains("llava") || lowerModel.contains("grok-4")
         case .zai, .minimax, .custom:
             let lowerModel = model.lowercased()
             let lowerBaseURL = baseURL.lowercased()
@@ -95,7 +95,9 @@ struct ModelConfig: Codable, Identifiable, Equatable {
                 "vision", "gpt-4", "gpt-4.1", "gpt-4o", "o1", "o3",
                 "claude-3", "claude-4", "sonnet", "opus",
                 "gemini", "vl", "qwen-vl", "qwen2.5-vl", "qvq",
-                "pixtral", "llava", "minicpm-v", "glm-4.1v"
+                "pixtral", "llava", "minicpm-v", "glm-4.1v",
+                // The Grok 4 family is multimodal, on xAI itself and through OpenAI-compatible proxies.
+                "grok-4"
             ]
 
             if knownVisionHints.contains(where: { lowerModel.contains($0) }) {

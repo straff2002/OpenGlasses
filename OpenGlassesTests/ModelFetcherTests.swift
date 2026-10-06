@@ -170,6 +170,9 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertTrue(inferredVision(.custom, "pixtral-12b"))
         XCTAssertTrue(inferredVision(.custom, "minicpm-v"))
         XCTAssertTrue(inferredVision(.custom, "qwen2.5-vl-7b"))
+        // Grok 4 through an OpenAI-compatible proxy is still Grok 4.
+        XCTAssertTrue(inferredVision(.custom, "grok-4"))
+        XCTAssertTrue(inferredVision(.custom, "grok-4-fast"))
     }
 
     func testInferredVisionCustomTextOnlyModel() {
@@ -249,6 +252,8 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertTrue(inferredVision(.xai, "grok-4"))
         XCTAssertTrue(inferredVision(.xai, "grok-4-fast"))
         XCTAssertFalse(inferredVision(.xai, "grok-3-mini"))
+        XCTAssertTrue(inferredVision(.openrouter, "x-ai/grok-4"))
+        XCTAssertFalse(inferredVision(.openrouter, "x-ai/grok-3"))
         XCTAssertTrue(inferredVision(.openrouter, "meta-llama/llava-13b"))
         XCTAssertFalse(inferredVision(.openrouter, "mistralai/mistral-7b"))
     }
