@@ -45,7 +45,8 @@ final class InsightsService: ObservableObject {
     static func buildEvents(from threads: [ConversationThread]) -> [InsightEvent] {
         threads.flatMap { thread in
             thread.messages.map { msg in
-                InsightEvent(timestamp: msg.timestamp, role: msg.role, toolNames: [], text: msg.content)
+                InsightEvent(timestamp: msg.timestamp, role: msg.role,
+                             toolNames: msg.toolNames ?? [], text: msg.content)
             }
         }
     }
