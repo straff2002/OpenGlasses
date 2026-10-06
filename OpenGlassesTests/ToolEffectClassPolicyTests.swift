@@ -316,6 +316,15 @@ final class ToolEffectClassPolicyTests: XCTestCase {
         let registry = NativeToolRegistry(locationService: LocationService())
         registry.register(FaceRecognitionTool(faceService: faces, cameraService: camera))
         let router = NativeToolRouter(registry: registry)
+        // Face recognition defaults off (Plan HP), and a switched-off feature's tool is unrouted
+        // (Plan HR P2 item 6), so the classification under test is the one with the feature on.
+        let faceSwitch = AIFeature.faceRecognition.record.disableSwitch
+        let saved = UserDefaults.standard.object(forKey: faceSwitch.key)
+        faceSwitch.setEnabled(true)
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: faceSwitch.key) }
+            else { UserDefaults.standard.removeObject(forKey: faceSwitch.key) }
+        }
 
         let enrol = router.dispatchProfile(for: .root(
             name: "face_recognition", arguments: ["action": "remember", "name": "Maria"], origin: .model))

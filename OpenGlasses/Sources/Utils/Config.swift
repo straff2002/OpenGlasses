@@ -4209,10 +4209,10 @@ struct Config {
         }
     }
 
-    /// Assistive Mode's Social mode — inferring the apparent emotional state of the person in front
-    /// of the wearer. Biometric. On by default for personal users, as it shipped; it is never
-    /// offered on an organisation-managed phone or under a Field Assist edition whatever this says
-    /// (`AssistiveModePolicy`). `CapabilityDefaultMigration` does not touch it.
+    /// Assistive Mode's Social mode — describing what is visible about the person in front of the
+    /// wearer, never how they feel (Plan HR). On by default for personal users, as it shipped; it
+    /// is never offered on an organisation-managed phone or under a Field Assist edition whatever
+    /// this says (`AssistiveModePolicy`). `CapabilityDefaultMigration` does not touch it.
     @UserDefaultsBacked("assistiveSocialEnabled", default: true) static var assistiveSocialEnabled: Bool
 
     /// Say "Connecting to Avenkin AI." when a voice conversation or a live session starts, once per

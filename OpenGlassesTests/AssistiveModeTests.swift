@@ -68,7 +68,10 @@ final class AssistiveModeTests: XCTestCase {
         let scene = AssistiveRouter.systemPrompt(for: .scene)
         let social = AssistiveRouter.systemPrompt(for: .social)
         XCTAssertTrue(scene.contains("valid JSON"))
-        XCTAssertTrue(social.contains("emotional state"))
+        XCTAssertTrue(social.contains("valid JSON"))
+        // Plan HR: Social mode describes, it does not diagnose.
+        XCTAssertTrue(social.hasPrefix(SocialObservationContract.instructions))
+        XCTAssertFalse(social.contains("emotional state"))
         XCTAssertNotEqual(scene, social)
     }
 }

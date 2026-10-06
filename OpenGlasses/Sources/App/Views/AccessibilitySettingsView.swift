@@ -123,7 +123,7 @@ struct AccessibilitySettingsView: View {
                     Text("Assistive Mode")
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (e.g. someone in distress) speaks faster. Pauses the normal wake-word assistant while active.")
+                        Text("Real-time scene and social support: periodically reads the camera and speaks calm, concise guidance. Higher urgency (for example, someone waving you over) speaks faster. Pauses the normal wake-word assistant while active.")
                         Text(SocialModeCopy.standingFooter)
                     }
                 }

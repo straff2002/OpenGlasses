@@ -19,7 +19,9 @@ enum AIFeature: String, CaseIterable {
     // Biometric
     case faceRecognition
     case speakerIdentification
-    /// Assistive Mode's Social mode: the apparent emotional state of the person in view (Plan HP).
+    /// Assistive Mode's Social mode: what is visible about the person in view — expression, gaze,
+    /// posture, what they are doing — and never how they feel (Plan HP, redesigned by Plan HR).
+    /// Grouped here for history; screened `.none` since HR.
     case assistiveSocial
 
     // Health
@@ -124,10 +126,11 @@ enum AIFeature: String, CaseIterable {
         case .assistiveSocial:
             // Not a tool: Assistive Mode routes to it from what the wearer says. Its switch is read
             // through `AssistiveModePolicy`, which also refuses it outright on a managed phone and
-            // under a Field Assist edition — inferring emotions at work is prohibited, whatever the
-            // switch says.
+            // under a Field Assist edition. Screened `.none` since Plan HR made it observe-only;
+            // the workplace refusals stay until device evidence shows the filter holds on real
+            // frames (the follow-up HR records).
             return Record(feature: self, title: "Assistive Social mode",
-                          sensitiveCategories: [.biometric],
+                          sensitiveCategories: [.none],
                           disableSwitch: Switch(key: "assistiveSocialEnabled",
                                                 isEnabled: { Config.assistiveSocialEnabled },
                                                 setEnabled: { Config.assistiveSocialEnabled = $0 },
@@ -135,7 +138,8 @@ enum AIFeature: String, CaseIterable {
                           toolNames: [],
                           stores: [],
                           dataRetainedWhenDisabled: "Nothing retained — advice is spoken and not written.",
-                          erasure: .notSubjectLinked)
+                          erasure: .notSubjectLinked,
+                          screeningNote: "Not emotion recognition: it describes visible expression, gaze, posture and what the person is doing, and infers no emotional state or intention. Every answer is checked by a word filter, and one that names a feeling is never spoken. Observation of this kind is outside the definition in Article 3(39) of the EU AI Act.")
 
         case .healthVault:
             return Record(feature: self, title: "Health vault access",
@@ -305,18 +309,24 @@ enum AIFeatureGate {
 
     /// Every tool name belonging to a currently disabled feature.
     ///
-    /// The tools of features owned by other in-flight work — the router itself among them — cannot
-    /// take an inline gate without colliding, so the router will consult this set by name once those
-    /// land. Until then this is the inventory's answer to "which tools should not be callable", and
-    /// the features whose tools this branch does own gate themselves inline as well.
+    /// `NativeToolRouter.execute` refuses these by name before any dispatch (Plan HR P2 item 6), so
+    /// a feature switched off is unreachable from every surface that funnels through the router —
+    /// a model turn in any mode, Siri, a skill pack, a composed tool. The tools that gate themselves
+    /// inline keep doing so as a second line.
     static var disabledToolNames: Set<String> {
         Set(AIFeature.allCases
             .filter { !isEnabled($0) }
             .flatMap { $0.record.toolNames })
     }
 
-    /// Whether a tool call should be refused because its feature is off. What the router will call.
+    /// Whether a tool call should be refused because its feature is off.
     static func isToolDisabled(_ name: String) -> Bool {
-        disabledToolNames.contains(name)
+        disabledFeature(forTool: name) != nil
+    }
+
+    /// The switched-off feature that owns a tool, or nil when the tool is callable. What the router
+    /// asks, because the refusal names the feature (`disabledMessage`), not just the fact.
+    static func disabledFeature(forTool name: String) -> AIFeature? {
+        AIFeature.allCases.first { $0.record.toolNames.contains(name) && !isEnabled($0) }
     }
 }

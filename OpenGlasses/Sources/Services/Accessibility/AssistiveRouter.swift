@@ -2,8 +2,9 @@ import Foundation
 
 /// Routes an Assistive Mode (A3) frame to the right analysis mode and supplies the system prompt.
 ///
-/// Scene mode = situational awareness of the environment. Social mode = understanding the emotional
-/// state of a person the user is looking at. Routing is keyword-based on the latest user
+/// Scene mode = situational awareness of the environment. Social mode = what can be seen about a
+/// person the user is looking at: expression, gaze, posture and what they are doing, never how they
+/// feel (`SocialObservationContract`, Plan HR). Routing is keyword-based on the latest user
 /// transcription (if any); with no transcription it defaults to proactive Scene mode.
 /// Prompts are adapted from the neurobridge project.
 enum AssistiveRouter {
@@ -13,7 +14,9 @@ enum AssistiveRouter {
         case social
     }
 
-    /// Words that indicate the user cares about a person / interaction → Social mode.
+    /// Words that indicate the user cares about a person / interaction → Social mode. The feeling
+    /// words stay on purpose (Plan HR): a wearer who asks how someone feels still gets Social mode,
+    /// which now answers with what it can see.
     private static let socialKeywords = ["person", "people", "face", "emotion", "feel", "feeling",
                                          "mood", "conversation", "talking", "they", "him", "her",
                                          "angry", "happy", "sad", "upset"]
@@ -29,7 +32,7 @@ enum AssistiveRouter {
     ///
     /// When `AssistiveModePolicy` refuses Social mode — a managed phone, a Field Assist edition, the
     /// wearer's own switch — a request that would have gone to Social goes to Scene instead, so no
-    /// emotional-state prompt is ever sent. Scene mode is never refused.
+    /// prompt about the person is sent there. Scene mode is never refused.
     static func route(transcription: String?, social: AssistiveModePolicy.Decision) -> Mode {
         let wanted = route(transcription: transcription)
         guard wanted == .social, !social.isOffered else { return wanted }
@@ -46,9 +49,9 @@ enum AssistiveRouter {
     /// The mode prompt, plus the blind-assistance fragments that apply to it (Plan FF P0).
     ///
     /// Scene mode describes the environment to someone who is relying on the description, so it
-    /// takes the environment set. Social mode describes a person's apparent emotional state — it
-    /// neither routes movement nor reads text — so it takes only the two rules that apply to any
-    /// spoken answer. Both keep `jsonContract` intact and the fragments land after it.
+    /// takes the environment set. Social mode describes what is visible about a person — it neither
+    /// routes movement nor reads text — so it takes only the two rules that apply to any spoken
+    /// answer. Both keep `jsonContract` intact and the fragments land after it.
     static func systemPrompt(for mode: Mode) -> String {
         switch mode {
         case .scene:
@@ -60,23 +63,22 @@ enum AssistiveRouter {
             """)
         case .social:
             return BlindAssistanceContract.applying(
-                BlindAssistanceContract.spokenOutputFragments, to: """
-            You are an assistive AI for neurodivergent users. Help the user understand the emotional \
-            state of the person they are looking at — calmly, concisely, in real time. Urgency: \
-            low = calm/positive, medium = unease, high = distress. If no person is visible, suggest \
-            repositioning. \(jsonContract)
-            """)
+                BlindAssistanceContract.spokenOutputFragments,
+                to: SocialObservationContract.instructions + " " + jsonContract)
         }
     }
 
     /// The user-message text accompanying the frame for a given mode.
+    ///
+    /// Scene mode passes the wearer's words straight through. Social mode keeps them for context
+    /// but always asks the observation question after them (`SocialObservationContract.userText`).
     static func userText(for mode: Mode, transcription: String?) -> String {
-        if let transcription, !transcription.isEmpty {
-            return transcription
-        }
         switch mode {
-        case .scene: return "What's the most useful thing to know about what I'm looking at right now?"
-        case .social: return "How is the person I'm looking at feeling right now?"
+        case .scene:
+            if let transcription, !transcription.isEmpty { return transcription }
+            return "What's the most useful thing to know about what I'm looking at right now?"
+        case .social:
+            return SocialObservationContract.userText(transcription: transcription)
         }
     }
 }

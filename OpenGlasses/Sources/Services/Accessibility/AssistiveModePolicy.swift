@@ -2,11 +2,16 @@ import Foundation
 
 /// Plan HP P1 item 3 — whether Assistive Mode's Social mode is offered on this phone.
 ///
-/// Social mode asks a model for the apparent emotional state of the person in front of the wearer,
-/// which is emotion recognition (EU AI Act review §3.2). Inferring emotions is prohibited in the
-/// workplace and in education, and no consent cures that, so it is never offered where this app is
-/// a work tool: on an organisation-managed phone or under a Field Assist edition. Scene mode is
-/// unaffected everywhere. A personal wearer keeps Social mode, with its own switch.
+/// Social mode used to ask a model for the apparent emotional state of the person in front of the
+/// wearer, which is emotion recognition (EU AI Act review §3.2), prohibited in the workplace and in
+/// education whatever the consent. So it is never offered where this app is a work tool: on an
+/// organisation-managed phone or under a Field Assist edition. Scene mode is unaffected everywhere.
+/// A personal wearer keeps Social mode, with its own switch.
+///
+/// Plan HR made Social mode observe-only (`SocialObservationContract`, `EmotionLabelFilter`), which
+/// takes it out of the Act's definition, so the legal reason for the two workplace refusals is
+/// gone. They stay deliberately: lifting them is a follow-up that waits for device evidence that the
+/// filter holds on real frames.
 ///
 /// Pure: the facts are plain values, so every corner is tested without a profile, an entitlement
 /// or `UserDefaults`. `current()` is the thin adapter that reads the real ones.
