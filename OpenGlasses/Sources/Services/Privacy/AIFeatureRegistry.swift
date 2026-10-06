@@ -85,6 +85,9 @@ enum AIFeature: String, CaseIterable {
         let dataRetainedWhenDisabled: String
         /// What erases that data, or why nothing does.
         let erasure: SensitiveStore.Deletion
+        /// Why the feature sits in the categories it does, where that is not obvious from its title
+        /// — most of all a `.none` that a reader would otherwise expect to be sensitive.
+        var screeningNote: String? = nil
     }
 
     // MARK: - The inventory
@@ -105,8 +108,9 @@ enum AIFeature: String, CaseIterable {
                           erasure: .api("FaceRecognitionService.forgetAllFaces()"))
 
         case .speakerIdentification:
+            // Screened `.none`, not `.biometric` (EU AI Act review §3.7, Plan HP P1 item 5).
             return Record(feature: self, title: "Speaker identification",
-                          sensitiveCategories: [.biometric],
+                          sensitiveCategories: [.none],
                           disableSwitch: Switch(key: "diarizationEnabled",
                                                 isEnabled: { Config.diarizationEnabled },
                                                 setEnabled: { Config.diarizationEnabled = $0 },
@@ -114,7 +118,8 @@ enum AIFeature: String, CaseIterable {
                           toolNames: [],
                           stores: [.speakerNames],
                           dataRetainedWhenDisabled: "Names the wearer attached to voice clusters stay in preferences; they are cleared one speaker at a time.",
-                          erasure: .api("SpeakerRegistry.setName(nil, for:)"))
+                          erasure: .api("SpeakerRegistry.setName(nil, for:)"),
+                          screeningNote: "Not biometric: the label is a name the wearer typed against the transcription service's per-session speaker cluster id, and no voiceprint, embedding or cross-session voice match exists.")
 
         case .assistiveSocial:
             // Not a tool: Assistive Mode routes to it from what the wearer says. Its switch is read
