@@ -5,10 +5,10 @@ import Foundation
 /// footer and the Assistive toggle both read it, so the two never disagree.
 enum SocialModeCopy {
 
-    /// Said wherever Social mode is offered or explained: what it infers, and that it is for
-    /// personal use only.
+    /// Said wherever Social mode is offered or explained: what it describes, and that it does not
+    /// guess at feelings (Plan HR P2 item 5 — the mode is observe-only).
     static var standingFooter: String {
-        String(localized: "Social mode describes how a person in front of you seems to feel. It's for personal use, not for use at work or at school.")
+        String(localized: "Social mode describes what you can see about the person in front of you: their expression, where they're looking and what they're doing. It doesn't guess how they feel.")
     }
 
     /// Why Social mode is not available, or nil when there is nothing to explain — it is offered,

@@ -39,9 +39,12 @@ final class SocialModeCopyTests: XCTestCase {
         XCTAssertNil(SocialModeCopy.refusalLine(personal.refusal))
     }
 
-    func testTheStandingFooterSaysWhatItInfersAndWhereItIsNotFor() {
+    /// Plan HR P2 item 5: the footer says what Social mode describes, and that it does not guess at
+    /// feelings.
+    func testTheStandingFooterSaysWhatItDescribesAndThatItDoesNotGuessFeelings() {
         XCTAssertEqual(SocialModeCopy.standingFooter,
-                       "Social mode describes how a person in front of you seems to feel. It's for personal use, not for use at work or at school.")
+                       "Social mode describes what you can see about the person in front of you: their expression, where they're looking and what they're doing. It doesn't guess how they feel.")
+        XCTAssertFalse(SocialModeCopy.standingFooter.contains("seems to feel"))
         let all = [SocialModeCopy.standingFooter]
             + AssistiveModePolicy.Refusal.allCases.compactMap(SocialModeCopy.refusalLine)
         for line in all { XCTAssertFalse(line.contains("Plan"), line) }
