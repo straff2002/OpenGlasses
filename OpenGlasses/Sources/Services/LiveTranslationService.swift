@@ -5,6 +5,12 @@ import NaturalLanguage
 
 /// Continuous live translation: listens to spoken foreign language and translates in real-time.
 /// Uses on-device speech recognition + translation, with TTS output in the target language.
+///
+/// Translation goes through `translateText` — in the app, Apple's on-device Translation framework
+/// (`AppleTranslationEngine`, Plan BY P3), so nothing leaves the phone. Until Plan HP P2 this
+/// returned "[es→en] original text" and the app spoke the *untranslated* words to the person in
+/// front of the wearer as if they were a translation. Now a sentence is spoken only once it has
+/// actually been translated: with no translator, or when translation fails, nothing is said.
 @MainActor
 final class LiveTranslationService: ObservableObject {
     @Published var isActive = false
@@ -27,6 +33,16 @@ final class LiveTranslationService: ObservableObject {
 
     /// Callback when a translation is ready to be spoken
     var onTranslation: ((String) -> Void)?
+
+    /// Translates one recognised sentence: text, source language (nil when it could not be
+    /// detected), target language. Throws when it cannot, and then nothing is spoken. Injected by
+    /// `AppState` (the on-device Apple engine) and by tests; nil means no translator, and nothing
+    /// is ever spoken.
+    var translateText: (@MainActor (String, String?, String) async throws -> String)?
+
+    /// Called once a session has started listening, with its target language — where the app says
+    /// that an AI translation is starting (Plan HP P2 item 10).
+    var onSessionStarted: ((String) -> Void)?
 
     /// Debounce: don't translate the same partial result repeatedly
     private var lastTranslatedText: String = ""
@@ -78,6 +94,7 @@ final class LiveTranslationService: ObservableObject {
         }
         PrivacyLog.speech(.liveTranslation, .started, language: PrivacyToken(source),
                           detail: PrivacyToken(target))
+        if isActive { onSessionStarted?(target) }
     }
 
     func stop() {
@@ -198,21 +215,21 @@ final class LiveTranslationService: ObservableObject {
         silenceTimer?.cancel()
 
         if isFinal {
-            translateAndSpeak(text)
+            Task { await self.translateAndSpeak(text) }
         } else {
             // Wait 1.5 seconds of no new text before translating partial results
             silenceTimer = Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 if !Task.isCancelled {
-                    await MainActor.run {
-                        self.translateAndSpeak(text)
-                    }
+                    await self.translateAndSpeak(text)
                 }
             }
         }
     }
 
-    private func translateAndSpeak(_ text: String) {
+    /// Translate one recognised sentence and hand the translation to `onTranslation`. Internal so a
+    /// test can drive it through an injected `translateText` without a microphone or a recogniser.
+    func translateAndSpeak(_ text: String) async {
         // Don't re-translate the same text
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != lastTranslatedText else { return }
@@ -232,8 +249,25 @@ final class LiveTranslationService: ObservableObject {
             return
         }
 
-        // Translate
-        let translation = translate(trimmed, from: detectedLang, to: targetLanguage)
+        // Translate. Nothing is spoken unless this produced a real translation — speaking the
+        // original words as though they were translated is worse than a gap.
+        guard let translateText else {
+            PrivacyLog.speech(.liveTranslation, .translationUnavailable, detail: PrivacyToken("noTranslator"))
+            return
+        }
+        let target = targetLanguage
+        let translation: String
+        do {
+            let source = detectedLang == "unknown" ? nil : detectedLang
+            translation = try await translateText(trimmed, source, target)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            PrivacyLog.speech(.liveTranslation, .translationUnavailable,
+                              detail: PrivacyToken("onDevice"), error: SafeErrorSummary(error))
+            return
+        }
+        // Stopped, or switched to another language, while the translation was in flight.
+        guard isActive, target == targetLanguage, !translation.isEmpty else { return }
         lastTranslation = translation
         translationCount += 1
 
@@ -241,7 +275,7 @@ final class LiveTranslationService: ObservableObject {
         // a property of the session, so those stay; the sentences do not.
         PrivacyLog.speech(.liveTranslation, .translated, language: PrivacyToken(detectedLang),
                           characters: trimmed.count, count: translation.count,
-                          detail: PrivacyToken(targetLanguage))
+                          detail: PrivacyToken(target))
         onTranslation?(translation)
     }
 
@@ -250,18 +284,5 @@ final class LiveTranslationService: ObservableObject {
         recognizer.processString(text)
         guard let lang = recognizer.dominantLanguage else { return "unknown" }
         return lang.rawValue  // e.g. "en", "es", "ja", "fr"
-    }
-
-    /// Translate using the on-device translation if available.
-    /// Falls back to a simpler approach for offline use.
-    private func translate(_ text: String, from source: String, to target: String) -> String {
-        // Note: Full on-device translation requires the Translation framework (iOS 17.4+)
-        // or a network call. For now, we use a pragmatic approach:
-        // 1. If the existing TranslationTool is available, route through it
-        // 2. Otherwise, prefix the detected language for the LLM to translate
-
-        // For live translation, we return the text with language annotation
-        // and let the TTS callback handle it (the LLM or a future Translation API call)
-        return "[\(source)→\(target)] \(text)"
     }
 }
