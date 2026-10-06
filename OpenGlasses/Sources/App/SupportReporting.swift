@@ -81,10 +81,11 @@ extension AppState {
         if conversationStore.isLocked {
             _ = await conversationStore.unlock()
         }
+        let storefront = await StoreKitStorefrontReader().countryCode()
         return JobTranscriptExporter.document(request.scope, options: request.options,
                                               sessions: FieldSessionService.shared,
                                               store: conversationStore,
-                                              environment: supportEnvironment())
+                                              environment: supportEnvironment(storefront: storefront))
     }
 
     /// Whether this phone belongs to an organisation: set up by a profile, or running on an
@@ -103,7 +104,10 @@ extension AppState {
 
     /// What only the running app knows: the phone, the glasses, the app's event log and the
     /// debug log, and the configured secrets the report is masked with.
-    func supportEnvironment() -> JobTranscriptExporter.Environment {
+    ///
+    /// `storefront` is the App Store country as alpha-2 (`StorefrontReader`), read by the caller
+    /// because StoreKit answers asynchronously. A country code, not personal data.
+    func supportEnvironment(storefront: String? = nil) -> JobTranscriptExporter.Environment {
         let app = AppBuildIdentity.current
         var phone = [
             "App: \(app.version) (\(app.build))",
@@ -115,6 +119,8 @@ extension AppState {
             // whether the phone is in English or in a language the app does not ship.
             "Language: \(Locale.current.identifier)",
             "Phone languages: \(Locale.preferredLanguages.prefix(3).joined(separator: ", "))",
+            // Which market the app was distributed in — what a region-dependent capability will turn on.
+            MarketAvailabilityPolicy.supportReportLine(storefront: storefront),
             "Mode: \(currentMode.rawValue)",
             "AI model: \(Config.activeModel?.name ?? "none set")",
             "Transcription preference: \(Config.asrEnginePreference.rawValue)",
