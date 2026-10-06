@@ -481,9 +481,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                          onDeviceOnly: Bool = false) async {
         // Any engine callback from here on belongs to this generation (Plan FE P4).
         deliveryLedger.beginUtterance(generation: gen)
-        // What is actually spoken: the reply, plus a one-off line when the cloud voice has just
-        // turned it down for a reason the wearer has to act on.
-        var text = text
+        // What is actually spoken: the reply with its symbols written out as words
+        // (no engine can be trusted with "22°C" or "80 km/h"), plus a one-off line when the cloud voice has
+        // just turned it down for a reason the wearer has to act on.
+        var text = SpokenSymbolExpander.spokenForm(of: text)
         let elevenLabsKey = Config.elevenLabsAPIKey
         // ElevenLabs is "ready" only with a key, online, and not quota-exhausted. Kokoro is "ready"
         // only with the model present *and* the binary compiled in (always false in the shipped
