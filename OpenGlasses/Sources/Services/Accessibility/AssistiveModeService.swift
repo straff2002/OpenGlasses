@@ -22,6 +22,12 @@ final class AssistiveModeService: ObservableObject {
     /// routing without an organisation profile or an edition.
     var socialPolicy: () -> AssistiveModePolicy.Decision = { AssistiveModePolicy.current() }
 
+    /// Social mode answers that named a feeling and were re-asked, since launch (Plan HR P1 item 3).
+    /// Counts only; the words are never kept.
+    private(set) var socialInferenceRetries = 0
+    /// Social mode answers withheld because the re-ask named a feeling too, since launch.
+    private(set) var socialInferenceWithheld = 0
+
     /// Seconds between ambient analyses. Conservative to limit battery + API cost.
     var interval: TimeInterval = 6
 
@@ -106,10 +112,10 @@ final class AssistiveModeService: ObservableObject {
         let userText = AssistiveRouter.userText(for: mode, transcription: pendingTranscription)
         pendingTranscription = nil // consume
 
-        guard let raw = await llm.analyzeFrame(systemPrompt: systemPrompt, userText: userText, imageData: imageData, maxTokens: 200),
-              let advice = AssistiveAdvice.parse(raw) else {
-            return
+        let advice = await resolveAdvice(mode: mode, systemPrompt: systemPrompt, userText: userText) { prompt, text in
+            await llm.analyzeFrame(systemPrompt: prompt, userText: text, imageData: imageData, maxTokens: 200)
         }
+        guard let advice else { return }
         guard isActive else { return } // may have been stopped during the await
 
         latestAdvice = advice
@@ -118,9 +124,35 @@ final class AssistiveModeService: ObservableObject {
         await tts.speak(spoken, urgency: advice.urgency.speechUrgency)
     }
 
+    /// Ask the model about one frame and decide what, if anything, is spoken (Plan HR P1 item 3).
+    ///
+    /// `ask` sends a system prompt and user text with the frame and returns the raw reply; it is a
+    /// parameter so a test drives this with a fake model and no camera. Scene mode is untouched:
+    /// whatever parses is spoken, as before. Social mode fails closed against `EmotionLabelFilter`:
+    /// an answer that names a feeling, a mood or an intention is never spoken. It is re-asked once,
+    /// on the same frame, with `SocialObservationContract.retryInstruction` appended; if the second
+    /// answer names one too, the wearer hears `SocialObservationContract.fallbackLine` instead and a
+    /// content-free counter is logged. A reply that does not parse is, as always, not spoken.
+    func resolveAdvice(mode: AssistiveRouter.Mode, systemPrompt: String, userText: String,
+                       ask: @MainActor (_ systemPrompt: String, _ userText: String) async -> String?) async -> AssistiveAdvice? {
+        guard let first = await ask(systemPrompt, userText).flatMap(AssistiveAdvice.parse) else { return nil }
+        guard mode == .social else { return first }
+        if EmotionLabelFilter.check(first).isObservation { return first }
+
+        socialInferenceRetries += 1
+        PrivacyLog.vision(.assistiveMode, .inferenceRetried, count: socialInferenceRetries)
+        let stricter = systemPrompt + "\n\n" + SocialObservationContract.retryInstruction
+        guard let second = await ask(stricter, userText).flatMap(AssistiveAdvice.parse) else { return nil }
+        if EmotionLabelFilter.check(second).isObservation { return second }
+
+        socialInferenceWithheld += 1
+        PrivacyLog.vision(.assistiveMode, .inferenceWithheld, count: socialInferenceWithheld)
+        return AssistiveAdvice(advice: SocialObservationContract.fallbackLine, urgency: .low, followup: nil)
+    }
+
     /// Pick the mode for the next analysis under the current Social mode policy, and publish both
     /// the mode and the refusal. Social mode routes to Scene whenever the policy refuses it, so a
-    /// managed phone or a Field Assist edition never sends an emotional-state prompt. Internal so
+    /// managed phone or a Field Assist edition never sends a prompt about a person. Internal so
     /// the routing is testable without a camera, a model or a voice.
     @discardableResult
     func routeNextAnalysis(transcription: String?) -> AssistiveRouter.Mode {

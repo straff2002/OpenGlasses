@@ -689,6 +689,10 @@ enum PrivacyLog {
         // `captureStale` one refused because its session or its moment had passed.
         case captureRetried, captureUnusable, captureStale
         case performanceSampled
+        // Plan HR P1 item 3 — Social mode's observation filter. `inferenceRetried` is an answer that
+        // named a feeling and was re-asked, `inferenceWithheld` a re-ask that named one too, so the
+        // fallback line was spoken instead. Counted, never quoted: the words are the model's.
+        case inferenceRetried, inferenceWithheld
     }
 
     /// `posture` is the power policy's own enum, `percent` is how much of the frame a detected
