@@ -182,7 +182,9 @@ class AudioRecordingService: ObservableObject {
     private func collectCaptions() {
         guard let captions = ambientCaptionService else { return }
         let newEntries = captionCursor.take(newestFirst: captions.captionHistory)
-        let newText = newEntries.map(\.text).joined(separator: " ")
+        let newText = newEntries
+            .map { $0.labeledText(registry: captions.speakerRegistry) }
+            .joined(separator: " ")
         if !newText.isEmpty {
             recordingTranscript += (recordingTranscript.isEmpty ? "" : " ") + newText
         }
