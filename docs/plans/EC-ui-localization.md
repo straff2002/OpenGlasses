@@ -1,7 +1,7 @@
 # Plan EC — Automatic UI Localization
 
-**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-10-06). One P1 prerequisite fix,
-three catalog syncs and two complete catalogs (Russian, then Mexican Spanish) have landed; P1
+**Status:** 🚧 Started (planned 2026-09-02; progress below, 2026-10-07). One P1 prerequisite fix,
+four catalog syncs and two complete catalogs (Russian, then Mexican Spanish) have landed; P1
 items 1 and 2, English plural variants, the rest of P2 and the other P3 languages remain.
 **Origin:** The design-kit `LocalizedStringKey` conversion ([#394](https://github.com/straff2002/OpenGlasses/pull/394))
 made the string catalog able to see the app's authored copy, and the owner decision followed the same
@@ -16,9 +16,28 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 
 ---
 
-## Progress (2026-10-06)
+## Progress (2026-10-07)
 
 **Landed.**
+- **Catalog sync after the EU AI Act tranches, and the line for the other person (2026-10-07).**
+  The catalog was synced with the current sources: 40 keys added, none removed, taking it to
+  3,004 keys (2,956 translatable). As before it is add-only. A command-line build writes the
+  `.stringsdata` files but does not rewrite the catalog, so one Debug simulator build produced
+  them and `xcstringstool sync` merged them into a copy; the 63 stale marks it proposed on
+  existing keys were left out. New keys go where Xcode sorts them (`localizedStandardCompare`),
+  not where the sync tool happened to write them: the rename check in `BrandNameGuardTests`
+  re-sorts the catalog that way and fails on any other order. The additions are the Enrolled
+  Faces screen, the Avenkin AI cue and introduction, the translation disclosures, Social mode's
+  copy, the first-aid toggle, the persona and chat provenance lines, and four ElevenLabs fallback
+  notices. The deployer sheet and the jurisdictions copy are HTML and not in the catalog.
+  `ru` and `es-MX` were
+  machine-translated for all 40, with plural variants on the two counted strings, so each covers
+  all 2,956 translatable keys again. Two keys are said to or shown to someone who does not speak
+  the wearer's language: the spoken "This is a live AI translation by Avenkin AI." and the
+  caption label "AI translation". `TranslationDisclosureLanguage` picks them by the translation's
+  target language, so they now exist in every catalog language, the partial ones (`de`, `es`,
+  `fr`, `ja`, `pl`, `uk`, `zh-Hans`, `zh-Hant`) included. Like the rest of the machine
+  translation, they still need human review.
 - **The guard no longer reads a percentage as a specifier (2026-10-06).** The specifier pattern
   accepted the printf space flag, so "80% of a limit" parsed as `% o`, an octal argument, and any
   translation of that footer failed parity. No string in the app uses the space flag, and that
