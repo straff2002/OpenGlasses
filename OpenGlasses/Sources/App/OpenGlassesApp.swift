@@ -252,6 +252,11 @@ struct OpenGlassesApp: App {
         // Temple taps became remappable (Plan GJ): a wearer who had the single-gesture switch on
         // keeps double tap = start talking; everyone else gets the new defaults. Once, behind a flag.
         TempleGestureSettingsMigration.run()
+        // Face recognition now defaults off (Plan HP P1). An install that already had it — onboarding
+        // done before this build, or a face enrolled — is seeded on; a fresh install is seeded off;
+        // a switch the wearer already set is left alone. Once, behind a flag, and before anything
+        // reads `AIFeatureGate`.
+        CapabilityDefaultMigration.run()
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,

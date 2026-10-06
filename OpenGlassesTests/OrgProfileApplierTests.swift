@@ -60,6 +60,25 @@ final class OrgProfileApplierTests: XCTestCase {
         XCTAssertEqual(SettingKey.remoteInvokeCaptureEnabled.kind, .ceiling(pinnedTo: false))
     }
 
+    /// Plan HP P1 item 2: an organisation may switch face recognition off on its phones and may
+    /// never switch it on — enrolling a bystander is the wearer's choice, not the employer's.
+    func testFaceRecognitionCanBePinnedOffAndNeverOn() {
+        XCTAssertEqual(SettingKey.faceRecognitionEnabled.kind, .ceiling(pinnedTo: false))
+        XCTAssertEqual(SettingKey.faceRecognitionEnabled.rawValue, AIFeature.faceRecognition.record.disableSwitch.key,
+                       "the ceiling must pin the same key the AI feature gate reads")
+
+        let off = apply(["faceRecognitionEnabled": RawSetting(.bool(false), .ceiling)])
+        XCTAssertEqual(off.ceilings[.faceRecognitionEnabled], .bool(false))
+        XCTAssertTrue(off.drops.isEmpty)
+
+        let on = apply(["faceRecognitionEnabled": RawSetting(.bool(true), .ceiling)])
+        XCTAssertNil(on.ceilings[.faceRecognitionEnabled])
+        XCTAssertEqual(on.drops, [.init(key: "faceRecognitionEnabled", reason: .wrongDirection)])
+
+        XCTAssertNotEqual(SettingKey.faceRecognitionEnabled.ceilingDescription, "faceRecognitionEnabled",
+                          "the review sheet names it in words")
+    }
+
     func testACeilingOnlyKeyRefusesAStartingValue() {
         let result = apply(["privacyFilterEnabled": RawSetting(.bool(true), .default)])
         XCTAssertEqual(result.drops, [.init(key: "privacyFilterEnabled",

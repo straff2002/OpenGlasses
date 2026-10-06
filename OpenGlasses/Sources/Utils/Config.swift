@@ -4204,7 +4204,29 @@ struct Config {
     /// A feature that already had its own switch keeps it rather than gaining a second.
 
     /// Recognising and naming faces from the camera. Biometric.
-    @UserDefaultsBacked("faceRecognitionEnabled", default: true) static var faceRecognitionEnabled: Bool
+    ///
+    /// The one exception to "every one defaults on" (Plan HP P1 item 2): a biometric identification
+    /// feature is opt-in, so the default is **off**. `CapabilityDefaultMigration` runs at launch and
+    /// seeds this on for an install that already had it (onboarding completed before this build, or
+    /// a face enrolled), so nobody loses the capability because the default moved. An organisation
+    /// profile may pin it off (`SettingKey.faceRecognitionEnabled`), never on; the ceiling clamps on
+    /// read and leaves the wearer's own value alone.
+    static var faceRecognitionEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.faceRecognitionEnabled,
+                                stored: UserDefaults.standard.object(forKey: "faceRecognitionEnabled") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.faceRecognitionEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "faceRecognitionEnabled")
+        }
+    }
+
+    /// Assistive Mode's Social mode — inferring the apparent emotional state of the person in front
+    /// of the wearer. Biometric. On by default for personal users, as it shipped; it is never
+    /// offered on an organisation-managed phone or under a Field Assist edition whatever this says
+    /// (`AssistiveModePolicy`). `CapabilityDefaultMigration` does not touch it.
+    @UserDefaultsBacked("assistiveSocialEnabled", default: true) static var assistiveSocialEnabled: Bool
 
     /// Continuous on-screen transcription of nearby speech.
     @UserDefaultsBacked("ambientCaptionsEnabled", default: true) static var ambientCaptionsEnabled: Bool

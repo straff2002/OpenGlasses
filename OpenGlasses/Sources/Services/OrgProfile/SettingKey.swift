@@ -46,6 +46,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case remoteInvokeCaptureEnabled
     case mcpServerEnabled
     case agentModeEnabled
+    /// Face recognition (Plan HP P1 item 2): an organisation may switch it off on its phones, never
+    /// on — enrolling a bystander's face is the wearer's choice, not an employer's.
+    case faceRecognitionEnabled
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -86,7 +89,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .privacyFilterEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
-             .mcpServerEnabled, .agentModeEnabled:
+             .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled:
             return .ceiling(pinnedTo: false)
         case .fieldAssistEnabled:
             return .startingValue(.bool)

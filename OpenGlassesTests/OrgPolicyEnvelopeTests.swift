@@ -6,7 +6,8 @@ import XCTest
 final class OrgPolicyEnvelopeTests: XCTestCase {
 
     private let touchedKeys = ["privacyFilterEnabled", "remoteInvokeCaptureEnabled", "agentModeEnabled",
-                               "organizationDisplayName", "organizationAllowsUnsignedVaults"]
+                               "organizationDisplayName", "organizationAllowsUnsignedVaults",
+                               "faceRecognitionEnabled"]
     private var saved: [String: Any] = [:]
 
     override func setUp() {
@@ -92,6 +93,29 @@ final class OrgPolicyEnvelopeTests: XCTestCase {
         XCTAssertFalse(Config.organizationAllowsUnsignedVaults)
         XCTAssertFalse(VaultLinkInstallPolicy.current().allowsUnsigned,
                        "the FS refusal a profile was always meant to reach")
+    }
+
+    /// Plan HP P1 item 2: face recognition defaults off, and an organisation's off-ceiling wins on
+    /// read — through `Config` and so through the AI feature gate — without touching the wearer's
+    /// own stored choice.
+    func testFaceRecognitionDefaultsOffAndAnOrganisationCanPinItOff() {
+        UserDefaults.standard.removeObject(forKey: "faceRecognitionEnabled")
+        XCTAssertFalse(Config.faceRecognitionEnabled, "a fresh install's default is off")
+
+        UserDefaults.standard.set(true, forKey: "faceRecognitionEnabled")
+        XCTAssertTrue(AIFeatureGate.isEnabled(.faceRecognition))
+
+        install(["faceRecognitionEnabled": RawSetting(.bool(false), .ceiling)])
+        XCTAssertFalse(Config.faceRecognitionEnabled)
+        XCTAssertFalse(AIFeatureGate.isEnabled(.faceRecognition))
+        XCTAssertTrue(PolicyEnvelope.isLocked(.faceRecognitionEnabled))
+
+        Config.faceRecognitionEnabled = false   // a locked switch writing back on the way out
+        XCTAssertEqual(UserDefaults.standard.object(forKey: "faceRecognitionEnabled") as? Bool, true,
+                       "a ceiling never overwrites the stored preference")
+
+        PolicyEnvelope.clear()
+        XCTAssertTrue(Config.faceRecognitionEnabled, "removing the profile restores the wearer's choice")
     }
 
     func testTheEnvelopeAnnouncesAChange() {

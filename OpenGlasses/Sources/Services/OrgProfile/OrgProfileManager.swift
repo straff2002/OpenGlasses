@@ -889,6 +889,7 @@ extension SettingKey {
         case .remoteInvokeCaptureEnabled: return "Remote camera, recording and transcript requests are off"
         case .mcpServerEnabled: return "The MCP glasses server is off"
         case .agentModeEnabled: return "Agentic features are off"
+        case .faceRecognitionEnabled: return "Face recognition is off"
         default: return rawValue
         }
     }
