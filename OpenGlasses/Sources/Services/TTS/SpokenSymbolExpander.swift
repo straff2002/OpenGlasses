@@ -11,14 +11,16 @@ import NaturalLanguage
 ///
 /// The words are English only. Another language needs its own words and its own number
 /// agreement, and an English "degrees" dropped into a Spanish sentence is worse than the symbol
-/// it replaced. The one rule that holds in every language is subscript digits (CO₂).
+/// it replaced. Two things hold in every language: subscript digits (CO₂) are flattened, and
+/// Markdown is taken out — the prompt asks the model not to write it, models write it anyway,
+/// and an engine either reads the asterisks aloud or trips over them.
 ///
 /// Unit abbreviations in plain letters (km, kg, mph, GB) are written out too, but only behind a
 /// number: "5 km" is five kilometers, a bare "km" could be anything.
 ///
 /// Deliberately not here: single-letter units (m, g, s, V, A, L) and "in", which mean too many
 /// other things — "5m" is metres, minutes or millions; currency and percent signs, which engines
-/// read well; and Markdown, which is not a symbol with a spoken form.
+/// read well; and Markdown tables, whose pipes have no spoken form worth guessing at.
 enum SpokenSymbolExpander {
 
     // MARK: - Entry points
@@ -35,8 +37,10 @@ enum SpokenSymbolExpander {
     static func expand(_ text: String, languageCode: String) -> String {
         guard needsWork(text) else { return text }
         var result = String(text.map { subscripts[$0] ?? $0 })
-        guard languageCode == "en" else { return result }
-        for rule in englishRules { result = rule(result) }
+        for rule in markdownRules { result = rule(result) }
+        if languageCode == "en" {
+            for rule in englishRules { result = rule(result) }
+        }
         // The rules pad their words with spaces; where a symbol already had one, two are left.
         return result == text ? text : tidied(result)
     }
@@ -55,7 +59,11 @@ enum SpokenSymbolExpander {
 
     // MARK: - Tables
 
-    private static let triggers = CharacterSet(charactersIn: "°℃℉×÷±≈≤≥≠→›><~–—&#½¼¾²³µμΩ/₀₁₂₃₄₅₆₇₈₉")
+    private static let triggers = CharacterSet(charactersIn: "°℃℉×÷±≈≤≥≠→›><~–—&#½¼¾²³µμΩ/₀₁₂₃₄₅₆₇₈₉*_`[•")
+
+    /// A "- item" or "+ item" line: the one piece of Markdown made only of characters that are
+    /// too common to be triggers.
+    private static let bulletTrigger = try! NSRegularExpression(pattern: #"(?m)^[ \t]*[-+][ \t]+\S"#)
 
     private static let subscripts: [Character: Character] = [
         "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
@@ -137,12 +145,41 @@ enum SpokenSymbolExpander {
     /// Whether any rule could apply. Checked before language detection, which is not free.
     private static func needsWork(_ text: String) -> Bool {
         if text.unicodeScalars.contains(where: triggers.contains) { return true }
-        return letterUnitTrigger.firstMatch(
-            in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil
+        let whole = NSRange(location: 0, length: (text as NSString).length)
+        return letterUnitTrigger.firstMatch(in: text, range: whole) != nil
+            || bulletTrigger.firstMatch(in: text, range: whole) != nil
     }
 
     private static let number = #"[-−]?\d+(?:[.,]\d+)?"#
     private static let gap = #"[   ]?"#
+
+    // MARK: - Markdown
+
+    /// Markup taken out, text kept. Every language.
+    private static let markdownRules: [(String) -> String] = [
+        // Code fences, with their language tag. What is inside is still read.
+        rule(#"(?m)^[ \t]*```[^\n]*\n?"#) { _, _ in "" },
+        // [text](url) and ![alt](url): the words, not the address.
+        rule(#"!?\[([^\]\n]+)\]\([^)\n]+\)"#) { groups, _ in groups[1] ?? "" },
+        // A rule line: ---, ***, ___.
+        rule(#"(?m)^[ \t]*([-*_])(?:[ \t]?\1){2,}[ \t]*$\n?"#) { _, _ in "" },
+        // # Heading
+        rule(#"(?m)^[ \t]{0,3}#{1,6}[ \t]+"#) { _, _ in "" },
+        // > quoted. Not "> 5", which is a comparison.
+        rule(#"(?m)^[ \t]*>[ \t]+(?=\D)"#) { _, _ in "" },
+        // - item, * item, + item, • item
+        rule(#"(?m)^[ \t]*[-*+•][ \t]+(?=\S)"#) { _, _ in "" },
+        // **bold**, __bold__, ~~struck~~
+        rule(#"(\*\*|__|~~)(?=\S)(.+?)(?<=\S)\1"#) { groups, _ in groups[2] ?? "" },
+        // *italic* and _italic_. Not snake_case, and not 2*3*4.
+        rule(#"(?<![\p{L}\p{N}*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\p{L}\p{N}*])"#) { groups, _ in groups[1] ?? "" },
+        rule(#"(?<![\p{L}\p{N}_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\p{L}\p{N}_])"#) { groups, _ in groups[1] ?? "" },
+        // `code`
+        rule(#"`+"#) { _, _ in "" },
+        // Asterisks left over — an unclosed pair in a reply spoken a sentence at a time, a
+        // footnote mark. Kept between two numbers, where it is a multiplication.
+        rule(#"(?<![\d*])(?<!\d[ \t])\*++|\*++(?![ \t]?\d)"#) { _, _ in "" },
+    ]
 
     // MARK: - English
 
@@ -192,6 +229,7 @@ enum SpokenSymbolExpander {
         rule(#"[ \t]*≈[ \t]*"#) { _, _ in " approximately " },
         // Arithmetic and comparison.
         rule(#"[ \t]*×[ \t]*"#) { _, _ in " times " },
+        rule(#"(?<=\d)[ \t]*\*[ \t]*(?=\d)"#) { _, _ in " times " },
         rule(#"[ \t]*÷[ \t]*"#) { _, _ in " divided by " },
         rule(#"±[ \t]*"#) { _, _ in "plus or minus " },
         rule(#"[ \t]*≤[ \t]*"#) { _, _ in " less than or equal to " },

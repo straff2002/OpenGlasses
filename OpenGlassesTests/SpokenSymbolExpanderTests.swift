@@ -116,6 +116,61 @@ final class SpokenSymbolExpanderTests: XCTestCase {
         XCTAssertEqual(expand(text), text)
     }
 
+    // MARK: - Markdown
+
+    func testEmphasisMarkersAreTakenOutAndTheWordsKept() {
+        XCTAssertEqual(expand("**Important:** turn the *main* valve off, _not_ the ~~red~~ blue one."),
+                       "Important: turn the main valve off, not the red blue one.")
+        XCTAssertEqual(expand("Run `git status` first."), "Run git status first.")
+        XCTAssertEqual(expand("__Done__"), "Done")
+    }
+
+    func testHeadingsBulletsQuotesAndRulesLoseTheirMarkers() {
+        let reply = """
+        ## Steps
+        - Turn off the power
+        * Remove the panel
+        + Check the fuse
+        • Put it back
+        ---
+        > Mind the capacitor.
+        1. Numbered lines keep their number.
+        """
+        let spoken = """
+        Steps
+        Turn off the power
+        Remove the panel
+        Check the fuse
+        Put it back
+        Mind the capacitor.
+        1. Numbered lines keep their number.
+        """
+        XCTAssertEqual(expand(reply), spoken)
+    }
+
+    func testALinkIsItsWordsAndAFenceIsItsContents() {
+        XCTAssertEqual(expand("See [the manual](https://example.com/manual_v2.pdf) and ![a diagram](x.png)."),
+                       "See the manual and a diagram.")
+        XCTAssertEqual(expand("Try:\n```swift\nprint(1)\n```\nThen run it."), "Try:\nprint(1)\nThen run it.")
+    }
+
+    func testAnUnclosedPairLeavesNoAsterisksBehind() {
+        // A reply spoken a sentence at a time can split a pair across two utterances.
+        XCTAssertEqual(expand("**Note: this is the first half."), "Note: this is the first half.")
+        XCTAssertEqual(expand("and this is the second.** See the footnote*."), "and this is the second. See the footnote.")
+    }
+
+    func testMarkdownIsTakenOutInEveryLanguage() {
+        XCTAssertEqual(expand("**Importante:** cierra la válvula.\n- Paso uno", "es"), "Importante: cierra la válvula.\nPaso uno")
+    }
+
+    func testWhatOnlyLooksLikeMarkdownIsKept() {
+        let text = "Use snake_case_name and my_file.txt at https://example.com/a_b_c; 2*3*4 and 3 * 4 stay sums."
+        XCTAssertEqual(expand(text, "es"), text)
+        XCTAssertEqual(expand("3 * 4 is 12"), "3 times 4 is 12")
+        XCTAssertEqual(expand("A well-known fact - and a dash."), "A well-known fact - and a dash.")
+    }
+
     // MARK: - What is left alone
 
     func testTextWithoutASymbolIsUntouched() {
