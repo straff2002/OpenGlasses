@@ -17,6 +17,11 @@ final class AIDisclosureLedger {
     enum Surface: String, CaseIterable {
         /// Structured-vision assessments: HECA, first-aid triage, instrument reading.
         case assessment
+        /// Talking to the assistant: the first answer of a Direct-mode session, and the start of a
+        /// Gemini Live or OpenAI Realtime session (EU AI Act Art. 50(1), Plan HP).
+        case conversation
+        /// Live translation and translated captions.
+        case translation
     }
 
     /// The app-wide ledger. Session-scoped in practice: it is reset at launch and whenever the
@@ -58,6 +63,10 @@ final class AIDisclosureLedger {
         switch surface {
         case .assessment:
             return String(localized: "This is an AI assessment from the camera. It is not a substitute for a trained inspector or first aider.")
+        case .conversation:
+            return String(localized: "You're talking to an AI assistant. It can be wrong, so check anything important.")
+        case .translation:
+            return String(localized: "This is a live AI translation. It may be inaccurate.")
         }
     }
 }

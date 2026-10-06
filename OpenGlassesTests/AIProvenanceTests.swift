@@ -204,6 +204,51 @@ final class AIProvenanceTests: XCTestCase {
         }
     }
 
+    // MARK: - Conversation and translation surfaces (Plan HP P1 item 7)
+
+    /// Each surface discloses once per session, independently: hearing one disclosure does not
+    /// count as having been told about another.
+    func testConversationAndTranslationDiscloseOncePerSessionEach() {
+        let ledger = AIDisclosureLedger()
+        let conversation = ledger.consume(.conversation)
+        XCTAssertNotNil(conversation)
+        XCTAssertNil(ledger.consume(.conversation))
+        XCTAssertFalse(ledger.hasDelivered(.translation), "one surface consumed another")
+        XCTAssertFalse(ledger.hasDelivered(.assessment))
+
+        let translation = ledger.consume(.translation)
+        XCTAssertNotNil(translation)
+        XCTAssertNil(ledger.consume(.translation))
+        XCTAssertNotNil(ledger.consume(.assessment), "the assessment surface is still its own")
+    }
+
+    /// A new conversation is a new session: every surface discloses again.
+    func testResetClearsEverySurface() {
+        let ledger = AIDisclosureLedger()
+        for surface in AIDisclosureLedger.Surface.allCases { _ = ledger.consume(surface) }
+        for surface in AIDisclosureLedger.Surface.allCases { XCTAssertTrue(ledger.hasDelivered(surface)) }
+
+        ledger.reset()
+        for surface in AIDisclosureLedger.Surface.allCases {
+            XCTAssertFalse(ledger.hasDelivered(surface), "\(surface)")
+            XCTAssertEqual(ledger.consume(surface), AIDisclosureLedger.text(for: surface), "\(surface)")
+        }
+    }
+
+    /// The copy resolves through the catalog as one whole sentence per surface.
+    func testConversationAndTranslationCopyResolves() {
+        XCTAssertEqual(AIDisclosureLedger.text(for: .conversation),
+                       String(localized: "You're talking to an AI assistant. It can be wrong, so check anything important."))
+        XCTAssertEqual(AIDisclosureLedger.text(for: .translation),
+                       String(localized: "This is a live AI translation. It may be inaccurate."))
+        let all = AIDisclosureLedger.Surface.allCases.map(AIDisclosureLedger.text(for:))
+        XCTAssertEqual(Set(all).count, all.count, "two surfaces share copy")
+        for text in all {
+            XCTAssertTrue(text.contains("AI"), text)
+            XCTAssertFalse(text.contains("Plan") || text.contains("HP"), text)
+        }
+    }
+
     // MARK: - Helper
 
     private static func contains(_ data: Data, _ needle: String) -> Bool {
