@@ -1395,6 +1395,7 @@ enum PrivacyLog {
         case resumed, resumeFailed, resetSucceeded, resetFailed
         case engineStarted, engineStopped, engineReused, engineRebuilt, engineRestarted
         case engineRestartFailed, engineRestartedDeaf, engineStartFailed
+        case emptyCaptureDiscarded
         case formatInvalid, formatNegotiated, conversionFailed
         case deviceDisconnected, deviceReconnected, deviceIgnored
         case playbackDropped, playbackCarried, playbackDiscarded

@@ -130,7 +130,7 @@ struct QuickAction: Codable, Identifiable, Equatable {
     /// are the wearer's and keep whatever they hold.
     static let defaults: [QuickAction] = [
         QuickAction(id: "describe", label: "Describe", icon: "eye", type: .photoThenPrompt,
-                    promptText: "Describe what you see in this image in detail."),
+                    promptText: "Describe the scene and the main objects or readable text in front of the wearer, in two or three spoken sentences. If the picture is too close, too dark or blurry, say that first."),
         recordMeeting,
     ] + travelTemplates
 }

@@ -4143,68 +4143,6 @@ class AppState: ObservableObject, AppStateProtocol {
         addDebugEvent("No device appeared after 30s of polling")
     }
 
-    func completeAuthorizationInMetaAI() async {
-        addDebugEvent("Manual Meta authorization requested")
-        // The Connect button is the path that used to kill the app: for a user who saved an API key
-        // without finishing onboarding, nothing had ever called configure().
-        guard WearablesBootstrap.ensureConfigured() else {
-            addDebugEvent("Wearables SDK unavailable — cannot start registration (\(WearablesBootstrap.statusDescription))")
-            return
-        }
-        do {
-            try await Wearables.shared.startRegistration()
-        } catch {
-            PrivacyLog.device(.glasses, .registrationFailed, error: SafeErrorSummary(error))
-            addDebugEvent("Manual registration start failed: \(error.localizedDescription)")
-        }
-
-        let currentState = Wearables.shared.registrationState.rawValue
-        registrationStateRaw = currentState
-        if currentState >= 3 {
-            // User-initiated: deep-linking to the Meta AI app to approve the permission is the
-            // whole point of this path.
-            await requestEarlyPermission(allowRequest: true)
-            return
-        }
-
-        await MainActor.run {
-            guard let viewAppUrl = URL(string: "fb-viewapp://") else { return }
-            if UIApplication.shared.canOpenURL(viewAppUrl) {
-                UIApplication.shared.open(viewAppUrl, options: [:])
-            }
-        }
-    }
-
-    func resetMetaRegistration() async {
-        addDebugEvent("Manual reset requested: startUnregistration")
-        guard WearablesBootstrap.ensureConfigured() else {
-            addDebugEvent("Wearables SDK unavailable — cannot reset registration")
-            return
-        }
-        do {
-            try await Wearables.shared.startUnregistration()
-            addDebugEvent("startUnregistration succeeded")
-        } catch {
-            addDebugEvent("startUnregistration failed: \(error.localizedDescription)")
-        }
-
-        UserDefaults.standard.set(false, forKey: "hasRegisteredWithMeta")
-        registrationStateRaw = Wearables.shared.registrationState.rawValue
-        addDebugEvent("State after unregistration: \(registrationStateRaw)")
-
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-
-        addDebugEvent("Manual reset: startRegistration")
-        do {
-            try await Wearables.shared.startRegistration()
-            let settled = await waitForRegistration(minState: 3, timeoutSeconds: 20)
-            registrationStateRaw = settled
-            addDebugEvent("Manual reset registration result: state=\(settled)")
-        } catch {
-            addDebugEvent("Manual reset startRegistration failed: \(error.localizedDescription)")
-        }
-    }
-
     /// Auto-start wake word listener on app launch (don't wait for "Connect" or "Test Mic")
     private func autoStartListening() {
         Task {
