@@ -1,6 +1,6 @@
 # Plan FZ — The Avenkin Website (avenkin.com)
 
-**Status:** 🚧 P2 shipped 2026-10-03 ([#626](https://github.com/straff2002/OpenGlasses/pull/626), live on avenkin.com); P5's vault guide page shipped with it; P3, P4 and the rest of P5 not started. Drafted 2026-09-29. avenkin.com
+**Status:** 🚧 P2 shipped 2026-10-03 ([#626](https://github.com/straff2002/OpenGlasses/pull/626), live on avenkin.com); P5's vault guide page shipped with it. P3 started 2026-10-07 ([#679](https://github.com/straff2002/OpenGlasses/pull/679)): `/office/download/` with the 0.5.0 Mac disk image, the user guide and SHA-256 sums, hosted as release `v0.5.0` of the public release-only repository `straff2002/avenkin-office-releases` (option (a) below). Still owed in P3: `/office/releases/`, the update manifest and the in-app updater, `/terms/office/` after legal review, the Windows build, and the clean-Mac acceptance run. P4 and the rest of P5 not started. Drafted 2026-09-29. avenkin.com
 already serves the Pages site and new builds read one base URL (`PublicSite`, Plan FY).
 **P2 as built:** the homepage at `/` with the sign-in hand-off kept inline and byte-for-byte as it
 was; `/auth/meta/` with the fixed-path hand-off; `/app/`, `/field-assist/`, `/office/`, `/pricing/`
