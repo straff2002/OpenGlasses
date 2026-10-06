@@ -169,6 +169,9 @@ enum AIFeature: String, CaseIterable {
                           erasure: .notSubjectLinked)
 
         case .firstAidAssist:
+            // Covers camera triage as well as coaching: `vision_assess` refuses
+            // `kind: first_aid_triage` while this switch is off (Plan HP P1 item 4), so turning it
+            // off stops both. `vision_assess` itself is not listed — its other kinds are not first aid.
             return Record(feature: self, title: "First-aid coaching and triage",
                           sensitiveCategories: [.health],
                           disableSwitch: Switch(key: "firstAidAssistEnabled",

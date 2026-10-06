@@ -28,6 +28,21 @@ final class VisionAssessTool: NativeTool {
         "required": ["kind"]
     ]
 
+    /// Runs the assessment once the arguments are accepted. The live service by default; a test
+    /// injects one to show a call reached it without a camera or a model.
+    private let assess: @MainActor (_ kind: String, _ note: String?) async throws -> AssessmentCard
+
+    init(assess: (@MainActor (_ kind: String, _ note: String?) async throws -> AssessmentCard)? = nil) {
+        self.assess = assess ?? { kind, note in
+            try await StructuredVisionService.shared.assessCurrentFrame(kind: kind, note: note)
+        }
+    }
+
+    /// Assessment kinds that belong to a switchable AI feature, and the feature whose switch gates
+    /// them. Camera triage is part of first-aid assist (Plan HP P1 item 4): turning that feature off
+    /// must stop the triage card as well as the coaching, or the inventory's claim is untrue.
+    static let gatedKinds: [String: AIFeature] = ["first_aid_triage": .firstAidAssist]
+
     func execute(args: [String: Any]) async throws -> String {
         let kind = (args["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let available = AssessmentSchemaRegistry.shared.kinds
@@ -35,6 +50,9 @@ final class VisionAssessTool: NativeTool {
 
         guard !kind.isEmpty else {
             return "Specify what to assess via `kind`. Available: \(availableList)."
+        }
+        if let feature = Self.gatedKinds[kind], !AIFeatureGate.isEnabled(feature) {
+            return AIFeatureGate.disabledMessage(feature)
         }
         guard AssessmentSchemaRegistry.shared.contains(kind) else {
             return "Unknown assessment kind '\(kind)'. Available: \(availableList)."
@@ -44,7 +62,7 @@ final class VisionAssessTool: NativeTool {
         let note = (rawNote?.isEmpty == false) ? rawNote : nil
 
         do {
-            let card = try await StructuredVisionService.shared.assessCurrentFrame(kind: kind, note: note)
+            let card = try await assess(kind, note)
             var response = Self.summarize(card)
             // Plan AD × U: if a capture flow is waiting on a voice_number step, the reading fills it
             // (converted to the step's unit, range-validated) instead of dictation, and advances.
