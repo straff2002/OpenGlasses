@@ -17,6 +17,13 @@ name: Deploy to GitHub Pages
 # link resolves, and the Meta sign-in hand-off still builds the link the app expects. Pull requests
 # that touch the site run the same staging and checks without deploying.
 
+# GitHub Pages accepts one deployment at a time. Two pushes to main a minute apart (a merge and
+# its build bump) otherwise race, and the second fails with "in progress deployment" although it
+# publishes the same site. Queue them, and never cancel a deployment that has started.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main]
