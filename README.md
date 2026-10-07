@@ -86,7 +86,7 @@ Teams can add their own manuals and knowledge vaults for answers with source ref
 
 These features have separate access tiers. [Explore professional capabilities](docs/CAPABILITIES.md#field-and-clinical-work), [build a field knowledge vault](docs/field-assist-vault-guide.md), or [contact Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi) about team access.
 
-Security and privacy engineering is documented against SOC 2, ISO 27001, ISO 27701 and ISO 42001 in [the compliance plans](docs/plans/EP-compliance-programme.md).
+Security, privacy and AI engineering is documented against SOC 2, ISO 27001, ISO 27701, ISO 42001 and the EU AI Act in [the compliance plans](docs/plans/EP-compliance-programme.md) and [the October 2026 review](docs/eu-ai-act-review-2026-10.md).
 
 ## Quick Start
 
@@ -100,6 +100,8 @@ The documented installation route is a source build on a Mac with Xcode. See [av
 4. **Start talking.** Enable listening and say **“Avenkin”**, or tap the microphone. Try asking about something in front of you.
 
 Camera and display features depend on the device and SDK support. Ray-Ban Display has an in-lens display path; **EVEN G2 support is experimental**. See [device notes](docs/CAPABILITIES.md#devices-and-displays) before choosing a setup.
+
+**Where it's available, and what differs by region.** Avenkin is available in every EU and EEA App Store storefront except France. In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027; see [Jurisdictions and legal basis](privacy.html#jurisdictions) in the privacy notice.
 
 ## Go further
 

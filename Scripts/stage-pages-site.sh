@@ -66,6 +66,7 @@ ALLOW=(
   docs/BUILDING.md
   docs/CAPABILITIES.md
   docs/cross-vendor-ai-glasses-research.md
+  docs/deployer-information-sheet.md
   docs/field-assist-vault-guide.md
   docs/field-assist-vault-guide.pdf
   docs/opportunity-assessment.md
