@@ -86,6 +86,8 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 这些功能按不同权限等级开放。[了解专业功能](docs/CAPABILITIES.md#field-and-clinical-work)、[创建现场知识库](docs/field-assist-vault-guide.md)，或[联系 Skunkworks NZ Ltd](mailto:g@skunkworks.kiwi)了解团队授权。
 
+安全、隐私与 AI 工程已按 SOC 2、ISO 27001、ISO 27701、ISO 42001 及欧盟《人工智能法案》进行对照记录，见[合规计划](docs/plans/EP-compliance-programme.md)与[2026 年 10 月的审查](docs/eu-ai-act-review-2026-10.md)。
+
 ## 开始使用
 
 准备一台运行 **iOS 26 或更高版本的 iPhone**，仅用手机就够了。添加兼容的 **Meta 智能眼镜**，还可以免手持使用相机和音频功能。
@@ -98,6 +100,8 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 4. **开口试试。** 启用监听，说出 **“Avenkin”**，或轻点麦克风。先问问眼前的东西是什么。
 
 相机与显示功能取决于设备及 SDK 支持。Ray-Ban Display 提供镜内显示接入；**EVEN G2 支持仍处于实验阶段**。选择设备组合前，请查看[设备说明](docs/CAPABILITIES.md#devices-and-displays)。
+
+**可用地区与地区差异。** Avenkin 列于除法国以外的所有欧盟及欧洲经济区 App Store 商店。在欧盟及欧洲经济区的 App Store 地区，人脸识别将于 2027 年 12 月 2 日起停止提供；详见隐私声明中的[司法管辖与法律依据](privacy.html#jurisdictions)。
 
 ## 继续探索
 

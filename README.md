@@ -101,7 +101,7 @@ The documented installation route is a source build on a Mac with Xcode. See [av
 
 Camera and display features depend on the device and SDK support. Ray-Ban Display has an in-lens display path; **EVEN G2 support is experimental**. See [device notes](docs/CAPABILITIES.md#devices-and-displays) before choosing a setup.
 
-**Where it's available, and what differs by region.** Avenkin is available in every EU and EEA App Store storefront except France. In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027; see [Jurisdictions and legal basis](privacy.html#jurisdictions) in the privacy notice.
+**Where it's available, and what differs by region.** Avenkin is listed in every EU and EEA App Store storefront except France. In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027; see [Jurisdictions and legal basis](privacy.html#jurisdictions) in the privacy notice.
 
 ## Go further
 

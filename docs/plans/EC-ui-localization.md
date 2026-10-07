@@ -107,7 +107,7 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   scans the source so a new unattributed generic overload fails the suite.
 - **Catalog syncs** [#481](https://github.com/straff2002/OpenGlasses/pull/481) (+19 keys) and
   [#483](https://github.com/straff2002/OpenGlasses/pull/483) (+41 keys), with no translations
-  added. The catalog now holds 2,145 keys, and the same 178 carry any translation.
+  added. The catalog now holds 2,145 keys, and the same 178 carry any translation. One detail the earlier entries leave out: `xcstringstool sync` matches the catalog by file name, so the scratch copy it writes into must itself be called `Localizable.xcstrings`; a copy under any other name gains nothing and has almost every key proposed stale.
 
 **Still open.**
 - P1 item 1: `CapabilityCatalog` titles and subtitles are still `String`, not
