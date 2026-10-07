@@ -9632,6 +9632,22 @@
         }
       }
     },
+    "Camera triage isn't available in Field Assist editions; first-aid coaching still is." : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El triaje con la cámara no está disponible en las ediciones de Field Assist; la guía de primeros auxilios sigue disponible."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сортировка по камере недоступна в редакциях Field Assist; подсказки по первой помощи по-прежнему доступны."
+          }
+        }
+      }
+    },
     "Camera view" : {
       "localizations" : {
         "es-MX" : {
@@ -23946,6 +23962,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Импортировано"
+          }
+        }
+      }
+    },
+    "In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027." : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En las regiones de App Store de la UE y el EEE, el reconocimiento facial dejará de estar disponible el 2 de diciembre de 2027."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В регионах App Store в ЕС и ЕЭЗ распознавание лиц перестанет быть доступным 2 декабря 2027 года."
           }
         }
       }
@@ -54504,6 +54536,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Недоступно в производственных сборках. Защищённое сопряжение по локальной сети ещё не реализовано; этот нешифрованный сервер работает только в отладочных сборках для разработки."
+          }
+        }
+      }
+    },
+    "Unavailable in your region" : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No disponible en tu región"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Недоступно в вашем регионе"
           }
         }
       }
