@@ -125,10 +125,9 @@ enum AIFeature: String, CaseIterable {
 
         case .assistiveSocial:
             // Not a tool: Assistive Mode routes to it from what the wearer says. Its switch is read
-            // through `AssistiveModePolicy`, which also refuses it outright on a managed phone and
-            // under a Field Assist edition. Screened `.none` since Plan HR made it observe-only;
-            // the workplace refusals stay until device evidence shows the filter holds on real
-            // frames (the follow-up HR records).
+            // through `AssistiveModePolicy`. Screened `.none` since Plan HR made it observe-only;
+            // the managed-phone and Field Assist refusals were lifted by owner decision on
+            // 2026-10-07 (Plan HS P1 item 2), with HR's device run still owed as evidence.
             return Record(feature: self, title: "Assistive Social mode",
                           sensitiveCategories: [.none],
                           disableSwitch: Switch(key: "assistiveSocialEnabled",
@@ -181,6 +180,8 @@ enum AIFeature: String, CaseIterable {
             // Covers camera triage as well as coaching: `vision_assess` refuses
             // `kind: first_aid_triage` while this switch is off (Plan HP P1 item 4), so turning it
             // off stops both. `vision_assess` itself is not listed — its other kinds are not first aid.
+            // Camera triage is personal-use only (Plan HS P1 item 3): `vision_assess` refuses it and
+            // leaves it out of its advertised kinds in a Field Assist edition or on a managed phone.
             return Record(feature: self, title: "First-aid coaching and triage",
                           sensitiveCategories: [.health],
                           disableSwitch: Switch(key: "firstAidAssistEnabled",
@@ -190,7 +191,8 @@ enum AIFeature: String, CaseIterable {
                           toolNames: ["first_aid"],
                           stores: [],
                           dataRetainedWhenDisabled: "Nothing. Triage cards are in memory for the session and are not written to disk.",
-                          erasure: .notSubjectLinked)
+                          erasure: .notSubjectLinked,
+                          screeningNote: "Camera triage is for personal use only: it is not offered in Field Assist editions or on a phone managed by an organisation, where a first-response aid at work would be the emergency triage use in Annex III 5(d) of the EU AI Act. First-aid coaching, the spoken protocols, is available everywhere.")
 
         case .fitnessCoaching:
             return Record(feature: self, title: "Fitness coaching",

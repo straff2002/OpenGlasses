@@ -1,6 +1,6 @@
 # Plan HR — Social Mode Describes, It Does Not Diagnose (and a switch that is off is off everywhere)
 
-**Status:** ✅ Built 2026-10-07, device check owed — one PR. P1 is the observation contract and its filter, P2 the copy and the router-level feature gate. Owed: run Social mode at a willing person for five minutes and confirm the spoken lines name no emotional state; that run is also the evidence the follow-up (lifting the managed-phone and Field Assist refusals) waits on.
+**Status:** ✅ Built 2026-10-07, device check owed — one PR. P1 is the observation contract and its filter, P2 the copy and the router-level feature gate. Owed: run Social mode at a willing person for five minutes and confirm the spoken lines name no emotional state; that run was to be the evidence for the follow-up (lifting the managed-phone and Field Assist refusals), which [Plan HS](HS-eu-ai-act-decisions.md) took on 2026-10-07 by owner decision; the run is still owed as evidence.
 **Origin:** [docs/eu-ai-act-review-2026-10.md](../eu-ai-act-review-2026-10.md) §3.2 and §6 Decision 3, where the recommended route is to redesign Social mode out of the Act's definition of an emotion recognition system rather than gate or remove it. Follows [HP](HP-eu-ai-act-first-tranche.md) (#680) and [HQ](HQ-eu-ai-act-second-tranche.md) (#681). The second item closes the router-enforcement gap W08.5 left open.
 **Priority:** P0 for the Act (Art. 5(1)(f) exposure today, Annex III 1(c) from 2 December 2027) and the only route that keeps the feature for every user in every region. P1 for the feature gate.
 **Surfaces:** `AssistiveRouter`, `AssistiveModeService`, `AssistiveAdvice`, `AIFeatureRegistry`, `SocialModeCopy`, `NativeToolRouter`, `privacy.html`, the deployer sheet, the review. No new dependency, no new network egress, no setting removed.
@@ -44,4 +44,4 @@ Full `OpenGlassesTests` on the simulator, `-configuration Release` build, `Scrip
 
 ## Out of scope
 
-Lifting the managed-phone and Field Assist refusals (follow-up on device evidence); the Scene mode prompt; the storefront table; the other three decisions in the review §6.
+Lifting the managed-phone and Field Assist refusals (the follow-up; **taken 2026-10-07 by owner decision in [Plan HS](HS-eu-ai-act-decisions.md) without waiting for the device run**, which remains owed as evidence rather than as a gate); the Scene mode prompt; the storefront table; the other three decisions in the review §6.

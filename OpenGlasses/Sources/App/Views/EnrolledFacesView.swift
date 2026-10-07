@@ -12,6 +12,9 @@ import SwiftUI
 struct EnrolledFacesView: View {
     @ObservedObject var faceService: FaceRecognitionService
     @ObservedObject private var adminGate = AdminGate.shared
+    /// The storefront gate (Plan HS P1 item 1). Observed so the screen updates when the launch's
+    /// storefront read lands.
+    @ObservedObject private var market = MarketAvailability.shared
 
     @State private var enabled = Config.faceRecognitionEnabled
     @State private var confirmingForgetEveryone = false
@@ -20,13 +23,20 @@ struct EnrolledFacesView: View {
         adminGate.presentation(.key(.faceRecognitionEnabled))
     }
 
+    /// Why face recognition is not offered on this storefront, or nil when it is. Where it is not,
+    /// the switch reads off and cannot be moved; forgetting below still works.
+    private var regionReason: String? {
+        if case .unavailableInRegion(let reason) = market.availability(of: .faceRecognition) { return reason }
+        return nil
+    }
+
     var body: some View {
         Form {
             Section {
                 if switchPresentation.isShown {
-                    Toggle("Face Recognition", isOn: $enabled)
+                    Toggle("Face Recognition", isOn: regionReason == nil ? $enabled : .constant(false))
                         .tint(AppAccent.color)
-                        .disabled(!switchPresentation.isEditable)
+                        .disabled(!switchPresentation.isEditable || regionReason != nil)
                         .onChange(of: enabled) { _, on in
                             Config.faceRecognitionEnabled = on
                             // Read back: an organisation's ceiling refuses the write.
@@ -34,9 +44,19 @@ struct EnrolledFacesView: View {
                             if !enabled, faceService.isActive { faceService.stop() }
                         }
                     ManagedSettingNote(key: .faceRecognitionEnabled)
+                    if let regionReason {
+                        Text(regionReason)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } footer: {
-                Text(EnrolledFacesPresentation.optInFooter)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(EnrolledFacesPresentation.optInFooter)
+                    if market.showsFaceRecognitionAdvanceNotice {
+                        Text(EnrolledFacesPresentation.regionAdvanceNotice)
+                    }
+                }
             }
 
             Section {

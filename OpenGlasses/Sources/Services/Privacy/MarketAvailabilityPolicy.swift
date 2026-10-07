@@ -1,8 +1,10 @@
 import Foundation
 
-/// Plan HP P1 item 6 — the boundary that will make a capability unavailable in one market while
-/// the same binary ships everywhere. **Dormant**: every restriction date below is nil, so today
-/// every capability is available in every storefront and nothing consults this yet.
+/// Plan HP P1 item 6 — the boundary that makes a capability unavailable in one market while the
+/// same binary ships everywhere. Built dormant; **armed for face recognition by Plan HS P1 item 1**
+/// (owner decision, 2026-10-07): from 2 December 2027 it is unavailable on EEA storefronts. The
+/// other rows stay nil. `MarketAvailability` is the one place that consults it with the real
+/// storefront and today's date.
 ///
 /// Why it exists now: from 2 December 2027, face recognition and emotion inference are high-risk
 /// under the EU AI Act (review §3.1, §3.2), and a business first-aid triage use may be too (§3.3).
@@ -45,14 +47,25 @@ enum MarketAvailabilityPolicy {
 
     /// From when each capability is unavailable on an EEA storefront; nil means never.
     ///
-    /// **All nil in this build — the policy is dormant.** This is the single table to fill in, by a
-    /// decision recorded with counsel, before 2 December 2027 (the date Annex III obligations apply
-    /// to these uses). A capability whose conformity assessment is in place stays nil.
+    /// Face recognition is restricted from 2 December 2027 (Plan HS, decision 2 of the October
+    /// review: withdraw rather than take the notified-body route). Social mode is observation-only
+    /// (Plan HR) and first-aid triage is personal-only at the tool (Plan HS P1 item 3), so their
+    /// rows stay nil. A capability whose conformity assessment is in place stays nil.
     static let restrictedInEEAFrom: [Capability: Date?] = [
-        .faceRecognition: nil,
+        .faceRecognition: annexIIIApplies,
         .emotionInference: nil,
         .firstAidTriageBusiness: nil,
     ]
+
+    /// 2 December 2027 00:00 UTC, the day the Annex III high-risk obligations apply. The Act's own
+    /// date, not a day earlier, so the record and the behaviour agree. Built from components, not
+    /// parsed, so no locale or format can move it.
+    static let annexIIIApplies: Date = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let components = DateComponents(year: 2027, month: 12, day: 2, hour: 0, minute: 0, second: 0)
+        return calendar.date(from: components)!
+    }()
 
     /// Whether `capability` is available on the storefront `countryCode` at `date`.
     ///

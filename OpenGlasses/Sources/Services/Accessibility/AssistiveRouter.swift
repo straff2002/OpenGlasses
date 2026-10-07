@@ -30,8 +30,8 @@ enum AssistiveRouter {
 
     /// Choose a mode, honouring whether Social mode is offered on this phone (Plan HP P1 item 3).
     ///
-    /// When `AssistiveModePolicy` refuses Social mode — a managed phone, a Field Assist edition, the
-    /// wearer's own switch — a request that would have gone to Social goes to Scene instead, so no
+    /// When `AssistiveModePolicy` refuses Social mode — the wearer's own switch, or the
+    /// Accessibility tier being off — a request that would have gone to Social goes to Scene instead, so no
     /// prompt about the person is sent there. Scene mode is never refused.
     static func route(transcription: String?, social: AssistiveModePolicy.Decision) -> Mode {
         let wanted = route(transcription: transcription)

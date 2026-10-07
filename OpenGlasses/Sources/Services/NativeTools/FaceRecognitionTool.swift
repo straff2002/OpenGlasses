@@ -8,6 +8,12 @@ import UIKit
 /// `remember` is the one action that is asked about first: it is classed `.biometricEnrolment`
 /// (`ToolEffectClassifier.isFaceEnrolment`), so the shared approval card and the spoken "Approve?"
 /// come before any template is stored (Plan HP P2 item 9).
+///
+/// Where the storefront makes face recognition unavailable (`MarketAvailability`, Plan HS P1 item 1:
+/// EEA storefronts from 2 December 2027), `remember`, `on` and a `toggle` that would switch it on
+/// answer with the policy's reason; `forget`, `list` and `off` keep working so the wearer can always
+/// clear what they enrolled. The tool stays registered so the refusal is spoken rather than the
+/// capability silently vanishing.
 struct FaceRecognitionTool: NativeTool {
     let name = "face_recognition"
     let description = "Enrol, forget or list the faces of people the user has chosen to enrol, and switch face recognition on or off. Recognition only runs after it has been switched on ('on' or 'toggle'), and it only ever names people the user enrolled with 'remember'; nobody is recognised automatically before that. Enrolling asks the user to approve first, and the person being enrolled isn't told. Use 'remember' with a name while the person is in view, 'forget' with a name to remove them, 'list' to say who is enrolled."
@@ -32,9 +38,24 @@ struct FaceRecognitionTool: NativeTool {
     /// `filteredStill(for:)` — under `.faceRecognition`, the scope that says do not filter.
     weak var cameraService: CameraService?
 
-    init(faceService: FaceRecognitionService, cameraService: CameraService) {
+    /// Whether face recognition is offered on this phone's storefront today. The live service by
+    /// default; a test injects an answer.
+    private let marketAvailability: @MainActor () -> MarketAvailabilityPolicy.Availability
+
+    init(faceService: FaceRecognitionService, cameraService: CameraService,
+         marketAvailability: (@MainActor () -> MarketAvailabilityPolicy.Availability)? = nil) {
         self.faceService = faceService
         self.cameraService = cameraService
+        self.marketAvailability = marketAvailability ?? {
+            MarketAvailability.shared.availability(of: .faceRecognition)
+        }
+    }
+
+    /// The reason to speak instead of starting or enrolling, or nil when the region allows it.
+    private func regionRefusal() async -> String? {
+        let availability = await MainActor.run { marketAvailability() }
+        if case .unavailableInRegion(let reason) = availability { return reason }
+        return nil
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -51,6 +72,7 @@ struct FaceRecognitionTool: NativeTool {
 
         switch action.lowercased() {
         case "remember":
+            if let refusal = await regionRefusal() { return refusal }
             guard let name = args["name"] as? String, !name.isEmpty else {
                 return "Please provide a name for the person."
             }
@@ -76,6 +98,7 @@ struct FaceRecognitionTool: NativeTool {
             let isCurrentlyActive = await MainActor.run { service.isActive }
             let shouldEnable = action == "on" || (action == "toggle" && !isCurrentlyActive)
             if shouldEnable {
+                if let refusal = await regionRefusal() { return refusal }
                 guard let camera = cameraService else {
                     return "Camera service not available."
                 }

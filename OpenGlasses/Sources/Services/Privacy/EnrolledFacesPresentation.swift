@@ -25,6 +25,12 @@ enum EnrolledFacesPresentation {
         String(localized: "Names people you've enrolled when they're in front of your glasses. The person isn't told. You're responsible for using this lawfully where you are.")
     }
 
+    /// Said under the switch on an EEA storefront before face recognition stops being available
+    /// there (Plan HS P1 item 1; `MarketAvailability.showsFaceRecognitionAdvanceNotice` decides when).
+    static var regionAdvanceNotice: String {
+        String(localized: "In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027.")
+    }
+
     /// Where this screen is, as the near-tie message and any other spoken pointer names it.
     static var screenPath: String {
         String(localized: "Settings, Devices & Privacy, Glasses, Enrolled Faces")
@@ -73,7 +79,11 @@ enum EnrolledFacesPresentation {
     }
 
     /// The status beside the row that links here from the Glasses screen.
-    static func linkStatus(enabled: Bool, enrolled: Int) -> String {
+    ///
+    /// `available` is the storefront gate: on an EEA storefront after 2 December 2027 the row says
+    /// so instead of "On", because the switch inside is disabled whatever the stored setting says.
+    static func linkStatus(enabled: Bool, enrolled: Int, available: Bool = true) -> String {
+        guard available else { return String(localized: "Unavailable in your region") }
         guard enabled else { return String(localized: "Off") }
         return enrolled == 1 ? String(localized: "On, 1 person") : String(localized: "On, \(enrolled) people")
     }

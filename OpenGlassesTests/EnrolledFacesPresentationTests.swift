@@ -58,6 +58,8 @@ final class EnrolledFacesPresentationTests: XCTestCase {
         XCTAssertEqual(EnrolledFacesPresentation.linkStatus(enabled: false, enrolled: 4), "Off")
         XCTAssertEqual(EnrolledFacesPresentation.linkStatus(enabled: true, enrolled: 1), "On, 1 person")
         XCTAssertEqual(EnrolledFacesPresentation.linkStatus(enabled: true, enrolled: 0), "On, 0 people")
+        XCTAssertEqual(EnrolledFacesPresentation.linkStatus(enabled: true, enrolled: 3, available: false),
+                       "Unavailable in your region")
     }
 
     /// The near-tie message used to send the wearer to "Settings", where nothing listed faces.

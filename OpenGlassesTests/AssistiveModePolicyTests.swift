@@ -1,63 +1,46 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan HP P1 item 3 — Social mode (emotional-state inference) is never offered where the app is a
-/// work tool, Scene mode is never refused, and a refused Social request is answered as a scene
-/// rather than sent to the model with the emotion prompt.
+/// Plan HP P1 item 3, as changed by Plan HS P1 item 2 — Social mode (observation-only since Plan HR)
+/// is offered wherever the wearer's switch and the Accessibility tier are on, a managed phone and a
+/// Field Assist edition included. Scene mode is never refused, and a refused Social request is
+/// answered as a scene rather than sent to the model with the Social prompt.
 @MainActor
 final class AssistiveModePolicyTests: XCTestCase {
 
     private typealias Policy = AssistiveModePolicy
 
-    private func facts(managed: Bool = false, fieldAssist: Bool = false, tier: Bool = true,
-                       social: Bool = true) -> Policy.Facts {
-        Policy.Facts(organisationManaged: managed, fieldAssistEditionActive: fieldAssist,
-                     accessibilityTierOn: tier, socialSwitchOn: social)
+    private func facts(tier: Bool = true, social: Bool = true) -> Policy.Facts {
+        Policy.Facts(accessibilityTierOn: tier, socialSwitchOn: social)
     }
 
     // MARK: - The rule
 
-    func testAPersonalWearerWithTheTierOnIsOfferedSocialMode() {
+    func testAWearerWithTheTierOnIsOfferedSocialMode() {
         XCTAssertEqual(Policy.evaluate(facts()), .offered)
         XCTAssertTrue(Policy.evaluate(facts()).isOffered)
         XCTAssertNil(Policy.evaluate(facts()).refusal)
     }
 
-    func testAManagedPhoneIsNeverOfferedSocialMode() {
-        for fieldAssist in [false, true] {
-            for tier in [false, true] {
-                for social in [false, true] {
-                    XCTAssertEqual(Policy.evaluate(facts(managed: true, fieldAssist: fieldAssist, tier: tier,
-                                                         social: social)),
-                                   .notOffered(.organisationManaged))
-                }
-            }
-        }
-    }
-
-    func testAFieldAssistEditionIsNeverOfferedSocialMode() {
-        for tier in [false, true] {
-            for social in [false, true] {
-                XCTAssertEqual(Policy.evaluate(facts(fieldAssist: true, tier: tier, social: social)),
-                               .notOffered(.fieldAssistEdition))
-            }
-        }
-    }
-
     func testTheWearersOwnSwitchAndTheTierEachRefuseIt() {
         XCTAssertEqual(Policy.evaluate(facts(social: false)), .notOffered(.turnedOff))
         XCTAssertEqual(Policy.evaluate(facts(tier: false)), .notOffered(.accessibilityTierOff))
+        XCTAssertEqual(Policy.evaluate(facts(tier: false, social: false)), .notOffered(.turnedOff),
+                       "the switch the wearer moved is the reason given")
+    }
+
+    /// Plan HS P1 item 2: the workplace refusals are gone, not merely unreachable.
+    func testOnlyTheWearersSwitchAndTheTierRemainAsRefusals() {
+        XCTAssertEqual(Set(Policy.Refusal.allCases), [.turnedOff, .accessibilityTierOff])
     }
 
     // MARK: - Routing
 
     func testARefusedSocialRequestIsAnsweredAsAScene() {
-        let refused = Policy.Decision.notOffered(.organisationManaged)
-        XCTAssertEqual(AssistiveRouter.route(transcription: "how is this person feeling", social: refused), .scene)
-        XCTAssertEqual(AssistiveRouter.route(transcription: "is he angry?", social: .notOffered(.fieldAssistEdition)),
-                       .scene)
-        XCTAssertEqual(AssistiveRouter.route(transcription: "read their emotion", social: .notOffered(.turnedOff)),
-                       .scene)
+        XCTAssertEqual(AssistiveRouter.route(transcription: "how is this person feeling",
+                                             social: .notOffered(.turnedOff)), .scene)
+        XCTAssertEqual(AssistiveRouter.route(transcription: "is he angry?",
+                                             social: .notOffered(.accessibilityTierOff)), .scene)
     }
 
     func testAnOfferedSocialRequestStillGoesToSocial() {
@@ -72,7 +55,7 @@ final class AssistiveModePolicyTests: XCTestCase {
         }
     }
 
-    /// The live service routes through the policy and publishes the refusal for the UI to explain.
+    /// The live service routes through the policy and publishes the refusal.
     func testTheServiceRoutesThroughThePolicyAndPublishesTheRefusal() {
         let service = AssistiveModeService.shared
         let savedPolicy = service.socialPolicy
@@ -81,10 +64,10 @@ final class AssistiveModePolicyTests: XCTestCase {
             service.routeNextAnalysis(transcription: nil)
         }
 
-        service.socialPolicy = { .notOffered(.organisationManaged) }
+        service.socialPolicy = { .notOffered(.turnedOff) }
         XCTAssertEqual(service.routeNextAnalysis(transcription: "how is this person feeling"), .scene)
         XCTAssertEqual(service.currentMode, .scene)
-        XCTAssertEqual(service.socialRefusal, .organisationManaged)
+        XCTAssertEqual(service.socialRefusal, .turnedOff)
 
         service.socialPolicy = { .offered }
         XCTAssertEqual(service.routeNextAnalysis(transcription: "how is this person feeling"), .social)
@@ -92,28 +75,38 @@ final class AssistiveModePolicyTests: XCTestCase {
         XCTAssertNil(service.socialRefusal)
     }
 
-    /// The adapter reads the organisation envelope and the edition switch the policy is about.
-    func testCurrentFactsReadTheEnvelopeAndTheEdition() {
+    /// Plan HS P1 item 2: the adapter reads the wearer's switch and the tier, and neither an
+    /// organisation profile nor a Field Assist edition refuses Social mode any more.
+    func testAManagedPhoneUnderAFieldAssistEditionIsOfferedSocialMode() {
+        let keys = ["fieldAssistEnabled", "accessibilityModeEnabled", "assistiveSocialEnabled"]
+        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
         PolicyEnvelope.clear()
-        let savedEdition = UserDefaults.standard.object(forKey: "fieldAssistEnabled")
         defer {
             PolicyEnvelope.clear()
-            if let savedEdition { UserDefaults.standard.set(savedEdition, forKey: "fieldAssistEnabled") }
-            else { UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled") }
+            for (key, value) in zip(keys, saved) {
+                if let value { UserDefaults.standard.set(value, forKey: key) }
+                else { UserDefaults.standard.removeObject(forKey: key) }
+            }
         }
 
         Config.setFieldAssistEnabled(true)
-        XCTAssertTrue(Policy.currentFacts().fieldAssistEditionActive)
-        Config.setFieldAssistEnabled(false)
-        XCTAssertFalse(Policy.currentFacts().fieldAssistEditionActive)
-
-        XCTAssertFalse(Policy.currentFacts().organisationManaged)
+        Config.setAccessibilityModeEnabled(true)
+        Config.assistiveSocialEnabled = true
         let profile = ConfigProfile(keyId: "k", profileId: "p", organizationName: "Northbridge Mechanical",
                                     issued: Date(), leaseDays: 30, settings: [:])
         PolicyEnvelope.install(ProfileApplier.apply(profile: profile, resolvableVaultIds: []),
                                organizationName: "Northbridge Mechanical")
-        XCTAssertTrue(Policy.currentFacts().organisationManaged)
-        XCTAssertEqual(Policy.current(), .notOffered(.organisationManaged))
+        XCTAssertTrue(PolicyEnvelope.isManaged)
+        XCTAssertTrue(Config.fieldAssistEnabled)
+
+        XCTAssertEqual(Policy.currentFacts(), facts())
+        XCTAssertEqual(Policy.current(), .offered)
+
+        Config.assistiveSocialEnabled = false
+        XCTAssertEqual(Policy.current(), .notOffered(.turnedOff))
+        Config.assistiveSocialEnabled = true
+        Config.setAccessibilityModeEnabled(false)
+        XCTAssertEqual(Policy.current(), .notOffered(.accessibilityTierOff))
     }
 
     // MARK: - The inventory
@@ -125,16 +118,13 @@ final class AssistiveModePolicyTests: XCTestCase {
         let note = record.screeningNote ?? ""
         XCTAssertTrue(note.contains("Article 3(39)"), "no screening note: \(note)")
         XCTAssertTrue(note.contains("infers no emotional state or intention"), note)
-        // The workplace refusals stay in this plan: the policy is unchanged.
-        XCTAssertEqual(Policy.evaluate(facts(managed: true)), .notOffered(.organisationManaged))
-        XCTAssertEqual(Policy.evaluate(facts(fieldAssist: true)), .notOffered(.fieldAssistEdition))
         XCTAssertEqual(record.disableSwitch.key, "assistiveSocialEnabled")
         XCTAssertTrue(record.toolNames.isEmpty, "Social mode is routed to, not called as a tool")
         XCTAssertTrue(record.stores.isEmpty)
         XCTAssertTrue(record.dataRetainedWhenDisabled.lowercased().hasPrefix("nothing"))
     }
 
-    /// Default on for personal users, and the face-recognition migration does not touch it.
+    /// Default on, and the face-recognition migration does not touch it.
     func testSocialSwitchDefaultsOnAndTheMigrationLeavesItAlone() {
         let suite = "AssistiveModePolicyTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

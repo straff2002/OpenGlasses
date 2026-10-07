@@ -42,16 +42,6 @@ struct AssistiveModeToggleView: View {
             )
             .accessibilityHint("Double-tap to toggle Assistive Mode.")
 
-            // Plan HP P2 item 11: on a work phone, say why a question about a person is answered as
-            // a scene. Read live while the loop runs, and from the policy otherwise.
-            if let line = SocialModeCopy.refusalLine(
-                service.isActive ? service.socialRefusal : AssistiveModePolicy.current().refusal) {
-                Text(line)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
             if service.isActive, let advice = service.latestAdvice {
                 Text(advice.advice)
                     .font(.caption)
