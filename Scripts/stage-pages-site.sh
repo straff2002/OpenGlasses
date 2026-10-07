@@ -66,10 +66,13 @@ ALLOW=(
   docs/BUILDING.md
   docs/CAPABILITIES.md
   docs/cross-vendor-ai-glasses-research.md
+  docs/deployer-information-sheet.md
   docs/field-assist-vault-guide.md
   docs/field-assist-vault-guide.pdf
   docs/opportunity-assessment.md
   docs/skillpack-authoring.md
+  docs/support-reports-guide.md
+  docs/support-reports-guide.pdf
   docs/webrtc/expert-client.html
   skillpacks/catalog.json
   skillpacks/packs/com.openglasses.barista-1.0.0.zip

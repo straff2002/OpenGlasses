@@ -198,6 +198,7 @@ Camera availability depends on SDK and glasses firmware compatibility, registrat
 - **Network activity:** inspect recorded requests and their categories.
 - **Offline configuration:** choose local engines and disable network-dependent tools.
 - **Capture controls:** explicitly enable recording, captions, or memory rewind for their respective features.
+- **Regions and the EU AI Act:** Avenkin is listed in every EU and EEA App Store storefront except France; in EU and EEA App Store regions face recognition will stop being available on 2 December 2027; Social mode describes visible cues and never guesses feelings; files the assistant helped write are marked as AI-generated; and organisations have a [deployer information sheet](deployer-information-sheet.md).
 
 The app includes Meta SDK telemetry opt-out configuration and a telemetry-blocking layer. That does not eliminate the connections needed for Meta registration or services you choose to use.
 

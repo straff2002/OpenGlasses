@@ -19,6 +19,11 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
 ## Progress (2026-10-07)
 
 **Landed.**
+- **Sync after the EU AI Act decisions (2026-10-07).** Three keys added the same add-only way:
+  the Enrolled Faces 2 December 2027 notice, its "Unavailable in your region" row status and the
+  Field Assist camera triage refusal. The two Social mode refusals the decisions removed stay as
+  they were, unmarked. `ru` and `es-MX` were translated in the same commit, so each still covers
+  all 2,959 translatable keys of 3,007.
 - **Catalog sync after the EU AI Act tranches, and the line for the other person (2026-10-07).**
   The catalog was synced with the current sources: 40 keys added, none removed, taking it to
   3,004 keys (2,956 translatable). As before it is add-only. A command-line build writes the
@@ -102,7 +107,7 @@ catalogs. Two PRs: P1+P2 (code, reviewable), then P3 (mechanical per-language ca
   scans the source so a new unattributed generic overload fails the suite.
 - **Catalog syncs** [#481](https://github.com/straff2002/OpenGlasses/pull/481) (+19 keys) and
   [#483](https://github.com/straff2002/OpenGlasses/pull/483) (+41 keys), with no translations
-  added. The catalog now holds 2,145 keys, and the same 178 carry any translation.
+  added. The catalog now holds 2,145 keys, and the same 178 carry any translation. One detail the earlier entries leave out: `xcstringstool sync` matches the catalog by file name, so the scratch copy it writes into must itself be called `Localizable.xcstrings`; a copy under any other name gains nothing and has almost every key proposed stale.
 
 **Still open.**
 - P1 item 1: `CapabilityCatalog` titles and subtitles are still `String`, not
