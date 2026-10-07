@@ -153,7 +153,7 @@ class AudioRecordingService: ObservableObject {
         self.audioInput = nil
         self.outputURL = nil
 
-        guard let src = tempURL else { return nil }
+        guard let src = Self.discardingEmptyCapture(tempURL) else { return nil }
 
         // The stop can happen with the phone locked (by voice or from the glasses), which is why
         // this is `completeUnlessOpen` and not `complete`: the latter cannot be applied then.
@@ -170,6 +170,22 @@ class AudioRecordingService: ObservableObject {
 
     /// `Documents/Recordings`, shared with the video recorder.
     static var recordingsDirectory: URL { RecordingFiler.defaultRecordingsDirectory }
+
+    /// An M4A this size or smaller is a container header with no audio in it — what a stop right
+    /// after a start, or a start whose input never delivered a buffer, leaves behind.
+    nonisolated static let emptyCaptureByteCeiling = 4096
+
+    /// The recording to file, or nil (and the file gone) when it holds no audio. A header-only
+    /// file used to be filed, protected and offered to share like any other, so Meeting mode
+    /// could accumulate a folder of silent recordings nobody asked for.
+    nonisolated static func discardingEmptyCapture(_ url: URL?) -> URL? {
+        guard let url else { return nil }
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+        guard size <= emptyCaptureByteCeiling else { return url }
+        PrivacyLog.audio(.recording, .emptyCaptureDiscarded, bytes: size)
+        try? FileManager.default.removeItem(at: url)
+        return nil
+    }
 
     // MARK: - Private
 

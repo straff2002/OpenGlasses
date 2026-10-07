@@ -38,7 +38,7 @@ enum QuickVisionMode: String, AppEnum {
     var prompt: String {
         switch self {
         case .describe:
-            return "Describe what you see in this image in detail."
+            return "Describe the scene and the main objects or readable text in front of the wearer, in two or three spoken sentences. If the picture is too close, too dark or blurry, say that first."
         case .read:
             return "Read all visible text in this image. Transcribe it exactly as written, then provide a brief summary of the content."
         case .translate:
