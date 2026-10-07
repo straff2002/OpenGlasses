@@ -259,6 +259,12 @@ struct OpenGlassesApp: App {
         // a switch the wearer already set is left alone. Once, behind a flag, and before anything
         // reads `AIFeatureGate`.
         CapabilityDefaultMigration.run()
+        // Read the App Store storefront once for this launch (Plan HS P1 item 1), so the storefront
+        // gate answers synchronously from here on. Until it lands, everything is available: a
+        // legal gate never fires on missing data.
+        MainActor.assumeIsolated {
+            MarketAvailability.shared.startReading()
+        }
         // Give every already-downloaded MLX model an installation record (Plan DZ P0). Forward-only
         // and idempotent: after the first success this is a single integer read. It **moves and
         // deletes nothing** — the record points at the hub directory the weights already live in,

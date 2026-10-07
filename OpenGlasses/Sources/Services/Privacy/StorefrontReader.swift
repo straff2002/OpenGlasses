@@ -2,8 +2,8 @@ import Foundation
 import StoreKit
 
 /// Plan HP P1 item 6 — which App Store storefront this install came through, as an ISO 3166-1
-/// alpha-2 code. The seam `MarketAvailabilityPolicy` will read; today its only reader is the
-/// support report, which prints it as one line.
+/// alpha-2 code. `MarketAvailability` reads it once per launch to answer the policy (Plan HS), and
+/// the support report prints it as one line.
 ///
 /// A storefront is the account's App Store country, not where the phone is: it says which market
 /// the app was distributed in, which is the question the policy asks, and it is not the wearer's

@@ -25,6 +25,12 @@ enum EnrolledFacesPresentation {
         String(localized: "Names people you've enrolled when they're in front of your glasses. The person isn't told. You're responsible for using this lawfully where you are.")
     }
 
+    /// Said under the switch on an EEA storefront before face recognition stops being available
+    /// there (Plan HS P1 item 1; `MarketAvailability.showsFaceRecognitionAdvanceNotice` decides when).
+    static var regionAdvanceNotice: String {
+        String(localized: "In EU and EEA App Store regions, face recognition will stop being available on 2 December 2027.")
+    }
+
     /// Where this screen is, as the near-tie message and any other spoken pointer names it.
     static var screenPath: String {
         String(localized: "Settings, Devices & Privacy, Glasses, Enrolled Faces")

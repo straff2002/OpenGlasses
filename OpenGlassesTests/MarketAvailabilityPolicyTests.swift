@@ -1,9 +1,9 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan HP P1 item 6 — the storefront boundary, built dormant. Every capability is available in
-/// every storefront today; the tests switch a restriction on through the injectable table to show
-/// the boundary works when the shipped table is filled in.
+/// Plan HP P1 item 6 — the storefront boundary, built dormant and armed for face recognition from
+/// 2 December 2027 by Plan HS P1 item 1. The other tests switch a restriction on through the
+/// injectable table to show the boundary works whatever the shipped table holds.
 final class MarketAvailabilityPolicyTests: XCTestCase {
 
     private typealias Policy = MarketAvailabilityPolicy
@@ -33,17 +33,52 @@ final class MarketAvailabilityPolicyTests: XCTestCase {
         XCTAssertTrue(Policy.isEEA(" fr "), "case and whitespace do not matter")
     }
 
-    // MARK: - Dormant
+    // MARK: - The shipped table (Plan HS P1 item 1)
 
-    func testTheShippedTableIsDormant() {
+    /// 2 December 2027 00:00 UTC, built independently of the policy's own constant.
+    private var annexIIIDay: Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar.date(from: DateComponents(year: 2027, month: 12, day: 2))!
+    }
+
+    func testOnlyFaceRecognitionIsArmedAndForTheDayAnnexIIIApplies() {
         XCTAssertEqual(Set(Policy.restrictedInEEAFrom.keys), Set(Policy.Capability.allCases),
                        "every capability has a row to fill in")
+        XCTAssertEqual(Policy.restrictedInEEAFrom[.faceRecognition] ?? nil, annexIIIDay)
+        XCTAssertEqual(Policy.annexIIIApplies, annexIIIDay)
+        XCTAssertEqual(annexIIIDay.timeIntervalSince1970, 1_827_705_600, "2027-12-02T00:00:00Z")
+        XCTAssertNil(Policy.restrictedInEEAFrom[.emotionInference] ?? nil)
+        XCTAssertNil(Policy.restrictedInEEAFrom[.firstAidTriageBusiness] ?? nil)
+    }
+
+    /// Today (October 2026) nothing is restricted anywhere.
+    func testTheShippedTableRestrictsNothingToday() {
         for capability in Policy.Capability.allCases {
-            XCTAssertNil(Policy.restrictedInEEAFrom[capability] ?? nil, "\(capability) is restricted already")
             for storefront in ["FR", "DE", "NO", "GB", "US", nil] as [String?] {
                 XCTAssertEqual(Policy.availability(of: capability, storefront: storefront, at: now), .available)
             }
         }
+    }
+
+    func testFaceRecognitionIsAvailableTheDayBeforeAndUnavailableFromTheDay() {
+        let dayBefore = annexIIIDay.addingTimeInterval(-86_400)
+        let lastSecond = annexIIIDay.addingTimeInterval(-1)
+        let unavailable = Policy.Availability.unavailableInRegion(reason: Policy.reason(for: .faceRecognition))
+        for storefront in ["DE", "IE", "NO", "fr"] {
+            XCTAssertEqual(Policy.availability(of: .faceRecognition, storefront: storefront, at: dayBefore), .available)
+            XCTAssertEqual(Policy.availability(of: .faceRecognition, storefront: storefront, at: lastSecond), .available)
+            XCTAssertEqual(Policy.availability(of: .faceRecognition, storefront: storefront, at: annexIIIDay),
+                           unavailable, storefront)
+            XCTAssertEqual(Policy.availability(of: .faceRecognition, storefront: storefront,
+                                               at: annexIIIDay.addingTimeInterval(86_400 * 365)), unavailable)
+        }
+        for storefront in ["GB", "CH", "US", "NZ", nil] as [String?] {
+            XCTAssertEqual(Policy.availability(of: .faceRecognition, storefront: storefront, at: annexIIIDay),
+                           .available, storefront ?? "nil")
+        }
+        XCTAssertEqual(Policy.availability(of: .emotionInference, storefront: "DE", at: annexIIIDay), .available)
+        XCTAssertEqual(Policy.availability(of: .firstAidTriageBusiness, storefront: "DE", at: annexIIIDay), .available)
     }
 
     // MARK: - The boundary, switched on
