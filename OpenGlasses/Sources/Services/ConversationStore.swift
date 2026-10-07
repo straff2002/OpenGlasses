@@ -12,14 +12,21 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     /// the field existed decode unchanged, and nil (not false) is what an ordinary reply stores, so
     /// the saved file only grows for the turns that carry it.
     let answeredOnDevice: Bool?
+    /// The tools that produced this reply, so Insights can report what the assistant actually
+    /// used rather than reading every turn as tool-free. Optional so threads saved before the
+    /// field existed decode unchanged, and nil (not an empty list) is what a tool-free reply
+    /// stores, so the saved file only grows for the turns that carry it.
+    let toolNames: [String]?
 
-    init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false) {
+    init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false,
+         toolNames: [String] = []) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
         self.imageAttached = imageAttached
         self.timestamp = Date()
         self.answeredOnDevice = answeredOnDevice ? true : nil
+        self.toolNames = toolNames.isEmpty ? nil : toolNames
     }
 
     /// Whether this reply was given on the phone while offline.
@@ -227,11 +234,12 @@ class ConversationStore: ObservableObject {
     /// while the model is thinking (a push-to-talk release, New conversation, a switch) can send
     /// the answer to another conversation or drop it on the floor.
     func appendMessage(role: String, content: String, imageAttached: Bool = false,
-                       answeredOnDevice: Bool = false, toThread threadId: String? = nil) {
+                       answeredOnDevice: Bool = false, toolNames: [String] = [],
+                       toThread threadId: String? = nil) {
         let target = threadId ?? activeThreadId
         guard let idx = threads.firstIndex(where: { $0.id == target }) else { return }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
-                                      answeredOnDevice: answeredOnDevice)
+                                      answeredOnDevice: answeredOnDevice, toolNames: toolNames)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp
         if threads[idx].id == activeThreadId { lastActivity = (threads[idx].id, msg.timestamp) }

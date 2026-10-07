@@ -13,6 +13,47 @@ final class MemoryInsightsTests: XCTestCase {
         return t
     }
 
+    private func thread(withTools messages: [(String, String, [String])]) -> ConversationThread {
+        var t = ConversationThread(mode: "direct", title: "T")
+        t.messages = messages.map { ConversationMessage(role: $0.0, content: $0.1, toolNames: $0.2) }
+        return t
+    }
+
+    func testBuildEventsCarriesThePersistedTools() {
+        let events = InsightsService.buildEvents(from: [thread(withTools: [
+            ("user", "what is on today", []),
+            ("assistant", "Two events", ["calendar"]),
+        ])])
+        XCTAssertEqual(events.map(\.toolNames), [[], ["calendar"]])
+    }
+
+    func testReportFromBuiltEventsSurfacesPersistedTools() {
+        let threads = [thread(withTools: [
+            ("user", "what is on today", []),
+            ("assistant", "Two events", ["calendar"]),
+            ("user", "and tomorrow", []),
+            ("assistant", "One event", ["calendar", "get_weather"]),
+        ])]
+        let events = InsightsService.buildEvents(from: threads)
+        let report = InsightsAggregator.aggregate(events, since: Date().addingTimeInterval(-3600), now: Date())
+        XCTAssertEqual(report.topTools.first?.name, "calendar")
+        XCTAssertEqual(report.topTools.first?.count, 2)
+    }
+
+    func testLegacyMessageWithoutToolNamesStillDecodes() throws {
+        let data = Data(#"{"id":"legacy","role":"assistant","content":"ok","imageAttached":false,"timestamp":0}"#.utf8)
+        let message = try JSONDecoder().decode(ConversationMessage.self, from: data)
+        XCTAssertNil(message.toolNames)
+        XCTAssertEqual(message.content, "ok")
+    }
+
+    func testToolFreeReplyStoresNoToolList() throws {
+        let message = ConversationMessage(role: "assistant", content: "ok")
+        XCTAssertNil(message.toolNames, "nil, not [], so the saved file only grows for turns that used tools")
+        let json = String(decoding: try JSONEncoder().encode(message), as: UTF8.self)
+        XCTAssertFalse(json.contains("toolNames"))
+    }
+
     func testBuildEventsMapsEveryMessage() {
         let threads = [
             thread([("user", "tell me about the museum app"), ("assistant", "sure")]),

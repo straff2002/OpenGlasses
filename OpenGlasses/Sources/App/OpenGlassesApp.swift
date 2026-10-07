@@ -6446,6 +6446,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
                 if Config.conversationPersistenceEnabled {
                     conversationStore.appendMessage(role: "assistant", content: result,
+                                                    toolNames: [directCall.toolName],
                                                     toThread: turnThreadId)
                 }
 
@@ -6507,6 +6508,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // on-device agent model, a temporary switch to the tier-recommended model, and keeping the
         // active one; this applies the chosen route's side effects.
         didNarrateModelSwitchThisTurn = false   // BK P2c: fresh per-turn narration budget
+        _ = nativeToolRouter.takeTurnToolNames()  // a cancelled or failed prior turn's tools are not this turn's
         var originalModelId: String?
         var useLocalAgent = false
         let agentIsCloud = Config.savedModels.contains(where: { $0.id == Config.agentModelId })
@@ -6679,13 +6681,21 @@ class AppState: ObservableObject, AppStateProtocol {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 
+                    let usedToolNames = nativeToolRouter.takeTurnToolNames()
+
                     // Save to conversation store — in the thread the question went into, which in
                     // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
+                                                        toolNames: usedToolNames,
                                                         toThread: turnThreadId)
                     }
+
+                    // Memory loop (Phase 3), on the spoken path as on the typed one: a stated fact
+                    // or a repeated request is worth an offer whichever way it arrived.
+                    MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
+                                                         toolNames: usedToolNames)
                 },
                 speak: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else { return }
@@ -6694,10 +6704,12 @@ class AppState: ObservableObject, AppStateProtocol {
                     await speechService.speak(response)
                     stopStopListener()
                 },
-                onCancelled: {
+                onCancelled: { [self] in
+                    _ = nativeToolRouter.takeTurnToolNames()
                     PrivacyLog.app(.turnCancelled)
                 },
                 onError: { [self] error in
+                    _ = nativeToolRouter.takeTurnToolNames()
                     errorMessage = "Failed to get response: \(error.localizedDescription)"
                     // BK P2c: when the cascade is exhausted, speak the real reason instead of the
                     // generic line (e.g. "the last one was rate-limited"), so the app stays honest
@@ -6804,6 +6816,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         isProcessing = true
         didNarrateModelSwitchThisTurn = false   // BK P2c: fresh per-turn narration budget
+        _ = nativeToolRouter.takeTurnToolNames()  // a cancelled or failed prior turn's tools are not this turn's
         speechService.startThinkingSound()
 
         // Live-stream the reply into the Chat thread (where the provider supports it).
@@ -6865,16 +6878,18 @@ class AppState: ObservableObject, AppStateProtocol {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 
+                    let usedToolNames = nativeToolRouter.takeTurnToolNames()
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
+                                                        toolNames: usedToolNames,
                                                         toThread: turnThreadId)
                     }
 
                     // Memory loop (Phase 3): spot a durable fact or a repeated multi-step request and
                     // offer to remember it (or silently save it in Agent Mode).
                     MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
-                                                         toolNames: nativeToolRouter.takeTurnToolNames())
+                                                         toolNames: usedToolNames)
 
                     // ...and, if the wearer has asked for it, one structured pass over the same
                     // turn for the relationships the patterns can't see. Started rather than
@@ -6899,10 +6914,12 @@ class AppState: ObservableObject, AppStateProtocol {
                     stopStopListener()
                 },
                 onCancelled: { [self] in
+                    _ = nativeToolRouter.takeTurnToolNames()
                     streamingTurn = nil
                     PrivacyLog.app(.turnCancelled, detail: PrivacyToken("text"))
                 },
                 onError: { [self] error in
+                    _ = nativeToolRouter.takeTurnToolNames()
                     streamingTurn = nil
                     errorMessage = "Failed to get response: \(error.localizedDescription)"
                     if speakResponse {
