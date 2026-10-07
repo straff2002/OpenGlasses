@@ -1631,33 +1631,13 @@ struct Config {
                     alternativeWakePhrases: ["golf mode", "hey golf", "caddy mode"],
                     modelId: "", presetId: "preset-golf-caddy", enabled: true,
                     icon: "figure.golf", isBuiltIn: true),
-            Persona(id: "mode-feynman", name: "Feynman", wakePhrase: "hey researcher",
-                    alternativeWakePhrases: ["feynman mode", "hey feynman", "research mode"],
+            // Shipped as "Feynman" until build 464; the id stays so an installed copy is recognised
+            // (see `renameResearcherPersonaIfNeeded`).
+            Persona(id: "mode-feynman", name: "Researcher", wakePhrase: "hey researcher",
+                    alternativeWakePhrases: researcherAlternativeWakePhrases,
                     modelId: "", presetId: "", enabled: true,
                     icon: "atom", isBuiltIn: true,
-                    soulOverride: """
-                    You are Feynman — a rigorous research intelligence named after Richard Feynman. \
-                    Your defining trait is intellectual honesty: you never speculate or confabulate. \
-                    If you don't know something, you say so clearly and suggest how to find out.
-
-                    When asked a question, you:
-                    1. Break it into distinct sub-questions and investigate each in parallel
-                    2. Distinguish clearly between what is established fact, what is contested, \
-                       and what is your inference
-                    3. Cite the source or basis for every factual claim (study, paper, named expert, \
-                       primary source, or direct experience)
-                    4. Give severity-graded feedback on ideas or plans: \
-                       Critical / Major / Minor / Suggestion
-                    5. Actively steelman opposing views before critiquing them
-                    6. Prefer precise language — say "I'm 70% confident" rather than "probably"
-
-                    You are not a yes-machine. When the user's assumption is wrong, correct it directly \
-                    and explain why. When evidence is thin, say so. When a claim needs verification, \
-                    tell the user exactly what to search or who to ask.
-
-                    Your tone is warm and curious — you love ideas — but your standards are uncompromising. \
-                    Think out loud. Show your reasoning. Teach while you answer.
-                    """),
+                    soulOverride: researcherSoul),
         ]
     }
 
@@ -1759,6 +1739,67 @@ struct Config {
             resetAssistantDisplayName()
         }
         defaults.set(true, forKey: assistantNameMigratedKey)
+    }
+
+    // MARK: - Researcher persona
+
+    static let researcherAlternativeWakePhrases = ["researcher mode", "research mode", "hey research"]
+
+    /// The Researcher mode's personality. A copy installed from the template carries this text,
+    /// so the rename below can tell a shipped soul from one the wearer has edited.
+    static let researcherSoul = """
+        You are Researcher — a rigorous research intelligence. \
+        Your defining trait is intellectual honesty: you never speculate or confabulate. \
+        If you don't know something, you say so clearly and suggest how to find out.
+
+        When asked a question, you:
+        1. Break it into distinct sub-questions and investigate each in parallel
+        2. Distinguish clearly between what is established fact, what is contested, \
+           and what is your inference
+        3. Cite the source or basis for every factual claim (study, paper, named expert, \
+           primary source, or direct experience)
+        4. Give severity-graded feedback on ideas or plans: \
+           Critical / Major / Minor / Suggestion
+        5. Actively steelman opposing views before critiquing them
+        6. Prefer precise language — say "I'm 70% confident" rather than "probably"
+
+        You are not a yes-machine. When the user's assumption is wrong, correct it directly \
+        and explain why. When evidence is thin, say so. When a claim needs verification, \
+        tell the user exactly what to search or who to ask.
+
+        Your tone is warm and curious — you love ideas — but your standards are uncompromising. \
+        Think out loud. Show your reasoning. Teach while you answer.
+        """
+
+    /// The template's former name and wake alternatives, so the rename recognises an untouched copy.
+    private static let legacyResearcherName = "Feynman"
+    private static let legacyResearcherAlternativeWakePhrases = ["feynman mode", "hey feynman", "research mode"]
+    private static let researcherRenamedKey = "researcherPersonaRenamed_v1"
+
+    /// The Researcher mode shipped under a physicist's name. An installed copy still carrying that
+    /// name takes the new one, and its shipped soul and wake alternatives follow; a copy the wearer
+    /// has renamed, or whose soul they rewrote, is theirs and is left alone. Once, behind a flag.
+    static func renameResearcherPersonaIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: researcherRenamedKey) else { return }
+        defer { defaults.set(true, forKey: researcherRenamedKey) }
+
+        guard let data = defaults.data(forKey: "savedPersonas"),
+              var personas = try? JSONDecoder().decode([Persona].self, from: data) else { return }
+        var changed = false
+        for index in personas.indices
+        where personas[index].id == "mode-feynman" && personas[index].name == legacyResearcherName {
+            personas[index].name = "Researcher"
+            if personas[index].alternativeWakePhrases == legacyResearcherAlternativeWakePhrases {
+                personas[index].alternativeWakePhrases = researcherAlternativeWakePhrases
+            }
+            if let soul = personas[index].soulOverride,
+               soul.hasPrefix("You are Feynman") {
+                personas[index].soulOverride = researcherSoul
+            }
+            changed = true
+        }
+        if changed { setSavedPersonas(personas) }
     }
 
     /// UserDefaults flag recording that the one-time wake-phrase migration has run.
