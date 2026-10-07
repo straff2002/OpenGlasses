@@ -79,7 +79,11 @@ enum EnrolledFacesPresentation {
     }
 
     /// The status beside the row that links here from the Glasses screen.
-    static func linkStatus(enabled: Bool, enrolled: Int) -> String {
+    ///
+    /// `available` is the storefront gate: on an EEA storefront after 2 December 2027 the row says
+    /// so instead of "On", because the switch inside is disabled whatever the stored setting says.
+    static func linkStatus(enabled: Bool, enrolled: Int, available: Bool = true) -> String {
+        guard available else { return String(localized: "Unavailable in your region") }
         guard enabled else { return String(localized: "Off") }
         return enrolled == 1 ? String(localized: "On, 1 person") : String(localized: "On, \(enrolled) people")
     }

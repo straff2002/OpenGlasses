@@ -1191,7 +1191,8 @@ struct GlassesSettingsView: View {
                         Spacer()
                         Text(EnrolledFacesPresentation.linkStatus(
                             enabled: Config.faceRecognitionEnabled,
-                            enrolled: appState.faceRecognition.knownFaces.count))
+                            enrolled: appState.faceRecognition.knownFaces.count,
+                            available: MarketAvailability.shared.availability(of: .faceRecognition) == .available))
                             .foregroundStyle(.secondary)
                     }
                 }
