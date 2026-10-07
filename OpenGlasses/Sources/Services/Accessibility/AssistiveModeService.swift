@@ -14,8 +14,8 @@ final class AssistiveModeService: ObservableObject {
     @Published private(set) var currentMode: AssistiveRouter.Mode = .scene
     @Published private(set) var latestAdvice: AssistiveAdvice?
     /// Why Social mode is not offered on this phone, or nil when it is (Plan HP P1 item 3). Updated
-    /// at start and on every analysis, so the UI can say why a request about a person was answered
-    /// as a scene. The copy is the UI's job (P2); this is the reason it reads.
+    /// at start and on every analysis. Since Plan HS P1 item 2 the only reasons are the wearer's
+    /// switch and the Accessibility tier, which the switches themselves show.
     @Published private(set) var socialRefusal: AssistiveModePolicy.Refusal?
 
     /// The Social mode decision, read fresh each analysis. Injectable so a test can drive the
@@ -152,7 +152,7 @@ final class AssistiveModeService: ObservableObject {
 
     /// Pick the mode for the next analysis under the current Social mode policy, and publish both
     /// the mode and the refusal. Social mode routes to Scene whenever the policy refuses it, so a
-    /// managed phone or a Field Assist edition never sends a prompt about a person. Internal so
+    /// wearer who switched Social mode off never sends a prompt about a person. Internal so
     /// the routing is testable without a camera, a model or a voice.
     @discardableResult
     func routeNextAnalysis(transcription: String?) -> AssistiveRouter.Mode {
