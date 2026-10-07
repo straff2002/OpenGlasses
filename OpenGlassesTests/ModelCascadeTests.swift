@@ -218,6 +218,76 @@ final class ModelCascadeTests: XCTestCase {
         XCTAssertEqual(switches, ["a->b"])
     }
 
+    // MARK: - The lead candidate meets the turn's needs too
+
+    func testVisionTurnSkipsTextOnlyLeadCandidate() async throws {
+        var calls: [String] = []
+        let out = try await ModelCascade.run(
+            candidates: [cloud("a", vision: false), cloud("b", vision: true)],
+            needs: .init(requiresVision: true, isBackgrounded: false),
+            maxAttempts: 4,
+            attempt: { c in
+                calls.append(c.id)
+                return "from-\(c.id)"
+            }
+        )
+        XCTAssertEqual(out, "from-b")
+        XCTAssertEqual(calls, ["b"], "a text-only lead must not answer a photo turn without the photo")
+    }
+
+    func testBackgroundedTurnSkipsLocalLeadCandidate() async throws {
+        var calls: [String] = []
+        _ = try await ModelCascade.run(
+            candidates: [local("mlx"), cloud("b")],
+            needs: .init(requiresVision: false, isBackgrounded: true),
+            maxAttempts: 4,
+            attempt: { c in
+                calls.append(c.id)
+                return "ok"
+            }
+        )
+        XCTAssertEqual(calls, ["b"])
+    }
+
+    func testVisionTurnWithNoVisionCandidateThrowsAVisionReason() async {
+        do {
+            _ = try await ModelCascade.run(
+                candidates: [cloud("a", vision: false)],
+                needs: .init(requiresVision: true, isBackgrounded: false),
+                maxAttempts: 4,
+                attempt: { _ in "should-not-run" }
+            )
+            XCTFail("expected throw")
+        } catch let LLMError.missingAPIKey(message) {
+            XCTAssertTrue(message.localizedCaseInsensitiveContains("vision"), message)
+        } catch { XCTFail("unexpected \(error)") }
+    }
+
+    func testTextTurnStillLeadsWithTheActiveCandidate() async throws {
+        var calls: [String] = []
+        _ = try await ModelCascade.run(
+            candidates: [cloud("a", vision: false), cloud("b", vision: true)],
+            needs: .init(requiresVision: false, isBackgrounded: false),
+            maxAttempts: 4,
+            attempt: { c in
+                calls.append(c.id)
+                return "ok"
+            }
+        )
+        XCTAssertEqual(calls, ["a"])
+    }
+
+    func testNoEligibleCandidateMessages() {
+        let text = ModelFallbackChain.TurnNeeds(requiresVision: false, isBackgrounded: false)
+        XCTAssertEqual(ModelCascade.noEligibleCandidateMessage(candidates: [], needs: text), "No model configured")
+        let vision = ModelFallbackChain.TurnNeeds(requiresVision: true, isBackgrounded: false)
+        XCTAssertTrue(ModelCascade.noEligibleCandidateMessage(candidates: [cloud("a", vision: false)], needs: vision)
+            .contains("vision"))
+        let background = ModelFallbackChain.TurnNeeds(requiresVision: false, isBackgrounded: true)
+        XCTAssertTrue(ModelCascade.noEligibleCandidateMessage(candidates: [local("m")], needs: background)
+            .contains("background"))
+    }
+
     func testCancellationBetweenHopsStopsChain() async {
         var calls = 0
         do {

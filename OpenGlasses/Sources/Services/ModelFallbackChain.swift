@@ -189,6 +189,17 @@ enum ModelFallbackChain {
     }
 }
 
+extension ModelCascade {
+    /// Why no candidate could even start the turn — a spoken reason, not a generic "no model".
+    static func noEligibleCandidateMessage(candidates: [ModelFallbackChain.Candidate],
+                                           needs: ModelFallbackChain.TurnNeeds) -> String {
+        if candidates.isEmpty { return "No model configured" }
+        if needs.requiresVision { return "No vision-capable model configured — add one in Settings" }
+        if needs.isBackgrounded { return "On-device models can't run in the background — add a cloud model" }
+        return "No model configured"
+    }
+}
+
 /// Pure cascade driver (BK P2b): run one turn over an ordered candidate chain, hopping on a
 /// retry-worthy failure until a model succeeds or the chain is exhausted. The `attempt` closure
 /// runs the real provider call for a candidate; the driver owns only the retry/next/cap decisions,
@@ -212,8 +223,14 @@ enum ModelCascade {
                    _ failure: ModelFallbackChain.FailureClass) async -> Void = { _, _, _ in },
         attempt: (ModelFallbackChain.Candidate) async throws -> String
     ) async throws -> String {
-        guard var current = candidates.first else {
-            throw LLMError.missingAPIKey("No model configured")
+        // The lead candidate has to meet the turn's needs like every hop after it. Taken as it
+        // comes, a text-only active model on a photo turn "succeeds" by answering without the
+        // picture, so the cascade never reaches the vision-capable model next in the chain.
+        guard var current = ModelFallbackChain.next(
+            candidates: candidates, tried: [], needs: needs,
+            failure: .retryOtherModel, currentWindow: 0
+        ) else {
+            throw LLMError.missingAPIKey(noEligibleCandidateMessage(candidates: candidates, needs: needs))
         }
         var tried = Set<String>()
         var attempts = 0
