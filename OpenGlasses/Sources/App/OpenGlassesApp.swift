@@ -2948,7 +2948,8 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         // MCP Glasses server (Plan E, dev-only) — configure and start if both gates are on.
-        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
+        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService,
+                                          glassesDisplay: glassesDisplay)
         MCPGlassesServer.shared.startIfEnabled()
 
         // Web HUD mirror (Plan BP, dev-only): serves the current HUD frame to the glasses'
@@ -5005,7 +5006,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Start the dev-only MCP glasses server (Plan E) with this AppState's services.
     func startMCPServer() {
-        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService)
+        MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService,
+                                          glassesDisplay: glassesDisplay)
         MCPGlassesServer.shared.start()
     }
 

@@ -1152,7 +1152,7 @@ enum PrivacyLog {
 
     /// The local server we expose on the LAN.
     enum MCPServerEvent: String {
-        case listening, stopped, startFailed, requestRejected, forwardUnsupported
+        case listening, stopped, startFailed, requestRejected, forwardedToDisplay, forwardedToPhone
     }
 
     /// The request path is classified rather than quoted: it arrives from the network, so an
