@@ -27,6 +27,15 @@ class AmbientCaptionService: ObservableObject {
         /// Detected source language of a translated caption (BY P3) — routes the entry to its
         /// leg in the two-way split view. Nil on plain transcription paths.
         var language: String? = nil
+
+        /// The line a transcript, a recording or a meeting summary keeps: `Alice: …` for a named
+        /// speaker, `Speaker 2: …` for a diarized one nobody has named yet, and the bare text when
+        /// the caption was not diarized. The chips already showed who was talking; the places that
+        /// outlive the chips dropped it.
+        func labeledText(registry: SpeakerRegistry) -> String {
+            guard let speaker else { return text }
+            return "\(registry.displayLabel(for: speaker)): \(text)"
+        }
     }
 
     private var recognizer: SFSpeechRecognizer?
@@ -388,8 +397,11 @@ class AmbientCaptionService: ObservableObject {
         let diarizer = DeepgramSTTService()
         diarizer.onSegment = { [weak self] segment in
             guard let self, self.isActive else { return }
-            self.currentCaption = segment.text
-            self.glassesDisplay?.showText(segment.text)
+            // The live line names the speaker too, so the HUD shows who is talking, not only what.
+            let liveLine = segment.speaker.map { "\(self.speakerRegistry.displayLabel(for: $0)): \(segment.text)" }
+                ?? segment.text
+            self.currentCaption = liveLine
+            self.glassesDisplay?.showText(liveLine)
             self.resetSilenceTimer()
             if segment.isFinal {
                 self.finalizeCaption(segment.text, speaker: segment.speaker)

@@ -33,6 +33,9 @@ class MeetingAssistantService: ObservableObject {
     /// Prevents concurrent LLM calls.
     private var isAnalysing = false
 
+    /// Resolves a diarized caption's speaker to the name the wearer gave it.
+    private weak var captionService: AmbientCaptionService?
+
     // MARK: - Public API
 
     /// Start the assistant.
@@ -43,6 +46,7 @@ class MeetingAssistantService: ObservableObject {
         guard !isActive else { return }
         isActive = true
         self.llm = llm
+        self.captionService = captionService
         fullTranscript = []
         bufferText = ""
         // Start from the present: anything already in the buffer predates this meeting.
@@ -79,6 +83,7 @@ class MeetingAssistantService: ObservableObject {
         timerTask?.cancel()
         timerTask = nil
         llm = nil
+        captionService = nil
         PrivacyLog.speech(.meetingNotes, .stopped)
     }
 
@@ -91,8 +96,9 @@ class MeetingAssistantService: ObservableObject {
         guard !newEntries.isEmpty else { return }
 
         for entry in newEntries {
-            fullTranscript.append(entry.text)
-            bufferText += (bufferText.isEmpty ? "" : " ") + entry.text
+            let line = Self.transcriptLine(for: entry, registry: captionService?.speakerRegistry)
+            fullTranscript.append(line)
+            bufferText += (bufferText.isEmpty ? "" : " ") + line
         }
 
         // Trigger early if the buffer already has ≥ 100 words.
@@ -100,6 +106,14 @@ class MeetingAssistantService: ObservableObject {
         if wordCount >= 100 {
             Task { await analyseIfNeeded(force: false) }
         }
+    }
+
+    /// What the transcript keeps for one caption: speaker-labelled when the caption was diarized
+    /// and a registry is at hand, the bare text otherwise.
+    static func transcriptLine(for entry: AmbientCaptionService.CaptionEntry,
+                               registry: SpeakerRegistry?) -> String {
+        guard let registry else { return entry.text }
+        return entry.labeledText(registry: registry)
     }
 
     // MARK: - Analysis
@@ -120,12 +134,14 @@ class MeetingAssistantService: ObservableObject {
 
         let transcript = fullTranscript.joined(separator: "\n")
         let prompt = """
-            You are a live meeting assistant listening to a conversation. Here is the transcript so far:
+            You are a live meeting assistant listening to a conversation. Lines may be speaker-labelled \
+            ("Alice: …", "Speaker 2: …"); attribute decisions and action items to those people.
 
+            Transcript so far:
             \(transcript)
 
             Provide:
-            1. A 2-3 sentence running summary of the key points discussed
+            1. A 2-3 sentence running summary of the key points discussed (name speakers when labelled)
             2. 2-3 smart follow-up questions the listener could ask right now
 
             Format your response EXACTLY as:

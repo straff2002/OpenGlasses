@@ -693,7 +693,7 @@ class VideoRecordingService: ObservableObject {
 
         for entry in newEntries {
             let timestamp = dateFormatter.string(from: entry.timestamp)
-            let line = "[\(timestamp)] \(entry.text)"
+            let line = "[\(timestamp)] \(entry.labeledText(registry: captions.speakerRegistry))"
             transcriptEntries.append(line)
         }
         recordingTranscript = transcriptEntries.joined(separator: "\n")
