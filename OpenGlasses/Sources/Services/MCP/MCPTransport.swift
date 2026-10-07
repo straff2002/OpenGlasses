@@ -214,8 +214,21 @@ struct HTTPTransport: MCPTransport {
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        request.timeoutInterval = 15
+        request.timeoutInterval = Self.timeoutInterval(forMethod: payload["method"] as? String)
         return try await session.data(for: request)
+    }
+
+    /// Protocol calls stay snappy; a tool call is given time to do its work.
+    static let protocolCallTimeout: TimeInterval = 15
+    static let toolCallTimeout: TimeInterval = 120
+
+    /// How long a request may take. One flat 15 s used to cover everything, and a tool that
+    /// delegates to an agent or queries something slow simply never answered: the request was
+    /// abandoned while the server was still working, and the wearer heard a timeout for a tool
+    /// that would have finished. `tools/call` gets two minutes; `initialize`, `tools/list` and
+    /// the rest keep the short deadline, since a server that is slow to say hello is down.
+    static func timeoutInterval(forMethod method: String?) -> TimeInterval {
+        method == "tools/call" ? toolCallTimeout : protocolCallTimeout
     }
 
     // MARK: - SSE response unwrapping
