@@ -162,7 +162,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "470"
+        CURRENT_PROJECT_VERSION: "471"
         # The commit the project was generated at, for support reports (AppBuildIdentity).
         # Scripts/generate-xcodeproj.sh exports it; the Info.plist reads it as $(...). Stamped at
         # generation, not by a build phase: script sandboxing keeps a phase out of .git.
@@ -271,7 +271,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.GlassesActivityWidget
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "470"
+        CURRENT_PROJECT_VERSION: "471"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -309,7 +309,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.ShareExtension
         MARKETING_VERSION: "2026.10"
-        CURRENT_PROJECT_VERSION: "470"
+        CURRENT_PROJECT_VERSION: "471"
         SWIFT_VERSION: "5.9"
         SKIP_INSTALL: "YES"
         CODE_SIGN_STYLE: Automatic
