@@ -14,9 +14,9 @@ import Foundation
 /// an otherwise-Hangul sentence ("헤이 GPT"). The results are added as alternatives of the phrase
 /// they came from, and as contextual strings so the recogniser is nudged towards writing them.
 ///
-/// Scope: scripts that put spaces between words. A Japanese or Chinese recogniser writes a sentence
-/// as one token, which whole-token matching cannot see into; the transliteration is still offered
-/// as a contextual string, but matching an unspaced transcript is a separate piece of work.
+/// Japanese is spelled too, and matched inside the unspaced run its recogniser writes
+/// (`WakePhraseMatcher.embeddedMatch`). Chinese has no Latin-to-Han table; a wearer types the Han
+/// spelling as an alternative and the same embedded matching finds it.
 enum WakePhraseScript {
 
     /// How many words of a phrase take part in the Latin/transliterated mix. Beyond this the
@@ -46,12 +46,14 @@ enum WakePhraseScript {
         let words = PhraseMatcher.tokenize(phrase)
         guard !words.isEmpty, words.contains(where: hasLatinLetters) else { return [] }
 
-        // Each word's spellings: the Latin one, and the transliterated one when it differs.
+        // Each word's spellings: the Latin one, and the transliterated ones when they differ.
         let spellings: [[String]] = words.enumerated().map { index, word in
             guard index < mixedWordLimit, hasLatinLetters(word),
                   let other = word.applyingTransform(transform, reverse: false)?.lowercased(),
                   !other.isEmpty, other != word else { return [word] }
-            return [word, other]
+            // Transliterated spellings first, the Latin word last, so the fully transliterated
+            // phrase leads the list.
+            return kanaSpellings(other) + [word]
         }
 
         var out: [String] = []
@@ -70,16 +72,30 @@ enum WakePhraseScript {
             .filter { seen.insert($0).inserted }
     }
 
+    /// The system's Latin-to-Katakana table spells a "v" with the obsolete ヷヸヹヺ, which no
+    /// recogniser writes. A recogniser writes the plain voiced kana (アベンジャーズ for Avengers)
+    /// or the ヴ form (ヴェ); both are offered, the plain one first.
+    static let obsoleteKana: [Character: (plain: String, voiced: String)] = [
+        "ヷ": ("バ", "ヴァ"), "ヸ": ("ビ", "ヴィ"), "ヹ": ("ベ", "ヴェ"), "ヺ": ("ボ", "ヴォ"),
+    ]
+
+    static func kanaSpellings(_ text: String) -> [String] {
+        guard text.contains(where: { obsoleteKana[$0] != nil }) else { return [text] }
+        let plain = String(text.flatMap { obsoleteKana[$0]?.plain ?? String($0) })
+        let voiced = String(text.flatMap { obsoleteKana[$0]?.voiced ?? String($0) })
+        return [plain, voiced]
+    }
+
     static func hasLatinLetters(_ word: String) -> Bool {
         word.unicodeScalars.contains { scalar in
             scalar.properties.isAlphabetic && (scalar.value < 0x250 || (0x1E00...0x1EFF).contains(scalar.value))
         }
     }
 
-    /// The transliterated forms first, so the fully transliterated phrase leads the list.
+    /// Every combination, in the order of the options: the first option of every word leads.
     private static func cartesian(_ lists: [[String]]) -> [[String]] {
         lists.reduce([[]]) { acc, options in
-            options.reversed().flatMap { option in acc.map { $0 + [option] } }
+            options.flatMap { option in acc.map { $0 + [option] } }
         }
     }
 }

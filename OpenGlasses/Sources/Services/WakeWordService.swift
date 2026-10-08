@@ -1794,6 +1794,10 @@ class WakeWordService: NSObject, ObservableObject {
             PrivacyLog.wakeWord(.fuzzyDetected, distance: fuzzy.distance)
             return fuzzy.primary
         }
+        if let embedded = WakePhraseMatcher.embeddedMatch(tokens: tokens, candidates: candidates) {
+            PrivacyLog.wakeWord(.fuzzyDetected, distance: embedded.distance)
+            return embedded.primary
+        }
         return nil
     }
 
