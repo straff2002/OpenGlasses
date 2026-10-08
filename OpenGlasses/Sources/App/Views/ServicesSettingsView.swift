@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Speech
 import UniformTypeIdentifiers
 
 /// Sub-settings view for optional service integrations.
@@ -71,6 +72,18 @@ struct ServicesSettingsView: View {
 
     // Speech recognition (Additional Capabilities #8 — on-device SenseVoice ASR)
     @State private var asrEnginePreference: ASREnginePreference = Config.asrEnginePreference
+    /// The recogniser language: automatic (the phone's language) or a pinned locale. The setting
+    /// existed with no way to set it; a bilingual wearer whose phone is in one language and whose
+    /// wake phrase and dictation are in another had no switch (Korean tester, 2026-10-09).
+    @State private var speechLocale: String = Config.speechRecognitionLocale
+    private var speechLocales: [(id: String, name: String)] {
+        SFSpeechRecognizer.supportedLocales()
+            .map { locale -> (id: String, name: String) in
+                let id = locale.identifier
+                return (id, Locale.current.localizedString(forIdentifier: id) ?? id)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
     /// Drives the on-device SenseVoice model download + status row.
     @StateObject private var asrDownloader = ASRModelDownloader()
 
@@ -254,6 +267,18 @@ struct ServicesSettingsView: View {
                     Config.setASREnginePreference(newValue)
                 }
 
+                Picker("Language", selection: $speechLocale) {
+                    Text("Automatic (phone language)").tag(SpeechLocaleResolver.automatic)
+                    ForEach(speechLocales, id: \.id) { locale in
+                        Text(locale.name).tag(locale.id)
+                    }
+                }
+                .onChange(of: speechLocale) { _, newValue in
+                    Config.setSpeechRecognitionLocale(newValue)
+                    appState.wakeWordService.reloadRecognizer()
+                    appState.transcriptionService.reloadRecognizer()
+                }
+
                 switch asrDownloader.state {
                 case .ready:
                     HStack {
@@ -288,7 +313,7 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Speech Recognition")
             } footer: {
-                Text("On-device \(ASRModelBundle.active.displayName) (~240 MB) transcribes offline and privately — no audio leaves the device. Until it's installed, recognition uses Apple Speech.")
+                Text("On-device \(ASRModelBundle.active.displayName) (~240 MB) transcribes offline and privately — no audio leaves the device. Until it's installed, recognition uses Apple Speech. Language is what the wake word listener and dictation listen in; the wake phrase is also matched as that language's recognizer would spell it.")
             }
             .onAppear { asrDownloader.refreshState() }
 

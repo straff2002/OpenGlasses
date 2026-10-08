@@ -56,6 +56,17 @@ enum SpeechLocaleResolver {
         return Locale(identifier: identifier)
     }
 
+    /// The writing system a recogniser for `identifier` transcribes into, as a four-letter script
+    /// code from the system's likely-subtags table: ko-KR → "Kore", ru → "Cyrl", en-US → "Latn".
+    /// `nil` when the identifier is empty or unknown.
+    static func scriptCode(of identifier: String) -> String? {
+        let trimmed = identifier.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != automatic else { return nil }
+        return Locale.Language(identifier: trimmed).maximalIdentifier
+            .split(separator: "-").dropFirst().first.map(String.init)
+            .flatMap { $0.count == 4 ? $0 : nil }
+    }
+
     // MARK: - Private
 
     private static func canonical(_ identifier: String) -> String {

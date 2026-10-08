@@ -20,6 +20,15 @@ import Foundation
 /// entirely for short ones. A short wake phrase has no room for misrecognition slack; the honest
 /// way to cover how a recogniser mangles it is the alternatives list, which is exact and which the
 /// wearer can see and edit.
+///
+/// # Units
+///
+/// Length and edit distance are measured in canonically decomposed scalars (`fuzzyUnits`), not in
+/// characters. For Latin text the two are the same. For Hangul they are not: a syllable block is
+/// one character but two or three letters (jamo), so measured in characters a three-syllable name
+/// is "short" and gets no allowance, and the one-vowel mishearing a Korean recogniser makes of it
+/// ("에벤킨" for "아벤킨") would be a whole-character edit. Decomposed, that name is eight letters
+/// with a two-edit allowance — the same footing as "hey claude" — and the vowel is one edit.
 enum WakePhraseMatcher {
 
     /// A phrase to listen for, and the primary phrase to report when it matches. Alternatives
@@ -71,13 +80,19 @@ enum WakePhraseMatcher {
         return fuzzyMatch(tokens: tokens, candidates: candidates)?.primary
     }
 
+    /// The letters of `text` as the fuzzy pass counts them: canonically decomposed, so a composed
+    /// syllable or an accented letter is its parts. Latin ASCII is unchanged.
+    static func fuzzyUnits(_ text: String) -> [Unicode.Scalar] {
+        Array(text.decomposedStringWithCanonicalMapping.unicodeScalars)
+    }
+
     /// The fuzzy half, separated so callers that want to log the distance can reach it.
     static func fuzzyMatch(tokens: [String], candidates: [Candidate]) -> (primary: String, distance: Int)? {
         for candidate in candidates {
             let phraseTokens = PhraseMatcher.tokenize(candidate.phrase)
             let windowSize = phraseTokens.count
             let phrase = phraseTokens.joined(separator: " ")
-            let threshold = fuzzyThreshold(forPhraseLength: phrase.count)
+            let threshold = fuzzyThreshold(forPhraseLength: fuzzyUnits(phrase).count)
             guard threshold > 0, windowSize > 0, tokens.count >= windowSize else { continue }
 
             for start in 0...(tokens.count - windowSize) {
@@ -91,10 +106,10 @@ enum WakePhraseMatcher {
         return nil
     }
 
-    /// Levenshtein edit distance between two strings.
+    /// Levenshtein edit distance between two strings, in `fuzzyUnits`.
     static func levenshteinDistance(_ a: String, _ b: String) -> Int {
-        let aChars = Array(a)
-        let bChars = Array(b)
+        let aChars = fuzzyUnits(a)
+        let bChars = fuzzyUnits(b)
         let m = aChars.count
         let n = bChars.count
         if m == 0 { return n }

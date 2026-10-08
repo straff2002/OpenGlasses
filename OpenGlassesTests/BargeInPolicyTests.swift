@@ -250,6 +250,51 @@ final class BargeInPolicyTests: XCTestCase {
         XCTAssertFalse(MicRoutePolicy.isOpenSpeaker([]))
     }
 
+    // MARK: - Words that carry their grammar (Korean tester, 2026-10-09)
+
+    /// The reply read back by a Korean recogniser: the same words with particles attached, which
+    /// whole-token overlap used to count as entirely new words.
+    func testTheReplyEchoedWithParticlesAttachedIsStillTheReply() {
+        let spoken = "오늘 서울 날씨 맑음, 기온 이십 도, 바람 약함."
+        for heard in ["오늘 서울 날씨는 맑음", "기온은 이십 도 바람은 약함"] {
+            XCTAssertTrue(BargeInPolicy.echoesSpokenText(heard, spoken: spoken), heard)
+            XCTAssertEqual(decide(heard, assistantSpeech: .speaking(text: spoken, openSpeaker: false)),
+                           .ignore, heard)
+        }
+    }
+
+    func testTheKoreanWearerAskingSomethingElseStillInterrupts() {
+        let spoken = "오늘 서울 날씨 맑음, 기온 이십 도, 바람 약함."
+        let heard = "아니 내일 부산 날씨 알려줘"
+        XCTAssertEqual(decide(heard, assistantSpeech: .speaking(text: spoken, openSpeaker: false)),
+                       .interrupt(text: heard))
+    }
+
+    func testAStemIsSharedInEitherDirectionButNeverOnOneCharacter() {
+        XCTAssertTrue(BargeInPolicy.sharesStem("날씨가", "날씨"))
+        XCTAssertTrue(BargeInPolicy.sharesStem("날씨", "날씨가"))
+        XCTAssertTrue(BargeInPolicy.sharesStem("motors", "motor"))
+        XCTAssertFalse(BargeInPolicy.sharesStem("가", "가방"), "one syllable is not a stem")
+        XCTAssertFalse(BargeInPolicy.sharesStem("a", "and"), "one letter is not a stem")
+        XCTAssertFalse(BargeInPolicy.sharesStem("bus", "but"))
+    }
+
+    /// One jamo misheard in a two-syllable word is the reply, as one letter in a Latin word is.
+    func testAOneLetterMishearingIsMeasuredInJamo() {
+        let vocabulary = BargeInPolicy.spokenVocabulary("오늘 날씨 맑음")
+        XCTAssertTrue(BargeInPolicy.isEcho("날시", of: vocabulary))
+        XCTAssertFalse(BargeInPolicy.isEcho("부산", of: vocabulary))
+    }
+
+    /// The English behaviour the stem rule must not loosen: a wearer's own sentence over the
+    /// reply still reads as the wearer.
+    func testTheStemRuleDoesNotSwallowAnEnglishInterrupt() {
+        let spoken = "It is going to rain this afternoon, so take an umbrella."
+        let heard = "and what about tomorrow then"
+        XCTAssertEqual(decide(heard, assistantSpeech: .speaking(text: spoken, openSpeaker: false)),
+                       .interrupt(text: heard))
+    }
+
     // MARK: - The floor itself
 
     func testTheNoiseFloorIsStructuralNotLinguistic() {

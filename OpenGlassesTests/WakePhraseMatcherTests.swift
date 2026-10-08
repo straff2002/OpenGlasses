@@ -100,6 +100,85 @@ final class WakePhraseMatcherTests: XCTestCase {
         XCTAssertNil(match("", ["hey claude"]))
         XCTAssertNil(match("hey claude", [""]))
     }
+
+    // MARK: - Hangul (Korean tester, 2026-10-09)
+
+    /// A Hangul syllable is one character but two or three letters. Measured in characters the
+    /// three-syllable name is "short" and gets no allowance; measured in letters it is on the
+    /// same footing as "hey claude".
+    func testHangulIsMeasuredInLettersNotSyllables() {
+        XCTAssertEqual("아벤킨".count, 3)
+        XCTAssertEqual(WakePhraseMatcher.fuzzyUnits("아벤킨").count, 8)
+        XCTAssertEqual(WakePhraseMatcher.fuzzyUnits("hey claude").count, 10, "Latin is unchanged")
+    }
+
+    func testAOneVowelMishearingOfTheHangulNameWakes() {
+        // 아 → 에: the recogniser heard the first vowel differently. One letter.
+        XCTAssertEqual(WakePhraseMatcher.levenshteinDistance("에벤킨", "아벤킨"), 1)
+        XCTAssertEqual(match("에벤킨 오늘 날씨 어때", ["아벤킨"]), "아벤킨")
+    }
+
+    /// Calling a name in Korean appends a vocative particle to it, as one token: "아벤킨아".
+    func testTheNameWithAVocativeParticleWakes() {
+        XCTAssertEqual(match("아벤킨아 지금 몇 시야", ["아벤킨"]), "아벤킨")
+    }
+
+    func testOrdinaryKoreanDoesNotWakeTheHangulName() {
+        for transcript in ["아버지가 방에 들어가신다", "오늘 날씨가 참 좋네요", "안녕하세요 반갑습니다"] {
+            XCTAssertNil(match(transcript, ["아벤킨"]), transcript)
+        }
+    }
+}
+
+/// The spellings a non-Latin recogniser gives a Latin wake phrase, and how they join the
+/// candidate list.
+final class WakePhraseScriptTests: XCTestCase {
+
+    func testTheShippedNameIsSpelledInHangulForAKoreanRecognizer() {
+        let spellings = WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Kore")
+        XCTAssertEqual(spellings, ["아벤킨"])
+        XCTAssertEqual(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Hang"), ["아벤킨"])
+    }
+
+    func testALatinRecognizerGetsNoSpellings() {
+        XCTAssertEqual(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Latn"), [])
+        XCTAssertEqual(WakePhraseScript.transliterations(of: "avenkin", scriptCode: nil), [])
+        XCTAssertNil(WakePhraseScript.transform(forScriptCode: "Hans"), "no Latin-to-Han table")
+    }
+
+    /// A recogniser writes an acronym it knows in Latin inside an otherwise-Hangul sentence
+    /// ("헤이 GPT"), so every mix of the two spellings is offered, fully transliterated first.
+    func testEveryMixOfLatinAndTransliteratedWordsIsOffered() {
+        let spellings = WakePhraseScript.transliterations(of: "hey gpt", scriptCode: "Kore")
+        XCTAssertEqual(spellings.count, 3)
+        let hey = "hey".applyingTransform(.latinToHangul, reverse: false)!
+        let gpt = "gpt".applyingTransform(.latinToHangul, reverse: false)!
+        XCTAssertEqual(spellings.first, "\(hey) \(gpt)")
+        XCTAssertTrue(spellings.contains("\(hey) gpt"))
+        XCTAssertTrue(spellings.contains("hey \(gpt)"))
+        XCTAssertFalse(spellings.contains("hey gpt"), "the phrase itself is already a candidate")
+    }
+
+    /// A phrase the wearer typed in the recogniser's own script needs nothing done to it.
+    func testAPhraseAlreadyInTheScriptIsLeftAlone() {
+        XCTAssertEqual(WakePhraseScript.transliterations(of: "아벤킨", scriptCode: "Kore"), [])
+    }
+
+    func testTransliterationsReportThePhraseTheyWereSpelledFrom() {
+        let candidates = [WakePhraseMatcher.Candidate(phrase: "avenkin"),
+                          WakePhraseMatcher.Candidate(phrase: "aven kin", primary: "avenkin")]
+        let all = WakeWordService.withTransliterations(candidates, scriptCode: "Kore")
+        XCTAssertEqual(Array(all.prefix(2)), candidates, "exact candidates stay first")
+        let hangul = all.first { $0.phrase == "아벤킨" }
+        XCTAssertEqual(hangul?.primary, "avenkin")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "아벤킨 오늘 일정 알려줘", candidates: all), "avenkin")
+        XCTAssertEqual(WakeWordService.withTransliterations(candidates, scriptCode: "Latn"), candidates)
+    }
+
+    func testOtherScriptsHaveATable() {
+        XCTAssertEqual(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Cyrl"), ["авенкин"])
+        XCTAssertFalse(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Jpan").isEmpty)
+    }
 }
 
 /// Generated alternatives for a phrase nobody hand-tuned — structural only, never phonetic.

@@ -55,6 +55,17 @@ import Foundation
 /// So on the loudspeaker a general interrupt is refused outright, and elsewhere it needs a real
 /// sample: at least two words (or a run of unspaced script) that are not in the reply, matched
 /// loosely enough that contractions and one-letter mishearings count as the reply.
+///
+/// # Words that carry their grammar
+///
+/// A Korean tester (2026-10-09) had every reply cut itself off on the glasses route, where the
+/// overlap test above is the only guard. Korean writes a word and its particle as one token —
+/// the reply says "날씨" and the recogniser hears "날씨가" or "날씨는" — so whole-token overlap found
+/// almost nothing in common between the reply and its own echo, and the fuzzy allowance did not
+/// help either: it was measured in characters, and a Hangul character is a whole syllable. Two
+/// structural changes, neither of which looks at the language: a heard word that *extends* a
+/// spoken word (or the reverse) by a stem of at least two characters is the reply, and the
+/// one-letter allowance is measured in decomposed letters, which for Hangul means one jamo.
 enum BargeInPolicy {
 
     /// What the microphone is hearing from the app itself while this transcript arrives.
@@ -190,17 +201,36 @@ enum BargeInPolicy {
         return vocabulary
     }
 
-    /// Whether one heard word is the reply's: exactly, as a contraction form, or — for a word long
-    /// enough to survive it — with one letter misheard.
+    /// Shortest shared stem, in characters, for a heard word to read as a spoken word with
+    /// grammar attached or removed ("날씨가" for "날씨", "motors" for "motor"). One character is a
+    /// syllable in Hangul and a letter in Latin: far too little to say two words are the same.
+    static let shortestEchoStem = 2
+
+    /// Whether one heard word is the reply's: exactly, as a contraction form, as a spoken word
+    /// with its grammar attached or removed, or — for a word long enough to survive it — with one
+    /// letter misheard.
     static func isEcho(_ word: String, of vocabulary: Set<String>) -> Bool {
         if vocabulary.contains(word) { return true }
         if contractionForms(word).contains(where: { vocabulary.contains($0) }) { return true }
-        guard word.count >= shortestFuzzyEchoWord else { return false }
+        if vocabulary.contains(where: { sharesStem(word, $0) }) { return true }
+        let heard = WakePhraseMatcher.fuzzyUnits(word)
+        guard heard.count >= shortestFuzzyEchoWord else { return false }
         return vocabulary.contains { candidate in
-            candidate.count >= shortestFuzzyEchoWord
-                && abs(candidate.count - word.count) <= 1
+            let said = WakePhraseMatcher.fuzzyUnits(candidate)
+            return said.count >= shortestFuzzyEchoWord
+                && abs(said.count - heard.count) <= 1
                 && WakePhraseMatcher.levenshteinDistance(candidate, word) <= 1
         }
+    }
+
+    /// Whether one word is the other with something appended: the shorter is a prefix of the
+    /// longer and is at least `shortestEchoStem` characters. Structural — it does not know a
+    /// particle from a plural — and it works in both directions, so a recogniser that drops the
+    /// grammar is covered as well as one that adds it.
+    static func sharesStem(_ a: String, _ b: String) -> Bool {
+        guard a != b else { return true }
+        let (short, long) = a.count <= b.count ? (a, b) : (b, a)
+        return short.count >= shortestEchoStem && long.hasPrefix(short)
     }
 
     /// The other spellings of a contracted word: its apostrophe-free form and its parts.
