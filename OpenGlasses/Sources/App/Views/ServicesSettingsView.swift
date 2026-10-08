@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Speech
 import UniformTypeIdentifiers
 
 /// Sub-settings view for optional service integrations.
@@ -64,13 +65,36 @@ struct ServicesSettingsView: View {
 
     // iOS Voice
     @State private var iosVoiceId: String = Config.iosTTSVoiceId
-    private var iosVoices: [AVSpeechSynthesisVoice] { TextToSpeechService.availableVoices() }
+    /// Bumped when the app comes back to the foreground, so a voice downloaded in iOS Settings
+    /// shows up in the picker and clears the download hint without leaving this screen.
+    @State private var installedVoicesGeneration = 0
+    private var iosVoices: [AVSpeechSynthesisVoice] {
+        _ = installedVoicesGeneration
+        return TextToSpeechService.availableVoices()
+    }
+    private var voiceQualityAdvice: TTSVoiceResolver.QualityAdvice? {
+        _ = installedVoicesGeneration
+        _ = iosVoiceId
+        return TextToSpeechService.systemVoiceQualityAdvice()
+    }
 
     /// Drives the on-device Kokoro model download + status row.
     @StateObject private var kokoroDownloader = KokoroModelDownloader()
 
     // Speech recognition (Additional Capabilities #8 — on-device SenseVoice ASR)
     @State private var asrEnginePreference: ASREnginePreference = Config.asrEnginePreference
+    /// The recogniser language: automatic (the phone's language) or a pinned locale. The setting
+    /// existed with no way to set it; a bilingual wearer whose phone is in one language and whose
+    /// wake phrase and dictation are in another had no switch (Korean tester, 2026-10-09).
+    @State private var speechLocale: String = Config.speechRecognitionLocale
+    private var speechLocales: [(id: String, name: String)] {
+        SFSpeechRecognizer.supportedLocales()
+            .map { locale -> (id: String, name: String) in
+                let id = locale.identifier
+                return (id, Locale.current.localizedString(forIdentifier: id) ?? id)
+            }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
     /// Drives the on-device SenseVoice model download + status row.
     @StateObject private var asrDownloader = ASRModelDownloader()
 
@@ -197,10 +221,23 @@ struct ServicesSettingsView: View {
                 .onChange(of: iosVoiceId) { _, newValue in
                     Config.setIosTTSVoiceId(newValue)
                 }
+                if let advice = voiceQualityAdvice {
+                    Label {
+                        Text(voiceQualityAdviceText(advice))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.tint)
+                    }
+                }
             } header: {
                 Text("iOS Voice")
             } footer: {
                 Text("Used when ElevenLabs is unavailable or quota is exhausted. Download more voices in iOS Settings → Accessibility → Spoken Content → Voices.")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                installedVoicesGeneration += 1
             }
 
             // MARK: On-Device Voice (Kokoro)
@@ -254,6 +291,18 @@ struct ServicesSettingsView: View {
                     Config.setASREnginePreference(newValue)
                 }
 
+                Picker("Language", selection: $speechLocale) {
+                    Text("Automatic (phone language)").tag(SpeechLocaleResolver.automatic)
+                    ForEach(speechLocales, id: \.id) { locale in
+                        Text(locale.name).tag(locale.id)
+                    }
+                }
+                .onChange(of: speechLocale) { _, newValue in
+                    Config.setSpeechRecognitionLocale(newValue)
+                    appState.wakeWordService.reloadRecognizer()
+                    appState.transcriptionService.reloadRecognizer()
+                }
+
                 switch asrDownloader.state {
                 case .ready:
                     HStack {
@@ -288,7 +337,7 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Speech Recognition")
             } footer: {
-                Text("On-device \(ASRModelBundle.active.displayName) (~240 MB) transcribes offline and privately — no audio leaves the device. Until it's installed, recognition uses Apple Speech.")
+                Text("On-device \(ASRModelBundle.active.displayName) (~240 MB) transcribes offline and privately — no audio leaves the device. Until it's installed, recognition uses Apple Speech. Language is what the wake word listener and dictation listen in; the wake phrase is also matched as that language's recognizer would spell it.")
             }
             .onAppear { asrDownloader.refreshState() }
 
@@ -782,6 +831,18 @@ struct ServicesSettingsView: View {
             profile: .rtmp
         )
         return "Automatic (~\(VideoBitratePolicy.megabitLabel(bps)))"
+    }
+
+    /// What to download and where, in the wearer's words for the language ("Korean"), never a
+    /// voice name: which voices exist per language changes with iOS, and the picker already
+    /// shows what is installed.
+    private func voiceQualityAdviceText(_ advice: TTSVoiceResolver.QualityAdvice) -> String {
+        let code = Locale.Language(identifier: advice.language).languageCode?.identifier ?? advice.language
+        let language = Locale.current.localizedString(forLanguageCode: code) ?? advice.language
+        let have = advice.isCompactOnly
+            ? String(localized: "Only the compact \(language) voice is installed.")
+            : String(localized: "The Enhanced \(language) voice is installed; a Premium one may be available.")
+        return have + " " + String(localized: "Enhanced and Premium voices sound far more natural. Download one in iOS Settings → Accessibility → Spoken Content → Voices → \(language); on Auto, Avenkin uses the best one installed.")
     }
 
     private func qualityLabel(_ quality: AVSpeechSynthesisVoiceQuality) -> String {

@@ -100,6 +100,12 @@ class TranscriptionService: ObservableObject {
         speechRecognizer = SFSpeechRecognizer(locale: SpeechLocaleResolver.current)
     }
 
+    /// Recreate the recogniser for the current speech-language setting (built once at init).
+    /// Takes effect from the next turn; a turn in progress keeps the recogniser it started on.
+    func reloadRecognizer() {
+        speechRecognizer = SFSpeechRecognizer(locale: SpeechLocaleResolver.current)
+    }
+
     func startRecording() {
         // A second start on a live recorder is a no-op, and a silent one used to leave no trace
         // at all — the other half of "the assistant spoke and then nothing happened".

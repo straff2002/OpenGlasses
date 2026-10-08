@@ -77,4 +77,15 @@ final class SpeechLocaleResolverTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "speechRecognitionLocale")
         XCTAssertEqual(Config.speechRecognitionLocale, SpeechLocaleResolver.automatic)
     }
+
+    // MARK: - Script
+
+    func testTheScriptOfALocaleComesFromTheLikelySubtags() {
+        XCTAssertEqual(SpeechLocaleResolver.scriptCode(of: "ko-KR"), "Kore")
+        XCTAssertEqual(SpeechLocaleResolver.scriptCode(of: "en-US"), "Latn")
+        XCTAssertEqual(SpeechLocaleResolver.scriptCode(of: "ru-RU"), "Cyrl")
+        XCTAssertEqual(SpeechLocaleResolver.scriptCode(of: "zh-TW"), "Hant")
+        XCTAssertNil(SpeechLocaleResolver.scriptCode(of: ""))
+        XCTAssertNil(SpeechLocaleResolver.scriptCode(of: SpeechLocaleResolver.automatic))
+    }
 }

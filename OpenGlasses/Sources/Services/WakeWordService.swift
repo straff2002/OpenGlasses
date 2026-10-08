@@ -263,6 +263,21 @@ class WakeWordService: NSObject, ObservableObject {
         speechRecognizer = SFSpeechRecognizer(locale: SpeechLocaleResolver.current)
     }
 
+    /// The writing system the recogniser transcribes into — what `WakePhraseScript` spells the
+    /// Latin wake phrases in. Read from the recogniser's own locale, so it is always the script
+    /// of the recogniser actually running, not of a setting that has since changed.
+    var recognizerScriptCode: String? {
+        speechRecognizer.flatMap { SpeechLocaleResolver.scriptCode(of: $0.locale.identifier) }
+    }
+
+    /// Recreate the recogniser for the current speech-language setting. The recogniser is built
+    /// once at init; without this a wearer who changes the language in Settings keeps the old
+    /// one until the next launch. Listening resumes on the new recogniser.
+    func reloadRecognizer() {
+        speechRecognizer = SFSpeechRecognizer(locale: SpeechLocaleResolver.current)
+        restartRecognition()
+    }
+
     /// Force reconfigure audio session (e.g. when mic source changes)
     func reconfigureAudioSession() async {
         audioSessionConfigured = false
@@ -1430,9 +1445,12 @@ class WakeWordService: NSObject, ObservableObject {
             PrivacyLog.wakeWord(.onDeviceUnavailable)
         }
         request.taskHint = .search  // Short phrase detection
-        // Boost recognition of all persona wake phrases
+        // Boost recognition of all persona wake phrases — and, for a recogniser that writes
+        // another script, the spellings it would give them (WakePhraseScript).
         let personaPhrases = Config.allActiveWakePhrases
-        let contextPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
+        let latinPhrases = personaPhrases.isEmpty ? [wakePhrase] : personaPhrases
+        let contextPhrases = latinPhrases
+            + WakePhraseScript.transliterations(of: latinPhrases, scriptCode: recognizerScriptCode)
         request.contextualStrings = contextPhrases
         // The contextual-boost list *is* the wake phrases, and the persona names beside them are
         // what the wearer called their assistants — often a real name. Only how many there are.
@@ -1732,15 +1750,32 @@ class WakeWordService: NSObject, ObservableObject {
     }
 
     /// Every phrase that may wake the app: each enabled persona's, its alternatives (reporting the
-    /// persona's primary phrase), and the global wake phrase.
+    /// persona's primary phrase), the global wake phrase — and, when the recogniser writes another
+    /// script, each of those as that recogniser would spell it (`WakePhraseScript`).
     private var wakeCandidates: [WakePhraseMatcher.Candidate] {
-        Config.enabledPersonas.flatMap { persona in
+        let configured = Config.enabledPersonas.flatMap { persona in
             [WakePhraseMatcher.Candidate(phrase: persona.wakePhrase)] +
             persona.alternativeWakePhrases.map {
                 WakePhraseMatcher.Candidate(phrase: $0, primary: persona.wakePhrase)
             }
         } + [WakePhraseMatcher.Candidate(phrase: wakePhrase)]
         + alternativePhrases.map { WakePhraseMatcher.Candidate(phrase: $0, primary: wakePhrase) }
+        return Self.withTransliterations(configured, scriptCode: recognizerScriptCode)
+    }
+
+    /// `candidates` followed by their transliterations into `scriptCode`, each reporting the
+    /// phrase it was spelled from. Exact candidates stay first so an alternative never loses to a
+    /// fuzzy match on a transliteration.
+    nonisolated static func withTransliterations(_ candidates: [WakePhraseMatcher.Candidate],
+                                     scriptCode: String?) -> [WakePhraseMatcher.Candidate] {
+        guard WakePhraseScript.transform(forScriptCode: scriptCode) != nil else { return candidates }
+        var seen = Set(candidates.map(\.phrase))
+        let spelled = candidates.flatMap { candidate in
+            WakePhraseScript.transliterations(of: candidate.phrase, scriptCode: scriptCode)
+                .filter { seen.insert($0).inserted }
+                .map { WakePhraseMatcher.Candidate(phrase: $0, primary: candidate.primary) }
+        }
+        return candidates + spelled
     }
 
     /// Check all persona wake phrases and return the matched one, or nil.

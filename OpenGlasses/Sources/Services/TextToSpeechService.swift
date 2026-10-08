@@ -1130,6 +1130,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         ).compactMap { descriptor in allVoices.first { $0.identifier == descriptor.identifier } }
     }
 
+    /// Whether the system voice the app would use could be bettered by a download, and in which
+    /// language — see `TTSVoiceResolver.qualityAdvice`.
+    static func systemVoiceQualityAdvice() -> TTSVoiceResolver.QualityAdvice? {
+        TTSVoiceResolver.qualityAdvice(
+            savedIdentifier: Config.iosTTSVoiceId,
+            preferredLanguages: Locale.preferredLanguages,
+            voices: AVSpeechSynthesisVoice.speechVoices().map(voiceDescriptor)
+        )
+    }
+
     private static func voiceDescriptor(_ voice: AVSpeechSynthesisVoice) -> TTSVoiceResolver.Voice {
         .init(identifier: voice.identifier, language: voice.language,
               quality: voice.quality.rawValue, name: voice.name)
