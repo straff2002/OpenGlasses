@@ -25,6 +25,20 @@ final class RegistrationFlowTests: XCTestCase {
         XCTAssertEqual(RegistrationFlow.status(stateRaw: 4), "Waiting for device…")
     }
 
+    /// Three testers on 2026-10-08 saw only Meta AI's "Internal error" and asked what it meant.
+    /// The pre-hand-off copy names the gate and both ways through it, and quotes the dialog so a
+    /// wearer who meets it knows it was expected.
+    func testBeforeHandoffCopyNamesTheGateAndBothWaysThrough() {
+        let copy = RegistrationFlow.beforeHandoffMessage(appName: "Avenkin")
+        XCTAssertTrue(copy.contains("Meta AI opens next"), "say the app is about to leave")
+        XCTAssertTrue(copy.contains("invited"), "the release channel is one way through")
+        XCTAssertTrue(copy.contains("Developer Mode"), "Developer Mode is the other")
+        XCTAssertTrue(copy.contains("five times"), "say how to reach Developer Mode")
+        XCTAssertTrue(copy.contains("\"Internal error\""), "quote Meta AI's refusal so it is recognisable")
+        XCTAssertTrue(copy.contains("Avenkin"), "name the app Meta AI will ask about")
+        XCTAssertFalse(copy.contains(where: \.isNumber), "no state numbers in wearer-facing copy")
+    }
+
     func testDeadlineCoversTheObservedApprovalLatency() {
         XCTAssertGreaterThanOrEqual(RegistrationFlow.approvalDeadlineSeconds, 25,
             "Meta AI approval has been observed to take ~25s; the old 10s deadline gave up too early")

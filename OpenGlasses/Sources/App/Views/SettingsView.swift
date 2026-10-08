@@ -1075,7 +1075,10 @@ struct GlassesSettingsView: View {
                     }
                     .disabled(appState.isConnectingGlasses)
                 } footer: {
-                    Text("Avenkin isn't connected to your glasses in the Meta AI app. This opens Meta AI so you can approve the connection.")
+                    // The gate is named before the hand-off: Meta AI's own refusal is a bare
+                    // "Internal error" (see `RegistrationFlow.beforeHandoffMessage`).
+                    Text("Avenkin isn't connected to your glasses in the Meta AI app. "
+                         + RegistrationFlow.beforeHandoffMessage())
                 }
             }
 
