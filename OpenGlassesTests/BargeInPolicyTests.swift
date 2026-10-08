@@ -295,6 +295,38 @@ final class BargeInPolicyTests: XCTestCase {
                        .interrupt(text: heard))
     }
 
+    // MARK: - Scripts without word spacing
+
+    /// The reply read back by a Japanese recogniser is one run; it used to equal none of the
+    /// reply's tokens and so always interrupted.
+    func testAnUnspacedEchoOfTheReplyIsStillTheReply() {
+        let spoken = "今日の東京の天気は晴れ、気温は二十度です。"
+        for heard in ["今日の東京の天気は晴れ気温は", "天気は晴れ気温は二十度です"] {
+            XCTAssertTrue(BargeInPolicy.echoesSpokenText(heard, spoken: spoken), heard)
+            XCTAssertEqual(decide(heard, assistantSpeech: .speaking(text: spoken, openSpeaker: false)),
+                           .ignore, heard)
+        }
+        let chinese = "今天上海天气晴朗，气温二十度，微风。"
+        XCTAssertEqual(decide("今天上海天气晴朗气温二十度",
+                              assistantSpeech: .speaking(text: chinese, openSpeaker: false)), .ignore)
+    }
+
+    func testAnUnspacedWearerStillInterrupts() {
+        let spoken = "今日の東京の天気は晴れ、気温は二十度です。"
+        let heard = "明日の大阪はどうですか"
+        XCTAssertEqual(decide(heard, assistantSpeech: .speaking(text: spoken, openSpeaker: false)),
+                       .interrupt(text: heard))
+        let chinese = "今天上海天气晴朗，气温二十度，微风。"
+        XCTAssertEqual(decide("那明天北京会下雨吗",
+                              assistantSpeech: .speaking(text: chinese, openSpeaker: false)),
+                       .interrupt(text: "那明天北京会下雨吗"))
+    }
+
+    func testCharacterPairsAreAdjacentAndOrdered() {
+        XCTAssertEqual(BargeInPolicy.characterPairs("天気は"), ["天気", "気は"])
+        XCTAssertEqual(BargeInPolicy.characterPairs("気"), [])
+    }
+
     // MARK: - The floor itself
 
     func testTheNoiseFloorIsStructuralNotLinguistic() {

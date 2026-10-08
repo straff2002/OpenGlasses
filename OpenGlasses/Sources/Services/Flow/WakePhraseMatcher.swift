@@ -29,6 +29,17 @@ import Foundation
 /// is "short" and gets no allowance, and the one-vowel mishearing a Korean recogniser makes of it
 /// ("에벤킨" for "아벤킨") would be a whole-character edit. Decomposed, that name is eight letters
 /// with a two-edit allowance — the same footing as "hey claude" — and the vowel is one edit.
+///
+/// # Scripts without word spacing
+///
+/// Whole-token matching needs tokens. A Japanese or Chinese recogniser writes a sentence as one
+/// run — "アベンキン今日の天気は" — and there is no word boundary for the matcher to respect, so
+/// for a phrase and a token that are both written without Latin letters the phrase is looked for
+/// *inside* the token (`embeddedMatch`), exactly or within the usual allowance. That is the
+/// substring containment this type refuses for Latin ("rule" in "ruler"), and the reason it is
+/// safe here is the reason it is unsafe there: in a spaced script a token *is* a word, and a
+/// phrase inside a word is a different word; in an unspaced script a token is a sentence, and a
+/// phrase inside it is the phrase.
 enum WakePhraseMatcher {
 
     /// A phrase to listen for, and the primary phrase to report when it matches. Alternatives
@@ -77,7 +88,38 @@ enum WakePhraseMatcher {
             if PhraseMatcher.contains(candidate.phrase, in: tokens) { return candidate.primary }
         }
 
-        return fuzzyMatch(tokens: tokens, candidates: candidates)?.primary
+        if let fuzzy = fuzzyMatch(tokens: tokens, candidates: candidates) { return fuzzy.primary }
+        return embeddedMatch(tokens: tokens, candidates: candidates)?.primary
+    }
+
+    /// Shortest phrase, in characters, that may be looked for inside a longer token. Two Han
+    /// characters are a common word; three are a name.
+    static let shortestEmbeddedPhrase = 3
+
+    /// A phrase found inside one token of the transcript, for a phrase and a token written
+    /// without Latin letters (see the type comment). The phrase is compared with its spaces
+    /// removed, which is how an unspaced recogniser writes it; the allowance is the ordinary
+    /// `fuzzyThreshold` for its length.
+    static func embeddedMatch(tokens: [String], candidates: [Candidate]) -> (primary: String, distance: Int)? {
+        for candidate in candidates {
+            let needle = PhraseMatcher.tokenize(candidate.phrase).joined()
+            guard needle.count >= shortestEmbeddedPhrase, !WakePhraseScript.hasLatinLetters(needle) else { continue }
+            let needleUnits = fuzzyUnits(needle)
+            let threshold = fuzzyThreshold(forPhraseLength: needleUnits.count)
+            for token in tokens where token.count > needle.count && !WakePhraseScript.hasLatinLetters(token) {
+                if token.contains(needle) { return (candidate.primary, 0) }
+                guard threshold > 0 else { continue }
+                let units = fuzzyUnits(token)
+                let sizes = max(1, needleUnits.count - threshold)...(needleUnits.count + threshold)
+                for size in sizes where size <= units.count {
+                    for start in 0...(units.count - size) {
+                        let distance = editDistance(Array(units[start..<(start + size)]), needleUnits)
+                        if distance <= threshold { return (candidate.primary, distance) }
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     /// The letters of `text` as the fuzzy pass counts them: canonically decomposed, so a composed
@@ -108,8 +150,10 @@ enum WakePhraseMatcher {
 
     /// Levenshtein edit distance between two strings, in `fuzzyUnits`.
     static func levenshteinDistance(_ a: String, _ b: String) -> Int {
-        let aChars = fuzzyUnits(a)
-        let bChars = fuzzyUnits(b)
+        editDistance(fuzzyUnits(a), fuzzyUnits(b))
+    }
+
+    static func editDistance(_ aChars: [Unicode.Scalar], _ bChars: [Unicode.Scalar]) -> Int {
         let m = aChars.count
         let n = bChars.count
         if m == 0 { return n }

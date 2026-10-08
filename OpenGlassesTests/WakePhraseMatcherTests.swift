@@ -175,6 +175,41 @@ final class WakePhraseScriptTests: XCTestCase {
         XCTAssertEqual(WakeWordService.withTransliterations(candidates, scriptCode: "Latn"), candidates)
     }
 
+    // MARK: - Scripts without word spacing
+
+    /// The system table spells the "v" with an obsolete kana; a recogniser writes ベ or ヴェ.
+    func testJapaneseIsSpelledTheWayARecognizerWritesIt() {
+        let spellings = WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Jpan")
+        XCTAssertEqual(spellings.first, "アベンキン")
+        XCTAssertTrue(spellings.contains("アヴェンキン"))
+        XCTAssertFalse(spellings.contains { $0.contains("ヹ") })
+    }
+
+    func testTheNameIsFoundInsideAnUnspacedJapaneseSentence() {
+        let candidates = WakeWordService.withTransliterations([.init(phrase: "avenkin")], scriptCode: "Jpan")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "アベンキン今日の天気は", candidates: candidates), "avenkin")
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "ねえアヴェンキン、何時？", candidates: candidates), "avenkin")
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "今日の天気はどうですか", candidates: candidates))
+    }
+
+    /// Chinese has no Latin-to-Han table; the wearer types the spelling as an alternative and the
+    /// same embedded matching finds it in the run.
+    func testATypedHanAlternativeIsFoundInsideAnUnspacedChineseSentence() {
+        let candidates = [WakePhraseMatcher.Candidate(phrase: "avenkin"),
+                          WakePhraseMatcher.Candidate(phrase: "阿文金", primary: "avenkin")]
+        XCTAssertEqual(WakePhraseMatcher.match(transcript: "阿文金今天天气怎么样", candidates: candidates), "avenkin")
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "今天天气很好我们出去走走", candidates: candidates))
+    }
+
+    func testEmbeddedMatchingIsOnlyForUnspacedScriptsAndNeverForShortPhrases() {
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "hand me that ruler",
+                                             candidates: [.init(phrase: "rule")]), "Latin is whole-token")
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "阿文今天天气怎么样",
+                                             candidates: [.init(phrase: "阿文")]), "two characters is a word")
+        XCTAssertNil(WakePhraseMatcher.match(transcript: "アベンキン今日の天気は",
+                                             candidates: [.init(phrase: "avenkin")]), "a Latin phrase is not in a kana run")
+    }
+
     func testOtherScriptsHaveATable() {
         XCTAssertEqual(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Cyrl"), ["авенкин"])
         XCTAssertFalse(WakePhraseScript.transliterations(of: "avenkin", scriptCode: "Jpan").isEmpty)

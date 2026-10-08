@@ -110,10 +110,6 @@ final class BrandNameGuardTests: XCTestCase {
         Allowed(path: "OpenGlasses/Sources/Resources/Translations/",
                 snippet: "\"\(oldName)\": \"\(oldName)\"",
                 reason: "P3.2: the downloadable translation of the old wake phrase's picker label."),
-        Allowed(path: "README.md", snippet: "\(oldName) is now Avenkin",
-                reason: "The rename notice names the old name so existing users recognise the app."),
-        Allowed(path: "README.zh-CN.md", snippet: "\(oldName) 已更名为 Avenkin",
-                reason: "The rename notice names the old name so existing users recognise the app."),
     ]
 
     // MARK: - The scan

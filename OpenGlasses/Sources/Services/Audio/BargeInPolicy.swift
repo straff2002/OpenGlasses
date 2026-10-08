@@ -66,6 +66,11 @@ import Foundation
 /// structural changes, neither of which looks at the language: a heard word that *extends* a
 /// spoken word (or the reverse) by a stem of at least two characters is the reply, and the
 /// one-letter allowance is measured in decomposed letters, which for Hangul means one jamo.
+///
+/// A script without word spacing has the same problem one level up: the recogniser writes the
+/// reply's echo as one run, which equals none of the reply's tokens, so it was always "novel" and
+/// always interrupted. A single long run is therefore compared by its character pairs
+/// (`echoesAsRun`): two thirds of them in the reply and it is the reply.
 enum BargeInPolicy {
 
     /// What the microphone is hearing from the app itself while this transcript arrives.
@@ -161,8 +166,29 @@ enum BargeInPolicy {
         let overlap = Double(heard.count - novel.count) / Double(heard.count)
         guard overlap < echoOverlapThreshold else { return false }
         if novel.count >= minimumNovelTokens { return true }
-        // One unspaced run that is entirely new — a sentence in a script without word spacing.
-        return heard.count == 1 && novel.count == 1 && novel[0].count >= minimumCharacters
+        // One unspaced run — a sentence in a script without word spacing. New if its characters
+        // are not the reply's; the reply read back as one run is still the reply.
+        guard heard.count == 1, novel.count == 1, novel[0].count >= minimumCharacters else { return false }
+        return !echoesAsRun(novel[0], spoken: spoken)
+    }
+
+    /// Whether a single unspaced run reads as `spoken` coming back: the share of its adjacent
+    /// character pairs that occur anywhere in the reply, against `echoOverlapThreshold`. Pairs,
+    /// not characters, so a sentence that merely uses common characters does not read as the
+    /// reply; the reply's own text is a long run of the same pairs in the same order.
+    static func echoesAsRun(_ run: String, spoken: String) -> Bool {
+        let heard = characterPairs(run)
+        guard !heard.isEmpty else { return false }
+        let said = Set(characterPairs(PhraseMatcher.tokenize(spoken).joined()))
+        guard !said.isEmpty else { return false }
+        let overlap = heard.filter { said.contains($0) }.count
+        return Double(overlap) / Double(heard.count) >= echoOverlapThreshold
+    }
+
+    static func characterPairs(_ text: String) -> [String] {
+        let characters = Array(text)
+        guard characters.count >= 2 else { return [] }
+        return (0..<(characters.count - 1)).map { String(characters[$0...($0 + 1)]) }
     }
 
     /// Share of a transcript's words that must also appear in what is being spoken before it reads
@@ -180,6 +206,9 @@ enum BargeInPolicy {
         let heard = PhraseMatcher.tokenize(transcript)
         let said = spokenVocabulary(spoken)
         guard !heard.isEmpty, !said.isEmpty else { return false }
+        if heard.count == 1, heard[0].count >= minimumCharacters, echoesAsRun(heard[0], spoken: spoken) {
+            return true
+        }
         let overlap = heard.filter { isEcho($0, of: said) }.count
         return Double(overlap) / Double(heard.count) >= echoOverlapThreshold
     }
