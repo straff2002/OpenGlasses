@@ -67,4 +67,43 @@ final class TTSVoiceResolverTests: XCTestCase {
         XCTAssertEqual(Set(available.map(\.identifier)), Set(["fr", "de", "en", "saved"]))
         XCTAssertEqual(available.first?.identifier, "de")
     }
+
+    // MARK: - Pointing at the better system voices
+
+    func testNoAdviceWhenTheVoiceInUseIsAlreadyPremium() {
+        let voices = [voice("yuna-premium", "ko-KR", 3), voice("yuna", "ko-KR", 1)]
+        XCTAssertNil(TTSVoiceResolver.qualityAdvice(savedIdentifier: "", preferredLanguages: ["ko-KR"],
+                                                    voices: voices))
+    }
+
+    func testTheCompactVoiceDrawsAdviceAboutItsOwnLanguage() {
+        let voices = [voice("yuna", "ko-KR", 1), voice("samantha-premium", "en-US", 3)]
+        let advice = TTSVoiceResolver.qualityAdvice(savedIdentifier: "", preferredLanguages: ["ko-KR", "en-US"],
+                                                    voices: voices)
+        XCTAssertEqual(advice, .init(language: "ko-KR", installedQuality: 1))
+        XCTAssertEqual(advice?.isCompactOnly, true)
+    }
+
+    func testAnEnhancedVoiceStillLeavesRoomForPremium() {
+        let voices = [voice("yuna-enhanced", "ko-KR", 2)]
+        let advice = TTSVoiceResolver.qualityAdvice(savedIdentifier: "", preferredLanguages: ["ko-KR"],
+                                                    voices: voices)
+        XCTAssertEqual(advice?.installedQuality, 2)
+        XCTAssertEqual(advice?.isCompactOnly, false)
+    }
+
+    /// The advice follows the voice the app would actually use: a pinned compact voice is still
+    /// compact, whatever else is installed.
+    func testAPinnedCompactVoiceIsAdvisedOnEvenWhenPremiumIsInstalled() {
+        let voices = [voice("yuna", "ko-KR", 1), voice("yuna-premium", "ko-KR", 3)]
+        XCTAssertEqual(TTSVoiceResolver.qualityAdvice(savedIdentifier: "yuna", preferredLanguages: ["ko-KR"],
+                                                      voices: voices),
+                       .init(language: "ko-KR", installedQuality: 1))
+    }
+
+    func testAPinnedVoiceTheSystemNoLongerListsFallsBackToTheLanguageRule() {
+        let voices = [voice("yuna-premium", "ko-KR", 3)]
+        XCTAssertNil(TTSVoiceResolver.qualityAdvice(savedIdentifier: "gone", preferredLanguages: ["ko-KR"],
+                                                    voices: voices))
+    }
 }
