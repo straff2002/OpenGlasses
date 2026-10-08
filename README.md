@@ -10,8 +10,6 @@ Ask about what you see, translate a conversation, remember the details, and get 
 
 [Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 
-> **OpenGlasses is now Avenkin.** The app is a private AI assistant: on your phone, from your wrist, or hands-free with glasses. Field Assist becomes *Field Assist, powered by Avenkin*. It is the same app: your settings, API keys, conversations and subscription carry over, and "OpenGlasses" still reaches it through Siri. [Read the plan](docs/plans/FY-rename-to-avenkin.md).
-
 ---
 
 ## A little help, right when you need it
@@ -92,9 +90,9 @@ Security, privacy and AI engineering is documented against SOC 2, ISO 27001, ISO
 
 Start on an **iPhone running iOS 26+**; the phone is enough on its own. Add compatible **Meta smart glasses** for hands-free camera and audio.
 
-The documented installation route is a source build on a Mac with Xcode. See [availability and the first-use checklist](docs/BUILDING.md#availability-and-first-use) before starting; this guide does not assume an App Store download or public TestFlight invitation.
+Avenkin is in beta. The quickest way in is TestFlight, Apple's app for pre-release builds; building from source is the route for contributors. See [availability and the first-use checklist](docs/BUILDING.md#availability-and-first-use) before starting.
 
-1. **Build the app.** Follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
+1. **Install the app.** [Join the beta on TestFlight](https://testflight.apple.com/join/1dcAytte), or follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
 2. **Choose your AI.** Open **Settings → AI Models** and connect a provider or download a compatible local model.
 3. **Add glasses, if you use them.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in Avenkin.
 4. **Start talking.** Enable listening and say **“Avenkin”**, or tap the microphone. Try asking about something in front of you.

@@ -6,10 +6,11 @@ if you just want it running.
 
 ## Availability and first use
 
-This repository documents **building from source on a Mac with Xcode 26+**, then installing on an
-**iPhone running iOS 26+** with your signing configuration. It does not supply a public App Store
-or TestFlight installation link. Any invitation or separately distributed build has its own access
-instructions; do not assume that a Meta developer invitation also installs the iPhone app.
+This guide documents **building from source on a Mac with Xcode 26+**, then installing on an
+**iPhone running iOS 26+** with your signing configuration. If you only want to use the app, the
+public beta is on [TestFlight](https://testflight.apple.com/join/1dcAytte) and needs no build. Any
+other invitation or separately distributed build has its own access instructions; do not assume
+that a Meta developer invitation also installs the iPhone app.
 
 Compatible Meta glasses use Meta AI pairing, developer configuration, registration and camera
 permissions. Choosing a different AI provider does not replace those steps. Phone-based features
