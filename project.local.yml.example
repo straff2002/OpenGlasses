@@ -53,3 +53,16 @@ targets:
     settings:
       base:
         DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
+
+  # The two test bundles sign too (automatic signing, device test runs). Without an explicit
+  # team here XcodeGen writes no DevelopmentTeam target attribute for them, and Xcode's Signing
+  # pane shows "Team: None" on both after every regeneration.
+  OpenGlassesTests:
+    settings:
+      base:
+        DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
+
+  OpenGlassesUITests:
+    settings:
+      base:
+        DEVELOPMENT_TEAM: YOUR_APPLE_TEAM_ID
