@@ -10,8 +10,6 @@ Avenkin 是为你工作、而不是为平台工作的私人 AI 助手：AI 由�
 
 [开始使用](#开始使用) · [探索功能](docs/CAPABILITIES.md) · [无障碍功能](docs/CAPABILITIES.md#accessibility) · [团队应用](#让专业知识来到工作现场) · [English](README.md)
 
-> **OpenGlasses 已更名为 Avenkin。** 它是你的私人 AI 助手：在手机上、在手腕上，或戴上眼镜免手操作。Field Assist 更名为 *Field Assist, powered by Avenkin*。应用本身不变：你的设置、API 密钥、对话记录和订阅都会保留，通过 Siri 说“OpenGlasses”也仍能打开它。[查看计划](docs/plans/FY-rename-to-avenkin.md)。
-
 ---
 
 ## 需要帮助时，开口就好
@@ -92,9 +90,9 @@ Reading Assistant（阅读助手）和 Blind Assistant（盲人助手）预设�
 
 准备一台运行 **iOS 26 或更高版本的 iPhone**，仅用手机就够了。添加兼容的 **Meta 智能眼镜**，还可以免手持使用相机和音频功能。
 
-本文档介绍的安装方式是在 Mac 上使用 Xcode 从源码构建。开始前请查看[安装途径与首次使用检查](docs/BUILDING.md#availability-and-first-use)；本指南不假定你已有 App Store 下载链接或公开 TestFlight 邀请。
+Avenkin 正在公测。最快的方式是通过 TestFlight（Apple 的预发布版本测试应用）安装；从源码构建是贡献者的途径。开始前请查看[安装途径与首次使用检查](docs/BUILDING.md#availability-and-first-use)。
 
-1. **构建应用。** 按照[源码构建指南](docs/BUILDING.md)准备 Xcode 26+、依赖项、签名及 Meta 开发者配置。
+1. **安装应用。** [通过 TestFlight 加入公测](https://testflight.apple.com/join/1dcAytte)，或按照[源码构建指南](docs/BUILDING.md)准备 Xcode 26+、依赖项、签名及 Meta 开发者配置。
 2. **选择 AI。** 在 **设置 → AI 模型** 中连接服务商，或下载兼容的本地模型。
 3. **如果你使用眼镜，添加眼镜。** 在 Meta AI 应用中配对，完成开发者设置，然后在 Avenkin 中连接并授予相机权限。
 4. **开口试试。** 启用监听，说出 **“Avenkin”**，或轻点麦克风。先问问眼前的东西是什么。
