@@ -14,7 +14,10 @@ import AppIntents
 /// falls back to the active persona, else the first enabled one — so this single
 /// intent serves both the generic and the persona-targeted ask.
 // AudioRecordingIntent: background mic-start rights (see AskOpenGlassesIntent).
-struct AskPersonaIntent: AppIntent, AudioRecordingIntent {
+// Not an `AudioRecordingIntent`: this intent never opens the microphone (Siri resolves the
+// question), and that conformance makes iOS abort the app if the audio session happens to be
+// active at return without a Live Activity — see `AppState.startAskWithoutWakeWord`.
+struct AskPersonaIntent: AppIntent {
     static var title: LocalizedStringResource = "Ask a Persona"
     static var description = IntentDescription(
         "Ask a specific Avenkin persona by voice and hear the answer"

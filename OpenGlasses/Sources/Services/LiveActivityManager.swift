@@ -24,8 +24,21 @@ class LiveActivityManager {
         }
     }
 
+    /// Whether the wearer allows this app to show Live Activities at all (Settings › Avenkin).
+    static var activitiesEnabled: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
+
+    /// Whether the activity this manager started is still live on the Lock Screen — not ended
+    /// by the app, not swiped away by the wearer. What an `AudioRecordingIntent` must have before
+    /// its `perform()` returns (see `AppState.startAskWithoutWakeWord`).
+    var isRunning: Bool {
+        guard let activity = currentActivity else { return false }
+        return activity.activityState == .active
+    }
+
     /// Start a new Live Activity. No-op if one is already running or Live Activities are disabled.
-    func start(glassesName: String = "Avenkin") {
+    /// Returns whether one is running afterwards.
+    @discardableResult
+    func start(glassesName: String = "Avenkin") -> Bool {
         // Clean up any stale activities from previous launches
         for activity in Activity<GlassesActivityAttributes>.activities where activity.id != currentActivity?.id {
             Task {
@@ -35,14 +48,16 @@ class LiveActivityManager {
             }
         }
 
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+        guard Self.activitiesEnabled else {
             PrivacyLog.device(.liveActivity, .notEnabled)
-            return
+            return false
         }
-        guard currentActivity == nil else {
+        // One the wearer dismissed from the Lock Screen is gone for good; request a fresh one.
+        if isRunning {
             PrivacyLog.device(.liveActivity, .alreadyRunning)
-            return
+            return true
         }
+        currentActivity = nil
 
         let attributes = GlassesActivityAttributes(glassesName: glassesName)
         let personas = Config.enabledPersonas.prefix(3).map {
@@ -68,8 +83,10 @@ class LiveActivityManager {
             )
             currentActivity = activity
             PrivacyLog.device(.liveActivity, .started, item: PrivateIdentifier(activity.id))
+            return true
         } catch {
             PrivacyLog.device(.liveActivity, .startFailed, error: SafeErrorSummary(error))
+            return false
         }
     }
 

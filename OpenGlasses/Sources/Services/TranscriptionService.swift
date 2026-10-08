@@ -239,17 +239,21 @@ class TranscriptionService: ObservableObject {
         } else {
             // Fallback: create our own engine (works in foreground only)
             PrivacyLog.speech(.dictation, .engineDedicated)
+            // BJ PR2 follow-up: activate the shared session off-main before the engine starts, so
+            // the (usually-already-active) activation never blocks the main thread. Idempotent.
+            // Activated BEFORE the input format is read: an inactive session reports an empty
+            // input format, and a tap on that is the uncatchable crash `requireUsableTapFormat`
+            // guards against.
+            await AudioSessionCoordinator.shared.ensureActiveOffMain()
             let audioEngine = AVAudioEngine()
             let inputNode = audioEngine.inputNode
             let recordingFormat = inputNode.outputFormat(forBus: 0)
+            try Self.requireUsableTapFormat(recordingFormat, channel: .dictation)
 
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
                 self?.recognitionRequest?.append(buffer)
             }
 
-            // BJ PR2 follow-up: activate the shared session off-main before the engine starts, so
-            // the (usually-already-active) activation never blocks the main thread. Idempotent.
-            await AudioSessionCoordinator.shared.ensureActiveOffMain()
             audioEngine.prepare()
             try audioEngine.start()
             self.fallbackAudioEngine = audioEngine
@@ -264,6 +268,19 @@ class TranscriptionService: ObservableObject {
 
     /// Fallback engine used only when shared engine isn't available
     private var fallbackAudioEngine: AVAudioEngine?
+
+    /// The dedicated-engine guard. The microphone is unavailable — backgrounded behind another
+    /// app that holds it (the "in background with Meta AI open" crash in TestFlight build 463),
+    /// or a route mid-change — exactly when the input node reports an empty format, and
+    /// `installTap` on an empty format raises an Objective-C exception that no `catch` sees.
+    /// Refuse here instead, with the error `startRecording()` already logs and rolls back on.
+    private static func requireUsableTapFormat(_ format: AVAudioFormat,
+                                               channel: PrivacyLog.SpeechChannel) throws {
+        guard AudioFormatFactory.isUsableTapFormat(format) else {
+            PrivacyLog.speech(channel, .engineFailed, detail: PrivacyToken("formatInvalid"))
+            throw TranscriptionError.setupFailed("Microphone unavailable")
+        }
+    }
 
     /// Clean up fallback engine and buffer forwarder when stopping
     private func cleanupEngine() {
@@ -300,12 +317,14 @@ class TranscriptionService: ObservableObject {
             provider.setAudioBufferForwarder { buffer in accumulate(buffer) }
         } else {
             PrivacyLog.speech(.onDeviceASR, .engineDedicated)
+            // BJ PR2 follow-up: activate off-main before the engine starts — and before the input
+            // format is read (see setupAndStartRecording).
+            await AudioSessionCoordinator.shared.ensureActiveOffMain()
             let audioEngine = AVAudioEngine()
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
+            try Self.requireUsableTapFormat(format, channel: .onDeviceASR)
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in accumulate(buffer) }
-            // BJ PR2 follow-up: activate off-main before the engine starts (see setupAndStartRecording).
-            await AudioSessionCoordinator.shared.ensureActiveOffMain()
             audioEngine.prepare()
             try audioEngine.start()
             self.fallbackAudioEngine = audioEngine
