@@ -46,7 +46,9 @@ struct DeckDetailView: View {
                 if !deck.summary.overview.isEmpty {
                     Text(deck.summary.overview).font(.subheadline)
                 }
-                ForEach(deck.summary.keyPoints, id: \.self) { point in
+                // Keyed by position: model-written key points can repeat, and a `List` whose
+                // rows share an identity asserts inside UIKit mid-update.
+                ForEach(Array(deck.summary.keyPoints.enumerated()), id: \.offset) { _, point in
                     Text("• \(point)").font(.caption).foregroundStyle(.secondary)
                 }
             }

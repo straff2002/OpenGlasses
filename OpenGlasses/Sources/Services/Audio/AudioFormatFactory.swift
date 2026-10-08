@@ -33,4 +33,20 @@ enum AudioFormatFactory {
         }
         return format
     }
+
+    /// Whether a node's reported format can carry a tap.
+    ///
+    /// `AVAudioNode.installTap(onBus:bufferSize:format:block:)` raises an Objective-C exception
+    /// — not a Swift error, so no `catch` sees it — when handed a 0 Hz / 0-channel format. That
+    /// is exactly what `inputNode.outputFormat(forBus: 0)` reports while the input is unavailable:
+    /// backgrounded behind another app that holds the microphone, a Bluetooth route mid-change,
+    /// or a session never activated for recording (TestFlight build 463, "in background with
+    /// Meta AI open"). Check before installing; refuse with an error the caller can roll back.
+    static func isUsableTapFormat(_ format: AVAudioFormat) -> Bool {
+        isUsableTapFormat(sampleRate: format.sampleRate, channelCount: format.channelCount)
+    }
+
+    static func isUsableTapFormat(sampleRate: Double, channelCount: AVAudioChannelCount) -> Bool {
+        sampleRate > 0 && channelCount > 0
+    }
 }

@@ -31,9 +31,17 @@ struct AskOpenGlassesIntent: AppIntent, AudioRecordingIntent {
 
     enum IntentError: Error, CustomLocalizedStringResourceConvertible {
         case appNotRunning
+        /// iOS lets an `AudioRecordingIntent` record only alongside a Live Activity, and the
+        /// wearer has those switched off for this app (see `AppState.startAskWithoutWakeWord`).
+        case liveActivitiesOff
 
         var localizedStringResource: LocalizedStringResource {
-            "Avenkin is not running. Open the app first."
+            switch self {
+            case .appNotRunning:
+                return "Avenkin is not running. Open the app first."
+            case .liveActivitiesOff:
+                return "Avenkin can't listen from a button until Live Activities are allowed for it in iOS Settings."
+            }
         }
     }
 }

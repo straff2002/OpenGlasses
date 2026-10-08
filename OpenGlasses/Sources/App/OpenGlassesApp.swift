@@ -7631,6 +7631,11 @@ class AppState: ObservableObject, AppStateProtocol {
         let resumedMedia = nowPlayingAtStart
         nowPlayingAtStart = nil
 
+        // An ask started from an App Intent brought up a Live Activity so iOS would let it record
+        // (`startAskWithoutWakeWord`). With always-on listening off nothing else keeps one, so it
+        // ends with the conversation; with listening on, the listener's own activity stays.
+        if !listeningEnabled { liveActivityManager.end() }
+
         // Plan GU §3 — the hand-back, in order (`TurnAudioRelease`): the app's own audio first
         // (tone, then "Resuming <media>" — before the release, so it no longer re-pauses the app
         // it names), then the engine down, then a real deactivation with notify so Podcasts or

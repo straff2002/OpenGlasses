@@ -81,3 +81,30 @@ final class AudioFormatFactoryTests: XCTestCase {
         }
     }
 }
+
+/// The guard in front of `installTap`: a 0 Hz / 0-channel input format — what the input node
+/// reports while the microphone is unavailable — raises an uncatchable Objective-C exception
+/// if a tap is installed on it (TestFlight build 463, "in background with Meta AI open").
+final class TapFormatGuardTests: XCTestCase {
+
+    func testAnEmptyFormatIsNotUsableForATap() {
+        // `AVAudioFormat()` is the empty format: 0 Hz, 0 channels — the same shape an inactive
+        // input reports.
+        let empty = AVAudioFormat()
+        XCTAssertEqual(empty.sampleRate, 0)
+        XCTAssertEqual(empty.channelCount, 0)
+        XCTAssertFalse(AudioFormatFactory.isUsableTapFormat(empty))
+    }
+
+    func testARealInputFormatIsUsable() throws {
+        let format = try AudioFormatFactory.pcm(.pcmFormatFloat32, sampleRate: 48000, channels: 1,
+                                                interleaved: false, context: "capture")
+        XCTAssertTrue(AudioFormatFactory.isUsableTapFormat(format))
+    }
+
+    func testEitherZeroDimensionIsRefused() {
+        XCTAssertFalse(AudioFormatFactory.isUsableTapFormat(sampleRate: 0, channelCount: 1))
+        XCTAssertFalse(AudioFormatFactory.isUsableTapFormat(sampleRate: 16000, channelCount: 0))
+        XCTAssertTrue(AudioFormatFactory.isUsableTapFormat(sampleRate: 16000, channelCount: 1))
+    }
+}

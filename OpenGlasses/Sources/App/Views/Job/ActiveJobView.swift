@@ -384,7 +384,9 @@ struct TaskRowView: View {
                 if let procedure = row.procedureLine {
                     Text(procedure).font(.caption).foregroundStyle(Color.secondary)
                 }
-                ForEach(row.parts, id: \.self) { part in
+                // Keyed by position, not text: the same part named twice is two rows, and a
+                // `List` whose rows share an identity asserts inside UIKit mid-update.
+                ForEach(Array(row.parts.enumerated()), id: \.offset) { _, part in
                     Text("Part: \(part)").font(.caption).foregroundStyle(Color.secondary)
                 }
                 if let note = row.completionNote {

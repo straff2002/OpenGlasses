@@ -25,7 +25,10 @@ import AppIntents
 /// rather than failing the instant it's nil. The answer is returned as a spoken
 /// `dialog`, so Siri — not the in-app TTS — reads it aloud (`speakResponse: false`).
 // AudioRecordingIntent: background mic-start rights (see AskOpenGlassesIntent).
-struct AskQuestionIntent: AppIntent, AudioRecordingIntent {
+// Not an `AudioRecordingIntent`: this intent never opens the microphone (Siri resolves the
+// question), and that conformance makes iOS abort the app if the audio session happens to be
+// active at return without a Live Activity — see `AppState.startAskWithoutWakeWord`.
+struct AskQuestionIntent: AppIntent {
     static var title: LocalizedStringResource = "Ask Avenkin a Question"
     static var description = IntentDescription(
         "Ask Avenkin anything by voice and hear the answer, without the wake word"

@@ -1,20 +1,48 @@
 import Foundation
+import UIKit
 
 @MainActor
 extension AppState {
     /// Start a voice ask now, skipping the wake word: the body of the "Ask Avenkin" App Shortcut
     /// (`AskOpenGlassesIntent`), which always asks in Direct mode. The "Ask Avenkin" control does
     /// not come through here: it is Tap & Talk (`takePendingAskRequest`).
+    ///
+    /// `AskOpenGlassesIntent` is an `AudioRecordingIntent`, and iOS holds those to a rule it
+    /// enforces as a fatal error (iOS 27, `AppIntents/PerformActionExecutorTask.swift:889`;
+    /// TestFlight build 463, twice in two minutes behind the Action button): when `perform()`
+    /// returns with the audio session active, a Live Activity must be running, or the system
+    /// aborts the app. Always-on listening starts one; a wearer who listens by button alone had
+    /// none. So this runs the whole start in line — not a detached task that `perform()` races
+    /// — brings the activity up before the microphone, and never returns with the microphone
+    /// open and no activity to show for it. `returnToWakeWord()` ends the activity again when
+    /// nothing else keeps one.
     func startAskWithoutWakeWord() async throws {
+        if case .refuse = AudioRecordingIntentGate.beforeStart(
+            activitiesEnabled: LiveActivityManager.activitiesEnabled) {
+            AppState.persistDebugEvent("[intent] AskOpenGlasses: Live Activities off — refused")
+            throw AskOpenGlassesIntent.IntentError.liveActivitiesOff
+        }
+        liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
+
         // Switch to direct mode if not already
         if currentMode != .direct {
             switchMode(to: .direct)
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        // Skip wake word — go straight to transcription
+        // Skip wake word — go straight to transcription, awaited to the end so the intent's
+        // own verification sees the finished state, not a start still in flight.
         wakeWordService.stopListening()
-        startDirectTranscription()
+        addDebugEvent("ActionButton: direct transcription requested (bg=\(UIApplication.shared.applicationState == .background))")
+        await wakeWordService.configureAudioSession()
+        await handleWakeWordDetected(manual: true)
+        addDebugEvent("ActionButton: listening started (isListening=\(isListening))")
+
+        if case .refuse = AudioRecordingIntentGate.beforeReturn(activityRunning: liveActivityManager.isRunning) {
+            AppState.persistDebugEvent("[intent] AskOpenGlasses: no Live Activity — ending the ask")
+            endListeningSession()
+            throw AskOpenGlassesIntent.IntentError.liveActivitiesOff
+        }
     }
 
     /// Acts on a press of the "Ask Avenkin" control, if one is pending and fresh. Called on the
