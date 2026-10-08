@@ -1542,6 +1542,10 @@ struct OnboardingView: View {
         } else if !registrationStatus.isEmpty && !metaRegistered {
             Text(registrationStatus)
                 .foregroundStyle(OGTheme.warnLabel)
+        } else if !metaRegistered {
+            // Said before the hand-off, not after: Meta AI's own refusal is a bare "Internal
+            // error" that names nothing (see `RegistrationFlow.beforeHandoffMessage`).
+            Text(RegistrationFlow.beforeHandoffMessage())
         }
     }
 

@@ -43,6 +43,16 @@ enum RegistrationFlow {
         "Meta AI hasn't approved \(appName) yet — glasses access is invite-only."
     }
 
+    /// What to say *before* the hand-off to Meta AI, where a wearer Meta has not let in sees only
+    /// "Internal error — The operation could not be completed" and nothing that names the gate.
+    /// Three testers reported exactly that on 2026-10-08. The after-the-fact copy
+    /// (`notApprovedMessage`) still applies; this one spares them the round trip.
+    static func beforeHandoffMessage(appName: String = RegistrationFlow.appName) -> String {
+        "Meta AI opens next to approve \(appName). Meta only completes this for testers invited to "
+            + "\(appName)'s beta, or with Developer Mode turned on in Meta AI (Settings › About › tap the "
+            + "version number five times). An \"Internal error\" in Meta AI means neither applies yet."
+    }
+
     /// The full explanation for a wearer Meta did not let in.
     ///
     /// Outside Developer Mode, Meta registers a distributed app only for wearers invited to its
