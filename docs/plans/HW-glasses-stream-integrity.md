@@ -1,0 +1,240 @@
+# Plan HW: Glasses Stream Integrity (keyframes, raw frames under lock, the link we are really on)
+
+**Status:** 📝 Drafted 2026-10-10. Nothing built. P0 and P1 are headless and ship as one PR each;
+P2 is a device session that rides with Plan [EO](EO-hevc-glasses-stream.md) P2 and Plan
+[HJ](HJ-camera-stream-end-recovery.md) P2.
+**Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (sections 3 and 5).
+Outside field reports on DAT 1.0.0 exposed three places where our stream code rests on an
+assumption nobody has checked on hardware: that the SDK marks non-keyframes, that a raw frame is
+either a picture or nothing, and that video rides Wi-Fi. A fourth item, short stalls that heal on
+their own, is evidence to collect before anyone changes the stall detector.
+**Priority:** P1 for anything that streams with the phone locked. The keyframe item is a likely
+correctness bug in shipped code (EO P1), not a refinement.
+**Surfaces:** One new pure parser, one widened frame-shape rule, log events, one support-report
+line. No SDK change, no experimental API, no new setting visible to the wearer.
+
+Evidence paths are under `OpenGlasses/Sources/` and line numbers are as recorded by the review at
+`7a0cc0e0` (build 480); they were re-read on `main` at `48bcae0c` for this plan and still match.
+
+---
+
+## Why
+
+1. **The keyframe hold probably never holds.** `VideoDecoder.isKeyframe` reads
+   `kCMSampleAttachmentKey_NotSync` and treats an absent attachment array, entry or key as a
+   keyframe (`Services/VideoDecoder.swift:239-249`). Both hold gates depend on it (`:185` after a
+   build, `:200` after a rebuild). A field report says the DAT stream never sets the attachment, so
+   every sample reads as a keyframe, `KeyframeHold` (`Services/Camera/StreamCodecPolicy.swift:161`)
+   admits the first sample after a rebuild, and a decoder rebuilt after the phone locks starts on a
+   mid-GOP P-frame. Our round-trip tests cannot see this: they encode simulator clips with
+   VideoToolbox, which does set `NotSync` (`OpenGlassesTests/VideoDecoderRoundTripTests.swift:71-87`).
+   EO's own P1 findings state the absence rule as correct; it is correct for VideoToolbox and
+   unverified for the glasses.
+2. **Raw frames are dropped while locked.** The SDK's `makeUIImage()` helper renders on the GPU,
+   which iOS denies a backgrounded app, so it returns nil. A raw frame carries an image buffer and
+   no data buffer, so `StreamCodecPolicy.shape` classes it `.empty` and `action(for:)` maps that to
+   `.drop` (`Services/Camera/StreamCodecPolicy.swift:46-56`; `Services/Camera/GlassesFramePipeline.swift:63-70`).
+   With the raw escape hatch selected, the picture stops at lock even though the pixels arrive.
+   The CPU conversion that would save it already exists: EO P1 replaced a `CIContext` with a
+   `CGContext` laid over the locked base address for exactly this reason
+   (`VideoDecoder.makeImage(from:)`, private, `Services/VideoDecoder.swift:144`).
+3. **We are probably on Bluetooth Classic, not Wi-Fi.** We ship the ExternalAccessory keys
+   (`OpenGlasses/Info.plist:298-309`) and neither entitlements file carries Hotspot Configuration or
+   Wi-Fi info. Two independent field reports say the SDK picks its transport from configuration and
+   that this configuration keeps it on Bluetooth Classic. Three documents assume Wi-Fi: EO
+   (`docs/plans/EO-hevc-glasses-stream.md:58`), the `StreamConfigPolicy` premise comment
+   (`Services/StreamRecoveryPolicy.swift:143-145`) and `.claude/rules/dat-conventions.md:164`. No log
+   we keep records which link carried a session.
+4. **Short stalls sometimes heal themselves.** The same field work saw brief stalls resume without
+   a rebuild. Our detector rebuilds after 1.5 s without a sample (`StreamLiveness`, EO P1), and the
+   first rebuild of an episode costs a cold start. Whether a grace period would help us is unknown,
+   and the rebuild must not be changed on a hunch.
+
+## Scope
+
+**In:** bitstream keyframe detection for HEVC samples with the attachment as a fallback; dropping
+leading RASL pictures after a CRA; a fourth frame shape for raw pixels routed through the existing
+CPU conversion; a link-level diagnostic in the support report; log-only evidence about stall
+self-healing; the device session that turns all of it into findings.
+
+**Non-goals:**
+- Turning Wi-Fi on. Adding the Hotspot Configuration entitlement or Wi-Fi keys costs about 10 s per
+  session, a join prompt and the phone's Wi-Fi internet while connected. Bluetooth Classic was
+  measured at 29 to 32 fps at 504x896 in the field. Whether to add Wi-Fi is a decision for after
+  P2, with its own plan if the answer is yes.
+- Correcting EO, the `StreamConfigPolicy` comment or `.claude/rules/dat-conventions.md` before a
+  device confirms the link level. See P2.
+- Changing the first-rebuild behaviour of the stall detector in this plan. P1 only records.
+- The per-session codec rung under lock. That is Plan HJ P3 and stays there; this plan makes raw
+  frames survive the lock, HJ decides whether raw should be used under lock at all.
+- Any DAT **[Experimental]** API.
+
+## Design
+
+### 1 · `HEVCNALInspector` (pure)
+
+New file `Services/Camera/HEVCNALInspector.swift`. Input: the sample's data buffer bytes and the
+NAL length-prefix size from the format description's `hvcC` (normally 4). Output:
+
+```swift
+enum HEVCNALInspector {
+    enum PictureKind: Equatable {
+        case randomAccess(nalType: UInt8)   // IRAP: 16...23 (BLA, IDR, CRA, reserved IRAP)
+        case leadingSkipped(nalType: UInt8) // RASL: 8, 9
+        case nonRandomAccess(nalType: UInt8)
+        case unparseable
+    }
+    static func firstSliceKind(_ bytes: UnsafeRawBufferPointer, lengthSize: Int) -> PictureKind
+    static func hasParameterSets(_ bytes: UnsafeRawBufferPointer, lengthSize: Int) -> Bool // VPS 32, SPS 33, PPS 34
+}
+```
+
+- Walks length-prefixed NAL units, reads `nal_unit_type = (byte0 >> 1) & 0x3F`, skips parameter
+  sets, SEI (39, 40), AUD (35) and other non-VCL units, and classifies the **first VCL NAL**
+  (types 0 to 31). Never reads past a declared length; a length that overruns the buffer is
+  `.unparseable`.
+- `VideoDecoder.isKeyframe` becomes: parse first; `.randomAccess` is a keyframe;
+  `.nonRandomAccess` and `.leadingSkipped` are not; only `.unparseable` falls back to the
+  attachment rule as it stands today.
+- **RASL after CRA.** After a hold is released by a CRA (type 21), leading RASL pictures reference
+  frames the fresh decoder never saw. `KeyframeHold` gains a `releasedByCRA` flag; while it is set,
+  `.leadingSkipped` samples are dropped (the last good frame stays), and the first non-RASL sample
+  clears it. IDR and BLA release the hold without the flag.
+- **Once-per-stream evidence.** The pipeline logs, once per stream, whether the first samples
+  carried `NotSync` at all and whether the parser and the attachment agreed
+  (`PrivacyLog.camera(.decoder, .keyframeSource, detail: parser|attachment|both|disagree)`). That
+  single line answers the field report for our devices and feeds EO P2's findings. The review's
+  field note reports a 45-frame GOP (3 s at 15 fps); P2 records ours from the interval between
+  `.randomAccess` samples.
+
+### 2 · `.rawPixels` frame shape
+
+`StreamCodecPolicy.FrameShape` gains `.rawPixels`: no helper image, no data buffer, but an image
+buffer (`CMSampleBufferGetImageBuffer != nil`). `shape(helperProducedImage:hasDataBuffer:hasImageBuffer:)`
+takes the third observation; `action(for: .rawPixels)` is a new `.convert`. The CPU conversion in
+`VideoDecoder.makeImage(from:)` moves to a small internal `PixelBufferImageConverter` (still a
+`CGContext` over the locked base address, no GPU) that both the decoder and the pipeline call.
+`GlassesFramePipeline.picture(for:)` handles `.convert` like `.emit` for liveness (a converted
+picture is a picture produced). A pixel format the converter does not handle (anything other than
+32BGRA, or the bi-planar YUV the SDK may hand over) is converted through vImage when it is a
+known YUV format and otherwise stays `.drop` with a once-per-stream `unsupportedPixelFormat` log
+line naming the four-character code, so P2 sees it rather than guessing.
+
+This is the CPU path Plan HJ does not cover: HJ P3's codec rung decides whether a raw stream
+should become hvc1 under lock; until then, and for anyone who chose raw, the frames that arrive
+are shown.
+
+### 3 · Link-level diagnostic (`GlassesTransportProbe`)
+
+The SDK exposes no transport API (`.claude/rules/dat-conventions.md`: Wi-Fi transport is
+transparent). Two sources of evidence, both recorded, neither trusted alone:
+
+- **The SDK's own log line.** MWDATCore logs a link level when a session comes up (`.medium` is
+  Wi-Fi, `.low` is Bluetooth, per the field reports). The app can read its own process's entries
+  through `OSLogStore(scope: .currentProcessIdentifier)`. `GlassesTransportProbe` reads entries
+  from the MWDATCore subsystem written since the session started, and a pure
+  `TransportLevelParser` maps a matching line to `.wifi`, `.bluetoothClassic` or `.unknown`. If
+  the SDK's wording changes the result is `.unknown`, never a guess.
+- **Inference.** The delivered frame size and rate over the first 30 s (already logged by EO P1's
+  `tierResolved` and `frameReceived`). Recorded beside the parsed level, labelled as inference.
+
+The result goes into the support report (`App/SupportReporting.swift`) as one line under the
+glasses section: "Glasses video link: Bluetooth (from the glasses software's log)" or "…: not
+known". It is also a `PrivacyLog.camera(.glasses, .transportLevel, …)` event with no identifiers.
+Reading the process log store is local and adds no egress; the probe never reads another
+process's logs. Strings in the support report carry no plan letters.
+
+### 4 · Stall self-heal evidence (log-only)
+
+In `MetaCameraBackend.startStallDetection` (`Services/Camera/MetaCameraBackend.swift:1302`, the
+`.linkStalled` arm at `:1337`), record for every stall episode:
+
+- seconds since the last sample at the verdict;
+- whether any sample arrived on the old stream between the verdict and the rebuild's teardown
+  (`StallEpisodeRecord.sampleBeforeTeardown`);
+- the rebuild tier used and seconds to the first fresh picture after it.
+
+A pure `StallEpisodeRecord` collects these and emits one log line per episode. Behaviour does not
+change. P2 adds a Developer-panel switch (off by default, Debug and TestFlight only) that delays
+the **first** rebuild of an episode by a grace of up to 3 s and records whether samples resumed
+inside it. Only P2's numbers can justify a shipped grace; that change, if made, is a P3 PR.
+
+## Phases
+
+### P0: keyframes from the bitstream (one PR)
+
+- `HEVCNALInspector` with `firstSliceKind` and `hasParameterSets`.
+- `VideoDecoder.isKeyframe` uses it, with the attachment as fallback.
+- `KeyframeHold` gains the RASL-after-CRA rule.
+- Once-per-stream `keyframeSource` log line.
+
+**Tests:** `HEVCNALInspectorTests` with hand-built byte fixtures: IDR_W_RADL (19), IDR_N_LP (20),
+CRA (21), BLA (16), TRAIL_R (1), RASL_N (8), parameter sets before the slice, SEI before the
+slice, a 3-byte and a 4-byte length prefix, a truncated length, an empty buffer. A
+`VideoDecoderKeyframeTests` case that strips the `NotSync` attachment from a simulator-encoded
+P-frame and asserts the hold still refuses it (the field failure reproduced headless).
+`StreamLivenessTests` gains "a RASL after a CRA is held". Existing `VideoDecoderRoundTripTests`
+stay green unchanged.
+
+### P1: raw pixels, link probe, stall evidence (one PR)
+
+- `.rawPixels` shape and `.convert` action; `PixelBufferImageConverter` shared by decoder and
+  pipeline.
+- `GlassesTransportProbe` + `TransportLevelParser`; support-report line; log event.
+- `StallEpisodeRecord` logging (no behaviour change).
+
+**Tests:** `StreamCodecPolicyTests` for all four shapes (a raw frame with a helper image is still
+`.picture`, so a foreground raw stream is unchanged); `PixelBufferImageConverterTests` (a 32BGRA
+buffer converts with the right size, an unsupported format returns nil and logs once);
+`TransportLevelParserTests` over fixture log lines (Wi-Fi, Bluetooth, a reworded line gives
+`.unknown`); a new `SupportReportGlassesLineTests` beside `SupportReportRecipientTests`,
+asserting the line is present and plan-letter free;
+`StallEpisodeRecordTests` (fake clock). `OutboundFrameConsumerTests` unaffected: no new consumer.
+
+**Gates (both PRs):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO` on headless
+builds, privacy-logging gate, build number bumped on main after merge; this Status line and the
+index row updated in the same PR.
+
+### P2: device session (findings only)
+
+Rides with EO P2 and HJ P2: one wearing session, Direct mode and Gemini Live, phone locked for part
+of each run, `{hvc1, raw} × {high, medium}`.
+
+| Measure | Read from |
+|---|---|
+| Whether DAT sets `NotSync`; parser and attachment agreement | `keyframeSource` |
+| GOP length (samples between random-access pictures) | decoder log |
+| Frames shown after lock with raw selected, before and after P1 | `frameReceived`, `unsupportedPixelFormat` |
+| Link level per session, and whether it ever changes mid-session | `transportLevel`, the MWDATCore log |
+| Stall episodes: self-heal before teardown, with and without the grace switch | `StallEpisodeRecord` |
+
+**Only after P2 confirms the link level on a device**, and in the same PR as the findings: correct
+EO's "Wi-Fi transport gate" paragraph (`EO-hevc-glasses-stream.md:58`), the `StreamConfigPolicy`
+comment (`Services/StreamRecoveryPolicy.swift:143-145`) and the Wi-Fi line in
+`.claude/rules/dat-conventions.md:164`, quoting the observed level. If the device says Wi-Fi after
+all, those documents stay and this plan records why the field reports did not apply to us.
+
+### P3: what P2 justifies (separate PRs)
+
+- A first-rebuild grace in the stall detector, if P2 shows stalls heal inside it often enough to
+  beat a cold start.
+- A Wi-Fi transport decision, as its own plan, if Bluetooth Classic proves too slow for a feature
+  we want.
+
+## Open questions
+
+1. Is reading the process's own `OSLogStore` acceptable for a shipped diagnostic, or Debug and
+   TestFlight only? Recommended: shipped, because the support report is where a field problem is
+   diagnosed, and the read is local.
+2. Should the support report state the inferred level when the log line is missing? Recommended:
+   yes, labelled "estimated from picture size and rate".
+3. Does the SDK ever deliver raw frames as bi-planar YUV? P2 answers it; P1 handles 32BGRA and
+   logs anything else.
+
+## Dependencies
+
+- **EO** (🚧 P1 implemented, P2 owed): this plan corrects an EO P1 assumption and shares its device
+  session.
+- **HJ** (📋 Planned, nothing built, verified 2026-10-10: no `StreamEndRecoveryPolicy` in the tree):
+  owns the codec rung under lock; shares P2.
+- **BR** and **FD** (shipped): the stall detector and reconnect ladder this plan only observes.

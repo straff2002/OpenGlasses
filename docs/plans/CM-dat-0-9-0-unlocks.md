@@ -93,3 +93,25 @@ P1 → P3 → P4 are buildable and testable immediately; P5 rides along. P2a is 
 P2b (and every physical smoke above) waits on Meta's device-side 0.9.0 rollout — the same
 gate as #298's owed smoke test. When the rollout lands, run #298's smoke first (streaming,
 capture, ButtonGroup rendering), then P2b.
+
+## Amendment 2026-10-10: live sessions join the P1 wear table
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row "Live
+sessions never idle out"; Appendix B notes P1's stream half shipped and only the fan-out is
+unbuilt, which still holds on `main` at `48bcae0c`: no `WearStatePolicy` in the tree).
+
+1. **New consumer row.** An active Gemini Live or OpenAI Realtime session **ends** after 60 s
+   doffed. No resume on re-don: a resumed socket would bill the gap, and a new session is one tap
+   or phrase away. The end is spoken once if the audio route allows ("Ending the live session; the
+   glasses are off") and logged with a `doffEnded` reason.
+2. **Signal.** Since 1.0.0 the app reads the stable `donState` into
+   `GlassesConnectionService.isWorn` (and `GlassesSleepPolicy` already stands the wake word down on
+   it). `WearStatePolicy` should take `isWorn` as its primary input and the doffed
+   `StreamError.hingesClosed` as a fallback for a session where no don state is reported; this
+   section supersedes P1's "the doff/fold signal" wording.
+3. **Where the rest lives.** The *idle* end (no wearer speech or tool activity for ten minutes,
+   with a spoken warning) is Plan [HY](HY-live-session-hygiene.md) P1, which ships without waiting
+   for this plan. Folding the doff end here keeps one wear policy rather than two.
+
+Tests for the row join P1's table tests: doffed 59 s keeps the session, 60 s ends it, re-don does
+not restart it, `isWorn == nil` falls back to the stream signal.

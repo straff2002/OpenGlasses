@@ -151,3 +151,32 @@ primitives available to the glasses web view — which means the 2 s poll in
   band interaction.
 - **E (MCP server):** P2 reuses its listener pattern and gating precedent.
 - **BL (ops-platform bridge):** the P3 cloud-relay option, if LAN/tailnet fail.
+
+---
+
+## Amendment 2026-10-10: after P4, a possible WebMCP surface (note only)
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 2, "Ray-Ban
+Display goes to the web"; section 4 row "WebMCP surface on the Display mirror"). Status unchanged.
+
+Meta now lets a Display web app register tools through WebMCP: the page declares a few functions,
+the wearer speaks to Meta AI, and Meta AI calls them. Our mirror could register three to five (read
+the current card, next and previous page, check a step, pause the teleprompter), posting to a
+token-gated write route on `WebHUDMirrorServer`, which today is GET-only
+(`Services/Display/WebHUD/WebHUDMirrorServer.swift:187-188`). That would make "Hey Meta, next step"
+work with no DAT display entitlement.
+
+It is a **possible later plan, not a phase of this one**, and only after P4 proves the surface on
+glasses. Its limits, stated now so nobody mistakes it for a second assistant:
+- **Developer mode or staged rollout only.** Not something a customer can switch on.
+- **Meta AI is the agent.** None of our LLM, memory, persona, consent or safety stack applies, and
+  every argument passes through Meta's service; under HIPAA mode it stays off, like the mirror.
+- **Scalar parameters only, and a 10 s deadline** per call.
+- **The page goes black while a DAT camera session runs**, so it cannot coexist with live vision,
+  recording or broadcast.
+- Every action must also be reachable by the D-pad, and it inherits this plan's privacy line and
+  P5's write-route design (the "check-off mutations" question this plan deferred).
+
+Separately, item 3 of Plan [ID](ID-ecosystem-review-hardening-bundle.md) brings the page in line
+with Meta's current web-app guidance (a device-width viewport instead of `width=600`, and no
+polling while the page is hidden). That is a fix to what P1 and P2 shipped, not new scope.

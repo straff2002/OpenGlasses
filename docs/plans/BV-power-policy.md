@@ -117,3 +117,19 @@ Consumer tests must observe actual camera/task actions, not only `PowerPosture` 
 | Adaptive source capture FPS/resolution | [EZ](EZ-adaptive-camera-capture.md), after [EO](EO-hevc-glasses-stream.md) measurements |
 | Resetting current context across backends | [EX](EX-conversation-reset-across-backends.md) |
 | OpenClaw LAN/auth compatibility validation | [EH](EH-openclaw-2-0-wire-alignment.md) / [AR](gateway-device-pairing.md) |
+
+## Amendment 2026-10-10: the glasses-thermal deferral has a home
+
+The deferral above says glasses thermal "needs the DAT `deviceStateStream` observed". That API was
+removed in DAT 1.0.0 (`.claude/rules/dat-conventions.md`); device state now arrives on
+`Device.addDeviceStateListener(_:)`, which `WearablesGlassesLinkSource` already subscribes for link,
+battery, charging and worn. `DeviceState.thermalLevel` is on that same listener, unread, and
+`PowerPolicyService.glassesThermal` is still `{ nil }` (`Services/Power/PowerPolicyService.swift:58`,
+re-read 2026-10-10). Found by the [October 2026 ecosystem review](../ecosystem-review-2026-10.md).
+
+Plan [HX](HX-glasses-link-and-device-state.md) P1 closes this item: it maps `thermalLevel` into
+`GlassesDeviceState`, publishes it from `GlassesConnectionService` only while connected, and wires
+it to `PowerPolicyService.glassesThermal` through the existing `ThermalLevel → ThermalPressure`
+mapping. It is therefore no longer device-pending to *build*; tuning against real readings stays
+in this plan's device pass. The checklist item "Wire optional glasses thermal observations…" is
+ticked when HX P1 merges. The rest of the checklist is unchanged.
