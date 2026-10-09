@@ -62,6 +62,11 @@ configuration (none sent), thinking-block replay (no history).
 with their Claude account; and select `claude-sonnet-5-5` on a phone with a known-good key and ask
 one question. If the second works, it is the credential or the tool list.
 
+**2026-10-10 — the second check is done.** Sonnet answers normally on the developer's own phone, so
+the model and the body the app builds are accepted. That removes candidate 3 and leaves the
+credential and the tool list; the first check (key or account sign-in) is still owed from the
+tester, and P0 makes the next such report answer it by itself.
+
 ## What reading the code found
 
 A to C return a 400 on a current Claude model; D and E lose the answer without one. None is this
