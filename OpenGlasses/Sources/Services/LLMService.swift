@@ -963,6 +963,9 @@ class LLMService: ObservableObject {
         // Plan GB P5: keep none. An image rides only on the turn that asked about it; the old
         // `keepLast: 1` re-sent the previous photo (~880 KB at the full size) on every request.
         conversationHistory = HistoryHygiene.pruneImages(conversationHistory, keepLast: 0)
+        // Plan IE P2: and no thinking blocks from a finished, abandoned or other model's turn —
+        // for every provider, since the history is shared and the next turn may be anyone's.
+        conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
 
         let rawResponse: String
         switch provider {
@@ -1953,6 +1956,10 @@ class LLMService: ObservableObject {
         // turn's line in the support report says whether a key or an account sign-in was refused.
         TurnRecorder.noteCredential(AnthropicAuth.kind(of: apiKey))
 
+        // A new user turn: nothing older than it may hold a thinking block (Plan IE P2). Here as
+        // well as in `sendMessage`, because the agent tier and the tests enter at this function.
+        conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
+
         // Add user message to history
         if let imageData = imageData {
             let base64String = LLMImagePreparer.prepared(imageData).base64EncodedString()
@@ -1982,6 +1989,9 @@ class LLMService: ObservableObject {
         // with a synthetic error alongside the real results.
         final class TurnState {
             var malformedIds: [String] = []
+            /// What the previous request of this turn sent (Plan IE P2), so the next one can tell
+            /// whether the thinking blocks produced since may be replayed.
+            var lastSent: ThinkingReplayGuard.Sent?
         }
         let state = TurnState()
 
@@ -2033,6 +2043,24 @@ class LLMService: ObservableObject {
                         tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
                     }
                 }
+
+                // Plan IE P2: this turn's thinking blocks ride only over the prefix they were
+                // produced over. The hygiene and the budget above can rewrite an earlier message
+                // between round trips (a pruned photo, a dropped exchange, a changed omission
+                // note), so compare with what the last request sent; on any difference drop the
+                // blocks — from the history too, so every later request sends the same thing.
+                if let lastSent = state.lastSent, HistoryHygiene.containsThinking(historyForRequest),
+                   !ThinkingReplayGuard.prefixUnchanged(since: lastSent, system: systemBlocks,
+                                                        tools: tools, messages: historyForRequest) {
+                    self.conversationHistory = HistoryHygiene.stripThinkingBlocks(self.conversationHistory)
+                    historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                    system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                    systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
+                    PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
+                                     model: PrivacyToken(config.model))
+                }
+                state.lastSent = ThinkingReplayGuard.record(system: systemBlocks, tools: tools,
+                                                            messages: historyForRequest)
 
                 // Plan IE P1/P3: the body comes from the one builder that knows what this model
                 // accepts — the effort it is sent, and output room for the thinking it does.
@@ -3352,6 +3380,19 @@ class LLMService: ObservableObject {
                         onToken(t)
                     } else if dtype == "input_json_delta", let pj = delta["partial_json"] as? String {
                         toolJSON[idx, default: ""] += pj
+                    } else if dtype == "thinking_delta", let t = delta["thinking"] as? String {
+                        // Plan IE P2: a thinking block is only valid replayed exactly as received,
+                        // so its text and its signature are assembled like any other block's.
+                        // Neither reaches `onToken`: thinking is not the reply, and is not the
+                        // first visible token. A `redacted_thinking` block arrives whole in
+                        // `content_block_start` and has no deltas.
+                        guard var b = blocks[idx] else { continue }
+                        b["thinking"] = ((b["thinking"] as? String) ?? "") + t
+                        blocks[idx] = b
+                    } else if dtype == "signature_delta", let signature = delta["signature"] as? String {
+                        guard var b = blocks[idx] else { continue }
+                        b["signature"] = signature
+                        blocks[idx] = b
                     }
                 }
             case "message_delta":
