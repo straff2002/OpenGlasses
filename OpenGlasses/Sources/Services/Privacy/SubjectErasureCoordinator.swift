@@ -122,6 +122,7 @@ final class SubjectErasureCoordinator {
         var conversations: ConversationStore?
         var offlineQueue: OfflineQueue?
         var learningCandidates: LearningCandidateStore?
+        var learningEntries: LearningEntryStore?
 
         init() {}
     }
@@ -151,6 +152,7 @@ final class SubjectErasureCoordinator {
         .agentDocuments,
         .recordedSessions,
         .learningCandidates,
+        .learningEntries,
         .recordings,
         .jobRecordingBundles,
         .jobRecordingCapture,
@@ -232,6 +234,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseRecordedSessions(subject)
             case .learningCandidates:
                 receipt = eraseLearningCandidates(subject)
+            case .learningEntries:
+                receipt = eraseLearningEntries(subject)
             case .recordings:
                 receipt = .unsupported(store, "a recording is not indexed by who is audible in it; "
                                        + "erasure is per file from the recordings screen")
@@ -557,6 +561,17 @@ final class SubjectErasureCoordinator {
         }
         guard case .person = subject else { return .complete(.learningCandidates) }
         return .complete(.learningCandidates, removed: candidates.deleteMatching(subject.searchToken))
+    }
+
+    /// An approved team learning that names the subject goes whole, history included (Plan FP
+    /// P2). Its retrieval documents are in the `learning:` namespaces, which `.ragDocuments`
+    /// already searches for the same name.
+    private func eraseLearningEntries(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let entries = stores.learningEntries else {
+            return .unsupported(.learningEntries, "no team-learning entry store was supplied")
+        }
+        guard case .person = subject else { return .complete(.learningEntries) }
+        return .complete(.learningEntries, removed: entries.deleteMatching(subject.searchToken))
     }
 
     private func eraseConversations(_ subject: ErasureSubject) -> ErasureReceipt {

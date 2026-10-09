@@ -4368,6 +4368,27 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "fieldAssistEnabled")
     }
 
+    /// This device reviews team learnings (Plan FP P2; open question 1, decided for v1). Device-local
+    /// and off by default: a field phone files candidates and does not approve them, so a
+    /// technician cannot approve their own finding by accident. On a reviewer device
+    /// `LearningReview` lets the author approve their own finding — the one-person shop — and the
+    /// entry records that author and approver were the same person.
+    ///
+    /// Declared in `SettingKey` as a ceiling an organisation profile can pin **off** and lock (a
+    /// field phone that must never approve). Pinning it *on* from a profile — the reviewer named by
+    /// a signed profile — is the later decision the open question leaves open. No screen sets it
+    /// yet; the review queue that reads it is P4.
+    static var teamLearningReviewerDevice: Bool {
+        get {
+            PolicyEnvelope.bool(.teamLearningReviewerDevice,
+                                stored: UserDefaults.standard.object(forKey: "teamLearningReviewerDevice") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.teamLearningReviewerDevice) else { return }
+            UserDefaults.standard.set(newValue, forKey: "teamLearningReviewerDevice")
+        }
+    }
+
     // MARK: - Field Assist entitlement
 
     /// Display mirror of the last license validation. **Not authoritative** — it is a plain mutable

@@ -121,6 +121,10 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     var updatedAt: Date
     /// Names of the redaction patterns that fired, never the text they matched.
     var redactions: [String]
+    /// The approved entry it became or was merged into (contract §4 `entryID`), once reviewed.
+    var entryID: String?
+    /// The reviewer's words for the author when it was not taken up (contract §4 `reason`).
+    var reviewReason: String?
 
     init(id: String = LearningCandidate.newID(), origin: Origin = .spoken, revision: Int = 1,
          status: Status = .filed, sessionId: String, jobReference: String?, taskId: String?,
@@ -175,6 +179,7 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case vaultId = "vaultID"
         case equipment, spokenModel, finding, symptom, fix, evidence, author
         case createdAt, updatedAt, redactions
+        case entryID, reviewReason
     }
 }
 
