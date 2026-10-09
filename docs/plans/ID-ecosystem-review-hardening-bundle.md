@@ -1,6 +1,6 @@
 # Plan ID: Hardening Bundle from the October 2026 Ecosystem Review
 
-**Status:** 🚧 Item 1 shipped 2026-10-10 (PR #PRNUM); items 2 to 8 unbuilt. A checklist plan: each item is its own small,
+**Status:** 🚧 Item 1 shipped 2026-10-10 (PR #704); items 2 to 8 unbuilt. A checklist plan: each item is its own small,
 direct PR with a test, in any order, and is ticked here (with its PR number) when it merges. Item 7
 is tracked in Plan [FG](FG-workflow-vaults-and-enterprise-auth.md) and only referenced here.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md), sections 3 and 4
@@ -21,7 +21,7 @@ string a user sees; this file's checklist and the index row updated in the same 
 ## Checklist
 
 - [x] **1. Stale navigation hazard advice expires** (S, Plan [J](J-low-vision-navigation.md)):
-  done 2026-10-10, [#PRNUM](https://github.com/straff2002/OpenGlasses/pull/PRNUM).
+  done 2026-10-10, [#704](https://github.com/straff2002/OpenGlasses/pull/704).
 - [ ] **2. Broadcast frame pacing on a deadline** (S, Plan [CY](CY-broadcast-resilience-and-quality.md)'s surface).
 - [ ] **3. Web mirror page sized to the device and quiet while hidden** (XS, Plan [BP](BP-web-hud-mirror.md)).
 - [ ] **4. Gateway hosts typed without a scheme** (S).
@@ -50,7 +50,7 @@ stale. The loop's next tick takes a new frame as today.
 counted; after 2 s → spoken) and an injected clock. Never apply a call budget here (Plan
 [HY](HY-live-session-hygiene.md) P2 states the exemption).
 
-**Built 2026-10-10 ([#PRNUM](https://github.com/straff2002/OpenGlasses/pull/PRNUM)).** As specified, with
+**Built 2026-10-10 ([#704](https://github.com/straff2002/OpenGlasses/pull/704)).** As specified, with
 these details: the pure policy is `NavigationAdviceFreshness.isFresh(capturedAt:now:maxAge:)`
 (`Services/Accessibility/NavigationAdviceFreshness.swift`); an age exactly at the limit is fresh,
 and an impossible age (negative or not finite) fails closed. `tick()` stamps the injected
