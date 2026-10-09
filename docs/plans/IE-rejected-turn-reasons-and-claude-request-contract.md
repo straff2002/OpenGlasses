@@ -1,7 +1,11 @@
 # Plan IE: A Rejected Turn Names Its Reason, and the Current Claude Request Contract
 
-**Status:** 📝 Drafted 2026-10-10. Nothing built. P0 and P1 are pure cores with fixture tests; P2 and
-P3 change what the Anthropic paths send and keep; P4 is a live check that needs real credentials.
+**Status:** 🚧 P0 shipped 2026-10-10 — `ProviderRejection` (closed reason vocabulary, never the
+message), the `LLMError` rung in `SafeErrorSummary`, the failed turn's line carrying the reason, the
+credential kind, the tool counts and the request id, the banner and the spoken reason, the fallback
+chain reading the reason, and a log line at every Anthropic site. Nothing an Anthropic request
+sends has changed. Still unbuilt: P1 (pure core with fixture tests), P2 and P3 (they change what
+the Anthropic paths send and keep), P4 (a live check that needs real credentials).
 **Origin:** A tester's support report from build 480 (`7a0cc0e0`), 2026-10-09. The first question
 asked after choosing a model failed: Anthropic, `claude-sonnet-5-5`, HTTP 400. The report could not
 say why, and reading the code for the cause turned up five defects against the current Claude
@@ -62,10 +66,14 @@ configuration (none sent), thinking-block replay (no history).
 with their Claude account; and select `claude-sonnet-5-5` on a phone with a known-good key and ask
 one question. If the second works, it is the credential or the tool list.
 
-**2026-10-10 — the second check is done.** Sonnet answers normally on the developer's own phone, so
-the model and the body the app builds are accepted. That removes candidate 3 and leaves the
-credential and the tool list; the first check (key or account sign-in) is still owed from the
-tester, and P0 makes the next such report answer it by itself.
+**2026-10-10 — the second check is done.** On the developer's own phone `claude-sonnet-5` and
+`claude-sonnet-5-5` both answer normally, each with a pasted key and with an account sign-in — all
+four. So the model, the body the app builds, and the account sign-in path in general are accepted.
+That removes candidate 3 and narrows candidate 1 to something particular to the tester's own
+account or token, not the sign-in path itself; the tool list (candidate 2) is unchanged. The
+tester's answers are still owed — a key or a sign-in, and whether any MCP servers were added — and
+P0 makes the next such report answer both by itself: a failed turn's line carries the credential
+kind and how many tool definitions went, with how many of them came from MCP servers.
 
 ## What reading the code found
 
@@ -128,6 +136,27 @@ Deterministic, headless.
 
 Tests: fixture bodies for each reason and each provider; the summary rung; the report line; the
 chain's class per reason; no message text in any event (extend the privacy-logging gate's fixtures).
+
+**Shipped 2026-10-10.** As built, where it differs from the list above or adds to it:
+
+- The failed turn's line reads `AI turn FAILED — clientError(invalid_request_error)#400 · reason:
+  toolDefinitionInvalid · auth: account sign-in · tools sent: 43 (2 from MCP servers) · request:
+  req_…`. The credential kind is labelled `auth` because the report's masking pass blanks whatever
+  follows `credential:` or `key:`. The tool counts were added after the second check above; the
+  credential kind and the tool counts are recorded on the Anthropic turn path only.
+- `RequestContextBudget.isOverflow` keeps its own test. Replacing it with the classifier's reason
+  would not preserve behaviour (it trusts a present `code` over the message, and is limited to
+  three statuses), so the classifier calls it instead, and a test holds the two in agreement.
+- The banner's and the spoken reason's words are plain English strings, as the arms beside them
+  already were; neither is in the string catalog, so the catalog is untouched.
+- The spoken reason changes only where the chain's last error is a classified refusal
+  (`ModelSwitchNarrator.exhaustionPhrase`); the generic spoken error line is as it was.
+- The sentence the service uses when a replayed thinking block is refused over a changed prefix
+  is not known here. `historyPrefixChanged` matches a thinking block and the word "prefix", and
+  nothing else; P2's fixtures should pin the real sentence.
+- The OpenAI-compatible, Gemini and Responses error sites attach the same classification to the
+  error they throw, so the summary and the chain read it for every provider. Their requests and
+  their existing log lines are unchanged.
 
 ### P1 — One Anthropic request contract
 
