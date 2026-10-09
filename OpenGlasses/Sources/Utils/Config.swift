@@ -2886,6 +2886,7 @@ struct Config {
         "send_via",             // Block multi-channel messaging of PHI
         "openclaw_skills",      // No gateway skill execution with PHI
         "reading_session",      // No passive camera OCR of documents — a "book" can be a chart
+        "team_learning",        // A clinical site's "learning" is a patient note wearing a different hat
     ]
 
     // MARK: - Medical Export

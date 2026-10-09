@@ -17,7 +17,7 @@ enum FieldToolProfile {
     /// The tools a field job is offered — the job's tools, then the essentials.
     static let names: Set<String> = [
         "field_session", "manual_lookup", "manual_figure", "equipment_lookup", "procedure_runner",
-        "reading", "evidence", "parts_request", "deliver_report", "escalate_to_expert",
+        "reading", "evidence", "parts_request", "deliver_report", "escalate_to_expert", "team_learning",
         "capture_photo", "record_clip", "photo_log", "pin_frame", "smart_capture", "vision_assess",
         "look_closely", "scan_document", "scan_code", "scan_badge", "qr_context", "domain_calc",
         "convert_units", "calculate", "capture_flow", "safety_assessment", "first_aid",

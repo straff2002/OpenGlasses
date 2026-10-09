@@ -91,6 +91,7 @@ enum OfflineToolPolicy {
         "step_count": .local,
         "study": .local,
         "task": .local,
+        "team_learning": .local,           // filed in the phone's own store; sending is a later phase
         "teleprompter": .local,
         "video_recording": .local,
         "voice_skills": .local,

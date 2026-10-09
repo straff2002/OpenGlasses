@@ -100,6 +100,11 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// was done on — and the technician is told so, with a way back: `separate_earlier_work`. Cleared
     /// by that, by `next_unit`, and whenever the job moves off the unit. Nil on every older session.
     var earlierWorkAttachedAt: Date?
+    /// Team-learning candidates filed on this job (Plan FP P1): that each one exists and where it
+    /// stands — id, status, machine, date — and never its words, which live only in
+    /// `LearningCandidateStore`. Nil, and absent from the JSON, on a job that filed none and on
+    /// every session recorded before this existed.
+    var teamLearnings: [LearningCandidateReference]?
 
     /// Whether anything is already recorded against the current unit: a task under its scope (a
     /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
@@ -208,6 +213,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case visitedUnits
         case billableCheckpointAt, appClosedPause, spokenReadings
         case earlierWorkAttachedAt
+        case teamLearnings
     }
 }
 
@@ -275,6 +281,7 @@ extension FieldSession {
         appClosedPause = try c.decodeIfPresent(AppClosedPause.self, forKey: .appClosedPause)
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings) ?? []
         earlierWorkAttachedAt = try c.decodeIfPresent(Date.self, forKey: .earlierWorkAttachedAt)
+        teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
     }
 }
 

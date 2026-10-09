@@ -84,8 +84,9 @@ struct ConversationClassifier {
         let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let words = lower.split(separator: " ")
 
-        // Tier 0: Check for direct tool calls first
-        if let directCall = matchDirectToolCall(lower, words: words) {
+        // Tier 0: Check for direct tool calls first. "Note this for the team" is matched on the
+        // original text, because what follows it is filed in the technician's own words.
+        if let directCall = Self.matchTeamLearningNote(text) ?? matchDirectToolCall(lower, words: words) {
             return Classification(
                 directToolCall: directCall,
                 relevantSections: .minimal,
@@ -183,6 +184,48 @@ struct ConversationClassifier {
         }
 
         return nil
+    }
+
+    // MARK: - Team learnings (Plan FP P1)
+
+    /// The phrases that file a team learning when they **open** the utterance. Narrow on purpose:
+    /// the same words later in a sentence ("can you note this for the team later") are a request
+    /// about the phrase, not a filing, and reach the model.
+    static let teamLearningPhrases = [
+        "note this for the team", "note that for the team", "note for the team",
+        "log this for the team", "log that for the team",
+    ]
+
+    /// The fewest words a finding can be for the phrase to file it directly. Below this — a bare
+    /// "note this for the team" — the model asks what was worked out.
+    static let teamLearningMinimumWords = 3
+
+    /// "Note this for the team — on the 090 the pressure switch tubing sweats…" → `team_learning`
+    /// `note` with everything after the phrase as the finding, verbatim.
+    ///
+    /// Deterministic, so the finding is the technician's words rather than a model's paraphrase of
+    /// them, and so the turn never reaches the job's log as a technician report: a Tier-0 turn is
+    /// not recorded there at all, and its filing event renders as one fixed line.
+    static func matchTeamLearningNote(_ text: String) -> DirectToolCall? {
+        var rest = Substring(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        // A polite opener is not part of the phrase.
+        for opener in ["please ", "okay ", "ok ", "ok, ", "okay, "]
+        where rest.lowercased().hasPrefix(opener) {
+            rest = rest.dropFirst(opener.count)
+            break
+        }
+        let lowered = rest.lowercased()
+        guard let phrase = teamLearningPhrases.first(where: { lowered.hasPrefix($0) }) else { return nil }
+        let afterPhrase = rest.dropFirst(phrase.count)
+        // The phrase has to end at a word boundary: "note for the teams list" is not the phrase.
+        if let next = afterPhrase.first, next.isLetter || next.isNumber { return nil }
+        // What joins the phrase to the finding — a dash, a colon, a comma — is not the finding.
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ":;,.-\u{2013}\u{2014}"))
+        let finding = String(afterPhrase.drop { $0.unicodeScalars.allSatisfy(separators.contains) })
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = finding.split(whereSeparator: { $0.isWhitespace })
+        guard words.count >= teamLearningMinimumWords else { return nil }
+        return DirectToolCall(toolName: "team_learning", arguments: ["action": "note", "finding": finding])
     }
 
     /// Deliberately narrow. Every phrase here is a whole question about routing; none of them is a

@@ -743,7 +743,11 @@ class LLMService: ObservableObject {
     /// - Parameter onStreamReset: invoked at the start of each streamed tool-loop iteration so the
     ///   caller can clear its accumulated bubble — intermediate tool-turn text must never
     ///   concatenate with the final reply (BM P9).
-    private var fieldConversationSourceID: String?
+    private var fieldConversationSourceID: String? {
+        // The job's service is told which turn is in flight, so a team learning filed during it
+        // withholds exactly this turn from the model's view of the job (Plan FP P1).
+        didSet { FieldSessionService.shared.turnSourceID = fieldConversationSourceID }
+    }
 
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
         let previousFieldSourceID = fieldConversationSourceID
