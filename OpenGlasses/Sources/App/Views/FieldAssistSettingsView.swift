@@ -42,6 +42,8 @@ struct FieldAssistSettingsView: View {
     /// The recipient fields as typed. Kept raw so the list is only parsed on the way out — a
     /// getter that re-joins what you are typing eats the comma you just pressed.
     @State private var emailRecipientsText = ""
+    /// The technician's name as their team sees it (Plan FP P3), edited here and stored cleaned.
+    @State private var technicianName = ""
     @State private var messageRecipientsText = ""
     /// The task whose detail is open on the session card.
     @State private var expandedTaskId: String?
@@ -519,6 +521,7 @@ struct FieldAssistSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
         .onAppear {
+            technicianName = Config.technicianDisplayName
             delivery = Config.deliverySettings
             emailRecipientsText = delivery.emailRecipients.joined(separator: ", ")
             messageRecipientsText = delivery.messageRecipients.joined(separator: ", ")
@@ -577,6 +580,23 @@ struct FieldAssistSettingsView: View {
     @ViewBuilder
     private var jobReportSection: some View {
         Section {
+            // Who a team-learning finding is filed under (Plan FP P3). Hidden while an
+            // organisation's profile names the technician; read-only for an administrator.
+            let namePresentation = adminGate.presentation(.key(.technicianDisplayName))
+            if namePresentation.isShown {
+                TextField("Your name, as your team sees it", text: $technicianName)
+                    .textContentType(.name)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Your name, as your team sees it")
+                    .disabled(!namePresentation.isEditable)
+                    .onChange(of: technicianName) { _, value in
+                        Config.technicianDisplayName = value
+                    }
+                    .onSubmit { technicianName = Config.technicianDisplayName }
+                if namePresentation == .readOnly {
+                    ManagedLockNote(organization: ManagedLockReason.organization)
+                }
+            }
             TextField("office@example.com, dispatch@example.com", text: $emailRecipientsText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -596,7 +616,7 @@ struct FieldAssistSettingsView: View {
         } header: {
             Text("Job Reports")
         } footer: {
-            Text("Where a finished job report goes when nobody names anybody. The first line is email, the second is Messages; separate several with commas. Saying \u{201C}send the job report to base\u{201D} fills the composer in and you tap Send.")
+            Text("Your name is who a team learning you file is filed under; left empty, the phone's name is used. Below it, where a finished job report goes when nobody names anybody: the first line is email, the second is Messages; separate several with commas. Saying \u{201C}send the job report to base\u{201D} fills the composer in and you tap Send.")
         }
 
         Section {

@@ -905,6 +905,7 @@ extension SettingKey {
         case .organizationReportRecipients: return "Who job reports are addressed to"
         case .organizationReportTranscriptInternal: return "Whether reports to the office carry the transcript"
         case .organizationAccentColor: return "The app's accent colour"
+        case .technicianDisplayName: return "Your name, as your team sees it"
         default: return rawValue
         }
     }
