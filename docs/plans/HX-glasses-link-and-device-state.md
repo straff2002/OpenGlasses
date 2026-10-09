@@ -2,6 +2,8 @@
 
 **Status:** 📝 Drafted 2026-10-10. Nothing built. Two PRs, both headless at their core: P0 the
 audible link drop, P1 thermal and compatibility state. A device pass is owed after each.
+**Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
+apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
 "Silent glasses link drop" and "Thermal and compatibility state not read" rows; Appendix B claim 8).
 **Priority:** P0 is an accessibility defect: a blind wearer whose glasses drop hears nothing and
@@ -11,7 +13,7 @@ keeps talking to a phone in their pocket. P1 closes a deferral two plans have ca
 process-lifetime latch. No new setting, no new dependency, no experimental DAT API.
 
 Evidence paths are under `OpenGlasses/Sources/`; line numbers as recorded by the review at
-`7a0cc0e0`, re-read on `main` at `48bcae0c`.
+`7a0cc0e0`, re-read on `main` at `48bcae0c`. P3's evidence was read on `main` at `e89a9c4d`.
 
 ---
 
@@ -42,7 +44,41 @@ and, since 1.0.0, `compatibility`. Neither is read:
   (`Services/Camera/MetaCameraBackend.swift:805`), so an `insufficientSDKVersion` refusal, which
   only shipping a newer app can fix, is rediscovered and retried on every start.
 
+**Added but not connected is one unexplained state (P3, 2026-10-10).** A tester with a current
+Ray-Ban Meta pair and Developer Mode on reported that pairing completes with no error and the app
+still shows the glasses as not connected. The app is behaving as written, and that is the problem:
+- **The rule.** Connected means a listed device whose link is up. Registered with no device
+  listed is `addedDisconnected`, the same phase as a pair asleep in its case, and its status text
+  is the same "Not connected" as glasses that were never added
+  (`Services/GlassesConnectionPhase.swift:78`).
+- **A device is listed only after a permission is granted in Meta AI.** The app asks from the
+  registration listener — `try? await cameraService.ensurePermission()`
+  (`App/OpenGlassesApp.swift:4037`). Three attempts (`Services/Camera/MetaCameraBackend.swift:237`),
+  then the failure is thrown away: no notice, no status, and nothing asks again until a relaunch,
+  a registration change or a camera action.
+- **The one message the wearer does get names the wrong things.** After Connect waits 15 seconds:
+  "Glasses registered but no device appeared (state 3). Make sure the glasses are on, nearby, and
+  connected in the Meta AI app" (`Services/RegistrationFlow.swift:134`). It prints a raw state
+  number and mentions neither the permission nor Developer Mode's one-app-at-a-time limit, the
+  two things most likely to be true of someone who has just paired.
+- **The Developer panel repeats it.** The Glasses Link probe answers "Not connected — pair via
+  the Meta AI app" (`Services/Diagnostics/SubsystemProbes.swift:14-17`) to someone who has paired.
+- **The support report cannot tell the cases apart.** Its phone section says "Glasses: not
+  connected" (`App/SupportReporting.swift:139`); registration, the number of devices listed and
+  the permission's status are only in the event ring, if launch is still in it.
+- **Dead code beside it.** `requestEarlyPermission(allowRequest:)` is only ever called with
+  `false` (`App/OpenGlassesApp.swift:4076`, `:4084`), so its request branch and the device poll
+  after it never run.
+- **Not ours:** nothing in the link path filters by device model (`Services/GlassesLinkSource.swift`),
+  so a newer pair is not excluded by this app; and the glasses-side update actions already exist
+  (`App/Views/SettingsView.swift:1022`, `:1033`).
+
 ## Scope
+
+**In (P3):** one pure diagnosis of why added glasses are not connected; the permission's outcome
+kept instead of discarded; the camera permission asked for as part of a Connect the wearer
+started; the status line, the connect failure message, the Developer panel probe and the support
+report all reading that diagnosis.
 
 **In:** a link-lost earcon and a VoiceOver line at the moment of loss, silent when the loss is
 expected; a link-restored line for VoiceOver; thermal and compatibility read into
@@ -127,6 +163,41 @@ user may not have seen the switch take effect. The stale comment is corrected. T
   clear at `MetaCameraBackend.swift:805` (that line keeps clearing every other notice). It resets
   only on relaunch, which is the only thing that can change the answer.
 
+### P3 · `GlassesReachabilityDiagnosis` (pure)
+
+A value computed from what the app already knows — registration, how many devices the SDK lists,
+each listed device's link, and the Meta camera permission's last known status (granted, not
+granted, failed with a summary, not yet checked):
+
+| Diagnosis | When | What the wearer is told |
+|---|---|---|
+| `notAdded` | not registered, nothing listed | Add your glasses |
+| `awaitingApproval` | registration in flight | Approve in Meta AI (today's wording) |
+| `permissionNeeded` | registered, nothing listed, permission not granted or its check failed | Allow camera access for this app in Meta AI — with a button that asks |
+| `noDeviceSeen` | registered, permission granted, nothing listed | Meta AI has not shown this app your glasses: wake them, check they are connected in Meta AI, and that no other glasses app is using Developer Mode |
+| `linkDown` | a device is listed, none connected or connecting | Your glasses are out of reach: on, out of the case, nearby |
+| `linkComingUp` | a listed device is connecting | Connecting… |
+| `connected` | a listed device's link is up | (today's wording) |
+
+No raw state numbers in anything shown or spoken. The diagnosis is a reading of state, not a new
+source of truth: `GlassesConnectionSnapshot` still owns the phase and `applyGlassesPhase` is still
+the only writer of `isConnected`.
+
+**Wiring.**
+- `ensurePermission()`'s outcome at the registration listener is recorded into a published
+  permission status instead of being dropped by `try?`.
+- `connectGlasses()` — the Connect the wearer pressed — asks for the camera permission once
+  registration has landed and it is not granted, before its wait for the link. Requesting
+  deep-links to Meta AI, which is why it belongs to a user-initiated action and nowhere else; the
+  never-reached `allowRequest: true` branch and its device poll are removed.
+- `RegistrationFlow.connectFailureMessage` takes the diagnosis; the registered-but-nothing-listed
+  string above is retired.
+- The session card and Devices & Privacy › Glasses show the diagnosis line and, for
+  `permissionNeeded`, the button.
+- The Glasses Link probe reports the diagnosis.
+- The support report's phone section gains one line when not connected: registration, devices
+  listed, permission status, and each listed device's link — tokens and counts only.
+
 ## Phases
 
 ### P0: audible link drop (one PR)
@@ -158,12 +229,34 @@ test host); every decision is a pure type.
 **Gates (both):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`,
 privacy-logging gate; index row, this Status line and BV's row and file updated in the P1 PR.
 
+### P3: added but not connected says why (one PR, independent of P0 and P1)
+
+`GlassesReachabilityDiagnosis`; the recorded permission status; the permission request inside
+`connectGlasses()`; the four readers (status line, failure message, probe, support report); the
+dead branch removed.
+
+**Tests:** `GlassesReachabilityDiagnosisTests` (the table above, plus: a failed permission check
+with nothing listed is `permissionNeeded`, not `noDeviceSeen`; a listed device wins over
+permission status; several devices follow the snapshot's multi-device rule).
+`GlassesConnectionServiceTests` through the existing fake link source and a fake permission seam:
+a Connect on a registered, ungranted pair asks once and no launch path asks at all.
+`RegistrationFlowTests` for the new messages and the absence of a state number. A report-line test
+that carries counts and tokens and no device name or identifier. No test touches `Wearables`.
+
+**Gates:** as P0 and P1; the new strings follow the catalog's sync-and-translate precedent in
+their own commit.
+
 ### P2: device pass (owed)
 
 With the phone pocketed: walk out of range and hear the lost cue once; take the glasses off and
 hear nothing; disconnect in Settings with VoiceOver on and hear one line. Read `thermalLevel` on a
 warm day and see the posture explanation name the glasses. On a build the glasses refuse (an old
 TestFlight), confirm one spoken update line and no repeated session attempts.
+
+For P3: on a phone that has never registered, pair and decline the camera permission in Meta AI,
+and read `permissionNeeded` with a working button; grant it with the glasses in the case and read
+`linkDown`; with another glasses app holding Developer Mode, record what the SDK reports and
+whether `noDeviceSeen` is the honest reading of it.
 
 ## Open questions
 
@@ -172,6 +265,16 @@ TestFlight), confirm one spoken update line and no repeated session attempts.
 2. Speak the update requirement or only post it? Recommended: speak once, because the wearer of a
    refused build otherwise hears nothing from the camera at all.
 3. Does `ThermalLevel` arrive often enough to be useful, or only near shutdown? P2 answers it.
+4. (P3) The registration listener calls `ensurePermission()` whenever the app is registered and
+   the permission is not cached, which includes launch, and that function requests as well as
+   checks. Should a launch ever leave for Meta AI unasked? Recommended: no — check at launch,
+   request only inside a Connect the wearer pressed. Confirm what the listener does at launch
+   before changing it.
+5. (P3) The SDK keeps its own log in the app's caches. Should a not-connected support report say
+   whether that log shows a refused registration or a missing glasses-side component?
+   Recommended: not in P3; decide after the first report P3 produces.
+6. (P3) Whether the tester's region or model matters is not something this app decides. P3 makes
+   the report say which of the rows above they are in; that answers it or rules the app out.
 
 ## Dependencies
 
