@@ -241,7 +241,7 @@ final class OpenAIResponsesRouteTests: XCTestCase {
         do {
             _ = try await svc.sendOpenAICompatibleForTesting("what time is it", config: config())
             XCTFail("expected the 401 to propagate")
-        } catch LLMError.apiError(_, let status, _) {
+        } catch LLMError.apiError(_, let status, _, _) {
             XCTAssertEqual(status, 401)
         } catch {
             XCTFail("unexpected error: \(error)")

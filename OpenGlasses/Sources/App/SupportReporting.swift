@@ -47,7 +47,8 @@ extension AppState {
     func offerSupportReport(after trace: TurnTrace) {
         if let dismissed = supportPromptDismissedAt,
            Date().timeIntervalSince(dismissed) < Self.supportPromptQuietPeriod { return }
-        supportPrompt = SupportPrompt(at: trace.at, reason: Self.plainReason(trace.failure))
+        supportPrompt = SupportPrompt(at: trace.at,
+                                      reason: Self.plainReason(trace.failure, rejection: trace.rejectionReason))
     }
 
     func dismissSupportPrompt() {
@@ -151,14 +152,29 @@ extension AppState {
 
     /// "Rate-limited by the AI service" rather than `rateLimited#429`, for the banner. The exact
     /// category still travels in the report.
-    static func plainReason(_ failure: String?) -> String {
+    ///
+    /// `rejection` is the reason a provider's refusal classified as (`ProviderRejection.Reason`,
+    /// by raw value). It refines a refused request into what the wearer can do about it: a model
+    /// that does not take what the app sent is a different model's job; a credential that was
+    /// not accepted is a key to check or a sign-in to repeat.
+    static func plainReason(_ failure: String?, rejection: String? = nil) -> String {
         guard let failure else { return "the AI didn't answer" }
         let category = failure.split(whereSeparator: { $0 == "(" || $0 == "#" }).first.map(String.init) ?? failure
+        let reason = rejection.flatMap(ProviderRejection.Reason.init(rawValue:))
         switch SafeErrorSummary.Category(rawValue: category) {
+        case .clientError, .unauthorized, .forbidden:
+            if reason?.isModelContract == true {
+                return "the AI service rejected the request — this model doesn't accept it, so try another model"
+            }
+            if reason == .credentialNotAccepted || reason == .betaHeaderUnknown {
+                return "the AI service didn't accept the key or sign-in — check the key, or sign in again"
+            }
+            return category == SafeErrorSummary.Category.clientError.rawValue
+                ? "the AI service rejected the request"
+                : "the AI service refused the key"
         case .offline: return "no internet connection"
         case .timedOut: return "the AI service took too long"
         case .cannotConnect, .tlsFailure: return "the AI service couldn't be reached"
-        case .unauthorized, .forbidden: return "the AI service refused the key"
         case .rateLimited: return "the AI service was busy (rate-limited)"
         case .serverError: return "the AI service had an error"
         case .decoding, .badServerResponse: return "the AI's reply couldn't be read"

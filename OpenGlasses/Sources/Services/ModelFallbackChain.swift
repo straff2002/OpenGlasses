@@ -84,7 +84,17 @@ enum ModelFallbackChain {
             case .invalidResponse, .streamInterrupted:
                 // Empty completion (P3) / mid-stream death — transient, try another model.
                 return .retryOtherModel
-            case .apiError(_, let status, _):
+            case .apiError(_, let status, _, let rejection):
+                // "Malformed — fails everywhere" stopped being true of every 400 once a request
+                // one model accepts is one its successor refuses (Plan IE P0). A refusal that
+                // names this model's contract or this credential ends the candidate; the next
+                // one is sent a request built for it. A refusal of the request itself — its
+                // messages, its tools, its length — is the same on every candidate and still
+                // ends the turn, as does a 400 that could not be classified.
+                if let rejection, rejection.reason.endsOnlyThisCandidate,
+                   classifyStatus(status) == .terminalForTurn {
+                    return .terminalForCandidate
+                }
                 return classifyStatus(status)
             }
         }

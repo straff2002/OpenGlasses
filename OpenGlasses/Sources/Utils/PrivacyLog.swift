@@ -1475,6 +1475,8 @@ enum PrivacyLog {
                       characters: Int? = nil, tokens: Int? = nil, status: Int? = nil,
                       bytes: Int? = nil, seconds: Double? = nil, success: Bool? = nil,
                       detail: PrivacyToken? = nil,
+                      reason: PrivacyToken? = nil, auth: PrivacyToken? = nil,
+                      request: PrivacyToken? = nil,
                       error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
         if let provider { fields.append(.init(.provider, .token(provider))) }
@@ -1490,8 +1492,29 @@ enum PrivacyLog {
         if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
         if let success { fields.append(.init(.success, .flag(success))) }
         if let detail { fields.append(.init(.detail, .token(detail))) }
+        if let reason { fields.append(.init(.reason, .token(reason))) }
+        if let auth { fields.append(.init(.auth, .token(auth))) }
+        if let request { fields.append(.init(.request, .token(request))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.model, .model, fields))
+    }
+
+    /// A provider refused a request (Plan IE P0): the status, the provider's own error type, the
+    /// reason its message matched, which kind of credential the request carried, and the id the
+    /// provider gave the request.
+    ///
+    /// The request id is the one field here that is not from a vocabulary this app defines. It is
+    /// kept whole rather than fingerprinted because it is only useful whole — it is what the
+    /// provider's support asks for — and it names one request to the provider and nothing else.
+    /// The message the reason was matched against has no parameter, here or anywhere.
+    @discardableResult
+    static func modelRejected(_ rejection: ProviderRejection, provider: PrivacyToken,
+                              auth: AnthropicAuth.CredentialKind? = nil, bytes: Int? = nil,
+                              detail: PrivacyToken? = nil) -> PrivacyEvent {
+        model(.apiError, provider: provider, status: rejection.status, bytes: bytes,
+              detail: detail, reason: rejection.reasonToken,
+              auth: auth.map { PrivacyToken($0.rawValue) }, request: rejection.requestToken,
+              error: rejection.summary)
     }
 
     /// History compaction, which is the one model event whose whole point is a before/after pair.
@@ -2134,6 +2157,10 @@ struct PrivacyEvent: Equatable {
         case distance, language, engine, voice, quality, elapsed
         case device, owner, hertz, channels
         case model, configuration, tokens, megabytes, total, vision, shape
+        // Plan IE P0 — a refused model request: the kind of credential it carried (`key`,
+        // `accountSignIn`) and the provider's id for it. `auth`, not `credential`: the support
+        // report's masking pass reads `credential=` as the label of a secret and blanks the value.
+        case auth, request
         case cacheMegabytes, footprintMegabytes, headroomMegabytes
         case messagesBefore, messagesAfter, tokensBefore, tokensAfter, signals
         case stored, retrieved, included, dropped, clamped

@@ -1459,6 +1459,8 @@ class LLMService: ObservableObject {
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
+                Self.noteAnthropicRejection(response: response, body: data, request: request,
+                                            detail: "summarise")
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let content = json["content"] as? [[String: Any]],
@@ -1559,6 +1561,8 @@ class LLMService: ObservableObject {
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
+                Self.noteAnthropicRejection(response: response, body: data, request: request,
+                                            detail: "analyzeFrame")
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let content = json["content"] as? [[String: Any]],
@@ -1676,6 +1680,8 @@ class LLMService: ObservableObject {
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
+                Self.noteAnthropicRejection(response: response, body: data, request: request,
+                                            detail: "analyzeFrameStructured")
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.anthropic(data, toolName: toolName)
 
@@ -1780,6 +1786,8 @@ class LLMService: ObservableObject {
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
+                Self.noteAnthropicRejection(response: response, body: data, request: request,
+                                            detail: "completeStructured")
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.anthropic(data, toolName: toolName)
 
@@ -1936,6 +1944,9 @@ class LLMService: ObservableObject {
         guard !apiKey.isEmpty else {
             throw LLMError.missingAPIKey(LLMProvider.anthropic.missingCredentialMessage)
         }
+        // Which kind of credential this turn is sent with, never the value (Plan IE P0): a failed
+        // turn's line in the support report says whether a key or an account sign-in was refused.
+        TurnRecorder.noteCredential(AnthropicAuth.kind(of: apiKey))
 
         // Add user message to history
         if let imageData = imageData {
@@ -2004,11 +2015,16 @@ class LLMService: ObservableObject {
 
                 if includeTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
-                    let toolsData: Data = await MainActor.run {
-                        let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient)
-                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                    let (toolsData, mcpToolCount): (Data, Int) = await MainActor.run {
+                        let mcpClient = self.nativeToolRouter?.mcpClient
+                        let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient)
+                        let data = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                        return (data, ToolDeclarations.mcpToolDeclarations(mcpClient: mcpClient).count)
                     }
                     var tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                    // How many definitions went, and how many of them an MCP server wrote — the
+                    // one part of the body that differs between installations. Counts only.
+                    TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
                     // Cache-breakpoint on the final tool caches the whole tools array as one prefix.
                     if !tools.isEmpty {
                         tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
@@ -2041,13 +2057,14 @@ class LLMService: ObservableObject {
                     guard let httpResponse = response as? HTTPURLResponse,
                           httpResponse.statusCode == 200 else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let errorMsg = (errorJson["error"] as? [String: Any])?["message"] as? String {
-                            PrivacyLog.model(.apiError, provider: PrivacyToken("anthropic"),
-                                             status: statusCode)
-                            throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: errorMsg)
-                        }
-                        throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: nil)
+                        // Logged whether or not the body parsed: a refusal with no readable
+                        // envelope used to leave no line at all (Plan IE P0).
+                        let rejection = Self.noteAnthropicRejection(response: response, body: data,
+                                                                    request: request)
+                        let errorMsg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+                            .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
+                        throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode,
+                                                message: errorMsg, rejection: rejection)
                     }
 
                     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -2202,6 +2219,26 @@ class LLMService: ObservableObject {
         customEndpointRejectsTools = false
     }
 
+    /// Classify and log an Anthropic response that was not a 200 (Plan IE P0). Every Anthropic
+    /// call site goes through here, so a refusal always leaves a line: the status, the provider's
+    /// error type, the reason it matched, which kind of credential the request carried, and the
+    /// request id. The provider's message has no parameter here and reaches nothing.
+    ///
+    /// Returns `nil` for a 200, so the one-shot sites can call it before their own guard without
+    /// first asking what the status was.
+    /// - Parameter detail: which one-shot call this was; `nil` for a turn.
+    @discardableResult
+    nonisolated static func noteAnthropicRejection(response: URLResponse, body: Data,
+                                                   request: URLRequest,
+                                                   detail: String? = nil) -> ProviderRejection? {
+        if let http = response as? HTTPURLResponse, http.statusCode == 200 { return nil }
+        let rejection = ProviderRejection(response: response, body: body, provider: .anthropic)
+        PrivacyLog.modelRejected(rejection, provider: PrivacyToken("anthropic"),
+                                 auth: AnthropicAuth.credentialKind(of: request),
+                                 bytes: body.count, detail: detail.map(PrivacyToken.init))
+        return rejection
+    }
+
     /// Record the effective reasoning setting of one request: a token in the turn trace (Turn
     /// details) and in the privacy log. Never text — the reason is a case name.
     static func noteReasoning(_ resolution: ReasoningPolicy.Resolution,
@@ -2277,7 +2314,7 @@ class LLMService: ObservableObject {
                     text, systemPrompt: systemPrompt, volatileTail: volatileTail, config: config,
                     includeTools: includeTools, imageData: imageData, smallContext: smallContext,
                     selection: selection, onToken: onToken, onStreamReset: onStreamReset)
-            } catch LLMError.apiError(_, let status, _) where Self.responsesRouteShouldFallBack(status: status) {
+            } catch LLMError.apiError(_, let status, _, _) where Self.responsesRouteShouldFallBack(status: status) {
                 // Decision 6: a route decision, not a cascade hop. Remember the model for the run,
                 // rewind this turn's own appends (the user message included, so the retry does not
                 // add it twice — `turnHistoryStart` is its index even if `trimHistory` compacted
@@ -2474,7 +2511,7 @@ class LLMService: ObservableObject {
                     }
                     do {
                         return try await streamTurn(request)
-                    } catch LLMError.apiError(_, 400, _) where provider == .custom && toolsAttached {
+                    } catch LLMError.apiError(_, 400, _, _) where provider == .custom && toolsAttached {
                         return try await streamTurn(try retryRequestWithoutTools())
                     }
                 } else {
@@ -2492,16 +2529,20 @@ class LLMService: ObservableObject {
                         // the message still reaches the user through the thrown error.
                         PrivacyLog.model(.apiError, provider: PrivacyToken(provider.rawValue),
                                          status: statusCode, bytes: data.count)
+                        let rejection = ProviderRejection(response: response, body: data, provider: provider)
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorObj = errorJson["error"] as? [String: Any],
                            let errorMsg = errorObj["message"] as? String {
-                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
+                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                    message: errorMsg, rejection: rejection)
                         }
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorMsg = errorJson["error"] as? String {
-                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
+                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                    message: errorMsg, rejection: rejection)
                         }
-                        throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: nil)
+                        throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                message: nil, rejection: rejection)
                     }
 
                     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -2516,9 +2557,9 @@ class LLMService: ObservableObject {
 
                 do {
                     message = try await sendOnce(request)
-                } catch LLMError.apiError(_, 400, let rejection)
+                } catch LLMError.apiError(_, 400, let refusal, _)
                             where ReasoningRejectionClassifier.shouldRetry(
-                                status: 400, message: rejection,
+                                status: 400, message: refusal,
                                 sentEffort: body["reasoning_effort"] as? String) {
                     // Plan GB P0: a model missing from `ReasoningPolicy`'s table refused reasoning
                     // with tools. Retry once at `none` instead of dead-ending in the cascade, and
@@ -3024,7 +3065,10 @@ class LLMService: ObservableObject {
             let text = String(data: errorBody, encoding: .utf8) ?? ""
             PrivacyLog.model(.apiError, provider: PrivacyToken(providerToken),
                              status: status, bytes: errorBody.count)
-            throw LLMError.apiError(provider: providerLabel, statusCode: status, message: text)
+            throw LLMError.apiError(provider: providerLabel, statusCode: status, message: text,
+                                    rejection: ProviderRejection(
+                                        response: response, body: errorBody,
+                                        provider: LLMProvider(rawValue: providerToken) ?? .openai))
         }
 
         var parser = SSEEventParser()
@@ -3055,7 +3099,10 @@ class LLMService: ObservableObject {
             let error: [String: Any] = ["code": accumulator.failureCode ?? "", "message": failure]
             let encoded = try JSONSerialization.data(withJSONObject: error)
             throw LLMError.apiError(provider: providerLabel, statusCode: 200,
-                                    message: String(decoding: encoded, as: UTF8.self))
+                                    message: String(decoding: encoded, as: UTF8.self),
+                                    rejection: ProviderRejection(
+                                        response: response, body: encoded,
+                                        provider: LLMProvider(rawValue: providerToken) ?? .openai))
         }
         guard let completed = accumulator.effectiveResponse else {
             throw LLMError.invalidResponse("\(providerLabel) (stream ended without completion)")
@@ -3125,7 +3172,7 @@ class LLMService: ObservableObject {
     /// fatal-vs-recoverable split for the chat path.
     nonisolated static func isTransientSSEError(_ error: Error) -> Bool {
         switch error {
-        case LLMError.apiError(_, let status, _):
+        case LLMError.apiError(_, let status, _, _):
             return status == 429 || (500...599).contains(status)
         case LLMError.streamInterrupted(_, let reason):
             let r = reason.lowercased()
@@ -3182,7 +3229,8 @@ class LLMService: ObservableObject {
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
             PrivacyLog.model(.streamError, provider: PrivacyToken(provider.rawValue),
                              status: http.statusCode, bytes: data.count)
-            throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg)
+            throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg,
+                                    rejection: ProviderRejection(response: http, body: data, provider: provider))
         }
 
         var fullContent = ""
@@ -3260,7 +3308,9 @@ class LLMService: ObservableObject {
             for try await b in bytes { data.append(b) }
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-            throw LLMError.apiError(provider: "Anthropic", statusCode: http.statusCode, message: msg)
+            let rejection = Self.noteAnthropicRejection(response: http, body: data, request: request)
+            throw LLMError.apiError(provider: "Anthropic", statusCode: http.statusCode, message: msg,
+                                    rejection: rejection)
         }
 
         var blocks: [Int: [String: Any]] = [:]   // content blocks by index
@@ -3457,14 +3507,18 @@ class LLMService: ObservableObject {
                 guard let httpResponse = response as? HTTPURLResponse,
                       httpResponse.statusCode == 200 else {
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    let rejection = ProviderRejection(response: response, body: data,
+                                                      provider: config.llmProvider)
                     if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let errorObj = errorJson["error"] as? [String: Any],
                        let errorMsg = errorObj["message"] as? String {
                         PrivacyLog.model(.apiError, provider: PrivacyToken("gemini"),
                                          status: statusCode)
-                        throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: errorMsg)
+                        throw LLMError.apiError(provider: "Gemini", statusCode: statusCode,
+                                                message: errorMsg, rejection: rejection)
                     }
-                    throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: nil)
+                    throw LLMError.apiError(provider: "Gemini", statusCode: statusCode,
+                                            message: nil, rejection: rejection)
                 }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -4567,7 +4621,10 @@ enum LLMError: LocalizedError {
     case missingAPIKey(String)
     case invalidResponse(String)
     case invalidConfiguration(String)
-    case apiError(provider: String, statusCode: Int, message: String?)
+    /// `rejection` is what the provider's answer classified as (Plan IE P0): its error type, its
+    /// request id and a reason from a closed vocabulary. The `message` beside it is the provider's
+    /// own sentence, shown to the person and never logged.
+    case apiError(provider: String, statusCode: Int, message: String?, rejection: ProviderRejection? = nil)
     /// A streaming response died mid-flight — a mid-stream `error` event or a connection that
     /// ended before the terminator (`[DONE]` / `message_stop`). Partial content must never be
     /// returned as a successful turn (BM P9).
@@ -4578,7 +4635,7 @@ enum LLMError: LocalizedError {
         case .missingAPIKey(let msg): return msg
         case .invalidResponse(let provider): return "Invalid response from \(provider)"
         case .invalidConfiguration(let msg): return msg
-        case .apiError(let provider, let code, let msg):
+        case .apiError(let provider, let code, let msg, _):
             if let msg { return "\(provider) error \(code): \(msg)" }
             return "\(provider) error: \(code)"
         case .streamInterrupted(let provider, let reason):

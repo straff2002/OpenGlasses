@@ -82,6 +82,10 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
                       code: Self.codingPathDepth(of: decoding))
             return
         }
+        if let llm = error as? LLMError {
+            self = Self.model(llm)
+            return
+        }
 
         // Unknown: the enum case name if this is an enum (payloads left behind), otherwise the
         // type name; plus the bridged domain and code. Never `String(describing:)` on a value
@@ -117,6 +121,28 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         default: category = .unknown
         }
         return SafeErrorSummary(category: category, detail: PrivacyToken("http"), code: status)
+    }
+
+    /// A model request that failed. A provider's refusal is an HTTP status with the provider's
+    /// own error type beside it — `clientError(invalid_request_error)#400` — which is what the
+    /// generic ladder could not say: it read `LLMError.apiError` as an unknown enum and printed
+    /// the case's ordinal where a reader expected a status.
+    ///
+    /// The other cases keep their case name and lose the ordinal. Each carries a sentence
+    /// (a provider's label, a configuration message), and none of those is read.
+    static func model(_ error: LLMError) -> SafeErrorSummary {
+        switch error {
+        case .apiError(_, let status, _, let rejection):
+            return rejection?.summary ?? http(status: status)
+        case .invalidResponse:
+            return SafeErrorSummary(category: .badServerResponse, detail: PrivacyToken("invalidResponse"))
+        case .streamInterrupted:
+            return SafeErrorSummary(category: .badServerResponse, detail: PrivacyToken("streamInterrupted"))
+        case .missingAPIKey:
+            return SafeErrorSummary(category: .unknown, detail: PrivacyToken("missingAPIKey"))
+        case .invalidConfiguration:
+            return SafeErrorSummary(category: .unknown, detail: PrivacyToken("invalidConfiguration"))
+        }
     }
 
     /// An app-side refusal: a guard said no before anything left the device. The rejection's own

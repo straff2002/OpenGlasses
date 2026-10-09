@@ -484,7 +484,8 @@ enum JobTranscriptExport {
         case .failed: word = "FAILED"
         }
         var out = ["\(stamp)  · \(reachedAI ? "AI turn" : "Turn") \(word)"
-                   + (trace.failure.map { " — \($0)" } ?? "")]
+                   + (trace.failure.map { " — \($0)" } ?? "")
+                   + (trace.outcome == .failed ? failureDetail(trace) : "")]
 
         var who = [[trace.backend, trace.model].compactMap { $0 }.joined(separator: " / ")]
         if let transcriber = trace.transcriber { who.append("transcribed by \(transcriber)") }
@@ -518,6 +519,26 @@ enum JobTranscriptExport {
         if let heard = trace.perceivedLatency { timing.append("heard \(seconds(heard)) after speech ended") }
         if !timing.isEmpty { out.append(indent + "timing: " + timing.joined(separator: ", ")) }
         return out
+    }
+
+    /// What a failed turn's line says after the error category (Plan IE P0): why the provider
+    /// refused, which kind of credential was sent, how many tool definitions went with it, and
+    /// the provider's id for the request. Each part appears only when the turn recorded it.
+    ///
+    /// The labels are chosen with the masking pass in mind. It blanks whatever follows
+    /// `credential:` or `key:`, so the credential kind is labelled `auth`.
+    private static func failureDetail(_ trace: TurnTrace) -> String {
+        var parts: [String] = []
+        if let reason = trace.rejectionReason { parts.append("reason: \(reason)") }
+        if let credential = trace.credential {
+            let label = AnthropicAuth.CredentialKind(rawValue: credential)?.reportLabel ?? credential
+            parts.append("auth: \(label)")
+        }
+        if let sent = trace.toolsSent {
+            parts.append("tools sent: \(sent)" + (trace.toolsFromMCP.map { " (\($0) from MCP servers)" } ?? ""))
+        }
+        if let request = trace.requestId { parts.append("request: \(request)") }
+        return parts.map { " · " + $0 }.joined()
     }
 
     private static func render(_ event: SessionLogger.Event, stamp: String) -> [String] {

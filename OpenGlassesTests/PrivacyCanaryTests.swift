@@ -267,6 +267,45 @@ final class PrivacyCanaryTests: XCTestCase {
                 }
             },
 
+            Probe(subsystem: "provider rejections", expects: "event=apiError") {
+                // Plan IE P0. A provider's error envelope quotes the request back, and the far
+                // end fills every slot of it: the message, the error type, the request id. Each
+                // carries a canary here, through the function every Anthropic site calls and
+                // through the classifier the other providers' sites use. The credential is on
+                // the request the way the app puts it there.
+                var request = URLRequest(url: URL(string: "https://api.example.test/v1/messages")!)
+                AnthropicAuth.apply(credential: "sk-ant-oat01-" + Canary.secret, to: &request)
+                let envelope: [String: Any] = [
+                    "type": "error", "request_id": Canary.url,
+                    "error": ["type": Canary.transcript,
+                              "message": "tools.3.custom.name: \(Canary.toolResult)",
+                              "code": Canary.medication, "status": Canary.person,
+                              "param": Canary.entity],
+                ]
+                let body = try JSONSerialization.data(withJSONObject: envelope)
+                let response = try XCTUnwrap(HTTPURLResponse(
+                    url: URL(string: "https://api.example.test/v1/messages")!, statusCode: 400,
+                    httpVersion: nil, headerFields: ["request-id": Canary.documentTitle]))
+                let rejection = try XCTUnwrap(LLMService.noteAnthropicRejection(
+                    response: response, body: body, request: request))
+                XCTAssertEqual(rejection.reason, .toolDefinitionInvalid,
+                               "the message was read — it has to be, to be classified — and then dropped")
+                for provider in [LLMProvider.openai, .gemini, .custom] {
+                    let classified = ProviderRejection(response: response, body: body, provider: provider)
+                    PrivacyLog.modelRejected(classified, provider: PrivacyToken(provider.rawValue))
+                    // What a failed turn keeps and the support report prints.
+                    let error = LLMError.apiError(provider: Canary.person, statusCode: 400,
+                                                  message: Canary.toolResult, rejection: classified)
+                    var timeline = TurnTimeline()
+                    timeline.failure = SafeErrorSummary(error)
+                    timeline.rejection = classified
+                    let printed = JobTranscriptExport.render(TurnTrace(timeline, sealedAt: Date()),
+                                                             stamp: "09:30").joined(separator: "\n")
+                    XCTAssertFalse(printed.uppercased().contains(Canary.stem),
+                                   "a canary reached the support report's turn line:\n\(printed)")
+                }
+            },
+
             Probe(subsystem: "server errors at their call sites", expects: "[model] model") {
                 // The four error shapes the classification table calls out, each summarised the
                 // way its own subsystem summarises it.

@@ -155,7 +155,7 @@ enum RequestContextBudget {
     }
 
     static func isOverflow(error: Error) -> Bool {
-        guard case LLMError.apiError(_, let status, let message) = error,
+        guard case LLMError.apiError(_, let status, let message, _) = error,
               [200, 400, 413].contains(status) else { return false }
         if let data = message?.data(using: .utf8),
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

@@ -47,13 +47,22 @@ enum ModelSwitchNarrator {
         case .needsBiggerWindow:
             reason = "that was too long for all of them"
         case .retryOtherModel:
-            if case LLMError.apiError(_, 429, _) = lastError {
+            if case LLMError.apiError(_, 429, _, _) = lastError {
                 reason = "the last one was rate-limited"
             } else {
                 reason = "they're all unavailable right now"
             }
         case .terminalForCandidate:
-            reason = "I don't have working credentials for them"
+            // A refusal that names the model's own contract is not a credential problem, and
+            // saying it was sends the wearer to the wrong setting (Plan IE P0).
+            if case LLMError.apiError(_, _, _, let rejection?) = lastError, rejection.reason.isModelContract {
+                reason = "the model didn't accept the request, so try another model"
+            } else if case LLMError.apiError(_, _, _, let rejection?) = lastError,
+                      rejection.reason == .credentialNotAccepted || rejection.reason == .betaHeaderUnknown {
+                reason = "the AI service didn't accept the key or sign-in"
+            } else {
+                reason = "I don't have working credentials for them"
+            }
         case .terminalForTurn:
             reason = "the request couldn't be processed"
         }
