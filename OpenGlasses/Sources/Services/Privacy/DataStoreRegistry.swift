@@ -78,6 +78,7 @@ enum SensitiveStore: String, CaseIterable {
     case fieldDeliverySettings
     case jobDeliveryQueue
     case upcomingJobs
+    case learningCandidates
     case orgEnrolment
     case safetyAssessments
 
@@ -599,6 +600,22 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "UpcomingJobStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/UpcomingJobStore.swift"],
                           location: "Application Support/FieldAssist/upcoming-jobs.json")
+
+        case .learningCandidates:
+            // Team-learning candidates (Plan FP P1): what a technician filed for their supervisor to
+            // review, bound to a job and a machine. A finding is meant to name machines, not
+            // people, but a customer's name is exactly what capture-time redaction cannot catch and
+            // review exists to remove — so the store is treated as able to hold a third party, is
+            // walked by the subject erasure, and is protected and kept out of backup: a restored
+            // copy would put unreviewed findings, and anything they slipped, onto another phone.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .complete, backupExcluded: true,
+                          retention: .cap(LearningCandidateStore.entryCap),
+                          deleteAll: .api("LearningCandidateStore.removeAll()"),
+                          deleteSubject: .api("LearningCandidateStore.deleteMatching(_:)"),
+                          owner: "LearningCandidateStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningCandidateStore.swift"],
+                          location: "Application Support/FieldAssist/team-learning-candidates.json")
 
         case .officeTransportFolders:
             // The embedded engine's own home, in the opt-in office transport build: its
