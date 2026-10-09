@@ -45,6 +45,23 @@
 				<string>com.openglasses.app.office-setup</string>
 			</array>
 		</dict>
+		<!-- A team-learning bundle (Plan FP P3): team-learning-<direction>-<time>.json, sent by
+		     email, Messages or AirDrop between a crew's phones and its reviewer. Plain JSON, so it
+		     is offered for JSON at Alternate rank — never Owner: other apps keep JSON. Opened as a
+		     copy; the app refuses any JSON that is not a bundle and applies nothing from one that
+		     is until it is accepted. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Team Learnings</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.json</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>

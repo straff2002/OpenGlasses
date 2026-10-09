@@ -24,6 +24,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// The organisation's accent, locked: every screen takes it and the picker is read-only.
     /// To offer a colour the technician may change, the profile sets `accentColorName` instead.
     case organizationAccentColor
+    /// The technician's name as their team sees it (Plan FP P3), on a phone the organisation
+    /// enrols per person. Set and locked by the profile; the technician sets it otherwise.
+    case technicianDisplayName
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -85,7 +88,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     var kind: Kind {
         switch self {
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
-             .organizationReportTranscriptInternal, .organizationAccentColor:
+             .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName:
             return .profileOwned(.string)
         case .organizationReportRecipients:
             return .profileOwned(.strings)
@@ -135,6 +138,17 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
                     || recipient.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
             }
             return bad ? "a recipient is empty, too long, or contains whitespace" : nil
+        case (.technicianDisplayName, .string(let name)):
+            // The contract's author rule: plain text, 1–120 characters once trimmed.
+            if name.unicodeScalars.contains(where: LearningCandidateText.isRefused) {
+                return "the name contains a control character"
+            }
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return "the name is empty" }
+            if LearningCandidateText.length(trimmed) > TechnicianName.limit {
+                return "the name is longer than \(TechnicianName.limit) characters"
+            }
+            return nil
         case (.fieldAssistDefaultVaultId, .string(let id)):
             return resolvableVaultIds.contains(id) ? nil : "no vault with that id is installed"
         case (.fieldAssistDefaultMode, .string(let raw)):

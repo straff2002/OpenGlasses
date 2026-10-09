@@ -2697,6 +2697,29 @@ struct Config {
         }
     }
 
+    /// The technician's name as their team sees it (Plan FP P3) — what a team-learning candidate is
+    /// filed under (`author`, contract §3: plain text, 1–120 characters). Device-local; empty means
+    /// unset, and a candidate then falls back to the device's name, as P1 did. Stored and read
+    /// through `TechnicianName.clean`, so it is always trimmed, plain and within the limit.
+    ///
+    /// Declared in `SettingKey` as organisation-owned: a profile that names the technician sets it
+    /// and locks the field. Candidates already filed keep the name they were filed under.
+    static var technicianDisplayName: String {
+        get {
+            TechnicianName.clean(PolicyEnvelope.string(.technicianDisplayName,
+                                                       stored: UserDefaults.standard.string(forKey: "technicianDisplayName") ?? ""))
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.technicianDisplayName) else { return }
+            let cleaned = TechnicianName.clean(newValue)
+            if cleaned.isEmpty {
+                UserDefaults.standard.removeObject(forKey: "technicianDisplayName")
+            } else {
+                UserDefaults.standard.set(cleaned, forKey: "technicianDisplayName")
+            }
+        }
+    }
+
     /// Admits UNSIGNED pack installs (loudly labeled). For pack authors; never loosens catalog
     /// index verification.
     static var skillPackDevModeEnabled: Bool {

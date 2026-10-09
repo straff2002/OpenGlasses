@@ -16,6 +16,13 @@ import Foundation
 /// to supply rather than installing a vault that says it has manuals it has not got. This is the
 /// one vault-export implementation in the app; a pack-installed vault is not exportable at all.
 ///
+/// **Team learnings travel with it** (Plan FP P3): `learnings/team-learnings.json` holds the
+/// vault's approved entries — live and retracted — as a `decisions` bundle, the same unsigned,
+/// structurally validated file a reviewer sends by email. The importer stages it; nothing in it is
+/// used until someone accepts it entry by entry. It is left out under HIPAA mode, without the
+/// team-learnings capability, and when the vault has none. A pack vault is never exportable, so
+/// its learnings move only by bundle.
+///
 /// **Licensing:** exporting the baseline of a *paid bundled* vault (refrigeration, IT, health) would
 /// bypass the per-pack IAP gate. Export is therefore restricted to user-imported/authored vaults and
 /// free vaults — see `isExportable`. (Aligns with the agent-mode / gateway gating convention.)
@@ -50,8 +57,13 @@ enum VaultExporter {
     /// Build an export folder in a temp directory and return its URL. Hand the URL to a share sheet
     /// (`ShareSheet`) or `fileExporter`; the format equals the import format so the importer consumes
     /// it directly.
+    /// Where an export keeps its learnings, relative to the folder.
+    nonisolated static let learningsDirectory = "learnings"
+    nonisolated static let learningsFile = "team-learnings.json"
+
     @discardableResult
-    static func export(id: String) throws -> URL {
+    static func export(id: String,
+                       learnings: @MainActor (String) -> LearningBundle? = { LearningBundleOutbox.shared.vaultExport(vaultId: $0) }) throws -> URL {
         guard let manifest = VaultRegistry.shared.manifest(id: id) else {
             throw ExportError.unknownVault(id)
         }
@@ -85,6 +97,13 @@ enum VaultExporter {
             // Reference documents are **not** copied. See the type comment: the manifest above
             // carries the list and the not-included marker, and nothing else about a manual —
             // text, original PDF, or anything rendered from them — is written here.
+
+            // learnings/ — the vault's approved team learnings, as an unsigned decisions bundle.
+            if let bundle = learnings(manifest.id) {
+                let dir = root.appendingPathComponent(learningsDirectory, isDirectory: true)
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                try bundle.encoded().write(to: dir.appendingPathComponent(learningsFile), options: .atomic)
+            }
 
             // procedures/ — copy whatever is present (overlay wins, else bundle).
             if let dir = manifest.proceduresDir {

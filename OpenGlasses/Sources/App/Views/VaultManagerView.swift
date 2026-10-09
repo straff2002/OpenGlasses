@@ -504,6 +504,13 @@ struct VaultManagerView: View {
                 warnings = report.warnings
                 reloadLedgers()
                 successMessage = "Installed \(report.manifest.name)."
+                // Team learnings already approved for this vault come back into its namespace, and
+                // any the folder carries are staged — never applied — for acceptance (Plan FP P3).
+                LearningReviewService.shared.republish()
+                if let learnings = VaultImporter.learningsBundleData(in: url) {
+                    LearningBundleIntake.shared.receive(learnings, fileName: VaultExporter.learningsFile)
+                    if let line = LearningBundleIntake.shared.lastMessage { warnings.append(line) }
+                }
                 // Not `hasDocuments`: a manifest re-imported with its manuals removed still has to
                 // reconcile what the previous import indexed, or those passages stay retrievable.
                 if VaultImporter.needsDocumentSync(manifest: report.manifest) {

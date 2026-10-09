@@ -27,12 +27,18 @@ final class LearningCandidateService {
     /// The licence's answer for team learnings. A test states its own.
     var capability: () -> FieldAssistCapabilityCheck = { FieldAssistEntitlement.shared.check(.teamLearnings) }
 
-    /// The name a candidate is filed under. Nothing in the app holds a technician's display name
-    /// yet — no setting, no licence field, no office binding carries one — so this is the device's
-    /// name, which on iOS 16 and later is the generic model name ("iPhone") unless the app holds the
-    /// user-assigned-device-name entitlement. A later phase takes it from a setting or the
-    /// organisation's enrolment; the contract only needs 1–120 plain characters.
-    var authorName: () -> String = { UIDevice.current.name }
+    /// The name a candidate is filed under: the technician's name as their team sees it
+    /// (`Config.technicianDisplayName`, Plan FP P3), else — when that is unset — the device's name,
+    /// which on iOS 16 and later is the generic model name ("iPhone") unless the app holds the
+    /// user-assigned-device-name entitlement. The contract only needs 1–120 plain characters.
+    /// Candidates already filed keep the name they were filed under.
+    var authorName: () -> String = {
+        TechnicianName.author(configured: Config.technicianDisplayName, deviceName: UIDevice.current.name)
+    }
+
+    /// Called after a candidate is filed, amended or withdrawn — the hook that queues it for the
+    /// organisation's endpoint, where one is configured (Plan FP P3). A withdrawal travels too.
+    var onChange: ((LearningCandidate) -> Void)?
 
     var clock: () -> Date = Date.init
 
@@ -122,6 +128,7 @@ final class LearningCandidateService {
         store.add(candidate)
         sessions.recordTeamLearning(.teamLearningFiled, reference: candidate.reference,
                                     sessionId: candidate.sessionId, now: filedAt)
+        onChange?(candidate)
         return .success(candidate)
     }
 
@@ -161,6 +168,7 @@ final class LearningCandidateService {
         store.update(updated)
         sessions.recordTeamLearning(.teamLearningAmended, reference: updated.reference,
                                     sessionId: updated.sessionId, now: updated.updatedAt)
+        onChange?(updated)
         return .success(updated)
     }
 
@@ -187,6 +195,7 @@ final class LearningCandidateService {
         store.update(updated)
         sessions.recordTeamLearning(.teamLearningWithdrawn, reference: updated.reference,
                                     sessionId: updated.sessionId, now: updated.updatedAt)
+        onChange?(updated)
         return .success(updated)
     }
 

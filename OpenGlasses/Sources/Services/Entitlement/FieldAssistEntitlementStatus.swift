@@ -93,6 +93,11 @@ enum FieldAssistPaywallCopy {
     static let teamLearningsReviewNotIncluded = "Not reviewed: reviewing team learnings comes with your organisation's team or enterprise licence, and the Field Assist access on this device doesn't include it."
     static let teamLearningsReviewLapsed = "Not reviewed: your Field Assist access has lapsed. Learnings already published stay in use; enter a renewal code from your administrator to review new ones."
     static let teamLearningsReviewLocked = "Not reviewed: reviewing team learnings needs the team or enterprise licence code your organisation issued."
+    /// …and when a team-learning bundle is made or a reviewer's decisions are accepted (Plan FP
+    /// P3). A retraction is accepted on any licence, so none of these is said for one.
+    static let teamLearningsBundleNotIncluded = "Not exchanged: sharing team learnings comes with your organisation's team or enterprise licence, and the Field Assist access on this device doesn't include it."
+    static let teamLearningsBundleLapsed = "Not exchanged: your Field Assist access has lapsed. Learnings already published stay in use, and a retraction can still be accepted; enter a renewal code from your administrator to share new ones."
+    static let teamLearningsBundleLocked = "Not exchanged: sharing team learnings needs the team or enterprise licence code your organisation issued."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
     /// The way out of a stored code that stopped verifying or expired: without it the locked screen
@@ -119,6 +124,7 @@ enum FieldAssistPaywallCopy {
          bundledVaultsOnly, ownVaultsLapsed, ownVaultsLocked,
          teamLearningsNotIncluded, teamLearningsLapsed, teamLearningsLocked,
          teamLearningsReviewNotIncluded, teamLearningsReviewLapsed, teamLearningsReviewLocked,
+         teamLearningsBundleNotIncluded, teamLearningsBundleLapsed, teamLearningsBundleLocked,
          renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),
          expiring(.expiring(daysRemaining: 1, threshold: 7)),

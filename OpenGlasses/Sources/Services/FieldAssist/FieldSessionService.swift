@@ -2081,7 +2081,9 @@ final class FieldSessionService: ObservableObject {
     ///
     /// The event goes into the **active** job's log when there is one, because that is where the
     /// turn that carried the words was logged; a candidate filed on an earlier job also gets the
-    /// event in its own job's log, for that job's audit, with nothing withheld there.
+    /// event in its own job's log, for that job's audit, with nothing withheld there. A status
+    /// (`.teamLearningStatus`, Plan FP P3 — sent, received, approved, merged, not taken up) is
+    /// written only to the log of the job the candidate was filed on, ended or not.
     func recordTeamLearning(_ kind: SessionLogger.Event.Kind, reference: LearningCandidateReference,
                             sessionId: String, now: Date = Date()) {
         // The reference, on the job it was filed on.
@@ -2111,10 +2113,13 @@ final class FieldSessionService: ObservableObject {
             "source_id": AnyCodable("team-learning:\(reference.candidateId):\(kind.rawValue):\(Int(now.timeIntervalSince1970))")
         ]
         if let model = reference.modelToken { payload["model_token"] = AnyCodable(model) }
+        if reference.inUse { payload["in_use"] = AnyCodable(true) }
         if let otherLogger {
             otherLogger.append(.init(timestamp: now, kind: kind, text: nil, payload: payload))
         }
         guard let session = activeSession, let logger else { return }
+        // A status is about the job it was filed on, not whatever job is open when it arrives.
+        if kind == .teamLearningStatus, session.id != sessionId { return }
         var activePayload = payload
         activePayload["equipment_scope"] = AnyCodable(session.continuityScope)
         if kind == .teamLearningFiled || kind == .teamLearningAmended {
