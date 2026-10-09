@@ -1,8 +1,11 @@
 # Plan FP — Team Learnings (what the organisation's technicians learn reaches every technician)
 
-**Status:** 📝 Drafted 2026-09-21 — nothing implemented. Two owner decisions recorded the same day: the
-reviewer is a supervisor back at base, and a learning may answer where the manual is silent so long
-as it is clearly one (open questions 1 and 4).
+**Status:** 🚧 P0 in progress 2026-10-09. Drafted 2026-09-21; two owner decisions recorded the same
+day: the reviewer is a supervisor back at base, and a learning may answer where the manual is silent
+so long as it is clearly one (open questions 1 and 4). **Three more decided 2026-10-09** (see "Where a
+learning comes from"): the completed job report is the first origin and the spoken note the second;
+the office, not the phone, mines reports for candidates, with a person approving; and an entry
+counts the jobs it was confirmed on so an answer can say "noted on three previous jobs".
 **Office contract:** when the reviewer works in Avenkin Office, the candidate, its status and the
 published set are specified in [`Contracts/team-learning.md`](../../Contracts/team-learning.md)
 (draft v1, design only, 2026-10-04). P1–P3's unsigned bundle remains the route for an organisation
@@ -17,6 +20,49 @@ fails a particular way tells whoever is standing next to them, and nobody else e
 citations; the vault export and pack routes. No new backend.
 
 ---
+
+## Where a learning comes from (decided 2026-10-09)
+
+A conversation with an appliance-repair prospect sharpened the ask. Their technicians search the
+web for fault codes and are mostly satisfied with the answers they get; the gap is **older
+appliances that show no fault code and whose manuals are hard to find**. What they wanted was the
+thing the crew's own completed jobs already contain: *on three previous jobs with these symptoms,
+this repair fixed it* — linked to those jobs and clearly marked as the crew's experience rather than
+the manufacturer's instruction, because circumstances differ. Three decisions follow.
+
+1. **The completed job report is the first origin; the spoken note is the second.** Field Assist
+   already produces the report, and a report carries the symptom, the equipment identity, the
+   readings and pages verified, and the fix — everything §1's candidate wants, with a job to point
+   back at. The `team_learning` tool stays: a technician who has worked something out should say so
+   while still standing in front of it. But the loop no longer *depends* on anyone remembering to.
+   The candidate shape in §1 and in the contract is unchanged; only its `origin` gains a case:
+   `spoken` (the tool), `report` (cut from a report by a person — Office FX20.4 today), or
+   `reportReview` (drafted by the office's review pass, below).
+2. **The office mines reports, not the phone, and a person still approves.** A review pass at
+   the office reads committed job reports and drafts candidates into the Learnings tab, grouped
+   by model and symptom, for the supervisor to tidy and approve or discard. It is the office's
+   phase (a successor to FX20 in the office repository), it is optional, it runs on the
+   organisation's own provider credentials with the office's existing rule that what leaves the
+   computer is shown first, and **nothing anywhere in this plan trains or fine-tunes a model** —
+   a drafted candidate is text in a queue until a named person approves it, exactly as a spoken
+   one is. The phone never runs this pass: it has no batch of reports to read and no reviewer to
+   hand drafts to. Consequence for open question 2: still no — a report-derived draft helps its
+   own author no more than a spoken one does.
+3. **An entry counts the jobs it was confirmed on.** An approved entry carries `sourceJobIDs`
+   (job identifiers only — never a customer, site or address) and `confirmedJobCount`; the office
+   merges a new candidate that says what an approved entry already says into that entry and
+   raises the count instead of publishing a duplicate. The citation stays
+   "Team learning · <model> · <date> · approved by <role>", and the spoken lead-in may add
+   "noted on <n> previous jobs" when the count is above one. "Resolved" is stronger than
+   "noted": it needs the job's follow-up outcome (no call-back, or a later job on the same unit),
+   which the office does not hold yet, so `confirmedJobCount` means *filed on*, and an
+   `outcomeConfirmed` marker is reserved for when it does. A learning scoped to a symptom rather
+   than a model, so a fault-code-less appliance can be matched by what it is doing, is open
+   question 7.
+
+The contract (`Contracts/team-learning.md`) gains `origin`, `sourceJobIDs?` and
+`confirmedJobCount?` on the entry as a v1 amendment when its fixtures are cut; both are optional
+so FX20.5a's provisional office code stays valid.
 
 ## Product promise
 
@@ -225,7 +271,8 @@ the reviewer instead of being silently deduplicated.
   fires and what provably does not — a customer name survives redaction and the test says so),
   `TeamLearningPromptIsolationTests` (no candidate text reaches either prompt builder).
 - **P2 — review, publish and retrieve, headless.** `LearningReview`, `LearningCorpus` ingest and
-  retract, the artefact renderer and citation name, `provenance` on the passage, the evidence-gate
+  retract, `origin`/`sourceJobIDs`/`confirmedJobCount` on the approved entry with the "noted on
+  <n> previous jobs" lead-in, the artefact renderer and citation name, `provenance` on the passage, the evidence-gate
   rule, `ModelScope` by identity, the prompt rules, `LearningSafetyCheck`. Tests:
   `TeamLearningReviewTests`, `TeamLearningRetrievalTests` (a learning alone never yields
   `.sufficient` and instead yields `.teamLearningOnly`; a learning beside a manual passage does; the
@@ -267,9 +314,9 @@ the reviewer instead of being silently deduplicated.
    and seats are recorded, not enforced, so the role is one the organisation asserts and the app
    records. Is a device-local setting enough for v1, or should a Plan CT organisation profile name
    the reviewer, so the role is at least signed by the vendor's key?
-2. **Does an unapproved candidate help its own author?** Arguably the person who wrote it should be
-   able to retrieve it on their own phone. The draft says no, on the grounds that the first thing a
-   technician would do is read it back to a customer as if it were the book.
+2. ~~Does an unapproved candidate help its own author?~~ **Decided 2026-10-09: no**, for spoken and
+   report-derived drafts alike — the first thing a technician would do is read it back to a customer
+   as if it were the book.
 3. **One corpus per vault, or one per organisation across vaults?** The namespace is keyed by vault
    id, which is simple and scoped; a crew running both a refrigeration and an IT vault would file the
    same finding twice.
@@ -281,6 +328,12 @@ the reviewer instead of being silently deduplicated.
    so a bundle can be attributed as well as read?
 6. **Retention.** Does a learning expire? A finding about a board revision superseded three years ago
    is worse than no finding, and nothing here ages anything out.
+7. **Symptom-scoped learnings.** Everything here is scoped by model identity (§5). The
+   appliance-repair case is precisely the unit whose model is unknown or whose manual is absent,
+   where the useful key is the symptom ("drum turns but no heat"). Should an entry be allowed a
+   `subject` of kind `symptom` within an equipment type, matched by the office's own vocabulary
+   rather than free text, and how is its reach bounded so a dryer finding never answers for a
+   dishwasher? Not needed for P1–P3; it changes retrieval, so it is decided before P4.
 
 Related: [F Field Assist](F-field-assist.md), [ED manual retrieval](ED-vault-manual-retrieval.md),
 [EG vault packs](EG-vault-packs.md), [EJ retrieval fidelity](EJ-manual-retrieval-fidelity.md),
