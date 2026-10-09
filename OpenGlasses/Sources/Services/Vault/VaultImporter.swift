@@ -364,6 +364,10 @@ enum VaultImporter {
     /// Fully remove an installed user vault: baseline + overlay edits + registry entry, and every
     /// reference document it ingested into `documentStore`. Serialised against import, re-index and
     /// individual manual removal for the same vault.
+    ///
+    /// Its team-learning namespace (`learning:<id>`) is forgotten too, at once — a vault that is not
+    /// installed answers nothing. The approved entries stay in `LearningEntryStore`; if the vault
+    /// comes back, `LearningReviewService.republish()` puts their documents back (Plan FP P3).
     @MainActor
     static func uninstall(id: String, documentStore: DocumentStore) async {
         await VaultOperationLock.withLock(id) {
@@ -372,8 +376,22 @@ enum VaultImporter {
             }
             // Backstop: anything in the vault's namespace the ledger lost track of.
             documentStore.clear(namespace: DocumentStore.vaultNamespace(id))
+            documentStore.clear(namespace: DocumentStore.learningNamespace(id))
             uninstall(id: id)
         }
+    }
+
+    // MARK: - Team learnings in an import folder (Plan FP P3)
+
+    /// The learnings bundle an exported vault folder carries (`learnings/team-learnings.json`), or
+    /// nil. Read, never installed: the caller hands it to `LearningBundleIntake`, which stages it
+    /// for acceptance entry by entry. Refused unread when it is over the bundle limit.
+    static func learningsBundleData(in sourceDir: URL) -> Data? {
+        let url = sourceDir.appendingPathComponent(VaultExporter.learningsDirectory, isDirectory: true)
+            .appendingPathComponent(VaultExporter.learningsFile)
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        guard size > 0, size <= LearningBundle.maximumBytes else { return nil }
+        return try? Data(contentsOf: url)
     }
 
     /// Fully remove an installed user vault: baseline + overlay edits + registry entry. Ingested

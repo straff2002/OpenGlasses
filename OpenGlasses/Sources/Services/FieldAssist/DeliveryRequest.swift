@@ -9,9 +9,9 @@ import Foundation
 ///
 /// **What travels is a `Payload`, not a `WorkRecord` (Plan FP P0).** The channels, the composer
 /// and the unattended route read only the envelope — subject, bodies, attachments, recipients —
-/// and ask the payload for the session it belongs to and the op the queue should hold. A second
-/// kind of document (FP P3's team-learning bundle) is a new case here and nothing more; a job
-/// report is the only case today, and it behaves exactly as it did.
+/// and ask the payload for the session it belongs to and the op the queue should hold. Two kinds
+/// travel: a job report, and (Plan FP P3) a team-learning bundle, whose text rides only in its JSON
+/// attachment — never in a subject, body or message bubble.
 struct DeliveryRequest: Identifiable, Equatable {
 
     /// The thing being delivered, kept exactly so the unattended route can queue what the composer
@@ -20,17 +20,23 @@ struct DeliveryRequest: Identifiable, Equatable {
         /// A job report: the record, and the stock checks it answers for — they become `sent`
         /// when it is sent, and stay `requested` when it is not.
         case workRecord(WorkRecord, partsRequestIds: [String])
+        /// A team-learning bundle (Plan FP P3): candidates on their way to the reviewer, or the
+        /// reviewer's decisions on their way back. Unsigned — see `LearningBundle`.
+        case learningBundle(LearningBundle, direction: LearningBundle.Direction)
 
-        /// The job session the delivery is audited against.
+        /// The job session the delivery is audited against. A bundle belongs to no job, so it is
+        /// filed under `LearningBundle.queueSessionID`, which no job's counts include.
         var sessionId: String {
             switch self {
             case .workRecord(let record, _): return record.sessionId
+            case .learningBundle: return LearningBundle.queueSessionID
             }
         }
 
         var jobReference: String? {
             switch self {
             case .workRecord(let record, _): return record.jobReference
+            case .learningBundle: return nil
             }
         }
 
@@ -39,14 +45,22 @@ struct DeliveryRequest: Identifiable, Equatable {
         var partsRequestIds: [String] {
             switch self {
             case .workRecord(_, let ids): return ids
+            case .learningBundle: return []
             }
         }
 
+        /// The bundle, when this is one.
+        var learningBundle: LearningBundle? {
+            if case .learningBundle(let bundle, _) = self { return bundle }
+            return nil
+        }
+
         /// What the durable queue holds when this goes by the unattended route: for a job report,
-        /// the same bytes `WorkRecord.json` produces.
+        /// the same bytes `WorkRecord.json` produces; for a bundle, the bundle's own bytes.
         func queuedOp() -> QueuedOp {
             switch self {
             case .workRecord(let record, _): return QueuedOp.make(workRecord: record)
+            case .learningBundle(let bundle, _): return QueuedOp.make(learningBundle: bundle)
             }
         }
     }
@@ -170,11 +184,12 @@ struct DeliveryRequest: Identifiable, Equatable {
                   clipPlan: clipPlan, clipItems: clipItems, transcript: transcript)
     }
 
-    /// The job report being delivered. While a job report is the only payload this is total; the
-    /// phase that adds a second case makes it optional, and only report-specific code reads it.
-    var record: WorkRecord {
+    /// The job report being delivered, or nil for a team-learning bundle. Only report-specific
+    /// code reads it.
+    var record: WorkRecord? {
         switch payload {
         case .workRecord(let record, _): return record
+        case .learningBundle: return nil
         }
     }
 
@@ -208,8 +223,23 @@ struct DeliveryRequest: Identifiable, Equatable {
             transcript: transcript)
     }
 
+    /// Build the request for a team-learning bundle (Plan FP P3). The subject, body and short
+    /// body are composed from counts alone — **no candidate or entry text**, which travels in the
+    /// one JSON attachment and nowhere else, so a message preview, a notification or a mail
+    /// summary never shows a finding. A channel that cannot carry a file carries none, and the
+    /// confirmation says the bundle needs one that can.
+    static func make(learningBundle bundle: LearningBundle, channel: DeliveryChannel, recipients: [String],
+                     attachment: Attachment) -> DeliveryRequest {
+        let summary = LearningBundleSummary(bundle)
+        return DeliveryRequest(
+            channel: channel, recipients: recipients, subject: summary.subject, body: summary.body,
+            shortBody: summary.shortBody, attachments: channel.carriesAttachments ? [attachment] : [],
+            payload: .learningBundle(bundle, direction: bundle.direction))
+    }
+
     /// What the technician is told is about to happen, before anybody taps anything.
     var confirmation: String {
+        if case .learningBundle(let bundle, _) = payload { return bundleConfirmation(bundle) }
         var line = "Job report ready to go by \(channel.spokenName)"
         if !recipients.isEmpty { line += " to \(recipients.joined(separator: ", "))" }
         line += "."
@@ -242,6 +272,59 @@ struct DeliveryRequest: Identifiable, Equatable {
             line += " Check it on the phone and tap Send."
         }
         return line
+    }
+}
+
+extension DeliveryRequest {
+
+    /// The confirmation for a bundle: what it carries, by count, and how it leaves.
+    fileprivate func bundleConfirmation(_ bundle: LearningBundle) -> String {
+        var line = LearningBundleSummary(bundle).subject + " ready to go by \(channel.spokenName)"
+        if !recipients.isEmpty { line += " to \(recipients.joined(separator: ", "))" }
+        line += "."
+        if attachments.isEmpty {
+            line += " \(channel.label) can't carry a file, and the learnings travel only in the attached file — "
+                + "send it by email, the share sheet or the office endpoint instead."
+        } else {
+            line += " The learnings are in the attached file, not in the message."
+        }
+        line += channel == .endpoint
+            ? " It goes to the office endpoint as soon as there is a connection."
+            : " Check it on the phone and tap Send."
+        return line
+    }
+}
+
+/// The words a bundle's envelope is composed from (Plan FP P3): counts, never text.
+struct LearningBundleSummary: Equatable {
+    let subject: String
+    let body: String
+    let shortBody: String
+
+    init(_ bundle: LearningBundle) {
+        func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
+        let from = bundle.organisationLabel.map { " — \($0)" } ?? ""
+        switch bundle.direction {
+        case .candidates:
+            let count = bundle.candidates.count
+            let withdrawn = bundle.candidates.filter(\.withdrawn).count
+            subject = "Team learnings for review — \(plural(count, "finding", "findings"))\(from)"
+            var lines = ["\(plural(count, "team-learning finding", "team-learning findings")) for review"
+                         + (withdrawn > 0 ? ", \(withdrawn) of them withdrawn by their author" : "") + "."]
+            lines.append("Open the attached file with Avenkin on the reviewer's device. Nothing in it is used until it is approved there.")
+            body = lines.joined(separator: "\n\n")
+            shortBody = "\(plural(count, "team-learning finding", "team-learning findings")) for review. Open the attached file with Avenkin."
+        case .decisions:
+            let entries = bundle.entries.count, retracted = bundle.retracted.count, statuses = bundle.statuses.count
+            var parts = [plural(entries, "approved learning", "approved learnings")]
+            if retracted > 0 { parts.append(plural(retracted, "retraction", "retractions")) }
+            if statuses > 0 { parts.append(plural(statuses, "review decision", "review decisions")) }
+            subject = "Team learnings — \(parts.joined(separator: ", "))\(from)"
+            body = ["Team learnings from the reviewer: \(parts.joined(separator: ", ")).",
+                    "Open the attached file with Avenkin. Each learning is shown in full and used only once you accept it."]
+                .joined(separator: "\n\n")
+            shortBody = "Team learnings: \(parts.joined(separator: ", ")). Open the attached file with Avenkin."
+        }
     }
 }
 

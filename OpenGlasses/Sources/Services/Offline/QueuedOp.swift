@@ -17,6 +17,11 @@ enum OpKind: String, Codable {
     /// too. The payload carries the subject's identity and nothing about them — the point of the
     /// op is that the copy must go, not what the copy said.
     case subjectErasure
+    /// A team-learning bundle (Plan FP P3): candidates on their way to the reviewer, or decisions on
+    /// their way back — the direction is in the payload, which is the bundle's own bytes. Posted to
+    /// an organisation's endpoint when one is configured; the office route is the signed contract
+    /// and does not carry this.
+    case teamLearning
 }
 
 /// Where an operation is in its lifecycle.
@@ -74,6 +79,12 @@ struct QueuedOp: Identifiable, Codable, Equatable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return QueuedOp(kind: .partsRequest, sessionId: sessionId,
                         payload: (try? encoder.encode(partsRequest)) ?? Data())
+    }
+
+    /// A team-learning bundle, queued as the exact bytes it travels as by any other route, so what
+    /// an endpoint receives and what a reviewer would open from an email are the same file.
+    static func make(learningBundle bundle: LearningBundle) -> QueuedOp {
+        QueuedOp(kind: .teamLearning, sessionId: LearningBundle.queueSessionID, payload: bundle.encoded())
     }
 
     /// Decode the payload back to a JSON dictionary (empty if it isn't one).

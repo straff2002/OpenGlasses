@@ -34,6 +34,10 @@ final class LearningCandidateService {
     /// organisation's enrolment; the contract only needs 1–120 plain characters.
     var authorName: () -> String = { UIDevice.current.name }
 
+    /// Called after a candidate is filed, amended or withdrawn — the hook that queues it for the
+    /// organisation's endpoint, where one is configured (Plan FP P3). A withdrawal travels too.
+    var onChange: ((LearningCandidate) -> Void)?
+
     var clock: () -> Date = Date.init
 
     /// Now, to the whole second: the contract carries Unix seconds, and the store's ISO-8601 dates
@@ -122,6 +126,7 @@ final class LearningCandidateService {
         store.add(candidate)
         sessions.recordTeamLearning(.teamLearningFiled, reference: candidate.reference,
                                     sessionId: candidate.sessionId, now: filedAt)
+        onChange?(candidate)
         return .success(candidate)
     }
 
@@ -161,6 +166,7 @@ final class LearningCandidateService {
         store.update(updated)
         sessions.recordTeamLearning(.teamLearningAmended, reference: updated.reference,
                                     sessionId: updated.sessionId, now: updated.updatedAt)
+        onChange?(updated)
         return .success(updated)
     }
 
@@ -187,6 +193,7 @@ final class LearningCandidateService {
         store.update(updated)
         sessions.recordTeamLearning(.teamLearningWithdrawn, reference: updated.reference,
                                     sessionId: updated.sessionId, now: updated.updatedAt)
+        onChange?(updated)
         return .success(updated)
     }
 

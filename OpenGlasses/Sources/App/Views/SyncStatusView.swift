@@ -130,6 +130,7 @@ struct SyncStatusView: View {
         case .workRecord:    return "Work record"
         case .partsRequest:  return "Parts request"
         case .subjectErasure: return "Deletion request"
+        case .teamLearning:  return "Team learnings"
         }
     }
 

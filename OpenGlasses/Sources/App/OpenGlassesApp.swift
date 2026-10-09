@@ -426,6 +426,13 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.orgEnrolment.openOfficePackageFile(at: url) }
                         return
                     }
+                    // A team-learning bundle (Plan FP P3), opened as a copy like a job file. Any
+                    // JSON file reaches here; the intake refuses whatever is not a bundle, by name,
+                    // and applies nothing from one that is until it is accepted.
+                    if LearningBundleIntake.isCandidateFile(url) {
+                        Task { @MainActor in appState.openTeamLearningFile(url) }
+                        return
+                    }
 
                     // Handle shortcut x-callback-url results
                     if DeepLinkScheme.isApp(url),
@@ -1098,6 +1105,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// without the office transport, sends as it did before.
     private func makeSyncSink() -> SyncSink {
         let endpoint = EndpointSyncSink(fallback: LocalSyncSink())
+        // A team-learning bundle the endpoint accepted has left the phone: its candidates are
+        // `sent` (Plan FP P3). Only this sink's own deliveries count — never the local fallback's.
+        endpoint.onDelivered = { op in LearningBundleOutbox.shared.delivered(op) }
         guard let reports = officeReports, let evidence = officeReportEvidence else { return endpoint }
         return OfficeReportSink(seams: .init(
             fallback: endpoint,
@@ -2868,6 +2878,15 @@ class AppState: ObservableObject, AppStateProtocol {
         // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
         FieldSessionService.shared.documentStore = documentStore
         FieldSessionService.shared.learningEntries = LearningEntryStore.shared
+        // Team learnings publish into the same store (Plan FP P2/P3): approvals on a reviewer
+        // device, and decisions accepted from a bundle on any phone.
+        LearningReviewService.shared.documentStore = documentStore
+        LearningBundleIntake.shared.documentStore = documentStore
+        // Filing, amending or withdrawing a finding queues the phone's candidates for the
+        // organisation's endpoint, when it has one and it is allowed (FP §2: sending is part of
+        // capture). Without an endpoint nothing is queued: the composer and share sheet are the
+        // route, and `sent` is set only when a bundle really leaves.
+        LearningCandidateService.shared.onChange = { [weak self] _ in self?.queueTeamLearningCandidates() }
         // Finish any manual removal a previous run was interrupted part-way through. Ordering is
         // not what makes this safe — a pending removal's manual is already excluded from retrieval
         // and from being opened, whether or not this has run yet — but leaving one unfinished would
@@ -4479,15 +4498,63 @@ class AppState: ObservableObject, AppStateProtocol {
         case .endpoint:
             // Nobody taps anything: the record goes into the durable queue and the endpoint sink
             // delivers it. "Sent" is what the queue says, not what this method hopes.
-            offlineQueue.enqueue(request.payload.queuedOp())
+            let op = request.payload.queuedOp()
+            offlineQueue.enqueue(op)
             Task { [weak self] in
                 guard let self else { return }
                 await self.syncEngine.flush()
-                let stillQueued = QueuedRecordRows.outstandingCount(
-                    in: self.offlineQueue.all(limit: 200), sessionId: request.sessionId) > 0
+                let ops = self.offlineQueue.all(limit: 200)
+                // A bundle belongs to no job, so it is followed by its own op, not a job's count.
+                let stillQueued = request.payload.learningBundle != nil
+                    ? ops.contains { $0.id == op.id && QueuedRecordRows.outstandingStates.contains($0.state) }
+                    : QueuedRecordRows.outstandingCount(in: ops, sessionId: request.sessionId) > 0
                 self.finishDelivery(request, outcome: stillQueued ? .handedOff : .sent)
             }
         }
+    }
+
+    // MARK: - Team-learning bundles (Plan FP P3)
+
+    /// Queue this phone's candidates for the organisation's endpoint, replacing any candidates
+    /// bundle still waiting there (each bundle carries every candidate not yet answered, so the
+    /// newest is all that needs to go). Does nothing without an allowed endpoint, under HIPAA
+    /// mode, or without the capability.
+    func queueTeamLearningCandidates() {
+        let policy = DeliveryPolicy(settings: Config.deliverySettings)
+        guard Config.deliverySettings.hasEndpoint, policy.decide(channel: .endpoint).isAllowed,
+              case .success(let bundle) = LearningBundleOutbox.shared.composeCandidates(),
+              case .success(let op) = LearningBundleOutbox.shared.queuedOp(for: bundle) else { return }
+        for waiting in offlineQueue.all(limit: 500)
+        where waiting.kind == .teamLearning && waiting.state == .pending
+            && waiting.payloadJSON["direction"] as? String == LearningBundle.Direction.candidates.rawValue {
+            offlineQueue.delete(id: waiting.id)
+        }
+        offlineQueue.enqueue(op)
+        Task { [weak self] in _ = await self?.syncEngine.flush() }
+    }
+
+    /// Stage a team-learning bundle on a channel — the composer, share sheet or endpoint the
+    /// delivery policy allows — exactly as a job report is staged. Returns why not, or nil once it
+    /// is in front of the person. No screen calls this yet; P4's review queue will.
+    func presentTeamLearningBundle(_ bundle: LearningBundle, channel: DeliveryChannel) -> String? {
+        let policy = DeliveryPolicy(settings: Config.deliverySettings)
+        let recipients: [String]
+        switch policy.decide(channel: channel) {
+        case .refused(let reason): return reason
+        case .allowed(let allowed): recipients = allowed
+        }
+        switch LearningBundleOutbox.shared.deliveryRequest(for: bundle, channel: channel, recipients: recipients) {
+        case .failure(let refusal): return refusal.message
+        case .success(let request):
+            presentDelivery(request)
+            return nil
+        }
+    }
+
+    /// A team-learning file opened from Mail, Messages, AirDrop or Files.
+    func openTeamLearningFile(_ url: URL) {
+        LearningBundleIntake.shared.open(url)
+        if let line = LearningBundleIntake.shared.lastMessage { addDebugEvent(line) }
     }
 
     /// A composer closed, a share finished, or a hand-off returned. One place, so the record's own
@@ -4495,6 +4562,15 @@ class AppState: ObservableObject, AppStateProtocol {
     func finishDelivery(_ request: DeliveryRequest, outcome: DeliveryOutcome) {
         deliveryComposerRequest = nil
         deliveryShareItem = nil
+        // A team-learning bundle belongs to no job: its candidates follow the outcome, and no
+        // job's log or "report not sent" flag does (Plan FP P3). Only a confirmed send is `sent`.
+        if request.payload.learningBundle != nil {
+            LearningBundleOutbox.shared.completed(request, outcome: outcome)
+            addDebugEvent(outcome.isSent
+                ? "Team learnings sent by \(request.channel.label)."
+                : "Team learnings not confirmed sent — they stay waiting on this phone.")
+            return
+        }
         FieldSessionService.shared.completeDelivery(request, outcome: outcome)
         // A staged send from the car ends here too, and its entry follows the same rule the record
         // does: only a confirmed send moves it, and a cancelled one stays queued (Plan FO P3b).
