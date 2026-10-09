@@ -8,7 +8,15 @@ change. **P1 ✅ shipped 2026-10-09** — `team_learning` (note / list / amend /
 job, the machine, the running task and its evidence, redacted at capture, gated on the new
 `.teamLearnings` capability and withheld under HIPAA; the turn that filed it is withheld from every
 prompt and replaced by a fixed "filed, awaiting review" line, and the job record carries the
-candidate's existence, never its words. P2–P5 unbuilt; P2 next. Drafted 2026-09-21; two owner decisions recorded the same
+candidate's existence, never its words. **P2 ✅ shipped 2026-10-10** — review, publish and retrieve,
+headless: `LearningReview` (a pure state machine) turns a candidate into a `LearningEntry` in the
+contract's §5 shape (plus `origin`/`sourceJobIDs`/`confirmedJobCount`) kept in its own
+`LearningEntryStore`; `LearningCorpus` publishes one single-chunk document per entry per vault under
+`learning:<vaultId>`; one retriever factory on `FieldSessionService` serves all three retrieval sites
+and tags every passage `.manual` or `.teamLearning`; a learning is never `.sufficient` alone — the
+named `.teamLearningOnly` outcome opens with a lead-in the app composes — and the disclosure is held
+in four places (lead-in, citation, badge flag, job log and record). The reviewer device is a
+device-local setting for v1 (open question 1). P3–P5 unbuilt; P3 next. Drafted 2026-09-21; two owner decisions recorded the same
 day: the reviewer is a supervisor back at base, and a learning may answer where the manual is silent
 so long as it is clearly one (open questions 1 and 4). **Three more decided 2026-10-09** (see "Where a
 learning comes from"): the completed job report is the first origin and the spoken note the second;
@@ -233,7 +241,12 @@ approval per entry. Plan R's posture applies: it is data, not instruction.
 `documentId` = the entry id and `name` = `"Team learning · <model token> · <approved date> · approved
 by <role>"`. An entry is a few hundred characters, so `DocumentChunker`'s 700-character target makes
 it one chunk, and `VaultRetriever.Passage.citation` — no page, no section — renders exactly that
-name. The citation composer needs no change.
+name. The citation composer needs no change. *(Corrected in P2: `documents.id` is the table's
+primary key, so one id cannot sit in two vaults' namespaces and an entry with empty `vaultIDs` is in
+all of them; the document id is `<entryID>@<vaultId>`, the entry id read back as its first 32
+characters. The chunker is bypassed — `DocumentStore.ingestWhole` writes exactly one chunk, so a
+long finding is never split — and the document's text is a small artefact: `Model: <token>` or
+`Practice: <topic>`, then the symptom, finding and fix.)*
 
 The namespace earns its keep three ways: it sits outside the manifest, the baseline and the ledger,
 so a pack update, a vault re-import and an FN manual removal all leave it alone; retraction is one
@@ -243,11 +256,16 @@ evidence anywhere downstream. Three sites build a `VaultRetriever` with their ow
 `TokenSearch` closures — `FieldSessionService.manualRetriever(store:)`, `ManualLookupTool` and
 `EquipmentLookupTool.manualFallback` — so P2 gives them one shared factory on
 `FieldSessionService` that queries and merges both namespaces, and `VaultRetriever` itself is
-untouched *(corrected in P0)*.
+untouched *(corrected in P0)*. *(Corrected in P2: "untouched" was one step too far. The factory
+tags each `DocumentStore.Passage` with its `source` and, for a learning, its entry's model token,
+and the retriever carries `source` onto its own passage and scores a learning's model penalty by
+that token instead of by its text — scoring by identity cannot happen anywhere else, because the
+penalty is applied inside `retrieve`.)*
 
 **Supersession borrows the shape Plan EN used for facts that change.** An entry is stamped
-(`supersededAt`/`supersededBy`, or `retractedAt` + reason) and kept in `LearningCandidateStore` as
-history, while its document leaves the retrieval namespace: the organisation keeps the record of what
+(`supersededAt`/`supersededBy`, or `retractedAt` + reason) and kept in `LearningEntryStore` *(corrected
+in P2: approved entries have their own store, registered as `learningEntries`; candidates stay in
+theirs)* as history, while its document leaves the retrieval namespace: the organisation keeps the record of what
 it once believed — an auditor's question — without the assistant still saying it. Honest limit: a
 phone that never receives the retracting bundle keeps answering from the old entry, exactly as it
 would with a stale vault, and the review screen says so.
@@ -287,12 +305,17 @@ the reviewer instead of being silently deduplicated.
   `prompt_rules`, plus a deterministic `LearningSafetyCheck` at review time that *surfaces* — never
   auto-rejects — a candidate colliding with the vault's safety core file, because "the manual says X
   but on this unit…" is precisely the knowledge worth capturing. Publishing one needs a second
-  confirmation.
+  confirmation. *(P2: the rule is `VaultPromptBuilder.teamLearningRule`, added to the `RULES:` list
+  only when the vault has published learnings, so a vault without them reads exactly as before; the
+  safety core is every core file named for safety, the rule the prompt builder already uses.)*
 - **Equipment scoping is exact, not textual.** An entry carries a `modelToken` resolved through
   `VaultModelIndex`, so `ModelScope` scores it by identity rather than by scanning prose; an entry
   filed against a model the vault does not know is flagged at review rather than published blind.
 - **Gating and erasure.** The team-learning capability at capture, review, publish and bundle import;
   already-published learnings stay *readable* on a lapsed licence, following Plan FN's decision 5.
+  *(P2: supersession and retraction are not gated — taking an answer out of service is always
+  allowed, as P1's withdraw is — and HIPAA mode refuses review and publish and leaves the corpus
+  unqueried.)*
   Nothing here needs `agentModeEnabled` until P5's endpoint/BL auto-publish, gated at the service
   layer. Both the candidate store and the corpus namespace join the `SubjectErasureCoordinator` walk.
 
@@ -577,6 +600,80 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
   work-record line all present on a learning-only answer), a review state machine that refuses
   author-as-approver off a reviewer device,
   `TeamLearningSupersessionTests` (stamped and kept, gone from the namespace, replay idempotent).
+  ✅ 2026-10-10. **What shipped** (`Services/FieldAssist/TeamLearning/`):
+  - *The entry.* `LearningEntry` carries the contract's §5 names — `entryID`, `subject` (`{kind: "model",
+    modelToken, manufacturer?, equipmentType?}` or `{kind: "practice", topic}`), `vaultIDs` (empty =
+    every vault), `finding`/`symptom`/`fix`, `approvedAt` (whole seconds), `approvedByRole` (1–80),
+    `authorIsApprover`, `contradictsSafetyNote`, `supersedes`, `candidateID` — and the amendment's
+    `origin`, `sourceJobIDs`, `confirmedJobCount`; beside them, as phone-side history only, the
+    approver's name, the text as captured when it was edited, and the supersession and retraction
+    stamps. `TeamLearningCitation` composes the §7.1 name byte for byte, the date in UTC.
+  - *Review.* `LearningReview` is pure: `candidate → approved | editedAndApproved | rejected(reason) |
+    merged(into:)`, `approved → superseded(by:) | retracted(reason:)`, everything else refused by name,
+    and the transition that reached a final state replayed returns it unchanged. Approval runs the
+    contract's text rules over the text as approved, records name, role and time, keeps both texts
+    when they differ, defaults the subject to the resolved model (then the model as spoken; a
+    candidate with neither needs one named) and the scope to the vault it was filed in.
+    `LearningReviewService` is the thin layer over the stores and the corpus.
+  - *Reviewer device (open question 1, decided for v1).* `Config.teamLearningReviewerDevice`, a
+    device-local Bool, off by default, declared as `SettingKey.teamLearningReviewerDevice` — a ceiling
+    an organisation profile may pin **off** and lock. `LearningReview` refuses an approval (or a merge)
+    whose approver is the candidate's author, by display name folded for case and spacing, unless the
+    device is a reviewer device; when it allows it, `authorIsApprover` is true. No screen sets it; P4
+    shows the queue only there.
+  - *Merge (decision 3).* `merge(candidate, into: entryID)` adds the candidate's job to `sourceJobIDs`
+    and raises `confirmedJobCount` — a job already counted adds nothing — and creates no entry; the
+    citation and the corpus document do not change, only the lead-in's count. A merged-into entry
+    must be live. `mergeSuggestions` offers live entries with the same subject by identity and the
+    same finding once case, diacritics and spacing are folded; whether they say the same is the
+    reviewer's call.
+  - *Safety.* `LearningSafetyCheck` matches the approved text's words against the `##` headings of
+    every core file named for safety (less heading words that name no hazard) and a fixed hazard list
+    (lockout, bypass, jumper, energised, gas, rollout, refrigerant, …). A collision is surfaced with the
+    words and files; approving it needs `confirmsSafetyDeparture`, recorded as
+    `contradictsSafetyNote: true`. **Its limit:** it is vocabulary, not meaning — a paraphrase that
+    avoids every listed word passes, and a harmless mention ("checked the gas pressure") is flagged.
+    Both errors land in front of the reviewer, which is where the check sends everything.
+  - *Unknown model (contract §7.2).* `LearningCorpus.placement` publishes an entry only to vaults whose
+    `VaultModelIndex` knows its token and reports the rest as `unknownModel`; `placementPreview` shows
+    the flag before approval. A practice entry has no model to know.
+  - *The corpus.* `DocumentStore.learningNamespace(_:)`, `learningNamespacePrefix` and
+    `isLearningNamespace(_:)` sit beside the vault ones; `ingestWhole` writes one chunk under a chosen
+    id. `LearningCorpus` publishes, withdraws and reconciles (the contract's whole-set replace, which P3
+    calls). `DocumentsView` lists `personalDocuments()`; `ReadingStatsView` and `StudyService` read
+    `listExcludingTeamLearnings()`. The namespace is outside the manifest, baseline, ledger and
+    `VaultManualRemoval`, whose availability check never gates a learning; a re-import, a pack update
+    and removing every manual leave it untouched (tested). Leaving the organisation clears the entries
+    and every `learning:` namespace.
+  - *Retrieval.* `FieldSessionService.makeRetriever(store:documentStore:documentIds:namespaces:)` is
+    the one factory; `retrievalNamespaces(vaultId:)` lists `vault:<id>` (`.manual`) then
+    `learning:<id>` (`.teamLearning`) — the list is the parameter a later corpus joins — and HIPAA mode
+    drops the second. A `documentIds` filter (a manual named by title) reads the manuals alone. A vault
+    with learnings and no manuals is searchable. `RetrievalEvidencePolicy.decide` returns `.sufficient`
+    only with a manual passage among the evidence (and keeps one when learnings fill the limit), and
+    `.teamLearningOnly` when only learnings clear. `ModelScope.penalty(forSubjectToken:)` scores a
+    learning by identity (trimmed, case-folded, any spelling of the active model); a practice entry is
+    never penalised. The `MANUAL PASSAGES` block labels a learning `TEAM LEARNING (not the manual)`; a
+    learning-only block tells the model to open with the exact lead-in.
+  - *Disclosure, in four places* (`TeamLearningDisclosure`). (1) The lead-in — "The manual doesn't
+    cover this. Your crew's own finding[, noted on <n> previous jobs]:" — is handed to the model and,
+    on the Direct path, prepended to the reply by `LLMService` exactly once per turn. (2) The citation
+    is the §7.1 name; `CitationLineParser` reads it whole as `Citation.Kind.teamLearning`, which opens
+    nothing yet. (3) `FieldSessionService.answerEvidence` (`basis`, `teamLearningBadge`) and
+    `Citation.isTeamLearning` are the badge flags; the visible badge is P4's. (4) A learning-alone
+    answer writes a `team_learning_answered` event (entry ids and roles, no text) and a
+    `TeamLearningAnswer` on the session and the `WorkRecord` (`team_learning_answers`), once per turn;
+    a customer-audience export drops it and every team-learning citation, and no summary line carries
+    it.
+  - *Store and gates.* `LearningEntryStore` (`team-learning-entries.json`) is registered as
+    `learningEntries` (third-party linkage, complete protection, backup-excluded, history kept until
+    erased), walked by the subject erasure and wired at both `Stores` constructions. Review and publish
+    ask `.teamLearnings` (the review copy is `FieldAssistPaywallCopy.teamLearningsReview*`) and refuse
+    under HIPAA; supersession and retraction are ungated; retrieval asks nothing.
+  - *Honest limits.* On the live modes the lead-in is an instruction to the model, not a prepend: the
+    app does not hold that reply. On the Direct path a streamed reply shows the tokens before the
+    lead-in is put in front of the final text. A reviewer device can approve only candidates that
+    are on it until P3 brings bundles in.
 - **P3 — bundle exchange, headless.** `LearningBundle` codec, structural validation of untrusted
   input, `LearningBundleMerge`, `QueuedOp.teamLearning` with both directions (candidates in to the
   reviewer, decisions and approved entries out), the filed / sent / approved / not-taken-up status
@@ -606,11 +703,10 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
 
 ## Open questions for the owner
 
-1. **How is the reviewer role asserted?** *Who* is decided (2026-09-21): a supervisor or similar back
-   at base — see §2. What remains is how a device comes to be a reviewer device. There is no server
-   and seats are recorded, not enforced, so the role is one the organisation asserts and the app
-   records. Is a device-local setting enough for v1, or should a Plan CT organisation profile name
-   the reviewer, so the role is at least signed by the vendor's key?
+1. ~~How is the reviewer role asserted?~~ **Decided for v1 (2026-10-10, P2): a device-local setting**,
+   `Config.teamLearningReviewerDevice`, off by default, declared in `SettingKey` so an organisation
+   profile can already pin it off and lock it. Whether a Plan CT profile should *name* the reviewer
+   (pin it on, signed by the vendor's key) stays open for later; nothing in P2–P3 depends on it.
 2. ~~Does an unapproved candidate help its own author?~~ **Decided 2026-10-09: no**, for spoken and
    report-derived drafts alike — the first thing a technician would do is read it back to a customer
    as if it were the book.
