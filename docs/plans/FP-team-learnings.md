@@ -1,6 +1,9 @@
 # Plan FP — Team Learnings (what the organisation's technicians learn reaches every technician)
 
-**Status:** 🚧 P0 in progress 2026-10-09. Drafted 2026-09-21; two owner decisions recorded the same
+**Status:** 🚧 **P0 ✅ shipped 2026-10-09** — the inventory below (five corrections to this plan),
+and `DeliveryRequest` now carries a `Payload` enum whose one case is `.workRecord(WorkRecord,
+partsRequestIds:)`, so P3's bundle is a new case rather than a rewrite of the channels; no behaviour
+change. P1–P5 unbuilt; P1 next. Drafted 2026-09-21; two owner decisions recorded the same
 day: the reviewer is a supervisor back at base, and a learning may answer where the manual is silent
 so long as it is clearly one (open questions 1 and 4). **Three more decided 2026-10-09** (see "Where a
 learning comes from"): the completed job report is the first origin and the spoken note the second;
@@ -92,15 +95,19 @@ finding, never mixed up with the manufacturer's book, and never allowed to outra
   before the model sees anything, and `ModelScope` penalises a passage naming a model the session is
   not working on (EL).
 - **A session already knows what evidence looks like.** `FieldSession.Evidence` carries `readings`,
-  `photos`, `citationsOpened`, `pagesVerified`; `FieldSession.Task` carries origin, status and its
-  own `Evidence`; `EquipmentIdentity` carries `modelToken`, `heading`, `file`, `source`, and a
-  `nameplateText` kept for audit and deliberately never put in a prompt. That last precedent is the
+  `photos`, `citationsOpened`, `pagesVerified` and (since GB P1) `pagesShown`; `FieldSession.Task`
+  carries origin, status and its own `Evidence` — both declared in `WorkTask.swift`;
+  `EquipmentIdentity` carries `modelToken`, `heading`, `file`, `source`, `recognisedAt`,
+  `statedModel`, `vaultMatch`, and a `nameplateText` kept for audit and deliberately never put in a
+  prompt. *(Corrected in P0.)* That last precedent is the
   one this plan needs most.
 - **Delivery without anybody's server ships, and it is `WorkRecord`-shaped.** `DeliveryChannel`
   (email / messages / whatsapp / telegram / share sheet / endpoint), `DeliveryPolicy`,
-  `ReportComposerAvailability`, `DeliveryOutcome` all work — but `DeliveryRequest` holds
-  `let record: WorkRecord`, so it is not a generic envelope. `EndpointSyncSink` is real and wired
-  (`SyncEngine(queue:sink: EndpointSyncSink(fallback: LocalSyncSink()))`), posting
+  `ReportComposerAvailability`, `DeliveryOutcome` all work. `DeliveryRequest` held
+  `let record: WorkRecord`; since P0 it holds a `Payload` (one case, `.workRecord`), so a second
+  document kind is one new case. `EndpointSyncSink` is real and wired — `AppState.makeSyncSink()`
+  builds `OfficeReportSink(fallback: EndpointSyncSink(fallback: LocalSyncSink()))` when the office
+  transport is present, the endpoint sink alone otherwise *(corrected in P0)* — posting
   `QueuedOp.workRecord`/`.partsRequest` to an organisation's own HTTP endpoint with an
   `Idempotency-Key`; with no endpoint configured `LocalSyncSink` calls every op delivered. "No
   backend" is the default, not an absolute. The peer sink Plan T names waits on Plan BL, unstarted.
@@ -114,9 +121,12 @@ finding, never mixed up with the manufacturer's book, and never allowed to outra
   PII patterns — an email address and a dash-grouped IRD number. It will not remove a customer's name
   or street address. `Config.hipaaDisabledTools` withholds `send_via`, `send_message` and three
   others from `NativeToolRegistry.tool(named:)` under `Config.hipaaMode`.
-- **Tiering is ready and unenforced.** `FieldAssistEntitlement.shared.isGranted(atLeast: .team)`
-  gates the document tier, custom vaults and `SessionExporter`; `check(atLeast:)` returns the reason
-  a paywall needs. Seats are recorded, never enforced — there is no server to enforce them against.
+- **Tiering is ready and unenforced.** Gates ask a capability, not a tier (Plan FS):
+  `FieldAssistEntitlement.shared.has(_:)` / `check(_:)` over `FieldAssistCapability`.
+  `SessionExporter` asks `.auditedExport`; the document tier and custom vaults ask `.ownVaults`;
+  `check(_:)` returns the reason a paywall needs. `check(atLeast:)` only describes the licence, and
+  `isGranted(atLeast:)` does not exist *(corrected in P0)*. Seats are recorded, never enforced —
+  there is no server to enforce them against.
 
 ## The loop
 
@@ -140,8 +150,9 @@ the team"*. `LearningCandidate` (`Codable`): id, `sessionId`, `jobReference`, th
   not a privacy control: it catches an email address and an IRD number and nothing else, so the tool
   also speaks the standing rule ("no customer names or addresses") and review is where a name
   actually gets caught.
-- The tool self-gates on `Config.fieldAssistActive` at execute time like its siblings; the **tier**
-  check sits in the service layer, where `SessionExporter` and `VaultImporter` put theirs.
+- The tool self-gates on `Config.fieldAssistActive` at execute time like its siblings; the
+  **entitlement** check — a new `FieldAssistCapability` case granted by team and enterprise
+  licences — sits in the service layer, where `SessionExporter` and `VaultImporter` put theirs.
   `team_learning` joins `Config.hipaaDisabledTools` — a clinical site's "learning" is a patient note
   wearing a different hat.
 
@@ -204,9 +215,11 @@ The namespace earns its keep three ways: it sits outside the manifest, the basel
 so a pack update, a vault re-import and an FN manual removal all leave it alone; retraction is one
 `DocumentStore.forget(documentId:inNamespace:)` rather than a manifest edit against protected pack
 content; and **the namespace is the provenance**, so a team learning cannot be mistaken for OEM
-evidence anywhere downstream. `FieldSessionService` builds the retriever's `QueryFunction` /
-`TokenSearch` closures, so both namespaces are queried and merged there and `VaultRetriever` itself
-is untouched.
+evidence anywhere downstream. Three sites build a `VaultRetriever` with their own `QueryFunction` /
+`TokenSearch` closures — `FieldSessionService.manualRetriever(store:)`, `ManualLookupTool` and
+`EquipmentLookupTool.manualFallback` — so P2 gives them one shared factory on
+`FieldSessionService` that queries and merges both namespaces, and `VaultRetriever` itself is
+untouched *(corrected in P0)*.
 
 **Supersession borrows the shape Plan EN used for facts that change.** An entry is stamped
 (`supersededAt`/`supersededBy`, or `retractedAt` + reason) and kept in `LearningCandidateStore` as
@@ -232,7 +245,8 @@ the reviewer instead of being silently deduplicated.
 ### 5 · Trust rules at answer time
 
 - **Two provenances, never one heap.** `VaultRetriever.Passage` gains
-  `provenance: .manual | .teamLearning`, set from the namespace by the caller; the prompt block
+  `source: .manual | .teamLearning`, set from the namespace by the caller (not `provenance`: that
+  name is taken by the recognised-from-scan closure — corrected in P0); the prompt block
   labels learnings and the spoken answer names them ("your crew noted, not in the manual").
 - **A learning may answer where the manual is silent — as long as it is clear that it is one
   (decided 2026-09-21).** `RetrievalEvidencePolicy.decide` may return `.sufficient` on a
@@ -253,14 +267,214 @@ the reviewer instead of being silently deduplicated.
 - **Equipment scoping is exact, not textual.** An entry carries a `modelToken` resolved through
   `VaultModelIndex`, so `ModelScope` scores it by identity rather than by scanning prose; an entry
   filed against a model the vault does not know is flagged at review rather than published blind.
-- **Gating and erasure.** `isGranted(atLeast: .team)` at capture, review, publish and bundle import;
+- **Gating and erasure.** The team-learning capability at capture, review, publish and bundle import;
   already-published learnings stay *readable* on a lapsed licence, following Plan FN's decision 5.
   Nothing here needs `agentModeEnabled` until P5's endpoint/BL auto-publish, gated at the service
   layer. Both the candidate store and the corpus namespace join the `SubjectErasureCoordinator` walk.
 
+## P0 inventory (2026-10-09)
+
+Read off `main` at build 480. Every name below was opened, not recalled. Where it contradicts
+"Verified starting point" or §1–§5, the earlier text has been corrected in place and the
+correction is listed at the end of this section.
+
+### Prompt context a Field Assist turn can see
+
+- **`FieldSessionService.promptContext(turn:)`** is the one Field Assist builder. In order it
+  appends `VaultPromptBuilder.promptContext(for:referenceByteLimit:turn:)` (manifest rules, the
+  attribution line, then `VaultStore.readAll()` — every core file, overlay first, safety files
+  never dropped by the byte bound); `EquipmentIdentity.promptBlock` (model token and heading,
+  never `nameplateText`); `ProcedureRunner.promptContext()`; `continuityContext(turn:)`;
+  `manualPassagesContext(turn:store:)` (the `MANUAL PASSAGES` block from `VaultRetriever.promptBlock`);
+  and `pausedJobPromptNote`.
+- **`continuityContext(turn:)` → `FieldSessionContextSnapshot.render(session:events:)`** renders
+  every in-scope `.userMessage` log event as *"Technician report … (unverified transcript)"*, every
+  `.captureRecordSaved` reading, each task's `completionNote`/`procedureOutcome`/`citation`, open
+  tasks with their `safetyNote`, identity fields, unresolved escalations, and the job brief
+  (`JobBriefContract.lines(site:faultReport:brief:)`). `field_session` *recall* reads the same events
+  through `FieldSessionContextSnapshot.recall`. **Consequence for P1:** the spoken *"note this for the
+  team — …"* is itself a `.userMessage` and reaches the snapshot whatever the candidate store does,
+  and anything P1 writes into a task's `completionNote` or a log event's text would too. P1 has to
+  decide whether the filing utterance is excluded from the snapshot or accepted as the technician's
+  own words in their own conversation; the acceptance line "never quotes the candidate" depends on it.
+- **Callers.** `LLMService.buildSystemPrompt` wraps the result in `<field_assist_context>` and
+  `LLMService.refreshedFieldInstructions(_:turn:)` replaces it after every tool iteration — both pass
+  the turn. `GeminiLiveSessionManager` and `OpenAIRealtimeSessionManager` call `promptContext()` with
+  **no turn**, so `manualPassagesContext` returns nil there: on the live modes manuals (and, later,
+  learnings) arrive only through the lookup tools.
+- **Other blocks on a Field Assist turn.** `LLMService.debriefContext()` →
+  `DebriefContract.block(job:record:)` quotes selected `WorkRecord` fields (equipment model, task
+  titles, readings, sign-off) during a debrief; `LiveJobContract.block(session:)` feeds the live
+  modes' job surface (`LiveJobBridge`, `JobSurfaceRefresh`); the *job notes* block
+  (`ProjectMemoryFormatter.block` over `BrainStore.projectMemories(for:)`) when
+  `Config.projectMemoryEnabled`. `ReadingCompanionService.promptContext(turn:)` and
+  `ProjectContextService.promptContext()` sit beside them but read reading sessions and a project
+  namespace's document count, not a vault. `SystemPromptBuilder` builds the tool list, routing rules
+  and app guide only — it carries no vault content.
+- **Tool results the model reads** are prompt context too: `ManualLookupTool`, `EquipmentLookupTool`
+  (whole `##` core sections, `prefix(3)`, then `manualFallback`), `ManualFigureTool`.
+
+P1's `TeamLearningPromptIsolationTests` therefore covers `VaultPromptBuilder.promptContext`,
+`FieldSessionService.promptContext(turn:)` (which includes the snapshot), `DebriefContract.block`
+and `LiveJobContract.block`, not only the first two.
+
+### Queries against a vault namespace in `DocumentStore`
+
+`DocumentStore.vaultNamespace(_:)` is `"vault:" + id` (`vaultNamespacePrefix`), with
+`isVaultNamespace(_:)` beside it. Callers:
+
+- **Three sites build a `VaultRetriever`, each with its own closures:**
+  `FieldSessionService.manualRetriever(store:)` (the per-turn block), `ManualLookupTool.execute`
+  (adds a `documentIds` filter), and `EquipmentLookupTool.manualFallback(query:ocrText:store:)`.
+  Each wires `query:`, `tokenSearch:`, `provenance:` (recognised-from-scan), `availability:`
+  (`VaultManualRemoval.availabilityCheck`), the session's `retrievalPolicy` and
+  `retrievalModelScope`.
+- **Direct reads that bypass the retriever:** `FieldSessionService.partsVerifier`
+  (`passages(containingToken:namespace:limit:)`), `ManualFigureTool` (`passages(figure:…)`,
+  `passages(onPage:…)`), and `documentCount(namespace:)` gates in `activeVaultHasManuals`,
+  `manualPassagesContext`, `ManualFigureTool`, `ManualLookupTool`, `EquipmentLookupTool`.
+- **Writers and removers:** `VaultImporter` ingests under the namespace and `clear(namespace:)`s it
+  on uninstall; `VaultManualRemoval` forgets per document.
+- **Unscoped readers a new namespace would leak into:** `DocumentsView` lists every namespace except
+  `isVaultNamespace`; `ReadingStatsView` lists `documentStore.list()` unfiltered; `StudyService`
+  resolves a document from `list()` by id or name. `DocumentRAGTool`, `BrainTool` and
+  `ProjectContextService` are scoped to `"global"` or a project id and cannot reach `learning:`.
+  **P2 must add a `learning:` predicate beside `isVaultNamespace` and use it in those three readers.**
+
+### Writes to a vault overlay (`Documents/Vaults/{id}/`)
+
+- `VaultStore.append(_:entry:date:)` — `NotesVaultTool.log` (the `notes` vault) and
+  `HealthVaultTool` (the `health` vault). Core-file content: it is in the prompt on the next turn
+  whenever that vault is the active one.
+- `VaultStore.write(_:contents:)` — `VaultSingleFileEditor` (in `VaultFilesEditorView.swift`, behind
+  both `VaultFilesEditorView` and the citation sheet `VaultFileCitationSheet`) and
+  `HealthVaultFileEditor` (in `HealthVaultEditorView.swift`).
+- Not prompt content: `VaultDocumentLedger.save(to:)` (`_documents.json`, via `VaultImporter`) and
+  `VaultRemovalJournal.save(to:)` (`_removals.json`, via `VaultManualRemoval`).
+  `ProcedureLibrary` and `CaptureFlowLibrary` read overlay `procedures/` and `flows/`; no in-app
+  writer was found. `VaultImporter.installReporting` removes the overlay only when `isFirstBaseline`.
+
+Nothing in FP writes here, and nothing should.
+
+### `SensitiveStore` registration
+
+`SensitiveStore` in `Services/Privacy/DataStoreRegistry.swift` is one case per store with a
+`Record` (data class, subject linkage, protection, backup exclusion, retention, `deleteAll`,
+`deleteSubject`, `owner`, `ownerPaths`, `location`). `DataStoreRegistryTests` enforces it by
+scraping `OpenGlasses/Sources`: any file that calls `sqlite3_open`, writes into a container
+directory (`.write(to:` / `createFile(atPath`), JSON-codes into `UserDefaults` or adds a Keychain item
+must appear in some record's `ownerPaths` or in the test's reasoned `exempt` list. It also checks
+that `ownerPaths` exist, that each named delete API is a `func` in its owner, and that
+`docs/plans/ET-iso27701-privacy.md`'s generated matrix matches `SensitiveStore.markdownTable()` —
+**a new case means regenerating that matrix** (`TEST_RUNNER_UPDATE_PLAN_DOCS=1`) in the same PR.
+P1's `LearningCandidateStore` is a new case; the `learning:` corpus is already inside `.ragDocuments`
+(`documents.sqlite`) and needs no case of its own.
+
+### The erasure walk
+
+`SubjectErasureCoordinator.order` walks derived stores before sources; `erase(_:now:recordInLedger:)`
+switches on each `SensitiveStore` and returns one `ErasureReceipt`, with a `default` receipt of
+*"not wired into the erasure walk"*. `SubjectErasureTests.testCoordinatorWalksEveryStoreTheRegistrySaysCanCarryASubject`
+fails when a store with an available `deleteSubject`, or a `.thirdPartySubject` linkage, is missing
+from `order`; `DataStoreRegistryTests.testEveryFileBackedStoreTheErasureWalkReachesIsExcludedFromBackup`
+then requires `backupExcluded`. To join, a store needs: a case in `order`, a handle in
+`SubjectErasureCoordinator.Stores`, a branch in `erase` (and in `eraseMemoryFact` if it can hold a
+remembered fact), and wiring at **both** `Stores` constructions in `OpenGlassesApp.swift` — the
+`memoryFacts` services and the launch-time `ErasureReplay` (only the latter runs `.person`/`.document`
+subjects; `ErasureLedger` replays them when a store comes back). What already covers FP for free:
+`eraseDocuments` searches every namespace for a person's name, so the `learning:` corpus is reached
+by `.ragDocuments`; `eraseQueue` deletes any queued op whose payload contains the subject, so a
+queued learning bundle is reached by `.offlineQueue`. Noted in passing: neither app construction sets
+`Stores.vaultDirectories`, so the `.vaultLedger` step reports "no vault directory was supplied" on a
+document erasure.
+
+### The offline queue and its sinks
+
+`OpKind` (`Services/Offline/QueuedOp.swift`): `logEntry`, `photoUpload`, `clipUpload`,
+`llmGrounding`, `auditExport`, `captureRecord`, `workRecord`, `partsRequest`, `subjectErasure`.
+`QueuedOp.make(workRecord:)` queues `WorkRecord.json` under the session id. `SyncEngine.flush()`
+drains through one `SyncSink`; `AppState.makeSyncSink()` builds
+`OfficeReportSink(fallback: EndpointSyncSink(fallback: LocalSyncSink()))` when the office transport
+exists, else the endpoint sink alone. `EndpointSyncSink.handledKinds`, `OfficeReportSink.handledKinds`
+and `QueuedRecordRows.kinds` are each `[.workRecord, .partsRequest]`; every other kind falls through
+to `LocalSyncSink`, which calls it delivered. P3's `.teamLearning` has to be added to whichever of
+those three sets should carry it, and `EndpointSyncSink.body(for:)` shapes its envelope.
+
+### The entitlement gate
+
+Gates ask a **capability**, not a tier (Plan FS): `FieldAssistEntitlement.shared.has(_:)` /
+`check(_:)` over `FieldAssistCapability` (`bundledVaults`, `ownVaults`, `auditedExport`,
+`orgConfiguration`, `everyVaultPack`). `SessionExporter` gates on `.auditedExport` (team and
+enterprise licences); `VaultImporter` and `VaultRegistry` gate own vaults and manual indexing on
+`.ownVaults` (team, enterprise, or a subscription). `check(atLeast:)` survives but describes the
+licence for the entitlement screen — "no gate asks it" — and `isGranted(atLeast:)` does not exist.
+FP's gate is therefore a new `FieldAssistCapability` case (e.g. `.teamLearnings`) granted by the
+team and enterprise licences in `capabilities(for:)`.
+
+### HIPAA withholding
+
+`Config.hipaaDisabledTools` is `web_search`, `send_message`, `send_via`, `openclaw_skills`,
+`reading_session`. Under `Config.hipaaMode`, `NativeToolRegistry.tool(named:)` returns nil for them
+and `toolNames` drops them; the schema list (`ToolCallModels`) and the Siri catalogue read the same
+set. Adding `team_learning` to the set is all P1 needs.
+
+### `SecretPatterns`
+
+Confirmed: eight secret patterns (`openai_key`, `github_token`, `slack_token`, `google_api_key`,
+`aws_access_key_id`, `jwt`, `bearer_token`, `private_key_block`) and two PII patterns (`email`,
+`nz_ird`). `redact(_:placeholder:)` returns the masked text and the names that fired;
+`hits(in:)` the names alone.
+
+### Shapes P1 reuses
+
+- `FieldSession.Task` and `FieldSession.Evidence` are declared in `FieldAssist/WorkTask.swift`, as an
+  extension of `FieldSession`. `Evidence` has `readings` (capture-record ids), `photos` (file names),
+  `citationsOpened`, `pagesVerified` and `pagesShown` (put on screen, never verified). A task carries
+  its own `evidence`; with no task running, evidence lands on `FieldSession.jobEvidence`.
+- `EquipmentIdentity` carries `modelToken`, `heading`, `file`, `source`, `recognisedAt`,
+  `nameplateText` (audit only, never in a prompt), `statedModel` and `vaultMatch`. A session can
+  cover several units (`visitedUnits`, `continuityScope`), so "the identity in force" is the active
+  one at filing time.
+- `WorkRecord` flattens equipment into `WorkRecord.Equipment`, whose `model` is the **stated** model,
+  not `modelToken` — a report-origin candidate must take its identity from the session, or match
+  through `VaultModelIndex`, never from that string. It also carries `tasks`, `jobEvidence`,
+  `faultReport`, `site` (a customer address) and `debriefs`.
+- `SessionExport` holds `workRecord: WorkRecord?`; `SessionExporter.buildExport` assembles it.
+
+### The `DeliveryRequest` seam (shipped in P0)
+
+`DeliveryRequest` carried `let record: WorkRecord` and `let partsRequestIds`. Every reader was
+checked: the composer (`ReportComposerModel`) and `presentDelivery`'s channel switch read only the
+envelope (subject, bodies, attachments, recipients, clip plan); `FieldSessionService.completeDelivery`
+reads `sessionId` and `partsRequestIds`; `JobSendService.owns(_:)` reads `sessionId`; the record
+itself was read in exactly three places in `OpenGlassesApp.swift` — the two unattended-route enqueues
+and the share-sheet rebuild of an office report. Now `DeliveryRequest.Payload` is an enum with one
+case, `.workRecord(WorkRecord, partsRequestIds:)`, answering `sessionId`, `jobReference`,
+`partsRequestIds` and `queuedOp()`. Both enqueues call `request.payload.queuedOp()`; the rebuild
+pattern-matches the report case. `record`, `partsRequestIds` and the old `init(…record:…)` remain
+as accessors, so every other call site is unchanged. P3 adds a `.learningBundle` case and its
+`queuedOp()` branch; it then makes `record` optional (or removes it), and only report code reads
+it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its own sentence.
+
+### Corrections made to this plan
+
+1. **Tier gate** (starting point, §1, §5): `isGranted(atLeast: .team)` → a `FieldAssistCapability`
+   checked with `has(_:)`/`check(_:)`; `SessionExporter` asks `.auditedExport`, `VaultImporter`
+   `.ownVaults`.
+2. **Sink chain** (starting point): the live chain starts at `OfficeReportSink` when the office
+   transport is present; `DeliveryRequest` is no longer bound to `WorkRecord` (this phase).
+3. **Where retrieval is wired** (§3): not one place — three `VaultRetriever` constructions plus two
+   direct readers. P2 adds one shared factory (on `FieldSessionService`) that all three use, rather
+   than merging namespaces in `manualRetriever(store:)` alone.
+4. **Name collision** (§5): `VaultRetriever` already has a `provenance` member (the
+   recognised-from-scan closure behind `Passage.recognisedFromScan`/`provenanceNote`). §5's passage
+   field for manual-versus-learning is renamed `source` (`.manual | .teamLearning`).
+5. **Shapes** (starting point): `Task`/`Evidence` live in `WorkTask.swift`; `Evidence` has
+   `pagesShown`; `EquipmentIdentity` also has `recognisedAt`, `statedModel`, `vaultMatch`.
+
 ## Phases (one PR each)
 
-- **P0 — inventory and seams.** Every site that assembles prompt context, queries a vault namespace,
+- **P0 — inventory and seams.** ✅ 2026-10-09. Every site that assembles prompt context, queries a vault namespace,
   or can write to a vault overlay, plus the `SensitiveStore` and erasure-walk registration points.
   Output: that inventory in this doc, and the `DeliveryRequest` generalisation with no behaviour
   change.
@@ -272,7 +486,7 @@ the reviewer instead of being silently deduplicated.
   `TeamLearningPromptIsolationTests` (no candidate text reaches either prompt builder).
 - **P2 — review, publish and retrieve, headless.** `LearningReview`, `LearningCorpus` ingest and
   retract, `origin`/`sourceJobIDs`/`confirmedJobCount` on the approved entry with the "noted on
-  <n> previous jobs" lead-in, the artefact renderer and citation name, `provenance` on the passage, the evidence-gate
+  <n> previous jobs" lead-in, the artefact renderer and citation name, `source` on the passage, the evidence-gate
   rule, `ModelScope` by identity, the prompt rules, `LearningSafetyCheck`. Tests:
   `TeamLearningReviewTests`, `TeamLearningRetrievalTests` (a learning alone never yields
   `.sufficient` and instead yields `.teamLearningOnly`; a learning beside a manual passage does; the
