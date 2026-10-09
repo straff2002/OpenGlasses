@@ -78,3 +78,68 @@ strings to known line breaks; `GlassesDisplayService` contract unchanged.
   surface exists today. `GlassesDisplayService`'s suppression rules cover current producers.
 - **Capability modeling as behavior-protocol + parallel plain-data flags struct** per device model:
   fold into Plan CQ (third-party glasses backends) when its next phase is drafted, not here.
+
+---
+
+## Amendment 2026-10-10: new P0, both arms or not ready
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row "Even G2
+'ready' on one arm"; section 5; Appendix B claim 6). Status unchanged: 📝 drafted, nothing built
+(no `LinkKeepalivePolicy` or `HandshakeScript` in the tree, verified 2026-10-10). This P0 goes
+**ahead of P1**: P1's keepalive keeps a session alive, and P0 decides whether there is a session
+worth keeping.
+
+**What field evidence says.** A G2 session with only one arm connected does not degrade gracefully:
+the glasses rebuild their display roughly every 18.5 s, so a "working" single-lens HUD flickers
+back to blank on a loop. Mature multi-glasses BLE code now refuses to call a G2 ready until both
+arms of one serial-matched pair are connected and authenticated.
+
+**What our code does** (`Services/Display/Even/EvenBLETransport.swift`, re-read on `main` at
+`48bcae0c`):
+- single-lens degraded is the design (`:12-13`, and the settings footer in
+  `App/Views/EvenDisplaySettingsView.swift` says "One lens alone works in a degraded single-lens
+  mode");
+- `isConnected` is true when **any** lens is connected with a render characteristic (`:58-61`);
+- a disconnect is reported only when no lens remains (`:161`);
+- the 10 s connect deadline is a detached sleep that resumes whatever continuation is stored when it
+  wakes, with no generation check, and never calls `cancelPeripheralConnection` on the lenses it
+  armed (`:82-88`), so a late timer can fail a newer connect and a dead lens stays armed;
+- pairing offers Left and Right buttons on **any** discovered "Even G2" device
+  (`EvenDisplaySettingsView.swift:52-54`), so two arms from two different pairs can be saved as one.
+
+**P0 design (pure core, then thin wiring, one PR):**
+
+1. **`EvenPairSession`** (pure): per side `{connecting, connected, authenticated}`, a connect
+   generation, and `isReady == left.authenticated && right.authenticated` (authenticated means the
+   handshake step completed once the handshake exists; until the capture-derived handshake lands,
+   "has its render characteristic" stands in, and the type says so). One arm alone is
+   `.waitingForArm(side)`, not ready. Losing either arm makes the session not ready and reports a
+   disconnect to the display layer (replacing `:161`'s "none remain" rule).
+2. **`EvenPairTarget`** (pure): reads the side from the advertised name (`_L_` / `_R_`) instead of
+   asking the user, and accepts an arm not already cached only if its advertised serial matches the
+   pair's. Pairing becomes "scan, tap the glasses" with the sides filled in; the manual Left/Right
+   buttons go, and so does the degraded-mode footer copy.
+3. **Generation-guarded deadline.** `connect()` captures `generation += 1`; the timer resumes the
+   continuation only if the generation is unchanged, and on firing calls
+   `cancelPeripheralConnection` for every lens it armed.
+4. **Re-send the last frame on ready.** When the session becomes ready (first time or after a
+   reconnect), the backend re-sends the last rendered frame, so a wearer does not see a blank lens
+   until the next update.
+5. **Missing-arm notice.** If one arm is connected and the other has not arrived after 3 s, the
+   phone shows (and, when the assistant is idle, says once) "Only one side of the glasses is
+   connected. Check the other arm is on and charged."
+
+**Tests:** `EvenPairSessionTests` (one arm is never ready; both ready; losing either drops
+readiness; a stale generation's timeout is ignored), `EvenPairTargetTests` (side from name,
+serial-mismatched arm refused, cached arm accepted, malformed name refused), and an
+`EvenDisplayBackendTests` case that the last frame is re-sent on ready over the mock transport.
+Device check owed: both arms, one arm (the notice, no flicker loop), and a timed-out connect
+followed by a successful one.
+
+**Plan AH's "single-lens degraded" decision is superseded** by this P0. AH stays ✅ (its steps
+were built as designed); the transport's header comment and the settings copy change in this
+phase's PR, and AH's row gets no new status.
+
+Deferred list addition: the review notes outside work on a G2 rasteriser with ink-budget and
+contrast-lint tests. We have no raster path on any backend; if one appears, those test ideas
+belong with it.

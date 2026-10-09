@@ -345,3 +345,40 @@ For each gate record build/commit, fixture or connected workspace, result and re
 Coordinate provider authentication with [AI](provider-auth-and-fallbacks.md) and vault retrieval
 with [ED](ED-vault-manual-retrieval.md). This plan owns organisational MCP sign-in and reusable
 workflow packaging and MCP gateway interoperability; it does not replace those existing workstreams.
+
+## Amendment 2026-10-10: the single-flight refresher ships first, for the subscription sign-ins
+
+P1 above specifies "single-flight refresh" for the enterprise OAuth/OIDC connection model. The
+[October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row "OAuth refresh race,
+no forced refresh on 401"; Appendix B claim 2) found the same race already live in the three
+subscription sign-ins, with no single-flight helper anywhere in `Sources` (re-checked 2026-10-10):
+
+- `ChatGPTOAuthService.validAccessToken` (`Services/ChatGPTOAuthService.swift:134-155`),
+  `ClaudeOAuthService` (`:91-109`) and `GoogleOAuthService` (`:86-101`) each refresh independently.
+  Two callers inside the refresh window both spend the same rotating refresh token; the second
+  gets `invalid_grant` and the wearer is signed out.
+- Every failure, a network blip included, sets "sign-in expired, please sign in again" (`ChatGPTOAuthService.swift:152`).
+- `LLMService` classifies a 401 but never retries with a fresh token (`Services/LLMService.swift:2171-2173`).
+
+Rather than build this twice, a **P1a** is pulled ahead of P1 as one small PR:
+
+1. **`SingleFlightRefresher`**, an actor keyed by provider (and later by FG's issuer, account,
+   client and resource): the first caller starts the refresh task, later callers await the same
+   task; the result is committed only if the task still owns the slot, so a sign-out or a newer
+   sign-in during the refresh is never overwritten.
+2. **Failure classes** (pure `OAuthRefreshFailure.classify`): `invalid_grant` or an explicit
+   revocation means the credential is dead (sign in again); a transport error, a timeout or a 5xx
+   keeps the credentials and says "Couldn't reach the sign-in service; I'll try again" without
+   signing anyone out.
+3. **One forced refresh on 401** for the subscription routes: a 401 from the model endpoint
+   triggers a refresh through the refresher (regardless of the stored expiry) and one retry of the
+   request; a second 401 surfaces as today.
+4. The three services adopt it. P1 then reuses the same actor for enterprise tokens instead of
+   specifying its own.
+
+**Tests:** `SingleFlightRefresherTests` (ten concurrent callers cause one token request; a slot
+lost to sign-out does not commit; a failed refresh releases the slot), `OAuthRefreshFailureTests`
+(each class), and additions to `ChatGPTOAuthTests`, `ClaudeOAuthTests` and `GoogleOAuthTests`
+through the existing request stubs (a network failure keeps credentials; a 401 retries once).
+Plan [ID](ID-ecosystem-review-hardening-bundle.md) item 7 points here and is ticked when P1a
+merges. FG's Status line is unchanged until then.

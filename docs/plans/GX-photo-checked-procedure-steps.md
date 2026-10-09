@@ -268,3 +268,48 @@ Continuous per-frame step recognition; detecting that a step was done without be
 checks; checks that measure geometry (torque marks, gaps) from a photo; checks in capture flows
 (Plan U keeps its own bindings); an in-app editor for checks (authors edit the JSON; GY's review
 surface edits check text only); certifying anything.
+
+---
+
+## Amendment 2026-10-10: a reference photo for `condition` checks
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 4 row
+"Reference-photo composite for GX checks"). Status unchanged: 📝 drafted, nothing implemented
+(no `ProcedureCheckValidator` in the tree, verified 2026-10-10).
+
+**Gap.** A `condition` check asks the model a yes/no question about one photo ("the flame is
+blue and steady"). Many conditions are easier to judge against a picture of what right looks
+like, and authors often have one. But `LLMService.analyzeFrameStructured` takes a single image
+(`Services/LLMService.swift:1640`), and not every vision provider accepts two.
+
+**Design.** One composite image, so any single-image model can compare:
+
+- **Schema.** `condition` checks gain an optional `reference_photo`: a path relative to the vault
+  (for example `references/flame_ok.jpg`). Other kinds ignore it; the validator warns if it is set
+  on one.
+- **`ReferenceComposite` (pure layout, CoreGraphics only).** Places the reference and the live
+  still side by side at the same height, each labelled in large type, REFERENCE on the left and NOW
+  on the right, inside a fixed maximum size (about 1600 × 800) so the request stays within the
+  structured-vision image budget. The layout is a pure function of the two sizes; the drawing is a
+  thin edge.
+- **Prompt.** The `step_condition` schema's instruction changes only when a reference is present:
+  "The left tile is a reference showing the expected condition. Judge only the right tile (NOW)
+  against the statement; use the reference to understand what is meant." The verdict rules are
+  unchanged: unsure is "couldn't tell", never a pass.
+- **Pixels and privacy.** NOW is the same filtered still the check already takes
+  (`filteredStill(for: .toolPhotoCapture, source: .photoOnly)`); the composite is assembled after
+  the chokepoint, inside the existing `procedureStepCheck` consumer, so the roster entry GX P1
+  adds covers it. The reference comes from the vault, not the camera, so it needs no roster entry.
+  An `.unavailable` still means no composite and the existing technician path.
+- **Evidence.** The filed evidence photo stays the NOW still alone (what the technician's camera
+  saw); the outcome records the reference's file name, so the work order can say "compared with
+  reference flame_ok.jpg".
+- **Validator.** `ProcedureCheckValidator` checks that the file exists in the vault, is a JPEG or
+  PNG, and is under a size cap (say 2 MB); a missing reference is an issue, not a warning, because
+  a check that silently loses its reference judges differently.
+
+**Phase.** Folds into GX P0 (schema, validator, layout) and P1 (composite in `StepCheckService`).
+**Tests:** `ReferenceCompositeTests` (layout for landscape and portrait pairs, labels present, the
+size cap honoured), validator cases (missing file, wrong type, oversize, set on a non-condition
+kind), and a `StepCheckServiceTests` case that a reference-bearing check sends one composite image
+whose right half is the filtered still.

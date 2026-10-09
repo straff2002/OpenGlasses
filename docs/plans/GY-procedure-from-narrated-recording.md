@@ -252,3 +252,54 @@ A full in-app procedure editor (branch authoring, new procedures from scratch); 
 live remote-expert session; step images inside procedure JSON; translation of drafts; automatic
 publication to other technicians' phones (vault packs and the office app do distribution); the
 desktop review surface itself (Plan FX).
+
+---
+
+## Amendment 2026-10-10: a draft from a PDF or pasted text
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 4 row "Procedure
+draft from PDF or pasted text"). The manuals technicians already carry are the cheapest source of a
+first draft, and today this plan drafts only from a recording (`Capture` above).
+
+**Status check.** The Status line above says nothing is implemented. Verified 2026-10-10 against
+`main` at `48bcae0c`: `TimedTranscript` and `WalkthroughSegmenter` now exist in
+`Services/FieldAssist/JobRecording/`, built under Plan HE's recorded-job core (`5cbeed68`), and
+`WalkthroughSegmenter`'s own header says it is this plan's pipeline. GY P0 should adopt them rather
+than write its own; the remaining P0 types (`KeyframePicker`, `ProcedureDraftPrompt`,
+`ProcedureDraftParser`, `DraftSafetyAudit`, `ProcedureDraftDiff`) are still unbuilt. The Status line
+is left as drafted because none of GY's own phases has shipped.
+
+**A third capture route: a document.**
+
+- **Import.** "Draft from a document" accepts a PDF, EPUB, Markdown or text file from Files, or
+  pasted text. Files go through the existing `VaultDocumentExtractor.extract(from:)`
+  (`Services/Vault/VaultDocumentExtractor.swift`), which already reads PDFs page by page with
+  PDFKit, falls back per page to `ScannedPageReader` recognition for scanned pages, and joins pages
+  with a form feed, so every step can cite its page. No new PDF or OCR code.
+- **`NumberedStepSplitter` (pure).** Finds a numbered procedure in the extracted text: a run of
+  lines numbered consecutively from 1 ("1.", "1)", "Step 1"), at least two steps; a line that
+  continues the previous step (wrapped text, or a measurement such as "2.5 mm" or "3.2 bar" at a
+  line start) is joined, not read as a new number; nested "a)" or "2.1" items stay inside their
+  step. Several runs in one document are offered as a list to pick from.
+- **Fallback.** When no numbered run is found, the selected section (or the whole pasted text) goes
+  to the drafting model once, with `ProcedureDraftPrompt` given document segments (text plus page)
+  in place of timed segments, and the same JSON contract.
+- **Validation and review are GY's.** The draft passes `VaultValidator.validateProcedureGraph` and
+  the draft-only rules, lands in `ProcedureDraftStore`, and is reviewed and approved exactly as a
+  recorded draft is. Provenance records the document's file name, its SHA-256 and each step's page.
+- **Safety lines.** `DraftSafetyAudit` treats the step's own text in the document as the "said"
+  source: a safety note must quote that step's words or cite a safety-file line. A warning printed
+  elsewhere in the manual is not attached to a step automatically; the hazard prompt flags it for
+  the reviewer instead.
+- **Size.** Over the extractor's cap (or above the model's input budget for the fallback) the
+  import is refused with the reason, never truncated: a procedure missing its last steps is worse
+  than none.
+- **Privacy.** A document is text the user chose; no pixels, so no roster entry. Under Medical
+  Local Only the model fallback is unavailable and only the deterministic splitter runs.
+
+**Phase.** A new **P1b**, after P1 (it needs the store and the drafting service) and before P2 (it
+needs no capture): `NumberedStepSplitter`, the document route into `ProcedureDraftPrompt`, the
+import sheet. **Tests:** `NumberedStepSplitterTests` (a manual's numbered list; wrapped lines;
+"2.5 mm" continuation; nested items; a list starting at 3 rejected; two runs offered; a single
+item rejected), a document-route `ProcedureDraftPipelineTests` case (fixture PDF text to a valid
+draft with page provenance), and an oversize refusal test.

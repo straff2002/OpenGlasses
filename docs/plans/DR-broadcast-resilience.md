@@ -76,3 +76,46 @@ per-frame `CMTime` computed from capture timestamps, never re-stamped at the enc
 (frame timestamps + caption spans → per-frame overlay text and presentation times) that is
 fully testable without AVFoundation; the `AVAssetWriter` edge consumes the plan. Export lives next to
 the existing recordings UI; HIPAA export rules from Plan DL apply unchanged.
+
+---
+
+## Amendment 2026-10-10: P1 grows a phone-camera fallback
+
+From the [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 4 row "Spoken
+broadcast drop and recovery, automatic phone fallback"; section 5 confirms CY's reconnect is done).
+Status unchanged: 📝 drafted, nothing of P1 built. Re-checked on `main` at `48bcae0c`:
+`BroadcastService` still never speaks and nothing in `App/` observes its session state; source
+switching is manual through `BroadcastSourceSelector` (`Services/BroadcastSupport.swift:69-87`,
+1 s debounce); and glasses frames that stop arriving surface only as `BroadcastStallPolicy`'s 8 s
+"nothing on the wire" verdict (`Services/BroadcastResilience.swift:480-500`), which watches bytes
+sent, not the glasses.
+
+P1 is now two pure policies and their wiring, one PR:
+
+1. **`BroadcastNoticePolicy`** (the spoken notice this plan always meant). Input: the
+   `BroadcastSessionMachine` state, seconds since the episode began, whether the user stopped it,
+   and what has been said this episode. Output: a line or nothing. Drop: "Your stream has dropped;
+   reconnecting." Still down: one reminder each at 30, 60 and 120 s, then silence until recovery or
+   give-up. Recovered: "Your stream is back." once. Give-up: "The stream couldn't reconnect and has
+   stopped." A user stop is silent. The time-based reminders are a deliberate change from
+   invariant 2's "first drop and give-up only": invariant 2 rejected a reminder *per attempt*,
+   which a wearer cannot act on; three reminders over two minutes tell a streamer who is talking to
+   an audience that they are still not live, and then stop. Spoken through the normal speech path,
+   never over the assistant.
+2. **`BroadcastAutoSourcePolicy`.** Input: seconds since the last glasses frame reached the relay,
+   seconds of fresh glasses frames since they resumed, the active source, whether the user pinned a
+   source, and whether the phone camera is available. Output: `.stay`, `.switchToPhone` or
+   `.switchToGlasses`. Glasses frames stale for 2 s switch to the phone's back camera; about 5 s
+   of fresh glasses frames switch back; a user-pinned source is never overridden; at most one
+   switch per 5 s beyond the selector's own debounce. Switching goes through
+   `BroadcastService.switchSource`, so the RTMP session is untouched, and phone frames already pass
+   `OutboundFrameRelay`, so the privacy filter scope is unchanged (no new roster entry). Each
+   automatic switch is said once ("Switched to the phone camera" / "Back to the glasses").
+
+**Tests:** `BroadcastNoticePolicyTests` (drop, reminders at 30/60/120 only, recovery once, user stop
+silent, give-up) and `BroadcastAutoSourcePolicyTests` (2 s stale switches, 1.9 s does not, return
+after 5 s fresh, pinned source never moves, no phone camera means stay). Device pass owed: pull the
+glasses' battery mid-broadcast and hear the switch; drop Wi-Fi and hear the notices.
+
+Frame pacing on the same file (a 24 fps setting sending about 15) is item 2 of Plan
+[ID](ID-ecosystem-review-hardening-bundle.md), independent of this phase.

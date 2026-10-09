@@ -358,3 +358,12 @@ Needs hardware, and gates the shipped defaults:
   too? Its own comment says yes. It's the natural second consumer of P2 and would let that path stop
   depending on the caller's `stopRecording()`.
 - Ring-buffer size and whether the debug export is on by default in Debug builds only.
+
+## Amendment 2026-10-10: sentence streaming is Plan HZ
+
+The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) confirmed that
+`speakStreaming` has one caller, the OpenClaw stream, and that Direct mode speaks only after
+generation ends. This plan was checked for an unbuilt phase that owns the fix and has none (P2 to
+P5 are end-of-turn, local time-to-first-token, pre-roll and measurement), so the work is drafted as
+Plan [HZ](HZ-direct-mode-sentence-streamed-speech.md). Nothing here changes: HZ's acceptance test is
+this plan's signed `ttsLeadIn` going negative on streamed Direct turns, read through P1's cohorts.
