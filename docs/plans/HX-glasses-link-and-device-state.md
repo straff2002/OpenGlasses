@@ -66,6 +66,12 @@ still shows the glasses as not connected. The app is behaving as written, and th
 - **The support report cannot tell the cases apart.** Its phone section says "Glasses: not
   connected" (`App/SupportReporting.swift:139`); registration, the number of devices listed and
   the permission's status are only in the event ring, if launch is still in it.
+- **There is nothing to press.** After onboarding the only connect action is Devices & Privacy ›
+  Glasses › "Connect to Meta AI", and it is shown only while the app is *not* registered
+  (`App/Views/SettingsView.swift:1065`). The session card's pill deliberately stopped starting a
+  connect and posts a hint instead (`App/Views/StatusIndicator.swift:266-278`). So a wearer who is
+  registered with no device listed has no control anywhere that retries or asks for the
+  permission; only a relaunch does.
 - **Dead code beside it.** `requestEarlyPermission(allowRequest:)` is only ever called with
   `false` (`App/OpenGlassesApp.swift:4076`, `:4084`), so its request branch and the device poll
   after it never run.
@@ -228,6 +234,20 @@ test host); every decision is a pure type.
 
 **Gates (both):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`,
 privacy-logging gate; index row, this Status line and BV's row and file updated in the P1 PR.
+
+### P3a: something to press (one small PR, first)
+
+The smallest useful slice of P3, shippable before the diagnosis exists. Devices & Privacy ›
+Glasses shows a row whenever glasses are added and not connected, not only when unregistered:
+registered with nothing listed → "Allow camera access in Meta AI", which runs the permission
+check and request as the wearer's own action and shows the outcome (granted, refused, or the
+failure's summary) in the row's footer instead of dropping it; unregistered keeps today's "Connect
+to Meta AI". The pill's away hint names where the row is. No change to the pill's tap, which stays
+a hint by design.
+
+**Tests:** a pure row-state function (unregistered → connect; registered, not connected → allow
+access; connected → no row) and the outcome-to-footer mapping. P3 then replaces the row's own
+state function with the diagnosis.
 
 ### P3: added but not connected says why (one PR, independent of P0 and P1)
 
