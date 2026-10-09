@@ -19,14 +19,21 @@ final class LearningEntryStore {
     static let shared = LearningEntryStore()
 
     private(set) var entries: [LearningEntry]
+    /// What bundles have been applied here (Plan FP P3): the newest per organisation label and
+    /// direction, which an older bundle is refused against, and the retractions that arrived for
+    /// entries this phone does not hold — tombstones a later copy of the content cannot outrun.
+    private(set) var bundleLedger: LearningBundleLedger
 
     private let fileURL: URL
+    private let ledgerURL: URL
 
     init(directory: URL? = nil) {
         let folder = directory ?? DeliveryQueueStore.defaultDirectory()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         fileURL = folder.appendingPathComponent("team-learning-entries.json")
+        ledgerURL = folder.appendingPathComponent("team-learning-bundle-ledger.json")
         entries = Self.read(fileURL) ?? []
+        bundleLedger = Self.readLedger(ledgerURL) ?? LearningBundleLedger()
         protectFile()
     }
 
@@ -54,10 +61,19 @@ final class LearningEntryStore {
         save()
     }
 
-    /// Everything, for a wipe — what the registry's "delete all" column names.
+    /// Replace the bundle ledger.
+    func updateLedger(_ ledger: LearningBundleLedger) {
+        bundleLedger = ledger
+        saveLedger()
+    }
+
+    /// Everything, for a wipe — what the registry's "delete all" column names. The bundle ledger
+    /// goes too: its tombstones carry retraction reasons.
     func removeAll() {
         entries = []
         save()
+        bundleLedger = LearningBundleLedger()
+        saveLedger()
     }
 
     /// Remove every entry whose words mention `token` — the subject erasure's call. Matched
@@ -74,11 +90,16 @@ final class LearningEntryStore {
              entry.retractionReason ?? ""]
                 .contains { $0.localizedCaseInsensitiveContains(needle) }
         }
-        guard !doomed.isEmpty else { return 0 }
+        let tombstones = bundleLedger.tombstones.filter { $0.reason.localizedCaseInsensitiveContains(needle) }
+        if !tombstones.isEmpty {
+            bundleLedger.tombstones.removeAll { tombstone in tombstones.contains(tombstone) }
+            saveLedger()
+        }
+        guard !doomed.isEmpty else { return tombstones.count }
         let ids = Set(doomed.map(\.id))
         entries.removeAll { ids.contains($0.id) }
         save()
-        return doomed.count
+        return doomed.count + tombstones.count
     }
 
     // MARK: - Storage
@@ -88,6 +109,19 @@ final class LearningEntryStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode([LearningEntry].self, from: data)
+    }
+
+    private static func readLedger(_ url: URL) -> LearningBundleLedger? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(LearningBundleLedger.self, from: data)
+    }
+
+    private func saveLedger() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(bundleLedger) else { return }
+        try? data.write(to: ledgerURL, options: [.atomic, .completeFileProtection])
+        protect(ledgerURL)
     }
 
     private func save() {
@@ -102,10 +136,15 @@ final class LearningEntryStore {
     /// Complete protection and no backup: a restored copy would put an organisation's approved
     /// findings — and anything review missed — onto a phone that may no longer belong to it.
     private func protectFile() {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        protect(fileURL)
+        protect(ledgerURL)
+    }
+
+    private func protect(_ target: URL) {
+        guard FileManager.default.fileExists(atPath: target.path) else { return }
         try? FileManager.default.setAttributes(
-            [.protectionKey: FileProtectionType.complete], ofItemAtPath: fileURL.path)
-        var url = fileURL
+            [.protectionKey: FileProtectionType.complete], ofItemAtPath: target.path)
+        var url = target
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try? url.setResourceValues(values)
@@ -113,4 +152,48 @@ final class LearningEntryStore {
 
     /// Where the file is, for the attribute-truth test.
     var fileLocation: URL { fileURL }
+    /// Where the bundle ledger is.
+    var ledgerLocation: URL { ledgerURL }
+}
+
+/// What a phone remembers about the team-learning bundles applied to it (Plan FP P3).
+struct LearningBundleLedger: Codable, Equatable {
+
+    /// The newest bundle applied for one organisation label and direction.
+    struct Mark: Codable, Equatable {
+        var issuedAt: Int64
+        var sequence: Int64?
+    }
+
+    var marks: [String: Mark] = [:]
+    /// Retractions for entries this phone does not hold.
+    var tombstones: [LearningBundle.Retraction] = []
+
+    init(marks: [String: Mark] = [:], tombstones: [LearningBundle.Retraction] = []) {
+        self.marks = marks
+        self.tombstones = tombstones
+    }
+
+    static func key(label: String?, direction: LearningBundle.Direction) -> String {
+        "\(label ?? "")|\(direction.rawValue)"
+    }
+
+    /// Whether `bundle` is older than one already applied under its label and direction — by
+    /// `sequence` when both carry one, else by `issuedAt`. The same bundle again is not older.
+    func isOlder(_ bundle: LearningBundle) -> Bool {
+        guard let mark = marks[Self.key(label: bundle.organisationLabel, direction: bundle.direction)] else {
+            return false
+        }
+        if let arriving = bundle.sequence, let held = mark.sequence { return arriving < held }
+        return bundle.issuedAt < mark.issuedAt
+    }
+
+    /// Record `bundle` as applied, keeping the newer mark.
+    mutating func advance(for bundle: LearningBundle) {
+        guard !isOlder(bundle) else { return }
+        let key = Self.key(label: bundle.organisationLabel, direction: bundle.direction)
+        let held = marks[key]
+        marks[key] = Mark(issuedAt: max(bundle.issuedAt, held?.issuedAt ?? 0),
+                          sequence: bundle.sequence ?? held?.sequence)
+    }
 }

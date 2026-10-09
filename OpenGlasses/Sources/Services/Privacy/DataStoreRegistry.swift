@@ -625,7 +625,9 @@ enum SensitiveStore: String, CaseIterable {
             // slip is possible and the entry is read on every phone in the organisation — so, like
             // the candidates, it is treated as able to hold a third party, walked by the subject
             // erasure, protected and kept out of backup. History is kept until it is erased or the
-            // phone leaves its organisation.
+            // phone leaves its organisation. Beside it, the bundle ledger (Plan FP P3): the newest
+            // bundle applied per organisation label, and tombstones — retraction reasons — for
+            // entries this phone does not hold; cleared and erased with the entries.
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
                           protection: .complete, backupExcluded: true,
                           retention: .none,
@@ -633,7 +635,7 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .api("LearningEntryStore.deleteMatching(_:)"),
                           owner: "LearningEntryStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningEntryStore.swift"],
-                          location: "Application Support/FieldAssist/team-learning-entries.json")
+                          location: "Application Support/FieldAssist/team-learning-entries.json and team-learning-bundle-ledger.json")
 
         case .officeTransportFolders:
             // The embedded engine's own home, in the opt-in office transport build: its
