@@ -2405,6 +2405,11 @@ struct Config {
     static let geminiLiveVideoFrameInterval: TimeInterval = 1.0
     static let geminiLiveVideoJPEGQuality: CGFloat = 0.5
 
+    /// The oldest a navigation hazard callout's source frame may be when it is spoken, in seconds.
+    /// The navigation loop ticks every 2.5 s, so 5 s lets a reply one tick late through and drops
+    /// anything slower: by then the wearer has walked on (`NavigationAdviceFreshness`).
+    static let navigationAdviceMaxAge: TimeInterval = 5.0
+
     static var isGeminiLiveConfigured: Bool {
         !geminiLiveAPIKey.isEmpty
     }
