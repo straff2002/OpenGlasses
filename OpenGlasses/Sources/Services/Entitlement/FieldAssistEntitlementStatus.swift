@@ -88,6 +88,11 @@ enum FieldAssistPaywallCopy {
     static let teamLearningsNotIncluded = "Nothing was filed: team learnings come with your organisation's team or enterprise licence, and the Field Assist access on this phone doesn't include them."
     static let teamLearningsLapsed = "Nothing was filed: your Field Assist access has lapsed. Enter a renewal code from your administrator to file team learnings again."
     static let teamLearningsLocked = "Nothing was filed: team learnings need the team or enterprise licence code your organisation issued."
+    /// …and when a reviewer approves, edits, merges or turns one down (Plan FP P2). Published
+    /// learnings stay readable whatever the licence says.
+    static let teamLearningsReviewNotIncluded = "Not reviewed: reviewing team learnings comes with your organisation's team or enterprise licence, and the Field Assist access on this device doesn't include it."
+    static let teamLearningsReviewLapsed = "Not reviewed: your Field Assist access has lapsed. Learnings already published stay in use; enter a renewal code from your administrator to review new ones."
+    static let teamLearningsReviewLocked = "Not reviewed: reviewing team learnings needs the team or enterprise licence code your organisation issued."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
     /// The way out of a stored code that stopped verifying or expired: without it the locked screen
@@ -113,6 +118,7 @@ enum FieldAssistPaywallCopy {
         [poweredBy, locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
          bundledVaultsOnly, ownVaultsLapsed, ownVaultsLocked,
          teamLearningsNotIncluded, teamLearningsLapsed, teamLearningsLocked,
+         teamLearningsReviewNotIncluded, teamLearningsReviewLapsed, teamLearningsReviewLocked,
          renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),
          expiring(.expiring(daysRemaining: 1, threshold: 7)),

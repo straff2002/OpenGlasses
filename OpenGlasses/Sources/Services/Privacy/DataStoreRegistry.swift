@@ -79,6 +79,7 @@ enum SensitiveStore: String, CaseIterable {
     case jobDeliveryQueue
     case upcomingJobs
     case learningCandidates
+    case learningEntries
     case orgEnrolment
     case safetyAssessments
 
@@ -616,6 +617,23 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LearningCandidateStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningCandidateStore.swift"],
                           location: "Application Support/FieldAssist/team-learning-candidates.json")
+
+        case .learningEntries:
+            // Approved team learnings (Plan FP P2): the live entries whose documents answer from the
+            // `learning:` namespaces (inside `ragDocuments`), and the superseded and retracted ones
+            // kept as review history. A reviewer removes customer details before approving, but a
+            // slip is possible and the entry is read on every phone in the organisation — so, like
+            // the candidates, it is treated as able to hold a third party, walked by the subject
+            // erasure, protected and kept out of backup. History is kept until it is erased or the
+            // phone leaves its organisation.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .complete, backupExcluded: true,
+                          retention: .none,
+                          deleteAll: .api("LearningEntryStore.removeAll()"),
+                          deleteSubject: .api("LearningEntryStore.deleteMatching(_:)"),
+                          owner: "LearningEntryStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/TeamLearning/LearningEntryStore.swift"],
+                          location: "Application Support/FieldAssist/team-learning-entries.json")
 
         case .officeTransportFolders:
             // The embedded engine's own home, in the opt-in office transport build: its

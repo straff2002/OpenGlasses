@@ -188,7 +188,8 @@ private struct ReadingReferencePickerView: View {
     let onAttached: (String) -> Void
 
     var body: some View {
-        List(appState.documentStore.list()) { document in
+        // Never a team learning (Plan FP P2): those are read through retrieval, with their disclosure.
+        List(appState.documentStore.listExcludingTeamLearnings()) { document in
             Button {
                 if let text = appState.documentStore.fullText(documentId: document.id) {
                     ReadingReferenceAttacher.attach(documentId: document.id, documentName: document.name,

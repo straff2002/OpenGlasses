@@ -283,21 +283,17 @@ final class EquipmentLookupTool: NativeTool {
     /// vault has no reference tier, nothing is ingested, or the evidence gate says insufficient —
     /// the caller's own miss message is the right answer then.
     private func manualFallback(query: String?, ocrText: String?, store: VaultStore) -> String? {
-        guard store.manifest.hasDocuments, let documentStore else { return nil }
-        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
-        guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
-        let retriever = VaultRetriever(query: { q, limit in
-            documentStore.query(q, limit: limit, namespace: namespace)
-        }, tokenSearch: { token, limit in
-            documentStore.passages(containingToken: token, namespace: namespace, limit: limit)
-        }, provenance: { documentId in
-            documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
-                                                              documentStore: documentStore),
-        policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
+        guard let documentStore, session.retrievableCorpus(store: store, documentStore: documentStore).any else {
+            return nil
+        }
+        // The shared factory (Plan FP P2): manuals and published team learnings, each tagged.
+        let retriever = session.makeRetriever(store: store, documentStore: documentStore)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText, limit: 3))
-        guard outcome.isSufficient else { return nil }
-        return VaultRetriever.toolResult(outcome, query: query ?? "the label")
+        // A learning-only outcome answers too, disclosed as the crew's finding; only a refusal
+        // leaves the caller's own miss message to speak.
+        guard outcome.answers else { return nil }
+        let disclosure = session.noteRetrieval(outcome)
+        return VaultRetriever.toolResult(outcome, query: query ?? "the label", leadIn: disclosure?.leadIn)
     }
 
     // MARK: - Camera path

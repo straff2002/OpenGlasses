@@ -105,6 +105,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// `LearningCandidateStore`. Nil, and absent from the JSON, on a job that filed none and on
     /// every session recorded before this existed.
     var teamLearnings: [LearningCandidateReference]?
+    /// Answers on this job that rested on an approved team learning alone (Plan FP P2): the entry
+    /// and the approver's role, never the words. Nil, and absent from the JSON, on a job that had
+    /// none and on every session recorded before this existed.
+    var teamLearningAnswers: [TeamLearningAnswer]?
 
     /// Whether anything is already recorded against the current unit: a task under its scope (a
     /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
@@ -214,6 +218,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case billableCheckpointAt, appClosedPause, spokenReadings
         case earlierWorkAttachedAt
         case teamLearnings
+        case teamLearningAnswers
     }
 }
 
@@ -282,6 +287,7 @@ extension FieldSession {
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings) ?? []
         earlierWorkAttachedAt = try c.decodeIfPresent(Date.self, forKey: .earlierWorkAttachedAt)
         teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
+        teamLearningAnswers = try c.decodeIfPresent([TeamLearningAnswer].self, forKey: .teamLearningAnswers)
     }
 }
 

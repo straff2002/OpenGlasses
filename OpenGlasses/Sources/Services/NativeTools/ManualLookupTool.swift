@@ -61,14 +61,17 @@ final class ManualLookupTool: NativeTool {
         guard let store = session.activeVault else {
             return "No active Field Assist session. Start a session to search its manuals."
         }
-        guard store.manifest.hasDocuments else {
+        // Published team learnings are searched beside the manuals (Plan FP P2), so a vault with
+        // learnings and no manuals is still searchable; the messages below are for one with neither.
+        let corpus = session.retrievableCorpus(store: store, documentStore: documentStore)
+        guard store.manifest.hasDocuments || corpus.learnings else {
             return "The \(store.manifest.name) vault has no manuals. Its reference material is the vault core, which is already in context."
         }
         guard let documentStore else {
             return "Manual search is unavailable in this context."
         }
         let namespace = DocumentStore.vaultNamespace(store.manifest.id)
-        guard documentStore.documentCount(namespace: namespace) > 0 else {
+        guard corpus.any else {
             return "No manuals have been imported for the \(store.manifest.name) vault yet. Import them in Settings → Field Assist → Custom Vaults."
         }
 
@@ -113,19 +116,13 @@ final class ManualLookupTool: NativeTool {
                 ?? sentence
         }
 
-        let retriever = VaultRetriever(query: { q, limit in
-            documentStore.query(q, limit: limit, namespace: namespace, documentIds: documentIds)
-        }, tokenSearch: { token, limit in
-            documentStore.passages(containingToken: token, namespace: namespace, documentIds: documentIds, limit: limit)
-        }, provenance: { documentId in
-            documentStore.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
-                                                              documentStore: documentStore),
-        policy: session.retrievalPolicy, modelScope: session.retrievalModelScope)
+        // The shared factory: manuals and the vault's published team learnings, each tagged.
+        let retriever = session.makeRetriever(store: store, documentStore: documentStore, documentIds: documentIds)
         let outcome = retriever.retrieve(.init(turn: query, ocrText: ocrText,
                                                procedureStep: nil, limit: session.manualPassageLimit))
+        let disclosure = session.noteRetrieval(outcome)
         let label = query.flatMap { $0.isEmpty ? nil : $0 } ?? "what the label says"
-        var result = VaultRetriever.toolResult(outcome, query: label)
+        var result = VaultRetriever.toolResult(outcome, query: label, leadIn: disclosure?.leadIn)
         if let ocrText {
             result = "Read from the label: \(ocrText.replacingOccurrences(of: "\n", with: " "))\n\n" + result
         }

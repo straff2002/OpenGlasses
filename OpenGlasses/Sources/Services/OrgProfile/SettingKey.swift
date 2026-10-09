@@ -53,6 +53,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// may make sure it is always said, never silence it — it is the disclosure that the person is
     /// talking to an AI.
     case aiConnectionCueEnabled
+    /// This phone may approve team learnings (Plan FP P2). An organisation may pin it off — a field
+    /// phone that never approves — and never on from here: naming the reviewer in a signed profile
+    /// is an open decision (FP open question 1).
+    case teamLearningReviewerDevice
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -93,7 +97,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .privacyFilterEnabled, .aiConnectionCueEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
-             .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled:
+             .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled, .teamLearningReviewerDevice:
             return .ceiling(pinnedTo: false)
         case .fieldAssistEnabled:
             return .startingValue(.bool)

@@ -891,6 +891,7 @@ extension SettingKey {
         case .agentModeEnabled: return "Agentic features are off"
         case .faceRecognitionEnabled: return "Face recognition is off"
         case .aiConnectionCueEnabled: return "Voice startup always says it is connecting to Avenkin AI"
+        case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
         default: return rawValue
         }
     }
