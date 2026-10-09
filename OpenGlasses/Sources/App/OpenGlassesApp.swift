@@ -1504,7 +1504,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return .handedOff }
                 // The existing store-and-forward route, unchanged: the record goes into the
                 // durable queue and the endpoint sink delivers it. "Sent" is what the queue says.
-                self.offlineQueue.enqueue(QueuedOp.make(workRecord: request.record))
+                self.offlineQueue.enqueue(request.payload.queuedOp())
                 await self.syncEngine.flush()
                 let stillQueued = QueuedRecordRows.outstandingCount(
                     in: self.offlineQueue.all(limit: 200), sessionId: request.sessionId) > 0
@@ -4410,16 +4410,17 @@ class AppState: ObservableObject, AppStateProtocol {
         // for the share sheet (Plan HD): the technician picks where it goes there, so the audience
         // follows the route it actually takes. Their own "going to my office" is carried over.
         let request: DeliveryRequest
-        if resolution.channel != staged.channel, let transcript = staged.transcript,
+        if case .workRecord(let record, let partsRequestIds) = staged.payload,
+           resolution.channel != staged.channel, let transcript = staged.transcript,
            transcript.carriesTranscript {
             let delivery = session.reportDelivery(for: resolution.channel,
                                                   sessionId: staged.sessionId,
                                                   recipients: staged.recipients,
                                                   transcriptChoice: transcript.choice)
-            request = DeliveryRequest.make(record: staged.record, channel: resolution.channel,
+            request = DeliveryRequest.make(record: record, channel: resolution.channel,
                                            recipients: staged.recipients,
                                            attachments: delivery.attachments,
-                                           partsRequestIds: staged.partsRequestIds,
+                                           partsRequestIds: partsRequestIds,
                                            clipPlan: delivery.clipPlan,
                                            clipItems: delivery.clipItems,
                                            transcript: delivery.transcript)
@@ -4468,7 +4469,7 @@ class AppState: ObservableObject, AppStateProtocol {
         case .endpoint:
             // Nobody taps anything: the record goes into the durable queue and the endpoint sink
             // delivers it. "Sent" is what the queue says, not what this method hopes.
-            offlineQueue.enqueue(QueuedOp.make(workRecord: request.record))
+            offlineQueue.enqueue(request.payload.queuedOp())
             Task { [weak self] in
                 guard let self else { return }
                 await self.syncEngine.flush()

@@ -6,7 +6,50 @@ import Foundation
 /// subscribes and opens the composer, exactly the way a staged figure reaches the phone. Nothing
 /// in here has left the device — a request that is never completed is a report that was never sent,
 /// and the queue still holds the record.
+///
+/// **What travels is a `Payload`, not a `WorkRecord` (Plan FP P0).** The channels, the composer
+/// and the unattended route read only the envelope — subject, bodies, attachments, recipients —
+/// and ask the payload for the session it belongs to and the op the queue should hold. A second
+/// kind of document (FP P3's team-learning bundle) is a new case here and nothing more; a job
+/// report is the only case today, and it behaves exactly as it did.
 struct DeliveryRequest: Identifiable, Equatable {
+
+    /// The thing being delivered, kept exactly so the unattended route can queue what the composer
+    /// showed.
+    enum Payload: Equatable {
+        /// A job report: the record, and the stock checks it answers for — they become `sent`
+        /// when it is sent, and stay `requested` when it is not.
+        case workRecord(WorkRecord, partsRequestIds: [String])
+
+        /// The job session the delivery is audited against.
+        var sessionId: String {
+            switch self {
+            case .workRecord(let record, _): return record.sessionId
+            }
+        }
+
+        var jobReference: String? {
+            switch self {
+            case .workRecord(let record, _): return record.jobReference
+            }
+        }
+
+        /// The stock checks a confirmed send moves to `sent`. Empty for anything that is not a
+        /// job report.
+        var partsRequestIds: [String] {
+            switch self {
+            case .workRecord(_, let ids): return ids
+            }
+        }
+
+        /// What the durable queue holds when this goes by the unattended route: for a job report,
+        /// the same bytes `WorkRecord.json` produces.
+        func queuedOp() -> QueuedOp {
+            switch self {
+            case .workRecord(let record, _): return QueuedOp.make(workRecord: record)
+            }
+        }
+    }
 
     /// A file that rides along: the work order the customer reads, or the JSON a job system parses.
     struct Attachment: Equatable {
@@ -62,11 +105,8 @@ struct DeliveryRequest: Identifiable, Equatable {
     /// Two or three lines, for a channel that has to fit in a message bubble.
     let shortBody: String
     let attachments: [Attachment]
-    /// The record itself, so the unattended route can queue exactly what the composer showed.
-    let record: WorkRecord
-    /// The stock checks this report answers for. They become `sent` when it is sent, and stay
-    /// `requested` when it is not.
-    let partsRequestIds: [String]
+    /// What is being delivered (Plan FP P0).
+    let payload: Payload
     /// What happened to the job's clips on this channel (Plan FO P2b). The PDF, the JSON, the
     /// composer body and the "Share clip" offers are all this one partition rendered differently,
     /// so none of them can claim a clip travelled when it did not.
@@ -94,8 +134,7 @@ struct DeliveryRequest: Identifiable, Equatable {
          body: String,
          shortBody: String,
          attachments: [Attachment] = [],
-         record: WorkRecord,
-         partsRequestIds: [String] = [],
+         payload: Payload,
          clipPlan: ClipDeliveryPlan = .undecided,
          clipItems: [JobMediaItem] = [],
          transcript: ReportTranscriptPolicy.Decision? = nil) {
@@ -106,15 +145,45 @@ struct DeliveryRequest: Identifiable, Equatable {
         self.body = body
         self.shortBody = shortBody
         self.attachments = attachments
-        self.record = record
-        self.partsRequestIds = partsRequestIds
+        self.payload = payload
         self.clipPlan = clipPlan
         self.clipItems = clipItems
         self.transcript = transcript
     }
 
-    var sessionId: String { record.sessionId }
-    var jobReference: String? { record.jobReference }
+    /// A job report's request — the shape every caller had before the payload existed.
+    init(id: String = UUID().uuidString,
+         channel: DeliveryChannel,
+         recipients: [String],
+         subject: String,
+         body: String,
+         shortBody: String,
+         attachments: [Attachment] = [],
+         record: WorkRecord,
+         partsRequestIds: [String] = [],
+         clipPlan: ClipDeliveryPlan = .undecided,
+         clipItems: [JobMediaItem] = [],
+         transcript: ReportTranscriptPolicy.Decision? = nil) {
+        self.init(id: id, channel: channel, recipients: recipients, subject: subject, body: body,
+                  shortBody: shortBody, attachments: attachments,
+                  payload: .workRecord(record, partsRequestIds: partsRequestIds),
+                  clipPlan: clipPlan, clipItems: clipItems, transcript: transcript)
+    }
+
+    /// The job report being delivered. While a job report is the only payload this is total; the
+    /// phase that adds a second case makes it optional, and only report-specific code reads it.
+    var record: WorkRecord {
+        switch payload {
+        case .workRecord(let record, _): return record
+        }
+    }
+
+    /// The stock checks this report answers for. They become `sent` when it is sent, and stay
+    /// `requested` when it is not.
+    var partsRequestIds: [String] { payload.partsRequestIds }
+
+    var sessionId: String { payload.sessionId }
+    var jobReference: String? { payload.jobReference }
 
     /// Build the request for a decided channel. The three shapes come off one record, so the PDF a
     /// person reads, the JSON a system parses and the sentence in a message bubble cannot disagree.
