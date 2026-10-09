@@ -419,6 +419,8 @@ final class ExampleVaultLennoxTests: XCTestCase {
             switch result {
             case .sufficient(let passages):
                 print("[LENNOX] '\(turn)' → \(passages.count) passages: \(passages.map { "\($0.citation) sim=\(String(format: "%.2f", $0.similarity)) tokens=\($0.matchedTokens)" })")
+            case .teamLearningOnly(let passages):
+                print("[LENNOX] '\(turn)' → \(passages.count) team learnings only")
             case .insufficient:
                 print("[LENNOX] '\(turn)' → insufficient")
             }
