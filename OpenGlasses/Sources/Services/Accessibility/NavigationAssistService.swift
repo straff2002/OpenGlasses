@@ -1,4 +1,5 @@
 import Foundation
+import QuartzCore
 import UIKit
 
 /// Low-Vision Navigation Assist (Plan J): an Assistive-Mode variant tuned for mobility. Periodically
@@ -28,7 +29,14 @@ final class NavigationAssistService: ObservableObject {
     private var timer: Timer?
     private var analyzing = false
 
-    private init() {}
+    /// Injected monotonic clock, seconds. Frame age is measured on it, so tests drive time directly.
+    var clock: () -> TimeInterval = { CACurrentMediaTime() }
+
+    /// Callouts dropped this session because their frame had gone stale (`NavigationAdviceFreshness`).
+    private(set) var staleAdviceDrops = 0
+
+    /// Internal rather than private so tests can use a fresh instance; the app uses `shared`.
+    init() {}
 
     func configure(camera: any FilteredStillProviding, llm: LLMService, tts: TextToSpeechService) {
         self.camera = camera
@@ -68,6 +76,7 @@ final class NavigationAssistService: ObservableObject {
         guard !isActive else { return true }
         isActive = true
         lastAdvice = nil
+        staleAdviceDrops = 0
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
         }
@@ -93,12 +102,15 @@ final class NavigationAssistService: ObservableObject {
         analyzing = true
         defer { analyzing = false }
 
+        // Stamped before the still is fetched, so the age includes filtering as well as the model.
+        let capturedAt = clock()
         guard let data = await usableFrameData(camera) else { return }
 
-        guard let raw = await llm.analyzeFrame(systemPrompt: Self.systemPrompt,
-                                               userText: "What hazards or landmarks should I know about right now?",
-                                               imageData: data, maxTokens: 80),
-              let advice = AssistiveAdvice.parse(raw) else { return }
+        guard let advice = await freshAdvice(capturedAt: capturedAt, analyze: {
+            await llm.analyzeFrame(systemPrompt: Self.systemPrompt,
+                                   userText: "What hazards or landmarks should I know about right now?",
+                                   imageData: data, maxTokens: 80)
+        }) else { return }
         guard isActive else { return }
 
         // Skip "view unclear" low-priority noise and near-duplicates of the last spoken advice.
@@ -111,6 +123,26 @@ final class NavigationAssistService: ObservableObject {
         let hudIcon: GlassesDisplayService.HUDIcon = advice.urgency == .high ? .hazard : .navigation
         glassesDisplay?.showNavigation(advice.advice, icon: hudIcon)
         await tts.speak(advice.advice, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
+    }
+
+    /// Ask the model about a frame captured at `capturedAt` and return its advice only if that frame
+    /// is still fresh now that the reply is back. Nothing awaits between this check and the HUD and
+    /// speech in `tick()`, so the age checked here is the age at speak time.
+    ///
+    /// A stale reply is dropped whatever its urgency, counted, and logged as its age and the
+    /// session's drop count — never its words. Internal so tests can drive it with a slow model fake.
+    func freshAdvice(capturedAt: TimeInterval,
+                     analyze: () async -> String?) async -> AssistiveAdvice? {
+        guard let raw = await analyze(), let advice = AssistiveAdvice.parse(raw) else { return nil }
+        let now = clock()
+        guard NavigationAdviceFreshness.isFresh(capturedAt: capturedAt, now: now) else {
+            staleAdviceDrops += 1
+            let age = NavigationAdviceFreshness.age(capturedAt: capturedAt, now: now)
+            PrivacyLog.vision(.navigationAssist, .adviceExpired, count: staleAdviceDrops,
+                              milliseconds: age.isFinite ? Int((min(max(age, -86_400), 86_400) * 1000).rounded()) : nil)
+            return nil
+        }
+        return advice
     }
 
     /// The frame this loop will send, or nil if there isn't one worth sending.

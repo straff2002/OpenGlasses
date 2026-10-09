@@ -693,6 +693,9 @@ enum PrivacyLog {
         // named a feeling and was re-asked, `inferenceWithheld` a re-ask that named one too, so the
         // fallback line was spoken instead. Counted, never quoted: the words are the model's.
         case inferenceRetried, inferenceWithheld
+        // Navigation assist: a hazard callout dropped because its frame was older than the limit
+        // when the reply came back. Carries the frame's age and the session's drop count only.
+        case adviceExpired
     }
 
     /// `posture` is the power policy's own enum, `percent` is how much of the frame a detected
