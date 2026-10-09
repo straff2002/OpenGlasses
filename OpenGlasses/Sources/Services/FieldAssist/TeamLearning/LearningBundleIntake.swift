@@ -237,7 +237,7 @@ final class LearningBundleIntake: ObservableObject {
             return .failure(.notEntitled(reason))
         }
 
-        let accepted = bundle.filtered(entryIDs: entryIDs, candidateIDs: candidateIDs)
+        let accepted = bundle.selecting(entryIDs: entryIDs, candidateIDs: candidateIDs)
         let report = apply(accepted)
 
         // The bundle counts as applied once any of it is, so an older one is refused from now on.

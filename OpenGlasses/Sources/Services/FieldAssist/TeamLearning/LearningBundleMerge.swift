@@ -311,7 +311,7 @@ extension LearningBundle {
 
     /// The part of a bundle a person accepted: the entries and retractions named, and the statuses
     /// for the candidates named.
-    func filtered(entryIDs: Set<String>, candidateIDs: Set<String>) -> LearningBundle {
+    func selecting(entryIDs: Set<String>, candidateIDs: Set<String>) -> LearningBundle {
         var out = self
         out.candidates = candidates.filter { candidateIDs.contains($0.candidateID) }
         out.statuses = statuses.filter { candidateIDs.contains($0.candidateID) }
