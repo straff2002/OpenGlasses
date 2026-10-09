@@ -35,6 +35,11 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         /// Local storage: a database that would not open, a statement that would not run, a blob
         /// that would not read. Distinct from `decoding`, which is the shape of the bytes.
         case storage
+        /// A model was reached and answered that it will not answer. Not a transport fault and
+        /// not a refused request: the request was fine, the reply is a decline.
+        case modelDeclined
+        /// A model's reply stopped at its output ceiling with nothing said.
+        case outputTruncated
         case unknown
     }
 
@@ -138,6 +143,11 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
             return SafeErrorSummary(category: .badServerResponse, detail: PrivacyToken("invalidResponse"))
         case .streamInterrupted:
             return SafeErrorSummary(category: .badServerResponse, detail: PrivacyToken("streamInterrupted"))
+        // The provider's own stop reason is the detail: it is from a fixed list.
+        case .modelDeclined:
+            return SafeErrorSummary(category: .modelDeclined, detail: PrivacyToken("refusal"))
+        case .outputTruncated:
+            return SafeErrorSummary(category: .outputTruncated, detail: PrivacyToken("max_tokens"))
         case .missingAPIKey:
             return SafeErrorSummary(category: .unknown, detail: PrivacyToken("missingAPIKey"))
         case .invalidConfiguration:

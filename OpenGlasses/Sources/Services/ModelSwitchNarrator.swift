@@ -60,6 +60,9 @@ enum ModelSwitchNarrator {
             } else if case LLMError.apiError(_, _, _, let rejection?) = lastError,
                       rejection.reason == .credentialNotAccepted || rejection.reason == .betaHeaderUnknown {
                 reason = "the AI service didn't accept the key or sign-in"
+            } else if case LLMError.modelDeclined = lastError {
+                // Nor is a model that declined (Plan IE P3).
+                reason = "the model declined to answer that"
             } else {
                 reason = "I don't have working credentials for them"
             }

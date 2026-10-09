@@ -2127,6 +2127,14 @@ class LLMService: ObservableObject {
                     }
                 }
                 let text = AnthropicReply.text(in: content)
+                // Plan IE P3: a 200 that is not an answer says so, instead of reaching `finalize`
+                // as an empty reply and surfacing as an unreadable response.
+                switch AnthropicReply.outcome(stopReason: stopReason, text: text,
+                                              hasToolCalls: !toolCalls.isEmpty || !state.malformedIds.isEmpty) {
+                case .declined: throw LLMError.modelDeclined(provider: "Anthropic")
+                case .ranOutOfRoom: throw LLMError.outputTruncated(provider: "Anthropic")
+                case .answered: break
+                }
                 return AssistantTurn(text: text, toolCalls: toolCalls, payload: content)
             },
             appendAssistantToolCall: { [weak self] turn in
@@ -4682,6 +4690,12 @@ enum LLMError: LocalizedError {
     /// ended before the terminator (`[DONE]` / `message_stop`). Partial content must never be
     /// returned as a successful turn (BM P9).
     case streamInterrupted(provider: String, reason: String)
+    /// The model answered that it will not answer (`stop_reason: refusal`, Plan IE P3). The reply
+    /// was reached and read; there is nothing in it to speak. Another model may answer.
+    case modelDeclined(provider: String)
+    /// The reply stopped at its output ceiling before any text or tool call (Plan IE P3): the
+    /// allowance went on thinking. Nothing was said, so this is not a short answer.
+    case outputTruncated(provider: String)
 
     var errorDescription: String? {
         switch self {
@@ -4693,6 +4707,10 @@ enum LLMError: LocalizedError {
             return "\(provider) error: \(code)"
         case .streamInterrupted(let provider, let reason):
             return "\(provider) stream interrupted: \(reason)"
+        case .modelDeclined(let provider):
+            return "\(provider) declined to answer"
+        case .outputTruncated(let provider):
+            return "\(provider) ran out of room before it answered"
         }
     }
 }

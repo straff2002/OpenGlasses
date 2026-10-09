@@ -125,11 +125,101 @@ final class ReasoningPolicyTests: XCTestCase {
         XCTAssertEqual(auto.effective, .providerDefault(.medium))
     }
 
-    func testAnthropicIsNotSupportedYet() {
-        let r = resolve(.anthropic, "claude-sonnet-5", tools: true, .high)
-        XCTAssertEqual(r.wire, .omit)
-        XCTAssertEqual(r.effective, .notSupported)
-        XCTAssertEqual(r.reason, .anthropicNotYet)
+    // MARK: - Anthropic (Plan IE P3)
+
+    private typealias Wire = ReasoningPolicy.Resolution.Wire
+    private typealias Effective = ReasoningPolicy.Resolution.Effective
+    private typealias Reason = ReasoningPolicy.Resolution.Reason
+
+    /// Every family, at Automatic: a model that thinks by default is sent `low`; a model that
+    /// does not is sent nothing; a model that takes no effort setting is never sent one.
+    func testAnthropicAutomaticPerFamily() {
+        let rows: [(model: String, wire: Wire, effective: Effective, reason: Reason)] = [
+            ("claude-fable-5-1", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-mythos-5-1", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-fable-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-mythos-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-opus-5-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-opus-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-sonnet-5-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-sonnet-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-haiku-5-5", .anthropicEffort(.low), .level(.low), .automaticThinkingModel),
+            ("claude-opus-4-8", .omit, .providerDefault(nil), .automaticProviderDefault),
+            ("claude-opus-4-7", .omit, .providerDefault(nil), .automaticProviderDefault),
+            ("claude-opus-4-6", .omit, .providerDefault(nil), .automaticProviderDefault),
+            ("claude-sonnet-4-6", .omit, .providerDefault(nil), .automaticProviderDefault),
+            ("claude-opus-4-5", .omit, .providerDefault(nil), .automaticProviderDefault),
+            ("claude-haiku-4-5", .omit, .notApplicable, .noEffortSetting),
+            ("claude-sonnet-4-5", .omit, .notApplicable, .noEffortSetting),
+            ("claude-3-5-haiku-20241022", .omit, .notApplicable, .noEffortSetting),
+            ("claude-nova-9", .omit, .providerDefault(nil), .unrecognisedModel),
+        ]
+        for row in rows {
+            for tools in [true, false] {
+                let r = resolve(.anthropic, row.model, tools: tools, nil)
+                XCTAssertEqual(r.wire, row.wire, "\(row.model) tools=\(tools)")
+                XCTAssertEqual(r.effective, row.effective, "\(row.model) tools=\(tools)")
+                XCTAssertEqual(r.reason, row.reason, "\(row.model) tools=\(tools)")
+            }
+        }
+    }
+
+    /// Every setting level on a family that takes all five: the app's `none` and `minimal` have
+    /// no equivalent and become `low`; the rest go as set.
+    func testAnthropicExplicitLevelsOnACurrentFamily() {
+        let expected: [(ReasoningEffort, ReasoningEffort, Reason)] = [
+            (.none, .low, .adjustedToAccepted), (.minimal, .low, .adjustedToAccepted),
+            (.low, .low, .asSet), (.medium, .medium, .asSet),
+            (.high, .high, .asSet), (.xhigh, .xhigh, .asSet),
+        ]
+        for model in ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8",
+                      "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"] {
+            for (requested, sent, reason) in expected {
+                let r = resolve(.anthropic, model, tools: true, requested)
+                XCTAssertEqual(r.wire, .anthropicEffort(sent), "\(model) \(requested)")
+                XCTAssertEqual(r.effective, .level(sent), "\(model) \(requested)")
+                XCTAssertEqual(r.reason, reason, "\(model) \(requested)")
+                XCTAssertEqual((body(r)["output_config"] as? [String: String])?["effort"], sent.rawValue)
+            }
+        }
+    }
+
+    /// A family without `xhigh` gets `high` for it — the nearest level it takes, never `max`.
+    func testAnthropicExplicitLevelIsClampedToTheFamily() {
+        for model in ["claude-opus-4-6", "claude-sonnet-4-6", "claude-opus-4-5"] {
+            let r = resolve(.anthropic, model, tools: true, .xhigh)
+            XCTAssertEqual(r.wire, .anthropicEffort(.high), model)
+            XCTAssertEqual(r.reason, .adjustedToAccepted, model)
+            XCTAssertEqual(resolve(.anthropic, model, tools: true, .medium).wire, .anthropicEffort(.medium), model)
+        }
+    }
+
+    /// An explicit setting never reaches a model that would refuse the field.
+    func testAnthropicNeverSendsEffortWhereItIsAnError() {
+        for model in ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-1", "claude-nova-9", ""] {
+            for requested in ReasoningEffort.allCases {
+                let r = resolve(.anthropic, model, tools: true, requested)
+                XCTAssertEqual(r.wire, .omit, "\(model) \(requested)")
+                XCTAssertNil(body(r)["output_config"], "\(model) \(requested)")
+            }
+        }
+    }
+
+    /// Whatever is resolved, the body gains `output_config` or nothing: no thinking configuration
+    /// and no budget, on any family at any setting.
+    func testAnthropicBodyNeverCarriesAThinkingConfiguration() {
+        let models = ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8",
+                      "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5", "claude-opus-4-6",
+                      "claude-opus-4-5", "claude-haiku-4-5", "claude-nova-9"]
+        for model in models {
+            for requested in [ReasoningEffort?.none] + ReasoningEffort.allCases.map(Optional.some) {
+                let sent = body(resolve(.anthropic, model, tools: true, requested))
+                XCTAssertTrue(Set(sent.keys).isSubset(of: ["model", "output_config"]), "\(model): \(sent.keys)")
+                if let effort = (sent["output_config"] as? [String: String])?["effort"] {
+                    XCTAssertTrue(["low", "medium", "high", "xhigh"].contains(effort), "\(model): \(effort)")
+                }
+            }
+        }
     }
 
     func testCustomAndThirdPartySendOnlyExplicitValues() {
@@ -186,7 +276,8 @@ final class ReasoningPolicyTests: XCTestCase {
     func testTokensAreContentFree() {
         XCTAssertEqual(resolve(.openai, "gpt-6-sol", tools: true, nil).token, "none")
         XCTAssertEqual(resolve(.openai, "gpt-6-sol", tools: false, nil).token, "default-medium")
-        XCTAssertEqual(resolve(.anthropic, "claude", tools: true, nil).token, "unsupported")
+        XCTAssertEqual(resolve(.anthropic, "claude", tools: true, nil).token, "default")
+        XCTAssertEqual(resolve(.anthropic, "claude-sonnet-5-5", tools: true, nil).token, "low")
         XCTAssertEqual(PrivacyToken(resolve(.custom, "x", tools: true, nil).token).description, "default")
     }
 

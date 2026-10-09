@@ -84,6 +84,14 @@ enum ModelFallbackChain {
             case .invalidResponse, .streamInterrupted:
                 // Empty completion (P3) / mid-stream death — transient, try another model.
                 return .retryOtherModel
+            case .modelDeclined:
+                // This model will not answer this (Plan IE P3). Asking it again changes nothing,
+                // so the candidate is finished — but the turn is not: another model may answer.
+                return .terminalForCandidate
+            case .outputTruncated:
+                // The allowance went on thinking. A model that thinks less, or not at all, may
+                // well fit the same answer.
+                return .retryOtherModel
             case .apiError(_, let status, _, let rejection):
                 // "Malformed — fails everywhere" stopped being true of every 400 once a request
                 // one model accepts is one its successor refuses (Plan IE P0). A refusal that

@@ -85,7 +85,10 @@ enum ReasoningRoute: String, Equatable {
 /// Completions is clamped to `none` there, and a level the model does not take moves to the nearest
 /// one it does. Plan GC: which *route* an OpenAI API turn takes — so whether the clamp applies at
 /// all — is `OpenAIRouteSelector`'s decision; this type resolves the level for the route it is given.
-/// Anthropic thinking is not wired yet; nothing is sent. Gemini Live stays at 0.
+/// Anthropic (Plan IE P3) takes `output_config.effort`, resolved against the model's request
+/// contract: at Automatic a model that thinks before every answer is sent `low`, a model that does
+/// not is sent nothing; an explicit level is sent as the nearest one the model takes; a model that
+/// takes no effort setting is never sent one. Gemini Live stays at 0.
 ///
 /// Pure and table-tested. `LLMService` resolves once per request and applies the result; the model
 /// editor shows the same resolution with and without tools, so what the tester reads is what goes
@@ -191,6 +194,8 @@ enum ReasoningPolicy {
             case responsesEffort(ReasoningEffort)
             /// Gemini REST: `thinkingConfig.thinkingBudget`, always paired with a raised output cap.
             case geminiThinkingBudget(Int)
+            /// Anthropic Messages: `output_config.effort`. Only ever `low`…`xhigh`.
+            case anthropicEffort(ReasoningEffort)
         }
 
         /// What the model will actually do.
@@ -198,8 +203,6 @@ enum ReasoningPolicy {
             case level(ReasoningEffort)
             /// Nothing sent; the provider's default applies (nil when we don't know it).
             case providerDefault(ReasoningEffort?)
-            /// The provider has reasoning, but this app does not send it yet.
-            case notSupported
             /// The model has no reasoning setting at all.
             case notApplicable
         }
@@ -213,7 +216,9 @@ enum ReasoningPolicy {
             case automaticGeminiToolBudget
             case learnedRejection
             case notReasoningModel
-            case anthropicNotYet
+            case automaticThinkingModel
+            case noEffortSetting
+            case unrecognisedModel
             case liveSessionOff
             case onDevice
 
@@ -228,7 +233,9 @@ enum ReasoningPolicy {
                 case .automaticGeminiToolBudget: return "Automatic gives tool turns a small thinking budget."
                 case .learnedRejection: return "The provider refused reasoning with tools for this model earlier."
                 case .notReasoningModel: return "This model has no reasoning setting."
-                case .anthropicNotYet: return "Not supported for this provider yet."
+                case .automaticThinkingModel: return "Automatic keeps a model that thinks before every answer at its lowest effort, to keep answers quick."
+                case .noEffortSetting: return "This model doesn't take an effort setting, so nothing is sent."
+                case .unrecognisedModel: return "The app doesn't know this model yet, so it sends no effort setting and the provider's default applies."
                 case .liveSessionOff: return "Live voice sessions don't use reasoning."
                 case .onDevice: return "On-device models don't have this setting."
                 }
@@ -240,24 +247,22 @@ enum ReasoningPolicy {
         let reason: Reason
 
         /// Content-free token for the trace and the privacy log: `none`, `medium`, `default`,
-        /// `default-medium`, `unsupported`, `na`.
+        /// `default-medium`, `na`.
         var token: String {
             switch effective {
             case .level(let level): return level.rawValue
             case .providerDefault(let level?): return "default-\(level.rawValue)"
             case .providerDefault(nil): return "default"
-            case .notSupported: return "unsupported"
             case .notApplicable: return "na"
             }
         }
 
-        /// The editor's readout: "none", "medium (provider default)", "not supported".
+        /// The editor's readout: "None", "Medium (provider default)", "Not applicable".
         var displayValue: String {
             switch effective {
             case .level(let level): return level.label
             case .providerDefault(let level?): return "\(level.label) (provider default)"
             case .providerDefault(nil): return "Provider default"
-            case .notSupported: return "Not supported"
             case .notApplicable: return "Not applicable"
             }
         }
@@ -267,7 +272,7 @@ enum ReasoningPolicy {
             switch effective {
             case .level(let level): return level > .none
             case .providerDefault(let level?): return level > .none
-            case .providerDefault(nil), .notSupported, .notApplicable: return false
+            case .providerDefault(nil), .notApplicable: return false
             }
         }
 
@@ -278,13 +283,14 @@ enum ReasoningPolicy {
             reasonsAboveNone ? max(base, ReasoningPolicy.reasoningOutputFloor) : base
         }
 
-        /// Merge this resolution into a Chat Completions or Responses body. Gemini's budget is
-        /// applied through `geminiGenerationConfig`, not here.
+        /// Merge this resolution into a Chat Completions, Responses or Anthropic Messages body.
+        /// Gemini's budget is applied through `geminiGenerationConfig`, not here.
         func apply(to body: inout [String: Any]) {
             switch wire {
             case .omit, .geminiThinkingBudget: return
             case .reasoningEffort(let level): body["reasoning_effort"] = level.rawValue
             case .responsesEffort(let level): body["reasoning"] = ["effort": level.rawValue]
+            case .anthropicEffort(let level): body["output_config"] = ["effort": level.rawValue]
             }
         }
 
@@ -335,7 +341,7 @@ enum ReasoningPolicy {
         case .geminiLive:
             return Resolution(wire: .omit, effective: .level(.none), reason: .liveSessionOff)
         case .anthropicMessages:
-            return Resolution(wire: .omit, effective: .notSupported, reason: .anthropicNotYet)
+            return resolveAnthropic(model: model, explicit: explicit)
         case .geminiREST:
             guard let explicit else {
                 return toolsAttached
@@ -369,6 +375,40 @@ enum ReasoningPolicy {
             return resolveChat(provider: provider, model: model, toolsAttached: toolsAttached,
                                explicit: explicit, learnedToolRejection: learnedToolRejection)
         }
+    }
+
+    /// The effort an Anthropic request carries (Plan IE P3), from the model's request contract.
+    ///
+    /// Effort is the only control sent. `thinking: disabled`, a thinking budget and the
+    /// between-tools switch are each refused by some current model, and none of them is needed:
+    /// lowering effort is what every model that thinks by default accepts.
+    ///
+    /// - Automatic on a model that thinks by default → `low`. Left alone, such a model thinks at
+    ///   its own default before almost every spoken reply; a voice turn wants the answer.
+    /// - Automatic on a model that does not think unless asked → nothing sent.
+    /// - An explicit level → that level, or the nearest the model takes. The app's `none` and
+    ///   `minimal` have no Anthropic equivalent and become `low`; `max` is never chosen.
+    /// - A model that takes no effort setting, or one the table does not know → nothing sent.
+    private static func resolveAnthropic(model: String, explicit: ReasoningEffort?) -> Resolution {
+        let contract = AnthropicModelContract.contract(for: model)
+        // The levels this model takes, in the app's vocabulary. `max` has no case there on purpose.
+        let accepted = contract.effortLevels.compactMap { ReasoningEffort(rawValue: $0.rawValue) }
+        guard !accepted.isEmpty else {
+            return Resolution(wire: .omit,
+                              effective: contract.thinksByDefault ? .providerDefault(nil) : .notApplicable,
+                              reason: contract.isKnownModel ? .noEffortSetting : .unrecognisedModel)
+        }
+        guard let explicit else {
+            guard contract.thinksByDefault else {
+                return Resolution(wire: .omit, effective: .providerDefault(nil), reason: .automaticProviderDefault)
+            }
+            let lowest = accepted[0]
+            return Resolution(wire: .anthropicEffort(lowest), effective: .level(lowest),
+                              reason: .automaticThinkingModel)
+        }
+        let level = Family(accepted: accepted, providerDefault: accepted[0]).nearestAccepted(explicit)
+        return Resolution(wire: .anthropicEffort(level), effective: .level(level),
+                          reason: level == explicit ? .asSet : .adjustedToAccepted)
     }
 
     private static func resolveChat(provider: LLMProvider, model: String, toolsAttached: Bool,
