@@ -1,11 +1,14 @@
 # Plan IE: A Rejected Turn Names Its Reason, and the Current Claude Request Contract
 
-**Status:** 🚧 P0 shipped 2026-10-10 — `ProviderRejection` (closed reason vocabulary, never the
-message), the `LLMError` rung in `SafeErrorSummary`, the failed turn's line carrying the reason, the
-credential kind, the tool counts and the request id, the banner and the spoken reason, the fallback
-chain reading the reason, and a log line at every Anthropic site. Nothing an Anthropic request
-sends has changed. Still unbuilt: P1 (pure core with fixture tests), P2 and P3 (they change what
-the Anthropic paths send and keep), P4 (a live check that needs real credentials).
+**Status:** 🚧 P0–P3 shipped 2026-10-10; P4 (the live check) is owed. P0: `ProviderRejection`
+(closed reason vocabulary, never the message), the `LLMError` rung in `SafeErrorSummary`, the failed
+turn's line carrying the reason, the credential kind, the tool counts and the request id, the banner
+and the spoken reason, the fallback chain reading the reason, and a log line at every Anthropic
+site. P1: `AnthropicModelContract` and one body builder for all five `/v1/messages` sites. P2:
+thinking blocks whole within a turn, dropped when the prefix under them changes, gone when the next
+turn begins. P3: `output_config.effort`, output room on models that think by default, and a declined
+or truncated reply as its own outcome. P1–P3 are fixture-tested only: nothing they send has been
+put to the live service, which is what P4 is for.
 **Origin:** A tester's support report from build 480 (`7a0cc0e0`), 2026-10-09. The first question
 asked after choosing a model failed: Anthropic, `claude-sonnet-5-5`, HTTP 400. The report could not
 say why, and reading the code for the cause turned up five defects against the current Claude
@@ -175,6 +178,26 @@ chain's class per reason; no message text in any event (extend the privacy-loggi
 Tests: the contract table; body snapshots per model family for all five sites; a structured-vision
 fixture with a call and without one.
 
+**Shipped 2026-10-10.** As built, where it differs from the list above or adds to it:
+
+- An id is matched by family: the row's prefix, then nothing, a date or a label — never another
+  version number. `claude-sonnet-5-6` is therefore not `claude-sonnet-5`; it is unknown and gets
+  the strictest contract (no forced tool choice, no sampling parameters, no effort, output room
+  for thinking). A platform's prefix in front of the name is ignored.
+- `strict: true` is set only where a pure check finds every object level of the schema closed
+  (`additionalProperties: false` and a `required` list). None of the schemas the app's callers
+  pass today closes its objects, so today the call is always asked for without the guarantee;
+  closing those schemas is a follow-up, not part of this plan.
+- The retry is for a reply with neither the call nor readable JSON. A refused request is not
+  retried, and a model that takes a forced choice behaves exactly as before.
+- The builder has no parameter for a sampling setting or a thinking configuration, so neither can
+  be sent; nothing in the app sent one before either.
+- The four one-shot sites and the buffered turn now go through the injectable `dataSession`
+  (still the shared session in production), which is what lets the fixtures drive them.
+- Pricing rows added for `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5`. Haiku 5.5's
+  higher rate for prompts over 100K tokens does not fit the table and is noted there.
+  `claude-fable-5-1`, `claude-mythos-5-1` and `claude-opus-5` still have no row.
+
 ### P2 — Thinking blocks: whole within a turn, gone after it
 
 - **Defect B:** `streamAnthropicContent` applies `thinking_delta` and `signature_delta`, so a
@@ -188,6 +211,24 @@ Tests: a streamed tool-loop fixture asserting the replayed block is byte-identic
 fixture asserting the second request carries no thinking block; the existing hygiene suites
 unchanged.
 
+**Shipped 2026-10-10.** The code proved two sentences above wrong, and the build follows the code:
+
+- *"When a turn finishes"* would miss a turn that never finishes. The strip
+  (`HistoryHygiene.stripThinkingBlocks`) runs where the next user turn **begins** — in
+  `sendMessage` for every provider and again at the top of `sendAnthropic` — so an abandoned turn,
+  a switch of model and a fallback hop are covered by the same line. A message that was nothing
+  but thinking keeps a one-line placeholder rather than empty content.
+- *"Within a turn's tool loop the system parts, tools and earlier messages do not change"* is not
+  true of this app. The request copy stops resending a photo once the model has answered from it,
+  a capture tool's photo makes the image prune rewrite an earlier message, and the history budget
+  can drop an old exchange and change its note in the system text as the turn grows. So each
+  request records a digest of what it sent (`ThinkingReplayGuard`), and the next compares the same
+  span of what it is about to send: equal, the blocks ride; different, that turn's blocks are
+  dropped from the history before sending. A turn that carries a photo and calls a tool therefore
+  always loses the first round trip's blocks — legal, and the cost is the model's notes.
+- The sentence the service uses for a block refused over a changed prefix is still not pinned
+  (P0's note): no fixture here could produce it. P4 should record it.
+
 ### P3 — Effort and output room for Anthropic
 
 Retires `anthropicNotYet`.
@@ -198,6 +239,22 @@ Retires `anthropicNotYet`.
   `max_tokens` and `refusal` become distinct outcomes rather than `invalidResponse`.
 
 Tests: `ReasoningPolicyTests` rows per model family; a truncated-turn fixture; a refusal fixture.
+
+**Shipped 2026-10-10.** As built:
+
+- Automatic sends `low` to a model that thinks by default and nothing to one that does not; an
+  explicit level goes as the nearest the model takes. The app's `none` and `minimal` have no
+  Anthropic equivalent and become `low`; `max` is never chosen. `thinking: disabled`, a thinking
+  budget and the between-tools switch are never sent to any family. A model that takes no effort
+  setting, and an id the table does not know, are sent none.
+- The output cap is `AnthropicModelContract.outputCap`: never under 4,096 tokens on a model that
+  thinks by default, unchanged elsewhere. It applies to all five sites, not only tool turns — the
+  200-token frame analysis and the 320-token small-context vision turn had the same fault.
+- `stop_reason: refusal` is `LLMError.modelDeclined` and ends the candidate, not the turn;
+  `max_tokens` with no text and no tool call is `LLMError.outputTruncated` and tries another model.
+  A reply cut short after it said something is still returned as what it said.
+- `anthropicNotYet` and the "not supported" readout are gone; the model editor shows the level
+  that will be sent and why.
 
 ### P4 — Live check (needs credentials; deferred)
 
@@ -210,11 +267,11 @@ question.
 
 1. **Request id in the support report.** It identifies one request to the provider and nothing
    else, and is what their support asks for. Recommended: include it.
-2. **Default effort for a spoken turn** on models that think by default. Recommended: `low`, with
-   the existing reasoning setting able to raise it; to be confirmed on a device through Plan
-   [CU](CU-voice-turn-latency.md)'s timeline.
-3. **Structured replies** on models without forced tool choice: `auto` with a strict tool and one
-   retry (recommended — smallest change, one parser), or the provider's structured-output format.
+2. **Default effort for a spoken turn** on models that think by default. **Decided 2026-10-10:
+   `low`**, with the existing reasoning setting able to raise it; still to be confirmed on a device
+   through Plan [CU](CU-voice-turn-latency.md)'s timeline.
+3. **Structured replies** on models without forced tool choice. **Built as recommended:** `auto`
+   with a strict tool where the schema qualifies, and one retry.
 4. **If P4 shows account sign-in is refused:** keep it and explain at connect time, or remove it
    from setup. Not decided here.
 
