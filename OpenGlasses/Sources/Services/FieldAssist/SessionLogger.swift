@@ -197,6 +197,11 @@ final class SessionLogger {
             case teamLearningAmended = "team_learning_amended"
             /// …or withdrawn. The record stays; its text is emptied.
             case teamLearningWithdrawn = "team_learning_withdrawn"
+            /// …or moved on: `sent` when a bundle carrying it left the phone, `received`,
+            /// `approved`, `merged` or `not_taken_up` when the reviewer's decision was accepted here
+            /// (Plan FP P3). Written into the log of the job it was filed on only; the payload is
+            /// the id, the status and whether an entry made from it answers — never any text.
+            case teamLearningStatus = "team_learning_status"
             /// An answer rested on approved team learnings alone (Plan FP P2): the entries' ids
             /// and approver roles, never their words. Not rendered into the continuity snapshot
             /// and not part of any customer-facing document.

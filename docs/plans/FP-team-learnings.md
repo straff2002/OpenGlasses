@@ -16,7 +16,14 @@ contract's §5 shape (plus `origin`/`sourceJobIDs`/`confirmedJobCount`) kept in 
 and tags every passage `.manual` or `.teamLearning`; a learning is never `.sufficient` alone — the
 named `.teamLearningOnly` outcome opens with a lead-in the app composes — and the disclosure is held
 in four places (lead-in, citation, badge flag, job log and record). The reviewer device is a
-device-local setting for v1 (open question 1). P3–P5 unbuilt; P3 next. Drafted 2026-09-21; two owner decisions recorded the same
+device-local setting for v1 (open question 1). **P3 ✅ shipped 2026-10-10** — bundle exchange,
+headless: an unsigned `LearningBundle` (candidates field → reviewer; statuses, entries and
+retractions reviewer → field) with a strict decoder that refuses the whole file by a named reason,
+a pure `LearningBundleMerge` that converges whatever the order, a `LearningBundleIntake` that
+imports candidates for review and stages decisions until each is accepted, the delivery-channel
+and offline-queue routes, the vault-export artefact, the author's filed → sent → approved / not
+taken up status on their own job, and the technician's name as a setting. P4 next; P5 unbuilt.
+Drafted 2026-09-21; two owner decisions recorded the same
 day: the reviewer is a supervisor back at base, and a learning may answer where the manual is silent
 so long as it is clearly one (open questions 1 and 4). **Three more decided 2026-10-09** (see "Where a
 learning comes from"): the completed job report is the first origin and the spoken note the second;
@@ -227,7 +234,16 @@ both are kept.
 behind `SkillPackSignature.productionPublicKeyBase64` is the vendor's and off-repo, so a service
 company cannot sign anything. A `LearningBundle` arriving by email or AirDrop is validated
 structurally, shown to the reviewer in full as literal text, and never applied without an explicit
-approval per entry. Plan R's posture applies: it is data, not instruction.
+approval per entry. Plan R's posture applies: it is data, not instruction. *(Corrected in P3: the two
+directions are handled differently because they ask different things of the person receiving them.
+A `candidates` bundle is a review queue, not a decision, so its candidates land straight in the
+reviewer's `LearningCandidateStore` — `received`, origin kept, with an `importedFrom` note — and only
+on a device marked as a reviewer's; approving one is `LearningReview`, exactly as for a local one,
+author-as-approver rule included. A `decisions` bundle changes what answers questions, so it is
+staged by `LearningBundleIntake` and nothing in it is applied until each entry, status or retraction
+is accepted. "Sending is part of capture" is built for an organisation with an endpoint — filing,
+amending or withdrawing queues the phone's candidates for it — and is the composer or share sheet
+otherwise; the session shows* sent *only once a bundle has really left.)*
 
 ### 3 · Publish: a namespace beside the vault, not a file inside it
 
@@ -272,17 +288,38 @@ would with a stale vault, and the review screen says so.
 
 ### 4 · Distribute
 
-| Route | Reused | Missing |
-|---|---|---|
-| Bundle by email / Messages / share sheet | `DeliveryChannel`, `DeliveryPolicy`, `ReportComposerAvailability`, `DeliveryOutcome` (a hand-off is not a send) | `DeliveryRequest` is bound to `WorkRecord`; it needs a generic payload or a sibling envelope |
-| Offline queue to an organisation endpoint | `OfflineQueue`, `EndpointSyncSink`, `ConflictResolver` | a `QueuedOp.teamLearning` kind |
-| Vault export / import round trip | the `VaultExporter` folder shape | it exports manifest + core + procedures + documents and knows nothing of a learnings namespace; `isExportable` is false for packs, so a team on a pack vault can move learnings **only** by bundle |
-| Signed pack update | `VaultPackManifest`, `SkillPackSignature`, `VaultPackCatalogService` | the pack format has no learnings slot; a signed `learnings.json` is P5, and is the vendor's or partner's route, never a crew's |
+| Route | Reused | Built in P3 | Still missing |
+|---|---|---|---|
+| Bundle by email / Messages / share sheet | `DeliveryChannel`, `DeliveryPolicy`, `ReportComposerAvailability`, `DeliveryOutcome` (a hand-off is not a send) | `DeliveryRequest.Payload.learningBundle`; subject and bodies from counts, the text only in one JSON attachment (`team-learning-<direction>-<yyyyMMdd-HHmm>.json`, a protected staged export); receiving by opening that file from Mail, Messages, AirDrop or Files | a screen that composes and sends one (P4) |
+| Offline queue to an organisation endpoint | `OfflineQueue`, `EndpointSyncSink`, `ConflictResolver` | `OpKind.teamLearning`, `QueuedOp.make(learningBundle:)`, in `EndpointSyncSink.handledKinds` with the direction in the envelope; filing queues the phone's candidates when an allowed endpoint exists | the endpoint answering with decisions (P5) |
+| Vault export / import round trip | the `VaultExporter` folder shape | `learnings/team-learnings.json` (the vault's entries as a decisions bundle) in an export; the folder importer stages it | — ; `isExportable` stays false for packs, so a team on a pack vault moves learnings **only** by bundle |
+| Signed pack update | `VaultPackManifest`, `SkillPackSignature`, `VaultPackCatalogService` | nothing | the pack format has no learnings slot; a signed `learnings.json` is P5, and is the vendor's or partner's route, never a crew's |
 
 Merge semantics are `LearningBundleMerge`, pure: match on entry id; the later `approvedAt` wins; a
 tombstone beats content whatever its timestamp; an unrecognised `schemaVersion` is refused whole
 rather than partially applied; a duplicate finding from two phones surfaces as a merge candidate for
-the reviewer instead of being silently deduplicated.
+the reviewer instead of being silently deduplicated. *(Corrected in P3. **A decisions bundle is a
+delta, not a whole set.** The office's learning set (contract §5–§6) replaces the namespace whole,
+because it is signed, sequenced and from one office; an unsigned bundle arrives by hand, out of order
+and possibly from more than one reviewer, so an entry absent from it cannot mean "withdrawn" — only a
+retraction withdraws. Two consequences the code forced: at the same `approvedAt` the job lists join
+and the larger count stands (an office merge raises the count without moving the approval time),
+with any text difference settled by a fixed order of the wire form, so no tie depends on arrival
+order; and a retraction for an entry the phone does not hold is kept as a tombstone in a small
+ledger beside `LearningEntryStore`, so the content arriving later in an older bundle is stored
+already retracted. Candidates match on `candidateID` + `revision`; a decided candidate keeps its
+decision; a status is final once applied. **Ordering:** a decisions bundle older than one already
+applied under the same organisation label (by `sequence` when both carry one, else `issuedAt`) is
+refused whole as `reordered`; every decisions bundle a device composes is cumulative — every entry,
+retraction and decision it holds — so refusing an older one costs nothing once a newer one arrives.
+A candidates bundle is not ordered that way: many phones send under one label, and each candidate
+carries its own revision.)*
+
+**No signing, stated plainly** (P3). A crew cannot sign: the only key the app trusts for signed
+content is the vendor's, whose private half is off-repo, and an organisation without an office holds
+no key of its own. So `LearningBundle` carries no signature and the decoder does not look for one;
+the signed route is the office contract (`Contracts/team-learning.md`), whose candidate, status and
+learning-set envelopes wrap the same codable payloads this bundle carries.
 
 ### 5 · Trust rules at answer time
 
@@ -580,8 +617,9 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
   - *The author.* Nothing in the app holds a technician's display name — no setting, licence field,
     organisation profile key or office binding — so P1 uses the device's name
     (`UIDevice.current.name`), which on iOS 16+ is the generic model name ("iPhone") without the
-    user-assigned-device-name entitlement. A technician-name setting, or the name from the
-    organisation's enrolment, is owed before P3 sends anything.
+    user-assigned-device-name entitlement. ~~A technician-name setting, or the name from the
+    organisation's enrolment, is owed before P3 sends anything.~~ *(Closed in P3:
+    `Config.technicianDisplayName`, with the device name as the fallback — see the P3 bullet.)*
   - *The fold.* `FieldSession.teamLearnings` (optional, absent when none) holds a
     `LearningCandidateReference` per candidate, updated on the job it was filed on even after that
     job ended; `WorkRecord.teamLearnings` (`team_learnings`, absent when none) carries it; it is in
@@ -681,6 +719,81 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
   `VaultExporter`. Tests: `LearningBundleTests` (truncated, reordered and unknown-version bundles each
   refused whole), `LearningBundleMergeTests` (tombstone precedence, duplicate surfacing, two-phone
   convergence).
+  ✅ 2026-10-10. **What shipped** (`Services/FieldAssist/TeamLearning/`):
+  - *The bundle.* `LearningBundle` is one closed object — `schemaVersion: 1`, `kind:
+    "avenkin.learning-bundle"`, `direction` (`candidates` | `decisions`), `organisationLabel?`,
+    `issuedAt`, `sequence?`, and four arrays in the contract's own shapes: candidates (§3, plus
+    `origin`), statuses (§4), entries and retractions (§5, plus the amendment's fields). The office
+    envelopes' per-item binding fields are absent — a crew has no binding — so the signed route will
+    wrap these payloads rather than translate them. A candidates bundle carries candidates only; a
+    decisions bundle carries no candidate. Encoded with sorted keys, so the same bundle is the same
+    bytes. **Unsigned, by design** (§4).
+  - *Untrusted input.* `LearningBundle.decode` reads the bytes with a strict JSON reader
+    (`LearningBundleJSON`: duplicate keys, fractions, exponents, leading zeros and integers beyond
+    2^53 − 1 refused by name; truncation told apart from malformed input; depth bounded), checks
+    the version and kind first (a later version is refused as a version, not as an unknown key),
+    walks a closed schema (unknown and missing keys by path, types, the contract's text rules — a
+    line feed only inside `finding`, control characters and bidirectional overrides refused —
+    and its length caps), then the rules a schema cannot say (direction, no item twice, a
+    withdrawal empty, an approval naming its entry). 2 MiB ceiling. Every refusal is the whole
+    bundle and says nothing was used. `SecretPatterns.redact` runs over every incoming text field;
+    the names that fired are recorded, and a candidate's own `redactions` gain them.
+  - *The merge.* `LearningBundleMerge` (§4 above): pure, convergent and idempotent — two phones that
+    apply the same bundles in opposite orders end identical, and applying one twice changes nothing.
+  - *Receiving.* `LearningBundleIntake`: a candidates bundle on a reviewer device lands in the review
+    queue (`received`, `importedFrom` set) with duplicate and merge suggestions reported; on a field
+    phone it is refused (`notAReviewerDevice`). A decisions bundle is staged; `pending` lists every
+    entry, status and retraction with its literal text and what accepting it would change;
+    `accept(entryIDs:candidateIDs:)`, `acceptAll()` and `discard()` (which leaves no trace). Accepted
+    entries go through `LearningCorpus.publish`. **The file-open route:** the app is registered for
+    `public.json` at *Alternate* rank (never Owner — other apps keep JSON), opened as a copy like a
+    job file; `onOpenURL` hands any JSON to the intake, which refuses what is not a bundle by name
+    and removes the inbox copy. An imported vault folder's `learnings/` file goes to the same intake.
+    No screen yet — the intake's last line goes to the debug log; P4 puts the review on it.
+  - *Sending.* `LearningBundleOutbox` composes the phone's candidates (every one filed here and not
+    yet answered, withdrawals included) and a device's decisions (every entry it holds, retractions
+    and tombstones, and a status for each candidate that arrived in a bundle), both cumulative; a
+    vault export's learnings; and the `DeliveryRequest` for a channel. `DeliveryRequest.Payload`
+    gained `.learningBundle(_:direction:)`: subject, body and short body are composed from counts —
+    no candidate, entry or reason text, which travels only in the one JSON attachment — with its own
+    confirmation sentence, and `record` is now `WorkRecord?`, read only by report code. A bundle
+    belongs to no job: it is filed under `LearningBundle.queueSessionID`, and `finishDelivery` routes
+    its outcome to the outbox rather than a job's log or its "report not sent" flag. Queue:
+    `OpKind.teamLearning` posts to an organisation endpoint (`EndpointSyncSink.handledKinds`, the
+    bundle's bytes as the payload, its direction in the envelope, the op id as `Idempotency-Key`);
+    it is **not** in `OfficeReportSink.handledKinds` (the office route is the signed contract) nor
+    in `QueuedRecordRows.kinds` (that list is the unsent *job reports* screen and the per-job and
+    departure counts; a bundle shows in the general queue list as "Team learnings").
+  - *The author's status* (P2's open point, closed). `sent` is set when a bundle carrying the
+    candidate left — a confirmed send (`DeliveryOutcome.sent`) or the endpoint accepting the queued
+    op (`EndpointSyncSink.onDelivered`, never the local fallback) — never when it is composed or
+    staged. `received`, `approved`, `merged` and `not taken up` (with the reviewer's reason on the
+    candidate) are set when a decisions bundle saying so is accepted. Each change writes a
+    `team_learning_status` event (id, status, whether an entry made from it answers here — never
+    text) into the log of the job the candidate was filed on, open or ended, through that job's own
+    logger as P1 does, and updates `FieldSession.teamLearnings` and so `WorkRecord.team_learnings`;
+    `in_use` turns true once an approved or merged-into entry answers on the phone.
+  - *Vaults.* `VaultExporter` writes `learnings/team-learnings.json` — the vault's entries, live and
+    retracted, as a decisions bundle — unless HIPAA mode is on, the capability is missing or there
+    are none; the validator ignores the folder. Uninstalling a vault forgets its `learning:<vaultId>`
+    namespace at once; the entries stay in `LearningEntryStore`, and `republish()` (now also run
+    after a folder import) puts them back if the vault returns.
+  - *The author's name* (owed since P1). `Config.technicianDisplayName` — device-local, trimmed,
+    control characters turned to spaces, capped at the contract's 120, empty = unset — is what a
+    candidate is filed under, the device name the fallback; existing candidates are not rewritten.
+    `SettingKey.technicianDisplayName` is organisation-owned: a profile that names the technician
+    sets and locks it, and a bad name is a named drop. One row, "Your name, as your team sees it",
+    heads the Job Reports group in Field Assist settings — the only UI in this phase.
+  - *Gates.* HIPAA mode: no bundle in or out. Composing a bundle, importing candidates and accepting
+    entries or statuses ask `.teamLearnings` (new `FieldAssistPaywallCopy.teamLearningsBundle*`
+    lines); accepting a retraction asks nothing, as P2's retraction does; published learnings stay
+    readable on a lapsed licence. The bundle ledger joins `learningEntries` in the registry and is
+    cleared and erased with it.
+  - *Honest limits.* Nothing yet composes and sends a bundle except the endpoint queue: the composer
+    route is wired (`AppState.presentTeamLearningBundle`) but no screen calls it. A file opened with
+    the app is staged or imported silently, its outcome in the debug log, until P4. Two reviewers
+    under one organisation label share one ordering watermark, so the older of two bundles composed
+    at different times is refused until its reviewer sends again (contract §10.7).
 - **P4 — surfaces.** The reviewer-device setting and a batch review queue shown only there (Custom Vaults, and the Job tab if Plan FO has landed), capture
   confirmation read-back, a corpus browser with retract, a HUD line when an answer leans on a
   learning, vault-guide Step 8 and a fourth situation in its sharing section.
@@ -718,7 +831,8 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
    stricter annotate-only alternative is not taken.
 5. **Bundle authenticity.** Given that a crew cannot sign, is an unsigned reviewed bundle acceptable
    for v1, or should the vendor offer per-organisation signing as part of the Plan EI issuance work,
-   so a bundle can be attributed as well as read?
+   so a bundle can be attributed as well as read? *(P3 built the unsigned bundle: structure checked,
+   every entry accepted by a person, the label read as a label and never as authority.)*
 6. **Retention.** Does a learning expire? A finding about a board revision superseded three years ago
    is worse than no finding, and nothing here ages anything out.
 7. **Symptom-scoped learnings.** Everything here is scoped by model identity (§5). The

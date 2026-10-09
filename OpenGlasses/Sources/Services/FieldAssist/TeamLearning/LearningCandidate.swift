@@ -27,8 +27,11 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case reportReview
     }
 
-    /// What has become of it. P1 produces `filed` and `withdrawn`; the rest are the statuses the
-    /// office answers with (contract §4) and arrive in a later phase.
+    /// What has become of it. P1 produces `filed` and `withdrawn`. P3: `sent` when a bundle carrying
+    /// it has left the phone (a confirmed delivery or a flushed queue — never when it is composed);
+    /// `received`, `approved`, `merged` and `not_taken_up` when a decisions bundle saying so is
+    /// accepted (contract §4), the reason travelling as `reviewReason`. On a reviewer's device an
+    /// imported candidate starts `received`.
     enum Status: String, Codable, CaseIterable {
         /// On this phone, awaiting review.
         case filed
@@ -125,6 +128,10 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     var entryID: String?
     /// The reviewer's words for the author when it was not taken up (contract §4 `reason`).
     var reviewReason: String?
+    /// Where a candidate on a reviewer's device came from, when it arrived in a bundle rather than
+    /// being filed here (Plan FP P3). Nil for every candidate this phone filed itself. An imported
+    /// candidate is reviewed exactly like a local one — arriving is not approval.
+    var importedFrom: String?
 
     init(id: String = LearningCandidate.newID(), origin: Origin = .spoken, revision: Int = 1,
          status: Status = .filed, sessionId: String, jobReference: String?, taskId: String?,
@@ -165,10 +172,16 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
     var shortHandle: String { String(id.prefix(6)) }
 
     /// What the job record carries about it — its existence, never its words.
-    var reference: LearningCandidateReference {
+    var reference: LearningCandidateReference { reference(inUse: false) }
+
+    /// The same, saying whether an approved entry made from it now answers on this phone.
+    func reference(inUse: Bool) -> LearningCandidateReference {
         LearningCandidateReference(candidateId: id, status: status, modelToken: modelToken,
-                                   createdAt: createdAt)
+                                   createdAt: createdAt, inUse: inUse)
     }
+
+    /// Filed on this phone, not imported from another.
+    var isLocal: Bool { importedFrom == nil }
 
     enum CodingKeys: String, CodingKey {
         case id = "candidateID"
@@ -179,7 +192,7 @@ struct LearningCandidate: Codable, Equatable, Identifiable {
         case vaultId = "vaultID"
         case equipment, spokenModel, finding, symptom, fix, evidence, author
         case createdAt, updatedAt, redactions
-        case entryID, reviewReason
+        case entryID, reviewReason, importedFrom
     }
 }
 
@@ -195,8 +208,8 @@ struct LearningCandidateReference: Codable, Equatable {
     var status: LearningCandidate.Status
     let modelToken: String?
     let createdAt: Date
-    /// Whether an answer can draw on it. Always false in this phase: a candidate answers nothing,
-    /// and only a published entry made from it ever will (P2).
+    /// Whether an answer can draw on it. A candidate answers nothing; this turns true only when an
+    /// approved entry made from it (or merged into) has been accepted on this phone (P3).
     var inUse: Bool = false
 
     init(candidateId: String, status: LearningCandidate.Status, modelToken: String?, createdAt: Date,

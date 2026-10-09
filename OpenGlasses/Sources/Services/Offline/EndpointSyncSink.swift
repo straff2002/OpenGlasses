@@ -18,8 +18,13 @@ final class EndpointSyncSink: SyncSink {
     private let endpoint: () -> URL?
     private let token: () -> String
 
-    /// Ops this sink is responsible for; everything else is the fallback's.
-    static let handledKinds: Set<OpKind> = [.workRecord, .partsRequest]
+    /// Ops this sink is responsible for; everything else is the fallback's. A team-learning bundle
+    /// (Plan FP P3) is an organisation's own data going to its own endpoint, like a record.
+    static let handledKinds: Set<OpKind> = [.workRecord, .partsRequest, .teamLearning]
+
+    /// Told of every op this sink delivered to the endpoint — never one the fallback took — so a
+    /// bundle's candidates are marked `sent` only when they really left (Plan FP P3).
+    var onDelivered: ((QueuedOp) -> Void)?
 
     /// Whether this sink can take a file at all (Plan FO P2b).
     ///
@@ -83,7 +88,9 @@ final class EndpointSyncSink: SyncSink {
             guard let http = response as? HTTPURLResponse else {
                 return .transient(reason: "the endpoint answered with something that isn't HTTP")
             }
-            return Self.outcome(status: http.statusCode, data: data)
+            let outcome = Self.outcome(status: http.statusCode, data: data)
+            if outcome == .done { onDelivered?(op) }
+            return outcome
         } catch {
             // Offline, DNS, timeout, TLS: all worth trying again, and none worth losing the record.
             return .transient(reason: error.localizedDescription)
@@ -102,6 +109,10 @@ final class EndpointSyncSink: SyncSink {
         ]
         if let job = op.payloadJSON["job_reference"] as? String, !job.isEmpty {
             envelope["job_reference"] = job
+        }
+        // A bundle says which way it is going, so a receiver can route it without opening it.
+        if op.kind == .teamLearning, let direction = op.payloadJSON["direction"] as? String {
+            envelope["direction"] = direction
         }
         envelope["payload"] = op.payloadJSON
         return (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()

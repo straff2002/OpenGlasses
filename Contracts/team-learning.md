@@ -215,3 +215,6 @@ text that must be refused.
    bundle.
 6. **Organisations without an office** keep FP's unsigned reviewed bundle. Whether a phone
    should ever accept both routes at once is undecided; v1 assumes one or the other.
+7. **Delta versus whole set.** FP P3's unsigned decisions bundle is applied as a delta (nothing
+   absent is removed; only a retraction withdraws), while the learning set here replaces the
+   namespace whole (§6). A phone on both routes would need a rule for which wins.
