@@ -25,7 +25,12 @@ final class FieldSessionService: ObservableObject {
     @Published private(set) var history: [FieldSession] = []
 
     private var logger: SessionLogger? {
-        didSet { conversationSourceIDs = nil }
+        didSet {
+            conversationSourceIDs = nil
+            // A filing on one job never withholds a line on the next.
+            recentTechnicianTurns = []
+            pendingTurnWithhold = nil
+        }
     }
     private var conversationSourceIDs: Set<String>?
     private var lastResumeAt: Date?
@@ -1879,13 +1884,98 @@ final class FieldSessionService: ObservableObject {
         // resumed the job, so the turn that brought the job back still makes the record.
         guard session.pausedAt == nil else { return }
         guard claimConversationSource(sourceID, logger: logger) else { return }
-        logger.append(.init(timestamp: Date(),
-                            kind: origin == .appInstruction ? .appInstruction : .userMessage,
-                            text: text, payload: [
+        var payload: [String: AnyCodable] = [
             "source_id": AnyCodable(sourceID),
             "equipment_scope": AnyCodable(session.continuityScope),
             "task_id": AnyCodable(session.activeTask?.id ?? "")
-        ]))
+        ]
+        let now = Date()
+        if origin == .technician {
+            // A live-mode transcript that lands just after a team learning was filed is the turn
+            // that filed it (Plan FP P1): tag it withheld as it is written.
+            if let pending = pendingTurnWithhold, now <= pending.until {
+                payload[TeamLearningTurnWithholding.withheldByKey] = AnyCodable(pending.candidateId)
+                pendingTurnWithhold = nil
+            }
+            recentTechnicianTurns.append((sourceID, now))
+            if recentTechnicianTurns.count > 8 { recentTechnicianTurns.removeFirst() }
+        }
+        logger.append(.init(timestamp: now,
+                            kind: origin == .appInstruction ? .appInstruction : .userMessage,
+                            text: text, payload: payload))
+    }
+
+    // MARK: Team learnings (Plan FP P1)
+
+    /// The source id of the Direct-path turn in flight, when there is one: set by `LLMService` for
+    /// the length of a turn, and by the Tier-0 phrase route around its tool call. Nil on the live
+    /// modes, whose transcripts are given their ids when they land.
+    ///
+    /// Read when a team learning is filed, so the turn that filed it can be withheld from the
+    /// model's view of the job exactly — see `TeamLearningTurnWithholding`.
+    var turnSourceID: String?
+
+    /// Technician lines logged recently, newest last — what a live-mode filing withholds.
+    private var recentTechnicianTurns: [(sourceID: String, at: Date)] = []
+    /// A live-mode filing waiting for its transcript.
+    private var pendingTurnWithhold: (candidateId: String, until: Date)?
+
+    /// Record a team-learning candidate on its job: upsert its reference on the session — the
+    /// active one, or a finished one through a logger opened on its own directory — and write the
+    /// event, which withholds the turn that filed or amended it.
+    ///
+    /// The event goes into the **active** job's log when there is one, because that is where the
+    /// turn that carried the words was logged; a candidate filed on an earlier job also gets the
+    /// event in its own job's log, for that job's audit, with nothing withheld there.
+    func recordTeamLearning(_ kind: SessionLogger.Event.Kind, reference: LearningCandidateReference,
+                            sessionId: String, now: Date = Date()) {
+        // The reference, on the job it was filed on.
+        func upsert(_ session: inout FieldSession) {
+            var references = session.teamLearnings ?? []
+            if let index = references.firstIndex(where: { $0.candidateId == reference.candidateId }) {
+                references[index] = reference
+            } else {
+                references.append(reference)
+            }
+            session.teamLearnings = references
+        }
+        var otherLogger: SessionLogger?
+        if activeSession?.id == sessionId {
+            mutateSession { upsert(&$0) }
+        } else if let stored = history.first(where: { $0.id == sessionId }) {
+            let logger = SessionLogger(session: stored,
+                                       root: sessionsRoot.appendingPathComponent(sessionId, isDirectory: true))
+            let updated = logger.updateSession { upsert(&$0) }
+            history = history.replacingFirst(matching: sessionId, with: updated)
+            otherLogger = logger
+        }
+
+        var payload: [String: AnyCodable] = [
+            "candidate_id": AnyCodable(reference.candidateId),
+            "status": AnyCodable(reference.status.rawValue),
+            "source_id": AnyCodable("team-learning:\(reference.candidateId):\(kind.rawValue):\(Int(now.timeIntervalSince1970))")
+        ]
+        if let model = reference.modelToken { payload["model_token"] = AnyCodable(model) }
+        if let otherLogger {
+            otherLogger.append(.init(timestamp: now, kind: kind, text: nil, payload: payload))
+        }
+        guard let session = activeSession, let logger else { return }
+        var activePayload = payload
+        activePayload["equipment_scope"] = AnyCodable(session.continuityScope)
+        if kind == .teamLearningFiled || kind == .teamLearningAmended {
+            activePayload[TeamLearningTurnWithholding.withheldSourceIDsKey] =
+                AnyCodable(withheldTurns(candidateId: reference.candidateId, now: now))
+        }
+        logger.append(.init(timestamp: now, kind: kind, text: nil, payload: activePayload))
+    }
+
+    /// Which turns a filing withholds. The turn in flight when the Direct path names one; on the
+    /// live modes, the technician lines of the last few seconds, and the next one to land.
+    private func withheldTurns(candidateId: String, now: Date) -> [String] {
+        if let turnSourceID { return [turnSourceID] }
+        let window = TeamLearningTurnWithholding.liveWindow
+        pendingTurnWithhold = (candidateId, now.addingTimeInterval(window))
+        return recentTechnicianTurns.filter { now.timeIntervalSince($0.at) <= window }.map { $0.sourceID }
     }
 
     /// Log the assistant's final reply to a Direct-mode turn (Plan GB P0), so the job's transcript

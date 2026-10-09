@@ -1421,6 +1421,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     VaultRegistry.shared.reloadUserManifests()
                 }
                 self.upcomingJobs.removeAll()
+                // Team-learning candidates were filed for this organisation's supervisor (Plan FP).
+                LearningCandidateStore.shared.removeAll()
                 // Attachments belong to the organisation's jobs, and go with them; so does what
                 // the office said about them.
                 self.officeJobAttachments?.removeAll()
@@ -1895,6 +1897,7 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.agentDocuments = agentDocs
         erasure.conversations = conversationStore
         erasure.offlineQueue = offlineQueue
+        erasure.learningCandidates = LearningCandidateStore.shared
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -2395,6 +2398,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.recordedSessions = recordedSessionStore
             erasureStores.offlineQueue = offlineQueue
             erasureStores.stagedExports = StagedExportCoordinator.allFamilies
+            erasureStores.learningCandidates = LearningCandidateStore.shared
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in
@@ -6436,10 +6440,18 @@ class AppState: ObservableObject, AppStateProtocol {
             let toolStartedAt = Date()
             // Tier-0 skips the model, never the authorization boundary: the classifier's allowlist
             // is a routing shortcut, not a permission to act unchecked.
+            //
+            // A Tier-0 turn is never written to a job's log, so it gets a source id of its own for
+            // the length of the call: a team learning it files (Plan FP P1) then withholds that id,
+            // which matches nothing, instead of guessing at a neighbouring turn.
+            let fieldSessions = FieldSessionService.shared
+            let previousTurnSourceID = fieldSessions.turnSourceID
+            fieldSessions.turnSourceID = "tier0-" + UUID().uuidString
             let outcome = await router.execute(.root(
                 name: directCall.toolName,
                 arguments: ToolArguments(directCall.arguments),
                 origin: .user))
+            fieldSessions.turnSourceID = previousTurnSourceID
             if case .completed(let result) = outcome {
                 TurnRecorder.addToolTime(since: toolStartedAt)
                 lastResponse = result
@@ -6464,8 +6476,10 @@ class AppState: ObservableObject, AppStateProtocol {
             } else {
                 // Fall through to normal LLM path if the direct call didn't produce an answer. A
                 // policy refusal lands here too, and re-reaches the same gate through the model —
-                // never around it. An unresolved outcome falls through as well: the classifier's
-                // allowlist is read-only, so there is no side effect the model could duplicate.
+                // never around it. An unresolved outcome falls through as well. Most of the
+                // classifier's allowlist is read-only; its two writes (`scan_assist`, `team_learning`)
+                // are local and return as soon as they run, so the outcome that falls through for
+                // them is a tool that was not there or was refused, not one that half-ran.
                 PrivacyLog.app(.directToolFellBack, tool: PrivacyToken(directCall.toolName))
                 // Plan CU P1: the LLM turn below answers this same utterance, so seal this attempt
                 // as its own abandoned record and hand back the stamps it claimed. Sealed here

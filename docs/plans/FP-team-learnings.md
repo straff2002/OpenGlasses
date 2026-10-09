@@ -3,7 +3,12 @@
 **Status:** 🚧 **P0 ✅ shipped 2026-10-09** — the inventory below (five corrections to this plan),
 and `DeliveryRequest` now carries a `Payload` enum whose one case is `.workRecord(WorkRecord,
 partsRequestIds:)`, so P3's bundle is a new case rather than a rewrite of the channels; no behaviour
-change. P1–P5 unbuilt; P1 next. Drafted 2026-09-21; two owner decisions recorded the same
+change. **P1 ✅ shipped 2026-10-09** — `team_learning` (note / list / amend / withdraw) files a
+`LearningCandidate` in the contract's §3 shape into its own `LearningCandidateStore`, bound to the
+job, the machine, the running task and its evidence, redacted at capture, gated on the new
+`.teamLearnings` capability and withheld under HIPAA; the turn that filed it is withheld from every
+prompt and replaced by a fixed "filed, awaiting review" line, and the job record carries the
+candidate's existence, never its words. P2–P5 unbuilt; P2 next. Drafted 2026-09-21; two owner decisions recorded the same
 day: the reviewer is a supervisor back at base, and a learning may answer where the manual is silent
 so long as it is clearly one (open questions 1 and 4). **Three more decided 2026-10-09** (see "Where a
 learning comes from"): the completed job report is the first origin and the spoken note the second;
@@ -140,12 +145,24 @@ A `team_learning` native tool (`note` / `list` / `amend` / `withdraw`) and the p
 the team"*. `LearningCandidate` (`Codable`): id, `sessionId`, `jobReference`, the
 `EquipmentIdentity` in force (or the spoken model token when none resolved), `symptom`, `finding`,
 `fix`, `FieldSession.Evidence` reused rather than re-invented, `taskId`, author display name,
-`createdAt`, and the `SecretPatterns.hits` that fired. Three rules the code enforces, not the model:
+`createdAt`, and the `SecretPatterns.hits` that fired. *(Corrected in P1: the record's keys are the
+contract's §3 names — `candidateID`, `jobSessionID`, `jobNumber`, `taskID`, `vaultID`, `spokenModel`
+— with `origin`, `revision` and `status` beside them. It carries the identity's token, heading,
+source and stated model, never the whole `EquipmentIdentity`, whose `nameplateText` stays on the
+session. Evidence is copied from `FieldSession.Evidence` into the contract's shape — pages verified
+and citations opened by name, readings and photos by count — not stored as the session type, which
+holds reading ids and photo file names. The redaction names are the ones `SecretPatterns.redact`
+returns while masking, so the stored text and the stored names cannot disagree.)* Three rules the
+code enforces, not the model:
 
 - Candidates live in their **own store** — `LearningCandidateStore`, JSON in the app container,
   registered in `SensitiveStore` so `DataStoreRegistryTests` keeps it honest. Never the vault
   overlay, never `DocumentStore`. A guard test asserts no candidate text can reach
-  `VaultPromptBuilder.promptContext` or `FieldSessionService.promptContext(turn:)`.
+  `VaultPromptBuilder.promptContext` or `FieldSessionService.promptContext(turn:)`. *(P1: the store
+  is `learningCandidates` — third-party linkage, because a name slipped past capture is exactly what
+  it can hold — walked by the subject erasure, protected, backup-excluded, capped at 500, and
+  cleared when the phone leaves its organisation. The guard covers the turn that said the finding
+  as well as the store: see the P1 bullet below.)*
 - `SecretPatterns.redact` runs at capture and the tool reads the redacted text back. This is a floor,
   not a privacy control: it catches an email address and an IRD number and nothing else, so the tool
   also speaks the standing rule ("no customer names or addresses") and review is where a name
@@ -154,10 +171,17 @@ the team"*. `LearningCandidate` (`Codable`): id, `sessionId`, `jobReference`, th
   **entitlement** check — a new `FieldAssistCapability` case granted by team and enterprise
   licences — sits in the service layer, where `SessionExporter` and `VaultImporter` put theirs.
   `team_learning` joins `Config.hipaaDisabledTools` — a clinical site's "learning" is a patient note
-  wearing a different hat.
+  wearing a different hat. *(P1: `note` and `amend` are gated; `list` and `withdraw` are not —
+  neither adds anything, and a technician on a lapsed licence can still take back what they said.)*
 
 The candidate folds into `SessionExport` / `WorkRecord` like any other session artefact, so the
 customer's job record shows that an observation was filed *and* that it was not yet in use.
+*(Corrected in P1: the fold is a `LearningCandidateReference` — id, status, model token, date,
+`in_use: false` — kept on the session (`FieldSession.teamLearnings`), so `WorkRecord` stays a pure
+function of the session; and it is the **organisation's** job record, not the customer's. Contract
+§8 keeps candidates out of every customer-facing report, so no customer summary or printed
+work-order line carries it, and `SessionExporter.exportedRecord` drops it from a customer-audience
+export.)*
 
 ### 2 · Review, with nobody's server
 
@@ -478,12 +502,71 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
   or can write to a vault overlay, plus the `SensitiveStore` and erasure-walk registration points.
   Output: that inventory in this doc, and the `DeliveryRequest` generalisation with no behaviour
   change.
-- **P1 — capture core, headless.** `LearningCandidate`, `LearningCandidateStore`, `team_learning`,
+- **P1 — capture core, headless.** ✅ 2026-10-09. `LearningCandidate`, `LearningCandidateStore`, `team_learning`,
   evidence binding to the active task and session, the redaction pass, the gates, the session-export
   fold. Tests are the gate: `TeamLearningCaptureTests` (voice verbs, a candidate bound to a session
   with no active task, amend and withdraw, old sessions decode), `TeamLearningRedactionTests` (what
   fires and what provably does not — a customer name survives redaction and the test says so),
   `TeamLearningPromptIsolationTests` (no candidate text reaches either prompt builder).
+  **What shipped** (`Services/FieldAssist/TeamLearning/`, `NativeTools/TeamLearningTool.swift`):
+  - *The candidate.* `LearningCandidate` with `origin` (`spoken` | `report` | `reportReview`; the
+    phone files only `spoken`, the other two decode for later bundles), `revision`, `status`
+    (`filed`, `withdrawn`, and the office's `sent`/`received`/`approved`/`merged`/`not_taken_up`
+    for later), the contract's field names, and `LearningCandidateText` enforcing the contract's
+    text rules at capture: normalise (tab → space, CR/CRLF → LF, LF kept inside `finding` only),
+    refuse any other control character and the bidirectional overrides with the reason, redact with
+    `SecretPatterns.redact`, then measure the redacted text in Unicode scalars — `finding` 1–2,000,
+    `symptom`/`fix` ≤ 500, `author` 1–120 — refusing over-length with the count and the limit
+    rather than truncating. `withdraw` keeps the record with `withdrawn` and the text fields
+    emptied, as the contract carries it. `amend` replaces the fields said and keeps the rest,
+    raises the revision and redacts again; "the last one", an empty id, a full id or an unambiguous
+    prefix of four or more characters (`list` reads six) all resolve.
+  - *The binding* (`LearningCandidateService`): the active session and job number, the identity in
+    force (or the model as spoken when none was resolved), the running task, and a copy of that
+    task's evidence — or the job's when no task is running — as names and counts.
+  - *The gate.* `FieldAssistCapability.teamLearnings`, granted by team and enterprise licences and
+    not by a subscription. The tool checks `Config.fieldAssistActive`; the service checks the
+    capability and speaks the `check(_:)` reason (`FieldAssistPaywallCopy.teamLearnings*`, licence
+    entry, never purchase). HIPAA: `team_learning` is in `Config.hipaaDisabledTools`. Also in
+    `FieldToolProfile.names` (offered during a job) and `OfflineToolPolicy` (`.local`).
+  - *The filing utterance.* The turn that said the finding is logged as a `.userMessage` before the
+    tool runs (Direct mode logs at the top of `LLMService.sendMessage`), and an append-only log
+    cannot unsay it — so it is **withheld, not deleted**. Filing (and amending) writes a dedicated
+    `team_learning_filed` / `team_learning_amended` event whose payload lists the source ids of the
+    turns it withholds; `FieldSessionContextSnapshot` (and so `field_session recall`) skips those
+    turns and renders the event as one fixed line — *"A team-learning candidate was filed (awaiting
+    review; not evidence)"* — with no candidate text. Which turn: on the Direct path
+    `FieldSessionService.turnSourceID` names the turn in flight (set by `LLMService` for the length
+    of a turn), so that id is withheld exactly, before or after it is logged. On the live modes a
+    transcript gets its id when it lands, which can be on either side of the tool call, so the
+    technician lines of the 15 seconds before the filing are withheld and the next one to land in
+    the 15 seconds after it is tagged withheld as it is written — over-withholding a neighbour
+    rather than leaking the finding; the neighbour stays in the log and the snapshot already tells
+    the model not to infer absence. The audit log, the office transcript and the conversation thread
+    keep the words: they are records of what was said, internal to the organisation, and not prompt
+    builders. (Honest limit: the live conversation the technician is in still holds what they just
+    said, as any conversation does.)
+  - *The phrase.* There is a deterministic phrase router (Tier 0, `ConversationClassifier`), so
+    *"note this for the team …"* (and "note that / note / log this / log that for the team") opening
+    an utterance with at least three words after it routes straight to `team_learning note` with the
+    rest as the finding, **verbatim** — the technician's words, not a model's paraphrase — and a
+    Tier-0 turn is never written to the job's log at all; it runs under a `tier0-` turn id that
+    withholds nothing else. A bare phrase, or the words inside a sentence, reach the model, which
+    routes by the tool's description (which names the phrases); that is also the route on the live
+    modes.
+  - *The author.* Nothing in the app holds a technician's display name — no setting, licence field,
+    organisation profile key or office binding — so P1 uses the device's name
+    (`UIDevice.current.name`), which on iOS 16+ is the generic model name ("iPhone") without the
+    user-assigned-device-name entitlement. A technician-name setting, or the name from the
+    organisation's enrolment, is owed before P3 sends anything.
+  - *The fold.* `FieldSession.teamLearnings` (optional, absent when none) holds a
+    `LearningCandidateReference` per candidate, updated on the job it was filed on even after that
+    job ended; `WorkRecord.teamLearnings` (`team_learnings`, absent when none) carries it; it is in
+    no `summaryLines`, no `customerSummaryLines` and no email body, and a customer-audience export
+    leaves it out. Older sessions, records and exports decode unchanged.
+  - *The store* joins the registry (`learningCandidates`, ET matrix regenerated) and the subject
+    erasure walk (a case in `order`, a handle in `Stores`, a branch in `erase`, wired at both
+    `Stores` constructions in `OpenGlassesApp.swift`), and is cleared on organisation departure.
 - **P2 — review, publish and retrieve, headless.** `LearningReview`, `LearningCorpus` ingest and
   retract, `origin`/`sourceJobIDs`/`confirmedJobCount` on the approved entry with the "noted on
   <n> previous jobs" lead-in, the artefact renderer and citation name, `source` on the passage, the evidence-gate

@@ -146,6 +146,8 @@ extension ScanAssistTool {
 extension ProposeTaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension TaskTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension PartsRequestTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+// Files, amends or withdraws a candidate in the phone's own store; nothing leaves the device in P1.
+extension TeamLearningTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 // Readings and evidence choices are written onto the open job and nowhere else (Plan GB P3).
 extension ReadingTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension EvidenceTool { var executionSemantics: ToolExecutionSemantics { .local() } }

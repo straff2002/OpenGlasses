@@ -83,6 +83,11 @@ enum FieldAssistPaywallCopy {
     /// manual can still be taken off the phone. Only new manuals stop.
     static let ownVaultsLapsed = "Your Field Assist access has lapsed. The vaults already on this phone stay readable and you can still remove a manual; importing new manuals needs an active subscription."
     static let ownVaultsLocked = "Vaults of your own need Field Assist — a subscription, or the licence code your organisation issued."
+    /// Team learnings (Plan FP), spoken by `team_learning` when it refuses. Licence entry, never
+    /// purchase: they come with an organisation's team licence and nothing a consumer can buy.
+    static let teamLearningsNotIncluded = "Nothing was filed: team learnings come with your organisation's team or enterprise licence, and the Field Assist access on this phone doesn't include them."
+    static let teamLearningsLapsed = "Nothing was filed: your Field Assist access has lapsed. Enter a renewal code from your administrator to file team learnings again."
+    static let teamLearningsLocked = "Nothing was filed: team learnings need the team or enterprise licence code your organisation issued."
     static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
     /// The way out of a stored code that stopped verifying or expired: without it the locked screen
@@ -107,6 +112,7 @@ enum FieldAssistPaywallCopy {
     static var all: [String] {
         [poweredBy, locked, lockedDetail, licenseHeader, licenseFooter, purchaseHeader, purchaseFooter, purchased,
          bundledVaultsOnly, ownVaultsLapsed, ownVaultsLocked,
+         teamLearningsNotIncluded, teamLearningsLapsed, teamLearningsLocked,
          renewLicense, unverifiable, removeStoredCode, subscriptionLapsed, manageSubscription, seatsNote,
          expiring(.expiring(daysRemaining: 0, threshold: 7)),
          expiring(.expiring(daysRemaining: 1, threshold: 7)),

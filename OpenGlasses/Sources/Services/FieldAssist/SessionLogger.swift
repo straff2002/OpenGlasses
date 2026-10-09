@@ -188,6 +188,15 @@ final class SessionLogger {
             /// The technician deleted the recording from the phone, having been asked first:
             /// whether it had been sealed, whether the office had it, and the bytes removed.
             case recordingDeleted = "recording_deleted"
+            /// A team-learning candidate was filed on this job (Plan FP P1). The payload names the
+            /// candidate and the conversation turns it withholds from the model's view of the job;
+            /// **never the finding's words**, which live only in `LearningCandidateStore`. The
+            /// continuity snapshot renders it as one fixed line.
+            case teamLearningFiled = "team_learning_filed"
+            /// …amended by its author, with the same withholding and the same silence about text.
+            case teamLearningAmended = "team_learning_amended"
+            /// …or withdrawn. The record stays; its text is emptied.
+            case teamLearningWithdrawn = "team_learning_withdrawn"
             case error = "error"
         }
     }

@@ -19,14 +19,25 @@ enum FieldSessionContextSnapshot {
                 + (task.citation.map { "; citation: \($0)" } ?? ""))
         }
         let formatter = ISO8601DateFormatter()
+        // The turns that filed or amended a team learning (Plan FP P1). Collected over the whole log
+        // first, because a live-mode transcript can be logged after the filing that withholds it.
+        let withheld = TeamLearningTurnWithholding.withheldSourceIDs(in: events)
         for (index, event) in events.enumerated() {
             guard (event.payload?["equipment_scope"]?.value as? String ?? "initial") == session.continuityScope else { continue }
             let id = event.payload?["source_id"]?.value as? String ?? "audit-\(index)"
             let at = formatter.string(from: event.timestamp)
             switch event.kind {
             case .userMessage:
+                // A team-learning candidate never reaches a prompt as text — not through the store
+                // and not through the transcript of the turn that filed it. That turn is replaced
+                // by the fixed line its filing event renders below.
+                guard !TeamLearningTurnWithholding.isWithheld(event, withheld: withheld) else { continue }
                 if let text = event.text, TranscriptOriginClassifier.isTechnicianLine(event) {
                     result.append(Entry(id: id, text: "Technician report \(id) at \(at) (unverified transcript): \(text)"))
+                }
+            case .teamLearningFiled, .teamLearningAmended, .teamLearningWithdrawn:
+                if let line = TeamLearningTurnWithholding.snapshotLine(for: event.kind) {
+                    result.append(Entry(id: id, text: line))
                 }
             case .captureRecordSaved:
                 let fields = event.payload?["fields"]?.value as? [[String: Any]] ?? []

@@ -265,19 +265,29 @@ enum SessionExporter {
             // Assembled from the session itself, not from the log: the tasks, parts and identity
             // fields are session state, so the exported record and the read-back the technician
             // confirmed are the same object rendered twice.
-            workRecord: WorkRecord(
-                session: session,
-                vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId,
-                // A record drawn from a vault nobody could verify says so (Plan FS §4).
-                vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
-                    .recordLine(vaultName: VaultRegistry.shared.manifest(id: session.vaultId)?.name
-                                ?? session.vaultId)),
+            workRecord: exportedRecord(session: session, audience: decision.audience),
             // The record contains machine-written turns, so it says which machine wrote them. The
             // digest identifies the instruction version; the instructions themselves — and the
             // manual pages the answers cited — stay out of the export.
             provenance: provenance ?? AIProvenance.forActiveModel(
                 promptSources: [FieldAssistProvenance.promptIdentity])
         )
+    }
+
+    /// The work record as an export for `audience` carries it.
+    ///
+    /// Team-learning candidates are internal to the organisation (Plan FP P1; contract §8): the
+    /// office's record shows that one was filed and is not in use, and a record going to a customer
+    /// does not mention them at all.
+    static func exportedRecord(session: FieldSession, audience: ReportAudience) -> WorkRecord {
+        let vaultName = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
+        var record = WorkRecord(
+            session: session, vaultName: vaultName,
+            // A record drawn from a vault nobody could verify says so (Plan FS §4).
+            vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
+                .recordLine(vaultName: vaultName))
+        if audience != .office { record.teamLearnings = nil }
+        return record
     }
 
     /// The job's clips for the machine-readable record (Plan FO P2b).

@@ -121,6 +121,7 @@ final class SubjectErasureCoordinator {
         var recordedSessions: RecordedSessionStore?
         var conversations: ConversationStore?
         var offlineQueue: OfflineQueue?
+        var learningCandidates: LearningCandidateStore?
 
         init() {}
     }
@@ -149,6 +150,7 @@ final class SubjectErasureCoordinator {
         .evolvedSkills,
         .agentDocuments,
         .recordedSessions,
+        .learningCandidates,
         .recordings,
         .jobRecordingBundles,
         .jobRecordingCapture,
@@ -228,6 +230,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseAgentDocuments(subject)
             case .recordedSessions:
                 receipt = eraseRecordedSessions(subject)
+            case .learningCandidates:
+                receipt = eraseLearningCandidates(subject)
             case .recordings:
                 receipt = .unsupported(store, "a recording is not indexed by who is audible in it; "
                                        + "erasure is per file from the recordings screen")
@@ -543,6 +547,16 @@ final class SubjectErasureCoordinator {
         }
         doomed.forEach { sessions.delete($0) }
         return .complete(.recordedSessions, removed: doomed.count)
+    }
+
+    /// A team-learning candidate that names the subject goes whole (Plan FP P1). The job record
+    /// keeps that one was filed — an id, a status, a machine and a date — which names nobody.
+    private func eraseLearningCandidates(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let candidates = stores.learningCandidates else {
+            return .unsupported(.learningCandidates, "no team-learning candidate store was supplied")
+        }
+        guard case .person = subject else { return .complete(.learningCandidates) }
+        return .complete(.learningCandidates, removed: candidates.deleteMatching(subject.searchToken))
     }
 
     private func eraseConversations(_ subject: ErasureSubject) -> ErasureReceipt {

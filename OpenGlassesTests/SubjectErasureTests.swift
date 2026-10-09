@@ -36,6 +36,7 @@ final class SubjectErasureTests: XCTestCase {
     private var queue: OfflineQueue!
     private var exports: StagedExportCoordinator!
     private var spotlight: RecordingSpotlightIndexer!
+    private var learningCandidates: LearningCandidateStore!
 
     private var queuePath: URL { workspace.appendingPathComponent("offline_queue.sqlite") }
 
@@ -61,6 +62,7 @@ final class SubjectErasureTests: XCTestCase {
         recordedSessions = RecordedSessionStore(documentsDirectory: workspace)
         queue = OfflineQueue(path: queuePath)
         spotlight = RecordingSpotlightIndexer()
+        learningCandidates = LearningCandidateStore(directory: workspace)
         exports = StagedExportCoordinator(
             channel: .agentExport, rootDirectoryName: "unused",
             store: ProtectedExportFileStore(
@@ -102,6 +104,7 @@ final class SubjectErasureTests: XCTestCase {
         stores.recordedSessions = recordedSessions
         stores.conversations = conversations
         stores.offlineQueue = queue
+        stores.learningCandidates = learningCandidates
         return stores
     }
 
@@ -145,6 +148,13 @@ final class SubjectErasureTests: XCTestCase {
 
         queue.enqueue(QueuedOp.make(kind: .logEntry, sessionId: "s1",
                                     json: ["note": "spoke to \(canary)"]))
+
+        // A team-learning finding that slipped a customer's name past capture (Plan FP P1).
+        learningCandidates.add(LearningCandidate(
+            sessionId: "s1", jobReference: "1007", taskId: nil, vaultId: "refrigeration",
+            equipment: nil, spokenModel: nil,
+            finding: "\(canary)'s unit trips on a cold start", symptom: nil, fix: nil,
+            evidence: .init(), author: "Sam Tane", createdAt: Date(), redactions: []))
     }
 
     /// Everything a store will say about the subject after it is supposed to be gone.
@@ -171,6 +181,7 @@ final class SubjectErasureTests: XCTestCase {
         note("agentDocuments", agentDocuments.content(for: .memory))
         note("agentDocuments.prompt", agentDocuments.agentContext())
         note("recordedSessions", recordedSessions.sessions.map(\.transcript).joined(separator: ","))
+        note("learningCandidates", learningCandidates.candidates.map(\.finding).joined(separator: ","))
         note("recallIndex", recallIndex.search(phrase: canary, limit: 50).map(\.text).joined(separator: ","))
         note("documents", documents.passages(containingToken: canary, limit: 50)
             .map(\.text).joined(separator: ","))
@@ -194,6 +205,7 @@ final class SubjectErasureTests: XCTestCase {
         agentDocuments = AgentDocumentStore(directory: workspace)
         recordedSessions = RecordedSessionStore(documentsDirectory: workspace)
         queue = OfflineQueue(path: queuePath)
+        learningCandidates = LearningCandidateStore(directory: workspace)
         social = SocialContextStore(defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)

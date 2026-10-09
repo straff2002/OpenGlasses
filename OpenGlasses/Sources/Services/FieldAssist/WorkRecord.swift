@@ -101,6 +101,12 @@ struct WorkRecord: Codable, Equatable {
     /// printed lines never do. Nil, and absent from the JSON, when nothing was recorded against the
     /// job, so an older record encodes exactly as it did.
     let usage: JobUsageSummary?
+    /// Team-learning candidates filed on this job (Plan FP P1): that each was filed, and that it is
+    /// not in use — id, status, machine and date, never the words. Internal, like `usage`: no
+    /// customer summary and no printed work-order line carries it, and a customer-audience export
+    /// leaves it out (`SessionExporter.buildExport`; contract §8). Nil, and absent from the JSON,
+    /// on a job that filed none, so an older record encodes exactly as it did.
+    var teamLearnings: [LearningCandidateReference]?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -132,6 +138,7 @@ struct WorkRecord: Codable, Equatable {
         case units
         case spokenReadings = "spoken_readings"
         case usage
+        case teamLearnings = "team_learnings"
     }
 
     // MARK: - Assembly
@@ -175,6 +182,7 @@ struct WorkRecord: Codable, Equatable {
         self.units = ledger.isMultiUnit ? ledger.units : nil
         self.spokenReadings = session.spokenReadings.isEmpty ? nil : session.spokenReadings
         self.usage = Self.nonEmpty(usage)
+        self.teamLearnings = (session.teamLearnings ?? []).isEmpty ? nil : session.teamLearnings
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -215,6 +223,7 @@ struct WorkRecord: Codable, Equatable {
         units = try c.decodeIfPresent([UnitLedger.Unit].self, forKey: .units)
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings)
         usage = Self.nonEmpty(try c.decodeIfPresent(JobUsageSummary.self, forKey: .usage))
+        teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
     }
 
     /// A summary with no requests is no summary: kept out of the record, so the synthesized encoder

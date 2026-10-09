@@ -44,7 +44,8 @@ final class FieldAssistCapabilityTests: XCTestCase {
 
     private static let bundled: Set<FieldAssistCapability> = [.bundledVaults]
     private static let subscription: Set<FieldAssistCapability> = [.bundledVaults, .ownVaults]
-    private static let team: Set<FieldAssistCapability> = [.bundledVaults, .ownVaults, .auditedExport, .orgConfiguration]
+    private static let team: Set<FieldAssistCapability> = [.bundledVaults, .ownVaults, .auditedExport, .orgConfiguration,
+                                                           .teamLearnings]
     private static let enterprise: Set<FieldAssistCapability> = Set(FieldAssistCapability.allCases)
 
     // MARK: - The table

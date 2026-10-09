@@ -93,6 +93,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | keychainProviderKeys | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — keys are removed per provider | n/a — no subject linkage |
 | keychainScopedDataKeys | `ScopedKeyring` | credential | thirdPartySubject | keychainAfterFirstUnlockThisDeviceOnly | yes | none | `ScopedKeyring.eraseClass(_:files:)` | none — a scoped key covers a class, not a person; forgetting one person cannot destroy the key everyone else is sealed under |
 | keychainServiceTokens | `KeychainService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | none — tokens are removed per service | n/a — no subject linkage |
+| learningCandidates | `LearningCandidateStore` | operationalAudit | thirdPartySubject | complete | yes | cap 500 | `LearningCandidateStore.removeAll()` | `LearningCandidateStore.deleteMatching(_:)` |
 | licence | `LicenseService` | credential | wearer | platformDefault | no | none | none — the licence is the wearer's entitlement, cleared by unlicensing | n/a — no subject linkage |
 | medicalExports | `MedicalExportFileStore` | exportArtifact | thirdPartySubject | complete | yes | TTL sweep | `MedicalExportFileStore.revokeAll()` | none — an export is a lease, released rather than searched |
 | notificationDigest | `NotificationDigestService` | personalMemory | wearer | platformDefault | no | none | none — the digest is rebuilt from the current window | n/a — no subject linkage |

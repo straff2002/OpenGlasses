@@ -223,6 +223,9 @@ final class NativeToolRegistry {
             register(ReadingTool())
             register(EvidenceTool())
             register(PartsRequestTool())
+            // "Note this for the team" (Plan FP P1): a finding filed for a supervisor's review. The
+            // tool checks Field Assist; the team-learning capability is checked by its service.
+            register(TeamLearningTool())
             // deliver_report stages the finished record for the composer; iOS makes the technician
             // tap Send, which is the human-in-the-loop step rather than an obstacle.
             register(DeliverReportTool(thread: { [weak conversationStore] in
