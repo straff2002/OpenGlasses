@@ -30,6 +30,9 @@ final class FieldSessionService: ObservableObject {
             // A filing on one job never withholds a line on the next.
             recentTechnicianTurns = []
             pendingTurnWithhold = nil
+            // …and an answer on one job is never logged, or prefaced, on the next.
+            loggedLearningAnswers = []
+            pendingDisclosure = nil
         }
     }
     private var conversationSourceIDs: Set<String>?
@@ -1284,7 +1287,8 @@ final class FieldSessionService: ObservableObject {
         var context = VaultPromptBuilder.promptContext(for: store,
             referenceByteLimit: VaultPromptBuilder.referenceByteLimit(
                 for: model?.llmProvider, requestContext: Self.chatGPTRequestContext(for: model)),
-            turn: turn)
+            turn: turn,
+            teamLearningsPublished: retrievableCorpus(store: store, documentStore: documentStore).learnings)
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }
@@ -1318,13 +1322,12 @@ final class FieldSessionService: ObservableObject {
         call field_session with action 'resume'.
         """
 
-    /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has no reference tier, nothing
-    /// has been ingested for it, or there is no turn to retrieve against.
+    /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has neither manuals nor
+    /// published team learnings to retrieve from, or there is no turn to retrieve against.
     func manualPassagesContext(turn: String?, store: VaultStore) -> String? {
-        guard store.manifest.hasDocuments, let documentStore,
+        guard let documentStore,
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
-        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
-        guard documentStore.documentCount(namespace: namespace) > 0 else { return nil }
+        guard retrievableCorpus(store: store, documentStore: documentStore).any else { return nil }
         // The job number is not evidence. "Open a new job 108" handed 108 to the exact-token search,
         // and a vent-length table with 108 in a cell opened on the phone (field report, build 420).
         let searchTurn = ManualTurnScope.removingJobReferences(from: turn)
@@ -1347,7 +1350,8 @@ final class FieldSessionService: ObservableObject {
         let outcome = manualRetriever(store: store).retrieve(
             .init(turn: searchTurn, procedureStep: runner?.currentStep?.title, limit: manualPassageLimit))
         // Support trace: which pages went to the model, by citation — or that the gate refused.
-        TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.isSufficient)
+        TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.answers)
+        let disclosure = noteRetrieval(outcome)
         // The turn's drawing, if its evidence points at one. Staged here and nowhere else for the
         // automatic path, so a figure never outlives the question that found it: a turn whose
         // evidence has no drawing in it clears the last one rather than leaving a wiring diagram
@@ -1367,23 +1371,174 @@ final class FieldSessionService: ObservableObject {
         stageFigure(staged)
         logFigurePresentation(staged ?? candidate.flatMap { makeStagedFigure(for: $0, vaultId: store.manifest.id) },
                               decision: decision, turnKind: kind)
-        let block = VaultRetriever.promptBlock(outcome)
+        let block = VaultRetriever.promptBlock(outcome, leadIn: disclosure?.leadIn)
         return scopeNote.map { block + "\n\n" + $0 } ?? block
     }
 
-    /// A retriever scoped to the active vault's namespace, or nil when there is no store.
+    /// The per-turn retriever for the active vault: the shared factory with its default namespaces.
     func manualRetriever(store: VaultStore) -> VaultRetriever {
-        let namespace = DocumentStore.vaultNamespace(store.manifest.id)
-        let documentStore = self.documentStore
+        makeRetriever(store: store, documentStore: documentStore)
+    }
+
+    // MARK: - The retrieval factory (Plan FP P2)
+
+    /// One namespace a retrieval reads, and what its passages are.
+    struct RetrievalNamespace: Equatable {
+        let namespace: String
+        let source: RetrievalSource
+    }
+
+    /// The approved entries, for the disclosure and for scoping a learning by its model. Injected
+    /// by `AppState`; nil in headless contexts, where a learning is still retrieved and disclosed
+    /// by what its own document carries.
+    var learningEntries: LearningEntryStore?
+
+    /// The namespaces a vault's retrieval reads: its manuals, then its published team learnings —
+    /// unless HIPAA mode is on, where the corpus is not queried at all. Already-published learnings
+    /// stay readable on a lapsed licence (FP §5), so no entitlement is asked here. A later corpus
+    /// joins this list rather than growing a fourth set of closures.
+    func retrievalNamespaces(vaultId: String) -> [RetrievalNamespace] {
+        var namespaces = [RetrievalNamespace(namespace: DocumentStore.vaultNamespace(vaultId), source: .manual)]
+        if !Config.hipaaMode {
+            namespaces.append(RetrievalNamespace(namespace: DocumentStore.learningNamespace(vaultId),
+                                                 source: .teamLearning))
+        }
+        return namespaces
+    }
+
+    /// What a vault has to retrieve from: imported manuals, published learnings, or neither.
+    func retrievableCorpus(store: VaultStore, documentStore: DocumentStore?) -> (manuals: Bool, learnings: Bool, any: Bool) {
+        guard let documentStore else { return (false, false, false) }
+        let manuals = store.manifest.hasDocuments
+            && documentStore.documentCount(namespace: DocumentStore.vaultNamespace(store.manifest.id)) > 0
+        let learnings = retrievalNamespaces(vaultId: store.manifest.id)
+            .filter { $0.source == .teamLearning }
+            .contains { documentStore.documentCount(namespace: $0.namespace) > 0 }
+        return (manuals, learnings, manuals || learnings)
+    }
+
+    /// The one way a `VaultRetriever` is built (Plan FP P2): the per-turn block, `manual_lookup`
+    /// and `equipment_lookup`'s manual fall-through all come here, so every route sees the same
+    /// corpus with the same tags.
+    ///
+    /// Each namespace is queried and the results merged; every passage is tagged with its
+    /// `source` from the namespace it came out of, and a learning with its entry's model token so
+    /// `ModelScope` scores it by identity. A `documentIds` filter names manuals by title, so a
+    /// filtered search reads the manuals alone. The availability check is the manual removal's for
+    /// a manual, and "still in its namespace" for a learning — a learning retracted mid-turn is not
+    /// quoted — and the removal journal is never consulted for a learning.
+    func makeRetriever(store: VaultStore, documentStore: DocumentStore?, documentIds: [String]? = nil,
+                       namespaces: [RetrievalNamespace]? = nil) -> VaultRetriever {
+        let vaultId = store.manifest.id
+        let all = namespaces ?? retrievalNamespaces(vaultId: vaultId)
+        let searched = documentIds == nil ? all : all.filter { $0.source == .manual }
+        let manualNamespaces = searched.filter { $0.source == .manual }.map(\.namespace)
+        let learningNamespaces = searched.filter { $0.source == .teamLearning }.map(\.namespace)
+        let entries = learningEntries
+
+        func tagged(_ passages: [DocumentStore.Passage], _ space: RetrievalNamespace) -> [DocumentStore.Passage] {
+            passages.map { raw in
+                var passage = raw
+                passage.source = space.source
+                if space.source == .teamLearning {
+                    passage.subjectModelToken = entries?.entry(forDocumentId: raw.documentId).map { $0.subject.modelToken }
+                        ?? LearningCorpus.subjectModelToken(fromDocumentText: raw.text)
+                }
+                return passage
+            }
+        }
+        func ids(for space: RetrievalNamespace) -> [String]? { space.source == .manual ? documentIds : nil }
+
+        let manualAvailable = VaultManualRemoval.availabilityCheck(forVault: vaultId, documentStore: documentStore)
         return VaultRetriever(query: { query, limit in
-            documentStore?.query(query, limit: limit, namespace: namespace) ?? []
+            searched.flatMap { space in
+                tagged(documentStore?.query(query, limit: limit, namespace: space.namespace,
+                                            documentIds: ids(for: space)) ?? [], space)
+            }
         }, tokenSearch: { token, limit in
-            documentStore?.passages(containingToken: token, namespace: namespace, limit: limit) ?? []
+            searched.flatMap { space in
+                tagged(documentStore?.passages(containingToken: token, namespace: space.namespace,
+                                               documentIds: ids(for: space), limit: limit) ?? [], space)
+            }
         }, provenance: { documentId in
-            documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType == VaultImporter.recognisedSourceType
-        }, availability: VaultManualRemoval.availabilityCheck(forVault: store.manifest.id,
-                                                              documentStore: documentStore),
-        policy: retrievalPolicy, modelScope: retrievalModelScope)
+            manualNamespaces.contains { namespace in
+                documentStore?.list(namespace: namespace).first { $0.id == documentId }?.sourceType
+                    == VaultImporter.recognisedSourceType
+            }
+        }, availability: { documentId in
+            if learningNamespaces.contains(where: { namespace in
+                documentStore?.list(namespace: namespace).contains { $0.id == documentId } ?? false
+            }) { return true }
+            return manualAvailable(documentId)
+        }, policy: retrievalPolicy, modelScope: retrievalModelScope)
+    }
+
+    // MARK: - Team learnings at answer time (Plan FP P2)
+
+    /// The evidence behind the latest answer: its basis and the team-learning badge flag the
+    /// phone and the lens read. Published; the visible badge is P4's.
+    @Published private(set) var answerEvidence: AnswerEvidence?
+
+    /// The learning-alone disclosure the turn in flight owes its reply, keyed by the turn's id.
+    private var pendingDisclosure: (turnID: String, disclosure: TeamLearningDisclosure)?
+    /// Learning-alone answers already logged, so a prompt rebuilt after a tool call does not log
+    /// the same answer twice.
+    private var loggedLearningAnswers = Set<String>()
+
+    /// The disclosure an outcome calls for, resolved against the approved entries.
+    func disclosure(for outcome: RetrievalOutcome) -> TeamLearningDisclosure? {
+        let entries = learningEntries
+        return TeamLearningDisclosure.from(outcome) { entries?.entry(forDocumentId: $0) }
+    }
+
+    /// Record what a retrieval found, wherever it ran: the answer's evidence for the phone and the
+    /// lens, the lead-in the reply owes when it rests on learnings alone, and — for a learning-alone
+    /// answer — a line in the job's log and the entry on its record. Returns the disclosure, whose
+    /// `leadIn` the caller hands the model.
+    @discardableResult
+    func noteRetrieval(_ outcome: RetrievalOutcome, now: Date = Date()) -> TeamLearningDisclosure? {
+        let disclosure = disclosure(for: outcome)
+        answerEvidence = AnswerEvidence(outcome: outcome, disclosure: disclosure)
+        guard let disclosure, disclosure.restsOnLearningAlone else { return disclosure }
+        if let turnSourceID { pendingDisclosure = (turnSourceID, disclosure) }
+        recordTeamLearningAnswer(disclosure, now: now)
+        return disclosure
+    }
+
+    /// Put the owed lead-in in front of the reply to the turn in flight (Direct mode), exactly
+    /// once. A reply to any other turn, or to a turn that owed nothing, is returned unchanged.
+    func applyTeamLearningDisclosure(to reply: String) -> String {
+        guard let pending = pendingDisclosure, let turnSourceID, pending.turnID == turnSourceID,
+              let leadIn = pending.disclosure.leadIn else { return reply }
+        pendingDisclosure = nil
+        return TeamLearningDisclosure.prepend(leadIn, to: reply)
+    }
+
+    /// The job's log and record say the answer rested on a learning alone: the entries' ids and
+    /// approver roles, never the words.
+    private func recordTeamLearningAnswer(_ disclosure: TeamLearningDisclosure, now: Date) {
+        guard activeSession != nil, let logger else { return }
+        // One line per answer: the turn when the Direct path names one, else the minute (live modes).
+        let answerKey = turnSourceID ?? "live:\(Int(now.timeIntervalSince1970 / 60))"
+        let fresh = disclosure.entries.filter { loggedLearningAnswers.insert(answerKey + "|" + $0.entryID).inserted }
+        guard !fresh.isEmpty else { return }
+        mutateSession { session in
+            var answers = session.teamLearningAnswers ?? []
+            for entry in fresh {
+                if let index = answers.firstIndex(where: { $0.entryID == entry.entryID }) {
+                    answers[index].answers += 1
+                } else {
+                    answers.append(TeamLearningAnswer(entryID: entry.entryID, approvedByRole: entry.approvedByRole,
+                                                      answeredAt: now))
+                }
+            }
+            session.teamLearningAnswers = answers
+        }
+        logger.append(.init(timestamp: now, kind: .teamLearningAnswered, text: nil, payload: [
+            "entry_ids": AnyCodable(fresh.map(\.entryID)),
+            "approved_by_roles": AnyCodable(fresh.map(\.approvedByRole)),
+            "learning_alone": AnyCodable(true),
+        ]))
     }
 
     /// Whether the active vault has manuals available to search.

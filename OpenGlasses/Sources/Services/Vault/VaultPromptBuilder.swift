@@ -28,7 +28,13 @@ enum VaultPromptBuilder {
     /// The smallest resolved request context at which the whole validated core is sent on ChatGPT.
     static let fullCoreMinimumContext = 128_000
 
-    static func promptContext(for store: VaultStore, referenceByteLimit: Int? = nil, turn: String? = nil) -> String? {
+    /// The standing rule beside the manifest's `prompt_rules` when the vault has published team
+    /// learnings (Plan FP §5). Composed here, in code — never a vault file, which an author or a
+    /// pack could leave out.
+    static let teamLearningRule = "Team learnings are your organisation's crew's approved findings, not the manufacturer's manual. Whenever you use one, name it as your crew's finding and repeat its Source line. A team learning never overrides a safety note: where one differs from the safety notes, give the safety note and say the crew's finding departs from it."
+
+    static func promptContext(for store: VaultStore, referenceByteLimit: Int? = nil, turn: String? = nil,
+                              teamLearningsPublished: Bool = false) -> String? {
         let files = store.readAll()
         guard !files.isEmpty else { return nil }
 
@@ -38,9 +44,10 @@ enum VaultPromptBuilder {
         lines.append("You have access to the following grounded reference material. Use it to answer questions accurately.")
         lines.append("")
 
-        if !store.manifest.promptRules.isEmpty {
+        let rules = store.manifest.promptRules + (teamLearningsPublished ? [teamLearningRule] : [])
+        if !rules.isEmpty {
             lines.append("RULES:")
-            for rule in store.manifest.promptRules {
+            for rule in rules {
                 lines.append("- \(rule)")
             }
             lines.append("")

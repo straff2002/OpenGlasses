@@ -1423,6 +1423,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.upcomingJobs.removeAll()
                 // Team-learning candidates were filed for this organisation's supervisor (Plan FP).
                 LearningCandidateStore.shared.removeAll()
+                // …and so were the approved entries and the corpus they answer from (Plan FP P2).
+                LearningEntryStore.shared.removeAll()
+                LearningCorpus.clearAll(store: self.documentStore)
                 // Attachments belong to the organisation's jobs, and go with them; so does what
                 // the office said about them.
                 self.officeJobAttachments?.removeAll()
@@ -1898,6 +1901,7 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.conversations = conversationStore
         erasure.offlineQueue = offlineQueue
         erasure.learningCandidates = LearningCandidateStore.shared
+        erasure.learningEntries = LearningEntryStore.shared
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -2399,6 +2403,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.offlineQueue = offlineQueue
             erasureStores.stagedExports = StagedExportCoordinator.allFamilies
             erasureStores.learningCandidates = LearningCandidateStore.shared
+            erasureStores.learningEntries = LearningEntryStore.shared
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in
@@ -2862,6 +2867,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // camera enables the hands-free scan → OCR source.
         // Field Assist vaults retrieve their imported manuals (reference tier) from the shared store.
         FieldSessionService.shared.documentStore = documentStore
+        FieldSessionService.shared.learningEntries = LearningEntryStore.shared
         // Finish any manual removal a previous run was interrupted part-way through. Ordering is
         // not what makes this safe — a pending removal's manual is already excluded from retrieval
         // and from being opened, whether or not this has run yet — but leaving one unfinished would
@@ -4624,6 +4630,9 @@ class AppState: ObservableObject, AppStateProtocol {
             return FieldSessionService.shared.activeVaultHasManuals
         case .coreFile:
             return store.manifest.files.contains { $0.lowercased() == citation.title.lowercased() }
+        case .teamLearning:
+            // There is no page behind a team learning; the corpus browser that opens one is P4.
+            return false
         }
     }
 
@@ -4654,6 +4663,9 @@ class AppState: ObservableObject, AppStateProtocol {
             session.logCitationOpened(citation, origin: origin)
             vaultFileRequest = VaultFileRequest(vaultId: store.manifest.id, filename: filename,
                                                 section: citation.section)
+        case .teamLearning:
+            // Nothing opens, so nothing is logged (Plan FP P2; the corpus browser is P4).
+            return
         }
     }
 

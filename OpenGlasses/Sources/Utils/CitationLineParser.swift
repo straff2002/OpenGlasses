@@ -15,6 +15,9 @@ struct Citation: Equatable, Hashable, Identifiable {
         case manual
         /// A core file loaded whole into every prompt ("error_codes.md").
         case coreFile = "core_file"
+        /// An approved team learning (Plan FP P2): the crew's finding, never a manual page. Its
+        /// title is the contract §7.1 name, "Team learning · <subject> · <date> · approved by <role>".
+        case teamLearning = "team_learning"
     }
 
     let kind: Kind
@@ -55,6 +58,9 @@ struct Citation: Equatable, Hashable, Identifiable {
     }
 
     var id: String { label }
+
+    /// The badge flag the phone reads: this citation is a team learning, not the manual.
+    var isTeamLearning: Bool { kind == .teamLearning }
 
     /// What the chip says. The same words, because the technician is checking the chip against the
     /// sentence above it.
@@ -129,6 +135,15 @@ enum CitationLineParser {
     /// a page, a caption or a section belongs to the citation before it, and anything else starts
     /// a new one.
     static func citations(inBody body: String) -> [Citation] {
+        // A team learning's name is cited whole: everything from its prefix to the end of the line
+        // is one citation, so a comma in the approver's role cannot split it into a "manual".
+        if let start = body.range(of: TeamLearningCitation.prefix) {
+            let before = String(body[body.startIndex..<start.lowerBound])
+                .trimmingCharacters(in: CharacterSet(charactersIn: " \t.;,"))
+            let name = String(body[start.lowerBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " \t.;"))
+            return (before.isEmpty ? [] : citations(inBody: before))
+                + [Citation(kind: .teamLearning, title: name)]
+        }
         var found: [Citation] = []
         var title: String?
         var page: Int?

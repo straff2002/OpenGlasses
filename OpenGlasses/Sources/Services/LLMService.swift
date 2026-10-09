@@ -986,11 +986,16 @@ class LLMService: ObservableObject {
         // chain-of-thought for the prompt inspector and return the (already clean) text.
         if provider == .local, let localThink = localLLMService?.lastReasoning {
             lastReasoning = localThink
-            recordFieldAssistantReply(rawResponse)
-            return rawResponse
+            // An answer resting on a team learning alone opens with the fixed lead-in (Plan FP P2).
+            let disclosed = FieldSessionService.shared.applyTeamLearningDisclosure(to: rawResponse)
+            recordFieldAssistantReply(disclosed)
+            return disclosed
         }
 
-        let (spoken, reasoning) = Self.stripThinkTags(rawResponse)
+        let (stripped, reasoning) = Self.stripThinkTags(rawResponse)
+        // An answer resting on a team learning alone opens with the fixed lead-in (Plan FP P2):
+        // composed by the app, not left to the model's phrasing, and logged as it was spoken.
+        let spoken = FieldSessionService.shared.applyTeamLearningDisclosure(to: stripped)
         lastReasoning = reasoning
         if let reasoning {
             // A reasoning trace is the model thinking about what the wearer just said — the same

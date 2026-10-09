@@ -208,6 +208,12 @@ enum SessionExporter {
             }
         }
 
+        // A team learning is the organisation's, never the manufacturer's and never the customer's
+        // (contract §8): a record that is not the office's names no team-learning citation.
+        if decision.audience != .office {
+            citations.removeAll { TeamLearningCitation.isTeamLearning($0.source) }
+        }
+
         if !decision.jsonIncludesTranscript {
             transcript = []
             citations = citations.map {
@@ -286,7 +292,10 @@ enum SessionExporter {
             // A record drawn from a vault nobody could verify says so (Plan FS §4).
             vaultSourceNote: VaultSourceBadge.forInstalledVault(id: session.vaultId)?
                 .recordLine(vaultName: vaultName))
-        if audience != .office { record.teamLearnings = nil }
+        if audience != .office {
+            record.teamLearnings = nil
+            record.teamLearningAnswers = nil
+        }
         return record
     }
 

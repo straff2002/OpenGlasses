@@ -197,6 +197,10 @@ final class SessionLogger {
             case teamLearningAmended = "team_learning_amended"
             /// …or withdrawn. The record stays; its text is emptied.
             case teamLearningWithdrawn = "team_learning_withdrawn"
+            /// An answer rested on approved team learnings alone (Plan FP P2): the entries' ids
+            /// and approver roles, never their words. Not rendered into the continuity snapshot
+            /// and not part of any customer-facing document.
+            case teamLearningAnswered = "team_learning_answered"
             case error = "error"
         }
     }

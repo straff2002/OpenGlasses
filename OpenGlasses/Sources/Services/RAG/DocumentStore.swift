@@ -35,6 +35,14 @@ final class DocumentStore: ObservableObject {
         var kind: DocumentChunker.Kind = .prose
         /// The figure or table that names the chunk's place ("Figure 58"), when it has one.
         var figure: String?
+        /// Which corpus the passage came from (Plan FP P2). The store never sets it — every row it
+        /// returns is just a row — and the retrieval factory that queried a namespace tags what it
+        /// got back, so a team learning cannot be mistaken for a manual page downstream.
+        var source: RetrievalSource = .manual
+        /// For a team-learning passage, the entry's model by identity (`subject.modelToken`), or
+        /// nil for a practice entry. Set by the same factory; `ModelScope` scores a learning by this
+        /// rather than by scanning its prose (contract §7.2).
+        var subjectModelToken: String?
     }
 
     // MARK: - Published
@@ -426,6 +434,55 @@ final class DocumentStore: ObservableObject {
     nonisolated static func vaultNamespace(_ vaultId: String) -> String { vaultNamespacePrefix + vaultId }
 
     nonisolated static func isVaultNamespace(_ namespace: String) -> Bool { namespace.hasPrefix(vaultNamespacePrefix) }
+
+    // MARK: - Team-learning namespaces (Plan FP P2)
+
+    nonisolated static let learningNamespacePrefix = "learning:"
+
+    /// Namespace holding the approved team learnings published for one vault: one document per
+    /// entry. It sits beside the vault's own namespace and outside its manifest, baseline, ledger
+    /// and manual removal, so a pack update, a re-import or a manual removal never touches it.
+    nonisolated static func learningNamespace(_ vaultId: String) -> String { learningNamespacePrefix + vaultId }
+
+    nonisolated static func isLearningNamespace(_ namespace: String) -> Bool { namespace.hasPrefix(learningNamespacePrefix) }
+
+    /// Every document except a team-learning corpus — what a person's own surfaces (reading
+    /// references, study decks) may list. A learning is the organisation's, read only through
+    /// retrieval with its disclosure, never picked from a personal list.
+    func listExcludingTeamLearnings() -> [DocumentRef] {
+        documents.filter { !Self.isLearningNamespace($0.namespace) }
+    }
+
+    /// The personal documents surface: neither a vault's manuals nor a team-learning corpus. Both
+    /// are managed from Field Assist, and neither is the wearer's to delete from a document list.
+    func personalDocuments() -> [DocumentRef] {
+        documents.filter { !Self.isVaultNamespace($0.namespace) && !Self.isLearningNamespace($0.namespace) }
+    }
+
+    /// Store `text` as exactly one chunk under a caller-chosen id, replacing whatever that id held
+    /// (Plan FP P2). A team learning is a few hundred characters and is cited whole — splitting one
+    /// would let half a finding answer without the other half — so it bypasses the chunker.
+    /// Idempotent: storing the same id again replaces the row and its one chunk.
+    @discardableResult
+    func ingestWhole(documentId: String, name: String, text: String,
+                     sourceType: String, namespace: String) -> DocumentRef? {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, !documentId.isEmpty else { return nil }
+        let id = escapedSQL(documentId)
+        exec("DELETE FROM doc_chunks WHERE document_id = '\(id)'")
+        let now = Date().timeIntervalSince1970
+        insertDocument(id: documentId, name: name, sourceType: sourceType, namespace: namespace,
+                       createdAt: now, chunkCount: 1, charCount: cleaned.count)
+        let embedding = embedder.embed(cleaned)
+        insertChunk(documentId: documentId, index: 0, text: cleaned,
+                    embedding: embedding.map(vecToData), page: nil, section: nil,
+                    kind: .prose, figure: nil,
+                    createdAt: now, version: embedding != nil ? embedder.version.tag : nil)
+        refresh()
+        PrivacyLog.store(.ragDocuments, .ingested, count: 1, characters: cleaned.count,
+                         detail: PrivacyToken(sourceType))
+        return documents.first { $0.id == documentId }
+    }
 
     // MARK: - Embedding migration
 

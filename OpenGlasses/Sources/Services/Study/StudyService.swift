@@ -118,7 +118,9 @@ final class StudyService: ObservableObject {
     func makeDeck(fromDocument query: String) async throws -> StudyDeck {
         guard let documentStore else { throw StudyServiceError.noDocument }
         let q = query.lowercased()
-        guard let ref = documentStore.list().first(where: { $0.id == query || $0.name.lowercased().contains(q) }) else {
+        // A team learning is never a study source (Plan FP P2): it is read through retrieval only.
+        guard let ref = documentStore.listExcludingTeamLearnings()
+            .first(where: { $0.id == query || $0.name.lowercased().contains(q) }) else {
             throw StudyServiceError.noDocument
         }
         let text = documentStore.query(ref.name, limit: 40, namespace: nil, documentIds: [ref.id])

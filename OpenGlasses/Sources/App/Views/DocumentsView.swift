@@ -18,8 +18,9 @@ struct DocumentsView: View {
     private var groups: [(namespace: String, docs: [DocumentStore.DocumentRef])] {
         _ = refreshToken
         // Vault manuals (`vault:<id>`) are managed from Custom Vaults, not here — a personal
-        // documents surface must not list, and cannot delete, a customer's reference tier.
-        let byNS = Dictionary(grouping: store.list().filter { !DocumentStore.isVaultNamespace($0.namespace) }, by: \.namespace)
+        // documents surface must not list, and cannot delete, a customer's reference tier. Nor an
+        // organisation's team learnings (`learning:<id>`, Plan FP P2).
+        let byNS = Dictionary(grouping: store.personalDocuments(), by: \.namespace)
         return byNS.keys.sorted { a, b in
             if a == "global" { return true }
             if b == "global" { return false }

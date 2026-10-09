@@ -1,5 +1,16 @@
 import Foundation
 
+/// Which corpus a retrieved passage came from (Plan FP §5). Set by the caller from the namespace it
+/// queried — the retriever never infers it from text — so a team learning cannot be mistaken for
+/// OEM evidence anywhere downstream. Not `provenance`: that name is the recognised-from-scan
+/// closure.
+enum RetrievalSource: String, Equatable, Codable, Sendable {
+    /// A page of a manual imported into the vault (`vault:<id>`).
+    case manual
+    /// An approved team learning published for the vault (`learning:<id>`).
+    case teamLearning
+}
+
 /// Retrieves reference-tier passages for a Field Assist turn and decides, deterministically,
 /// whether they are evidence enough to answer from.
 ///
@@ -51,6 +62,14 @@ struct VaultRetriever {
         var kind: DocumentChunker.Kind = .prose
         /// The figure or table that names the passage's place ("Figure 58"), when it has one.
         var figure: String?
+        /// The manual, or an approved team learning (Plan FP P2). A learning's `documentName` is
+        /// its contract §7.1 citation name, so `citation` renders it unchanged.
+        var source: RetrievalSource = .manual
+
+        typealias Source = RetrievalSource
+
+        /// How a team-learning passage is labelled to the model, before its text.
+        static let teamLearningLabel = "TEAM LEARNING (not the manual)"
 
         /// The sentence appended to a recognised passage's citation.
         static let provenanceNote = "(text recognised from a scan; verify figures against the printed page)"
@@ -139,6 +158,23 @@ struct VaultRetriever {
             guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
             return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
         }
+
+        /// The penalty for a team learning, by **identity** (contract §7.2): its `modelToken`,
+        /// trimmed and case-folded, is one of the active model's spellings or it is penalised. Its
+        /// prose is never scanned. A practice entry (no model) is never penalised — it is scoped
+        /// by topic, not by machine.
+        func penalty(forSubjectToken token: String?) -> Float {
+            guard let token = Self.identity(token), !activeTokens.isEmpty else { return 0 }
+            return activeTokens.contains(token) ? 0 : penalty
+        }
+
+        /// A model token as identity compares it: trimmed and case-folded. Nil when empty.
+        static func identity(_ token: String?) -> String? {
+            guard let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+                return nil
+            }
+            return trimmed.folding(options: [.caseInsensitive, .widthInsensitive], locale: nil).uppercased()
+        }
     }
 
     var query: QueryFunction
@@ -224,27 +260,41 @@ struct VaultRetriever {
 
     private func scored(_ raw: DocumentStore.Passage, matched: [String]) -> Passage {
         let boost = min(policy.maxBoost, policy.tokenBoost * Float(matched.count))
+        // A manual page is scoped by the models its text names; a team learning by the model its
+        // entry is filed against, never by its prose (Plan FP §5, contract §7.2).
+        let penalty = raw.source == .teamLearning
+            ? modelScope?.penalty(forSubjectToken: raw.subjectModelToken) ?? 0
+            : modelScope?.penalty(for: raw.text) ?? 0
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
                        similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,
-                       modelPenalty: modelScope?.penalty(for: raw.text) ?? 0,
-                       recognisedFromScan: provenance?(raw.documentId) ?? false,
-                       kind: raw.kind, figure: raw.figure)
+                       modelPenalty: penalty,
+                       recognisedFromScan: raw.source == .manual && (provenance?(raw.documentId) ?? false),
+                       kind: raw.kind, figure: raw.figure, source: raw.source)
     }
 
     // MARK: - Rendering
 
     /// The block appended to the system prompt for a turn. States insufficiency explicitly so the
     /// model does not fall back to general knowledge silently.
-    static func promptBlock(_ outcome: RetrievalOutcome, characterLimit: Int = 12_000) -> String {
+    ///
+    /// `leadIn` is the deterministic sentence a learning-only answer opens with
+    /// (`TeamLearningDisclosure.leadIn`); the caller composes it because the entry's job count is
+    /// not the retriever's to know.
+    static func promptBlock(_ outcome: RetrievalOutcome, characterLimit: Int = 12_000,
+                            leadIn: String? = nil) -> String {
         let bounded = boundedOutcome(outcome, characterLimit: characterLimit)
-        return unboundedPromptBlock(bounded.outcome) + bounded.notice
+        return unboundedPromptBlock(bounded.outcome, leadIn: leadIn) + bounded.notice
     }
 
     /// Select complete ranked passages, retaining citations, table headers and units together.
     /// Oversized evidence is explicitly unavailable; a partial warning must not look complete.
     static func boundedOutcome(_ outcome: RetrievalOutcome, characterLimit: Int) -> (outcome: RetrievalOutcome, notice: String) {
-        guard case .sufficient(let passages) = outcome else { return (outcome, "") }
+        let passages: [Passage]
+        switch outcome {
+        case .sufficient(let found), .teamLearningOnly(let found): passages = found
+        case .insufficient: return (outcome, "")
+        }
         var selected: [Passage] = []
         var remaining = max(0, characterLimit)
         var seen = Set<String>()
@@ -259,43 +309,73 @@ struct VaultRetriever {
         let omitted = passages.count - selected.count
         guard omitted > 0 else { return (outcome, "") }
         let notice = "\n\n\(omitted) manual passages omitted by the context budget. Do not assume omitted warnings or evidence are absent; narrow the lookup or open the cited manual before relying on incomplete coverage."
-        return (selected.isEmpty
-            ? .insufficient(reason: "Retrieved evidence could not fit as complete passages. Narrow the lookup; do not diagnose from missing evidence.")
-            : .sufficient(selected), notice)
+        guard !selected.isEmpty else {
+            return (.insufficient(reason: "Retrieved evidence could not fit as complete passages. Narrow the lookup; do not diagnose from missing evidence."), notice)
+        }
+        if case .teamLearningOnly = outcome { return (.teamLearningOnly(selected), notice) }
+        // A bounded `.sufficient` keeps its promise: a learning is never sufficient alone, so a
+        // budget that kept only learnings demotes the outcome rather than relabelling it.
+        guard selected.contains(where: { $0.source == .manual }) else { return (.teamLearningOnly(selected), notice) }
+        return (.sufficient(selected), notice)
     }
 
-    private static func unboundedPromptBlock(_ outcome: RetrievalOutcome) -> String {
+    /// One numbered passage as the model reads it: a team learning is labelled as one before its
+    /// text, so it is never read as the manual's words.
+    static func passageLine(_ index: Int, _ p: Passage) -> String {
+        let label = p.source == .teamLearning ? Passage.teamLearningLabel + " " : (p.kindLabel.map { $0 + " " } ?? "")
+        return "[\(index + 1)] \(label)\(p.text)\nSource: \(p.citation)"
+            + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
+    }
+
+    /// The standing instruction beside any team-learning passage (Plan FP §5).
+    static let teamLearningRule = "Passages marked \(Passage.teamLearningLabel) are your organisation's crew's approved findings, not the manufacturer's manual: when you use one, say it is your crew's finding and repeat its Source line, and never let it override a safety note."
+
+    /// What a learning-only answer is told: the manual is silent, open with the fixed sentence,
+    /// then the finding named as the crew's.
+    static func teamLearningOnlyInstruction(leadIn: String?) -> String {
+        let opening = leadIn.map { "Open your answer with exactly this sentence: \"\($0.trimmingCharacters(in: .whitespaces))\" — then give the finding. " }
+            ?? "Open your answer by saying the manual does not cover this and that what follows is your crew's own finding. "
+        return "The loaded manuals do not cover this. What was retrieved instead is \(Passage.teamLearningLabel): "
+            + opening
+            + "Name it as your crew's finding, not the manufacturer's instruction — circumstances differ — repeat its Source line, "
+            + "and never let it override a safety note."
+    }
+
+    private static func unboundedPromptBlock(_ outcome: RetrievalOutcome, leadIn: String?) -> String {
         switch outcome {
         case .sufficient(let passages):
-            let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.kindLabel.map { $0 + " " } ?? "")\(p.text)\nSource: \(p.citation)"
-                    + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
-            }.joined(separator: "\n\n")
+            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            let rule = passages.contains { $0.source == .teamLearning } ? "\n\n" + teamLearningRule : ""
             return """
             MANUAL PASSAGES (retrieved for this turn — the only reference material available beyond the vault core; \
             answer from these and repeat each passage's Source line for any claim drawn from it):
 
             \(body)
-            """
+            """ + rule
+        case .teamLearningOnly(let passages):
+            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            return "MANUAL PASSAGES: none retrieved for this turn. " + teamLearningOnlyInstruction(leadIn: leadIn)
+                + "\n\n" + body
         case .insufficient(let reason):
             return "MANUAL PASSAGES: none retrieved for this turn. \(reason)"
         }
     }
 
     /// Tool-result rendering: same passages, numbered, with an instruction the model can act on.
-    static func toolResult(_ outcome: RetrievalOutcome, query: String) -> String {
+    static func toolResult(_ outcome: RetrievalOutcome, query: String, leadIn: String? = nil) -> String {
         let bounded = boundedOutcome(outcome, characterLimit: 12_000)
-        return unboundedToolResult(bounded.outcome, query: query) + bounded.notice
+        return unboundedToolResult(bounded.outcome, query: query, leadIn: leadIn) + bounded.notice
     }
 
-    private static func unboundedToolResult(_ outcome: RetrievalOutcome, query: String) -> String {
+    private static func unboundedToolResult(_ outcome: RetrievalOutcome, query: String, leadIn: String?) -> String {
         switch outcome {
         case .sufficient(let passages):
-            let body = passages.enumerated().map { i, p in
-                "[\(i + 1)] \(p.kindLabel.map { $0 + " " } ?? "")\(p.text)\nSource: \(p.citation)"
-                    + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
-            }.joined(separator: "\n\n")
-            return "Manual passages for '\(query)' — answer using only these and cite each Source line you rely on:\n\n\(body)"
+            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            let rule = passages.contains { $0.source == .teamLearning } ? "\n\n" + teamLearningRule : ""
+            return "Manual passages for '\(query)' — answer using only these and cite each Source line you rely on:\n\n\(body)" + rule
+        case .teamLearningOnly(let passages):
+            let body = passages.enumerated().map { passageLine($0, $1) }.joined(separator: "\n\n")
+            return "No manual passage for '\(query)'. " + teamLearningOnlyInstruction(leadIn: leadIn) + "\n\n" + body
         case .insufficient(let reason):
             return reason
         }
@@ -303,17 +383,34 @@ struct VaultRetriever {
 }
 
 enum RetrievalOutcome: Equatable {
+    /// A manual passage cleared the gate — possibly with team learnings beside it, each labelled.
     case sufficient([VaultRetriever.Passage])
+    /// Only approved team learnings cleared the gate (Plan FP §5). Never a quiet pass and never a
+    /// refusal: the answer opens by saying the manual does not cover this and that what follows is
+    /// the crew's own finding.
+    case teamLearningOnly([VaultRetriever.Passage])
     case insufficient(reason: String)
 
     var passages: [VaultRetriever.Passage] {
-        if case .sufficient(let p) = self { return p }
-        return []
+        switch self {
+        case .sufficient(let p), .teamLearningOnly(let p): return p
+        case .insufficient: return []
+        }
     }
+    /// The manual covers this. False on a learning-only outcome, by design: EJ's gate keeps
+    /// meaning "the manual covers this".
     var isSufficient: Bool {
         if case .sufficient = self { return true }
         return false
     }
+    var isTeamLearningOnly: Bool {
+        if case .teamLearningOnly = self { return true }
+        return false
+    }
+    /// Something may be answered from — the manual, or a learning disclosed as one.
+    var answers: Bool { isSufficient || isTeamLearningOnly }
+    /// The team-learning passages in the outcome, in rank order.
+    var teamLearningPassages: [VaultRetriever.Passage] { passages.filter { $0.source == .teamLearning } }
 }
 
 /// The evidence gate. A passage counts as evidence when it contains a code-like token from the
@@ -421,10 +518,21 @@ struct RetrievalEvidencePolicy: Equatable {
         return true
     }
 
+    /// The gate. **A team learning is never sufficient alone** (Plan FP §5): `.sufficient` needs a
+    /// manual passage among the evidence, and then learnings that also cleared ride beside it;
+    /// when only learnings clear, the outcome is the named `.teamLearningOnly`.
     func decide(_ ranked: [VaultRetriever.Passage], limit: Int, queryTerms: Set<String>? = nil) -> RetrievalOutcome {
         let best = ranked.map(\.similarity).max()
         let evidence = ranked.filter { isEvidence($0, bestSimilarity: best, queryTerms: queryTerms) }
         guard !evidence.isEmpty else { return .insufficient(reason: Self.insufficientSentence) }
-        return .sufficient(Array(evidence.prefix(max(limit, 1))))
+        let take = max(limit, 1)
+        guard let bestManual = evidence.first(where: { $0.source == .manual }) else {
+            return .teamLearningOnly(Array(evidence.prefix(take)))
+        }
+        var chosen = Array(evidence.prefix(take))
+        // The limit must not cut the one passage that makes this sufficient: if learnings filled
+        // every slot, the last of them gives way to the best manual passage.
+        if !chosen.contains(where: { $0.source == .manual }) { chosen[chosen.count - 1] = bestManual }
+        return .sufficient(chosen)
     }
 }

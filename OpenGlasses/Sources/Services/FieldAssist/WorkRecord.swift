@@ -107,6 +107,11 @@ struct WorkRecord: Codable, Equatable {
     /// leaves it out (`SessionExporter.buildExport`; contract §8). Nil, and absent from the JSON,
     /// on a job that filed none, so an older record encodes exactly as it did.
     var teamLearnings: [LearningCandidateReference]?
+    /// Answers on this job that rested on an approved team learning alone (Plan FP P2): the
+    /// entry's id and the approver's role, so the record never implies the manufacturer said it.
+    /// Internal, like `teamLearnings`: no customer summary, no printed work-order line, and a
+    /// customer-audience export leaves it out. Nil, and absent from the JSON, when there were none.
+    var teamLearningAnswers: [TeamLearningAnswer]?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -139,6 +144,7 @@ struct WorkRecord: Codable, Equatable {
         case spokenReadings = "spoken_readings"
         case usage
         case teamLearnings = "team_learnings"
+        case teamLearningAnswers = "team_learning_answers"
     }
 
     // MARK: - Assembly
@@ -183,6 +189,7 @@ struct WorkRecord: Codable, Equatable {
         self.spokenReadings = session.spokenReadings.isEmpty ? nil : session.spokenReadings
         self.usage = Self.nonEmpty(usage)
         self.teamLearnings = (session.teamLearnings ?? []).isEmpty ? nil : session.teamLearnings
+        self.teamLearningAnswers = (session.teamLearningAnswers ?? []).isEmpty ? nil : session.teamLearningAnswers
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -224,6 +231,7 @@ struct WorkRecord: Codable, Equatable {
         spokenReadings = try c.decodeIfPresent([SpokenReading].self, forKey: .spokenReadings)
         usage = Self.nonEmpty(try c.decodeIfPresent(JobUsageSummary.self, forKey: .usage))
         teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
+        teamLearningAnswers = try c.decodeIfPresent([TeamLearningAnswer].self, forKey: .teamLearningAnswers)
     }
 
     /// A summary with no requests is no summary: kept out of the record, so the synthesized encoder
