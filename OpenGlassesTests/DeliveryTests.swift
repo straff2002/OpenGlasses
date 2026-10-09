@@ -225,6 +225,25 @@ final class DeliveryTests: XCTestCase {
         XCTAssertTrue(request.partsRequestIds.isEmpty)
     }
 
+    /// Plan FP P0: the request carries a payload, and the unattended route queues whatever the
+    /// payload says. For a job report that has to be exactly the op it always queued — the record's
+    /// own JSON, under its session — or an office endpoint would start receiving something else.
+    func testAJobReportPayloadQueuesTheRecordExactlyAsBefore() {
+        let record = record()
+        let request = DeliveryRequest.make(record: record, channel: .endpoint,
+                                           recipients: [], attachments: [])
+        XCTAssertEqual(request.payload, .workRecord(record, partsRequestIds: ["req-1"]))
+        XCTAssertEqual(request.record, record)
+        XCTAssertEqual(request.sessionId, record.sessionId)
+
+        let queued = request.payload.queuedOp()
+        let before = QueuedOp.make(workRecord: record)
+        XCTAssertEqual(queued.kind, before.kind)
+        XCTAssertEqual(queued.sessionId, before.sessionId)
+        XCTAssertEqual(queued.payload, before.payload)
+        XCTAssertEqual(queued.state, .pending)
+    }
+
     func testTheFileNameIsTheJobNotTheSessionUUID() {
         XCTAssertEqual(record().reportFileStem, "job-4471")
         XCTAssertEqual(record(jobReference: nil).reportFileStem, "job-session-")
