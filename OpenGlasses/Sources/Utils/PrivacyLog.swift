@@ -1462,6 +1462,10 @@ enum PrivacyLog {
         case offlineHandoff, offlineTurn
         case agentSelected, catalogDiscovered, catalogUnavailable
         case classified, classificationFailed, analysisCompleted
+        // Plan IE — a structured reply that came back without its tool call and was asked for
+        // once more, and a turn whose thinking blocks were dropped rather than replayed over a
+        // changed prefix. Model and call-site tokens and counts only.
+        case structuredRetry, thinkingDropped
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form

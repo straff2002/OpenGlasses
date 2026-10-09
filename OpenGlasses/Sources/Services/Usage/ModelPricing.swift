@@ -31,7 +31,14 @@ enum ModelPricing {
     /// longest match wins (so `gpt-4o-mini` beats `gpt-4o`). Representative public
     /// list prices at time of writing; override from Settings when they change.
     static let defaults: [String: Rate] = [
-        // Anthropic
+        // Anthropic. The 5.5 rows were read off the provider's first-party price list as it
+        // stood on 2026-10-06 (input / output per 1M, with the published cache-read rate). Each
+        // needs its own row: `claude-sonnet-5-5` is not a dated snapshot of `claude-sonnet-5`, so
+        // without one it stays unpriced. Haiku 5.5 bills prompts over 100K tokens at a higher
+        // rate this table cannot express, so a very long prompt there is under-estimated.
+        "claude-opus-5-5": Rate(4, 20, cached: 0.20),
+        "claude-sonnet-5-5": Rate(2, 10, cached: 0.20),
+        "claude-haiku-5-5": Rate(0.10, 0.50),
         "claude-fable-5": Rate(10, 50),
         "claude-opus-4-8": Rate(5, 25),
         "claude-opus-4-7": Rate(5, 25),
