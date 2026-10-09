@@ -669,6 +669,36 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertFalse(body.contains("$0.42"), body)
     }
 
+    /// Plan FP P1 (contract §8): that a team learning was filed is the organisation's, never the
+    /// customer's — the job record carries it, and the sign-off summary, the printed work-order
+    /// lines, the email body and a customer-audience export do not mention it at all.
+    func testTeamLearningsNeverReachTheCustomerSummaryTheWorkOrderOrACustomerExport() {
+        var session = Self.scriptedSession()
+        let plain = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        session.teamLearnings = [LearningCandidateReference(
+            candidateId: "0123456789abcdef0123456789abcdef", status: .filed,
+            modelToken: "SLP99UH090XV60CK", createdAt: Date(timeIntervalSince1970: 1_800_000_000))]
+        let filed = WorkRecord(session: session, vaultName: "Lennox SLP99 Furnace Service")
+        XCTAssertEqual(filed.teamLearnings?.count, 1)
+        XCTAssertTrue(filed.jsonString.contains("\"team_learnings\""), "the office's record says one was filed")
+        XCTAssertTrue(filed.jsonString.contains("\"in_use\" : false"), "…and that it is not in use")
+
+        XCTAssertEqual(filed.customerSummaryLines, plain.customerSummaryLines)
+        XCTAssertEqual(filed.summaryLines, plain.summaryLines)
+        for line in filed.customerSummaryLines + filed.summaryLines {
+            XCTAssertFalse(line.localizedCaseInsensitiveContains("learning"), line)
+            XCTAssertFalse(line.contains("0123456789abcdef"), line)
+        }
+        let body = ReportComposerModel(request: DeliveryRequest.make(
+            record: filed, channel: .email, recipients: ["service@example.com"], attachments: [])).filledBody
+        XCTAssertFalse(body.localizedCaseInsensitiveContains("learning"), body)
+
+        let customer = SessionExporter.exportedRecord(session: session, audience: .customer)
+        XCTAssertNil(customer.teamLearnings)
+        XCTAssertFalse(customer.jsonString.contains("team_learnings"))
+        XCTAssertEqual(SessionExporter.exportedRecord(session: session, audience: .office).teamLearnings?.count, 1)
+    }
+
     // MARK: - Export and queue
 
     func testTheExportCarriesTheRecordInJSONAndInThePDF() async throws {
