@@ -2,6 +2,12 @@
 
 **Status:** 📋 Planned 2026-10-02 — nothing built. P0 (pure table) and P1 (wiring) are headless and
 ship as one PR; P2 is a device session and rides with Plan [EO](EO-hevc-glasses-stream.md) P2.
+**Note 2026-10-10:** row 3a's process-wide half is done in Plan
+[HX](HX-glasses-link-and-device-state.md)'s follow-ups, for a refusal of the build
+(`insufficientSDKVersion`): the camera is stopped when the refusal latches, which ends the
+reconnect ladder and stall recovery whatever the phone's presence, and a warm-up that met the
+refusal is not retried. The table here still owns every other session error, including
+"update required" on the glasses' own app.
 **Origin:** A field report on DAT 1.0.0 from outside this codebase (another app built on the same
 SDK): with the iPhone locked or backgrounded and background streaming on, the glasses session
 **intermittently ends on its own**. RAW-codec streams ended after roughly 8–15 s with an
