@@ -149,13 +149,36 @@ final class ModelFetcherTests: XCTestCase {
     func testXAIProviderDefaults() {
         let config = ModelConfig.defaultConfig(for: .xai)
         XCTAssertEqual(config.baseURL, "https://api.x.ai/v1/chat/completions")
-        XCTAssertEqual(config.model, "grok-4")
+        XCTAssertEqual(config.model, "grok-4.7")
         XCTAssertTrue(LLMProvider.xai.isOpenAICompatible)
         XCTAssertTrue(LLMProvider.xai.requiresAPIKey)
         XCTAssertEqual(
             ModelFetcher.modelsEndpoint(from: LLMProvider.xai.defaultBaseURL),
             "https://api.x.ai/v1/models"
         )
+    }
+
+    // MARK: - Default models
+
+    /// Ids their providers have retired, or now answer with a different model, as read on
+    /// 2026-10-10. A default that is one of these fails a new user's first turn, or quietly
+    /// serves something else.
+    func testNoDefaultModelIsARetiredId() {
+        let retired: Set<String> = [
+            "gemini-2.0-flash", "llama-3.3-70b-versatile", "grok-4", "grok-4-0709",
+        ]
+        for provider in LLMProvider.allCases {
+            XCTAssertFalse(retired.contains(provider.defaultModel), provider.rawValue)
+        }
+    }
+
+    /// The preselected model decides whether a new user is offered the camera. A default that
+    /// takes images must be inferred as seeing, and Groq's text-only default must not be.
+    func testDefaultModelsInferVisionAsTheirProvidersDocument() {
+        for provider in [LLMProvider.gemini, .geminiVertex, .qwen, .xai, .openrouter] {
+            XCTAssertTrue(inferredVision(provider, provider.defaultModel), provider.rawValue)
+        }
+        XCTAssertFalse(inferredVision(.groq, LLMProvider.groq.defaultModel))
     }
 
     // MARK: - ModelConfig.inferredSupportsVision

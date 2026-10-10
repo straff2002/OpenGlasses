@@ -268,7 +268,7 @@ enum ModelFetcher {
         request.timeoutInterval = 30
 
         let body: [String: Any] = [
-            "model": "qwen3.5-plus",
+            "model": LLMProvider.qwen.defaultModel,
             "max_tokens": 1,
             "messages": [["role": "user", "content": "hi"]]
         ]
@@ -281,6 +281,8 @@ enum ModelFetcher {
 
             // Key works — return known Qwen Coding Plan models
             return [
+                RemoteModel(id: "qwen3.7-plus", name: "Qwen 3.7 Plus (vision)"),
+                RemoteModel(id: "qwen3.6-plus", name: "Qwen 3.6 Plus (vision)"),
                 RemoteModel(id: "qwen3.5-plus", name: "Qwen 3.5 Plus (vision)"),
                 RemoteModel(id: "qwen3.5-max", name: "Qwen 3.5 Max (vision)"),
                 RemoteModel(id: "qwen-plus", name: "Qwen Plus (vision)"),

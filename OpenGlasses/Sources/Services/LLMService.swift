@@ -92,22 +92,28 @@ enum LLMProvider: String, CaseIterable {
         }
     }
 
-    /// Default model for the provider
+    /// Default model for the provider.
+    ///
+    /// Each id was read against its provider's model list and retirement notices on 2026-10-10.
+    /// A pinned id goes stale without anything in the app changing: when the provider retires it,
+    /// a new user's first turn fails as though the key were wrong (`GeminiLiveModelPolicy` records
+    /// the same failure on the live socket). Re-read this table when a provider announces a
+    /// retirement, and prefer an id with no shutdown date over the newest one.
     var defaultModel: String {
         switch self {
         case .anthropic: return "claude-sonnet-5"
         case .openai: return "gpt-4o"
         case .chatgpt: return ChatGPTOAuth.defaultModel
-        case .gemini: return "gemini-2.0-flash"
-        case .geminiVertex: return "gemini-2.0-flash"
-        case .groq: return "llama-3.3-70b-versatile"
+        case .gemini: return "gemini-3.5-flash-lite"
+        case .geminiVertex: return "gemini-3.5-flash-lite"
+        case .groq: return "openai/gpt-oss-120b"
         case .deepseek: return "deepseek-flash"
         case .mistral: return "mistral-medium-latest"
         case .zai: return "glm-4.5"
-        case .qwen: return "qwen3.5-plus"
+        case .qwen: return "qwen3.7-plus"
         case .minimax: return "MiniMax-M2.7"
-        case .xai: return "grok-4"
-        case .openrouter: return "anthropic/claude-sonnet-4"
+        case .xai: return "grok-4.7"
+        case .openrouter: return "anthropic/claude-sonnet-5"
         case .custom: return "gpt-4o"
         case .local: return "mlx-community/gemma-4-e2b-it-4bit"
         case .appleOnDevice: return "apple-foundation-model"

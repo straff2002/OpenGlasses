@@ -79,12 +79,16 @@ enum ModelPricing {
         "gpt-4": Rate(30, 60),
         "o4-mini": Rate(1.10, 4.40),
         "o3-mini": Rate(1.10, 4.40),
-        // xAI
+        // xAI. `grok-4.7` is the rate for prompts under 200K tokens, read off the provider's
+        // price list on 2026-10-10; a longer prompt bills every token at double, which this table
+        // cannot express, so it is under-estimated.
+        "grok-4.7": Rate(2, 6, cached: 0.50),
         "grok-4-fast": Rate(0.20, 0.50),
         "grok-4": Rate(3, 15),
         "grok-3-mini": Rate(0.30, 0.50),
         "grok-3": Rate(3, 15),
-        // Google
+        // Google (`gemini-3.5-flash-lite` read off the price list 2026-10-10)
+        "gemini-3.5-flash-lite": Rate(0.30, 2.50),
         "gemini-2.0-flash": Rate(0.10, 0.40),
         "gemini-1.5-flash": Rate(0.075, 0.30),
         "gemini-1.5-pro": Rate(1.25, 5),
