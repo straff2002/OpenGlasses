@@ -173,7 +173,7 @@ final class ModelCascadeTests: XCTestCase {
                 throw LLMError.apiError(provider: c.id, statusCode: 429, message: "rl-\(c.id)")
             }
             XCTFail("expected throw")
-        } catch let LLMError.apiError(_, _, message) {
+        } catch let LLMError.apiError(_, _, message, _) {
             XCTAssertEqual(message, "rl-b", "surfaces the LAST candidate's real error, not a generic line")
         } catch { XCTFail("unexpected \(error)") }
     }

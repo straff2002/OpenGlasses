@@ -21,7 +21,12 @@ enum ModelReasoningReadout {
 
     static func lines(for selection: OpenAIRouteSelector.Selection) -> Lines {
         let explanation: String
-        if genericRouteReasons.contains(selection.reason), selection.reasoning.reason != .asSet {
+        if !selection.namesEndpoint {
+            // A provider that uses neither OpenAI endpoint (Anthropic, Gemini, on-device): the
+            // route has nothing to say, so the level's own reason is the whole story — including
+            // "As set for this model."
+            explanation = selection.reasoning.reason.explanation
+        } else if genericRouteReasons.contains(selection.reason), selection.reasoning.reason != .asSet {
             explanation = selection.reasoning.reason.explanation
         } else {
             explanation = selection.reason.explanation

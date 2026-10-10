@@ -289,11 +289,28 @@ enum TurnRecorder {
     /// which is also why `update`'s off-turn gate matters here more than anywhere else: this is the
     /// cohort key, and a background completion re-tagging it files the turn under a backend that
     /// never served it.
+    ///
+    /// The credential kind and the tool counts describe one request to one provider, and only
+    /// some provider paths record them. They are cleared here so a cascade that hops to a path
+    /// which does not cannot leave the previous attempt's values on the turn.
     static func noteBackend(_ backend: TurnBackend, model: String?) {
         update {
             $0.backend = backend
             $0.model = model
+            $0.credential = nil
+            $0.toolsSent = nil
         }
+    }
+
+    /// Which kind of credential this attempt is sent with (Plan IE P0). The kind, never the value.
+    static func noteCredential(_ kind: AnthropicAuth.CredentialKind) {
+        update { $0.credential = kind }
+    }
+
+    /// How many tool definitions this attempt's request carries, and how many came from MCP
+    /// servers (Plan IE P0). Counts only, never a name.
+    static func noteToolsSent(count: Int, fromMCP: Int) {
+        update { $0.toolsSent = .init(count: count, fromMCP: fromMCP) }
     }
 
     /// Which signal ended the wearer's speech (Plan CU P2). Recorded against the *pending*
@@ -350,9 +367,13 @@ enum TurnRecorder {
         }
     }
 
-    /// The turn failed with `error`. Only its category is kept, never its description.
+    /// The turn failed with `error`. Only its category is kept, never its description — and, when
+    /// a provider refused the request, what that refusal classified as (Plan IE P0).
     static func noteFailure(_ error: Error) {
-        update { $0.failure = SafeErrorSummary(error) }
+        update {
+            $0.failure = SafeErrorSummary(error)
+            if case LLMError.apiError(_, _, _, let rejection) = error { $0.rejection = rejection }
+        }
     }
 
     /// Seconds spent waiting on a frame from the glasses, timed from `start`.

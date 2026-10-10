@@ -178,6 +178,21 @@ struct TurnTimeline: Identifiable, Equatable {
     var toolCalls: [ToolNote] = []
     /// Why the turn failed, when it did. A category from `SafeErrorSummary`'s closed vocabulary.
     var failure: SafeErrorSummary?
+    /// What the provider's refusal classified as, when the failure was one (Plan IE P0): its error
+    /// type, its request id and a reason from a closed vocabulary. Never its message.
+    var rejection: ProviderRejection?
+    /// Which kind of credential the request was sent with — a key or an account sign-in, never
+    /// the value. nil for providers where there is only one kind.
+    var credential: AnthropicAuth.CredentialKind?
+    /// How many tool definitions the request carried, and how many of them came from MCP
+    /// servers. Counts only: a definition an MCP server wrote is the one part of the body that
+    /// differs between installations, and its name is that server's to choose.
+    var toolsSent: ToolsSent?
+
+    struct ToolsSent: Equatable {
+        let count: Int
+        let fromMCP: Int
+    }
     /// The conversation thread the turn was saved into, and the job it belonged to, when known.
     var threadId: String?
     var fieldSessionId: String?

@@ -144,7 +144,20 @@ final class PrivacyLogTests: XCTestCase {
                              total: 3, characters: text.count, tokens: 900, status: 429,
                              bytes: 2048, seconds: 0.5, success: false,
                              detail: PrivacyToken(text),
+                             reason: PrivacyToken(text), auth: PrivacyToken(text),
+                             request: PrivacyToken(text),
                              error: SafeErrorSummary(MaliciousError())),
+            // Plan IE P0 — a provider's refusal, classified from a body that is nothing but the
+            // sentinel: its message, its error type and its request id.
+            PrivacyLog.modelRejected(
+                ProviderRejection(status: 400,
+                                  body: (try? JSONSerialization.data(withJSONObject: [
+                                      "type": "error", "request_id": text,
+                                      "error": ["type": text, "message": text],
+                                  ])) ?? Data(),
+                                  headers: ["request-id": text], provider: .anthropic),
+                provider: PrivacyToken(text), auth: .accountSignIn, bytes: text.utf8.count,
+                detail: PrivacyToken(text)),
             PrivacyLog.modelCompaction(messagesBefore: 40, messagesAfter: 12,
                                        tokensBefore: 9000, tokensAfter: 2200, signals: 3,
                                        detail: PrivacyToken(text)),

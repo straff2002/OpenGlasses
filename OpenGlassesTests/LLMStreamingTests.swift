@@ -318,7 +318,7 @@ final class ResponsesStreamingTests: XCTestCase {
         do {
             _ = try await service().streamResponsesTurn(request: request, onToken: nil)
             XCTFail("expected a thrown API error")
-        } catch let LLMError.apiError(provider, statusCode, message) {
+        } catch let LLMError.apiError(provider, statusCode, message, _) {
             XCTAssertEqual(provider, "ChatGPT")
             XCTAssertEqual(statusCode, 400)
             XCTAssertEqual(message?.contains("Stream must be set to true"), true)

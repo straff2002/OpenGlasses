@@ -963,6 +963,9 @@ class LLMService: ObservableObject {
         // Plan GB P5: keep none. An image rides only on the turn that asked about it; the old
         // `keepLast: 1` re-sent the previous photo (~880 KB at the full size) on every request.
         conversationHistory = HistoryHygiene.pruneImages(conversationHistory, keepLast: 0)
+        // Plan IE P2: and no thinking blocks from a finished, abandoned or other model's turn —
+        // for every provider, since the history is shared and the next turn may be anyone's.
+        conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
 
         let rawResponse: String
         switch provider {
@@ -1446,24 +1449,10 @@ class LLMService: ObservableObject {
             // Use a lightweight request — no tools, short max_tokens
             switch provider {
             case .anthropic:
-                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                AnthropicAuth.apply(credential: await AnthropicAuth.resolveCredential(apiKey: modelConfig.apiKey), to: &request)
-                request.timeoutInterval = 15
-                let body: [String: Any] = [
-                    "model": modelConfig.model,
-                    "max_tokens": 512,
-                    "system": "You are a conversation summarizer. Be concise and factual.",
-                    "messages": [["role": "user", "content": summarizationPrompt]]
-                ]
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let content = json["content"] as? [[String: Any]],
-                      let text = content.first?["text"] as? String else { return nil }
-                return text
+                return try await anthropicOneShotText(
+                    config: modelConfig,
+                    system: "You are a conversation summarizer. Be concise and factual.",
+                    userContent: summarizationPrompt, maxTokens: 512, timeout: 15, detail: "summarise")
 
             case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1543,27 +1532,13 @@ class LLMService: ObservableObject {
         do {
             switch provider {
             case .anthropic:
-                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                AnthropicAuth.apply(credential: await AnthropicAuth.resolveCredential(apiKey: modelConfig.apiKey), to: &request)
-                request.timeoutInterval = 20
-                let body: [String: Any] = [
-                    "model": modelConfig.model,
-                    "max_tokens": maxTokens,
-                    "system": systemPrompt,
-                    "messages": [["role": "user", "content": [
+                return try await anthropicOneShotText(
+                    config: modelConfig, system: systemPrompt,
+                    userContent: [
                         ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
                         ["type": "text", "text": userText]
-                    ]]]
-                ]
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let content = json["content"] as? [[String: Any]],
-                      let text = content.first?["text"] as? String else { return nil }
-                return text
+                    ] as [[String: Any]],
+                    maxTokens: maxTokens, timeout: 20, detail: "analyzeFrame")
 
             case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1658,26 +1633,14 @@ class LLMService: ObservableObject {
         do {
             switch provider {
             case .anthropic:
-                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                AnthropicAuth.apply(credential: await AnthropicAuth.resolveCredential(apiKey: modelConfig.apiKey), to: &request)
-                request.timeoutInterval = 30
-                let body: [String: Any] = [
-                    "model": modelConfig.model,
-                    "max_tokens": maxTokens,
-                    "system": systemPrompt,
-                    "tools": [["name": toolName, "description": toolDescription, "input_schema": jsonSchema]],
-                    "tool_choice": ["type": "tool", "name": toolName],
-                    "messages": [["role": "user", "content": [
+                return try await anthropicStructured(
+                    config: modelConfig, system: systemPrompt,
+                    userContent: [
                         ["type": "image", "source": ["type": "base64", "media_type": "image/jpeg", "data": base64]],
                         ["type": "text", "text": userText]
-                    ]]]
-                ]
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-                return StructuredVisionParser.anthropic(data, toolName: toolName)
+                    ] as [[String: Any]],
+                    tool: .init(name: toolName, description: toolDescription, schema: jsonSchema),
+                    maxTokens: maxTokens, timeout: 30, detail: "analyzeFrameStructured")
 
             case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1765,23 +1728,10 @@ class LLMService: ObservableObject {
         do {
             switch provider {
             case .anthropic:
-                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                AnthropicAuth.apply(credential: await AnthropicAuth.resolveCredential(apiKey: modelConfig.apiKey), to: &request)
-                request.timeoutInterval = 45
-                let body: [String: Any] = [
-                    "model": modelConfig.model,
-                    "max_tokens": maxTokens,
-                    "system": systemPrompt,
-                    "tools": [["name": toolName, "description": toolDescription, "input_schema": jsonSchema]],
-                    "tool_choice": ["type": "tool", "name": toolName],
-                    "messages": [["role": "user", "content": userText]]
-                ]
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-                return StructuredVisionParser.anthropic(data, toolName: toolName)
+                return try await anthropicStructured(
+                    config: modelConfig, system: systemPrompt, userContent: userText,
+                    tool: .init(name: toolName, description: toolDescription, schema: jsonSchema),
+                    maxTokens: maxTokens, timeout: 45, detail: "completeStructured")
 
             case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                 var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1927,6 +1877,72 @@ class LLMService: ObservableObject {
         }
     }
 
+    // MARK: Anthropic one-shot calls (Plan IE P1)
+
+    /// A prepared Anthropic request: the endpoint, the credential, and a body built by
+    /// `AnthropicRequest` — the one place that knows what this model accepts.
+    private func anthropicURLRequest(config: ModelConfig, body: [String: Any],
+                                     timeout: TimeInterval) async throws -> URLRequest {
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        AnthropicAuth.apply(credential: await AnthropicAuth.resolveCredential(apiKey: config.apiKey), to: &request)
+        request.timeoutInterval = timeout
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    /// One stateless Anthropic call that wants text back: the summariser and the one-shot frame
+    /// analysis. The text is taken from the reply's `text` blocks by type — a model that thinks
+    /// by default opens with a thinking block, and reading the first block returned nothing while
+    /// the answer sat in the second. Returns nil on a refusal, a declined reply or an empty one.
+    ///
+    /// Internal so the fixture tests can drive it with a config and a stubbed `dataSession`.
+    func anthropicOneShotText(config: ModelConfig, system: String, userContent: Any,
+                              maxTokens: Int, timeout: TimeInterval, detail: String) async throws -> String? {
+        let body = AnthropicRequest.body(
+            model: config.model, maxTokens: maxTokens, system: .text(system),
+            messages: [["role": "user", "content": userContent]],
+            reasoning: config.reasoningResolution(toolsAttached: false))
+        let request = try await anthropicURLRequest(config: config, body: body, timeout: timeout)
+        let (data, response) = try await dataSession.data(for: request)
+        Self.noteAnthropicRejection(response: response, body: data, request: request, detail: detail)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+        return AnthropicReply.oneShotText(from: data)
+    }
+
+    /// One stateless Anthropic call that wants a JSON object back through a single tool:
+    /// structured vision and its text sibling.
+    ///
+    /// Where the model takes a forced tool choice the request is what it always was. Where it
+    /// does not, the request asks for the call in words, and a model asked in words can answer in
+    /// prose instead: `StructuredVisionParser` reads prose JSON too, and a reply that yields
+    /// nothing either way is asked for once more. A refused request is not retried — the same
+    /// body would be refused again.
+    func anthropicStructured(config: ModelConfig, system: String, userContent: Any,
+                             tool: AnthropicRequest.AnswerTool, maxTokens: Int,
+                             timeout: TimeInterval, detail: String) async throws -> [String: Any]? {
+        let contract = AnthropicModelContract.contract(for: config.model)
+        let body = AnthropicRequest.body(
+            model: config.model, maxTokens: maxTokens, system: .text(system),
+            messages: [["role": "user", "content": userContent]],
+            answerTool: tool, reasoning: config.reasoningResolution(toolsAttached: true))
+        let request = try await anthropicURLRequest(config: config, body: body, timeout: timeout)
+
+        let attempts = contract.allowsForcedToolChoice ? 1 : 2
+        for attempt in 1...attempts {
+            let (data, response) = try await dataSession.data(for: request)
+            Self.noteAnthropicRejection(response: response, body: data, request: request, detail: detail)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            if let object = StructuredVisionParser.anthropic(data, toolName: tool.name) { return object }
+            if attempt < attempts {
+                PrivacyLog.model(.structuredRetry, provider: PrivacyToken("anthropic"),
+                                 model: PrivacyToken(config.model), detail: PrivacyToken(detail))
+            }
+        }
+        return nil
+    }
+
     // Internal (not private) so the BM P9 fixture tests can drive the full streamed tool loop
     // through a stubbed `streamingSession`.
     func sendAnthropic(_ text: String, systemPrompt: String, volatileTail: String? = nil, config: ModelConfig, includeTools: Bool, imageData: Data?, smallContext: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
@@ -1936,6 +1952,13 @@ class LLMService: ObservableObject {
         guard !apiKey.isEmpty else {
             throw LLMError.missingAPIKey(LLMProvider.anthropic.missingCredentialMessage)
         }
+        // Which kind of credential this turn is sent with, never the value (Plan IE P0): a failed
+        // turn's line in the support report says whether a key or an account sign-in was refused.
+        TurnRecorder.noteCredential(AnthropicAuth.kind(of: apiKey))
+
+        // A new user turn: nothing older than it may hold a thinking block (Plan IE P2). Here as
+        // well as in `sendMessage`, because the agent tier and the tests enter at this function.
+        conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
 
         // Add user message to history
         if let imageData = imageData {
@@ -1964,7 +1987,12 @@ class LLMService: ObservableObject {
         // A tool_use block with an id but missing name/input can't be dispatched, yet still needs a
         // tool_result or the next request 400s (Plan BF). Its id is carried per-turn and answered
         // with a synthetic error alongside the real results.
-        final class TurnState { var malformedIds: [String] = [] }
+        final class TurnState {
+            var malformedIds: [String] = []
+            /// What the previous request of this turn sent (Plan IE P2), so the next one can tell
+            /// whether the thinking blocks produced since may be replayed.
+            var lastSent: ThinkingReplayGuard.Sent?
+        }
         let state = TurnState()
 
         let adapter = ProviderLoopAdapter(
@@ -1985,38 +2013,64 @@ class LLMService: ObservableObject {
                 self.conversationHistory = HistoryHygiene.repairDanglingToolUse(
                     HistoryHygiene.pruneImages(self.conversationHistory, keepLast: 1))
 
-                let historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
-                Self.noteReasoning(config.reasoningResolution(toolsAttached: includeTools),
-                                   provider: .anthropic, model: config.model)
+                var historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                let reasoning = config.reasoningResolution(toolsAttached: includeTools)
+                Self.noteReasoning(reasoning, provider: .anthropic, model: config.model)
 
                 // Prompt caching (Plan BF): the system prompt + tool schemas are large and byte-stable
                 // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
                 // cache on every follow-up turn instead of re-billing full input tokens each time.
                 // Plan GB P5: the breakpoint sits on the *untimestamped* head; the volatile tail
                 // (date and time, memory, passages) follows as its own uncached block.
-                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
-                var body: [String: Any] = [
-                    "model": config.model,
-                    "max_tokens": smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens),
-                    "system": PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile),
-                    "messages": historyForRequest
-                ]
+                var system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                var systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
 
+                var tools: [[String: Any]] = []
                 if includeTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
-                    let toolsData: Data = await MainActor.run {
-                        let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient)
-                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                    let (toolsData, mcpToolCount): (Data, Int) = await MainActor.run {
+                        let mcpClient = self.nativeToolRouter?.mcpClient
+                        let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient)
+                        let data = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                        return (data, ToolDeclarations.mcpToolDeclarations(mcpClient: mcpClient).count)
                     }
-                    var tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                    tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                    // How many definitions went, and how many of them an MCP server wrote — the
+                    // one part of the body that differs between installations. Counts only.
+                    TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
                     // Cache-breakpoint on the final tool caches the whole tools array as one prefix.
                     if !tools.isEmpty {
                         tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
                     }
-                    body["tools"] = tools
                 }
 
-                if onToken != nil { body["stream"] = true }
+                // Plan IE P2: this turn's thinking blocks ride only over the prefix they were
+                // produced over. The hygiene and the budget above can rewrite an earlier message
+                // between round trips (a pruned photo, a dropped exchange, a changed omission
+                // note), so compare with what the last request sent; on any difference drop the
+                // blocks — from the history too, so every later request sends the same thing.
+                if let lastSent = state.lastSent, HistoryHygiene.containsThinking(historyForRequest),
+                   !ThinkingReplayGuard.prefixUnchanged(since: lastSent, system: systemBlocks,
+                                                        tools: tools, messages: historyForRequest) {
+                    self.conversationHistory = HistoryHygiene.stripThinkingBlocks(self.conversationHistory)
+                    historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                    system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                    systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
+                    PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
+                                     model: PrivacyToken(config.model))
+                }
+                state.lastSent = ThinkingReplayGuard.record(system: systemBlocks, tools: tools,
+                                                            messages: historyForRequest)
+
+                // Plan IE P1/P3: the body comes from the one builder that knows what this model
+                // accepts — the effort it is sent, and output room for the thinking it does.
+                let baseOutputCap = smallContext
+                    ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
+                    : (includeTools ? Self.toolTurnMaxTokens : Config.maxTokens)
+                let body = AnthropicRequest.body(
+                    model: config.model, maxTokens: baseOutputCap, system: .blocks(systemBlocks),
+                    messages: historyForRequest, tools: includeTools ? tools : nil,
+                    reasoning: reasoning, stream: onToken != nil)
                 // Sorted keys: byte-identical bodies for identical content (Plan GB P5).
                 request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
@@ -2036,18 +2090,19 @@ class LLMService: ObservableObject {
                         }
                     }
                 } else {
-                    let (data, response) = try await URLSession.shared.data(for: request)
+                    let (data, response) = try await self.dataSession.data(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse,
                           httpResponse.statusCode == 200 else {
                         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                        if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let errorMsg = (errorJson["error"] as? [String: Any])?["message"] as? String {
-                            PrivacyLog.model(.apiError, provider: PrivacyToken("anthropic"),
-                                             status: statusCode)
-                            throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: errorMsg)
-                        }
-                        throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode, message: nil)
+                        // Logged whether or not the body parsed: a refusal with no readable
+                        // envelope used to leave no line at all (Plan IE P0).
+                        let rejection = Self.noteAnthropicRejection(response: response, body: data,
+                                                                    request: request)
+                        let errorMsg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+                            .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
+                        throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode,
+                                                message: errorMsg, rejection: rejection)
                     }
 
                     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -2071,10 +2126,15 @@ class LLMService: ObservableObject {
                         }
                     }
                 }
-                let text = content.compactMap { block -> String? in
-                    guard (block["type"] as? String) == "text" else { return nil }
-                    return block["text"] as? String
-                }.joined(separator: "\n")
+                let text = AnthropicReply.text(in: content)
+                // Plan IE P3: a 200 that is not an answer says so, instead of reaching `finalize`
+                // as an empty reply and surfacing as an unreadable response.
+                switch AnthropicReply.outcome(stopReason: stopReason, text: text,
+                                              hasToolCalls: !toolCalls.isEmpty || !state.malformedIds.isEmpty) {
+                case .declined: throw LLMError.modelDeclined(provider: "Anthropic")
+                case .ranOutOfRoom: throw LLMError.outputTruncated(provider: "Anthropic")
+                case .answered: break
+                }
                 return AssistantTurn(text: text, toolCalls: toolCalls, payload: content)
             },
             appendAssistantToolCall: { [weak self] turn in
@@ -2202,6 +2262,26 @@ class LLMService: ObservableObject {
         customEndpointRejectsTools = false
     }
 
+    /// Classify and log an Anthropic response that was not a 200 (Plan IE P0). Every Anthropic
+    /// call site goes through here, so a refusal always leaves a line: the status, the provider's
+    /// error type, the reason it matched, which kind of credential the request carried, and the
+    /// request id. The provider's message has no parameter here and reaches nothing.
+    ///
+    /// Returns `nil` for a 200, so the one-shot sites can call it before their own guard without
+    /// first asking what the status was.
+    /// - Parameter detail: which one-shot call this was; `nil` for a turn.
+    @discardableResult
+    nonisolated static func noteAnthropicRejection(response: URLResponse, body: Data,
+                                                   request: URLRequest,
+                                                   detail: String? = nil) -> ProviderRejection? {
+        if let http = response as? HTTPURLResponse, http.statusCode == 200 { return nil }
+        let rejection = ProviderRejection(response: response, body: body, provider: .anthropic)
+        PrivacyLog.modelRejected(rejection, provider: PrivacyToken("anthropic"),
+                                 auth: AnthropicAuth.credentialKind(of: request),
+                                 bytes: body.count, detail: detail.map(PrivacyToken.init))
+        return rejection
+    }
+
     /// Record the effective reasoning setting of one request: a token in the turn trace (Turn
     /// details) and in the privacy log. Never text — the reason is a case name.
     static func noteReasoning(_ resolution: ReasoningPolicy.Resolution,
@@ -2277,7 +2357,7 @@ class LLMService: ObservableObject {
                     text, systemPrompt: systemPrompt, volatileTail: volatileTail, config: config,
                     includeTools: includeTools, imageData: imageData, smallContext: smallContext,
                     selection: selection, onToken: onToken, onStreamReset: onStreamReset)
-            } catch LLMError.apiError(_, let status, _) where Self.responsesRouteShouldFallBack(status: status) {
+            } catch LLMError.apiError(_, let status, _, _) where Self.responsesRouteShouldFallBack(status: status) {
                 // Decision 6: a route decision, not a cascade hop. Remember the model for the run,
                 // rewind this turn's own appends (the user message included, so the retry does not
                 // add it twice — `turnHistoryStart` is its index even if `trimHistory` compacted
@@ -2474,7 +2554,7 @@ class LLMService: ObservableObject {
                     }
                     do {
                         return try await streamTurn(request)
-                    } catch LLMError.apiError(_, 400, _) where provider == .custom && toolsAttached {
+                    } catch LLMError.apiError(_, 400, _, _) where provider == .custom && toolsAttached {
                         return try await streamTurn(try retryRequestWithoutTools())
                     }
                 } else {
@@ -2492,16 +2572,20 @@ class LLMService: ObservableObject {
                         // the message still reaches the user through the thrown error.
                         PrivacyLog.model(.apiError, provider: PrivacyToken(provider.rawValue),
                                          status: statusCode, bytes: data.count)
+                        let rejection = ProviderRejection(response: response, body: data, provider: provider)
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorObj = errorJson["error"] as? [String: Any],
                            let errorMsg = errorObj["message"] as? String {
-                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
+                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                    message: errorMsg, rejection: rejection)
                         }
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorMsg = errorJson["error"] as? String {
-                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: errorMsg)
+                            throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                    message: errorMsg, rejection: rejection)
                         }
-                        throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode, message: nil)
+                        throw LLMError.apiError(provider: provider.displayName, statusCode: statusCode,
+                                                message: nil, rejection: rejection)
                     }
 
                     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -2516,9 +2600,9 @@ class LLMService: ObservableObject {
 
                 do {
                     message = try await sendOnce(request)
-                } catch LLMError.apiError(_, 400, let rejection)
+                } catch LLMError.apiError(_, 400, let refusal, _)
                             where ReasoningRejectionClassifier.shouldRetry(
-                                status: 400, message: rejection,
+                                status: 400, message: refusal,
                                 sentEffort: body["reasoning_effort"] as? String) {
                     // Plan GB P0: a model missing from `ReasoningPolicy`'s table refused reasoning
                     // with tools. Retry once at `none` instead of dead-ending in the cascade, and
@@ -3024,7 +3108,10 @@ class LLMService: ObservableObject {
             let text = String(data: errorBody, encoding: .utf8) ?? ""
             PrivacyLog.model(.apiError, provider: PrivacyToken(providerToken),
                              status: status, bytes: errorBody.count)
-            throw LLMError.apiError(provider: providerLabel, statusCode: status, message: text)
+            throw LLMError.apiError(provider: providerLabel, statusCode: status, message: text,
+                                    rejection: ProviderRejection(
+                                        response: response, body: errorBody,
+                                        provider: LLMProvider(rawValue: providerToken) ?? .openai))
         }
 
         var parser = SSEEventParser()
@@ -3055,7 +3142,10 @@ class LLMService: ObservableObject {
             let error: [String: Any] = ["code": accumulator.failureCode ?? "", "message": failure]
             let encoded = try JSONSerialization.data(withJSONObject: error)
             throw LLMError.apiError(provider: providerLabel, statusCode: 200,
-                                    message: String(decoding: encoded, as: UTF8.self))
+                                    message: String(decoding: encoded, as: UTF8.self),
+                                    rejection: ProviderRejection(
+                                        response: response, body: encoded,
+                                        provider: LLMProvider(rawValue: providerToken) ?? .openai))
         }
         guard let completed = accumulator.effectiveResponse else {
             throw LLMError.invalidResponse("\(providerLabel) (stream ended without completion)")
@@ -3125,7 +3215,7 @@ class LLMService: ObservableObject {
     /// fatal-vs-recoverable split for the chat path.
     nonisolated static func isTransientSSEError(_ error: Error) -> Bool {
         switch error {
-        case LLMError.apiError(_, let status, _):
+        case LLMError.apiError(_, let status, _, _):
             return status == 429 || (500...599).contains(status)
         case LLMError.streamInterrupted(_, let reason):
             let r = reason.lowercased()
@@ -3182,7 +3272,8 @@ class LLMService: ObservableObject {
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
             PrivacyLog.model(.streamError, provider: PrivacyToken(provider.rawValue),
                              status: http.statusCode, bytes: data.count)
-            throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg)
+            throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg,
+                                    rejection: ProviderRejection(response: http, body: data, provider: provider))
         }
 
         var fullContent = ""
@@ -3260,7 +3351,9 @@ class LLMService: ObservableObject {
             for try await b in bytes { data.append(b) }
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-            throw LLMError.apiError(provider: "Anthropic", statusCode: http.statusCode, message: msg)
+            let rejection = Self.noteAnthropicRejection(response: http, body: data, request: request)
+            throw LLMError.apiError(provider: "Anthropic", statusCode: http.statusCode, message: msg,
+                                    rejection: rejection)
         }
 
         var blocks: [Int: [String: Any]] = [:]   // content blocks by index
@@ -3295,6 +3388,19 @@ class LLMService: ObservableObject {
                         onToken(t)
                     } else if dtype == "input_json_delta", let pj = delta["partial_json"] as? String {
                         toolJSON[idx, default: ""] += pj
+                    } else if dtype == "thinking_delta", let t = delta["thinking"] as? String {
+                        // Plan IE P2: a thinking block is only valid replayed exactly as received,
+                        // so its text and its signature are assembled like any other block's.
+                        // Neither reaches `onToken`: thinking is not the reply, and is not the
+                        // first visible token. A `redacted_thinking` block arrives whole in
+                        // `content_block_start` and has no deltas.
+                        guard var b = blocks[idx] else { continue }
+                        b["thinking"] = ((b["thinking"] as? String) ?? "") + t
+                        blocks[idx] = b
+                    } else if dtype == "signature_delta", let signature = delta["signature"] as? String {
+                        guard var b = blocks[idx] else { continue }
+                        b["signature"] = signature
+                        blocks[idx] = b
                     }
                 }
             case "message_delta":
@@ -3457,14 +3563,18 @@ class LLMService: ObservableObject {
                 guard let httpResponse = response as? HTTPURLResponse,
                       httpResponse.statusCode == 200 else {
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    let rejection = ProviderRejection(response: response, body: data,
+                                                      provider: config.llmProvider)
                     if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                        let errorObj = errorJson["error"] as? [String: Any],
                        let errorMsg = errorObj["message"] as? String {
                         PrivacyLog.model(.apiError, provider: PrivacyToken("gemini"),
                                          status: statusCode)
-                        throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: errorMsg)
+                        throw LLMError.apiError(provider: "Gemini", statusCode: statusCode,
+                                                message: errorMsg, rejection: rejection)
                     }
-                    throw LLMError.apiError(provider: "Gemini", statusCode: statusCode, message: nil)
+                    throw LLMError.apiError(provider: "Gemini", statusCode: statusCode,
+                                            message: nil, rejection: rejection)
                 }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -4275,6 +4385,11 @@ class LLMService: ObservableObject {
     /// How many recent messages a small-context request carries.
     static let smallContextHistoryTurns = 4
 
+    /// Reply ceiling for a turn with tools attached: a spoken answer or a tool call, not an
+    /// essay. `AnthropicModelContract.outputCap` raises it for a model that thinks by default,
+    /// whose thinking is drawn from the same allowance (Plan IE P3).
+    static let toolTurnMaxTokens = 1_024
+
     /// Reply ceiling for a small-context *vision* turn. The lean prompt asks for one or two
     /// spoken sentences, and this is the hard stop that keeps a chatty model from spending the
     /// budget the setting exists to save. Text-only turns keep `Config.maxTokens`: without an
@@ -4567,22 +4682,35 @@ enum LLMError: LocalizedError {
     case missingAPIKey(String)
     case invalidResponse(String)
     case invalidConfiguration(String)
-    case apiError(provider: String, statusCode: Int, message: String?)
+    /// `rejection` is what the provider's answer classified as (Plan IE P0): its error type, its
+    /// request id and a reason from a closed vocabulary. The `message` beside it is the provider's
+    /// own sentence, shown to the person and never logged.
+    case apiError(provider: String, statusCode: Int, message: String?, rejection: ProviderRejection? = nil)
     /// A streaming response died mid-flight — a mid-stream `error` event or a connection that
     /// ended before the terminator (`[DONE]` / `message_stop`). Partial content must never be
     /// returned as a successful turn (BM P9).
     case streamInterrupted(provider: String, reason: String)
+    /// The model answered that it will not answer (`stop_reason: refusal`, Plan IE P3). The reply
+    /// was reached and read; there is nothing in it to speak. Another model may answer.
+    case modelDeclined(provider: String)
+    /// The reply stopped at its output ceiling before any text or tool call (Plan IE P3): the
+    /// allowance went on thinking. Nothing was said, so this is not a short answer.
+    case outputTruncated(provider: String)
 
     var errorDescription: String? {
         switch self {
         case .missingAPIKey(let msg): return msg
         case .invalidResponse(let provider): return "Invalid response from \(provider)"
         case .invalidConfiguration(let msg): return msg
-        case .apiError(let provider, let code, let msg):
+        case .apiError(let provider, let code, let msg, _):
             if let msg { return "\(provider) error \(code): \(msg)" }
             return "\(provider) error: \(code)"
         case .streamInterrupted(let provider, let reason):
             return "\(provider) stream interrupted: \(reason)"
+        case .modelDeclined(let provider):
+            return "\(provider) declined to answer"
+        case .outputTruncated(let provider):
+            return "\(provider) ran out of room before it answered"
         }
     }
 }

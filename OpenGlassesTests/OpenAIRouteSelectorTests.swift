@@ -34,7 +34,7 @@ final class OpenAIRouteSelectorTests: XCTestCase {
             Row(name: "custom responses URL", selection: select("gpt-5.5", provider: .custom, base: "https://proxy.test/v1/responses", .medium),
                 endpoint: .responses, reason: .customHostResponsesURL, effective: .level(.medium)),
             Row(name: "anthropic", selection: select("claude-sonnet-5", provider: .anthropic, base: "", .high),
-                endpoint: .chatCompletions, reason: .otherProvider, effective: .notSupported),
+                endpoint: .chatCompletions, reason: .otherProvider, effective: .level(.high)),
             // 2. OpenAI provider, other host.
             Row(name: "azure chat", selection: select("gpt-6-sol", base: "https://r.openai.azure.com/openai/v1", .medium),
                 endpoint: .chatCompletions, reason: .customHostChat, effective: .level(.none)),

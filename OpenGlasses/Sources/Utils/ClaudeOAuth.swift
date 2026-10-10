@@ -133,6 +133,36 @@ enum ClaudeOAuth {
 /// `Authorization: Bearer` with the OAuth beta header; anything else is a regular API key on
 /// `x-api-key`. Pure — credential resolution (refresh, keychain) happens in `ClaudeOAuthService`.
 enum AnthropicAuth {
+
+    /// Which kind of credential a request was authenticated with — the one fact about a
+    /// credential a support report may carry (Plan IE P0). Never any part of the value.
+    enum CredentialKind: String, Sendable {
+        /// An API key pasted into the model's configuration.
+        case key
+        /// A Claude account sign-in token.
+        case accountSignIn
+
+        /// How the support report says it.
+        var reportLabel: String {
+            switch self {
+            case .key: return "key"
+            case .accountSignIn: return "account sign-in"
+            }
+        }
+    }
+
+    static func kind(of credential: String) -> CredentialKind {
+        ClaudeOAuth.isOAuthToken(credential) ? .accountSignIn : .key
+    }
+
+    /// The kind of credential `apply(credential:to:)` put on `request`, read back from which
+    /// header it set. `nil` for a request that carries neither.
+    static func credentialKind(of request: URLRequest) -> CredentialKind? {
+        if request.value(forHTTPHeaderField: "Authorization") != nil { return .accountSignIn }
+        if request.value(forHTTPHeaderField: "x-api-key") != nil { return .key }
+        return nil
+    }
+
     static func apply(credential: String, to request: inout URLRequest) {
         if ClaudeOAuth.isOAuthToken(credential) {
             request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")

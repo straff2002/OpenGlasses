@@ -43,6 +43,17 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var toolCalls: [TurnTimeline.ToolNote]
     var outcome: Outcome
     var failure: String?
+    // What a refused request adds to the failure (Plan IE P0). All optional: traces written
+    // before them decode as nil, and a turn that was not refused has none.
+    /// `ProviderRejection.Reason`, by raw value.
+    var rejectionReason: String?
+    /// The provider's id for the refused request.
+    var requestId: String?
+    /// `AnthropicAuth.CredentialKind`, by raw value — the kind of credential, never the value.
+    var credential: String?
+    /// How many tool definitions the request carried, and how many came from MCP servers.
+    var toolsSent: Int?
+    var toolsFromMCP: Int?
     /// Speech end to the first audio the wearer heard.
     var perceivedLatency: TimeInterval?
     /// Hand-off to the model to its first output.
@@ -70,6 +81,11 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         manualRefused = timeline.manualRefused
         toolCalls = timeline.toolCalls
         failure = timeline.failure?.description
+        rejectionReason = timeline.rejection?.reason.rawValue
+        requestId = timeline.rejection?.requestID
+        credential = timeline.credential?.rawValue
+        toolsSent = timeline.toolsSent?.count
+        toolsFromMCP = timeline.toolsSent?.fromMCP
         if timeline.failure != nil {
             outcome = .failed
         } else if timeline.interrupted {

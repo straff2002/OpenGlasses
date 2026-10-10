@@ -72,7 +72,41 @@ final class ModelReasoningReadoutTests: XCTestCase {
 
     func testOtherProviderShowsTheReasoningReason() {
         let line = lines("claude-sonnet-5", effort: .high, tools: true, provider: .anthropic, base: "")
-        XCTAssertEqual(line.value, "Not supported", "no endpoint named for a provider that uses neither")
-        XCTAssertEqual(line.explanation, "Not supported for this provider yet.")
+        XCTAssertEqual(line.value, "High", "no endpoint named for a provider that uses neither")
+        XCTAssertEqual(line.explanation, "As set for this model.")
+    }
+
+    // Plan IE P3: what the editor says about a Claude model is what `ReasoningPolicy` sends it.
+    func testAnthropicReadoutPerSetting() {
+        let automatic = lines("claude-sonnet-5-5", effort: nil, tools: true, provider: .anthropic, base: "")
+        XCTAssertEqual(automatic.value, "Low")
+        XCTAssertEqual(automatic.explanation,
+                       "Automatic keeps a model that thinks before every answer at its lowest effort, to keep answers quick.")
+
+        let adjusted = lines("claude-opus-5-5", effort: ReasoningEffort.none, tools: true, provider: .anthropic, base: "")
+        XCTAssertEqual(adjusted.value, "Low")
+        XCTAssertEqual(adjusted.explanation, "The nearest setting this model accepts.")
+
+        let older = lines("claude-haiku-4-5", effort: .high, tools: false, provider: .anthropic, base: "")
+        XCTAssertEqual(older.value, "Not applicable")
+        XCTAssertEqual(older.explanation, "This model doesn't take an effort setting, so nothing is sent.")
+
+        let unknown = lines("claude-nova-9", effort: .high, tools: true, provider: .anthropic, base: "")
+        XCTAssertEqual(unknown.value, "Provider default")
+        XCTAssertEqual(unknown.explanation,
+                       "The app doesn't know this model yet, so it sends no effort setting and the provider's default applies.")
+    }
+
+    func testNoRenderedLineNamesAPlan() {
+        // Plan letters belong in comments. Every reason's sentence is rendered in the editor.
+        let reasons: [ReasoningPolicy.Resolution.Reason] = [
+            .asSet, .adjustedToAccepted, .chatToolsClamp, .automaticToolTurn, .automaticProviderDefault,
+            .automaticGeminiToolBudget, .learnedRejection, .notReasoningModel, .automaticThinkingModel,
+            .noEffortSetting, .unrecognisedModel, .liveSessionOff, .onDevice,
+        ]
+        for reason in reasons {
+            XCTAssertNil(reason.explanation.range(of: #"\bPlan [A-Z]{1,2}\b"#, options: .regularExpression),
+                         "\(reason)")
+        }
     }
 }

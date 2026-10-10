@@ -135,6 +135,50 @@ enum HistoryHygiene {
         }
     }
 
+    // MARK: - Thinking blocks (Plan IE P2)
+
+    /// What stands in for an assistant message that was nothing but thinking, so the strip never
+    /// leaves a message with no content (which the service refuses).
+    static let omittedThinkingPlaceholder = "[earlier reasoning omitted]"
+
+    private static func isThinkingBlock(_ block: [String: Any]) -> Bool {
+        let type = block["type"] as? String
+        return type == "thinking" || type == "redacted_thinking"
+    }
+
+    /// Whether any message carries a `thinking` or `redacted_thinking` block.
+    static func containsThinking(_ history: [[String: Any]]) -> Bool {
+        history.contains { message in
+            (message["content"] as? [[String: Any]])?.contains(where: isThinkingBlock) ?? false
+        }
+    }
+
+    /// Remove every `thinking` and `redacted_thinking` block.
+    ///
+    /// The invariant this enforces: **history older than the turn in flight never holds a
+    /// thinking block.** A block is only valid replayed exactly as received, to the model that
+    /// produced it, over the very system prompt, tools and messages it was produced over — and
+    /// between turns this app changes all three (the dated tail of the prompt, image pruning, the
+    /// history budget, compaction, the active model). Leaving a finished turn's blocks out is
+    /// always legal; replaying one over a changed prefix is a 400 on the newest models. So the
+    /// strip runs where a new user turn begins, which also covers a turn that was abandoned
+    /// half-way, a switch of model, and a loaded conversation.
+    ///
+    /// Everything else in each message is kept, in order. A message left with no blocks gets a
+    /// one-line text placeholder rather than empty content.
+    static func stripThinkingBlocks(_ history: [[String: Any]]) -> [[String: Any]] {
+        history.map { message in
+            guard let blocks = message["content"] as? [[String: Any]],
+                  blocks.contains(where: isThinkingBlock) else { return message }
+            let kept = blocks.filter { !isThinkingBlock($0) }
+            var out = message
+            out["content"] = kept.isEmpty
+                ? [["type": "text", "text": omittedThinkingPlaceholder]]
+                : kept
+            return out
+        }
+    }
+
     // MARK: - Token estimation
 
     /// Estimate the token weight of a history, counting image blocks by their base64 payload size
