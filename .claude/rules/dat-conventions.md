@@ -97,6 +97,26 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   requirement is said once per process (`CompatibilityNoticePolicy`). The compatibility reading
   never stops the camera by itself; a session refused with `.insufficientSDKVersion` does, for the
   rest of the process (`SDKRefusalLatch`). `hingeState` is not read.
+- **Not connected has a reason, and the reason is a reading.** `GlassesReachabilityDiagnosis`
+  (pure) reads registration, each listed device's link and the Meta camera permission's last known
+  status into `notAdded` / `awaitingApproval` / `permissionNeeded` / `noDeviceSeen` / `linkDown` /
+  `linkComingUp` / `connected`. `GlassesConnectionService` publishes it inside `reachability`
+  (mirrored by `AppState.glassesReachability`) and words `connectionStatus` from it; the session
+  card, Devices & Privacy › Glasses, the connect failure message, the Developer panel and the
+  support report read it. It never feeds the phase: a granted permission connects nothing.
+- **The SDK lists a device only once a permission is granted in Meta AI, and asking for one leaves
+  the app.** `Wearables.shared.checkPermissionStatus(.camera)` reads it and
+  `requestPermission(.camera)` deep-links to Meta AI. Launch, a registration change and an emptied
+  device list only ever read (`GlassesConnectionService.checkCameraPermission()`); the request
+  belongs to something the wearer pressed (`requestCameraAccess()`: the Connect, and "Allow camera
+  access in Meta AI"), one attempt per press. Both go through
+  `MetaCameraBackend.cameraPermission(asking:)`, behind the `GlassesCameraPermissionSource` seam.
+  `ensurePermission()`, on the way to a camera start, still checks and requests with three
+  attempts, and reports how it ended as a `.cameraPermission` backend event. Do not call it from a
+  listener or a launch path. Both calls throw `PermissionError` (`noDevice`,
+  `noDeviceWithConnection`, `connectionError`, `metaAINotInstalled`, `requestInProgress`,
+  `requestTimeout`, `internalError`; not frozen); it describes itself, so summarise it with
+  `MetaCameraBackend.permissionSummary(of:)`, which keeps the case name.
 - `DeviceSession` — owns the connection; create with a device selector, then `addCamera`/`addDisplay`.
   `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,
