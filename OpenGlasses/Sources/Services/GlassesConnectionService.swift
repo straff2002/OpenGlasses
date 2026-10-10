@@ -5,8 +5,9 @@ import MWDATCore
 /// Uses Meta Wearables Device Access Toolkit (MWDAT) through `GlassesLinkSource`.
 ///
 /// The single source of truth for "are the glasses connected". `phase` is folded from what the
-/// SDK reports (`GlassesConnectionSnapshot`); `isConnected`, `deviceName`, `batteryLevel` and
-/// `isCharging` are derived from it and never written anywhere else. Registration and the SDK's
+/// SDK reports (`GlassesConnectionSnapshot`); `isConnected`, `deviceName`, `batteryLevel`,
+/// `isCharging`, `isWorn`, `thermal` and `compatibility` are derived from it and never written
+/// anywhere else. Registration and the SDK's
 /// device list mean glasses are *added*; only a device's link state `.connected` means connected.
 @MainActor
 class GlassesConnectionService: ObservableObject {
@@ -24,6 +25,13 @@ class GlassesConnectionService: ObservableObject {
     /// Whether the active device is on someone's face, only while the link is up; nil when the
     /// device does not say or the glasses are away.
     @Published private(set) var isWorn: Bool?
+    /// How hot the active device says it is, only while the link is up; nil when the device does
+    /// not say or the glasses are away, so `PowerPolicyService` never holds a posture on a
+    /// reading from glasses it can no longer hear.
+    @Published private(set) var thermal: GlassesThermal?
+    /// Whether the active device and this build can work together, only while the link is up.
+    /// `.undefined` is the glasses not having said; nil is the glasses being away.
+    @Published private(set) var compatibility: GlassesCompatibility?
 
     private(set) var snapshot = GlassesConnectionSnapshot()
 
@@ -131,6 +139,10 @@ class GlassesConnectionService: ObservableObject {
         if isCharging != newCharging { isCharging = newCharging }
         let newWorn = snapshot.liveWorn
         if isWorn != newWorn { isWorn = newWorn }
+        let newThermal = snapshot.liveThermal
+        if thermal != newThermal { thermal = newThermal }
+        let newCompatibility = snapshot.liveCompatibility
+        if compatibility != newCompatibility { compatibility = newCompatibility }
         let newPhase = snapshot.phase
         if isConnected != newPhase.isConnected { isConnected = newPhase.isConnected }
         if phase != newPhase {

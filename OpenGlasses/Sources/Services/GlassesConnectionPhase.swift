@@ -40,6 +40,25 @@ enum GlassesChargingState: Equatable, Sendable {
     case unknown, charging, notCharging
 }
 
+/// How hot the glasses say they are: the SDK's `ThermalLevel`, coolest first. Its `.unknown` is
+/// not a case here; a device that does not say is nil wherever this is read.
+enum GlassesThermal: Equatable, Sendable, CaseIterable {
+    /// No thermal pressure. The SDK calls this `.none`, which on an optional reads as nil.
+    case normal
+    case light, moderate, severe, critical, emergency, shutdown
+}
+
+/// Whether the glasses and this build of the app can work together: the SDK's `Compatibility`.
+enum GlassesCompatibility: Equatable, Sendable, CaseIterable {
+    /// The glasses have not said. Also what a value this build does not know reads as.
+    case undefined
+    case compatible
+    /// The glasses' own software is too old for this build.
+    case deviceUpdateRequired
+    /// This build is too old for the glasses.
+    case sdkUpdateRequired
+}
+
 /// What the SDK last reported about one device (`DeviceState`), as far as the app reads it.
 struct GlassesDeviceState: Equatable, Sendable {
     var link: GlassesLinkState = .disconnected
@@ -49,6 +68,9 @@ struct GlassesDeviceState: Equatable, Sendable {
     /// On the face (`DonState.donned`) — true; taken off (`.doffed`) — false; nil when the
     /// device does not say (`.unknown`).
     var worn: Bool?
+    /// Nil when the device does not say (`ThermalLevel.unknown`).
+    var thermal: GlassesThermal?
+    var compatibility: GlassesCompatibility = .undefined
 }
 
 /// The app's one answer to "are the glasses connected?".
@@ -191,6 +213,21 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
     var liveCharging: GlassesChargingState {
         guard phase == .connected, let id = activeDeviceId else { return .unknown }
         return state(of: id).charging
+    }
+
+    /// Thermal level, under the same rule: only while connected. Glasses that were hot when they
+    /// went into their case are not hot by anything the app can still see, and a posture held down
+    /// by that reading would never lift.
+    var liveThermal: GlassesThermal? {
+        guard phase == .connected, let id = activeDeviceId else { return nil }
+        return state(of: id).thermal
+    }
+
+    /// Compatibility, under the same rule: only while connected, else nil. `.undefined` is the
+    /// glasses not having said; nil is there being no glasses to ask.
+    var liveCompatibility: GlassesCompatibility? {
+        guard phase == .connected, let id = activeDeviceId else { return nil }
+        return state(of: id).compatibility
     }
 }
 

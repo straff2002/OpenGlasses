@@ -198,6 +198,49 @@ final class GlassesConnectionPhaseTests: XCTestCase {
         XCTAssertNil(s.liveBatteryLevel, "a device that stops reporting shows nothing")
     }
 
+    // MARK: - Thermal and compatibility (Plan HX P1)
+
+    func testThermalIsLiveOnlyWhileConnected() {
+        var s = snapshot(devices: ["a"],
+                         states: ["a": GlassesDeviceState(link: .connected, thermal: .severe)])
+        XCTAssertEqual(s.liveThermal, .severe)
+
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .disconnected, thermal: .severe)))
+        XCTAssertNil(s.liveThermal, "a pair that was hot when it went away is not hot now")
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connecting, thermal: .severe)))
+        XCTAssertNil(s.liveThermal, "connecting is not connected")
+
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, thermal: nil)))
+        XCTAssertNil(s.liveThermal, "a device that does not say has no level")
+    }
+
+    func testCompatibilityIsLiveOnlyWhileConnected() {
+        var s = snapshot(devices: ["a"], states: ["a": GlassesDeviceState(link: .connected)])
+        XCTAssertEqual(s.liveCompatibility, .undefined, "connected and not said")
+
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected,
+                                                         compatibility: .sdkUpdateRequired)))
+        XCTAssertEqual(s.liveCompatibility, .sdkUpdateRequired)
+
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .disconnected,
+                                                         compatibility: .sdkUpdateRequired)))
+        XCTAssertNil(s.liveCompatibility, "no glasses to ask is nil, not undefined")
+        XCTAssertNil(snapshot().liveCompatibility)
+    }
+
+    func testThermalAndCompatibilityLeaveWithTheDevice() {
+        var s = snapshot(devices: ["a"],
+                         states: ["a": GlassesDeviceState(link: .connected, thermal: .critical,
+                                                          compatibility: .deviceUpdateRequired)])
+        s.apply(.devices([]))
+        XCTAssertNil(s.liveThermal)
+        XCTAssertNil(s.liveCompatibility)
+        s.apply(.devices(["a"]))
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected)))
+        XCTAssertNil(s.liveThermal, "a device that came back starts from what it reports now")
+        XCTAssertEqual(s.liveCompatibility, .undefined)
+    }
+
     func testNameIsTheActiveDevicesAndIgnoredForUnlistedIds() {
         var s = snapshot(devices: ["a", "b"], states: ["b": linked(.connected)])
         s.apply(.deviceName(id: "a", "Spare"))

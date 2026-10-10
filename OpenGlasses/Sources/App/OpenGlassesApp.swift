@@ -3376,6 +3376,18 @@ class AppState: ObservableObject, AppStateProtocol {
                 DispatchQueue.main.async { self?.glassesWornChanged(worn) }
             }
         cancellables.append(wornToken)
+        // Hot glasses move the power posture when they say so, not at the next thirty-second
+        // sample. `$thermal` fires in willSet and the posture reads the service back, hence the hop.
+        let thermalToken = glassesService.$thermal
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] thermal in
+                if let thermal {
+                    PrivacyLog.device(.glasses, .thermalRead, state: PrivacyToken.caseName(of: thermal))
+                }
+                DispatchQueue.main.async { self?.powerPolicy.update() }
+            }
+        cancellables.append(thermalToken)
 
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
@@ -5806,10 +5818,10 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Wire `PowerPolicyService.shared`'s signal sources to the live device signals and drive its
     /// re-evaluation. Phone signals are real (battery / thermals / Low Power Mode); glasses battery
-    /// rides `GlassesConnectionService` (nil until firmware reports it) and glasses thermal is left
-    /// absent until the DAT device-state stream is observed — a phone-only posture, which the plan
-    /// requires to stand on its own. Presence decides *whether* a loop runs; this decides *how
-    /// expensively* — deliberately independent services.
+    /// and glasses thermal ride `GlassesConnectionService`, which publishes both only while the
+    /// link is up (nil when the glasses are away or do not report them), so without glasses this
+    /// is a phone-only posture, which the plan requires to stand on its own. Presence decides
+    /// *whether* a loop runs; this decides *how expensively* — deliberately independent services.
     private func configurePower() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         let power = PowerPolicyService.shared
@@ -5824,6 +5836,11 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         power.phoneThermal = { ThermalPressure(ProcessInfo.processInfo.thermalState) }
         power.glassesBatteryPercent = { [weak self] in self?.glassesService.batteryLevel }
+        // Plan HX P1. Nil while the link is down: a reading from glasses the app can no longer
+        // hear would hold the posture down with nothing left to lift it.
+        power.glassesThermal = { [weak self] in
+            self?.glassesService.thermal.map { ThermalPressure($0) }
+        }
         power.lowPowerMode = { ProcessInfo.processInfo.isLowPowerModeEnabled }
 
         // Live spenders read the posture in their own terms. Live-mode frame throttlers stretch
