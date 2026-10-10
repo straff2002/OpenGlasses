@@ -20,8 +20,15 @@ struct ToolInvocation {
     /// The original argument string, when the provider delivered one (OpenAI). Used for the
     /// OpenClaw bridge fallback (`task`) and error messages.
     let rawArguments: String?
+    /// An id the provider wants echoed back with the result and nothing more: Gemini's
+    /// `functionCall.id`, which its `functionResponse` repeats. Kept apart from `id` on purpose.
+    /// `id` is what the operation journal keys at-most-once execution off, and nothing has shown
+    /// that a Gemini id never repeats across calls.
+    let responseID: String?
 
-    init(id: String?, name: String, arguments: [String: Any]?, rawArguments: String? = nil) {
+    init(id: String?, name: String, arguments: [String: Any]?, rawArguments: String? = nil,
+         responseID: String? = nil) {
+        self.responseID = responseID
         self.id = id
         self.name = name
         self.arguments = arguments

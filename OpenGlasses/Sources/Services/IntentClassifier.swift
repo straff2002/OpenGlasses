@@ -165,6 +165,9 @@ class IntentClassifier {
                 ["role": "user", "content": userMessage]
             ]
         ]
+        // A Groq `gpt-oss` model reasons before its one word, inside the same cap: five tokens
+        // would be spent before the answer began and the reply would come back empty.
+        LLMService.applyGroqOneShotReasoning(to: &body, config: config)
         LLMService.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
         if LLMService.usesMaxCompletionTokens(provider: provider, baseURL: baseURL) {
             // OpenAI's reasoning models accept only the default temperature; 0 is a 400.

@@ -246,6 +246,26 @@ enum ModelFetcher {
 
     // MARK: - Qwen (Coding Plan)
 
+    /// The models the Qwen Coding Plan serves, in the order its help page lists them
+    /// (recommended first, then "more models"), read from Alibaba Cloud Model Studio's Coding
+    /// Plan page (last updated 2026-09-28) on 2026-10-10. The page says "Models not listed above
+    /// are not supported", so the plan refuses anything else (the general `qwen-plus`,
+    /// `qwen-max`, `qwen-turbo`, `qwen-long`, `qwen3.5-max`). Vision is exactly the four the
+    /// page marks: a name ends in "(vision)" if and only if `ModelConfig.qwenCodingPlanVisionModels`
+    /// holds its id.
+    static let qwenCodingPlanModels: [RemoteModel] = [
+        RemoteModel(id: "qwen3.7-plus", name: "Qwen 3.7 Plus (vision)"),
+        RemoteModel(id: "qwen3.6-plus", name: "Qwen 3.6 Plus (vision)"),
+        RemoteModel(id: "kimi-k2.5", name: "Kimi K2.5 (vision)"),
+        RemoteModel(id: "glm-5", name: "GLM-5"),
+        RemoteModel(id: "MiniMax-M2.5", name: "MiniMax M2.5"),
+        RemoteModel(id: "qwen3.5-plus", name: "Qwen 3.5 Plus (vision)"),
+        RemoteModel(id: "qwen3-max-2026-01-23", name: "Qwen3 Max (2026-01-23)"),
+        RemoteModel(id: "qwen3-coder-next", name: "Qwen3 Coder Next"),
+        RemoteModel(id: "qwen3-coder-plus", name: "Qwen3 Coder Plus"),
+        RemoteModel(id: "glm-4.7", name: "GLM-4.7"),
+    ]
+
     private static func fetchQwen(apiKey: String, baseURL: String) async -> [RemoteModel] {
         // First try the standard OpenAI-compatible /models endpoint
         let openAIResult = await fetchOpenAICompatible(apiKey: apiKey, baseURL: baseURL)
@@ -279,17 +299,8 @@ enum ModelFetcher {
             guard let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode) else { return [] }
 
-            // Key works — return known Qwen Coding Plan models
-            return [
-                RemoteModel(id: "qwen3.7-plus", name: "Qwen 3.7 Plus (vision)"),
-                RemoteModel(id: "qwen3.6-plus", name: "Qwen 3.6 Plus (vision)"),
-                RemoteModel(id: "qwen3.5-plus", name: "Qwen 3.5 Plus (vision)"),
-                RemoteModel(id: "qwen3.5-max", name: "Qwen 3.5 Max (vision)"),
-                RemoteModel(id: "qwen-plus", name: "Qwen Plus (vision)"),
-                RemoteModel(id: "qwen-max", name: "Qwen Max (vision)"),
-                RemoteModel(id: "qwen-turbo", name: "Qwen Turbo"),
-                RemoteModel(id: "qwen-long", name: "Qwen Long"),
-            ]
+            // Key works — return the models the plan accepts
+            return qwenCodingPlanModels
         } catch {
             return []
         }

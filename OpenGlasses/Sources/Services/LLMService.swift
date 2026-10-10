@@ -1479,6 +1479,7 @@ class LLMService: ObservableObject {
                         ["role": "user", "content": summarizationPrompt]
                     ]
                 ]
+                Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1494,7 +1495,8 @@ class LLMService: ObservableObject {
                 let body: [String: Any] = [
                     "system_instruction": ["parts": [["text": "You are a conversation summarizer. Be concise and factual."]]],
                     "contents": [["role": "user", "parts": [["text": summarizationPrompt]]]],
-                    "generationConfig": ["maxOutputTokens": 512]
+                    "generationConfig": modelConfig.oneShotReasoningResolution()
+                        .geminiOneShotGenerationConfig(maxTokens: 512)
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1569,6 +1571,7 @@ class LLMService: ObservableObject {
                     ]
                 ]
                 Self.applyQwenReasoning(to: &body, provider: provider, model: modelConfig.model, disableThinking: true)
+                Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1587,7 +1590,8 @@ class LLMService: ObservableObject {
                         ["text": userText],
                         ["inlineData": ["mimeType": "image/jpeg", "data": base64]]
                     ]]],
-                    "generationConfig": ["maxOutputTokens": maxTokens]
+                    "generationConfig": modelConfig.oneShotReasoningResolution()
+                        .geminiOneShotGenerationConfig(maxTokens: maxTokens)
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1673,6 +1677,7 @@ class LLMService: ObservableObject {
                         "name": toolName, "description": toolDescription, "parameters": jsonSchema]]],
                     "tool_choice": ["type": "function", "function": ["name": toolName]]
                 ]
+                Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1689,11 +1694,12 @@ class LLMService: ObservableObject {
                         ["text": userText],
                         ["inlineData": ["mimeType": "image/jpeg", "data": base64]]
                     ]]],
-                    "generationConfig": [
-                        "maxOutputTokens": maxTokens,
-                        "responseMimeType": "application/json",
-                        "responseSchema": GeminiSchemaTranslator.translate(jsonSchema)
-                    ]
+                    "generationConfig": modelConfig.oneShotReasoningResolution()
+                        .geminiOneShotGenerationConfig(maxTokens: maxTokens)
+                        .merging([
+                            "responseMimeType": "application/json",
+                            "responseSchema": GeminiSchemaTranslator.translate(jsonSchema)
+                        ]) { _, shape in shape }
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1761,6 +1767,7 @@ class LLMService: ObservableObject {
                         "name": toolName, "description": toolDescription, "parameters": jsonSchema]]],
                     "tool_choice": ["type": "function", "function": ["name": toolName]]
                 ]
+                Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -1772,11 +1779,12 @@ class LLMService: ObservableObject {
                 let body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": [["role": "user", "parts": [["text": userText]]]],
-                    "generationConfig": [
-                        "maxOutputTokens": maxTokens,
-                        "responseMimeType": "application/json",
-                        "responseSchema": GeminiSchemaTranslator.translate(jsonSchema)
-                    ]
+                    "generationConfig": modelConfig.oneShotReasoningResolution()
+                        .geminiOneShotGenerationConfig(maxTokens: maxTokens)
+                        .merging([
+                            "responseMimeType": "application/json",
+                            "responseSchema": GeminiSchemaTranslator.translate(jsonSchema)
+                        ]) { _, shape in shape }
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -2486,6 +2494,7 @@ class LLMService: ObservableObject {
                 Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
                                         disableThinking: smallContext || (imageData != nil && supportsVision))
                 reasoning.apply(to: &body)
+                Self.applyGroqReasoningVisibility(to: &body, provider: provider, model: config.model)
                 Self.noteReasoning(reasoning, provider: provider, model: config.model)
 
                 if includeTools && providerSupportsTools {
@@ -2609,7 +2618,9 @@ class LLMService: ObservableObject {
                 } catch LLMError.apiError(_, 400, let refusal, _)
                             where ReasoningRejectionClassifier.shouldRetry(
                                 status: 400, message: refusal,
-                                sentEffort: body["reasoning_effort"] as? String) {
+                                sentEffort: body["reasoning_effort"] as? String,
+                                acceptsNone: ReasoningPolicy.chatModelAcceptsNone(
+                                    provider: provider, model: config.model)) {
                     // Plan GB P0: a model missing from `ReasoningPolicy`'s table refused reasoning
                     // with tools. Retry once at `none` instead of dead-ending in the cascade, and
                     // remember the model so the rest of this run resolves to `none` up front.
@@ -3537,16 +3548,18 @@ class LLMService: ObservableObject {
                     }
                 }
 
-                // Plan GB P0: an explicit per-model level maps to a bounded thinking budget;
-                // Automatic keeps `GeminiBudgetPolicy`'s shipped behaviour.
+                // Plan GB P0: the saved model's level in the shape the model takes — a thinking
+                // level on Gemini 3 and later, a bounded token budget on 2.x
+                // (`GeminiThinkingStyle`). Never both: that is a 400.
                 let reasoning = config.reasoningResolution(toolsAttached: includeTools)
                 Self.noteReasoning(reasoning, provider: config.llmProvider, model: config.model)
                 var body: [String: Any] = [
                     "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": contents,
-                    // CO Item 2: a bounded thinking budget on the tool turn, and an allowance that
-                    // covers thinking *plus* the answer. Without this, reasoning and reply compete
-                    // for the same 1024 tokens and the turn can come back empty with a STOP finish.
+                    // CO Item 2: bounded thinking, and an allowance that covers thinking *plus*
+                    // the answer. Without this, reasoning and reply compete for the same tokens
+                    // and the turn can come back empty with a STOP finish. A Gemini 3 model thinks
+                    // on plain turns too, so those get the same treatment.
                     "generationConfig": reasoning.geminiGenerationConfig(
                         includesTools: includeTools,
                         configuredMaxTokens: smallContext && imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
@@ -3595,9 +3608,8 @@ class LLMService: ObservableObject {
                 if includeTools {
                     for part in parts where part["functionCall"] != nil {
                         guard let funcCall = part["functionCall"] as? [String: Any],
-                              let name = funcCall["name"] as? String,
-                              let args = funcCall["args"] as? [String: Any] else { continue }
-                        toolCalls.append(ToolInvocation(id: nil, name: name, arguments: args))
+                              let name = funcCall["name"] as? String else { continue }
+                        toolCalls.append(GeminiFunctionCalling.invocation(name: name, call: funcCall))
                     }
                 }
                 let text = parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
@@ -3634,9 +3646,8 @@ class LLMService: ObservableObject {
                     case .failure(let error):
                         resultContent = ["error": error]
                     }
-                    functionResponseParts.append([
-                        "functionResponse": ["name": name, "response": resultContent]
-                    ])
+                    functionResponseParts.append(GeminiFunctionCalling.responsePart(
+                        for: outcome.invocation, response: resultContent))
                 }
                 self.conversationHistory.append(["role": "function", "parts": functionResponseParts])
                 for attached in attachedImages {
@@ -4562,6 +4573,34 @@ extension LLMService {
         if disableThinking {
             body["reasoning_effort"] = "none"
         }
+    }
+
+    /// Groq's `gpt-oss` models return their reasoning in `message.reasoning` unless asked not to
+    /// (reasoning guide, 2026-10-10; `reasoning_format` is not supported on them, and the two
+    /// parameters cannot be combined). Nothing reads that text: it would only be carried in the
+    /// tool-call message that goes back into a history Groq's limits already keep short. The model
+    /// still reasons, and the reasoning still counts as output.
+    nonisolated static func applyGroqReasoningVisibility(to body: inout [String: Any], provider: LLMProvider, model: String) {
+        guard provider == .groq, ReasoningPolicy.groqFamily(model: model) != nil else { return }
+        body["include_reasoning"] = false
+    }
+
+    /// The one-shot Chat Completions requests (summaries, frame analysis, structured output, the
+    /// intent classifier) set their own small `max_tokens` and never passed through
+    /// `ReasoningPolicy`. On a Groq `gpt-oss` model the reasoning that precedes every answer is
+    /// drawn from that same cap, so a cap sized for the answer alone comes back with no content.
+    /// This gives them what an Automatic conversation turn gets: the lowest effort, the raised cap
+    /// and no reasoning text. Other providers are left exactly as they were. Call it before
+    /// `applyOpenAITokenLimitShape`, which renames the key this raises.
+    nonisolated static func applyGroqOneShotReasoning(to body: inout [String: Any], config: ModelConfig) {
+        let provider = config.llmProvider
+        guard provider == .groq, ReasoningPolicy.groqFamily(model: config.model) != nil else { return }
+        let reasoning = config.oneShotReasoningResolution()
+        if let cap = body["max_tokens"] as? Int {
+            body["max_tokens"] = reasoning.outputCap(base: cap)
+        }
+        reasoning.apply(to: &body)
+        applyGroqReasoningVisibility(to: &body, provider: provider, model: config.model)
     }
 
     /// OpenAI's own endpoints reject `max_tokens` on current models (o-series, GPT-5 and later):

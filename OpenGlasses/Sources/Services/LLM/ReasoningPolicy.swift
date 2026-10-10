@@ -80,7 +80,11 @@ enum ReasoningRoute: String, Equatable {
 ///   provider decides.
 /// - Responses with tools on the API route (Plan GC) → the model's lowest setting, as on Chat
 ///   Completions; the ChatGPT subscription route still sends nothing.
-/// - Gemini REST → the existing bounded tool-turn budget (`GeminiBudgetPolicy`, CO Item 2).
+/// - Gemini REST, a model that takes a thinking budget (2.x) → the existing bounded tool-turn
+///   budget (`GeminiBudgetPolicy`, CO Item 2); nothing on a plain turn.
+/// - Gemini REST, a model that takes a thinking level (3 and later, `GeminiThinkingStyle`) → `low`
+///   on a tool turn and the model's lowest level on a plain one. These models think before every
+///   answer and cannot switch it off, so each turn names its level and gets room for the answer.
 /// An explicit level is honoured, except that a family which rejects reasoning with tools on Chat
 /// Completions is clamped to `none` there, and a level the model does not take moves to the nearest
 /// one it does. Plan GC: which *route* an OpenAI API turn takes — so whether the clamp applies at
@@ -89,6 +93,9 @@ enum ReasoningRoute: String, Equatable {
 /// contract: at Automatic a model that thinks before every answer is sent `low`, a model that does
 /// not is sent nothing; an explicit level is sent as the nearest one the model takes; a model that
 /// takes no effort setting is never sent one. Gemini Live stays at 0.
+/// Groq's `openai/gpt-oss` models reason before every answer inside the same output cap, so they
+/// follow the Anthropic rule: `low` at Automatic, the nearest accepted level when one is set
+/// (`groqFamily`).
 ///
 /// Pure and table-tested. `LLMService` resolves once per request and applies the result; the model
 /// editor shows the same resolution with and without tools, so what the tester reads is what goes
@@ -194,6 +201,9 @@ enum ReasoningPolicy {
             case responsesEffort(ReasoningEffort)
             /// Gemini REST: `thinkingConfig.thinkingBudget`, always paired with a raised output cap.
             case geminiThinkingBudget(Int)
+            /// Gemini REST, Gemini 3 and later: `thinkingConfig.thinkingLevel`, always paired with
+            /// headroom for the thinking on top of the answer's allowance. Only `minimal`…`high`.
+            case geminiThinkingLevel(ReasoningEffort)
             /// Anthropic Messages: `output_config.effort`. Only ever `low`…`xhigh`.
             case anthropicEffort(ReasoningEffort)
         }
@@ -230,7 +240,7 @@ enum ReasoningPolicy {
                 case .chatToolsClamp: return "Chat Completions doesn't allow reasoning with tools for this model."
                 case .automaticToolTurn: return "Automatic uses this model's lowest setting when tools are attached, to keep answers quick."
                 case .automaticProviderDefault: return "Automatic sends nothing, so the provider's default applies."
-                case .automaticGeminiToolBudget: return "Automatic gives tool turns a small thinking budget."
+                case .automaticGeminiToolBudget: return "Automatic gives tool turns a small amount of thinking."
                 case .learnedRejection: return "The provider refused reasoning with tools for this model earlier."
                 case .notReasoningModel: return "This model has no reasoning setting."
                 case .automaticThinkingModel: return "Automatic keeps a model that thinks before every answer at its lowest effort, to keep answers quick."
@@ -245,6 +255,16 @@ enum ReasoningPolicy {
         let wire: Wire
         let effective: Effective
         let reason: Reason
+        /// The least a reasoning turn's output cap is raised to (`outputCap(base:)`).
+        let outputFloor: Int
+
+        init(wire: Wire, effective: Effective, reason: Reason,
+             outputFloor: Int = ReasoningPolicy.reasoningOutputFloor) {
+            self.wire = wire
+            self.effective = effective
+            self.reason = reason
+            self.outputFloor = outputFloor
+        }
 
         /// Content-free token for the trace and the privacy log: `none`, `medium`, `default`,
         /// `default-medium`, `na`.
@@ -277,51 +297,119 @@ enum ReasoningPolicy {
         }
 
         /// CO Item 2 — a reasoning budget always comes with room for the answer. When the model
-        /// will reason, the output cap is raised to at least `reasoningOutputFloor`; otherwise
-        /// reasoning spends the 1024-token tool-turn cap and the completion comes back empty.
+        /// will reason, the output cap is raised to at least `outputFloor`; otherwise reasoning
+        /// spends the 1024-token tool-turn cap and the completion comes back empty.
         func outputCap(base: Int) -> Int {
-            reasonsAboveNone ? max(base, ReasoningPolicy.reasoningOutputFloor) : base
+            reasonsAboveNone ? max(base, outputFloor) : base
         }
 
         /// Merge this resolution into a Chat Completions, Responses or Anthropic Messages body.
         /// Gemini's budget is applied through `geminiGenerationConfig`, not here.
         func apply(to body: inout [String: Any]) {
             switch wire {
-            case .omit, .geminiThinkingBudget: return
+            case .omit, .geminiThinkingBudget, .geminiThinkingLevel: return
             case .reasoningEffort(let level): body["reasoning_effort"] = level.rawValue
             case .responsesEffort(let level): body["reasoning"] = ["effort": level.rawValue]
             case .anthropicEffort(let level): body["output_config"] = ["effort": level.rawValue]
             }
         }
 
-        /// The Gemini REST `generationConfig`: an explicit budget with the answer's allowance on
-        /// top of it, or `GeminiBudgetPolicy`'s shipped behaviour for Automatic.
-        func geminiGenerationConfig(includesTools: Bool, configuredMaxTokens: Int) -> [String: Any] {
-            guard case .geminiThinkingBudget(let budget) = wire else {
-                return GeminiBudgetPolicy.generationConfig(includesTools: includesTools,
-                                                           configuredMaxTokens: configuredMaxTokens)
+        /// The Gemini REST allowance: a thinking level or an explicit budget, each with the
+        /// answer's allowance on top of it, or `GeminiBudgetPolicy`'s shipped behaviour for
+        /// Automatic on a model that takes a budget.
+        func geminiBudget(includesTools: Bool, configuredMaxTokens: Int) -> GeminiBudgetPolicy.Budget {
+            switch wire {
+            case .geminiThinkingLevel(let level):
+                return GeminiBudgetPolicy.budget(thinkingLevel: level, includesTools: includesTools,
+                                                 configuredMaxTokens: configuredMaxTokens)
+            case .geminiThinkingBudget(let budget):
+                return GeminiBudgetPolicy.budget(thinkingBudget: budget, includesTools: includesTools,
+                                                 configuredMaxTokens: configuredMaxTokens)
+            case .omit, .reasoningEffort, .responsesEffort, .anthropicEffort:
+                return GeminiBudgetPolicy.budget(includesTools: includesTools,
+                                                 configuredMaxTokens: configuredMaxTokens)
             }
-            let answer = includesTools ? GeminiBudgetPolicy.toolTurnMaxOutputTokens : configuredMaxTokens
-            return ["maxOutputTokens": budget + answer,
-                    "thinkingConfig": ["thinkingBudget": budget]]
+        }
+
+        /// The Gemini REST `generationConfig` for `geminiBudget(includesTools:configuredMaxTokens:)`.
+        func geminiGenerationConfig(includesTools: Bool, configuredMaxTokens: Int) -> [String: Any] {
+            geminiBudget(includesTools: includesTools, configuredMaxTokens: configuredMaxTokens).generationConfig
+        }
+
+        /// The `generationConfig` for a one-shot Gemini request (a summary, a frame analysis,
+        /// structured output), whose caller sized `maxTokens` for the answer alone. A model that
+        /// takes a thinking level thinks before that answer inside the same cap, so it is sent
+        /// its level with headroom on top. A model that takes a budget is left as it was: the cap
+        /// and nothing else. Resolve with `ModelConfig.oneShotReasoningResolution`, so the level
+        /// is the model's lowest whatever is saved.
+        func geminiOneShotGenerationConfig(maxTokens: Int) -> [String: Any] {
+            guard case .geminiThinkingLevel(let level) = wire else { return ["maxOutputTokens": maxTokens] }
+            return GeminiBudgetPolicy.budget(thinkingLevel: level, includesTools: false,
+                                             configuredMaxTokens: maxTokens).generationConfig
         }
     }
 
     /// Output-token floor for a turn that reasons (plan: "at least 4096").
     static let reasoningOutputFloor = 4_096
 
-    /// Gemini thinking budgets per level. Bounded at every level (CO Item 2): the largest is far
-    /// under any Gemini model's output ceiling.
+    /// The least a Groq `gpt-oss` turn at `low` is raised to. Smaller than the general floor on
+    /// purpose: Groq's free tier allows 8K tokens a minute on these models (rate-limit page,
+    /// 2026-10-10), and `low` is described as using "a small number of reasoning tokens".
+    static let groqLowEffortOutputFloor = 2_048
+
+    /// Gemini thinking budgets per level, for a model that takes a budget (2.x and ids
+    /// `GeminiThinkingStyle` cannot place). Bounded at every level (CO Item 2): the largest is far
+    /// under any Gemini model's output ceiling. A model that takes a level gets 0 here and is
+    /// never sent a budget.
     static func geminiThinkingBudget(_ level: ReasoningEffort, model: String) -> Int {
+        guard case .budget(let floor, let canDisable) = GeminiThinkingStyle.style(for: model) else { return 0 }
+        let wanted: Int
         switch level {
-        // Pro models cannot switch thinking off; 128 is their floor.
-        case .none: return model.lowercased().contains("-pro") ? 128 : 0
-        case .minimal: return 128
-        case .low: return 512
-        case .medium: return 2_048
-        case .high: return 8_192
-        case .xhigh: return 16_384
+        case .none: wanted = 0
+        case .minimal: wanted = 128
+        case .low: wanted = 512
+        case .medium: wanted = 2_048
+        case .high: wanted = 8_192
+        case .xhigh: wanted = 16_384
         }
+        // Pro models cannot switch thinking off (128 is their floor), and Flash-Lite takes nothing
+        // between 0 and 512.
+        if wanted == 0 { return canDisable ? 0 : floor }
+        return max(wanted, floor)
+    }
+
+    /// The level a thinking budget amounts to, for the editor's readout.
+    private static func geminiLevel(forBudget budget: Int) -> ReasoningEffort {
+        switch budget {
+        case ..<1: return .none
+        case ..<512: return .minimal
+        case ..<2_048: return .low
+        case ..<8_192: return .medium
+        case ..<16_384: return .high
+        default: return .xhigh
+        }
+    }
+
+    /// What a Groq-hosted reasoning model accepts, or nil for a model the app sends no effort to.
+    ///
+    /// Groq's reasoning guide, 2026-10-10: `reasoning_effort` on `openai/gpt-oss-20b` and
+    /// `openai/gpt-oss-120b` takes `low`, `medium` and `high` only (`none` and `default` belong to
+    /// its Qwen model, which `applyQwenReasoning` handles). The guide gives no default, so `medium`
+    /// (the model's own) is assumed. The safeguard variant is a classifier and takes no effort.
+    /// Whether `reasoning_effort: none` is a value this Chat Completions model can be sent: the
+    /// answer `ReasoningRejectionClassifier`'s one retry depends on. Only the families known to
+    /// refuse it say no.
+    static func chatModelAcceptsNone(provider: LLMProvider, model: String) -> Bool {
+        if provider == .groq, let family = groqFamily(model: model) {
+            return family.accepted.contains(ReasoningEffort.none)
+        }
+        return true
+    }
+
+    static func groqFamily(model: String) -> Family? {
+        let id = model.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard id == "openai/gpt-oss-120b" || id == "openai/gpt-oss-20b" else { return nil }
+        return Family(accepted: [.low, .medium, .high], providerDefault: .medium)
     }
 
     /// Resolve the setting for one request.
@@ -343,16 +431,7 @@ enum ReasoningPolicy {
         case .anthropicMessages:
             return resolveAnthropic(model: model, explicit: explicit)
         case .geminiREST:
-            guard let explicit else {
-                return toolsAttached
-                    ? Resolution(wire: .omit, effective: .level(.low), reason: .automaticGeminiToolBudget)
-                    : Resolution(wire: .omit, effective: .providerDefault(nil), reason: .automaticProviderDefault)
-            }
-            let budget = geminiThinkingBudget(explicit, model: model)
-            let adjusted = explicit == .none && budget > 0
-            return Resolution(wire: .geminiThinkingBudget(budget),
-                              effective: .level(adjusted ? .minimal : explicit),
-                              reason: adjusted ? .adjustedToAccepted : .asSet)
+            return resolveGemini(model: model, toolsAttached: toolsAttached, explicit: explicit)
         case .responses:
             let family = openAIFamily(model: model)
             guard let explicit else {
@@ -374,6 +453,46 @@ enum ReasoningPolicy {
         case .chatCompletions:
             return resolveChat(provider: provider, model: model, toolsAttached: toolsAttached,
                                explicit: explicit, learnedToolRejection: learnedToolRejection)
+        }
+    }
+
+    /// The thinking a Gemini REST request carries, in the shape its model takes
+    /// (`GeminiThinkingStyle`).
+    ///
+    /// A model that takes a budget keeps the shipped behaviour: at Automatic nothing is resolved
+    /// here and `GeminiBudgetPolicy` bounds the tool turn; an explicit level becomes a token budget
+    /// inside the model's range.
+    ///
+    /// A model that takes a level is always sent one, because it thinks before every answer and
+    /// cannot switch that off:
+    /// - Automatic with tools → `low`: the turn that picks among the tools and fills in their
+    ///   arguments is the one a moment's deliberation helps.
+    /// - Automatic without tools → the model's lowest level. A spoken reply wants the answer.
+    /// - An explicit level → that level, or the nearest the model takes. `none` becomes the lowest
+    ///   level, `xhigh` becomes `high`, and `minimal` becomes `low` on a model that refuses it.
+    private static func resolveGemini(model: String, toolsAttached: Bool, explicit: ReasoningEffort?) -> Resolution {
+        switch GeminiThinkingStyle.style(for: model) {
+        case .budget:
+            guard let explicit else {
+                return toolsAttached
+                    ? Resolution(wire: .omit, effective: .level(.low), reason: .automaticGeminiToolBudget)
+                    : Resolution(wire: .omit, effective: .providerDefault(nil), reason: .automaticProviderDefault)
+            }
+            let budget = geminiThinkingBudget(explicit, model: model)
+            let effective = geminiLevel(forBudget: budget)
+            return Resolution(wire: .geminiThinkingBudget(budget), effective: .level(effective),
+                              reason: effective == explicit ? .asSet : .adjustedToAccepted)
+        case .level(let accepted, _):
+            guard let explicit else {
+                let level = toolsAttached
+                    ? GeminiThinkingStyle.nearestLevel(.low, accepted: accepted)
+                    : accepted.first ?? .low
+                return Resolution(wire: .geminiThinkingLevel(level), effective: .level(level),
+                                  reason: toolsAttached ? .automaticGeminiToolBudget : .automaticThinkingModel)
+            }
+            let level = GeminiThinkingStyle.nearestLevel(explicit, accepted: accepted)
+            return Resolution(wire: .geminiThinkingLevel(level), effective: .level(level),
+                              reason: level == explicit ? .asSet : .adjustedToAccepted)
         }
     }
 
@@ -413,6 +532,16 @@ enum ReasoningPolicy {
 
     private static func resolveChat(provider: LLMProvider, model: String, toolsAttached: Bool,
                                     explicit: ReasoningEffort?, learnedToolRejection: Bool) -> Resolution {
+        if provider == .groq, let family = groqFamily(model: model) {
+            // Reasoning counts toward `max_tokens` on these models and cannot be switched off, so
+            // a turn that sends nothing reasons at the provider's default inside the tool turn's
+            // 1024-token cap. Automatic sends the lowest effort; either way the cap is raised.
+            let level = explicit.map(family.nearestAccepted) ?? family.lowest
+            let reason: Resolution.Reason = explicit == nil ? .automaticThinkingModel
+                : (level == explicit ? .asSet : .adjustedToAccepted)
+            return Resolution(wire: .reasoningEffort(level), effective: .level(level), reason: reason,
+                              outputFloor: level == .low ? groqLowEffortOutputFloor : reasoningOutputFloor)
+        }
         guard provider == .openai else {
             // Custom, OpenRouter, Mistral, xAI and the rest: we cannot know what each accepts, so
             // only an explicit value is sent. A refusal is caught by the classifier's one retry.
@@ -464,8 +593,11 @@ enum ReasoningRejectionClassifier {
         return text.contains("tool") || text.contains("not supported")
     }
 
-    /// Whether a retry at `none` could change anything: it would not if `none` was already sent.
-    static func shouldRetry(status: Int, message: String?, sentEffort: String?) -> Bool {
-        isReasoningWithToolsRejection(status: status, message: message) && sentEffort != ReasoningEffort.none.rawValue
+    /// Whether a retry at `none` could change anything: it would not if `none` was already sent,
+    /// or if the model does not take `none` at all (`acceptsNone`), where the retry would only
+    /// replace the provider's real refusal with a second one about the retry's own value.
+    static func shouldRetry(status: Int, message: String?, sentEffort: String?, acceptsNone: Bool = true) -> Bool {
+        acceptsNone && isReasoningWithToolsRejection(status: status, message: message)
+            && sentEffort != ReasoningEffort.none.rawValue
     }
 }

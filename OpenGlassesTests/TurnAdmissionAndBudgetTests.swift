@@ -44,6 +44,41 @@ final class TurnAdmissionAndBudgetTests: XCTestCase {
         XCTAssertEqual(config["maxOutputTokens"] as? Int, GeminiBudgetPolicy.toolTurnMaxOutputTokens)
     }
 
+    /// Gemini 3 and later take a named level. It does not cap what thinking spends, so the level's
+    /// headroom sits on top of the answer's allowance, on plain turns as well as tool turns.
+    func testLevelBudgetPutsHeadroomOnTopOfTheAnswer() {
+        typealias Row = (level: ReasoningEffort, headroom: Int)
+        let rows: [Row] = [(.minimal, 1_024), (.low, 4_096), (.medium, 8_192), (.high, 16_384)]
+        for row in rows {
+            XCTAssertEqual(GeminiBudgetPolicy.thinkingHeadroom(for: row.level), row.headroom)
+
+            let plain = GeminiBudgetPolicy.budget(thinkingLevel: row.level, includesTools: false,
+                                                  configuredMaxTokens: 777)
+            XCTAssertEqual(plain.maxOutputTokens, row.headroom + 777)
+            XCTAssertEqual(plain.answerAllowance, 777, "the configured allowance is the answer's alone")
+            XCTAssertNil(plain.thinkingBudget)
+
+            let tool = GeminiBudgetPolicy.budget(thinkingLevel: row.level, includesTools: true,
+                                                 configuredMaxTokens: 777)
+            XCTAssertEqual(tool.maxOutputTokens, row.headroom + GeminiBudgetPolicy.toolTurnMaxOutputTokens)
+
+            let thinking = plain.generationConfig["thinkingConfig"] as? [String: Any]
+            XCTAssertEqual(thinking?["thinkingLevel"] as? String, row.level.rawValue)
+            XCTAssertNil(thinking?["thinkingBudget"], "the two controls together are a 400")
+        }
+        // Headroom never shrinks as the level rises.
+        let ladder = rows.map(\.headroom)
+        XCTAssertEqual(ladder, ladder.sorted())
+    }
+
+    func testExplicitBudgetPutsTheAnswerOnTop() {
+        let budget = GeminiBudgetPolicy.budget(thinkingBudget: 2_048, includesTools: false, configuredMaxTokens: 777)
+        XCTAssertEqual(budget.maxOutputTokens, 2_048 + 777)
+        XCTAssertEqual(budget.answerAllowance, 777)
+        XCTAssertEqual((budget.generationConfig["thinkingConfig"] as? [String: Int])?["thinkingBudget"], 2_048)
+        XCTAssertNil(budget.thinkingLevel)
+    }
+
     // MARK: - Item 3: turn admission
 
     func testIdleUtteranceIsAccepted() {
