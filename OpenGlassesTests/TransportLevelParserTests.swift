@@ -135,6 +135,21 @@ final class TransportLevelParserTests: XCTestCase {
                        "two levels where one was expected is not an answer")
     }
 
+    /// The slot may hold the transport's own name instead of a level; the SDK uses those names
+    /// everywhere else in its log. They name a radio outright.
+    func testTheTransportsOwnNameIsReadToo() {
+        XCTAssertEqual(level(after: [connected("BTC")]), .bluetoothClassic)
+        XCTAssertEqual(level(after: [connected("WiFi")]), .wifi)
+        XCTAssertEqual(level(after: [connected("Wi-Fi")]), .wifi)
+        XCTAssertEqual(level(after: [connected("BLE")]), .bluetoothLowEnergy)
+        XCTAssertEqual(level(after: [connected("medium (BTC)")]), .bluetoothClassic,
+                       "a level and its own transport are one link said twice")
+        XCTAssertEqual(level(after: [connected("medium (WiFi)")]), .unknown,
+                       "a level and a different transport is not an answer")
+        XCTAssertEqual(level(after: [connected("Bluetooth")]), .unknown,
+                       "plain Bluetooth does not say which of the two")
+    }
+
     func testALevelWordInsideALongerWordIsNotALevel() {
         XCTAssertEqual(level(after: [connected("lowest")]), .unknown)
         XCTAssertEqual(level(after: [connected("highlighted")]), .unknown)

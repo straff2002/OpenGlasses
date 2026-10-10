@@ -144,8 +144,10 @@ extension AppState {
         // The glasses video link is read thirty seconds into a stream; look again now, so a
         // report sent later in the same stream says if the link changed since, and one sent
         // after a stream too short to have been read still has an answer. Local, off the main
-        // thread, and nothing is read when there has been no video.
-        await GlassesTransportProbe.shared.read()
+        // thread, and nothing is read when there has been no video. Bounded: how long the pass
+        // takes on a long-running phone is unmeasured, and past the limit the report goes out
+        // with what was already known.
+        await GlassesTransportProbe.shared.read(waitingAtMost: 3)
         return JobTranscriptExporter.document(request.scope, options: request.options,
                                               sessions: FieldSessionService.shared,
                                               store: conversationStore,

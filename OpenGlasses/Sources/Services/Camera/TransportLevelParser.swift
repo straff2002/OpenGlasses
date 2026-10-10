@@ -20,7 +20,7 @@ enum GlassesTransportLevel: String, Equatable {
 ///
 /// Two lines are recognised, both from the SDK's device manager. The wording of the parts in
 /// angle brackets is unknown until a device shows them, so the parser looks for the words that
-/// are fixed and a whole-word level between or after them:
+/// are fixed and a whole-word level (or the transport's own name) between or after them:
 ///
 ///     DeviceManager: Device <id> connected with <level> link, requesting firmware version
 ///     DeviceManager: .medium link unavailable (<reason>), falling back to .low
@@ -86,8 +86,13 @@ struct TransportLevelParser: Equatable {
 
     /// A level as a whole word, whatever is in front of it: `medium`, `.medium`,
     /// `LinkLevel.medium`. Not part of a longer word, so "lowest" and "highlight" are not levels.
+    ///
+    /// The slot may just as well hold the transport's own name, which the SDK uses everywhere
+    /// else in its log, so the three it has are read too: `BTC`, `WiFi` (or `Wi-Fi`) and `BLE`.
+    /// Those name a radio outright and need no table to interpret. Plain "Bluetooth" is not
+    /// among them: it does not say which of the two.
     private static let levelPattern = try? NSRegularExpression(
-        pattern: #"(?<![A-Za-z0-9_])(low|medium|high)(?![A-Za-z0-9_])"#,
+        pattern: #"(?<![A-Za-z0-9_])(low|medium|high|btc|ble|wi-?fi)(?![A-Za-z0-9_])"#,
         options: [.caseInsensitive])
 
     private static func firstCapture(of pattern: NSRegularExpression?, in line: String) -> String? {
@@ -99,18 +104,23 @@ struct TransportLevelParser: Equatable {
         return String(line[range])
     }
 
-    /// The one level named in `text`, or `unknown` when it names none or more than one.
+    /// The one link named in `text`, or `unknown` when it names none or more than one. A level
+    /// and its own transport together ("medium (BTC)") are one link said twice.
     private static func soleLevel(in text: String) -> GlassesTransportLevel {
         let whole = NSRange(text.startIndex..., in: text)
-        let words = Set((levelPattern?.matches(in: text, range: whole) ?? []).compactMap { match in
-            Range(match.range(at: 1), in: text).map { text[$0].lowercased() }
+        let named = Set((levelPattern?.matches(in: text, range: whole) ?? []).compactMap { match in
+            Range(match.range(at: 1), in: text).flatMap { level(named: text[$0].lowercased()) }
         })
-        guard words.count == 1, let word = words.first else { return .unknown }
+        guard named.count == 1, let level = named.first else { return .unknown }
+        return level
+    }
+
+    private static func level(named word: String) -> GlassesTransportLevel? {
         switch word {
-        case "high": return .wifi
-        case "medium": return .bluetoothClassic
-        case "low": return .bluetoothLowEnergy   // inferred: see `GlassesTransportLevel`
-        default: return .unknown
+        case "high", "wifi", "wi-fi": return .wifi
+        case "medium", "btc": return .bluetoothClassic
+        case "low", "ble": return .bluetoothLowEnergy   // "low" is inferred: see `GlassesTransportLevel`
+        default: return nil
         }
     }
 }

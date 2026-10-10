@@ -178,6 +178,38 @@ final class GlassesTransportProbe: @unchecked Sendable {
         }
     }
 
+    /// The same read, for a caller that must not wait on it: the support report. How long a
+    /// pass over this process's log takes on a phone that has been running for hours has not
+    /// been measured, and a report cannot hang on a diagnostic. After `seconds` the caller is
+    /// given what was already known. The read carries on, and whoever asks next has its answer.
+    @discardableResult
+    func read(waitingAtMost seconds: TimeInterval) async -> Reading {
+        await withCheckedContinuation { continuation in
+            let answered = AnsweredOnce()
+            queue.async { [self] in
+                let reading = readOnQueue()
+                if answered.claim() { continuation.resume(returning: reading) }
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds) { [self] in
+                if answered.claim() { continuation.resume(returning: snapshot.reading) }
+            }
+        }
+    }
+
+    /// Whichever of the read and its time limit comes first answers; the other finds it done.
+    private final class AnsweredOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var answered = false
+
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !answered else { return false }
+            answered = true
+            return true
+        }
+    }
+
     /// Runs `work` once everything asked of the probe so far has been done. For the tests,
     /// which need to look at it after a mark has landed without asking it to read.
     func afterPendingWork(_ work: @escaping @Sendable () -> Void) {

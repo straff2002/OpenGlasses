@@ -281,7 +281,9 @@ code corrected in the design above:
   "DeviceManager: .medium link unavailable (…), falling back to .low". The interpolated parts
   have not been seen. `TransportLevelParser` finds a whole-word `low`, `medium` or `high` between
   "connected with" and "link" (with or without a leading dot or a type in front), or after
-  "falling back to". The latest line about the link wins. A connection line whose level it
+  "falling back to". Because that slot may hold the transport's own name instead, `BTC`, `WiFi`
+  and `BLE` are read too: they name a radio outright. Plain "Bluetooth" is not, since it does not
+  say which of the two. The latest line about the link wins. A connection line whose level it
   cannot read makes the answer `unknown` rather than leaving an older level standing, and a line
   that is not one of the two is ignored: the transports' own error lines, and "Neither .medium
   nor .low link levels are available", name no link in use.
@@ -319,7 +321,9 @@ code corrected in the design above:
   `height` and `frameRate`. The support report always carries one line, for example "Glasses
   video link: Bluetooth Classic (from the glasses software's log); picture 504×896 at 30 fps",
   "…: not known; picture …" or "…: not known (no video since the app started)". Building a
-  report reads the sources once more, so a change since the 31 s read shows. Starting and
+  report reads the sources once more, so a change since the 31 s read shows; that read is
+  given 3 s, because how long a pass over a long-running process's log takes on a phone is
+  unmeasured, and past the limit the report goes out with what was already known. Starting and
   ending a stream only asks the file its length, because a photo starts and stops a stream too;
   a stream that has ended is read once, up to where it ended, the first time anyone asks.
 - **Nothing to declare.** Both reads are inside the app's own sandbox, nothing is sent, and no
@@ -368,7 +372,7 @@ values for 32BGRA, colour within a tolerance for both ranges and both matrices, 
 cases), `GlassesFramePipelineTests` (sample buffers made in the test, no SDK frame),
 `TransportLevelParserTests`, `GlassesTransportProbeTests` (injected sources, the real file reader
 against temporary files, and one test that writes a line to the unified log and reads it back
-through the real reader), `StreamDeliveryMeterTests`, `SupportReportGlassesLineTests`,
+through the real reader, skipping when the store has not shown the line after ten seconds), `StreamDeliveryMeterTests`, `SupportReportGlassesLineTests`,
 `StallEpisodeRecordTests`.
 
 **P2 must look at, first:** whether a `transportLevel` line ever names a source other than
