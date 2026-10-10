@@ -98,12 +98,83 @@ final class SessionAnnouncementTests: XCTestCase {
                                                             context: voiceOverOn()))
     }
 
-    /// Ascending cue on attach, descending cue on drop — both already audible.
-    func testGlassesConnectionIsNotAnnouncedBecauseItAlreadyPlaysACue() {
-        XCTAssertNil(SessionAnnouncementPolicy.announcement(for: .glassesConnected(true),
-                                                            context: voiceOverOn()))
+    /// The ascending cue plays for every connection, whatever came before it.
+    func testGlassesConnectingIsNotAnnouncedBecauseItAlreadyPlaysACue() {
+        for lossCuePlayed in [false, true] {
+            let context = AnnouncementContext(voiceOverRunning: true, glassesLossCuePlayed: lossCuePlayed)
+            XCTAssertNil(SessionAnnouncementPolicy.announcement(for: .glassesConnected(true),
+                                                                context: context))
+            XCTAssertTrue(SessionAnnouncementPolicy.hasOwnAudioCue(.glassesConnected(true),
+                                                                   context: context))
+        }
+    }
+
+    /// Plan HX P0: a link that dropped unasked gets the descending pair and its own "Glasses
+    /// disconnected" line from the app. VoiceOver saying it again is the second voice.
+    func testAPlayedLostCueSuppressesTheGlassesDisconnectedLine() {
+        let context = AnnouncementContext(voiceOverRunning: true, glassesLossCuePlayed: true)
+        XCTAssertTrue(SessionAnnouncementPolicy.hasOwnAudioCue(.glassesConnected(false), context: context))
         XCTAssertNil(SessionAnnouncementPolicy.announcement(for: .glassesConnected(false),
-                                                            context: voiceOverOn()))
+                                                            context: context))
+    }
+
+    /// The other half, and the one that was broken: the wearer pressed Disconnect (or took the
+    /// glasses off), the app plays nothing for that by design, and the line was withheld anyway
+    /// on the strength of a tone that never played. Silent by policy is VoiceOver's to report.
+    func testASilentDisconnectIsAnnounced() {
+        let context = AnnouncementContext(voiceOverRunning: true, glassesLossCuePlayed: false)
+        XCTAssertFalse(SessionAnnouncementPolicy.hasOwnAudioCue(.glassesConnected(false), context: context))
+        XCTAssertEqual(SessionAnnouncementPolicy.announcement(for: .glassesConnected(false),
+                                                              context: context),
+                       SessionAnnouncement(message: "Glasses disconnected", interrupts: false))
+    }
+
+    /// One wording for the link, whichever side says it.
+    func testTheDisconnectedLineIsTheCuesOwnWording() {
+        XCTAssertEqual(SessionAnnouncementPolicy.announcement(for: .glassesConnected(false),
+                                                              context: voiceOverOn())?.message,
+                       GlassesLinkCuePolicy.voiceOverLine(for: .lost))
+    }
+
+    /// The same two gates as every other line: nobody listening, or the assistant has the floor.
+    func testASilentDisconnectIsNotAnnouncedWithVoiceOverOffOrOverTheAssistant() {
+        XCTAssertNil(SessionAnnouncementPolicy.announcement(
+            for: .glassesConnected(false), context: AnnouncementContext(voiceOverRunning: false)))
+        XCTAssertNil(SessionAnnouncementPolicy.announcement(
+            for: .glassesConnected(false), context: voiceOverOn(speaking: true)))
+    }
+
+    /// End to end through the announcer, with the ledger deciding what the context says: a lost
+    /// link is the app's cue, the wearer's own Disconnect is VoiceOver's line.
+    @MainActor
+    func testTheAnnouncerFollowsTheLinkCueLedger() {
+        var posted: [String] = []
+        var ledger = GlassesLinkCuePolicy.Ledger()
+        var clock = Date(timeIntervalSince1970: 100)
+        let announcer = SessionAnnouncer(
+            context: { AnnouncementContext(voiceOverRunning: true,
+                                           glassesLossCuePlayed: ledger.appOwnsLossCue) },
+            now: { clock },
+            post: { posted.append($0.message) })
+        var inUse = GlassesUse()
+        inUse.linkChanged(.connected)
+        var away = inUse
+        away.linkChanged(.addedDisconnected)
+        var stoodDown = inUse
+        stoodDown.standDown(.user)
+
+        // Out of range while worn: the app owes the cue, so VoiceOver adds nothing.
+        ledger.noteLoss(from: inUse, to: away, wasWorn: true)
+        XCTAssertNil(announcer.announce(.glassesConnected(false)))
+        // Back: the connect tone covers it.
+        _ = ledger.noteRestore()
+        XCTAssertNil(announcer.announce(.glassesConnected(true)))
+        // Disconnect: nothing plays, so VoiceOver says it.
+        clock = clock.addingTimeInterval(60)
+        ledger.noteLoss(from: inUse, to: stoodDown, wasWorn: true)
+        XCTAssertEqual(announcer.announce(.glassesConnected(false))?.message, "Glasses disconnected")
+
+        XCTAssertEqual(posted, ["Glasses disconnected"])
     }
 
     /// "Thinking" is the interesting one: it is covered by the ambient pad *while the pad plays*,

@@ -106,6 +106,10 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
     /// Last reported state per listed device. A device listed but not yet reported is disconnected.
     private(set) var deviceStates: [String: GlassesDeviceState] = [:]
     private(set) var deviceNames: [String: String] = [:]
+    /// What `liveWorn` read the last time the link was up, kept after it drops. Not a live
+    /// reading and never shown: it is how the moment of a link loss can still ask whether the
+    /// glasses had been taken off (`GlassesLinkCuePolicy`), when `liveWorn` is by then nil.
+    private(set) var lastLiveWorn: Bool?
 
     enum Event: Equatable, Sendable {
         case registration(GlassesRegistration)
@@ -138,6 +142,9 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
             guard deviceIds.contains(id) else { return }
             deviceNames[id] = name
         }
+        // Follows the live reading while the link is up (including back to "does not say"), and
+        // stops following the moment it is not.
+        if phase == .connected { lastLiveWorn = liveWorn }
     }
 
     func state(of id: String) -> GlassesDeviceState {

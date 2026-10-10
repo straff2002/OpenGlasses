@@ -29,7 +29,7 @@ enum SessionTransition: Equatable {
 
 /// What the app is already making noise about, at the moment of the transition.
 ///
-/// Both fields are the *reason an announcement is withheld*, never a reason to make one — which
+/// Every field is a *reason an announcement is withheld*, never a reason to make one — which
 /// is why the default is the quiet case, so a caller that forgets to fill one in errs toward
 /// saying too little rather than talking over the assistant.
 struct AnnouncementContext: Equatable {
@@ -48,15 +48,23 @@ struct AnnouncementContext: Equatable {
     /// thing that has to change is what VoiceOver *also* reads, or the wearer gets the tone, the
     /// app's line and the screen reader's line for one event.
     var blindAssistantCuesActive: Bool = false
+    /// The app took the cue for the glasses going out of use on itself (Plan HX P0,
+    /// `GlassesLinkCuePolicy.Ledger.appOwnsLossCue`): the descending pair and its own "Glasses
+    /// disconnected" line, played or about to be. False for a loss that is silent by policy — the
+    /// wearer pressed Disconnect, or took the glasses off — and that one is the screen reader's
+    /// to report, because nothing else will.
+    var glassesLossCuePlayed: Bool = false
 
     init(voiceOverRunning: Bool = false,
          assistantIsSpeaking: Bool = false,
          thinkingSoundPlaying: Bool = false,
-         blindAssistantCuesActive: Bool = false) {
+         blindAssistantCuesActive: Bool = false,
+         glassesLossCuePlayed: Bool = false) {
         self.voiceOverRunning = voiceOverRunning
         self.assistantIsSpeaking = assistantIsSpeaking
         self.thinkingSoundPlaying = thinkingSoundPlaying
         self.blindAssistantCuesActive = blindAssistantCuesActive
+        self.glassesLossCuePlayed = glassesLossCuePlayed
     }
 }
 
@@ -71,11 +79,11 @@ struct SessionAnnouncement: Equatable {
 /// Which session transitions VoiceOver is told about, and which the app already says out loud.
 ///
 /// The whole point is the *subtraction*. This app talks: it plays an ascending cue when the
-/// glasses attach, a chime when a turn opens, a descending cue when the link drops, an ambient
-/// pad while a turn runs, and it speaks its answers. Announcing those again puts two voices in
-/// one ear a half-second apart, which is worse for the user this phase exists for than saying
-/// nothing at all. So a transition earns an announcement only when the app is otherwise *silent*
-/// about it.
+/// glasses attach, a chime when a turn opens, a descending cue when the link drops unasked, an
+/// ambient pad while a turn runs, and it speaks its answers. Announcing those again puts two
+/// voices in one ear a half-second apart, which is worse for the user this phase exists for than
+/// saying nothing at all. So a transition earns an announcement only when the app is otherwise
+/// *silent* about it.
 enum SessionAnnouncementPolicy {
 
     /// Transitions the app already makes its own sound for. Kept as one list, next to the
@@ -86,9 +94,12 @@ enum SessionAnnouncementPolicy {
         // `playAcknowledgmentTone()` / `playEndListeningTone()` bracket every turn.
         case .listening:
             return true
-        // `playConnectTone()` / `playDisconnectTone()`.
-        case .glassesConnected:
-            return true
+        // Up: `playConnectTone()`, for every connection. Down: only a loss the wearer did not
+        // cause makes a sound (`GlassesLinkCuePolicy`), and that cue brings its own line. A
+        // Disconnect or glasses taken off are silent, so they are announced here instead. The
+        // descending `playDisconnectTone()` at the end of a turn is not about the glasses at all.
+        case .glassesConnected(let connected):
+            return connected || context.glassesLossCuePlayed
         // The assistant's own voice IS the cue; this is the one that must never double up.
         case .speaking:
             return true
@@ -133,7 +144,13 @@ enum SessionAnnouncementPolicy {
         case .error(let reason):
             let spoken = SpokenErrorPolicy.looksHuman(reason) ? reason : "Something went wrong"
             return SessionAnnouncement(message: spoken, interrupts: true)
-        case .listening, .speaking, .glassesConnected:
+        // Only the way down gets here today (see `hasOwnAudioCue`). The way up is worded beside
+        // it so that taking the connect tone away is one edit, not a silence.
+        case .glassesConnected(let connected):
+            return SessionAnnouncement(message: connected ? GlassesLinkCuePolicy.connectedLine
+                                                          : GlassesLinkCuePolicy.disconnectedLine,
+                                       interrupts: false)
+        case .listening, .speaking:
             return nil   // unreachable: covered by `hasOwnAudioCue`
         }
     }
