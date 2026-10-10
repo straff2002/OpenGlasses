@@ -146,7 +146,12 @@ final class LiveSessionActivator {
 
         let task = Task { @MainActor [weak self] () -> Outcome in
             guard let self else { return .cancelled }
-            return await self.run(request)
+            // Launch, a return to the foreground, a session being resumed: the app deciding on
+            // its own. Whatever camera start the switch or the session makes on the way must not
+            // leave for Meta AI to ask for a permission (`CameraPermissionRequestPolicy`). Said
+            // for an explicit request too, so it never inherits another task's answer.
+            return await CameraPermissionRequestPolicy.begun(
+                by: request.source.isExplicit ? .wearer : .app) { await self.run(request) }
         }
         inFlight = (request.mode, task)
         let outcome = await task.value

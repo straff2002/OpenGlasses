@@ -3374,7 +3374,11 @@ class AppState: ObservableObject, AppStateProtocol {
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 do {
-                    try await cameraService.startStreaming()
+                    // Nobody pressed anything: a camera permission that is not granted is read
+                    // and reported, never asked for, because asking leaves for Meta AI.
+                    try await CameraPermissionRequestPolicy.startedByApp {
+                        try await self.cameraService.startStreaming()
+                    }
                 } catch {
                     PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                 }

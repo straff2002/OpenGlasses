@@ -52,14 +52,23 @@ final class MockCameraBackend: GlassesCameraBackend {
 
     func capturePhoto() async throws -> Data {
         captureCount += 1
+        workInitiators.append(CameraPermissionRequestPolicy.initiator)
         return try captureResult.get()
     }
 
     /// Opt-in so the tests written before claims existed keep seeing exactly what they saw.
     var emitsStreamingEvents = false
 
+    /// Who began each start and capture that reached the backend, as the real one reads it when
+    /// it decides whether it may ask for the camera permission (`CameraPermissionRequestPolicy`).
+    private(set) var workInitiators: [CameraPermissionRequestPolicy.Initiator] = []
+    /// What a start ends with, for a test of a start that fails.
+    var startError: Error?
+
     func startStreaming() async throws {
         startStreamingCount += 1
+        workInitiators.append(CameraPermissionRequestPolicy.initiator)
+        if let startError { throw startError }
         if emitsStreamingEvents { events.send(.streamingChanged(true)) }
     }
     func stopStreaming() async {

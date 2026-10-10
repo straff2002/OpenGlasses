@@ -246,10 +246,19 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 let status = try await Wearables.shared.checkPermissionStatus(.camera)
                 PrivacyLog.camera(.glasses, .permissionChecked,
                                   state: PrivacyToken(String(describing: status)))
-                if status == .granted {
+                // Asking deep-links out of the app to Meta AI, so only a start the wearer asked
+                // for asks (Plan HX follow-up). One the app began by itself stops here.
+                switch CameraPermissionRequestPolicy.step(
+                    granted: status == .granted,
+                    initiator: CameraPermissionRequestPolicy.initiator) {
+                case .proceed:
                     permissionGranted = true
                     events.send(.cameraPermission(.granted))
                     return
+                case .failWithoutAsking:
+                    throw CameraError.permissionNotRequested
+                case .request:
+                    break
                 }
 
                 let requestStatus = try await Wearables.shared.requestPermission(.camera)
@@ -257,6 +266,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 permissionGranted = true
                 events.send(.cameraPermission(.granted))
                 return
+            } catch CameraError.permissionNotRequested {
+                // Not a failure, and nothing a retry changes: the read answered and the app chose
+                // not to ask. The status is what the diagnosis reads, and the notice names the
+                // row that asks.
+                PrivacyLog.camera(.glasses, .permissionNotRequested)
+                events.send(.cameraPermission(.notGranted))
+                events.send(.transientNotice(CameraPermissionRequestPolicy.notice))
+                throw CameraError.permissionNotRequested
             } catch {
                 // Summarised here, where the SDK's own error still exists: what is thrown from
                 // this function is one of two `CameraError`s whatever went wrong (Plan HX P3).

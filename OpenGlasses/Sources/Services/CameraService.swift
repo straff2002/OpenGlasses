@@ -674,6 +674,9 @@ extension CameraService: GlassesCameraPermissionSource {}
 
 enum CameraError: LocalizedError {
     case permissionDenied
+    /// The glasses' camera permission is not granted and this start did not ask for it, because
+    /// the app began it by itself and asking leaves for Meta AI (`CameraPermissionRequestPolicy`).
+    case permissionNotRequested
     case captureFailed
     case timeout
     case notConnected
@@ -690,6 +693,7 @@ enum CameraError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied: return "Camera permission denied"
+        case .permissionNotRequested: return CameraPermissionRequestPolicy.notice
         case .captureFailed: return "Failed to capture photo"
         case .timeout: return "Photo capture timed out"
         case .notConnected: return "Glasses not connected"
