@@ -27,6 +27,7 @@ Nothing is ever sent on its own. The person always sees the report first and tap
 | Send one job to support | **Job** tab → tap a past job → **Export transcript…** → **Support report with troubleshooting details** |
 | Send today's conversations so far | **Job** tab → **Send today's conversations…** |
 | Send an earlier day | **Job** tab → **Past jobs** → **Export a day…** → pick a day → **Transcript** or **Support report** |
+| Send only the last conversation | **Settings** → **Diagnostics & Support** → **Send Last Conversation** |
 | Send today from Settings | **Settings** → **Diagnostics & Support** → **Send Today's Activity** |
 | Send straight after a problem | tap **Send to support** on the **That didn't work** banner |
 
@@ -45,13 +46,15 @@ Two buttons send it:
 
 For a whole day, a switch lets you include or leave out conversations that weren't part of a job.
 
+**Send Last Conversation** sends less: the most recent conversation, the details of each of its AI turns, and what the app recorded from five minutes before it to five minutes after. Nothing else said that day is in the report. Use it when one exchange went wrong and the rest of the day isn't support's business. If that conversation was part of a job, the report says which job, but the job's own log isn't in it — send the job from the **Job** tab for that.
+
 ## When something goes wrong
 
 If the assistant can't answer, a banner appears at the top of the screen:
 
 > **That didn't work** — 10:42 — no internet connection. **Send to support**
 
-Tap **Send to support** to open the review screen for that day. Tap **×** to dismiss it; it won't appear again for 10 minutes.
+Tap **Send to support** to open the review screen. It opens on the conversation the failed answer was part of. To send everything from that day instead, choose **The whole day** at the top of the review screen. Tap **×** on the banner to dismiss it; it won't appear again for 10 minutes.
 
 ## Reading a report
 
