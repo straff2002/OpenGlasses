@@ -25,8 +25,28 @@ enum CompatibilityNoticePolicy {
         compatibility.flatMap { DATCompatibilityMessage.message(for: $0) }
     }
 
+    /// What the screen shows for a reading. Not the spoken rule below: the sentence is said once
+    /// per process, and the notice is on screen for exactly as long as it is true.
+    enum Standing: Equatable {
+        /// The connected glasses are asking for this now. Show it, in place of whatever an earlier
+        /// reading showed.
+        case stands(String)
+        /// They are compatible, have not said, or are not connected. Take the notice back.
+        case withdrawn
+    }
+
+    /// Whether the update notice stands on screen, from the reading alone.
+    ///
+    /// Decided at every change of the reading, so a notice the wearer dismissed comes back when
+    /// the glasses next connect still asking, and one about glasses that have been updated, or
+    /// have gone, does not outlive the requirement. It is posted under its own notice source
+    /// (`AppNotice.Source.glassesUpdate`), which nothing else clears.
+    static func standing(for compatibility: GlassesCompatibility?) -> Standing {
+        notice(for: compatibility).map(Standing.stands) ?? .withdrawn
+    }
+
     enum Decision: Equatable {
-        /// Post the notice and say it when the route is free.
+        /// Say the notice when the route is free.
         case announce(String)
         case nothing
     }

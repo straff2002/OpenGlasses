@@ -222,6 +222,12 @@ enum DATCompatibilityMessage {
         return false
     }
 
+    /// The same question of an error whose type has been lost on the way up: what a failed
+    /// session attempt threw, which is the session's own error when the glasses gave one.
+    static func isSDKRefusal(_ error: Error) -> Bool {
+        (error as? DeviceSessionError).map { isSDKRefusal($0) } ?? false
+    }
+
     /// What the glasses' own compatibility reading asks the wearer to do, or nil when it asks
     /// nothing. Read at link time through `CompatibilityNoticePolicy` (Plan HX P1).
     static func message(for compatibility: GlassesCompatibility) -> String? {

@@ -529,6 +529,9 @@ enum PrivacyLog {
         /// HX P3. The answer Meta AI gave to a request for the camera permission. `state` is the
         /// SDK's own status name.
         case permissionRequested
+        /// HX follow-up. A camera start the app began by itself found the permission not granted
+        /// and failed without asking for it: asking leaves for Meta AI.
+        case permissionNotRequested
         case sessionBound, sessionNotStarted, sessionError, sessionAttemptFailed
         /// The start wait stopped early because the SDK had already reported a session error —
         /// that error is then thrown instead of the generic "stream not ready", so the attempt

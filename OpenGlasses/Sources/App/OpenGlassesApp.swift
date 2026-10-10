@@ -880,7 +880,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// The app has just stopped using the glasses, and the hardware release has run. Decide
     /// whether the wearer is told (`GlassesLinkCuePolicy`: only a link that dropped unasked, with
-    /// the glasses not known to be off the face) and, if so, tell them: the descending pair, then
+    /// the glasses not known to be off the face) and, if so, tell them: the link-lost earcon, then
     /// "Glasses disconnected" for VoiceOver.
     ///
     /// Not through `audibleLifecycle`. That coordinator speaks for a live session under the Blind
@@ -911,9 +911,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     waited += GlassesLinkCuePolicy.pollSeconds
                 case .play:
                     self.glassesLinkCues.noteLostCuePlayed()
-                    self.speechService.playDisconnectTone()
-                    // The line follows the tone rather than starting under it.
-                    try? await Task.sleep(nanoseconds: UInt64(TurnAudioRelease.toneSettleSeconds * 1_000_000_000))
+                    self.speechService.playLinkLostTone()
+                    // The line follows the earcon rather than starting under it.
+                    try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.lostLineDelaySeconds * 1_000_000_000))
                     guard !Task.isCancelled, let line = GlassesLinkCuePolicy.voiceOverLine(for: .lost) else { return }
                     SessionAnnouncer.say(line)
                     return
@@ -958,17 +958,24 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// The connected glasses' compatibility reading changed; nil is the link going.
     ///
-    /// A requirement the wearer has not heard about is posted and then said once: after the
-    /// connection's own sounds, never on top of speech (the same route reading the link cue above
-    /// uses), and only if the glasses are still connected and still asking by then. The reading
-    /// does not stop the camera by itself; a session the glasses refuse does (`SDKRefusalLatch`).
+    /// A requirement is on screen for as long as it is the connected glasses' reading, and is
+    /// taken back when they stop asking or go. One the wearer has not heard about is also said,
+    /// once: after the connection's own sounds, never on top of speech (the same route reading the
+    /// link cue above uses), and only if the glasses are still connected and still asking by then.
+    /// The reading does not stop the camera by itself; a session the glasses refuse does
+    /// (`SDKRefusalLatch`).
     private func glassesCompatibilityChanged(_ compatibility: GlassesCompatibility?) {
         if let compatibility {
             PrivacyLog.device(.glasses, .compatibilityRead, state: PrivacyToken.caseName(of: compatibility))
         }
+        switch CompatibilityNoticePolicy.standing(for: compatibility) {
+        case .stands(let message):
+            NoticeCenter.shared.post(message, severity: .warning, source: .glassesUpdate)
+        case .withdrawn:
+            NoticeCenter.shared.clear(source: .glassesUpdate)
+        }
         guard case .announce(let message) = compatibilityNotices.note(compatibility) else { return }
         addDebugEvent(message)
-        NoticeCenter.shared.post(message, severity: .warning, source: .glasses)
         compatibilityNoticeTask?.cancel()
         compatibilityNoticeTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(CompatibilityNoticePolicy.settleSeconds * 1_000_000_000))
@@ -3374,7 +3381,11 @@ class AppState: ObservableObject, AppStateProtocol {
             Task {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 do {
-                    try await cameraService.startStreaming()
+                    // Nobody pressed anything: a camera permission that is not granted is read
+                    // and reported, never asked for, because asking leaves for Meta AI.
+                    try await CameraPermissionRequestPolicy.startedByApp {
+                        try await self.cameraService.startStreaming()
+                    }
                 } catch {
                     PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
                 }

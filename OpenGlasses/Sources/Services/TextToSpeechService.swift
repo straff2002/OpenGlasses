@@ -726,6 +726,23 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
     }
 
+    /// Slow three-note fall — the glasses' link dropped and nobody asked it to (Plan HX P0).
+    ///
+    /// Its own sound, not `playDisconnectTone`: that pair ends every conversation, so a link that
+    /// dropped mid-conversation sounded like the conversation ending. The notes, and why they
+    /// cannot be taken for any other cue here, are `GlassesLinkCuePolicy.lostEarcon`.
+    func playLinkLostTone() {
+        for note in GlassesLinkCuePolicy.lostEarcon {
+            guard note.start > 0 else {
+                playTone(frequency: note.frequency, duration: note.duration)
+                continue
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + note.start) { [weak self] in
+                self?.playTone(frequency: note.frequency, duration: note.duration)
+            }
+        }
+    }
+
     /// Low double — something did not work and will not fix itself (Plan FF P0/PR2). Flat rather
     /// than falling, so it is not mistaken for the descending disconnect pair.
     func playFailureTone() {

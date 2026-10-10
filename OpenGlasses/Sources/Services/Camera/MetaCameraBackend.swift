@@ -246,10 +246,19 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 let status = try await Wearables.shared.checkPermissionStatus(.camera)
                 PrivacyLog.camera(.glasses, .permissionChecked,
                                   state: PrivacyToken(String(describing: status)))
-                if status == .granted {
+                // Asking deep-links out of the app to Meta AI, so only a start the wearer asked
+                // for asks (Plan HX follow-up). One the app began by itself stops here.
+                switch CameraPermissionRequestPolicy.step(
+                    granted: status == .granted,
+                    initiator: CameraPermissionRequestPolicy.initiator) {
+                case .proceed:
                     permissionGranted = true
                     events.send(.cameraPermission(.granted))
                     return
+                case .failWithoutAsking:
+                    throw CameraError.permissionNotRequested
+                case .request:
+                    break
                 }
 
                 let requestStatus = try await Wearables.shared.requestPermission(.camera)
@@ -257,6 +266,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 permissionGranted = true
                 events.send(.cameraPermission(.granted))
                 return
+            } catch CameraError.permissionNotRequested {
+                // Not a failure, and nothing a retry changes: the read answered and the app chose
+                // not to ask. The status is what the diagnosis reads, and the notice names the
+                // row that asks.
+                PrivacyLog.camera(.glasses, .permissionNotRequested)
+                events.send(.cameraPermission(.notGranted))
+                events.send(.transientNotice(CameraPermissionRequestPolicy.notice))
+                throw CameraError.permissionNotRequested
             } catch {
                 // Summarised here, where the SDK's own error still exists: what is thrown from
                 // this function is one of two `CameraError`s whatever went wrong (Plan HX P3).
@@ -1223,6 +1240,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
             } catch {
                 PrivacyLog.camera(.glasses, .warmupAttemptFailed, attempt: attempt,
                                   ofAttempts: 2, error: SafeErrorSummary(error))
+                // The glasses refused this build. A second attempt asks them the same question,
+                // so there is none, and the start fails with the sentence every later one will.
+                if let refusal = SDKRefusalLatch.terminalError(for: error) { throw refusal }
                 lastError = error
                 let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
                 consecutiveRecoveryFailures += 1
@@ -1249,8 +1269,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // is exactly what swallowed the stop. The warmup now finds its token stale and releases.
         startGeneration.recordStop()
         resetStallBackoff()
-        guard isStreaming else { return }
+        // Before the guard, not after it: while a reconnect is climbing, or after a recovery
+        // that failed, the stream is not up and the detector is still armed. A stop that left it
+        // there left a loop running for a camera nobody wants.
         stopStallDetection()
+        guard isStreaming else { return }
         if let session = streamSession {
             session.stop()
         }

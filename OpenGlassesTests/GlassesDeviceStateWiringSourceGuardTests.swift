@@ -82,7 +82,17 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
         XCTAssertTrue(body.contains("compatibilityNotices.note(compatibility)"),
                       "the update notice is no longer decided by CompatibilityNoticePolicy: it is "
                           + "either never said or said at every reconnection")
-        XCTAssertTrue(body.contains("NoticeCenter.shared.post(message, severity: .warning, source: .glasses)"))
+        // On screen for as long as it is true, under a source of its own (Plan HX follow-up).
+        let standing = try XCTUnwrap(body.range(of: "switch CompatibilityNoticePolicy.standing(for: compatibility) {"),
+                                     "the update notice is no longer shown and withdrawn by the "
+                                         + "reading: it outlives the requirement, or never shows")
+        XCTAssertTrue(body.contains("NoticeCenter.shared.post(message, severity: .warning, source: .glassesUpdate)"))
+        XCTAssertTrue(body.contains("NoticeCenter.shared.clear(source: .glassesUpdate)"),
+                      "nothing takes the update notice back when the glasses are updated or go")
+        let announce = try XCTUnwrap(body.range(of: "compatibilityNotices.note(compatibility)"))
+        XCTAssertLessThan(standing.lowerBound, announce.lowerBound,
+                          "the notice must be shown or withdrawn at every reading, before the "
+                              + "once-per-process rule returns for one that was already said")
         XCTAssertTrue(body.contains("CompatibilityNoticePolicy.delivery("),
                       "the notice no longer waits for the route: it can land on the assistant's voice")
         XCTAssertTrue(body.contains("compatibilityNotices.isOwed(message)"),
@@ -103,6 +113,17 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
                                       + "record: a refused build is announced twice")
         let speak = try XCTUnwrap(sink.range(of: "speechService.speak(notice)"))
         XCTAssertLessThan(claim.lowerBound, speak.lowerBound)
+    }
+
+    /// The camera clears and replaces the glasses' notices every session cycle. The update notice
+    /// is not one of them: only the reading posts it and only the reading takes it back.
+    func testOnlyTheReadingTouchesTheUpdateNotice() throws {
+        let camera = try code("OpenGlasses/Sources/Services/CameraService.swift")
+        XCTAssertFalse(camera.contains(".glassesUpdate"),
+                       "the camera must not post or clear the glasses' update notice")
+        let appState = try code(Self.appState)
+        XCTAssertEqual(appState.components(separatedBy: "source: .glassesUpdate").count, 3,
+                       "one post and one clear, both in `glassesCompatibilityChanged(_:)`")
     }
 
     // MARK: - The backend reports the refusal

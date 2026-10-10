@@ -28,6 +28,17 @@ import Foundation
 /// say which of the two the glasses will give, and latching on it could switch off a camera that
 /// works. So the reading is announced (`CompatibilityNoticePolicy`) and the first session the
 /// glasses refuse is what latches: one attempt per process, not one per start.
+///
+/// # Terminal everywhere (follow-up, 2026-10-10)
+///
+/// The latch only stopped starts from *reaching* the backend. Three things inside it could still
+/// ask refused glasses again: a stream start's own second warm-up attempt, the reconnect ladder,
+/// and stall recovery. The last two start only from a stream that was running, which refused
+/// glasses rarely give, but nothing proves they never do: a session can be refused under a stream
+/// that is up, and a ladder climbing for a pair that went out of range can be answered by a
+/// different pair. So a refusal now ends them as well. A failed attempt that was a refusal is not
+/// retried (`terminalError(for:)`), and `CameraService` stops the camera when it latches, which
+/// ends the intent both ladders read.
 struct SDKRefusalLatch: Equatable, Sendable {
 
     private(set) var isLatched = false
@@ -46,6 +57,15 @@ struct SDKRefusalLatch: Equatable, Sendable {
     /// refusal itself is reported with, so the first failure and every later one read alike.
     var startRefusal: String? {
         isLatched ? DATCompatibilityMessage.appUpdateRequired : nil
+    }
+
+    /// What a failed session attempt ends the camera's own retries with, or nil when `error` is
+    /// one another attempt may clear. A refusal of the build is the first kind: the next attempt
+    /// asks the same glasses the same question. It carries the sentence a latched start is
+    /// refused with, so the attempt that met the refusal and every later one read alike.
+    static func terminalError(for error: Error) -> CameraError? {
+        DATCompatibilityMessage.isSDKRefusal(error)
+            ? .incompatible(DATCompatibilityMessage.appUpdateRequired) : nil
     }
 
     /// The compatibility notice that stands after the backend reported `reported`, where nil is

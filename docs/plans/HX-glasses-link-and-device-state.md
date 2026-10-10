@@ -12,6 +12,10 @@ not showing them, or out of reach) on that screen, on the session card, in the c
 message, in the Developer panel and in the support report; the Meta camera permission's status is
 kept; it is asked for once inside a Connect the wearer pressed; and the launch paths that used to
 ask for it only read it. A device pass is owed for every phase.
+**Follow-ups 2026-10-10:** four gaps the phases' own notes recorded are closed (see Follow-ups): a
+camera start the app begins by itself no longer opens Meta AI for the permission; a lost link has
+its own sound; the update notice stands for as long as it is true and no longer; and a refused
+build ends the camera's own retries as well as its starts.
 **Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
 apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
@@ -309,12 +313,16 @@ the one that asserted the old silence) and `GlassesLinkCueSourceGuardTests` (5, 
   drop follows and is cued then.
 
 **Owed on a device:** with the phone locked in a pocket and the wake word listening, walk out of
-range: one descending pair from the phone, and how long after the audio route dropped it came
+range: the link-lost earcon from the phone, once (three slow falling notes since the follow-up;
+it was the descending pair), and how long after the audio route dropped it came
 (the SDK decides when the link is down). The same with listening off or push-to-talk, where the
 app holds no audio session at that moment and may not be allowed to start the tone from the
 background. Drop the link while the assistant is mid-answer: the answer stops, the tone follows and
 is not cut off, and other audio resumes; if the tone is clipped, `settleSeconds` is too short. Walk
-back in: the connect tone, and "Glasses connected" with VoiceOver on. Take the glasses off, fold
+back in: the connect tone, and "Glasses connected" with VoiceOver on. The earcon itself has to be
+heard, which no test can do: from a pocket, all three notes; end a conversation and then drop the
+link, and tell the two sounds apart without thinking; with VoiceOver on, "Glasses disconnected"
+after the third note and not under it. Take the glasses off, fold
 them, case them: nothing. Disconnect on the session card with VoiceOver on: one "Glasses
 disconnected" and no tone. Remove the app's access in Meta AI: nothing but VoiceOver's line, and
 record whether the phase really reaches `noGlassesAdded`. Glasses that do not report worn: confirm
@@ -380,7 +388,8 @@ three callers that cannot run in a test host). `BRHardeningTests` is unchanged.
   the refusal keeps that. With the glasses away the phone camera works as before.
 - **Automatic work inside the backend is not gated by the latch.** The reconnect ladder and stall
   recovery start only from a stream that was running, which refused glasses never give. Giving up
-  on a compatibility refusal inside the ladder is Plan HJ's row 3a.
+  on a compatibility refusal inside the ladder is Plan HJ's row 3a. **Closed 2026-10-10:** "never"
+  was not provable, and a stream start retried a refused session itself; see Follow-ups, item 4.
 - **`ThermalLevel` is frozen**, so its mapping has no `@unknown default`; its `.unknown` is what
   maps to nil. `Compatibility` is not frozen, and a case a later SDK adds reads as `undefined`. A
   test compares the two case counts so that day is noticed.
@@ -416,7 +425,8 @@ three callers that cannot run in a test host). `BRHardeningTests` is unchanged.
   glasses' notice source, which the backend's per-cycle clear empties. It has been said by then,
   and a camera that then fails for that reason posts its own.
 - **Nothing takes the notice back when the glasses become compatible.** A warning stays until it
-  is dismissed or the next camera cycle clears it.
+  is dismissed or the next camera cycle clears it. **This and the note above were closed
+  2026-10-10:** see Follow-ups, item 3.
 
 **Owed on a device:** read `thermalLevel` on a warm day or during a long stream: whether it moves
 at all before the camera's own thermal stop, and whether "conserving — glasses running warm"
@@ -425,9 +435,13 @@ want a firmware update, connect and hear the sentence once, about four seconds a
 tone and not over anything; reconnect and hear nothing. On a build the glasses refuse: one spoken
 update line whichever of the link or the first photo meets it first; the first camera start fails
 after one session attempt and every later one at once (`startRefusedByLatch` in the log, no
-`sessionAttemptFailed`); relaunch and it is asked once more. And the question this phase could not
-answer from a desk: what `compatibility` reads on glasses whose sessions still start, and on glasses
-that refuse (open question 9). `compatibilityRead` in a support report from either pair answers it.
+`sessionAttemptFailed`); relaunch and it is asked once more. Since the follow-up that first start
+may be a stream start as well as a photo: one `warmupAttemptFailed`, no `warmupRetry`, and the
+app-update sentence as its error. With glasses that want a firmware update: the notice is still on
+screen after a photo, goes when the glasses are put in their case, and is back, unspoken, when
+they reconnect. And the question this phase could not answer from a desk: what `compatibility`
+reads on glasses whose sessions still start, and on glasses that refuse (open question 9).
+`compatibilityRead` in a support report from either pair answers it.
 
 **Gates (both):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`,
 privacy-logging gate; index row, this Status line and BV's row and file updated in the P1 PR.
@@ -628,7 +642,7 @@ swap), `TalkEntryPolicyTests` (the hints) and `CameraServiceCoordinatorTests` (3
   Assistant on launch" starts a session; both reach the backend's `ensurePermission()`, which
   requests. They are camera starts the wearer configured, and gating them belongs with the
   camera's own start rules. Recorded so the answer to open question 4 is not read as wider than
-  it is.
+  it is. **Closed 2026-10-10:** neither asks any more; see Follow-ups, item 1.
 - **Strings.** The row's two new titles and the *link down* line are in the catalog with ru and
   es-MX. The status lines, the failure message, the pill's hint, the Developer panel and the
   report line are not localised today, and these follow that.
@@ -647,8 +661,13 @@ listed pair in its case: "Glasses out of reach", no button. With another glasses
 Developer Mode, record which diagnosis shows and what the report line says. With VoiceOver on,
 press the button and hear where things stand when Meta AI returns. Record whether the registration
 listener fires at launch for an already registered app (`registrationState` in the event log
-straight after `configured`), and whether a live mode's launch camera start opens Meta AI for a
-registered wearer without the permission.
+straight after `configured`). Since the follow-up, launch with the permission missing in each of
+the two ways the app starts the camera by itself: with a live mode selected, and with "start Blind
+Assistant on launch" on. Meta AI must not open either time; the log carries
+`permissionNotRequested`; the camera notice says camera access is needed and names Devices &
+Privacy › Glasses; the row there asks when pressed. Then start the camera by hand with the
+permission still missing and confirm that does open Meta AI, once. Background the app with Blind
+Assistant on launch set and return: no hand-off on the way back in either.
 
 ### P2: device pass (owed)
 
@@ -657,10 +676,141 @@ hear nothing; disconnect in Settings with VoiceOver on and hear one line. Read `
 warm day and see the posture explanation name the glasses. On a build the glasses refuse (an old
 TestFlight), confirm one spoken update line and no repeated session attempts.
 
+For the follow-ups: hear the link-lost earcon and tell it from the end of a conversation; launch
+with the camera permission missing, both ways, and see Meta AI stay shut; watch the update notice
+survive a photo and go when the glasses do. The full lists are under each phase.
+
 For P3: on a phone that has never registered, pair and decline the camera permission in Meta AI,
 and read `permissionNeeded` with a working button; grant it with the glasses in the case and read
 `linkDown`; with another glasses app holding Developer Mode, record what the SDK reports and
 whether `noDeviceSeen` is the honest reading of it. The full list is under Phases › P3.
+
+## Follow-ups (2026-10-10)
+
+Four gaps the phases above recorded and left. Each was checked against the code before it was
+changed; where the code disagreed with the note, the code was followed.
+
+### 1 · A camera start the app begins by itself does not open Meta AI
+
+**What the code showed.** Both paths P3 named reach `MetaCameraBackend.ensurePermission()`, and
+that is the only place a camera start asks. A live mode's launch start calls
+`cameraService.startStreaming()` a second and a half in. "Start Blind Assistant on launch" goes
+through `LiveSessionActivator`, whose mode switch starts the camera and whose session start claims
+it. `CameraService.startStreaming()` does not look at the link first, so a registered app with
+nothing listed got as far as the request. One signal already existed and one did not:
+`LiveActivationSource.isExplicit` separates a request the wearer made (Action Button, Siri, wake
+word, the app's control, a temple tap) from one the app made (launch, foreground, the return from
+an offline hand-off), and the launch camera start had nothing.
+
+**What changed.** `CameraPermissionRequestPolicy` (`Services/Camera/`) is the decision: granted
+proceeds; not granted asks when the wearer began the start and fails without asking when the app
+did. Who began it is a task-local (`initiator`, default the wearer), the shape
+`TurnRecorder.isOffTurnWork` already has, because the start crosses the coordinator's coalescing
+task, a mode switch and a session manager before it reaches the permission. It is set in two
+places and nowhere inferred: `startModeSubstrateOnLaunch()` wraps its start in
+`startedByApp { }`, and the activator runs every request as the wearer's or the app's by
+`isExplicit`. `ensurePermission()` asks the table after the read; an unasked start publishes the
+status as not granted (so the diagnosis reads *permission needed*), sends the session card's own
+hint as the camera's notice ("Glasses need camera access in Meta AI — allow it in Settings ›
+Devices & Privacy › Glasses."), logs `permissionNotRequested` and throws
+`CameraError.permissionNotRequested` without going round its retry loop.
+
+**Wider than launch, on purpose.** The activator's rule covers a return to the foreground and the
+offline return as well: they are the same kind of request, and a hand-off on foregrounding is the
+same surprise.
+
+**Limits.** A wearer's start that joins an app-begun start still in flight gets that start's
+answer (the coordinator coalesces): it fails with the notice, and the next press asks. A live
+session the app started without a camera can still ask later, when its own reconnect restarts the
+camera; that path is the session's recovery and is not changed here. The iPhone's own camera
+prompt is not a hand-off and is unchanged. And if a pair is listed while the permission is not
+granted (it was taken back in Meta AI), the diagnosis reads the link, not *permission needed*, so
+the notice names a screen with no row on it; starting the camera by hand still asks.
+
+**Tests:** `CameraPermissionRequestPolicyTests` (15: the table, the mark and its scope, the mark
+reaching the fake backend through a start, a claim and a capture, an unasked failure leaving the
+status, the notice and nothing armed, and two source guards on `ensurePermission()` and the
+launch call site) and `LiveSessionActivatorTests` (4 new).
+
+### 2 · A lost link has its own sound (open question 7)
+
+**What the code showed.** Tones are not data: each is a function with its numbers in it, played
+either as one generated buffer (the descending pair) or as `playTone` calls a few hundredths of a
+second apart (the connect pair, the restored triad, the failure double). The temple-tap earcons
+are the exception, and one of them, "ended", is already a three-note fall (660, 494, 330 Hz, a
+third of a second).
+
+**What changed.** `GlassesLinkCuePolicy.lostEarcon` is the new cue's three notes as data: 587 Hz
+for 0.16 s, 466 Hz for 0.16 s, 392 Hz for 0.24 s (D5, B♭4, G4: a falling minor triad, 0.62 s in
+all). `TextToSpeechService.playLinkLostTone()` plays them the way the restored triad is played,
+and `cueGlassesOutOfUse()` calls it. Against its neighbours: three notes where the
+end-of-conversation pair has two, each longer than that pair's and the whole more than twice as
+long, starting a fourth above it; falling where the connect pair and the restored triad rise; no
+repeated pitch where the failure and recording doubles repeat one; and against the temple "ended"
+fall, half as wide, nearly twice as long, held at the end, and sharing no pitch. The lowest note
+is 392 Hz because the cue is usually heard from a phone in a pocket: a last note the speaker
+dropped would leave a falling pair. VoiceOver's line now waits for the earcon's own length
+(`lostLineDelaySeconds`), which is longer than the pair's. The Blind Assistant's "connection
+dropped" keeps the pair it was taught with.
+
+**Tests:** `GlassesLinkCuePolicyTests` (6 new: the shape, the notes not overlapping, the length,
+the pair, every temple earcon, the line's wait) and `GlassesLinkCueSourceGuardTests` (the cue plays
+the earcon and not the pair; the earcon plays the policy's notes). The existing tones were not
+turned into data to be compared against; the pair's numbers are written into the one test that
+needs them.
+
+### 3 · The update notice is on screen while it is true, and no longer
+
+**What the code showed.** Both gaps were real, and the second was wider than recorded.
+`glassesCompatibilityChanged(_:)` posted on the first reading and never cleared. The backend sets
+its compatibility notice to nil at the top of every session cycle, the property's `didSet` sends
+that whether or not it changed, and `CameraService` answers every nil by clearing the whole
+`.glasses` notice source: so any photo took the update notice away. Independently, a source holds
+one notice, so any other glasses notice replaced it. And dismissal on the notice card is by text,
+in the view; nothing was ever removed from `NoticeCenter` by the wearer.
+
+**What changed.** The notice has its own source, `AppNotice.Source.glassesUpdate`, which only the
+reading posts to and only the reading clears. `CompatibilityNoticePolicy.standing(for:)` decides
+it at every change of the reading: a requirement on connected glasses stands; compatible, not
+said, or the link gone withdraws. Speaking is untouched: `Ledger.note(_:)` still decides that,
+once per process, after the standing decision.
+
+**What follows.** A notice comes back on screen, unspoken, when the glasses reconnect still
+asking. One the wearer dismissed stays hidden while the card remembers its text. A warning that
+stands for a whole connected session outranks every advisory posted meanwhile on that card (the
+card shows one notice, highest severity first); the camera's own conditions still show on the
+camera's own line. That ranking is the card's and is not changed here.
+
+**Tests:** `CompatibilityNoticePolicyTests` (5 new) and `GlassesDeviceStateWiringSourceGuardTests`
+(the wiring, and that the camera never touches the new source).
+
+### 4 · A refused build ends the camera's own retries
+
+**What the code showed.** The note said the reconnect ladder and stall recovery cannot run for
+refused glasses because they start only from a stream that was running. That is likely and not
+provable: a session can report the refusal under a stream that is up (the watcher stays attached),
+and a ladder climbing for a pair that went out of range can be answered by a different pair. When
+it happens the ladder reads only the *stream's* last error, so it would spend its ninety seconds
+building sessions to be refused. Two more things the note did not have: a stream start's own
+warm-up made a second session attempt after the first was refused, and threw the SDK's raw error
+rather than the app-update sentence; and a stop that arrived while a reconnect was climbing
+returned before it stopped the stall detector, leaving it armed.
+
+**What changed.** `CameraService` stops the camera when the latch sets, through the same
+`stopStreaming()` a wearer's Stop uses, whether or not it believes anything is running. That
+clears the intent both ladders read, cancels a rung that is waiting and releases a start still in
+flight. `SDKRefusalLatch.terminalError(for:)` is the pure reading of a failed attempt: a refusal
+is not retried, and `warmUpStream()` throws `CameraError.incompatible` with the app-update
+sentence instead of trying again. `stopStreaming()` in the backend stops the detector before its
+guard. The compatibility reading still latches nothing, and a notice alone still stops nothing.
+
+**Tests:** `SDKRefusalLatchTests` (9 new: the classifier; through the fake backend, a refusal
+under a running stream stops it once, the stop is sent with nothing running, a second report does
+not stop twice, nothing starts afterwards, a notice stops nothing; and three source guards on the
+warm-up, the stop's order and the two report sites).
+
+**For Plan HJ:** row 3a's process-wide half is done here. HJ's table still owns what the ladder
+does with every other session error.
 
 ## Open questions
 
@@ -675,7 +825,7 @@ whether `noDeviceSeen` is the honest reading of it. The full list is under Phase
    request only inside a Connect the wearer pressed. Confirm what the listener does at launch
    before changing it. **P3 shipped it that way**, for the connection's own launch paths; what
    the listener did, and the two camera starts at launch that still reach a request, are under
-   Phases › P3.
+   Phases › P3. **Those two were closed by the 2026-10-10 follow-up.**
 5. (P3) The SDK keeps its own log in the app's caches. Should a not-connected support report say
    whether that log shows a refused registration or a missing glasses-side component?
    Recommended: not in P3; decide after the first report P3 produces. **P3 does not read it.**
@@ -686,6 +836,8 @@ whether `noDeviceSeen` is the honest reading of it. The full list is under Phase
    ends every conversation. Out of the blue it is unambiguous; in the middle of a conversation it
    sounds like the conversation ending, which is half the truth. Should a lost link have its own
    earcon? Decide after the device pass; the policy and the delivery do not change either way.
+   **Answered 2026-10-10: yes.** Three slow falling notes (`GlassesLinkCuePolicy.lostEarcon`); see
+   Follow-ups, item 2. Whether the notes chosen are the right ones is for the ear, on a device.
 8. (P0, 2026-10-10) Glasses-only audio (`Config.glassesOnlyAudio`) keeps the assistant's voice off
    the phone speaker when the glasses are away. No tone is gated by it, so the lost cue sounds from
    the phone. Recommended: leave it; the cue is the one thing that has to be heard there.
@@ -705,4 +857,5 @@ whether `noDeviceSeen` is the honest reading of it. The full list is under Phase
   coordinator itself (see Phases › P0).
 - **HJ** (📋 Planned): its row 3a (a compatibility refusal gives up in every presence) reads the
   same classification; the latch here is the process-wide half and should land first or with it.
+  **Done 2026-10-10** for a refusal of the build (Follow-ups, item 4).
 - **CM** P1 (unbuilt): `WearStatePolicy` may later read `isWorn` beside this plan's state.

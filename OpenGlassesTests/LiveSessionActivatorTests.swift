@@ -29,8 +29,13 @@ final class LiveSessionActivatorTests: XCTestCase {
 
         func isSessionActive(_ mode: AppMode) -> Bool { activeSessions.contains(mode) }
 
+        /// Who the activator said began the work, read where the real owner starts the camera:
+        /// inside the switch and inside the session start.
+        var initiators: [CameraPermissionRequestPolicy.Initiator] = []
+
         func performModeSwitch(to mode: AppMode) async {
             calls.append("switch(\(mode.rawValue))")
+            initiators.append(CameraPermissionRequestPolicy.initiator)
             if holdSwitch {
                 await withCheckedContinuation { self.switchGate = $0 }
             }
@@ -39,6 +44,7 @@ final class LiveSessionActivatorTests: XCTestCase {
 
         func startSession(_ mode: AppMode) async {
             calls.append("start(\(mode.rawValue))")
+            initiators.append(CameraPermissionRequestPolicy.initiator)
             if holdStart {
                 await withCheckedContinuation { self.startGate = $0 }
             }
@@ -98,6 +104,43 @@ final class LiveSessionActivatorTests: XCTestCase {
 
         XCTAssertEqual(outcome, .started)
         XCTAssertEqual(owner.calls, ["switch(geminiLive)", "start(geminiLive)"])
+    }
+
+    // MARK: - Who began it (Plan HX follow-up)
+
+    /// The switch and the session start are where the camera is started. For a request the app
+    /// made by itself, neither may leave for Meta AI to ask for the camera permission.
+    func testARequestTheAppMadeByItselfRunsAsTheApps() async {
+        for source in LiveActivationSource.allCases where !source.isExplicit {
+            let owner = FakeOwner(), recorder = Recorder()
+            await makeActivator(owner, recorder).activate(
+                .init(mode: .geminiLive, source: source, gate: readyGate()))
+            XCTAssertEqual(owner.initiators, [.app, .app], "\(source)")
+        }
+    }
+
+    func testARequestTheWearerMadeRunsAsTheWearers() async {
+        for source in LiveActivationSource.allCases where source.isExplicit {
+            let owner = FakeOwner(), recorder = Recorder()
+            await makeActivator(owner, recorder).activate(.init(mode: .geminiLive, source: source))
+            XCTAssertEqual(owner.initiators, [.wearer, .wearer], "\(source)")
+        }
+    }
+
+    /// An explicit request says so itself rather than inheriting whatever task it was made from.
+    func testAnExplicitRequestMadeFromTheAppsOwnWorkIsStillTheWearers() async {
+        let owner = FakeOwner(), recorder = Recorder()
+        let activator = makeActivator(owner, recorder)
+        await CameraPermissionRequestPolicy.startedByApp {
+            _ = await activator.activate(.init(mode: .geminiLive, source: .appUI))
+        }
+        XCTAssertEqual(owner.initiators, [.wearer, .wearer])
+    }
+
+    func testOnlyLaunchForegroundAndOfflineReturnAreTheAppsOwn() {
+        XCTAssertEqual(Set(LiveActivationSource.allCases.filter { !$0.isExplicit }),
+                       [.launch, .foreground, .offlineReturn],
+                       "a new source decides here whether its camera start may open Meta AI")
     }
 
     func testNoSleepIsScheduledOnAnOrdinaryStart() async {

@@ -94,9 +94,11 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   `compatibility` are mapped to `GlassesDeviceState.thermal` (`GlassesThermal?`, unknown → nil) and
   `.compatibility` (`GlassesCompatibility`) and published as `GlassesConnectionService.thermal` /
   `.compatibility` (only while connected): thermal feeds `PowerPolicyService`, and an update
-  requirement is said once per process (`CompatibilityNoticePolicy`). The compatibility reading
-  never stops the camera by itself; a session refused with `.insufficientSDKVersion` does, for the
-  rest of the process (`SDKRefusalLatch`). `hingeState` is not read.
+  requirement is said once per process and shown for as long as it is the connected reading
+  (`CompatibilityNoticePolicy`). The compatibility reading never stops the camera by itself; a
+  session refused with `.insufficientSDKVersion` does, for the rest of the process
+  (`SDKRefusalLatch`): later starts fail at once, and the camera is stopped when it latches, which
+  ends the reconnect ladder and stall recovery. `hingeState` is not read.
 - **Not connected has a reason, and the reason is a reading.** `GlassesReachabilityDiagnosis`
   (pure) reads registration, each listed device's link and the Meta camera permission's last known
   status into `notAdded` / `awaitingApproval` / `permissionNeeded` / `noDeviceSeen` / `linkDown` /
@@ -111,9 +113,13 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   belongs to something the wearer pressed (`requestCameraAccess()`: the Connect, and "Allow camera
   access in Meta AI"), one attempt per press. Both go through
   `MetaCameraBackend.cameraPermission(asking:)`, behind the `GlassesCameraPermissionSource` seam.
-  `ensurePermission()`, on the way to a camera start, still checks and requests with three
-  attempts, and reports how it ended as a `.cameraPermission` backend event. Do not call it from a
-  listener or a launch path. Both calls throw `PermissionError` (`noDevice`,
+  `ensurePermission()`, on the way to a camera start, checks with three attempts and reports how
+  it ended as a `.cameraPermission` backend event. It requests only for a start the wearer began:
+  a start the app begins by itself (a live mode's launch start, a session started at launch, on
+  foreground or resumed) runs inside `CameraPermissionRequestPolicy.startedByApp { }`, and with
+  the permission missing fails with `CameraError.permissionNotRequested` and a notice instead of
+  asking. Wrap any new unattended camera start the same way, and do not call `ensurePermission()`
+  from a listener. Both calls throw `PermissionError` (`noDevice`,
   `noDeviceWithConnection`, `connectionError`, `metaAINotInstalled`, `requestInProgress`,
   `requestTimeout`, `internalError`; not frozen); it describes itself, so summarise it with
   `MetaCameraBackend.permissionSummary(of:)`, which keeps the case name.

@@ -38,7 +38,7 @@ enum GlassesLinkCuePolicy {
     }
 
     enum Cue: Equatable {
-        /// The descending pair, then "Glasses disconnected" for VoiceOver.
+        /// The link-lost earcon (`lostEarcon`), then "Glasses disconnected" for VoiceOver.
         case lost
         /// "Glasses connected" for VoiceOver, after the connect tone every connection plays.
         case restored
@@ -158,6 +158,47 @@ enum GlassesLinkCuePolicy {
         /// VoiceOver's own line for that loss is withheld: the cue carries the line.
         var appOwnsLossCue: Bool { lostCue != .none }
     }
+
+    // MARK: - The sound
+
+    /// One note of an earcon: when it starts, its pitch and how long it sounds.
+    struct Note: Equatable, Sendable {
+        let start: TimeInterval
+        let frequency: Double
+        let duration: TimeInterval
+        var end: TimeInterval { start + duration }
+    }
+
+    /// The link-lost earcon: D5, B♭4, then G4 held. A slow fall through a minor triad, played by
+    /// `TextToSpeechService.playLinkLostTone()`.
+    ///
+    /// It was the end-of-conversation pair until 2026-10-10, and mid-conversation a dropped link
+    /// then sounded like the conversation ending. It has to be told by ear from everything else
+    /// the app plays, usually from a phone in a pocket (the glasses are what went):
+    /// - the end-of-conversation pair (`playDisconnectTone`, 440 → 330 Hz, also the Blind
+    ///   Assistant's "connection dropped") is two notes and over in a quarter of a second. This
+    ///   is three, each longer than either of that pair's, and lasts more than twice as long. It
+    ///   starts a fourth above that pair, so the first note already differs.
+    /// - the connect pair, the session-restored triad and the unmute pair rise. This only falls.
+    /// - the listening tones (880 Hz, 440 Hz) and the held and rejected blips are single notes.
+    /// - the failure double and the recording doubles repeat one pitch. No pitch repeats here.
+    /// - the temple-tap "ended" earcon (660, 494, 330 Hz) is the other three-note fall. It is
+    ///   staccato, an octave wide and done in a third of a second, in answer to the wearer's own
+    ///   tap. This is a fifth wide, nearly twice as long, and ends on a held note.
+    /// The lowest note is 392 Hz, above the lowest the other cues use and well inside what a
+    /// phone's speaker carries: a last note that went unheard would leave a falling pair.
+    static let lostEarcon: [Note] = [
+        Note(start: 0.00, frequency: 587, duration: 0.16),
+        Note(start: 0.19, frequency: 466, duration: 0.16),
+        Note(start: 0.38, frequency: 392, duration: 0.24),
+    ]
+
+    /// How long the link-lost earcon lasts.
+    static var lostEarconSeconds: TimeInterval { lostEarcon.map(\.end).max() ?? 0 }
+
+    /// How long after the earcon starts the VoiceOver line waits, so that it follows the earcon
+    /// rather than starting under it.
+    static var lostLineDelaySeconds: TimeInterval { lostEarconSeconds + 0.1 }
 
     // MARK: - Delivery
 

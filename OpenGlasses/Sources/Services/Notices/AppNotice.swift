@@ -34,6 +34,11 @@ struct AppNotice: Equatable, Identifiable {
         case camera
         case liveSession
         case glasses
+        /// An update the connected glasses are asking for (Plan HX P1). Its own key because its
+        /// condition is its own: it stands for as long as the glasses are connected and still
+        /// asking, and under `.glasses` the camera's per-cycle clear, or any other glasses notice,
+        /// took it away while it was still true.
+        case glassesUpdate
         case app
     }
 
