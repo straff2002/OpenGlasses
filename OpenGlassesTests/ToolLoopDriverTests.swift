@@ -134,9 +134,55 @@ final class ToolLoopDriverTests: XCTestCase {
         let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
                                            setStatus: { statuses.value.append($0) })
         XCTAssertEqual(result, "your turn")
-        // Only the yielding call was dispatched — the second tool never ran.
-        XCTAssertEqual(history.value, ["assistant:toolcall", "results:yield_to_human"])
+        // Only the yielding call was dispatched — the second tool never ran. It is still answered:
+        // the assistant message names both calls, and a call with no result breaks the next request.
+        XCTAssertEqual(history.value, ["assistant:toolcall", "results:yield_to_human,never"])
         XCTAssertEqual(statuses.value.last, .yielded("yield_to_human"))
+    }
+
+    /// A yield in the middle of a turn: what ran keeps its result, the yield keeps its own, and
+    /// everything after it is answered as not run without being executed.
+    func testYieldAnswersEveryCallOfTheTurnAndRunsNothingAfterIt() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([])
+        let executed = Box<[String]>([])
+        let appended = Box<[ToolDispatchOutcome]>([])
+        var served = false
+        let adapter = ProviderLoopAdapter(
+            label: "Test",
+            dispatcher: ToolDispatcher(
+                execute: { name, _, _, _ in
+                    executed.value.append(name)
+                    return name == "yield_to_human" ? .completed("YIELD_TO_HUMAN: your turn") : .completed("ran")
+                },
+                onStatus: { statuses.value.append($0) }),
+            performTurn: {
+                XCTAssertFalse(served, "a yield ends the loop; no second request is made")
+                served = true
+                return AssistantTurn(text: "", toolCalls: [
+                    ToolInvocation(id: "1", name: "first", arguments: [:]),
+                    ToolInvocation(id: "2", name: "yield_to_human", arguments: [:]),
+                    ToolInvocation(id: "3", name: "send_message", arguments: [:]),
+                    ToolInvocation(id: "4", name: "last", arguments: [:])
+                ])
+            },
+            appendAssistantToolCall: { _ in history.value.append("assistant:toolcall") },
+            appendToolResults: { appended.value.append(contentsOf: $0) },
+            finalize: { $0.text })
+
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+
+        XCTAssertEqual(result, "your turn")
+        XCTAssertEqual(executed.value, ["first", "yield_to_human"], "nothing after the yield runs")
+        XCTAssertEqual(appended.value.map { $0.invocation.id }, ["1", "2", "3", "4"],
+                       "every call the assistant message names has a result")
+        XCTAssertEqual(appended.value[0].outcome, .completed("ran"))
+        for unrun in appended.value.suffix(2) {
+            XCTAssertEqual(unrun.outcome,
+                           .failedBeforeExecution(reason: ToolDispatcher.notRunAfterYield(unrun.invocation.name)))
+            XCTAssertEqual(unrun.retryDisposition, .safeToRetry, "nothing happened, so it may be asked for again")
+            XCTAssertNil(unrun.yieldReason)
+        }
     }
 
     func testLoopThrowsWhenIterationsExhausted() async {

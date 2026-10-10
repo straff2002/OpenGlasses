@@ -115,6 +115,13 @@ struct ToolDispatcher {
             + "whether the first attempt went through."
     }
 
+    /// What the model is told about a call it made in the same turn as a `yield_to_human` that
+    /// came first. Nothing ran, so it is free to ask again once the user has answered.
+    static func notRunAfterYield(_ name: String) -> String {
+        "'\(name)' was not run: control went back to the user first. Nothing happened. Call it "
+            + "again if it is still needed once the user has answered."
+    }
+
     /// A successful `yield_to_human` result carries `YIELD_TO_HUMAN: <reason>` — extract the reason
     /// so the loop can break and speak it. Returns `nil` for every other call.
     static func yieldReason(name: String, result: ToolResult) -> String? {
@@ -183,7 +190,7 @@ func runToolLoop(
         defer { TurnRecorder.addToolTime(since: toolsStartedAt) }
 
         var outcomes: [ToolDispatchOutcome] = []
-        for call in turn.toolCalls {
+        for (index, call) in turn.toolCalls.enumerated() {
             let signature = ToolDispatcher.signature(of: call)
             guard !unresolvedCalls.contains(signature) else {
                 outcomes.append(ToolDispatchOutcome(
@@ -197,6 +204,15 @@ func runToolLoop(
             if outcome.retryDisposition == .unsafeToRetry { unresolvedCalls.insert(signature) }
             outcomes.append(outcome)
             if let reason = outcome.yieldReason {
+                // The turn ends here, but the assistant message already in history names every
+                // call it made. Each one needs an answer or the next request is malformed: only
+                // the Anthropic path repairs that afterwards, and the others are rejected outright.
+                for unrun in turn.toolCalls.dropFirst(index + 1) {
+                    outcomes.append(ToolDispatchOutcome(
+                        invocation: unrun,
+                        outcome: .failedBeforeExecution(reason: ToolDispatcher.notRunAfterYield(unrun.name)),
+                        yieldReason: nil))
+                }
                 adapter.appendToolResults(outcomes)
                 setStatus(.yielded(call.name))
                 // The yield reason is written by the tool for the wearer to read — it names
