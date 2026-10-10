@@ -594,6 +594,12 @@ enum PrivacyLog {
         /// giving up on the parser after refusing `count` readable samples without meeting a
         /// random-access picture, and falling back to the attachment.
         case keyframeSource, keyframeInterval, keyframeHoldAbandoned
+        /// HW P1. A raw frame the SDK's helper could not draw is converted on the CPU, and these
+        /// two say when that did not work, once per stream: `unsupportedPixelFormat` is a pixel
+        /// format the converter has no rule for, and `pixelConversionFailed` is one it does
+        /// handle producing nothing. `detail` is the format's four-character code, or the number
+        /// in hex when the code is not text.
+        case unsupportedPixelFormat, pixelConversionFailed
     }
 
     @discardableResult

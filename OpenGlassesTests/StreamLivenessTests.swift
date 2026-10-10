@@ -84,7 +84,7 @@ final class StreamLivenessTests: XCTestCase {
         // 15 fps of nothing for two seconds, each frame put through the rule the pipeline applies.
         for tick in stride(from: 0.0, through: 2.0, by: 1.0 / 15.0) {
             switch StreamCodecPolicy.action(for: .empty) {
-            case .emit, .decode:
+            case .emit, .decode, .convert:
                 liveness.sampleArrived(at: start + tick)
             case .drop:
                 break   // stamps nothing, deliberately
