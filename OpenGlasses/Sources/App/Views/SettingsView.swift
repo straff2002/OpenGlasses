@@ -1004,6 +1004,9 @@ struct HardwarePrivacyView: View {
 struct GlassesSettingsView: View {
     @ObservedObject var appState: AppState
     @State private var glassesUpdateError: String?
+    // Plan HX P3a — how the wearer's last "Allow camera access in Meta AI" ended.
+    @State private var cameraAccessOutcome: GlassesCameraAccessOutcome?
+    @State private var isRequestingCameraAccess = false
     // Plan GU — where the wake word waits, and how replies play.
     @State private var wakeListenMic = Config.wakeListenMic
     @State private var replyAudioMode = Config.replyAudioMode
@@ -1034,6 +1037,32 @@ struct GlassesSettingsView: View {
         catch { glassesUpdateError = "Couldn't open the firmware screen: \(error.localizedDescription)" }
     }
 
+    /// Which connect row shows, if any (Plan HX P3a).
+    private var connectRow: GlassesConnectRow? {
+        GlassesConnectRow.resolve(
+            registration: GlassesRegistration(stateRaw: appState.registrationStateRaw),
+            phase: appState.glassesPhase)
+    }
+
+    /// Check the Meta camera permission and ask for it when it is not granted — the same call
+    /// launch makes, but as the wearer's own action and with its outcome kept. Asking leaves for
+    /// Meta AI, so the outcome is also said: the footer changes while a VoiceOver user's focus is
+    /// still on the button.
+    @MainActor
+    private func requestCameraAccess() async {
+        guard !isRequestingCameraAccess else { return }
+        isRequestingCameraAccess = true
+        defer { isRequestingCameraAccess = false }
+        let outcome = await GlassesCameraAccessOutcome.request(
+            ensurePermission: { try await appState.cameraService.ensurePermission() },
+            phoneCameraDenied: {
+                let status = AVCaptureDevice.authorizationStatus(for: .video)
+                return status == .denied || status == .restricted
+            })
+        cameraAccessOutcome = outcome
+        SessionAnnouncer.say(outcome.footer)
+    }
+
     /// Plan CQ P0: what class of device is connected, resolved from the three things that
     /// actually determine it. Re-read on each render — this view is cheap and the answer
     /// changes when glasses connect or drop.
@@ -1059,10 +1088,12 @@ struct GlassesSettingsView: View {
 
     var body: some View {
         Form {
-            // The only way back after the app is removed from Meta AI (or was never added past
-            // onboarding): the session card's pill no longer starts a connect, so without this row
-            // an unregistered app has nowhere to ask for registration.
-            if GlassesRegistration(stateRaw: appState.registrationStateRaw) != .registered {
+            // The only way back while the glasses are not connected: the session card's pill no
+            // longer starts a connect, so without this row there is nowhere to ask. Which row is
+            // `GlassesConnectRow`'s call (Plan HX P3a).
+            switch connectRow {
+            case .connect?:
+                // Removed from Meta AI, or never added past onboarding: ask for registration.
                 Section {
                     Button {
                         Task { await appState.connectGlasses() }
@@ -1080,6 +1111,25 @@ struct GlassesSettingsView: View {
                     Text("Avenkin isn't connected to your glasses in the Meta AI app. "
                          + RegistrationFlow.beforeHandoffMessage())
                 }
+            case .allowCameraAccess?:
+                // Registered, and still no link. The SDK lists a device only once a permission is
+                // granted in Meta AI; this asks, and the footer keeps the answer.
+                Section {
+                    Button {
+                        Task { await requestCameraAccess() }
+                    } label: {
+                        HStack {
+                            Label("Allow camera access in Meta AI", systemImage: "camera")
+                            Spacer()
+                            if isRequestingCameraAccess { ProgressView() }
+                        }
+                    }
+                    .disabled(isRequestingCameraAccess)
+                } footer: {
+                    Text(GlassesConnectRow.allowCameraAccessFooter(outcome: cameraAccessOutcome))
+                }
+            case nil:
+                EmptyView()
             }
 
             // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
@@ -1206,6 +1256,11 @@ struct GlassesSettingsView: View {
             }
         }
         .navigationTitle("Glasses")
+        // The answer belongs to the press that got it: once the row has gone (the glasses
+        // connected, or the app was removed from Meta AI), a later return starts clean.
+        .onChange(of: connectRow) { _, row in
+            if row != .allowCameraAccess { cameraAccessOutcome = nil }
+        }
     }
 }
 
