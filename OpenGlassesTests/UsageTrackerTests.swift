@@ -33,6 +33,12 @@ final class UsageTrackerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(cost), 0.0, accuracy: 1e-9)
     }
 
+    /// A new user's first turns run on the default model, so its cost should not read as unknown.
+    func testGeminiAndXAIDefaultModelsArePriced() {
+        XCTAssertEqual(ModelPricing.rate(for: LLMProvider.gemini.defaultModel), ModelPricing.Rate(0.30, 2.50))
+        XCTAssertEqual(ModelPricing.rate(for: LLMProvider.xai.defaultModel), ModelPricing.Rate(2, 6, cached: 0.50))
+    }
+
     func testOverrideTakesPrecedence() {
         ModelPricing.overrides = ["gpt-4o": ModelPricing.Rate(99, 99)]
         defer { ModelPricing.overrides = [:] }
