@@ -9,6 +9,10 @@ import MWDATCore
 /// `isCharging`, `isWorn`, `thermal` and `compatibility` are derived from it and never written
 /// anywhere else. Registration and the SDK's
 /// device list mean glasses are *added*; only a device's link state `.connected` means connected.
+///
+/// It also keeps the Meta camera permission's last known status and, from that and the snapshot,
+/// publishes `reachability`: why added glasses are not connected (Plan HX P3). That is a reading
+/// beside the phase, never an input to it.
 @MainActor
 class GlassesConnectionService: ObservableObject {
     /// Where the glasses are, from "never added" to "connected".
@@ -32,6 +36,14 @@ class GlassesConnectionService: ObservableObject {
     /// Whether the active device and this build can work together, only while the link is up.
     /// `.undefined` is the glasses not having said; nil is the glasses being away.
     @Published private(set) var compatibility: GlassesCompatibility?
+    /// The Meta camera permission as last read or asked for. Written here and nowhere else: by
+    /// the checks this service makes when registration lands, by the wearer's own request, and by
+    /// what a camera start learned (`noteCameraPermission(_:)`).
+    @Published private(set) var cameraPermission: GlassesCameraPermission = .notChecked
+    /// Registration, each listed device's link and the permission, and the diagnosis that follows
+    /// from them (`GlassesReachabilityDiagnosis`). Published whenever any of them changes, which a
+    /// phase alone would not show: a device being listed leaves the phase where it was.
+    @Published private(set) var reachability = GlassesReachability()
 
     private(set) var snapshot = GlassesConnectionSnapshot()
 
@@ -45,6 +57,18 @@ class GlassesConnectionService: ObservableObject {
     }
     private var deviceObservations: [String: DeviceObservation] = [:]
     private var isObserving = false
+
+    /// Where the Meta camera permission is read and asked for: the camera, in the app. Set after
+    /// init because the camera is built beside this service, not before it; setting it reads the
+    /// permission if registration had already landed.
+    weak var permissionSource: GlassesCameraPermissionSource? {
+        didSet { if permissionSource != nil { checkCameraPermissionSoon() } }
+    }
+    /// The check in flight, if any. Held so a second trigger does not start a second one, so the
+    /// wearer's request can wait for it instead of racing it, and so a test can wait for it.
+    private(set) var pendingPermissionCheck: Task<Void, Never>?
+    /// The wearer's own request is in flight; it may have left for Meta AI.
+    private(set) var isRequestingCameraAccess = false
 
     /// - Parameters:
     ///   - source: `nil` means the Meta SDK. Built here rather than as a default argument because
@@ -69,10 +93,10 @@ class GlassesConnectionService: ObservableObject {
             return
         }
         isObserving = true
-        apply(.registration(source.registration))
+        registrationChanged(source.registration)
         devicesChanged(source.devices)
         serviceObservations.append(source.observeRegistration { [weak self] registration in
-            self?.apply(.registration(registration))
+            self?.registrationChanged(registration)
         })
         serviceObservations.append(source.observeDevices { [weak self] ids in
             self?.devicesChanged(ids)
@@ -86,12 +110,23 @@ class GlassesConnectionService: ObservableObject {
         deviceObservations.values.forEach { $0.observation?.cancel() }
         deviceObservations.removeAll()
         isObserving = false
+        pendingPermissionCheck?.cancel()
+        pendingPermissionCheck = nil
+        cameraPermission = .notChecked
         snapshot = GlassesConnectionSnapshot()
         publish()
     }
 
     /// Number of live per-device subscriptions — for tests of the listener lifecycle.
     var observedDeviceCount: Int { deviceObservations.count }
+
+    private func registrationChanged(_ registration: GlassesRegistration) {
+        let landed = registration == .registered && snapshot.registration != .registered
+        apply(.registration(registration))
+        // Registration landing is when the permission is worth reading: it is what Meta AI lists
+        // a device behind. Read, never asked for (see `checkCameraPermission()`).
+        if landed { checkCameraPermissionSoon() }
+    }
 
     private func devicesChanged(_ ids: [String]) {
         PrivacyLog.device(.glasses, ids.isEmpty ? .deviceListEmpty : .deviceListChanged, count: ids.count)
@@ -100,7 +135,11 @@ class GlassesConnectionService: ObservableObject {
             entry.observation?.cancel()
             deviceObservations.removeValue(forKey: id)
         }
+        let emptied = ids.isEmpty && !snapshot.deviceIds.isEmpty
         apply(.devices(ids))
+        // A list that empties under a registered app is most often the permission being taken
+        // back in Meta AI, so what the app last knew about it is no longer worth showing.
+        if emptied { checkCameraPermissionSoon() }
         for id in snapshot.deviceIds where deviceObservations[id] == nil {
             subscribe(to: id)
         }
@@ -143,15 +182,97 @@ class GlassesConnectionService: ObservableObject {
         if thermal != newThermal { thermal = newThermal }
         let newCompatibility = snapshot.liveCompatibility
         if compatibility != newCompatibility { compatibility = newCompatibility }
+        let newReachability = GlassesReachability(snapshot: snapshot, permission: cameraPermission)
+        let newDiagnosis = newReachability.diagnosis
+        let diagnosisChanged = reachability.diagnosis != newDiagnosis
+        if reachability != newReachability {
+            reachability = newReachability
+            if diagnosisChanged {
+                PrivacyLog.device(.glasses, .reachabilityRead,
+                                  state: PrivacyToken.caseName(of: newDiagnosis),
+                                  count: newReachability.links.count)
+            }
+        }
         let newPhase = snapshot.phase
         if isConnected != newPhase.isConnected { isConnected = newPhase.isConnected }
+        let newStatus = newDiagnosis.statusLine(deviceName: newName)
         if phase != newPhase {
             phase = newPhase
-            connectionStatus = newPhase.statusText(deviceName: newName)
-        } else if newPhase == .connected, connectionStatus != newPhase.statusText(deviceName: newName) {
+            connectionStatus = newStatus
+        } else if diagnosisChanged {
+            // The phase cannot tell "nothing listed" from "listed, out of reach"; the line can.
+            connectionStatus = newStatus
+        } else if newPhase == .connected, connectionStatus != newStatus {
             // The name can arrive after the link does.
-            connectionStatus = newPhase.statusText(deviceName: newName)
+            connectionStatus = newStatus
         }
+    }
+
+    // MARK: - Meta camera permission (Plan HX P3)
+
+    /// Read the Meta camera permission, without asking for it, once registration has landed.
+    ///
+    /// This is all that launch, a registration change and an emptied device list ever do. Asking
+    /// deep-links to Meta AI, and before this the registration listener asked whenever it heard
+    /// "registered" with the permission not cached — so a launch could leave for another app with
+    /// nobody having pressed anything. Asking is `requestCameraAccess()`, the wearer's own.
+    ///
+    /// Called directly by the screen that shows the diagnosis, each time it opens. Not while a
+    /// link is up: connected glasses are past the permission, and there is no line to keep honest.
+    func checkCameraPermission() async {
+        if !phase.isConnected { checkCameraPermissionSoon() }
+        await pendingPermissionCheck?.value
+    }
+
+    private func checkCameraPermissionSoon() {
+        guard isObserving, snapshot.registration == .registered, pendingPermissionCheck == nil,
+              !isRequestingCameraAccess, let permissionSource else { return }
+        pendingPermissionCheck = Task { [weak self] in
+            let status = await permissionSource.cameraPermission(asking: false)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingPermissionCheck = nil
+            // A request that started meanwhile has the newer answer coming.
+            if !self.isRequestingCameraAccess { self.noteCameraPermission(status) }
+        }
+    }
+
+    /// The wearer's own request, from Connect or from "Allow camera access in Meta AI": read the
+    /// permission and, when it is not granted, ask for it in Meta AI. Asked once per call.
+    @discardableResult
+    func requestCameraAccess() async -> GlassesCameraPermission {
+        guard let permissionSource, !isRequestingCameraAccess else { return cameraPermission }
+        isRequestingCameraAccess = true
+        defer { isRequestingCameraAccess = false }
+        await pendingPermissionCheck?.value
+        let status = await permissionSource.cameraPermission(asking: true)
+        noteCameraPermission(status)
+        return status
+    }
+
+    /// The permission half of a Connect the wearer pressed: once registration has landed and Meta
+    /// AI lists no device, ask. Nothing is asked of a pair that is already listed (it is past the
+    /// permission) or of an app that is not registered (there is nothing to ask Meta AI about).
+    func requestCameraAccessForConnect() async {
+        guard isObserving else { return }
+        // Registration is read back rather than waited for: the listener that maintains the
+        // snapshot delivers a main-queue hop behind the state `connect()` just polled.
+        registrationChanged(source.registration)
+        guard reachability.connectShouldAskForCameraAccess else { return }
+        connectionStatus = GlassesReachabilityDiagnosis.permissionNeeded.statusLine(deviceName: nil)
+        await requestCameraAccess()
+        connectionStatus = reachability.diagnosis.statusLine(deviceName: deviceName)
+    }
+
+    /// What something else learned about the permission: a camera start checks and asks for it
+    /// too, inside the backend, and reports how that ended.
+    func noteCameraPermission(_ status: GlassesCameraPermission) {
+        guard cameraPermission != status else { return }
+        var failure: SafeErrorSummary?
+        if case .failed(let summary) = status { failure = summary }
+        PrivacyLog.device(.glasses, .cameraPermissionRead,
+                          state: PrivacyToken.caseName(of: status), error: failure)
+        cameraPermission = status
+        publish()
     }
 
     func connect() async {
@@ -196,13 +317,14 @@ class GlassesConnectionService: ObservableObject {
             PrivacyLog.device(.glasses, .registrationState,
                               state: PrivacyToken(String(stateAfter.rawValue)))
             // Registered says nothing about the link: a pair already connected keeps saying so,
-            // and one still in its case is what "Waiting for device…" means.
-            if phase.isConnected {
-                connectionStatus = phase.statusText(deviceName: deviceName)
+            // and for one that is not, the diagnosis says what it is waiting on.
+            if RegistrationFlow.isRegistered(stateRaw: stateAfter.rawValue) {
+                if isObserving { registrationChanged(source.registration) }
+                connectionStatus = reachability.diagnosis.statusLine(deviceName: deviceName)
+            } else if phase.isConnected {
+                connectionStatus = reachability.diagnosis.statusLine(deviceName: deviceName)
             } else {
-                connectionStatus = RegistrationFlow.isRegistered(stateRaw: stateAfter.rawValue)
-                    ? RegistrationFlow.status(stateRaw: stateAfter.rawValue)
-                    : RegistrationFlow.approvalTimedOutStatus()
+                connectionStatus = RegistrationFlow.approvalTimedOutStatus()
             }
         } catch {
             // `startRegistration()` uses typed throws, so every error reaching this catch is a

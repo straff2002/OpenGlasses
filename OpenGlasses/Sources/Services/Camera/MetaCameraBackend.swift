@@ -218,11 +218,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
         events.send(.registrationProgress(regState.rawValue))
 
         // iOS Camera Permission
-        let iosVideoStatus = AVCaptureDevice.authorizationStatus(for: .video)
-        if iosVideoStatus == .notDetermined {
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if !granted { throw CameraError.permissionDenied }
-        } else if iosVideoStatus == .denied || iosVideoStatus == .restricted {
+        guard await phoneCameraAllowed() else {
+            events.send(.cameraPermission(.phoneCameraDenied))
             throw CameraError.permissionDenied
         }
 
@@ -251,26 +248,127 @@ final class MetaCameraBackend: GlassesCameraBackend {
                                   state: PrivacyToken(String(describing: status)))
                 if status == .granted {
                     permissionGranted = true
+                    events.send(.cameraPermission(.granted))
                     return
                 }
 
                 let requestStatus = try await Wearables.shared.requestPermission(.camera)
                 guard requestStatus == .granted else { throw CameraError.permissionDenied }
                 permissionGranted = true
+                events.send(.cameraPermission(.granted))
                 return
             } catch {
+                // Summarised here, where the SDK's own error still exists: what is thrown from
+                // this function is one of two `CameraError`s whatever went wrong (Plan HX P3).
+                let summary = Self.permissionSummary(of: error)
                 PrivacyLog.camera(.glasses, .permissionFailed,
                                   attempt: attempt + 1, ofAttempts: maxAttempts,
-                                  error: SafeErrorSummary(error))
+                                  error: summary)
 
                 if let nsError = error as NSError?, nsError.domain == "MWDATCore.PermissionError" {
                     let currentState = Wearables.shared.registrationState.rawValue
                     if currentState < 3 { throw CameraError.sdkNotRegistered }
                 }
-                if case .permissionDenied? = error as? CameraError { throw error }
-                if attempt == maxAttempts - 1 { throw CameraError.sdkNotRegistered }
+                if case .permissionDenied? = error as? CameraError {
+                    events.send(.cameraPermission(.declined))
+                    throw error
+                }
+                if attempt == maxAttempts - 1 {
+                    events.send(.cameraPermission(.failed(summary)))
+                    throw CameraError.sdkNotRegistered
+                }
             }
         }
+    }
+
+    /// iOS's own camera permission, which the glasses' is asked behind: prompted for when the
+    /// wearer has never answered, and false when they or a restriction said no.
+    private func phoneCameraAllowed() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .video)
+        case .denied, .restricted: return false
+        default: return true
+        }
+    }
+
+    // MARK: - Permission status (Plan HX P3)
+
+    /// The Meta camera permission as it stands and, only when `asking`, one request for it.
+    ///
+    /// The check never leaves the app, so it is what launch and a registration change use. The
+    /// request deep-links to Meta AI and belongs to the wearer's own action. It is a single
+    /// attempt, where `ensurePermission()` above makes three: there, a request that *fails*
+    /// rather than being refused is retried four seconds later, and each retry opens Meta AI
+    /// again. Someone who pressed a button once is taken there once.
+    ///
+    /// A check that fails does not stand in the way of asking. With nothing listed the SDK may
+    /// have no device to read the permission from, and the request is the thing that changes that.
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission {
+        guard WearablesBootstrap.ensureConfigured(),
+              Wearables.shared.registrationState.rawValue >= 3 else {
+            // Nothing to read it from. Asked for, that is a failure the wearer should see.
+            PrivacyLog.camera(.glasses, .notRegistered)
+            return asking ? .failed(SafeErrorSummary(CameraError.sdkNotRegistered)) : .notChecked
+        }
+        if asking, !(await phoneCameraAllowed()) { return .phoneCameraDenied }
+
+        var checkFailure: SafeErrorSummary?
+        do {
+            let status = try await Wearables.shared.checkPermissionStatus(.camera)
+            PrivacyLog.camera(.glasses, .permissionChecked,
+                              state: PrivacyToken(String(describing: status)))
+            if status == .granted {
+                notePermissionGranted()
+                return .granted
+            }
+        } catch {
+            checkFailure = Self.permissionSummary(of: error)
+            PrivacyLog.camera(.glasses, .permissionFailed, attempt: 1, ofAttempts: 1,
+                              error: checkFailure)
+        }
+        permissionGranted = false
+        guard asking else { return checkFailure.map { .failed($0) } ?? .notGranted }
+
+        do {
+            let answer = try await Wearables.shared.requestPermission(.camera)
+            PrivacyLog.camera(.glasses, .permissionRequested,
+                              state: PrivacyToken(String(describing: answer)))
+            guard answer == .granted else { return .declined }
+            notePermissionGranted()
+            return .granted
+        } catch {
+            let summary = Self.permissionSummary(of: error)
+            PrivacyLog.camera(.glasses, .permissionFailed, attempt: 1, ofAttempts: 1, error: summary)
+            return .failed(summary)
+        }
+    }
+
+    /// The cached flag is `ensurePermission()`'s fast path past iOS's prompt, so it is only set
+    /// once iOS has said yes: a check alone does not ask iOS anything.
+    private func notePermissionGranted() {
+        if AVCaptureDevice.authorizationStatus(for: .video) == .authorized { permissionGranted = true }
+    }
+
+    /// An error from the permission calls as a summary that names its case.
+    ///
+    /// The generic ladder cannot do that for the SDK's errors: they describe themselves, so it
+    /// keeps the type's name and the case's ordinal, and every failure reads "PermissionError".
+    /// The case names are the SDK's own vocabulary and say nothing about the wearer.
+    nonisolated static func permissionSummary(of error: Error) -> SafeErrorSummary {
+        guard let permissionError = error as? PermissionError else { return SafeErrorSummary(error) }
+        let name: String
+        var category = SafeErrorSummary.Category.unknown
+        switch permissionError {
+        case .noDevice: name = "noDevice"
+        case .noDeviceWithConnection: name = "noDeviceWithConnection"
+        case .connectionError: name = "connectionError"; category = .cannotConnect
+        case .metaAINotInstalled: name = "metaAINotInstalled"
+        case .requestInProgress: name = "requestInProgress"
+        case .requestTimeout: name = "requestTimeout"; category = .timedOut
+        case .internalError: name = "internalError"
+        @unknown default: return SafeErrorSummary(error)
+        }
+        return SafeErrorSummary(category: category, detail: PrivacyToken(name))
     }
 
     // MARK: - Persistent Session

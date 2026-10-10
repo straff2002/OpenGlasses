@@ -261,14 +261,6 @@ final class GlassesConnectionPhaseTests: XCTestCase {
                         .filter(\.isConnected), [.connected])
     }
 
-    func testStatusText() {
-        XCTAssertEqual(GlassesConnectionPhase.noGlassesAdded.statusText(deviceName: nil), "Not connected")
-        XCTAssertEqual(GlassesConnectionPhase.addedDisconnected.statusText(deviceName: "X"), "Not connected")
-        XCTAssertEqual(GlassesConnectionPhase.connecting.statusText(deviceName: "X"), "Connecting…")
-        XCTAssertEqual(GlassesConnectionPhase.connected.statusText(deviceName: "X"), "Connected to X")
-        XCTAssertEqual(GlassesConnectionPhase.connected.statusText(deviceName: nil), "Connected to glasses")
-    }
-
     // MARK: - "Phone is the device" with truthful inputs
 
     func testPhoneIsTheDeviceOnlyWhenNothingIsAddedOrConnected() {

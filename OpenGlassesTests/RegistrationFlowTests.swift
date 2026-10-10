@@ -75,8 +75,88 @@ final class RegistrationFlowTests: XCTestCase {
         }
     }
 
+    // MARK: - A connect that gave up (Plan HX P3)
+
+    private func failure(_ registration: GlassesRegistration, _ links: [GlassesLinkState] = [],
+                         _ permission: GlassesCameraPermission = .notChecked) -> String {
+        RegistrationFlow.connectFailureMessage(
+            reachability: GlassesReachability(registration: registration, links: links, permission: permission),
+            bundleID: RegistrationFlow.publishedBundleID, appName: "Avenkin")
+    }
+
     /// House rule for this type: tell the user what to *do*. A message that only names the SDK's
     /// internal state is the thing `connectFailureMessage` was written to stop.
+    func testEveryConnectFailureIsItsOwnSentenceWithNoStateNumber() {
+        let failed = GlassesCameraPermission.failed(
+            SafeErrorSummary(category: .unknown, detail: PrivacyToken("noDevice"), code: 3))
+        let messages = [
+            failure(.notRegistered),
+            failure(.registered, [], .notGranted),
+            failure(.registered, [], .declined),
+            failure(.registered, [], .phoneCameraDenied),
+            failure(.registered, [], failed),
+            failure(.registered, [], .granted),
+            failure(.registered, [.disconnected], .granted),
+            failure(.registered, [.connecting], .granted),
+            failure(.registered, [.connected], .granted),
+        ]
+        XCTAssertEqual(Set(messages).count, messages.count, "no two causes read the same")
+        for message in messages {
+            XCTAssertFalse(message.isEmpty)
+            XCTAssertNil(message.rangeOfCharacter(from: .decimalDigits), message)
+            XCTAssertFalse(message.localizedCaseInsensitiveContains("state"), message)
+            XCTAssertFalse(message.contains("no device appeared"),
+                           "the sentence that named neither the permission nor Developer Mode is retired")
+        }
+    }
+
+    /// The tester's case: registered, no error, nothing listed. The likeliest cause is named, and
+    /// so is where the button for it is.
+    func testRegisteredWithNothingListedNamesTheCameraPermissionAndWhereToAllowIt() {
+        for permission in [GlassesCameraPermission.notChecked, .notGranted] {
+            let message = failure(.registered, [], permission)
+            XCTAssertTrue(message.contains("camera access"), message)
+            XCTAssertTrue(message.contains("Meta AI"), message)
+            XCTAssertTrue(message.contains("Settings › Devices & Privacy › Glasses"), message)
+            XCTAssertTrue(message.contains("Avenkin"), message)
+        }
+    }
+
+    func testEachWayThePermissionWasNotGrantedSaysWhereTheSwitchIs() {
+        XCTAssertTrue(failure(.registered, [], .declined).contains("wasn't allowed in Meta AI"))
+        let phone = failure(.registered, [], .phoneCameraDenied)
+        XCTAssertTrue(phone.contains("iPhone's Settings"))
+        XCTAssertFalse(phone.contains("wasn't allowed in Meta AI"))
+        let failed = failure(.registered, [], .failed(SafeErrorSummary(category: .unknown,
+                                                                       detail: PrivacyToken("metaAINotInstalled"))))
+        XCTAssertTrue(failed.contains("(metaAINotInstalled)"), "the reason can be quoted to support")
+    }
+
+    func testGrantedWithNothingListedNamesDeveloperModesOneAppLimit() {
+        let message = failure(.registered, [], .granted)
+        XCTAssertTrue(message.contains("Camera access is allowed"))
+        XCTAssertTrue(message.contains("connected in the Meta AI app"))
+        XCTAssertTrue(message.contains("Developer Mode"))
+    }
+
+    func testAListedPairThatIsOutOfReachIsNotToldToFixAPermission() {
+        for permission in [GlassesCameraPermission.notChecked, .notGranted, .declined, .granted] {
+            let message = failure(.registered, [.disconnected], permission)
+            XCTAssertTrue(message.contains("out of reach"), message)
+            XCTAssertTrue(message.contains("out of their case"), message)
+            XCTAssertFalse(message.contains("camera access"), "\(permission): a listed device is past it")
+        }
+    }
+
+    /// A pair that is listed keeps its own sentence even while registration reads below
+    /// registered, which it has been seen doing during a healthy session.
+    func testAListedPairIsNotToldItsRegistrationFailed() {
+        let message = RegistrationFlow.connectFailureMessage(
+            reachability: GlassesReachability(registration: .notRegistered, links: [.disconnected]),
+            configStatus: .placeholder(key: "MetaAppID"), bundleID: RegistrationFlow.publishedBundleID)
+        XCTAssertTrue(message.contains("out of reach"))
+    }
+
     // MARK: - Refused registration (release-channel gate)
 
     /// Outside Developer Mode Meta registers a distributed app only for invited testers. The

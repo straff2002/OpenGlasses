@@ -43,6 +43,15 @@ protocol GlassesCameraBackend: AnyObject {
 
     func ensurePermission() async throws
 
+    /// The glasses-side camera permission as it stands (Plan HX P3). With `asking`, and only
+    /// then, a permission that is not granted is asked for — once, where `ensurePermission()`
+    /// retries. Never throws: how it ended is the answer, and the backend is the only place the
+    /// device layer's own error is still there to be summarised.
+    ///
+    /// Defaulted to the cached flag, because a backend with no permission of its own to read —
+    /// every test fake that is not about this — should not have to say so.
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission
+
     /// Capture a single still. Implementations return encoded image data (JPEG).
     func capturePhoto() async throws -> Data
 
@@ -63,6 +72,10 @@ protocol GlassesCameraBackend: AnyObject {
 
 extension GlassesCameraBackend {
     var scheduledWorkCount: Int { 0 }
+
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission {
+        permissionGranted ? .granted : .notChecked
+    }
 }
 
 /// Status of a backend's video stream, as the UI understands it.
@@ -124,6 +137,10 @@ enum CameraBackendEvent {
     /// update their firmware when they simply doffed the glasses sends them somewhere useless.
     case transientNotice(String)
     case registrationProgress(Int)
+    /// How a permission check or request made on the way to the camera ended (Plan HX P3).
+    /// `ensurePermission()` only returns or throws, and what it throws has lost the device
+    /// layer's reason; this carries the status out for the connection's diagnosis.
+    case cameraPermission(GlassesCameraPermission)
 }
 
 extension CameraBackendEvent {

@@ -1,9 +1,10 @@
+import MWDATCore
 import XCTest
 @testable import OpenGlasses
 
 /// Plan HX P3 — why added glasses are not connected: the diagnosis table, the line it puts on the
-/// session card, and what the Developer panel and the support report say. Headless: nothing here
-/// touches `Wearables`.
+/// session card, what the Developer panel and the support report say, and the summary a failed
+/// permission call carries. Headless: nothing here touches `Wearables`.
 final class GlassesReachabilityDiagnosisTests: XCTestCase {
 
     private let everyRegistration: [GlassesRegistration] = [.notRegistered, .registering, .registered]
@@ -252,5 +253,41 @@ final class GlassesReachabilityDiagnosisTests: XCTestCase {
         }
         XCTAssertTrue(samples[2].probeDetail.contains("declined"), "the permission's status is named")
         XCTAssertTrue(samples[4].probeDetail.hasPrefix("1 listed"), "a count, not a device")
+    }
+
+    // MARK: - The summary a failed permission call carries
+
+    /// The SDK's permission errors describe themselves, so the generic ladder keeps only the
+    /// type's name and every failure reads the same. The backend, which still has the error,
+    /// names the case.
+    func testEveryPermissionErrorKeepsItsCaseNameAndNoOrdinal() {
+        let named: [(PermissionError, String)] = [
+            (.noDevice, "noDevice"), (.noDeviceWithConnection, "noDeviceWithConnection"),
+            (.connectionError, "connectionError"), (.metaAINotInstalled, "metaAINotInstalled"),
+            (.requestInProgress, "requestInProgress"), (.requestTimeout, "requestTimeout"),
+            (.internalError, "internalError"),
+        ]
+        for (error, name) in named {
+            let summary = MetaCameraBackend.permissionSummary(of: error)
+            XCTAssertEqual(summary.detail?.description, name)
+            XCTAssertNil(summary.code, "\(name): the case's position in its enum is not a reason")
+            XCTAssertEqual(GlassesCameraPermission.failed(summary).reportToken, "failed(\(name))")
+        }
+        XCTAssertEqual(MetaCameraBackend.permissionSummary(of: PermissionError.requestTimeout).category, .timedOut)
+        XCTAssertEqual(MetaCameraBackend.permissionSummary(of: PermissionError.connectionError).category,
+                       .cannotConnect)
+        XCTAssertEqual(Set(named.map { MetaCameraBackend.permissionSummary(of: $0.0) }.map(\.description)).count,
+                       named.count, "no two cases read the same")
+    }
+
+    func testAnErrorThatIsNotTheSDKsIsSummarisedTheUsualWay() {
+        XCTAssertEqual(MetaCameraBackend.permissionSummary(of: CameraError.sdkNotRegistered),
+                       SafeErrorSummary(CameraError.sdkNotRegistered))
+        struct Leaky: LocalizedError {
+            var errorDescription: String? { "Maria's glasses at 12 High Street" }
+        }
+        let summary = MetaCameraBackend.permissionSummary(of: Leaky())
+        XCTAssertFalse(summary.description.contains("Maria"))
+        XCTAssertFalse(GlassesCameraPermission.failed(summary).reportToken.contains("High Street"))
     }
 }

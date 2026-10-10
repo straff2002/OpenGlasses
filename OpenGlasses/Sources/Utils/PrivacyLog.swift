@@ -526,6 +526,9 @@ enum PrivacyLog {
     enum CameraEvent: String {
         case permissionRevalidating, registrationState, notRegistered
         case permissionRetry, permissionChecked, permissionFailed
+        /// HX P3. The answer Meta AI gave to a request for the camera permission. `state` is the
+        /// SDK's own status name.
+        case permissionRequested
         case sessionBound, sessionNotStarted, sessionError, sessionAttemptFailed
         /// The start wait stopped early because the SDK had already reported a session error —
         /// that error is then thrown instead of the generic "stream not ready", so the attempt
@@ -1884,6 +1887,11 @@ enum PrivacyLog {
         /// HX P1. What the connected glasses' device state reads, each time it changes: the
         /// compatibility case, and the thermal level. `state` is the app's own case name.
         case compatibilityRead, thermalRead
+        /// HX P3. `reachabilityRead` is the diagnosis of why the glasses are or are not connected,
+        /// each time it changes, with the number of devices listed. `cameraPermissionRead` is the
+        /// Meta camera permission's status each time it changes. `state` is the app's own case
+        /// name in both.
+        case reachabilityRead, cameraPermissionRead
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

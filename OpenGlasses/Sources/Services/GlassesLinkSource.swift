@@ -27,6 +27,17 @@ protocol GlassesLinkObservation: AnyObject {
     func cancel()
 }
 
+/// Where `GlassesConnectionService` reads and asks for the Meta camera permission (Plan HX P3).
+/// In the app it is `CameraService`, whose backend is the one place the SDK's permission calls
+/// are made; tests inject a fake, which is also how "launch never asks" is counted.
+@MainActor
+protocol GlassesCameraPermissionSource: AnyObject {
+    /// The permission as it stands. With `asking`, and only then, a permission that is not
+    /// granted is asked for once — which leaves the app for Meta AI. Never throws: how it ended
+    /// is the answer.
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission
+}
+
 // MARK: - Meta SDK
 
 /// The Meta DAT SDK as a `GlassesLinkSource`. The only place the SDK's `LinkState`,

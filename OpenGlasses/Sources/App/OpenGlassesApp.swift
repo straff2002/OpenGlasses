@@ -831,6 +831,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Whether glasses are part of this person's setup — added now (registered or listed by the
     /// SDK) or at any time before (`Config.glassesAdded`). Not whether they are reachable.
     var glassesAdded: Bool { glassesPhase.glassesAdded || Config.glassesAdded }
+    /// Why the glasses are or are not connected, for the views that say so (Plan HX P3). Mirrors
+    /// `glassesService.reachability`. A reading only: nothing here decides `isConnected`.
+    @Published private(set) var glassesReachability = GlassesReachability()
 
     /// A new link phase from `glassesService`.
     private func applyGlassesPhase(_ phase: GlassesConnectionPhase) {
@@ -994,6 +997,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// only place connecting them was the request. Lifts a stand-down; registers only when the link
     /// is not already up (registering a registered app is a round trip to Meta AI for nothing).
     ///
+    /// Once registration has landed and Meta AI lists no device, the same request asks for the
+    /// Meta camera permission, which is what a device is listed behind (Plan HX P3). Asking
+    /// leaves for Meta AI, so it happens here, inside something the wearer pressed, and nowhere
+    /// at launch.
+    ///
     /// - Parameter awaitLink: wait (up to 15 s — DAT registration can take a while the first time
     ///   or after re-pairing) for the link to come up, and report it if it does not. Onboarding
     ///   passes `false`: it is after the registration, and reports that itself.
@@ -1003,20 +1011,23 @@ class AppState: ObservableObject, AppStateProtocol {
         isConnectingGlasses = true
         defer { isConnectingGlasses = false }
         await glassesService.connect()
+        await glassesService.requestCameraAccessForConnect()
         guard awaitLink else { return }
-        for _ in 0..<60 where !isConnected {
+        // The wait is for a link, and without the permission no device can be listed to have
+        // one: that is reported at once instead of after fifteen seconds of nothing.
+        for _ in 0..<60 where !isConnected && !glassesService.reachability.waitsOnCameraAccess {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         guard !isConnected else { return }
-        // The listener-maintained raw state, not `Wearables.shared`: with the SDK unconfigured the
-        // latter traps, and that is one of the failures this message exists to report.
-        let stateRaw = registrationStateRaw
+        // The service's own reading, not `Wearables.shared`: with the SDK unconfigured the latter
+        // traps, and that is one of the failures this message exists to report.
+        let reachability = glassesService.reachability
         let configStatus = MWDATConfigCheck.validate(
             Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
-        errorMessage = RegistrationFlow.connectFailureMessage(stateRaw: stateRaw,
+        errorMessage = RegistrationFlow.connectFailureMessage(reachability: reachability,
                                                               configStatus: configStatus)
         errorMessageIsGlassesConnection = true
-        addDebugEvent("connectGlasses gave up: registrationState=\(stateRaw), config=\(configStatus)")
+        addDebugEvent("connectGlasses gave up: \(reachability.diagnosis), config=\(configStatus)")
     }
 
     /// The wearer's glasses connect (`connectGlasses()`) is under way — the session card shows its
@@ -3405,6 +3416,19 @@ class AppState: ObservableObject, AppStateProtocol {
                 self?.applyGlassesPhase(phase)
             }
         cancellables.append(glassesPhaseToken)
+        // Why the glasses are not connected (Plan HX P3). The service reads the Meta camera
+        // permission through the camera, whose backend is where the SDK's permission calls are,
+        // and a camera start that learns something about it on its way says so here.
+        glassesService.permissionSource = cameraService
+        cameraService.onGlassesCameraPermission = { [weak self] status in
+            self?.glassesService.noteCameraPermission(status)
+        }
+        let glassesReachabilityToken = glassesService.$reachability
+            .removeDuplicates()
+            .sink { [weak self] reachability in
+                self?.glassesReachability = reachability
+            }
+        cancellables.append(glassesReachabilityToken)
         // The camera asks the same question before trusting the glasses with a capture: a
         // registered pair with no link would otherwise be tried, and fail, instead of falling back.
         // Stood down counts as away too: the wearer disconnected, so a capture uses the phone.
@@ -4169,8 +4193,13 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         // Registration is watched here for its own consequences — the raw state the UI and the
-        // wake-word gates read, and the early camera-permission request. It does not make the
-        // glasses connected: `glassesService` owns that, from each device's link state.
+        // wake-word gates read. It does not make the glasses connected: `glassesService` owns
+        // that, from each device's link state. Nor does it ask for the Meta camera permission any
+        // more (Plan HX P3): this listener used to call `ensurePermission()` whenever it heard
+        // "registered" with the permission not cached, and that function requests as well as
+        // checks, so a launch or a registration change could leave for Meta AI unasked.
+        // `glassesService` now reads the permission when registration lands and asks only inside
+        // a Connect the wearer pressed.
         let regToken = Wearables.shared.addRegistrationStateListener { [weak self] newState in
             Task { @MainActor in
                 guard let self else { return }
@@ -4180,13 +4209,6 @@ class AppState: ObservableObject, AppStateProtocol {
                 if newState.rawValue >= 3 {
                     // State 3 = fully registered
                     UserDefaults.standard.set(true, forKey: "hasRegisteredWithMeta")
-
-                    // Pre-request Meta camera permission so it's ready for first photo
-                    if !self.cameraService.permissionGranted {
-                        Task {
-                            try? await self.cameraService.ensurePermission()
-                        }
-                    }
                 }
             }
         }
@@ -4206,8 +4228,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// NEVER auto-calls startRegistration() — that must be user-initiated only.
     /// The SDK may auto-reconnect via Bluetooth if previously registered.
     ///
-    /// IMPORTANT: Devices won't appear in `addDevicesListener` until camera permission
-    /// is granted. We request permission early after reaching state 3 so devices become visible.
+    /// Devices won't appear in `addDevicesListener` until a permission is granted in Meta AI.
+    /// Launch never asks for it: `glassesService` reads the camera permission when registration
+    /// lands (`checkCameraPermission()`), and a missing one shows as "camera access needed" with
+    /// a button, instead of throwing a registered wearer into the Meta AI app at every launch.
     private func autoConnectGlasses() {
         Task {
             // Small delay to let SDK initialize
@@ -4223,7 +4247,6 @@ class AppState: ObservableObject, AppStateProtocol {
             if state.rawValue >= 3 {
                 // Already registered this session
                 self.addDebugEvent("Already registered on launch")
-                await requestEarlyPermission(allowRequest: false)
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
@@ -4231,104 +4254,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.registrationStateRaw = settledState.rawValue
                 if settledState.rawValue >= 3 {
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
-                    await requestEarlyPermission(allowRequest: false)
                 } else {
                     self.addDebugEvent("State \(settledState.rawValue) — tap Connect to register")
                 }
             }
         }
-    }
-
-    /// Establish camera permission early so devices appear in addDevicesListener.
-    /// Per Meta docs: "A device will not appear in devicesStream until the user has
-    /// granted at least one permission (e.g., camera) through the Meta AI app."
-    ///
-    /// `allowRequest` decides what happens when the permission is *not* already granted.
-    /// Requesting it deep-links out to the Meta AI app, so that only ever happens for a
-    /// user-initiated action — the same rule `autoConnectGlasses()` follows for registration.
-    /// At launch we only *check*: an already-granted permission still connects silently, but a
-    /// registered user with no glasses paired is no longer thrown into the Meta AI app on every
-    /// single launch, where there is nothing for them to approve.
-    private func requestEarlyPermission(allowRequest: Bool) async {
-        addDebugEvent("Checking early camera permission for device discovery...")
-        guard WearablesBootstrap.ensureConfigured() else {
-            addDebugEvent("Wearables SDK unavailable — cannot request glasses camera permission")
-            return
-        }
-
-        // Ensure iOS camera permission first
-        let iosVideoStatus = AVCaptureDevice.authorizationStatus(for: .video)
-        if iosVideoStatus == .notDetermined {
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            if !granted {
-                addDebugEvent("iOS camera permission denied")
-                return
-            }
-        } else if iosVideoStatus == .denied || iosVideoStatus == .restricted {
-            addDebugEvent("iOS camera permission denied/restricted")
-            return
-        }
-
-        // Brief stabilization delay
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-
-        // Check/request Meta SDK camera permission
-        do {
-            let status = try? await Wearables.shared.checkPermissionStatus(.camera)
-            addDebugEvent("Early check: \(String(describing: status))")
-            if status == .granted {
-                // Devices appear via the listener; whether one is *connected* is its link state's
-                // call, not this permission's.
-                addDebugEvent("Camera permission already granted — devices should appear")
-                // Also ensure CameraService knows permission is cached
-                cameraService.permissionGranted = true
-                return
-            }
-
-            guard allowRequest else {
-                addDebugEvent("Camera permission not granted — tap Connect to approve in Meta AI")
-                return
-            }
-
-            // Request permission — this deep-links to Meta AI app
-            addDebugEvent("Requesting Meta camera permission...")
-            let result = try await Wearables.shared.requestPermission(.camera)
-            addDebugEvent("Early permission result: \(String(describing: result))")
-            if result == .granted {
-                cameraService.permissionGranted = true
-            }
-        } catch {
-            addDebugEvent("Early permission failed: \(error.localizedDescription)")
-            // The user can retry permission via the UI. Registration is not a link, so this
-            // claims nothing about whether the glasses are connected.
-        }
-
-        // Poll devices list after permission to track when device appears
-        await pollForDevices()
-    }
-
-    /// Poll the devices list after permission grant to track device discovery
-    private func pollForDevices() async {
-        let immediateDevices = Wearables.shared.devices
-        addDebugEvent("Devices immediately after permission: \(immediateDevices.count)")
-
-        // Poll every 2s for up to 30s to see when/if device appears
-        for i in 1...15 {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            let devices = Wearables.shared.devices
-            if !devices.isEmpty {
-                addDebugEvent("Device appeared after \(i*2)s! Count: \(devices.count)")
-                if let firstId = devices.first {
-                    let device = Wearables.shared.deviceForIdentifier(firstId)
-                    addDebugEvent("Device: \(device?.name ?? "unknown") type=\(String(describing: device?.deviceType()))")
-                }
-                return
-            }
-            if i % 5 == 0 {
-                addDebugEvent("Still polling for devices... \(i*2)s, count=\(devices.count)")
-            }
-        }
-        addDebugEvent("No device appeared after 30s of polling")
     }
 
     /// Auto-start wake word listener on app launch (don't wait for "Connect" or "Test Mic")
