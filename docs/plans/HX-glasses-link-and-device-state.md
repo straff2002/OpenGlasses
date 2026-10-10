@@ -1,11 +1,14 @@
 # Plan HX: Glasses Link and Device State (a lost link is heard, and the glasses say when they are hot or out of date)
 
-**Status:** 🚧 P0 and P3a shipped 2026-10-10. P0: a glasses link that drops unasked plays the
+**Status:** 🚧 P0, P1 and P3a shipped 2026-10-10. P0: a glasses link that drops unasked plays the
 descending pair and tells VoiceOver "Glasses disconnected", and a Disconnect or glasses taken off,
-which stay silent, are no longer withheld from VoiceOver. P3a: Devices & Privacy › Glasses has a row
-to press whenever the glasses are not connected, and the camera permission's outcome is shown under
-it. P1 (thermal and compatibility state) and the rest of P3 (the diagnosis and its four readers) are
-unbuilt; each is one PR, headless at its core. A device pass is owed for P0 and P3a.
+which stay silent, are no longer withheld from VoiceOver. P1: the glasses' thermal level and
+compatibility are read while connected; hot glasses move the power posture; glasses that ask for a
+firmware or app update are said so once per process; and a session the glasses refuse because the
+build is too old is asked for once per process instead of on every camera start. P3a: Devices &
+Privacy › Glasses has a row to press whenever the glasses are not connected, and the camera
+permission's outcome is shown under it. The rest of P3 (the diagnosis and its four readers) is
+unbuilt: one PR, headless at its core. A device pass is owed for P0, P1 and P3a.
 **Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
 apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
@@ -176,6 +179,10 @@ the worn reading and on the delivery. What shipped, and why, is under Phases ›
   clear at `MetaCameraBackend.swift:805` (that line keeps clearing every other notice). It resets
   only on relaunch, which is the only thing that can change the answer.
 
+**Corrected 2026-10-10:** the code and the SDK disagreed with this section on what may latch, on
+the shape of the two new fields, on where the thermal mapping takes its input and on how the
+sentence is said. What shipped, and why, is under Phases › P1.
+
 ### P3 · `GlassesReachabilityDiagnosis` (pure)
 
 A value computed from what the app already knows — registration, how many devices the SDK lists,
@@ -319,6 +326,102 @@ without a session attempt, through a fake backend seam; it survives the per-cycl
 `BRHardeningTests` keep their `message(for:)` cases. No test touches `Wearables` (it fatals in the
 test host); every decision is a pure type.
 
+**Shipped 2026-10-10.** `GlassesDeviceState` carries `thermal` (`GlassesThermal?`) and
+`compatibility` (`GlassesCompatibility`); `WearablesGlassesLinkSource` maps both, in the seed and in
+the listener, and is still the only place the SDK's device state is read.
+`GlassesConnectionSnapshot.liveThermal` and `liveCompatibility` are nil unless the link is up, and
+`GlassesConnectionService` publishes them as `thermal` and `compatibility` before the phase.
+`AppState.configurePower()` points `PowerPolicyService.glassesThermal` at that reading through
+`ThermalPressure(_: GlassesThermal)`, and a thermal change re-evaluates the posture when it happens
+rather than at the next thirty-second sample. `CompatibilityNoticePolicy`
+(`Services/CompatibilityNoticePolicy.swift`) decides the update notice and keeps the record for the
+process; `AppState.glassesCompatibilityChanged(_:)` posts the sentence to `NoticeCenter` and says
+it. `SDKRefusalLatch` (`Services/Camera/SDKRefusalLatch.swift`) is a value on `CameraService`, set
+by a new backend event (`.sdkRefused`) that the session-error watcher sends for
+`insufficientSDKVersion`; a latched `startStreaming()` or glasses `capturePhoto()` throws
+`CameraError.incompatible` with the app-update sentence before the backend is called. The log
+carries each reading as it changes (`compatibilityRead`, `thermalRead`, as case names) and the
+latch (`sdkRefusalLatched`, `startRefusedByLatch`), which is what the device pass reads. Tests:
+`GlassesConnectionServiceTests` (5 new) and `GlassesConnectionPhaseTests` (3 new),
+`PowerPolicyServiceTests` (5 new, one of them the wiring end to end through the fake link source),
+`CompatibilityNoticePolicyTests` (19), `SDKRefusalLatchTests` (13, eight of them through
+`CameraService` and the fake backend) and `GlassesDeviceStateWiringSourceGuardTests` (6, reading the
+three callers that cannot run in a test host). `BRHardeningTests` is unchanged.
+
+**What the code corrected (2026-10-10):**
+- **The compatibility reading does not latch. Only a refused session does.** The plan had
+  `compatibility == .sdkUpdateRequired` set the latch as well. The SDK's own description of that
+  reading is that the app should be updated and "some features may be unavailable"; and for an old
+  build it has two different answers when a session is actually asked for, the terminal
+  `insufficientSDKVersion` and the nonblocking `dwaOutOfStuRange`, with which the session carries
+  on. The reading cannot say which of the two the glasses will give. Latching on it risked
+  switching off, at every launch, a camera that works. So the reading is announced and nothing
+  more, and the first session the glasses refuse sets the latch: one session attempt per process
+  instead of one per start, which is the defect the latch was for. A source guard keeps the
+  reading from reaching the camera.
+- **The latch is a value, not an actor.** `CameraService` is main-actor bound and so is everything
+  that writes it, so `SDKRefusalLatch` is a small struct it holds, with no way to clear it.
+- **The watcher is in the backend and the starts are in the coordinator**, so the refusal crosses
+  the seam as an event. That is also what makes it testable: the fake backend sends `.sdkRefused`
+  and the test counts that it is never asked to start or capture again.
+- **The per-cycle clear is handled where it lands.** The backend still clears its notice at the
+  top of `ensureSessionWithRetry()` (line 811 now). `CameraService` turns a clear into "the refusal
+  stands" when latched (`SDKRefusalLatch.notice(afterBackendReported:)`) and into a clear
+  otherwise. Once latched the coordinator no longer reaches that line at all.
+- **A latched capture fails; it does not fall back to the phone.** Connected glasses that cannot
+  serve a capture have always failed rather than photograph whatever the phone is pointing at, and
+  the refusal keeps that. With the glasses away the phone camera works as before.
+- **Automatic work inside the backend is not gated by the latch.** The reconnect ladder and stall
+  recovery start only from a stream that was running, which refused glasses never give. Giving up
+  on a compatibility refusal inside the ladder is Plan HJ's row 3a.
+- **`ThermalLevel` is frozen**, so its mapping has no `@unknown default`; its `.unknown` is what
+  maps to nil. `Compatibility` is not frozen, and a case a later SDK adds reads as `undefined`. A
+  test compares the two case counts so that day is noticed.
+- **The glasses' "no thermal concern" is `GlassesThermal.normal`.** The SDK calls it `.none`, which
+  on an optional reads as nil.
+- **`GlassesDeviceState.compatibility` is not optional.** A device always has a reading
+  (`undefined` when it has not said), like `charging`. Only the published value is optional: nil
+  is the link being down, `undefined` is connected glasses that have not said.
+- **The thermal mapping took the SDK's type.** `ThermalPressure(_: ThermalLevel)` lived in
+  `PowerPolicyService.swift` with an SDK import. It now takes `GlassesThermal`, the file imports
+  nothing from the SDK, and a test pins that the two steps together are the table BV shipped. One
+  difference, and no posture changes with it: an unknown level used to read as nominal and is now
+  no signal.
+- **`message(for:)` has an overload for the app's own enum**, which is the production caller. The
+  SDK-typed one that `BRHardeningTests` call stays and delegates through the link source's mapping,
+  so there is one sentence per requirement.
+- **Once per process is once per sentence.** A firmware requirement and a too-old app are
+  different things to do, so each is said once. The record is keyed by the sentence because the
+  camera's own compatibility notice (BR P2) uses the same one for a refused build: it now checks
+  the same record, so a refusal met at link time and again at the first photo is said once.
+- **Said means played.** A sentence that speech withheld (glasses-only audio with the app stood
+  down, silent mode) or that failed is forgotten and said at the next connection. One that was
+  cut short counts.
+- **The sentence waits four seconds, then for the route, with no bound.** The connection has its
+  own sounds first, and the audio hand-off to the glasses two and a half seconds in stands aside
+  for anything already speaking, which would leave the wake word on the wrong microphone. The
+  wait reuses P0's route reading and decision (`GlassesLinkCuePolicy.delivery`) without its
+  eight-second bound: P0's cue is a tone, this is a sentence, and saying it over the assistant
+  would cut the answer off. The notice is on screen meanwhile.
+- **Only while connected is the reading being non-nil**, checked again at the moment of speaking.
+  A link that goes first drops the sentence unsaid, and the next connection says it.
+- **The firmware notice on screen is cleared by the next camera cycle.** It is posted under the
+  glasses' notice source, which the backend's per-cycle clear empties. It has been said by then,
+  and a camera that then fails for that reason posts its own.
+- **Nothing takes the notice back when the glasses become compatible.** A warning stays until it
+  is dismissed or the next camera cycle clears it.
+
+**Owed on a device:** read `thermalLevel` on a warm day or during a long stream: whether it moves
+at all before the camera's own thermal stop, and whether "conserving — glasses running warm"
+appears in the device-info answer and lifts when they cool (open question 3). With glasses that
+want a firmware update, connect and hear the sentence once, about four seconds after the connect
+tone and not over anything; reconnect and hear nothing. On a build the glasses refuse: one spoken
+update line whichever of the link or the first photo meets it first; the first camera start fails
+after one session attempt and every later one at once (`startRefusedByLatch` in the log, no
+`sessionAttemptFailed`); relaunch and it is asked once more. And the question this phase could not
+answer from a desk: what `compatibility` reads on glasses whose sessions still start, and on glasses
+that refuse (open question 9). `compatibilityRead` in a support report from either pair answers it.
+
 **Gates (both):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`,
 privacy-logging gate; index row, this Status line and BV's row and file updated in the P1 PR.
 
@@ -415,7 +518,7 @@ whether `noDeviceSeen` is the honest reading of it.
 1. Should the lost cue repeat if the link stays down? Recommended: no. One cue at loss, the
    restored line on return; a repeating cue in a pocket is noise. **P0 shipped it that way.**
 2. Speak the update requirement or only post it? Recommended: speak once, because the wearer of a
-   refused build otherwise hears nothing from the camera at all.
+   refused build otherwise hears nothing from the camera at all. **P1 shipped it that way.**
 3. Does `ThermalLevel` arrive often enough to be useful, or only near shutdown? P2 answers it.
 4. (P3) The registration listener calls `ensurePermission()` whenever the app is registered and
    the permission is not cached, which includes launch, and that function requests as well as
@@ -436,10 +539,17 @@ whether `noDeviceSeen` is the honest reading of it.
    the phone speaker when the glasses are away. No tone is gated by it, so the lost cue sounds from
    the phone. Recommended: leave it; the cue is the one thing that has to be heard there.
 
+9. (P1, 2026-10-10) Should `compatibility == sdkUpdateRequired` latch the camera off without
+   waiting for a session to be refused? P1 shipped it not latching, because the SDK does not say
+   that reading means sessions are refused. If the device pass shows the reading only ever
+   appears on glasses that refuse, it can latch too and save the one attempt. If it also appears
+   on glasses that work, the spoken sentence ("too old for your glasses") is too strong for it and
+   wants the gentler wording `DATCompatibilityMessage.advisory(for:)` already has.
+
 ## Dependencies
 
 - **BV** (🚧 P1 and P2 core shipped; index and file agree): P1 closes BV's glasses-thermal
-  deferral, and BV's row and file get a dated note saying so.
+  deferral, and BV's row and file get a dated note saying so. **Done 2026-10-10.**
 - **FF** (🚧, P0 PR1 and PR2 shipped): P0 reuses its route reading and its bounded wait, not the
   coordinator itself (see Phases › P0).
 - **HJ** (📋 Planned): its row 3a (a compatibility refusal gives up in every presence) reads the
