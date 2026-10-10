@@ -582,6 +582,18 @@ enum PrivacyLog {
         /// refused and the default one was used) and `stalled` (samples arriving, no picture).
         case tierResolved, frameShape
         case rebuilt, softwareUnavailable, stalled
+        /// HW P0. What a stream showed about where its keyframes can be read from, each written
+        /// once per stream. `keyframeSource` says which of the bitstream parser and the `NotSync`
+        /// sample attachment told the truth: `detail` is `parser` (the parser found a non-keyframe
+        /// the attachment would have passed as a keyframe), `both`, `disagree` (a random-access
+        /// picture marked `NotSync`) or `attachment` (the parser cannot read this stream), `state`
+        /// is the attachment on the deciding sample and `count` the samples seen by then.
+        /// `keyframeInterval` is the second random-access picture arriving: `count` is the samples
+        /// since the first, `detail` the kind of picture (`idr`, `cra`, `bla`, `irap`) and `state`
+        /// whether it carried its own parameter sets. `keyframeHoldAbandoned` is the keyframe hold
+        /// giving up on the parser after refusing `count` readable samples without meeting a
+        /// random-access picture, and falling back to the attachment.
+        case keyframeSource, keyframeInterval, keyframeHoldAbandoned
     }
 
     @discardableResult

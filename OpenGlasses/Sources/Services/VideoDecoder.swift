@@ -59,6 +59,10 @@ enum DecoderRecoveryPolicy {
 ///   picture is what the app sees, so no half-referenced frame reaches a model, a recording or
 ///   the lens.
 ///
+/// Plan HW P0 made that last rule true for a stream that does not label its own keyframes: what a
+/// sample is gets read from its bytes (`NALUnitInspector`), once per sample, and the `NotSync`
+/// attachment is the fallback rather than the authority.
+///
 /// Not thread-safe by itself: one instance is driven from one thread at a time (the SDK's frame
 /// listener, serialised by `GlassesFramePipeline`).
 final class VideoDecoder {
@@ -83,6 +87,10 @@ final class VideoDecoder {
 
     /// Withholds samples until the first keyframe after every (re)creation.
     private var keyframeHold = KeyframeHold()
+
+    /// What this stream has shown about its keyframes, for two log lines per stream. It outlives
+    /// a decoder rebuild, which happens inside a stream, and starts again in `resetForNewStream()`.
+    private var keyframeEvidence = KeyframeEvidence()
 
     /// The most recent successfully decoded picture — what the app is shown while the hold is on.
     private(set) var lastGoodImage: UIImage?
@@ -174,6 +182,11 @@ final class VideoDecoder {
             throw VideoDecoderError.invalidFormat
         }
 
+        // Read once: both hold gates below and the evidence ask the same question of the same
+        // bytes.
+        let inspection = Self.inspect(sampleBuffer)
+        record(inspection)
+
         if let currentFormat = currentFormatDescription,
            !CMFormatDescriptionEqual(currentFormat, otherFormatDescription: formatDescription) {
             try recreateDecompressionSession(formatDescription: formatDescription)
@@ -182,7 +195,7 @@ final class VideoDecoder {
         }
 
         // A session that has just been built cannot start mid-GOP.
-        guard keyframeHold.admits(keyframe: Self.isKeyframe(sampleBuffer)) else { return }
+        guard holdAdmits(inspection) else { return }
 
         do {
             try submit(sampleBuffer)
@@ -197,7 +210,7 @@ final class VideoDecoder {
                 try recreateDecompressionSession(formatDescription: formatDescription)
                 // The fresh session is holding again, so the retry only lands if this frame is
                 // itself a keyframe — which is exactly the frame that may safely start a session.
-                guard keyframeHold.admits(keyframe: Self.isKeyframe(sampleBuffer)) else { return }
+                guard holdAdmits(inspection) else { return }
                 try submit(sampleBuffer)
                 consecutiveFailures = 0
             case .countFailure:
@@ -238,16 +251,179 @@ final class VideoDecoder {
         SafeErrorSummary(category: .unknown, detail: PrivacyToken("VideoToolbox"), code: Int(status))
     }
 
-    /// A sample is a keyframe unless its attachments say `NotSync`. The attachment is absent on
-    /// most sync samples, so absence has to read as "yes".
+    // MARK: - What a sample is
+
+    /// One sample's readings, taken once per `decode()`.
+    struct SampleInspection: Equatable {
+        /// What the video itself says the sample is.
+        let kind: NALUnitInspector.PictureKind
+        /// The `NotSync` sample attachment: nil when the attachment array, its first entry or the
+        /// key is absent, otherwise what it says.
+        let notSync: Bool?
+        /// Whether a random-access sample carries its own parameter sets. Not looked for on any
+        /// other sample, where it reads false.
+        let parameterSetsInBand: Bool
+
+        /// The rule this decoder shipped with: a sample is a keyframe unless its attachments say
+        /// `NotSync`, so an absent attachment reads as "yes".
+        var attachmentSaysKeyframe: Bool { notSync != true }
+
+        /// The parser's answer where it has one, the attachment's where it does not.
+        var isKeyframe: Bool {
+            switch kind {
+            case .randomAccess: return true
+            case .nonRandomAccess, .leadingSkipped, .leadingDecodable: return false
+            case .unparseable: return attachmentSaysKeyframe
+            }
+        }
+    }
+
+    /// Whether a decoder may start on this sample.
+    ///
+    /// The answer comes from the sample's own bytes: the type of its first slice says whether it
+    /// is a random-access picture. It used to come from the `NotSync` attachment alone, with an
+    /// absent attachment read as "keyframe" because most sync samples carry none. That attachment
+    /// is something an encoder's wrapper adds as a courtesy. VideoToolbox's encoder does, the
+    /// glasses stream may never, and a stream that never sets it has no non-keyframes as far as
+    /// the attachment can tell. So the attachment is consulted only for a sample the parser
+    /// cannot read, where its old rule still applies.
     static func isKeyframe(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        inspect(sampleBuffer).isKeyframe
+    }
+
+    /// The `NotSync` attachment as it is, rather than as the old rule read it: nil means the
+    /// sample says nothing either way.
+    static func notSyncAttachment(_ sampleBuffer: CMSampleBuffer) -> Bool? {
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
             sampleBuffer, createIfNecessary: false) as? [[CFString: Any]],
               let first = attachments.first else {
-            return true
+            return nil
         }
-        guard let notSync = first[kCMSampleAttachmentKey_NotSync] as? Bool else { return true }
-        return !notSync
+        return first[kCMSampleAttachmentKey_NotSync] as? Bool
+    }
+
+    /// The CoreMedia half of the parser: find the codec, the NAL length-prefix size and the
+    /// bytes, and hand them to `NALUnitInspector`. Anything missing makes the sample
+    /// `.unparseable`; nothing is assumed, least of all a four-byte prefix.
+    static func inspect(_ sampleBuffer: CMSampleBuffer) -> SampleInspection {
+        let notSync = notSyncAttachment(sampleBuffer)
+        let unparseable = SampleInspection(kind: .unparseable, notSync: notSync,
+                                           parameterSetsInBand: false)
+
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let codec = NALUnitInspector.codec(
+                forMediaSubType: CMFormatDescriptionGetMediaSubType(formatDescription)),
+              let lengthSize = nalLengthSize(of: formatDescription, codec: codec),
+              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return unparseable
+        }
+
+        let read = withBytes(of: blockBuffer) { bytes -> SampleInspection in
+            let kind = NALUnitInspector.firstSliceKind(bytes, lengthSize: lengthSize, codec: codec)
+            var parameterSetsInBand = false
+            if case .randomAccess = kind {
+                parameterSetsInBand = NALUnitInspector.hasParameterSets(
+                    bytes, lengthSize: lengthSize, codec: codec)
+            }
+            return SampleInspection(kind: kind, notSync: notSync,
+                                    parameterSetsInBand: parameterSetsInBand)
+        }
+        return read ?? unparseable
+    }
+
+    /// The size of the length field in front of each NAL unit, from the format description's
+    /// decoder configuration. The parameter-set index is ignored when no parameter set is asked
+    /// for, so this works for a description that carries none.
+    private static func nalLengthSize(of formatDescription: CMFormatDescription,
+                                      codec: NALUnitInspector.Codec) -> Int? {
+        var headerLength: Int32 = 0
+        let status: OSStatus
+        switch codec {
+        case .hevc:
+            status = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(
+                formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil,
+                parameterSetSizeOut: nil, parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: &headerLength)
+        case .h264:
+            status = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+                formatDescription, parameterSetIndex: 0, parameterSetPointerOut: nil,
+                parameterSetSizeOut: nil, parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: &headerLength)
+        }
+        guard status == noErr else { return nil }
+        return Int(headerLength)
+    }
+
+    /// Runs `body` over the block buffer's bytes. A block buffer may be several pieces of memory
+    /// chained together, so the bytes are read in place only when they are known to be one
+    /// piece, and copied out otherwise. Nil when the bytes cannot be reached at all.
+    private static func withBytes<R>(of blockBuffer: CMBlockBuffer,
+                                     _ body: (UnsafeRawBufferPointer) -> R) -> R? {
+        let length = CMBlockBufferGetDataLength(blockBuffer)
+        guard length > 0 else { return nil }
+
+        if CMBlockBufferIsRangeContiguous(blockBuffer, atOffset: 0, length: length) {
+            var pointer: UnsafeMutablePointer<CChar>?
+            var lengthAtOffset = 0
+            let status = CMBlockBufferGetDataPointer(
+                blockBuffer, atOffset: 0, lengthAtOffsetOut: &lengthAtOffset,
+                totalLengthOut: nil, dataPointerOut: &pointer)
+            guard status == kCMBlockBufferNoErr, let pointer, lengthAtOffset >= length else {
+                return nil
+            }
+            return body(UnsafeRawBufferPointer(start: pointer, count: length))
+        }
+
+        var copy = [UInt8](repeating: 0, count: length)
+        let status = copy.withUnsafeMutableBytes { destination -> OSStatus in
+            guard let base = destination.baseAddress else {
+                return kCMBlockBufferBadPointerParameterErr
+            }
+            return CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length,
+                                              destination: base)
+        }
+        guard status == kCMBlockBufferNoErr else { return nil }
+        return copy.withUnsafeBytes(body)
+    }
+
+    // MARK: - The hold and its evidence
+
+    /// Asks the hold, and says so in the log the one time the hold stops believing the parser.
+    private func holdAdmits(_ inspection: SampleInspection) -> Bool {
+        let trustedParser = keyframeHold.trustsParser
+        let admitted = keyframeHold.admits(
+            inspection.kind, attachmentSaysKeyframe: inspection.attachmentSaysKeyframe)
+        if trustedParser, !keyframeHold.trustsParser {
+            PrivacyLog.camera(.decoder, .keyframeHoldAbandoned, count: KeyframeHold.patience)
+        }
+        return admitted
+    }
+
+    /// Feeds the per-stream evidence and writes whatever it settles. Every value is one of a
+    /// fixed set of words or a count; nothing of the picture is in them.
+    private func record(_ inspection: SampleInspection) {
+        let findings = keyframeEvidence.observe(
+            inspection.kind, notSync: inspection.notSync,
+            parameterSetsInBand: inspection.parameterSetsInBand)
+        for finding in findings {
+            switch finding {
+            case .source(let source, let samples, let notSync):
+                let attachment: String
+                switch notSync {
+                case .none: attachment = "notSyncAbsent"
+                case .some(true): attachment = "notSyncSet"
+                case .some(false): attachment = "notSyncClear"
+                }
+                PrivacyLog.camera(.decoder, .keyframeSource, state: PrivacyToken(attachment),
+                                  detail: PrivacyToken(source.rawValue), count: samples)
+            case .interval(let samples, let pictureName, let parameterSetsInBand):
+                PrivacyLog.camera(
+                    .decoder, .keyframeInterval,
+                    state: PrivacyToken(parameterSetsInBand ? "parameterSetsInBand"
+                                                            : "parameterSetsOutOfBand"),
+                    detail: PrivacyToken(pictureName), count: samples)
+            }
+        }
     }
 
     // MARK: - Session lifecycle
@@ -268,6 +444,16 @@ final class VideoDecoder {
         invalidateSession()
         consecutiveFailures = 0
         PrivacyLog.camera(.decoder, .rebuilt)
+    }
+
+    /// The stream this decoder was serving is gone and the next sample belongs to a new one. The
+    /// session goes, as it always did here, and the keyframe evidence starts again so the new
+    /// stream writes its own two lines. A rebuild inside a stream must not do that, which is why
+    /// this is not `invalidateSession()`. The hold's patience is left alone: what it has learnt
+    /// about the glasses' encoder does not change because the stream was restarted.
+    func resetForNewStream() {
+        invalidateSession()
+        keyframeEvidence.reset()
     }
 
     private func recreateDecompressionSession(formatDescription: CMFormatDescription) throws {

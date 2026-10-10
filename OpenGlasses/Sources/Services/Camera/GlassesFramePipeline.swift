@@ -100,11 +100,12 @@ final class GlassesFramePipeline: @unchecked Sendable {
         liveness.restart()
     }
 
-    /// A stream teardown. The decoder goes with it, and the next stream logs its own shape.
+    /// A stream teardown. The decoder goes with it, and the next stream logs its own shape and
+    /// its own keyframe evidence.
     func reset() {
         lock.lock()
         defer { lock.unlock() }
-        decoder.invalidateSession()
+        decoder.resetForNewStream()
         liveness.restart()
         loggedShape = nil
     }

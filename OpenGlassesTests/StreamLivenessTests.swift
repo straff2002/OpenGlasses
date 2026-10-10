@@ -204,4 +204,252 @@ final class StreamLivenessTests: XCTestCase {
         XCTAssertTrue(hold.isHolding)
         XCTAssertFalse(hold.admits(keyframe: false))
     }
+
+    // MARK: - The keyframe hold, reading the video (Plan HW P0)
+
+    private typealias Kind = NALUnitInspector.PictureKind
+    private let idr = Kind.randomAccess(nalType: 19, leadingMayBeUndecodable: false)
+    private let cra = Kind.randomAccess(nalType: 21, leadingMayBeUndecodable: true)
+    private let rasl = Kind.leadingSkipped(nalType: 9)
+    private let radl = Kind.leadingDecodable(nalType: 7)
+    private let trailing = Kind.nonRandomAccess(nalType: 1)
+
+    /// The field failure, stated without a decoder. The glasses stream is reported never to set
+    /// `NotSync`, so the attachment calls every sample a keyframe. The video says this one is an
+    /// ordinary frame, and the video is believed.
+    func testAPFrameWithNoAttachmentIsRefusedWhileHolding() {
+        var hold = KeyframeHold()
+        XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.isHolding)
+    }
+
+    /// And the other way round: a picture the video says a decoder can start on is admitted even
+    /// when its attachment says it is not a sync sample.
+    func testARandomAccessPictureEndsTheHoldWhateverTheAttachmentSays() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: false))
+        XCTAssertFalse(hold.isHolding)
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: false))
+    }
+
+    /// A decoder that starts on a CRA never saw the pictures its RASL pictures reference. They
+    /// are withheld like any other frame it cannot decode properly.
+    func testARASLAfterACRAIsHeld() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isHolding, "the CRA itself ends the hold")
+        XCTAssertTrue(hold.isSkippingLeadingPictures)
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// RADL pictures reference nothing from before the CRA, so they pass. They may sit between
+    /// RASL pictures, so one passing is not the end of the leading pictures.
+    func testARADLAfterACRAPassesAndTheRASLAfterItIsStillHeld() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(radl, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.isSkippingLeadingPictures)
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// The first trailing picture is the end of them: nothing after it in the stream is a
+    /// leading picture of that CRA.
+    func testTheFirstTrailingPictureEndsTheLeadingRule() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+        XCTAssertTrue(hold.admits(rasl, attachmentSaysKeyframe: true),
+                      "a RASL met later belongs to a CRA this decoder has the references for")
+    }
+
+    /// An IDR has no RASL pictures of its own, so a hold it released skips nothing.
+    func testARASLAfterAnIDRReleasedHoldPasses() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+        XCTAssertTrue(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// BLA_W_LP is the other type that may carry RASL pictures. The other two BLA types cannot.
+    func testABLAWithLeadingPicturesSetsTheRuleAndTheOtherBLATypesDoNot() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(.randomAccess(nalType: 16, leadingMayBeUndecodable: true),
+                                  attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+
+        var other = KeyframeHold()
+        XCTAssertTrue(other.admits(.randomAccess(nalType: 17, leadingMayBeUndecodable: false),
+                                   attachmentSaysKeyframe: true))
+        XCTAssertTrue(other.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// The rule is about a decoder *starting* on the CRA. One that was already running when the
+    /// CRA arrived has every reference, and its RASL pictures are ordinary frames.
+    func testACRAMetMidStreamDoesNotHoldItsLeadingPictures() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+        XCTAssertTrue(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// The next random-access picture ends the leading rule as surely as a trailing one.
+    func testTheNextRandomAccessPictureEndsTheLeadingRule() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+        XCTAssertTrue(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// A rebuild forgets the leading rule along with everything else: the new session's first
+    /// picture decides afresh.
+    func testARearmClearsTheLeadingRule() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        hold.rearm()
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true), "holding again")
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    /// A sample the parser cannot read is judged by the attachment, exactly as every sample was
+    /// before.
+    func testAnUnreadableSampleFallsBackToTheAttachment() {
+        var hold = KeyframeHold()
+        XCTAssertFalse(hold.admits(.unparseable, attachmentSaysKeyframe: false))
+        XCTAssertTrue(hold.isHolding)
+        XCTAssertTrue(hold.admits(.unparseable, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isHolding)
+        XCTAssertFalse(hold.isSkippingLeadingPictures)
+    }
+
+    /// An unreadable sample says nothing about whether the leading pictures have ended, so it
+    /// passes without ending the rule.
+    func testAnUnreadableSampleDoesNotEndTheLeadingRule() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(cra, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.admits(.unparseable, attachmentSaysKeyframe: false))
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+    }
+
+    // MARK: - Patience
+
+    /// The number is part of the contract: it is what a device session reads beside the
+    /// `keyframeHoldAbandoned` line.
+    func testPatienceIsTwoHundredAndFortySamples() {
+        XCTAssertEqual(KeyframeHold.patience, 240)
+    }
+
+    /// A stream with no picture the parser recognises as a place to start would be held for
+    /// ever. One short of patience the hold is still holding; the sample that reaches it is
+    /// judged by the attachment, which is the behaviour that shipped before.
+    func testPatienceRunsOutOnTheNamedSampleAndTheAttachmentDecidesFromThere() {
+        var hold = KeyframeHold()
+        for _ in 0..<(KeyframeHold.patience - 1) {
+            XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        }
+        XCTAssertTrue(hold.isHolding)
+        XCTAssertTrue(hold.trustsParser)
+        XCTAssertEqual(hold.refusedWhileHolding, KeyframeHold.patience - 1)
+
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.trustsParser)
+        XCTAssertFalse(hold.isHolding)
+    }
+
+    /// Giving up on the parser is not giving up on the hold. A stream that does mark its
+    /// non-keyframes is still held by the attachment.
+    func testWithPatienceGoneAMarkedNonKeyframeIsStillRefused() {
+        var hold = KeyframeHold()
+        for _ in 0..<KeyframeHold.patience {
+            XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: false))
+        }
+        XCTAssertFalse(hold.trustsParser)
+        XCTAssertTrue(hold.isHolding)
+        XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: false))
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.isHolding)
+    }
+
+    /// The stall detector rebuilds a decoder that is waiting, every few seconds. If each rebuild
+    /// restarted the count, patience would never run out on exactly the stream it exists for.
+    func testARearmDoesNotRestartPatience() {
+        var hold = KeyframeHold()
+        for _ in 0..<100 {
+            XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        }
+        hold.rearm()
+        XCTAssertEqual(hold.refusedWhileHolding, 100)
+        for _ in 0..<(KeyframeHold.patience - 101) {
+            XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        }
+        hold.rearm()
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true),
+                      "the 240th refusal, counted across two rebuilds")
+        XCTAssertFalse(hold.trustsParser)
+
+        // And once it has run out, later rebuilds go straight to the attachment.
+        hold.rearm()
+        XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+    }
+
+    /// Only a random-access picture actually arriving shows the parser can read this stream. It
+    /// zeroes the count before patience is spent, and restores the parser's standing after.
+    func testARandomAccessPictureRestoresTheParsersStanding() {
+        var hold = KeyframeHold()
+        for _ in 0..<200 {
+            XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true))
+        }
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        XCTAssertEqual(hold.refusedWhileHolding, 0)
+
+        hold.rearm()
+        for _ in 0..<KeyframeHold.patience {
+            _ = hold.admits(trailing, attachmentSaysKeyframe: true)
+        }
+        XCTAssertFalse(hold.trustsParser)
+
+        // Met while the decoder is running, not while holding: it counts all the same.
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        XCTAssertTrue(hold.trustsParser)
+        XCTAssertEqual(hold.refusedWhileHolding, 0)
+
+        hold.rearm()
+        XCTAssertFalse(hold.admits(trailing, attachmentSaysKeyframe: true),
+                       "the parser is believed again")
+    }
+
+    /// Patience counts samples the parser read and refused. One it could not read was never the
+    /// parser's refusal, and leading pictures are counted like any other readable frame.
+    func testOnlyReadableSamplesSpendPatience() {
+        var hold = KeyframeHold()
+        for _ in 0..<(KeyframeHold.patience * 2) {
+            XCTAssertFalse(hold.admits(.unparseable, attachmentSaysKeyframe: false))
+        }
+        XCTAssertEqual(hold.refusedWhileHolding, 0)
+        XCTAssertTrue(hold.trustsParser)
+
+        XCTAssertFalse(hold.admits(rasl, attachmentSaysKeyframe: true))
+        XCTAssertFalse(hold.admits(radl, attachmentSaysKeyframe: true))
+        XCTAssertEqual(hold.refusedWhileHolding, 2)
+    }
+
+    /// Frames that pass once the decoder is running are not refusals.
+    func testAdmittedFramesDoNotSpendPatience() {
+        var hold = KeyframeHold()
+        XCTAssertTrue(hold.admits(idr, attachmentSaysKeyframe: true))
+        for _ in 0..<(KeyframeHold.patience * 2) {
+            XCTAssertTrue(hold.admits(trailing, attachmentSaysKeyframe: true))
+        }
+        XCTAssertEqual(hold.refusedWhileHolding, 0)
+        XCTAssertTrue(hold.trustsParser)
+    }
 }
