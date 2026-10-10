@@ -1,7 +1,9 @@
 # Plan HX: Glasses Link and Device State (a lost link is heard, and the glasses say when they are hot or out of date)
 
-**Status:** 📝 Drafted 2026-10-10. Nothing built. Two PRs, both headless at their core: P0 the
-audible link drop, P1 thermal and compatibility state. A device pass is owed after each.
+**Status:** 🚧 P3a shipped 2026-10-10: Devices & Privacy › Glasses has a row to press whenever the
+glasses are not connected, and the camera permission's outcome is shown under it. P0 (the audible
+link drop), P1 (thermal and compatibility state) and the rest of P3 (the diagnosis and its four
+readers) are unbuilt; each is one PR, headless at its core, with a device pass owed after it.
 **Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
 apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
@@ -248,6 +250,51 @@ a hint by design.
 **Tests:** a pure row-state function (unregistered → connect; registered, not connected → allow
 access; connected → no row) and the outcome-to-footer mapping. P3 then replaces the row's own
 state function with the diagnosis.
+
+**Shipped 2026-10-10.** `GlassesConnectRow.resolve(registration:phase:)`
+(`Services/SettingsHub/GlassesConnectRow.swift`) picks the row and `GlassesSettingsView` draws it.
+"Allow camera access in Meta AI" calls `cameraService.ensurePermission()` through
+`GlassesCameraAccessOutcome.request`, whose two closures are the test seams, and keeps the answer
+as `granted`, `refused`, `phoneCameraDenied` or `failed(SafeErrorSummary)`. The footer says what
+the row is for until it is pressed and how the last press ended after; the outcome is also said to
+VoiceOver, because the footer changes while focus is still on the button. The pill's away hint now
+ends "…or reconnect in Settings › Devices & Privacy › Glasses." Launch is unchanged, and the
+never-reached `allowRequest: true` branch is still there for P3 to remove. `GlassesConnectRowTests`
+(14) covers the row, the outcome and every footer.
+
+**What the code corrected (2026-10-10):**
+- **The row is not limited to "nothing listed".** The view reads the phase, not the SDK's device
+  count, so every registered pair without a link gets the row, including one that is listed and
+  asleep in its case. For that pair the press answers at once that access is allowed, and the
+  `granted` footer carries what else to check (on, out of the case, nearby, connected in Meta AI,
+  no other glasses app holding Developer Mode). Telling the two apart is the diagnosis's job.
+- **No row while a link is up or coming up, whatever registration reads.** The old row showed
+  whenever registration read below registered, which includes a healthy link during one of
+  registration's bounces through lower states. Pressing it there did nothing.
+- **`ensurePermission()` throws two errors only.** `CameraError.permissionDenied` covers iOS's own
+  camera permission as well as Meta's, so the outcome reads iOS's authorisation after the attempt
+  to tell them apart and sends the wearer to the right Settings. Every other failure leaves as
+  `CameraError.sdkNotRegistered` after three attempts; the SDK's own error is logged inside the
+  backend and not thrown. So "the failure's summary" under the row is that one token today. P3's
+  recorded permission status has to be written inside the backend, where the SDK's error still
+  exists, for the summary to say more.
+- **The summary is shown as one word.** The case or type name, else the category. The code is
+  left out: beside a case name it is the case's position in its enum, the same kind of number as
+  the raw registration state this plan removes.
+- **The outcome is view state.** It lives as long as the Glasses screen does and is cleared when
+  the row leaves, so an old answer is not shown under a new disconnection. P3's published
+  permission status replaces it, and the launch check can then feed the same footer.
+- **The away hint dropped "check the Meta AI app".** The notice card shows four lines, and the
+  path to the row is the part that must survive a large text size.
+
+**Owed on a device:** registered with the permission never granted, press the row and confirm
+Meta AI opens once, and that granting brings the device into the list and the row away; decline
+and read the refused footer; with iOS's camera permission off for the app, read the iPhone
+Settings footer; with a pair in its case, read the allowed footer straight away. Also time the
+failure path: `ensurePermission()` waits and retries inside itself (three attempts, four seconds
+apart), so the spinner can run for most of a minute, and a request that fails rather than being
+refused may open Meta AI more than once. If either is true in the hand, P3 should give the
+wearer's request its own single attempt.
 
 ### P3: added but not connected says why (one PR, independent of P0 and P1)
 
