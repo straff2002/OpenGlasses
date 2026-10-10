@@ -131,48 +131,13 @@ final class VideoDecoder {
         }
         pendingPixelBuffer = nil
 
-        guard let image = makeImage(from: pixelBuffer) else {
+        // On the CPU, never Core Image: see `PixelBufferImageConverter` for why that matters
+        // with the screen locked.
+        guard case .image(let image) = PixelBufferImageConverter.convert(pixelBuffer) else {
             return (lastGoodImage, false)
         }
         lastGoodImage = image
         return (image, true)
-    }
-
-    /// Deliberately **not** Core Image. A `CIContext` renders through Metal, and iOS denies GPU
-    /// access to a backgrounded app ("GPU access is denied while the app is in the background") —
-    /// so with the screen locked every decode would succeed and every `createCGImage` return nil.
-    /// The app would see only the held last-good frame and the stall detector would rebuild, every
-    /// 1.5 s, a decoder that is not broken. Decoding with the screen locked is the whole reason
-    /// this decoder asks for the software specification, so the conversion has to be free of the
-    /// same gate.
-    ///
-    /// The session asks for 32BGRA, IOSurface-backed buffers, so a `CGContext` laid straight over
-    /// the locked base address is a pure-CPU conversion. `makeImage()` copies the pixels out,
-    /// which is what lets the buffer go back to the decoder's pool the moment we unlock.
-    private func makeImage(from pixelBuffer: CVPixelBuffer) -> UIImage? {
-        guard CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly) == kCVReturnSuccess else {
-            return nil
-        }
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-
-        // BGRA in memory is little-endian 32-bit ARGB, and the alpha byte of a decoded video
-        // frame is opaque, so premultiplied is the honest description of it.
-        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
-            | CGImageAlphaInfo.premultipliedFirst.rawValue
-
-        guard let context = CGContext(data: baseAddress,
-                                      width: CVPixelBufferGetWidth(pixelBuffer),
-                                      height: CVPixelBufferGetHeight(pixelBuffer),
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-                                      space: CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: bitmapInfo),
-              let cgImage = context.makeImage() else {
-            return nil
-        }
-        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Decoding

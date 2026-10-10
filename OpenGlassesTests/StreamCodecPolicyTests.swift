@@ -45,13 +45,19 @@ final class StreamCodecPolicyTests: XCTestCase {
         }
     }
 
-    /// The three shapes a delivered frame can have, read from the frame itself.
+    /// The four shapes a delivered frame can have, read from the frame itself.
     func testFrameShapeIsReadFromTheFrameNotTheCodec() {
-        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: true, hasDataBuffer: false),
+        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: true, hasDataBuffer: false,
+                                               hasImageBuffer: true),
                        .picture)
-        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: true),
+        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: true,
+                                               hasImageBuffer: false),
                        .compressed)
-        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: false),
+        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: false,
+                                               hasImageBuffer: true),
+                       .rawPixels)
+        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: false,
+                                               hasImageBuffer: false),
                        .empty)
     }
 
@@ -59,15 +65,45 @@ final class StreamCodecPolicyTests: XCTestCase {
     func testEachShapeHasOneAction() {
         XCTAssertEqual(StreamCodecPolicy.action(for: .picture), .emit)
         XCTAssertEqual(StreamCodecPolicy.action(for: .compressed), .decode)
+        XCTAssertEqual(StreamCodecPolicy.action(for: .rawPixels), .convert)
         XCTAssertEqual(StreamCodecPolicy.action(for: .empty), .drop)
     }
 
-    /// The risk the two-shape rule exists to remove: a stream that arrives already decoded — a
+    /// The risk the shape rule exists to remove: a stream that arrives already decoded — a
     /// raw stream, or an SDK/firmware that decodes hvc1 for us — hands the helper a picture
     /// *and* may still carry a data buffer. That must emit, not decode a second time.
     func testAFrameThatArrivesDecodedIsNeverDecodedAgain() {
-        let shape = StreamCodecPolicy.shape(helperProducedImage: true, hasDataBuffer: true)
+        let shape = StreamCodecPolicy.shape(helperProducedImage: true, hasDataBuffer: true,
+                                            hasImageBuffer: false)
         XCTAssertEqual(shape, .picture, "the helper's picture settles it")
         XCTAssertEqual(StreamCodecPolicy.action(for: shape), .emit)
+    }
+
+    /// Plan HW P1. A raw frame in the foreground has its pixels *and* a picture from the helper.
+    /// The helper's picture is used, exactly as before the fourth shape existed: converting is
+    /// for the frame the helper could not draw, and a foreground raw stream must not change.
+    func testARawFrameTheHelperDrewIsStillAPicture() {
+        let shape = StreamCodecPolicy.shape(helperProducedImage: true, hasDataBuffer: false,
+                                            hasImageBuffer: true)
+        XCTAssertEqual(shape, .picture)
+        XCTAssertEqual(StreamCodecPolicy.action(for: shape), .emit)
+    }
+
+    /// Plan HW P1. With the phone locked the helper draws nothing, and a raw frame used to read
+    /// as `.empty` and be dropped although every pixel had arrived. It is its own shape now, and
+    /// what is done with it is a conversion, not a drop.
+    func testARawFrameTheHelperCouldNotDrawIsConvertedNotDropped() {
+        let shape = StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: false,
+                                            hasImageBuffer: true)
+        XCTAssertEqual(shape, .rawPixels)
+        XCTAssertEqual(StreamCodecPolicy.action(for: shape), .convert)
+    }
+
+    /// Compressed bytes outrank pixels. A sample that somehow carried both is the decoder's:
+    /// the bytes are what the stream sent.
+    func testCompressedBytesOutrankAnImageBuffer() {
+        XCTAssertEqual(StreamCodecPolicy.shape(helperProducedImage: false, hasDataBuffer: true,
+                                               hasImageBuffer: true),
+                       .compressed)
     }
 }

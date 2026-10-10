@@ -141,6 +141,13 @@ extension AppState {
             _ = await conversationStore.unlock()
         }
         let storefront = await StoreKitStorefrontReader().countryCode()
+        // The glasses video link is read thirty seconds into a stream; look again now, so a
+        // report sent later in the same stream says if the link changed since, and one sent
+        // after a stream too short to have been read still has an answer. Local, off the main
+        // thread, and nothing is read when there has been no video. Bounded: how long the pass
+        // takes on a long-running phone is unmeasured, and past the limit the report goes out
+        // with what was already known.
+        await GlassesTransportProbe.shared.read(waitingAtMost: 3)
         return JobTranscriptExporter.document(request.scope, options: request.options,
                                               sessions: FieldSessionService.shared,
                                               store: conversationStore,
@@ -200,6 +207,10 @@ extension AppState {
             // permission, listed and out of reach. Case names and a count; no device is named.
             phone.append(glassesService.reachability.reportLine)
         }
+        // Which radio link carried the glasses video, as far as the glasses software's own log
+        // says, and what the stream delivered. Always present: "not known" is an answer too.
+        // A level and three numbers; no device is named.
+        phone.append(GlassesVideoLinkReport.line(for: GlassesTransportProbe.shared.snapshot))
         if let job = FieldSessionService.shared.activeSession, job.endedAt == nil {
             phone.append("Job open: \(job.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber)")
         }

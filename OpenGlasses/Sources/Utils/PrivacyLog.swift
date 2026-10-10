@@ -594,6 +594,27 @@ enum PrivacyLog {
         /// giving up on the parser after refusing `count` readable samples without meeting a
         /// random-access picture, and falling back to the attachment.
         case keyframeSource, keyframeInterval, keyframeHoldAbandoned
+        /// HW P1. A raw frame the SDK's helper could not draw is converted on the CPU, and these
+        /// two say when that did not work, once per stream: `unsupportedPixelFormat` is a pixel
+        /// format the converter has no rule for, and `pixelConversionFailed` is one it does
+        /// handle producing nothing. `detail` is the format's four-character code, or the number
+        /// in hex when the code is not text.
+        case unsupportedPixelFormat, pixelConversionFailed
+        /// HW P1. Which link the glasses were on thirty seconds into a stream, and what that
+        /// stream delivered. `detail` is the level (`wifi`, `bluetoothClassic`,
+        /// `bluetoothLowEnergy`, `unknown`) and `state` where it was read from (`processLog`,
+        /// `sdkLogFile`, `none`). `width`, `height` and `frameRate` are the pictures the app
+        /// received over those thirty seconds. They are measurements, written beside the level
+        /// and never used to work one out.
+        case transportLevel
+        /// HW P1. One line per link stall, written when the episode is over. `state` is how it
+        /// ended (`recovered`, `noPicture`, `rebuildFailed`, `selfRecovered`, `gaveUp`,
+        /// `cancelled`), `detail` the rebuild used when there was one, `silence` how long nothing
+        /// had arrived when the stall was called, `count` the samples that arrived from the old
+        /// stream after that and before it was torn down (or before the episode ended without a
+        /// rebuild), and `seconds` the time from the end of the teardown to the first fresh
+        /// picture.
+        case stallEpisode
     }
 
     @discardableResult
@@ -602,7 +623,8 @@ enum PrivacyLog {
                        detail: PrivacyToken? = nil, resolution: PrivacyToken? = nil,
                        frameRate: Int? = nil, width: Int? = nil, height: Int? = nil,
                        attempt: Int? = nil, ofAttempts: Int? = nil, count: Int? = nil,
-                       kilobytes: Int? = nil, bytes: Int? = nil, seconds: Double? = nil,
+                       kilobytes: Int? = nil, bytes: Int? = nil, silence: Double? = nil,
+                       seconds: Double? = nil,
                        error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.source, .token(PrivacyToken(source.rawValue))),
@@ -620,6 +642,7 @@ enum PrivacyLog {
         if let count { fields.append(.init(.count, .count(count))) }
         if let kilobytes { fields.append(.init(.kilobytes, .count(kilobytes))) }
         if let bytes { fields.append(.init(.bytes, .count(bytes))) }
+        if let silence { fields.append(.init(.silence, .seconds(silence))) }
         if let seconds { fields.append(.init(.elapsed, .seconds(seconds))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.capture, .camera, fields))
@@ -2203,6 +2226,10 @@ struct PrivacyEvent: Equatable {
         case posture, percent, extraction, confidence, days
         case slot, scope, version, signed
         case surface, command, product, priority, bitrate, measuredBitrate
+        // Plan HW P1 — how long nothing had arrived from the glasses when a stall was called.
+        // A second duration on the one line, beside `elapsed`, which there is the time the
+        // rebuild took to show a picture.
+        case silence
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

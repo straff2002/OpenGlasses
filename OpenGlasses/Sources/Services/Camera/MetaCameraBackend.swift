@@ -71,6 +71,21 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// The lower tier `StallRecoveryBackoff` switched to after the requested one kept failing. Held
     /// for the rest of this streaming session only; the wearer's setting is never rewritten.
     private var stallTierOverride: String?
+    /// Plan HW P1 — the link stall being recovered from, for one log line when it is over. Set
+    /// by the stall detector and by nothing else: `recoverFromStall()` is shared with the
+    /// reconnect ladder, and while this is nil every note it makes goes nowhere. It only
+    /// watches; nothing reads it to decide anything.
+    private var stallEpisode: StallEpisodeRecord?
+
+    // MARK: - Which link the video is on (Plan HW P1)
+    /// Reads the SDK's own log for the link level. Shared, so the support report can ask it
+    /// without coming through the camera.
+    private let transportProbe = GlassesTransportProbe.shared
+    /// The size and rate of the pictures the current stream delivered in its first thirty
+    /// seconds. Facts to put beside the level, never a way of working one out.
+    private var deliveryMeter = StreamDeliveryMeter()
+    /// The one read of the probe, thirty seconds into a stream.
+    private var transportReadTask: Task<Void, Never>?
 
     /// Plan FD P0 — why pictures are not flowing, as last reported to the coordinator.
     ///
@@ -621,6 +636,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // changes. The SDK's ladder can step the source down mid-stream, and until now the only
         // size in any log was the tier *label* we asked for.
         var lastLoggedFrameSize: CGSize = .zero
+        // HW P1: whether this stream was streaming at the last state it reported, so the link
+        // probe is marked on the way into `.streaming` and not again on a repeat of it.
+        var wasStreaming = false
 
         session.statePublisher.listen { [weak self] state in
             Task { @MainActor in
@@ -631,6 +649,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 // How long a pause has stood, for the start-side wait. Recorded before the
                 // decision below because it is a fact about the stream, not about what we want.
                 self.pausedSince = mapped == .paused ? (self.pausedSince ?? Date()) : nil
+                // HW P1: a fact about the stream too. Nothing below depends on it.
+                if (mapped == .streaming) != wasStreaming {
+                    wasStreaming = mapped == .streaming
+                    if wasStreaming {
+                        self.beginTransportObservation(generation: generation)
+                    } else {
+                        self.endTransportObservation()
+                    }
+                }
 
                 // Warmup and stall recovery both stop the stream on purpose with these listeners
                 // still attached, so their `.stopped`s are ours and map to `.waiting`. That also
@@ -757,6 +784,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.lastFrameTime = Date()
                     self.freshPictureCount += 1
                     self.framelessStallRecoveries = 0
+                    self.deliveryMeter.pictureDelivered(
+                        width: Int(image.size.width * image.scale),
+                        height: Int(image.size.height * image.scale),
+                        at: self.lastFrameTime)
                     // A picture just came out of the pipeline, so whatever the stall detector or
                     // the state listener last reported as a reason for not delivering has ended.
                     // Only a *fresh* one clears it: a held frame is the decoder still waiting.
@@ -1467,7 +1498,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.report(waitReason: .framesUnavailable)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
+                    // HW P1: open the record of this episode. From here to the line it writes
+                    // below it is told what happens and decides none of it.
+                    self.stallEpisode = StallEpisodeRecord(
+                        silenceAtVerdict: self.framePipeline.secondsSinceLastSample(),
+                        samplesSeen: self.framePipeline.lifetimeSampleCount)
                     await self.recoverFromLinkStall()
+                    self.stallEpisode?.close()?.log()
+                    self.stallEpisode = nil
                     self.isRecoveringFromStall = false
                 }
             }
@@ -1498,10 +1536,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
         case .resetSession:
             await resetSession()
         }
+        // HW P1: the old stream is gone and its replacement does not exist yet, so anything the
+        // pipeline counted since the verdict came from the stream that was called stalled.
+        stallEpisode?.teardownFinished(tier: action,
+                                       samplesSeen: framePipeline.lifetimeSampleCount, at: Date())
 
         do {
             try await ensureSession()
             let frameArrived = try await waitForStreaming(requireFreshFrame: true)
+            stallEpisode?.rebuildFinished(freshPicture: frameArrived, at: Date())
             lastFrameTime = Date()
             framePipeline.restartClocks()
             if frameArrived {
@@ -1515,6 +1558,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 PrivacyLog.camera(.glasses, .stallRecoveryNoFrame, count: consecutiveRecoveryFailures)
             }
         } catch {
+            stallEpisode?.rebuildFailed()
             consecutiveRecoveryFailures += 1
             PrivacyLog.camera(.glasses, .stallRecoveryFailed,
                               count: consecutiveRecoveryFailures,
@@ -1538,6 +1582,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private func recoverFromLinkStall() async {
         guard case let .rebuild(delay, stepDownTier) =
                 StallRecoveryBackoff.decision(framelessRecoveries: framelessStallRecoveries) else {
+            stallEpisode?.endedWithoutRebuild(.gaveUp,
+                                              samplesSeen: framePipeline.lifetimeSampleCount)
             await giveUpStallRecovery()
             return
         }
@@ -1546,11 +1592,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
                               seconds: delay)
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             // A stop cancels this task. Don't rebuild a stream nobody wants any more.
-            guard !Task.isCancelled, isStreaming else { return }
+            guard !Task.isCancelled, isStreaming else {
+                stallEpisode?.endedWithoutRebuild(.cancelled,
+                                                  samplesSeen: framePipeline.lifetimeSampleCount)
+                return
+            }
             // Frames may have started arriving from this stream during the wait. If so, keep it.
             if framePipeline.verdict() == .healthy {
                 framelessStallRecoveries = 0
                 PrivacyLog.camera(.glasses, .stallSelfRecovered)
+                stallEpisode?.endedWithoutRebuild(.selfRecovered,
+                                                  samplesSeen: framePipeline.lifetimeSampleCount)
                 return
             }
         }
@@ -1604,6 +1656,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
         activeStreamResolution = nil
         // The next stream gets a fresh decompression session, and reports its own frame shape.
         framePipeline.reset()
+        endTransportObservation()
         PrivacyLog.camera(.glasses, .capabilityTornDown)
     }
 
@@ -1674,7 +1727,48 @@ final class MetaCameraBackend: GlassesCameraBackend {
         report(waitReason: nil)
         lastFrameTime = .distantPast
         framePipeline.reset()
+        endTransportObservation()
         PrivacyLog.camera(.glasses, .sessionReset)
+    }
+
+    // MARK: - Which link the video is on (Plan HW P1)
+
+    /// A stream has just reached `.streaming`. Mark the SDK's log where it stands, start
+    /// measuring what is delivered, and thirty seconds from now read the link level once and
+    /// write it down beside those measurements.
+    ///
+    /// Observation only: nothing here is read back by the camera. The read happens off the main
+    /// actor inside the probe, and a stream that has been replaced by then (`generation`), or
+    /// stopped (the task is cancelled), writes nothing.
+    private func beginTransportObservation(generation: Int) {
+        transportReadTask?.cancel()
+        let startedAt = Date()
+        deliveryMeter.restart(at: startedAt)
+        transportProbe.streamStarted(at: startedAt)
+        transportReadTask = Task { [weak self] in
+            // A second past the window, so the meter's thirty seconds have certainly closed.
+            try? await Task.sleep(for: .seconds(StreamDeliveryMeter.window + 1))
+            guard let self, !Task.isCancelled,
+                  self.listenerGeneration.accepts(generation) else { return }
+            let delivery = self.deliveryMeter.facts(now: Date())
+            self.transportProbe.record(delivery: delivery)
+            let reading = await self.transportProbe.read()
+            guard !Task.isCancelled, self.listenerGeneration.accepts(generation) else { return }
+            PrivacyLog.camera(.glasses, .transportLevel,
+                              state: PrivacyToken(reading.origin.rawValue),
+                              detail: PrivacyToken(reading.level.rawValue),
+                              frameRate: delivery.map { Int($0.framesPerSecond.rounded()) },
+                              width: delivery?.width, height: delivery?.height)
+        }
+    }
+
+    /// The stream stopped streaming or was torn down. The probe notes where the SDK's log stands
+    /// and reads nothing: what the link does once the video has stopped is not about the video,
+    /// and a photo, which starts and stops a stream too, should not cost a pass over the log.
+    private func endTransportObservation() {
+        transportReadTask?.cancel()
+        transportReadTask = nil
+        transportProbe.streamEnded()
     }
 
     /// Tear down everything — called on mode switch or app termination.

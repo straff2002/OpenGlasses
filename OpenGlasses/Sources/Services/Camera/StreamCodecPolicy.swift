@@ -22,17 +22,23 @@ enum StreamCodecPolicy {
         setting == rawSetting ? .raw : .hvc1
     }
 
-    /// What a delivered frame turned out to be, as two observations rather than a guess about
-    /// the codec: whether the SDK's `makeUIImage()` helper produced a picture, and whether the
-    /// sample carries a data buffer (`CMSampleBufferGetDataBuffer` — a raw frame carries an
-    /// *image* buffer, a compressed one a *data* buffer).
+    /// What a delivered frame turned out to be, as three observations rather than a guess about
+    /// the codec: whether the SDK's `makeUIImage()` helper produced a picture, whether the sample
+    /// carries a data buffer (`CMSampleBufferGetDataBuffer`) and whether it carries an image
+    /// buffer (`CMSampleBufferGetImageBuffer`). A compressed frame carries a *data* buffer, a raw
+    /// one an *image* buffer.
     enum FrameShape: Equatable {
         /// The helper handed us a picture. Either the frame was raw, or the SDK decoded it
         /// for us — from here the two are the same thing and neither needs our decoder.
         case picture
         /// No picture, but there are compressed bytes to decode.
         case compressed
-        /// Neither. Nothing to show and nothing to decode.
+        /// Plan HW P1. No picture and nothing compressed, but the pixels are there. This is a
+        /// raw frame the helper could not draw: `makeUIImage()` renders on the GPU, which iOS
+        /// denies an app in the background, so with the phone locked it returns nil for a frame
+        /// that arrived whole.
+        case rawPixels
+        /// None of the three. Nothing to show and nothing to decode.
         case empty
     }
 
@@ -40,18 +46,27 @@ enum StreamCodecPolicy {
     enum FrameAction: Equatable {
         case emit
         case decode
+        /// Turn the frame's pixels into a picture on the CPU (`PixelBufferImageConverter`).
+        case convert
         case drop
     }
 
-    static func shape(helperProducedImage: Bool, hasDataBuffer: Bool) -> FrameShape {
+    /// The order is the rule. A helper image settles it, so a raw stream in the foreground is
+    /// handled exactly as it was before `rawPixels` existed. Compressed bytes come next, because
+    /// a sample that has them is the decoder's whatever else it carries. Only a frame with
+    /// neither is looked at for pixels.
+    static func shape(helperProducedImage: Bool, hasDataBuffer: Bool,
+                      hasImageBuffer: Bool) -> FrameShape {
         if helperProducedImage { return .picture }
-        return hasDataBuffer ? .compressed : .empty
+        if hasDataBuffer { return .compressed }
+        return hasImageBuffer ? .rawPixels : .empty
     }
 
     static func action(for shape: FrameShape) -> FrameAction {
         switch shape {
         case .picture: return .emit
         case .compressed: return .decode
+        case .rawPixels: return .convert
         case .empty: return .drop
         }
     }
@@ -149,6 +164,12 @@ struct StreamLiveness {
 
     func secondsSinceLastPicture(now: Date = Date()) -> TimeInterval {
         now.timeIntervalSince(lastPicture)
+    }
+
+    /// How long the link has been quiet: since the last sample, or since the clocks last
+    /// (re)started when nothing has arrived yet.
+    func secondsSinceLastSample(now: Date = Date()) -> TimeInterval {
+        now.timeIntervalSince(lastSample)
     }
 }
 
