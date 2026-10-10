@@ -1877,9 +1877,9 @@ enum PrivacyLog {
         case started, stopped, ended, staleEnded, startFailed, notEnabled, alreadyRunning
         case renderFailed, claimed, released
         case telemetryBlocked
-        /// HX P1. What the connected glasses' device state reads for its thermal level, each
-        /// time it changes. `state` is the app's own case name.
-        case thermalRead
+        /// HX P1. What the connected glasses' device state reads, each time it changes: the
+        /// compatibility case, and the thermal level. `state` is the app's own case name.
+        case compatibilityRead, thermalRead
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

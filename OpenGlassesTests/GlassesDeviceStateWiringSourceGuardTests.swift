@@ -1,12 +1,13 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan HX P1 — keeps the glasses' thermal reading wired to what acts on it.
+/// Plan HX P1 — keeps the glasses' thermal and compatibility readings wired to what acts on them.
 ///
-/// The decision is pure and tested where it lives (`PowerPolicyServiceTests`). Its callers cannot
-/// run in a unit-test host: `AppState` reaches the wake word, the camera and the live sessions,
-/// and the link source sits on `Wearables`, which traps here. Those callers are where the gap was
-/// (a reading nothing read), so, like the link cue's guard, this reads the source.
+/// The decisions are pure and tested where they live (`CompatibilityNoticePolicyTests`,
+/// `PowerPolicyServiceTests`). Their callers cannot run in a unit-test host: `AppState` reaches
+/// the wake word, the camera and the live sessions, and the link source sits on `Wearables`,
+/// which traps here. Those callers are where the gap was (a reading nothing read), so, like the
+/// link cue's guard, this reads the source.
 final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
 
     private static let appState = "OpenGlasses/Sources/App/OpenGlassesApp.swift"
@@ -67,5 +68,34 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
                           + "whenever the link is down")
         XCTAssertTrue(appState.contains("glassesService.$thermal"),
                       "a thermal change no longer re-evaluates the posture when it happens")
+    }
+
+    func testACompatibilityReadingDecidesTheNotice() throws {
+        let appState = try code(Self.appState)
+        XCTAssertTrue(appState.contains("glassesService.$compatibility"),
+                      "nothing listens to the glasses' compatibility reading any more")
+        let body = try slice(of: appState,
+                             from: "private func glassesCompatibilityChanged(_ compatibility: GlassesCompatibility?) {",
+                             to: "\n    }\n", "`glassesCompatibilityChanged(_:)`")
+        XCTAssertTrue(body.contains("compatibilityNotices.note(compatibility)"),
+                      "the update notice is no longer decided by CompatibilityNoticePolicy: it is "
+                          + "either never said or said at every reconnection")
+        XCTAssertTrue(body.contains("NoticeCenter.shared.post(message, severity: .warning, source: .glasses)"))
+        XCTAssertTrue(body.contains("CompatibilityNoticePolicy.delivery("),
+                      "the notice no longer waits for the route: it can land on the assistant's voice")
+        XCTAssertTrue(body.contains("compatibilityNotices.isOwed(message)"),
+                      "the notice must be re-checked when it is about to be said: the glasses may "
+                          + "have gone, and it is only said while they are connected")
+    }
+
+    func testTheCamerasOwnNoticeSharesTheRecord() throws {
+        let sink = try slice(of: try code(Self.appState),
+                             from: "let compatToken = cameraService.$compatibilityNotice",
+                             to: "cancellables.append(compatToken)", "the camera compatibility sink")
+        let claim = try XCTUnwrap(sink.range(of: "guard self.compatibilityNotices.claim(notice) else { return }"),
+                                  "the camera's compatibility notice no longer checks the shared "
+                                      + "record: a refused build is announced twice")
+        let speak = try XCTUnwrap(sink.range(of: "speechService.speak(notice)"))
+        XCTAssertLessThan(claim.lowerBound, speak.lowerBound)
     }
 }
