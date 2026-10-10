@@ -249,12 +249,28 @@ final class TalkEntryPolicyTests: XCTestCase {
     }
 
     func testAwayHintNamesWhatToDoNotTheSDKsInternalState() {
-        XCTAssertFalse(SessionCardGlassesPill.awayHint.contains("state"),
-                       "must never read like the SDK's own diagnostic text")
-        XCTAssertTrue(SessionCardGlassesPill.awayHint.contains("put them on"),
-                      "the usual reason is a pair in its case, so that comes first")
-        XCTAssertTrue(SessionCardGlassesPill.awayHint.contains("Settings › Devices & Privacy › Glasses"),
-                      "the tap is only a hint, so it names where the row to press is (Plan HX P3a)")
+        for diagnosis in GlassesReachabilityDiagnosis.allCases {
+            let hint = SessionCardGlassesPill.awayHint(for: diagnosis)
+            XCTAssertFalse(hint.contains("state"), "must never read like the SDK's own diagnostic text")
+            XCTAssertNil(hint.rangeOfCharacter(from: .decimalDigits), hint)
+            XCTAssertTrue(hint.contains("Settings › Devices & Privacy › Glasses"),
+                          "the tap is only a hint, so it names where the row for it is (Plan HX P3)")
+            XCTAssertLessThanOrEqual(hint.count, 100, "the notice card shows four lines: \(hint)")
+        }
+        XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .linkDown).contains("put them on"),
+                      "for a pair that is listed, the usual reason is that it is in its case")
+    }
+
+    /// Plan HX P3: "Glasses away" used to give one hint for four different things.
+    func testAwayHintSaysWhyTheGlassesAreAway() {
+        let away: [GlassesReachabilityDiagnosis] = [.notAdded, .awaitingApproval, .permissionNeeded,
+                                                    .noDeviceSeen, .linkDown]
+        XCTAssertEqual(Set(away.map { SessionCardGlassesPill.awayHint(for: $0) }).count, away.count)
+        XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .permissionNeeded).contains("camera access in Meta AI"))
+        XCTAssertFalse(SessionCardGlassesPill.awayHint(for: .permissionNeeded).contains("put them on"),
+                       "putting them on does not help a pair Meta AI has not been allowed to show")
+        XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .noDeviceSeen).contains("Meta AI isn't showing"))
+        XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .notAdded).contains("connect them to Meta AI"))
     }
 
     // MARK: - Session card: job pill

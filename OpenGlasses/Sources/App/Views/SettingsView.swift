@@ -1004,8 +1004,8 @@ struct HardwarePrivacyView: View {
 struct GlassesSettingsView: View {
     @ObservedObject var appState: AppState
     @State private var glassesUpdateError: String?
-    // Plan HX P3a — how the wearer's last "Allow camera access in Meta AI" ended.
-    @State private var cameraAccessOutcome: GlassesCameraAccessOutcome?
+    // Plan HX P3 — the wearer's "Allow camera access in Meta AI" is in flight. How it ended is
+    // the service's published permission status, which the launch check writes too.
     @State private var isRequestingCameraAccess = false
     // Plan GU — where the wake word waits, and how replies play.
     @State private var wakeListenMic = Config.wakeListenMic
@@ -1037,30 +1037,23 @@ struct GlassesSettingsView: View {
         catch { glassesUpdateError = "Couldn't open the firmware screen: \(error.localizedDescription)" }
     }
 
-    /// Which connect row shows, if any (Plan HX P3a).
+    /// What shows above the settings while the glasses are not connected: the row to press, if
+    /// there is one, and why they are not connected (Plan HX P3).
     private var connectRow: GlassesConnectRow? {
-        GlassesConnectRow.resolve(
-            registration: GlassesRegistration(stateRaw: appState.registrationStateRaw),
-            phase: appState.glassesPhase)
+        GlassesConnectRow(appState.glassesReachability)
     }
 
-    /// Check the Meta camera permission and ask for it when it is not granted — the same call
-    /// launch makes, but as the wearer's own action and with its outcome kept. Asking leaves for
-    /// Meta AI, so the outcome is also said: the footer changes while a VoiceOver user's focus is
-    /// still on the button.
+    /// Check the Meta camera permission and ask for it once when it is not granted — as the
+    /// wearer's own action, which launch never takes. Asking leaves for Meta AI, so where things
+    /// stand afterwards is also said: the row changes while a VoiceOver user's focus is still on
+    /// the button.
     @MainActor
     private func requestCameraAccess() async {
         guard !isRequestingCameraAccess else { return }
         isRequestingCameraAccess = true
         defer { isRequestingCameraAccess = false }
-        let outcome = await GlassesCameraAccessOutcome.request(
-            ensurePermission: { try await appState.cameraService.ensurePermission() },
-            phoneCameraDenied: {
-                let status = AVCaptureDevice.authorizationStatus(for: .video)
-                return status == .denied || status == .restricted
-            })
-        cameraAccessOutcome = outcome
-        SessionAnnouncer.say(outcome.footer)
+        await appState.glassesService.requestCameraAccess()
+        SessionAnnouncer.say(GlassesConnectRow.announcement(after: appState.glassesService.reachability))
     }
 
     /// Plan CQ P0: what class of device is connected, resolved from the three things that
@@ -1089,47 +1082,52 @@ struct GlassesSettingsView: View {
     var body: some View {
         Form {
             // The only way back while the glasses are not connected: the session card's pill no
-            // longer starts a connect, so without this row there is nowhere to ask. Which row is
-            // `GlassesConnectRow`'s call (Plan HX P3a).
-            switch connectRow {
-            case .connect?:
-                // Removed from Meta AI, or never added past onboarding: ask for registration.
+            // longer starts a connect, so without this row there is nowhere to ask. What it is,
+            // and the line under it that says why the glasses are not connected, is
+            // `GlassesConnectRow`'s call (Plan HX P3).
+            if let row = connectRow {
                 Section {
-                    Button {
-                        Task { await appState.connectGlasses() }
-                    } label: {
-                        HStack {
-                            Label("Connect to Meta AI", systemImage: "link")
-                            Spacer()
-                            if appState.isConnectingGlasses { ProgressView() }
+                    switch row.action {
+                    case .connect?:
+                        // Removed from Meta AI, or never added past onboarding: ask for
+                        // registration, and then for camera access.
+                        Button {
+                            Task { await appState.connectGlasses() }
+                        } label: {
+                            HStack {
+                                Label("Connect to Meta AI", systemImage: "link")
+                                Spacer()
+                                if appState.isConnectingGlasses { ProgressView() }
+                            }
+                        }
+                        .disabled(appState.isConnectingGlasses)
+                    case .allowCameraAccess?:
+                        // Registered, nothing listed. The SDK lists a device only once a
+                        // permission is granted in Meta AI; this asks, and the footer keeps the
+                        // answer.
+                        Button {
+                            Task { await requestCameraAccess() }
+                        } label: {
+                            HStack {
+                                Label("Allow camera access in Meta AI", systemImage: "camera")
+                                Spacer()
+                                if isRequestingCameraAccess { ProgressView() }
+                            }
+                        }
+                        .disabled(isRequestingCameraAccess || appState.isConnectingGlasses)
+                    case nil:
+                        // Nothing to press from here: the glasses are waited for, and the row
+                        // says which wait it is.
+                        Label {
+                            Text(row.title ?? "")
+                        } icon: {
+                            Image(systemName: "eyeglasses")
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .disabled(appState.isConnectingGlasses)
                 } footer: {
-                    // The gate is named before the hand-off: Meta AI's own refusal is a bare
-                    // "Internal error" (see `RegistrationFlow.beforeHandoffMessage`).
-                    Text("Avenkin isn't connected to your glasses in the Meta AI app. "
-                         + RegistrationFlow.beforeHandoffMessage())
+                    Text(row.footer)
                 }
-            case .allowCameraAccess?:
-                // Registered, and still no link. The SDK lists a device only once a permission is
-                // granted in Meta AI; this asks, and the footer keeps the answer.
-                Section {
-                    Button {
-                        Task { await requestCameraAccess() }
-                    } label: {
-                        HStack {
-                            Label("Allow camera access in Meta AI", systemImage: "camera")
-                            Spacer()
-                            if isRequestingCameraAccess { ProgressView() }
-                        }
-                    }
-                    .disabled(isRequestingCameraAccess)
-                } footer: {
-                    Text(GlassesConnectRow.allowCameraAccessFooter(outcome: cameraAccessOutcome))
-                }
-            case nil:
-                EmptyView()
             }
 
             // Plan CQ P0: "which glasses work with OpenGlasses?" stopped being a product name.
@@ -1256,11 +1254,10 @@ struct GlassesSettingsView: View {
             }
         }
         .navigationTitle("Glasses")
-        // The answer belongs to the press that got it: once the row has gone (the glasses
-        // connected, or the app was removed from Meta AI), a later return starts clean.
-        .onChange(of: connectRow) { _, row in
-            if row != .allowCameraAccess { cameraAccessOutcome = nil }
-        }
+        // Opening this screen is when the line above is read, so the permission it is built on
+        // is read again: it may have been allowed or taken back in Meta AI since launch. A read
+        // only. It never leaves the app, and it does nothing unless the app is registered.
+        .task { await appState.glassesService.checkCameraPermission() }
     }
 }
 

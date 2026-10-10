@@ -235,11 +235,27 @@ enum SessionCardGlassesPill {
 
     /// The hint shown on a tap while the glasses are away — a plain, immediate notice (`NoticeCenter`,
     /// `.advisory`), never the 15 s `connectGlasses()` wait or its SDK-flavoured error text. It
-    /// names where the connect row is (`GlassesConnectRow`, Plan HX P3a): the tap itself stays a
-    /// hint, so the hint has to say where the thing to press lives. Kept short — the notice card
-    /// shows four lines, and the path is the part that must not be cut off at a large text size.
-    static let awayHint = "Glasses aren't connected — put them on, or reconnect in "
-        + "Settings › Devices & Privacy › Glasses."
+    /// says why they are away, from the reachability diagnosis (Plan HX P3), and names where the
+    /// row for it is (`GlassesConnectRow`): the tap itself stays a hint, so the hint has to say
+    /// where the thing to press lives. Kept short — the notice card shows four lines, and the path
+    /// is the part that must not be cut off at a large text size.
+    static func awayHint(for diagnosis: GlassesReachabilityDiagnosis) -> String {
+        let glassesSettings = "Settings › Devices & Privacy › Glasses"
+        switch diagnosis {
+        case .notAdded:
+            return "Glasses aren't connected — connect them to Meta AI in \(glassesSettings)."
+        case .awaitingApproval:
+            return "Approve Avenkin in the Meta AI app, or connect again in \(glassesSettings)."
+        case .permissionNeeded:
+            return "Glasses need camera access in Meta AI — allow it in \(glassesSettings)."
+        case .noDeviceSeen:
+            return "Meta AI isn't showing Avenkin your glasses yet — see \(glassesSettings)."
+        case .linkDown, .linkComingUp, .connected:
+            // A link coming up or up never reaches the hint (the pill says so itself); worded
+            // as out of reach in case a caller asks a moment late.
+            return "Glasses are out of reach — put them on, or see \(glassesSettings)."
+        }
+    }
 }
 
 // MARK: - Session card: job pill

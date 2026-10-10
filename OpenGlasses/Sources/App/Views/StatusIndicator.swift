@@ -263,7 +263,8 @@ struct StatusIndicator: View {
     /// away used to run `AppState.connectGlasses()` — a 15 s wait ending in the SDK's own error
     /// text, for a tap Greig made by accident. It now posts a plain, transient hint instead
     /// (`NoticeCenter`, the same surface every other glasses condition already posts to) and never
-    /// starts that wait. `connectGlasses()` stays reserved for onboarding's genuine first connect.
+    /// starts that wait. The hint says why the glasses are away (Plan HX P3). `connectGlasses()`
+    /// stays reserved for the connect rows: onboarding's, and Devices & Privacy › Glasses.
     private func didTapGlassesPill(_ action: SessionCardGlassesPill.Action) {
         switch action {
         case .disconnect:
@@ -271,8 +272,9 @@ struct StatusIndicator: View {
         case .resume:
             appState.resumeGlasses()
         case .hint:
-            NoticeCenter.shared.post(SessionCardGlassesPill.awayHint, severity: .advisory,
-                                     source: .glasses)
+            NoticeCenter.shared.post(
+                SessionCardGlassesPill.awayHint(for: appState.glassesReachability.diagnosis),
+                severity: .advisory, source: .glasses)
         case .none:
             break
         }
