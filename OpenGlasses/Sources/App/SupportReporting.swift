@@ -138,6 +138,9 @@ extension AppState {
             phone.append("Glasses display: \(glassesDisplay.hasDisplayCapability ? "yes" : "no")")
         } else {
             phone.append("Glasses: not connected")
+            // Which kind of not connected (Plan HX P3): never added, waiting on the camera
+            // permission, listed and out of reach. Case names and a count; no device is named.
+            phone.append(glassesService.reachability.reportLine)
         }
         if let job = FieldSessionService.shared.activeSession, job.endedAt == nil {
             phone.append("Job open: \(job.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber)")

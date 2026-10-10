@@ -164,6 +164,10 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// Optional callback to report SDK registration progress (state 0–3) back to UI.
     var onRegistrationProgress: ((Int) -> Void)?
 
+    /// What a camera start learned about the Meta camera permission on its way (Plan HX P3).
+    /// Wired by `AppState` to `GlassesConnectionService`, which keeps the published status.
+    var onGlassesCameraPermission: ((GlassesCameraPermission) -> Void)?
+
     /// Whether camera permission has been granted (cached to avoid re-checking).
     var permissionGranted: Bool {
         get { backend.permissionGranted }
@@ -277,6 +281,8 @@ class CameraService: ObservableObject, FilteredStillProviding {
             NoticeCenter.shared.post(notice, severity: .advisory, source: .camera)
         case .registrationProgress(let state):
             onRegistrationProgress?(state)
+        case .cameraPermission(let status):
+            onGlassesCameraPermission?(status)
         }
     }
 
@@ -284,6 +290,13 @@ class CameraService: ObservableObject, FilteredStillProviding {
 
     func ensurePermission() async throws {
         try await backend.ensurePermission()
+    }
+
+    /// The Meta camera permission as it stands, asked for only when `asking`
+    /// (`GlassesCameraPermissionSource`). `GlassesConnectionService` is the caller: it checks when
+    /// registration lands, and asks only for the wearer's own Connect or "Allow camera access".
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission {
+        await backend.cameraPermission(asking: asking)
     }
 
     // MARK: - Photo Capture
@@ -656,6 +669,8 @@ class CameraService: ObservableObject, FilteredStillProviding {
 
     // Error mapping now lives in the pure, typed `CameraErrorPolicy` (DAT unified `DatError` model).
 }
+
+extension CameraService: GlassesCameraPermissionSource {}
 
 enum CameraError: LocalizedError {
     case permissionDenied

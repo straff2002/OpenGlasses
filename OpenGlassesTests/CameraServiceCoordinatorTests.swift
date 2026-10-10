@@ -355,6 +355,63 @@ final class CameraServiceCoordinatorTests: XCTestCase {
         XCTAssertNil(service.latestFrame)
     }
 
+    // MARK: - The glasses-side permission (Plan HX P3)
+
+    func testAPermissionReadNeverAsksAndARequestAsksOnce() async {
+        let backend = MockCameraBackend()
+        let service = CameraService(backend: backend)
+
+        let read = await service.cameraPermission(asking: false)
+        XCTAssertEqual(read, .notGranted)
+        XCTAssertEqual(backend.permissionCalls, [false], "a read stays a read on its way to the backend")
+
+        backend.permissionAnswer = .declined
+        let asked = await service.cameraPermission(asking: true)
+        XCTAssertEqual(asked, .declined)
+        XCTAssertEqual(backend.permissionCalls, [false, true])
+    }
+
+    /// A camera start checks and asks inside the backend and can only return or throw; how the
+    /// permission step ended reaches the connection's diagnosis through this hand-over.
+    func testWhatACameraStartLearnedAboutThePermissionIsHandedOn() {
+        let backend = MockCameraBackend()
+        let service = CameraService(backend: backend)
+        var handed: [GlassesCameraPermission] = []
+        service.onGlassesCameraPermission = { handed.append($0) }
+
+        let failure = GlassesCameraPermission.failed(
+            SafeErrorSummary(category: .unknown, detail: PrivacyToken("noDevice")))
+        backend.events.send(.cameraPermission(.granted))
+        backend.events.send(.cameraPermission(failure))
+        XCTAssertEqual(handed, [.granted, failure])
+    }
+
+    /// A backend with no permission of its own to read reports its cached flag, so a fake that is
+    /// not about this does not have to say anything.
+    func testABackendThatSaysNothingAboutThePermissionReportsItsCachedFlag() async {
+        @MainActor
+        final class PlainBackend: GlassesCameraBackend {
+            let capabilities = CameraCapabilities.meta
+            let events = PassthroughSubject<CameraBackendEvent, Never>()
+            var permissionGranted = false
+            private(set) var ensureCount = 0
+            func isReady(configuringIfNeeded: Bool) -> Bool { true }
+            func ensurePermission() async throws { ensureCount += 1 }
+            func capturePhoto() async throws -> Data { Data() }
+            func startStreaming() async throws {}
+            func stopStreaming() async {}
+            func tearDown() async {}
+        }
+        let backend = PlainBackend()
+        let service = CameraService(backend: backend)
+        let before = await service.cameraPermission(asking: true)
+        XCTAssertEqual(before, .notChecked)
+        backend.permissionGranted = true
+        let after = await service.cameraPermission(asking: false)
+        XCTAssertEqual(after, .granted)
+        XCTAssertEqual(backend.ensureCount, 0, "and it is never turned into the call that asks")
+    }
+
     func testActiveCapabilitiesReflectReadiness() {
         let backend = MockCameraBackend(isReady: false)
         let service = CameraService(backend: backend)

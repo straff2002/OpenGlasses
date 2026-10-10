@@ -13,7 +13,9 @@ enum SubsystemProbes {
         let tests: [SubsystemTest] = [
             SubsystemTest(id: "glasses", name: "Glasses Link", icon: "eyeglasses") { @MainActor in
                 guard appState.isConnected else {
-                    return .fail("Not connected — pair via the Meta AI app")
+                    // Which kind of not connected (Plan HX P3). "Pair via the Meta AI app" was
+                    // the answer to someone who had paired.
+                    return .fail(appState.glassesService.reachability.probeDetail)
                 }
                 let name = appState.glassesService.deviceName ?? "Glasses"
                 let battery = appState.glassesService.batteryLevel.map { " · \($0)%" } ?? ""

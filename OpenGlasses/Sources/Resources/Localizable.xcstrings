@@ -21798,6 +21798,22 @@
         }
       }
     },
+    "Glasses out of reach" : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lentes fuera de alcance"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очки вне зоны доступа"
+          }
+        }
+      }
+    },
     "Glasses: %@" : {
       "localizations" : {
         "es-MX" : {
@@ -28325,6 +28341,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Агент Meta"
+          }
+        }
+      }
+    },
+    "Meta AI isn't showing your glasses yet" : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI aún no muestra tus lentes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI пока не показывает ваши очки"
           }
         }
       }
@@ -58663,6 +58695,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ключ вашей компании"
+          }
+        }
+      }
+    },
+    "Your glasses are added but out of reach. Check that they're switched on, out of their case and nearby, and that Bluetooth is on. They connect on their own once they are." : {
+      "localizations" : {
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus lentes están agregados, pero fuera de alcance. Revisa que estén encendidos, fuera de su estuche y cerca, y que Bluetooth esté activado. Se conectan solos en cuanto lo estén."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши очки добавлены, но находятся вне зоны доступа. Проверьте, что они включены, вынуты из футляра и находятся рядом и что Bluetooth включён. Как только это так, они подключатся сами."
           }
         }
       }

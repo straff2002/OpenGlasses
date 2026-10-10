@@ -1,14 +1,17 @@
 # Plan HX: Glasses Link and Device State (a lost link is heard, and the glasses say when they are hot or out of date)
 
-**Status:** 🚧 P0, P1 and P3a shipped 2026-10-10. P0: a glasses link that drops unasked plays the
-descending pair and tells VoiceOver "Glasses disconnected", and a Disconnect or glasses taken off,
-which stay silent, are no longer withheld from VoiceOver. P1: the glasses' thermal level and
-compatibility are read while connected; hot glasses move the power posture; glasses that ask for a
-firmware or app update are said so once per process; and a session the glasses refuse because the
-build is too old is asked for once per process instead of on every camera start. P3a: Devices &
-Privacy › Glasses has a row to press whenever the glasses are not connected, and the camera
-permission's outcome is shown under it. The rest of P3 (the diagnosis and its four readers) is
-unbuilt: one PR, headless at its core. A device pass is owed for P0, P1 and P3a.
+**Status:** ✅ P0, P1, P3a and P3 shipped 2026-10-10; the device pass (P2) is owed. P0: a glasses
+link that drops unasked plays the descending pair and tells VoiceOver "Glasses disconnected", and a
+Disconnect or glasses taken off, which stay silent, are no longer withheld from VoiceOver. P1: the
+glasses' thermal level and compatibility are read while connected; hot glasses move the power
+posture; glasses that ask for a firmware or app update are said so once per process; and a session
+the glasses refuse because the build is too old is asked for once per process instead of on every
+camera start. P3a: Devices & Privacy › Glasses has a row to press whenever the glasses are not
+connected. P3: glasses that are added but not connected say why (camera access needed, Meta AI
+not showing them, or out of reach) on that screen, on the session card, in the connect failure
+message, in the Developer panel and in the support report; the Meta camera permission's status is
+kept; it is asked for once inside a Connect the wearer pressed; and the launch paths that used to
+ask for it only read it. A device pass is owed for every phase.
 **Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
 apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
@@ -202,6 +205,10 @@ granted, failed with a summary, not yet checked):
 No raw state numbers in anything shown or spoken. The diagnosis is a reading of state, not a new
 source of truth: `GlassesConnectionSnapshot` still owns the phase and `applyGlassesPhase` is still
 the only writer of `isConnected`.
+
+**Corrected 2026-10-10:** the code disagreed with this section on what the registration listener
+did, on where the permission's status can be written, on how many times a request may open Meta
+AI, and on where the session card can show a line. What shipped, and why, is under Phases › P3.
 
 **Wiring.**
 - `ensurePermission()`'s outcome at the registration listener is recorded into a published
@@ -501,6 +508,148 @@ that carries counts and tokens and no device name or identifier. No test touches
 **Gates:** as P0 and P1; the new strings follow the catalog's sync-and-translate precedent in
 their own commit.
 
+**Shipped 2026-10-10.** `GlassesReachabilityDiagnosis` (`Services/GlassesReachabilityDiagnosis.swift`)
+is the table above as `resolve(registration:links:permission:)`, with the short status line for
+each case. `GlassesReachability` holds the three facts it is read from (registration, each listed
+device's link, the permission's status) and words the support report's line and the Developer
+panel's. `GlassesCameraPermission` is the status: not checked, granted, not granted, declined,
+iPhone camera off, or failed with a `SafeErrorSummary`.
+
+`GlassesConnectionService` publishes `cameraPermission` and `reachability`, and its
+`connectionStatus` now follows the diagnosis. It reads the permission, without asking, when
+registration lands, when the device list empties, and when Devices & Privacy › Glasses opens.
+`requestCameraAccess()` is the wearer's own request, and `requestCameraAccessForConnect()` is the
+permission half of a Connect. Both go through a one-method seam, `GlassesCameraPermissionSource`,
+which in the app is `CameraService` and behind it `MetaCameraBackend.cameraPermission(asking:)`:
+the one new place the SDK's permission calls are made, and where its error is summarised.
+
+`AppState.connectGlasses()` asks once registration has landed and nothing is listed, before its
+wait, and skips the wait when the answer was no. The registration listener no longer touches the
+permission; `requestEarlyPermission(allowRequest:)` and its device poll are gone.
+`RegistrationFlow.connectFailureMessage` takes the reachability and has a sentence per cause.
+
+Readers: the session card's headline during a connect and the "Glasses away" pill's hint
+(`SessionCardGlassesPill.awayHint(for:)`); Devices & Privacy › Glasses (`GlassesConnectRow`, now
+built from the reachability: a button for *not added* and *permission needed*, a line with nothing
+to press for *no device seen* and *link down*); the connect failure message; the Developer panel's
+Glasses Link check; and one line in the support report's phone section, for example
+`Glasses link: permissionNeeded — registration registered, devices listed 0, camera permission notGranted`.
+The log carries the diagnosis and the permission's status each time they change
+(`reachabilityRead`, `cameraPermissionRead`), and Meta AI's answer to a request
+(`permissionRequested`).
+
+Tests: `GlassesReachabilityDiagnosisTests` (23: the table, a failed check, a listed device
+winning, several devices, agreement with the phase for every combination, the status lines, the
+report line with identifiers and names kept out, the Developer panel's wording, the permission
+error summaries), `GlassesConnectionServiceTests` (22 new, through the fake link source and a
+fake permission source: every launch path reads and none asks; a Connect on a registered,
+ungranted pair asks once, whether it is granted, declined or fails; nothing is asked of an
+unregistered app or a listed pair), `RegistrationFlowTests` (6 new) and
+`RegistrationFlowConfigMessageTests` (updated), `GlassesConnectRowTests` (13, rewritten for the
+swap), `TalkEntryPolicyTests` (the hints) and `CameraServiceCoordinatorTests` (3 new).
+
+**What the code corrected (2026-10-10):**
+- **Line numbers.** The registration listener's call was at `App/OpenGlassesApp.swift:4187`, not
+  `:4037`; the two `allowRequest: false` calls at `:4226` and `:4234`; the report's line at
+  `App/SupportReporting.swift:140`; the phase's status text at
+  `Services/GlassesConnectionPhase.swift:98`. `RegistrationFlow.swift:134`,
+  `MetaCameraBackend.swift:237` and `SubsystemProbes.swift:14-17` were as recorded.
+- **What the registration listener did at launch (open question 4).** Two launch paths touched
+  the permission. `autoConnectGlasses()` read it with `allowRequest: false` and, when it was
+  granted, set the camera's cached flag. The registration listener called `ensurePermission()`,
+  which checks *and requests*, three attempts, every time the SDK reported "registered" while that
+  cached flag was false. So a registered wearer without the permission was sent to Meta AI by any
+  registration event that arrived after the listener was installed: the SDK settling to registered
+  after launch, or one of registration's dips and returns mid-session. Whether the SDK also
+  delivers the current state on subscription cannot be read from its interface; the device pass
+  records it. Now neither path asks. The listener keeps the raw state and nothing else, and the
+  connection service reads the permission when registration lands.
+- **Launch also prompted for the iPhone's camera.** `requestEarlyPermission` asked iOS for camera
+  access when the wearer had never answered, before reading Meta's. The read does not need it, so
+  that prompt went with the function. The wearer's own request still asks iOS first, as
+  `ensurePermission()` does.
+- **A request that fails can open Meta AI three times; a refusal cannot (P3a's question).**
+  In `ensurePermission()` a `requestPermission` that *returns* "denied" is thrown out of the loop
+  at once. One that *throws* (the SDK's timeout, an internal error, a request already in progress)
+  is caught, waited four seconds on, and made again, up to three times. The wearer's request is
+  therefore its own single attempt, `cameraPermission(asking: true)`, and
+  `GlassesCameraAccessOutcome.request` over `ensurePermission()` is gone. `ensurePermission()`
+  itself is unchanged for camera starts, which are Plans FD and HJ's.
+- **In `ensurePermission()` a failed check never reaches the request.** A `checkPermissionStatus`
+  that throws is retried and then given up on without `requestPermission` being called, and the
+  SDK's `PermissionError` has `noDevice` and `noDeviceWithConnection` cases. If the SDK cannot read
+  the permission while nothing is listed, the old path could never ask for it, which would be this
+  phase's tester exactly. That cannot be settled from a desk. The wearer's request asks even when
+  the read failed.
+- **The status is published by the connection service, and written from three places.**
+  `GlassesConnectionService.cameraPermission` is set by the reads above, by the wearer's request,
+  and by what a camera start learned: `ensurePermission()` now reports how its permission step
+  ended as a backend event (`.cameraPermission`), which `CameraService` hands on. The plan had the
+  listener's `ensurePermission()` outcome recorded; the listener no longer calls it.
+- **The SDK's permission errors summarise to their type's name only.** They describe themselves,
+  so `SafeErrorSummary` drops the case name and keeps the ordinal, and every failure read
+  "PermissionError". `MetaCameraBackend.permissionSummary(of:)` names the case (`noDevice`,
+  `metaAINotInstalled`, `requestTimeout` and the rest), which is what the footer and the report
+  show.
+- **The diagnosis is published with its facts, not derived from the phase.** A device being listed
+  moves the diagnosis from *permission needed* to *link down* and leaves the phase where it was, so
+  a view that watched the phase would not redraw. `reachability` is published on any change and
+  mirrored by `AppState.glassesReachability`.
+- **`GlassesConnectionPhase.statusText` is gone.** The diagnosis words the status line, including
+  the three cases the phase could not tell apart.
+- **Registration in flight is the SDK's own "registering" state.** A Connect that is waiting at a
+  lower state shows `connect()`'s "Approve … in the Meta AI app" line as before.
+- **The other connect failure sentence carried a state number too.** "Glasses registration didn't
+  complete (state N)", for a contributor build, lost its number.
+- **The session card has no standing glasses line, by design.** Phone-first: the card reports the
+  session, and the glasses' state lives on the pill. So the diagnosis reaches the card in the two
+  places a glasses line already appears: the headline while the wearer's Connect is under way, and
+  the hint the "Glasses away" pill posts when tapped, which now says why and still names Devices &
+  Privacy › Glasses.
+- **Only two diagnoses have something to press.** *Not added* keeps "Connect to Meta AI" and
+  *permission needed* has "Allow camera access in Meta AI". *No device seen* and *link down* get a
+  line and no button: the app cannot bring a link up, and P3a's button could only answer "already
+  allowed" there. P3a's footer for a granted permission became the *no device seen* line; its
+  other three outcome footers are unchanged.
+- **A Connect does not wait for a link that cannot come.** When the permission was declined, is
+  off for the iPhone's camera, or reads not granted, the failure is reported at once rather than
+  after fifteen seconds. A read that failed or has not run still gets the wait.
+- **The read is repeated where the line is read.** A status from launch goes stale when the
+  wearer allows or takes back camera access in Meta AI, so it is read again when Devices & Privacy
+  › Glasses opens (not while connected) and when a listed device disappears.
+- **The cached flag is set only once iOS has allowed the camera.** It is `ensurePermission()`'s
+  fast path past iOS's prompt, and a read alone asks iOS nothing.
+- **The Developer panel also stopped calling paused glasses unpaired.** Its check reads "in use",
+  so glasses whose link is up but stood down failed with "pair via the Meta AI app". It now says
+  the link is up and the app is stood down. The support report's line likewise reads `connected`
+  there, beside the older "Glasses: not connected".
+- **Two launch paths outside the connection can still ask, and are not changed here.** With a
+  live mode selected, launch starts the camera after a second and a half, and "start Blind
+  Assistant on launch" starts a session; both reach the backend's `ensurePermission()`, which
+  requests. They are camera starts the wearer configured, and gating them belongs with the
+  camera's own start rules. Recorded so the answer to open question 4 is not read as wider than
+  it is.
+- **Strings.** The row's two new titles and the *link down* line are in the catalog with ru and
+  es-MX. The status lines, the failure message, the pill's hint, the Developer panel and the
+  report line are not localised today, and these follow that.
+
+**Owed on a device:** on a phone that has registered and never granted the permission, launch
+and confirm Meta AI does not open, the session card's pill hint and Devices & Privacy › Glasses
+both say camera access is needed, and a support report carries
+`permissionNeeded … camera permission notGranted`. If the report instead reads
+`failed(noDevice)`, the SDK cannot read the permission with nothing listed: record it, and press
+the button to see whether the request can still open Meta AI. Press "Allow camera access in Meta
+AI": Meta AI opens once; allow it, and the row becomes "Meta AI isn't showing your glasses yet" or
+goes straight to the glasses connecting; decline it, and read the declined footer with no second
+trip to Meta AI. From a fresh install, press "Connect to Meta AI" and count the hand-offs: one
+for the approval and one for camera access, and no fifteen-second wait after a decline. Put a
+listed pair in its case: "Glasses out of reach", no button. With another glasses app holding
+Developer Mode, record which diagnosis shows and what the report line says. With VoiceOver on,
+press the button and hear where things stand when Meta AI returns. Record whether the registration
+listener fires at launch for an already registered app (`registrationState` in the event log
+straight after `configured`), and whether a live mode's launch camera start opens Meta AI for a
+registered wearer without the permission.
+
 ### P2: device pass (owed)
 
 With the phone pocketed: walk out of range and hear the lost cue once; take the glasses off and
@@ -511,7 +660,7 @@ TestFlight), confirm one spoken update line and no repeated session attempts.
 For P3: on a phone that has never registered, pair and decline the camera permission in Meta AI,
 and read `permissionNeeded` with a working button; grant it with the glasses in the case and read
 `linkDown`; with another glasses app holding Developer Mode, record what the SDK reports and
-whether `noDeviceSeen` is the honest reading of it.
+whether `noDeviceSeen` is the honest reading of it. The full list is under Phases › P3.
 
 ## Open questions
 
@@ -524,10 +673,12 @@ whether `noDeviceSeen` is the honest reading of it.
    the permission is not cached, which includes launch, and that function requests as well as
    checks. Should a launch ever leave for Meta AI unasked? Recommended: no — check at launch,
    request only inside a Connect the wearer pressed. Confirm what the listener does at launch
-   before changing it.
+   before changing it. **P3 shipped it that way**, for the connection's own launch paths; what
+   the listener did, and the two camera starts at launch that still reach a request, are under
+   Phases › P3.
 5. (P3) The SDK keeps its own log in the app's caches. Should a not-connected support report say
    whether that log shows a refused registration or a missing glasses-side component?
-   Recommended: not in P3; decide after the first report P3 produces.
+   Recommended: not in P3; decide after the first report P3 produces. **P3 does not read it.**
 6. (P3) Whether the tester's region or model matters is not something this app decides. P3 makes
    the report say which of the rows above they are in; that answers it or rules the app out.
 

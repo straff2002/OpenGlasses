@@ -37,6 +37,19 @@ final class MockCameraBackend: GlassesCameraBackend {
 
     func ensurePermission() async throws { permissionGranted = true }
 
+    /// Plan HX P3: what a read of the glasses-side permission finds, what asking for it answers,
+    /// and every call with whether it was allowed to ask.
+    var standingPermission: GlassesCameraPermission = .notGranted
+    var permissionAnswer: GlassesCameraPermission = .granted
+    private(set) var permissionCalls: [Bool] = []
+
+    func cameraPermission(asking: Bool) async -> GlassesCameraPermission {
+        permissionCalls.append(asking)
+        if standingPermission.isGranted || !asking { return standingPermission }
+        standingPermission = permissionAnswer
+        return permissionAnswer
+    }
+
     func capturePhoto() async throws -> Data {
         captureCount += 1
         return try captureResult.get()

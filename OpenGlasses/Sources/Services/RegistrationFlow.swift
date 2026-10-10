@@ -110,32 +110,65 @@ enum RegistrationFlow {
         }
     }
 
-    /// Diagnostic failure message for a connect that gave up — names the stalled layer instead of
-    /// a bare "Could not connect to glasses" (issue #246: that string hid a broken registration
+    /// Failure message for a connect that gave up — names what is in the way instead of a bare
+    /// "Could not connect to glasses" (issue #246: that string hid a broken registration
     /// link-back for an entire debugging evening). Still actionable, now also diagnosable.
     ///
-    /// `configStatus` lets a bad MWDAT config pre-empt the generic advice: a placeholder app ID
-    /// stalls registration in exactly the same way a missed link-back does, and telling the user
-    /// to re-approve in Meta AI when the *build* is misconfigured sends them down the wrong path
-    /// for hours. Defaults to `.ok` so existing callers are unaffected.
+    /// It reads the reachability diagnosis (Plan HX P3), so each cause gets its own sentence. The
+    /// one this replaces, for every registered pair, was "registered but no device appeared" with
+    /// a raw state number, and it named neither the camera permission nor Developer Mode's
+    /// one-app-at-a-time limit: the two likeliest causes for someone who has just paired.
+    ///
+    /// `configStatus` lets a bad MWDAT config pre-empt the generic advice while registration has
+    /// not landed: a placeholder app ID stalls registration in exactly the same way a missed
+    /// link-back does, and telling the user to re-approve in Meta AI when the *build* is
+    /// misconfigured sends them down the wrong path for hours. Past registration the credentials
+    /// demonstrably worked, so it is not consulted. Defaults to `.ok`.
     ///
     /// `bundleID` picks the audience for a stalled registration: on the published app the likely
     /// cause is that Meta hasn't let this wearer in, so it gets `notApprovedMessage`; a contributor
     /// build keeps the link-back diagnosis, which is the likely cause there.
-    static func connectFailureMessage(stateRaw: Int,
+    static func connectFailureMessage(reachability: GlassesReachability,
                                       configStatus: MWDATConfigCheck.Status = .ok,
                                       bundleID: String? = Bundle.main.bundleIdentifier,
                                       appName: String = RegistrationFlow.appName) -> String {
-        if !isRegistered(stateRaw: stateRaw),
-           let configProblem = MWDATConfigCheck.message(for: configStatus) {
-            return configProblem
+        switch reachability.diagnosis {
+        case .notAdded, .awaitingApproval:
+            if let configProblem = MWDATConfigCheck.message(for: configStatus) {
+                return configProblem
+            }
+            if bundleID == publishedBundleID {
+                return notApprovedMessage(appName: appName)
+            }
+            return "Glasses registration didn't complete. If you approved \(appName) in the Meta AI app and this persists, the approval link-back may not be reaching this app — on a custom build, verify the AppLink domain and associated-domains entitlement match your bundle ID."
+        case .permissionNeeded:
+            return cameraAccessNeededMessage(reachability.permission, appName: appName)
+        case .noDeviceSeen:
+            return "Camera access is allowed, but Meta AI hasn't shown \(appName) your glasses. Wake them, check that they're connected in the Meta AI app and that no other glasses app is using Developer Mode, then try again."
+        case .linkDown:
+            return "Your glasses are out of reach. Check that they're switched on, out of their case and nearby."
+        case .linkComingUp:
+            return "Your glasses are still connecting. Give them a moment."
+        case .connected:
+            // Not a failure, and not reachable from `connectGlasses()`, which returns before this
+            // once the link is up. Worded anyway so no caller can print an empty error.
+            return "Your glasses are connected."
         }
-        if isRegistered(stateRaw: stateRaw) {
-            return "Glasses registered but no device appeared (state \(stateRaw)). Make sure the glasses are on, nearby, and connected in the Meta AI app, then try again."
+    }
+
+    /// The sentence for a registered pair Meta AI lists no device for, by what is known about the
+    /// camera permission. The row that asks is on Devices & Privacy › Glasses, so each says so.
+    static func cameraAccessNeededMessage(_ permission: GlassesCameraPermission,
+                                          appName: String = RegistrationFlow.appName) -> String {
+        switch permission {
+        case .declined:
+            return "Camera access wasn't allowed in Meta AI, and your glasses can't connect to \(appName) without it. Try again in Settings › Devices & Privacy › Glasses and allow it there."
+        case .phoneCameraDenied:
+            return "\(appName) isn't allowed to use the camera on this iPhone, which glasses camera access needs first. Turn Camera on for \(appName) in the iPhone's Settings app, then try again."
+        case .failed(let summary):
+            return "\(appName) couldn't check camera access with Meta AI (\(GlassesCameraPermission.reason(summary))). Make sure the Meta AI app is installed and \(appName) is still approved in it, then try again in Settings › Devices & Privacy › Glasses."
+        case .notChecked, .notGranted, .granted:
+            return "\(appName) is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows \(appName) your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses."
         }
-        if bundleID == publishedBundleID {
-            return notApprovedMessage(appName: appName)
-        }
-        return "Glasses registration didn't complete (state \(stateRaw)). If you approved \(appName) in the Meta AI app and this persists, the approval link-back may not be reaching this app — on a custom build, verify the AppLink domain and associated-domains entitlement match your bundle ID."
     }
 }

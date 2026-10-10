@@ -92,16 +92,6 @@ enum GlassesConnectionPhase: Equatable, Sendable {
 
     /// Whether glasses are part of this person's setup at all, reachable or not.
     var glassesAdded: Bool { self != .noGlassesAdded }
-
-    /// The short status line `GlassesConnectionService.connectionStatus` carries when the phase
-    /// changes. "Not connected" is the wording the session card maps to its own headline.
-    func statusText(deviceName: String?) -> String {
-        switch self {
-        case .noGlassesAdded, .addedDisconnected: return "Not connected"
-        case .connecting: return "Connecting…"
-        case .connected: return "Connected to \(deviceName ?? "glasses")"
-        }
-    }
 }
 
 /// Everything the SDK has told the app about the glasses, and the phase that follows from it.

@@ -98,9 +98,11 @@ final class MWDATConfigCheckTests: XCTestCase {
 /// Meta AI approval — the two produce an identical stalled registration state.
 final class RegistrationFlowConfigMessageTests: XCTestCase {
 
+    private let unregistered = GlassesReachability(registration: .notRegistered)
+
     func testBadConfigPreemptsTheGenericApprovalAdvice() {
         let message = RegistrationFlow.connectFailureMessage(
-            stateRaw: 0, configStatus: .placeholder(key: "MetaAppID"))
+            reachability: unregistered, configStatus: .placeholder(key: "MetaAppID"))
         XCTAssertTrue(message.contains("project.local.yml"))
         XCTAssertFalse(message.contains("associated-domains"),
                        "must not send the user chasing an AppLink problem they don't have")
@@ -108,15 +110,16 @@ final class RegistrationFlowConfigMessageTests: XCTestCase {
 
     func testHealthyConfigKeepsTheLinkBackDiagnosisOnAContributorBuild() {
         let message = RegistrationFlow.connectFailureMessage(
-            stateRaw: 0, configStatus: .ok, bundleID: "com.example.myglasses")
+            reachability: unregistered, configStatus: .ok, bundleID: "com.example.myglasses")
         XCTAssertTrue(message.contains("registration didn't complete"))
+        XCTAssertFalse(message.contains(where: \.isNumber), "the raw state number is gone from it")
     }
 
     /// On the published app a stalled registration is most likely Meta refusing a wearer who
     /// isn't in the release channel — AppLink advice there is advice they can't act on.
     func testPublishedBuildExplainsTheInviteGateInsteadOfAppLinks() {
         let message = RegistrationFlow.connectFailureMessage(
-            stateRaw: 0, configStatus: .ok, bundleID: RegistrationFlow.publishedBundleID,
+            reachability: unregistered, configStatus: .ok, bundleID: RegistrationFlow.publishedBundleID,
             appName: "Avenkin")
         XCTAssertEqual(message, RegistrationFlow.notApprovedMessage(appName: "Avenkin"))
         XCTAssertFalse(message.contains("associated-domains"))
@@ -124,21 +127,29 @@ final class RegistrationFlowConfigMessageTests: XCTestCase {
 
     func testBadConfigPreemptsTheInviteGateOnThePublishedBuildToo() {
         let message = RegistrationFlow.connectFailureMessage(
-            stateRaw: 0, configStatus: .placeholder(key: "MetaAppID"),
+            reachability: unregistered, configStatus: .placeholder(key: "MetaAppID"),
             bundleID: RegistrationFlow.publishedBundleID)
         XCTAssertTrue(message.contains("project.local.yml"))
     }
 
     func testRegisteredStateIgnoresConfigStatus() {
         // Past registration, the credentials demonstrably worked — a config gripe here would
-        // be a false lead pointing away from the real cause (no device in range).
-        let message = RegistrationFlow.connectFailureMessage(
-            stateRaw: 3, configStatus: .placeholder(key: "MetaAppID"))
-        XCTAssertTrue(message.contains("no device appeared"))
+        // be a false lead pointing away from the real cause (the permission, or no device in range).
+        let registered: [GlassesReachability] = [
+            GlassesReachability(registration: .registered),
+            GlassesReachability(registration: .registered, permission: .granted),
+            GlassesReachability(registration: .registered, links: [.disconnected], permission: .granted),
+        ]
+        for reachability in registered {
+            let message = RegistrationFlow.connectFailureMessage(
+                reachability: reachability, configStatus: .placeholder(key: "MetaAppID"))
+            XCTAssertFalse(message.contains("project.local.yml"), "\(reachability.diagnosis)")
+            XCTAssertEqual(message, RegistrationFlow.connectFailureMessage(reachability: reachability))
+        }
     }
 
     func testDefaultArgumentPreservesExistingBehaviour() {
-        XCTAssertEqual(RegistrationFlow.connectFailureMessage(stateRaw: 0),
-                       RegistrationFlow.connectFailureMessage(stateRaw: 0, configStatus: .ok))
+        XCTAssertEqual(RegistrationFlow.connectFailureMessage(reachability: unregistered),
+                       RegistrationFlow.connectFailureMessage(reachability: unregistered, configStatus: .ok))
     }
 }
