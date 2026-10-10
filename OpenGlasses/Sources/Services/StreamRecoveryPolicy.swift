@@ -214,6 +214,14 @@ enum DATCompatibilityMessage {
         return "A newer Avenkin may work better with these glasses — update from the App Store when convenient."
     }
 
+    /// DAT 1.0: the one session error that says the glasses refuse this build. Terminal for the
+    /// process: nothing on the glasses or in Meta AI changes it, so `SDKRefusalLatch` stops every
+    /// later camera start from asking again.
+    static func isSDKRefusal(_ error: DeviceSessionError) -> Bool {
+        if case .insufficientSDKVersion = error { return true }
+        return false
+    }
+
     /// What the glasses' own compatibility reading asks the wearer to do, or nil when it asks
     /// nothing. Read at link time through `CompatibilityNoticePolicy` (Plan HX P1).
     static func message(for compatibility: GlassesCompatibility) -> String? {

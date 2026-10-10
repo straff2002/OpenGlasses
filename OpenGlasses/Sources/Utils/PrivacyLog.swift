@@ -535,6 +535,10 @@ enum PrivacyLog {
         /// rather than reused.
         case staleSessionDropped
         case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
+        /// HX P1. `sdkRefusalLatched` is the glasses refusing this build, recorded for the rest
+        /// of the process; `startRefusedByLatch` is a later capture or stream start failing at
+        /// once because of it, with no session attempt.
+        case sdkRefusalLatched, startRefusedByLatch
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture
         case streamStoppedWhileWanted

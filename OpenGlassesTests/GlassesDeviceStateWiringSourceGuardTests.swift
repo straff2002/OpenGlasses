@@ -4,13 +4,15 @@ import XCTest
 /// Plan HX P1 — keeps the glasses' thermal and compatibility readings wired to what acts on them.
 ///
 /// The decisions are pure and tested where they live (`CompatibilityNoticePolicyTests`,
-/// `PowerPolicyServiceTests`). Their callers cannot run in a unit-test host: `AppState` reaches
-/// the wake word, the camera and the live sessions, and the link source sits on `Wearables`,
-/// which traps here. Those callers are where the gap was (a reading nothing read), so, like the
+/// `SDKRefusalLatchTests`, `PowerPolicyServiceTests`). Three of their callers cannot run in a
+/// unit-test host: `AppState` reaches the wake word, the camera and the live sessions, and the
+/// Meta backend's session-error watcher sits behind `Wearables`, which traps here. Those callers
+/// are where the gap was (a reading nothing read, a refusal forgotten every cycle), so, like the
 /// link cue's guard, this reads the source.
 final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
 
     private static let appState = "OpenGlasses/Sources/App/OpenGlassesApp.swift"
+    private static let metaBackend = "OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift"
     private static let linkSource = "OpenGlasses/Sources/Services/GlassesLinkSource.swift"
 
     /// `#filePath` is baked in at compile time and the simulator shares the host filesystem — the
@@ -70,7 +72,7 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
                       "a thermal change no longer re-evaluates the posture when it happens")
     }
 
-    func testACompatibilityReadingDecidesTheNotice() throws {
+    func testACompatibilityReadingDecidesTheNoticeAndNothingElse() throws {
         let appState = try code(Self.appState)
         XCTAssertTrue(appState.contains("glassesService.$compatibility"),
                       "nothing listens to the glasses' compatibility reading any more")
@@ -86,6 +88,10 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
         XCTAssertTrue(body.contains("compatibilityNotices.isOwed(message)"),
                       "the notice must be re-checked when it is about to be said: the glasses may "
                           + "have gone, and it is only said while they are connected")
+        XCTAssertFalse(body.contains("cameraService"),
+                       "a compatibility reading must not stop the camera by itself: the SDK calls "
+                           + "it \"some features may be unavailable\", and only a session the "
+                           + "glasses refuse says the camera is one of them (SDKRefusalLatch)")
     }
 
     func testTheCamerasOwnNoticeSharesTheRecord() throws {
@@ -97,5 +103,30 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
                                       + "record: a refused build is announced twice")
         let speak = try XCTUnwrap(sink.range(of: "speechService.speak(notice)"))
         XCTAssertLessThan(claim.lowerBound, speak.lowerBound)
+    }
+
+    // MARK: - The backend reports the refusal
+
+    func testTheSessionErrorWatcherReportsARefusalOfTheBuild() throws {
+        let backend = try code(Self.metaBackend)
+        let watcher = try slice(of: backend,
+                                from: "private func watchSessionErrors(on session: DeviceSession) {",
+                                to: "\n    }\n", "`watchSessionErrors(on:)`")
+        XCTAssertTrue(watcher.contains("if DATCompatibilityMessage.isSDKRefusal(error) { self.events.send(.sdkRefused) }"),
+                      "the session-error watcher no longer reports insufficientSDKVersion to the "
+                          + "coordinator: the refusal is rediscovered on every start again")
+        let advisory = try XCTUnwrap(watcher.range(of: "DATCompatibilityMessage.advisory(for: error)"))
+        let refusal = try XCTUnwrap(watcher.range(of: "isSDKRefusal(error)"))
+        XCTAssertLessThan(advisory.lowerBound, refusal.lowerBound,
+                          "an advisory must leave the loop before anything is latched on it")
+    }
+
+    func testThePerCycleClearIsStillThere() throws {
+        let retry = try slice(of: try code(Self.metaBackend),
+                              from: "private func ensureSessionWithRetry() async throws {",
+                              to: "for attempt in 1...4 {", "`ensureSessionWithRetry()`")
+        XCTAssertTrue(retry.contains("compatibilityNotice = nil"),
+                      "the backend must go on clearing its notice each cycle: a notice from "
+                          + "before a glasses update must not block attempts that would now succeed")
     }
 }

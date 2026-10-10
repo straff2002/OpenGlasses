@@ -957,7 +957,8 @@ class AppState: ObservableObject, AppStateProtocol {
     ///
     /// A requirement the wearer has not heard about is posted and then said once: after the
     /// connection's own sounds, never on top of speech (the same route reading the link cue above
-    /// uses), and only if the glasses are still connected and still asking by then.
+    /// uses), and only if the glasses are still connected and still asking by then. The reading
+    /// does not stop the camera by itself; a session the glasses refuse does (`SDKRefusalLatch`).
     private func glassesCompatibilityChanged(_ compatibility: GlassesCompatibility?) {
         if let compatibility {
             PrivacyLog.device(.glasses, .compatibilityRead, state: PrivacyToken.caseName(of: compatibility))
