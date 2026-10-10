@@ -71,6 +71,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// The lower tier `StallRecoveryBackoff` switched to after the requested one kept failing. Held
     /// for the rest of this streaming session only; the wearer's setting is never rewritten.
     private var stallTierOverride: String?
+    /// Plan HW P1 — the link stall being recovered from, for one log line when it is over. Set
+    /// by the stall detector and by nothing else: `recoverFromStall()` is shared with the
+    /// reconnect ladder, and while this is nil every note it makes goes nowhere. It only
+    /// watches; nothing reads it to decide anything.
+    private var stallEpisode: StallEpisodeRecord?
 
     /// Plan FD P0 — why pictures are not flowing, as last reported to the coordinator.
     ///
@@ -1467,7 +1472,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.report(waitReason: .framesUnavailable)
                     self.isRecoveringFromStall = true
                     self.stallRecoveryCount += 1
+                    // HW P1: open the record of this episode. From here to the line it writes
+                    // below it is told what happens and decides none of it.
+                    self.stallEpisode = StallEpisodeRecord(
+                        silenceAtVerdict: self.framePipeline.secondsSinceLastSample(),
+                        samplesSeen: self.framePipeline.lifetimeSampleCount)
                     await self.recoverFromLinkStall()
+                    self.stallEpisode?.close()?.log()
+                    self.stallEpisode = nil
                     self.isRecoveringFromStall = false
                 }
             }
@@ -1498,10 +1510,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
         case .resetSession:
             await resetSession()
         }
+        // HW P1: the old stream is gone and its replacement does not exist yet, so anything the
+        // pipeline counted since the verdict came from the stream that was called stalled.
+        stallEpisode?.teardownFinished(tier: action,
+                                       samplesSeen: framePipeline.lifetimeSampleCount, at: Date())
 
         do {
             try await ensureSession()
             let frameArrived = try await waitForStreaming(requireFreshFrame: true)
+            stallEpisode?.rebuildFinished(freshPicture: frameArrived, at: Date())
             lastFrameTime = Date()
             framePipeline.restartClocks()
             if frameArrived {
@@ -1515,6 +1532,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 PrivacyLog.camera(.glasses, .stallRecoveryNoFrame, count: consecutiveRecoveryFailures)
             }
         } catch {
+            stallEpisode?.rebuildFailed()
             consecutiveRecoveryFailures += 1
             PrivacyLog.camera(.glasses, .stallRecoveryFailed,
                               count: consecutiveRecoveryFailures,
@@ -1538,6 +1556,8 @@ final class MetaCameraBackend: GlassesCameraBackend {
     private func recoverFromLinkStall() async {
         guard case let .rebuild(delay, stepDownTier) =
                 StallRecoveryBackoff.decision(framelessRecoveries: framelessStallRecoveries) else {
+            stallEpisode?.endedWithoutRebuild(.gaveUp,
+                                              samplesSeen: framePipeline.lifetimeSampleCount)
             await giveUpStallRecovery()
             return
         }
@@ -1546,11 +1566,17 @@ final class MetaCameraBackend: GlassesCameraBackend {
                               seconds: delay)
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             // A stop cancels this task. Don't rebuild a stream nobody wants any more.
-            guard !Task.isCancelled, isStreaming else { return }
+            guard !Task.isCancelled, isStreaming else {
+                stallEpisode?.endedWithoutRebuild(.cancelled,
+                                                  samplesSeen: framePipeline.lifetimeSampleCount)
+                return
+            }
             // Frames may have started arriving from this stream during the wait. If so, keep it.
             if framePipeline.verdict() == .healthy {
                 framelessStallRecoveries = 0
                 PrivacyLog.camera(.glasses, .stallSelfRecovered)
+                stallEpisode?.endedWithoutRebuild(.selfRecovered,
+                                                  samplesSeen: framePipeline.lifetimeSampleCount)
                 return
             }
         }
