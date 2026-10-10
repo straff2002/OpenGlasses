@@ -41,6 +41,54 @@ final class CompatibilityNoticePolicyTests: XCTestCase {
         }
     }
 
+    // MARK: - On screen while it is true (Plan HX follow-up)
+
+    func testARequirementStandsOnScreenWhileItIsTheConnectedReading() {
+        XCTAssertEqual(Policy.standing(for: .deviceUpdateRequired), .stands(firmware))
+        XCTAssertEqual(Policy.standing(for: .sdkUpdateRequired), .stands(appUpdate))
+    }
+
+    func testItIsWithdrawnWhenTheGlassesAreCompatibleHaveNotSaidOrHaveGone() {
+        XCTAssertEqual(Policy.standing(for: .compatible), .withdrawn, "the glasses were updated")
+        XCTAssertEqual(Policy.standing(for: .undefined), .withdrawn)
+        XCTAssertEqual(Policy.standing(for: nil), .withdrawn, "the link went")
+    }
+
+    /// Standing is the reading and nothing else. Speaking is once per process; the two are
+    /// decided apart, so a sentence already said is still shown at the next connection.
+    func testStandingDoesNotDependOnWhatHasBeenSaid() {
+        var ledger = Policy.Ledger()
+        XCTAssertEqual(ledger.note(.deviceUpdateRequired), .announce(firmware))
+        ledger.noteSaid(firmware)
+        _ = ledger.note(nil)
+        XCTAssertEqual(ledger.note(.deviceUpdateRequired), .nothing, "not said again")
+        XCTAssertEqual(Policy.standing(for: .deviceUpdateRequired), .stands(firmware), "shown again")
+    }
+
+    /// The two ways it used to be lost while still true: the camera's per-cycle clear of the
+    /// glasses' notices, and any other glasses notice replacing it. It has its own source.
+    func testTheCamerasClearAndOtherGlassesNoticesLeaveItStanding() {
+        let update = AppNotice(text: firmware, severity: .warning, source: .glassesUpdate, postedAt: 0)
+        var held = NoticePolicy.merge([], with: update)
+        held = NoticePolicy.merge(held, with: AppNotice(text: "Glasses are out of reach",
+                                                        severity: .advisory, source: .glasses, postedAt: 1))
+        XCTAssertTrue(held.contains(update), "another glasses notice replaced it")
+        held = NoticePolicy.clearing(held, source: .glasses)
+        XCTAssertEqual(held, [update], "the camera's clear took it")
+        held = NoticePolicy.clearing(held, source: .camera)
+        XCTAssertEqual(held, [update])
+        XCTAssertEqual(NoticePolicy.clearing(held, source: .glassesUpdate), [], "its own withdrawal")
+    }
+
+    /// A later requirement replaces the earlier one rather than queueing behind it.
+    func testADifferentRequirementReplacesTheOneOnScreen() {
+        var held = NoticePolicy.merge([], with: AppNotice(text: firmware, severity: .warning,
+                                                          source: .glassesUpdate, postedAt: 0))
+        held = NoticePolicy.merge(held, with: AppNotice(text: appUpdate, severity: .warning,
+                                                        source: .glassesUpdate, postedAt: 1))
+        XCTAssertEqual(held.map(\.text), [appUpdate])
+    }
+
     // MARK: - Once per process
 
     func testARequirementIsAnnouncedOnTheFirstConnectedReading() {

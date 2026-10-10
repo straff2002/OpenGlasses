@@ -958,17 +958,24 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// The connected glasses' compatibility reading changed; nil is the link going.
     ///
-    /// A requirement the wearer has not heard about is posted and then said once: after the
-    /// connection's own sounds, never on top of speech (the same route reading the link cue above
-    /// uses), and only if the glasses are still connected and still asking by then. The reading
-    /// does not stop the camera by itself; a session the glasses refuse does (`SDKRefusalLatch`).
+    /// A requirement is on screen for as long as it is the connected glasses' reading, and is
+    /// taken back when they stop asking or go. One the wearer has not heard about is also said,
+    /// once: after the connection's own sounds, never on top of speech (the same route reading the
+    /// link cue above uses), and only if the glasses are still connected and still asking by then.
+    /// The reading does not stop the camera by itself; a session the glasses refuse does
+    /// (`SDKRefusalLatch`).
     private func glassesCompatibilityChanged(_ compatibility: GlassesCompatibility?) {
         if let compatibility {
             PrivacyLog.device(.glasses, .compatibilityRead, state: PrivacyToken.caseName(of: compatibility))
         }
+        switch CompatibilityNoticePolicy.standing(for: compatibility) {
+        case .stands(let message):
+            NoticeCenter.shared.post(message, severity: .warning, source: .glassesUpdate)
+        case .withdrawn:
+            NoticeCenter.shared.clear(source: .glassesUpdate)
+        }
         guard case .announce(let message) = compatibilityNotices.note(compatibility) else { return }
         addDebugEvent(message)
-        NoticeCenter.shared.post(message, severity: .warning, source: .glasses)
         compatibilityNoticeTask?.cancel()
         compatibilityNoticeTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(CompatibilityNoticePolicy.settleSeconds * 1_000_000_000))
