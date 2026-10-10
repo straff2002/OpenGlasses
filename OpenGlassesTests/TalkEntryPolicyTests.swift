@@ -251,7 +251,10 @@ final class TalkEntryPolicyTests: XCTestCase {
     func testAwayHintNamesWhatToDoNotTheSDKsInternalState() {
         XCTAssertFalse(SessionCardGlassesPill.awayHint.contains("state"),
                        "must never read like the SDK's own diagnostic text")
-        XCTAssertTrue(SessionCardGlassesPill.awayHint.localizedCaseInsensitiveContains("Meta AI"))
+        XCTAssertTrue(SessionCardGlassesPill.awayHint.contains("put them on"),
+                      "the usual reason is a pair in its case, so that comes first")
+        XCTAssertTrue(SessionCardGlassesPill.awayHint.contains("Settings › Devices & Privacy › Glasses"),
+                      "the tap is only a hint, so it names where the row to press is (Plan HX P3a)")
     }
 
     // MARK: - Session card: job pill

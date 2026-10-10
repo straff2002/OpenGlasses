@@ -234,8 +234,12 @@ enum SessionCardGlassesPill {
     }
 
     /// The hint shown on a tap while the glasses are away — a plain, immediate notice (`NoticeCenter`,
-    /// `.advisory`), never the 15 s `connectGlasses()` wait or its SDK-flavoured error text.
-    static let awayHint = "Glasses aren't connected — put them on, or check the Meta AI app."
+    /// `.advisory`), never the 15 s `connectGlasses()` wait or its SDK-flavoured error text. It
+    /// names where the connect row is (`GlassesConnectRow`, Plan HX P3a): the tap itself stays a
+    /// hint, so the hint has to say where the thing to press lives. Kept short — the notice card
+    /// shows four lines, and the path is the part that must not be cut off at a large text size.
+    static let awayHint = "Glasses aren't connected — put them on, or reconnect in "
+        + "Settings › Devices & Privacy › Glasses."
 }
 
 // MARK: - Session card: job pill
