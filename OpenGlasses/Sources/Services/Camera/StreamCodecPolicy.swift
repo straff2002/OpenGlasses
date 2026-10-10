@@ -158,19 +158,198 @@ struct StreamLiveness {
 /// pictures. Those would reach a vision model, a recording and the lens as if they were real, so
 /// the rule is to withhold them: nothing goes to the decoder until the first keyframe, and the
 /// last good picture is what the app keeps seeing in the meantime.
+///
+/// Plan HW P0 — what counts as a keyframe is read from the video (`NALUnitInspector`), and the
+/// sample's `NotSync` attachment is only asked when the video cannot be read. Three rules follow
+/// from reading it properly.
+///
+/// **Leading pictures.** An HEVC stream may be entered at a CRA picture (or a BLA_W_LP), and the
+/// pictures that follow it in the stream but precede it on screen come in two kinds. RASL pictures
+/// may reference pictures from before the entry point, which a decoder that started there never
+/// saw; they are withheld, and the last good picture stays up. RADL pictures reference nothing
+/// from before it and pass. The two may be interleaved, so the rule stays in force until the
+/// first picture that is neither: a trailing picture, or the next random-access point. A decoder
+/// that met the same CRA mid-stream has the references, and its RASL pictures are ordinary frames.
+///
+/// **Patience.** Before this, the hold almost certainly never held on the glasses stream: an
+/// absent attachment read as "keyframe" and the first sample went through. Reading the video makes
+/// it hold for real, and that is only safe if the stream contains pictures this parser recognises
+/// as places to start. One that refreshes gradually instead, with no such picture ever sent, would
+/// be held forever: a black camera, on hardware nobody can test without wearing it. So the hold
+/// counts the readable samples it has refused. The count survives `rearm()`, because the stall
+/// detector rebuilds a waiting decoder every few seconds and would otherwise restart it each time.
+/// At `patience` the hold stops believing the parser about this stream and lets the attachment
+/// decide, which is exactly the behaviour that shipped before. Only a random-access picture
+/// actually arriving restores the parser's standing.
 struct KeyframeHold {
+
+    /// Readable samples refused, across rebuilds, before the hold gives up on the parser. The one
+    /// field measurement to hand is a random-access picture every 45 samples (3 s at 15 fps), so
+    /// 240 is more than five of those, and 8 s of a 30 fps stream.
+    static let patience = 240
 
     /// True from creation until the first keyframe clears it.
     private(set) var isHolding = true
 
-    /// Re-arm after invalidating or rebuilding a session.
-    mutating func rearm() { isHolding = true }
+    /// The hold was released by a picture whose RASL pictures this decoder cannot decode, and
+    /// the leading pictures have not been seen to end yet.
+    private(set) var isSkippingLeadingPictures = false
 
-    /// Whether this sample may reach the decoder. A keyframe both passes and ends the hold.
+    /// Readable non-random-access samples refused while holding, since the last random-access
+    /// picture was seen. Not reset by `rearm()`.
+    private(set) var refusedWhileHolding = 0
+
+    /// False once `patience` has run out, until a random-access picture is seen.
+    private(set) var trustsParser = true
+
+    /// Re-arm after invalidating or rebuilding a session.
+    mutating func rearm() {
+        isHolding = true
+        isSkippingLeadingPictures = false
+    }
+
+    /// Whether this sample may reach the decoder, by the attachment alone. A keyframe both
+    /// passes and ends the hold. This is the rule for a sample the parser could not read.
     mutating func admits(keyframe: Bool) -> Bool {
-        guard isHolding else { return true }
-        guard keyframe else { return false }
+        admits(.unparseable, attachmentSaysKeyframe: keyframe)
+    }
+
+    /// Whether this sample may reach the decoder. `kind` is what the video says the sample is;
+    /// `attachmentSaysKeyframe` is what the old rule would have said (no `NotSync`, or none at
+    /// all, reads as a keyframe).
+    mutating func admits(_ kind: NALUnitInspector.PictureKind,
+                         attachmentSaysKeyframe: Bool) -> Bool {
+        if case .randomAccess(_, let leadingMayBeUndecodable) = kind {
+            // The stream has pictures the parser recognises after all.
+            refusedWhileHolding = 0
+            trustsParser = true
+            // Only a decoder that *starts* here lacks the references its RASL pictures want.
+            isSkippingLeadingPictures = isHolding && leadingMayBeUndecodable
+            isHolding = false
+            return true
+        }
+
+        guard isHolding else {
+            guard isSkippingLeadingPictures else { return true }
+            switch kind {
+            case .leadingSkipped:
+                return false
+            case .leadingDecodable, .unparseable:
+                // A RADL may sit between two RASLs, and a sample that cannot be read says
+                // nothing about whether the leading pictures have ended. Both pass; neither
+                // ends the rule.
+                return true
+            case .nonRandomAccess, .randomAccess:
+                isSkippingLeadingPictures = false
+                return true
+            }
+        }
+
+        switch kind {
+        case .randomAccess:
+            return true   // handled above
+        case .unparseable:
+            break
+        case .nonRandomAccess, .leadingSkipped, .leadingDecodable:
+            if trustsParser {
+                refusedWhileHolding += 1
+                guard refusedWhileHolding >= Self.patience else { return false }
+                trustsParser = false
+            }
+        }
+
+        // The video could not be read, or patience has run out: the attachment decides.
+        guard attachmentSaysKeyframe else { return false }
         isHolding = false
         return true
+    }
+}
+
+/// Plan HW P0 — what one stream showed about where its keyframes can be read from (pure).
+///
+/// Two questions cannot be answered without glasses on a face: does this stream mark its
+/// non-keyframes with the `NotSync` attachment at all, and how often does it send a picture a
+/// decoder can start on. Each is answered by one log line per stream, and this is the bookkeeping
+/// that decides when there is enough to say so. It returns what to log rather than logging, so
+/// the rule can be tested without a log to read.
+struct KeyframeEvidence {
+
+    /// Which of the two sources turned out to be telling the truth about this stream.
+    enum Source: String, Equatable {
+        /// The parser found a non-keyframe the attachment would have called a keyframe. This is
+        /// the field report confirmed: without the parser, the hold would not have held.
+        case parser
+        /// The parser cannot read this stream, so the attachment rule is what is in force.
+        case attachment
+        /// The parser found a non-keyframe and the attachment said `NotSync` too.
+        case both
+        /// The parser found a random-access picture the attachment marked `NotSync`.
+        case disagree
+    }
+
+    enum Finding: Equatable {
+        /// `samples` is how many had been seen when the answer became clear, and `notSync` is
+        /// the attachment on the sample that settled it (nil: not there at all).
+        case source(Source, samples: Int, notSync: Bool?)
+        /// The second random-access picture of the stream arrived. `samples` is the distance
+        /// from the first to it, which is the length of a group of pictures.
+        case interval(samples: Int, pictureName: String, parameterSetsInBand: Bool)
+    }
+
+    /// Unreadable samples, with nothing decisive seen first, before the stream is called one the
+    /// parser cannot read. Two seconds of a 15 fps stream.
+    static let unparseableLimit = 30
+
+    private(set) var samplesObserved = 0
+    private var unparseableSeen = 0
+    private var reportedSource = false
+    private var firstRandomAccessSample: Int?
+    private var reportedInterval = false
+
+    /// A new stream: everything it shows is news again.
+    mutating func reset() {
+        self = KeyframeEvidence()
+    }
+
+    /// Takes one sample's readings and returns what, if anything, they settle. Each finding is
+    /// returned once per stream. `parameterSetsInBand` matters only for a random-access sample.
+    mutating func observe(_ kind: NALUnitInspector.PictureKind, notSync: Bool?,
+                          parameterSetsInBand: Bool) -> [Finding] {
+        samplesObserved += 1
+        var findings: [Finding] = []
+
+        if !reportedSource, let source = settledSource(kind, notSync: notSync) {
+            reportedSource = true
+            findings.append(.source(source, samples: samplesObserved, notSync: notSync))
+        }
+
+        if case .randomAccess(let nalType, _) = kind, !reportedInterval {
+            if let first = firstRandomAccessSample {
+                reportedInterval = true
+                findings.append(.interval(
+                    samples: samplesObserved - first,
+                    pictureName: NALUnitInspector.randomAccessName(nalType: nalType),
+                    parameterSetsInBand: parameterSetsInBand))
+            } else {
+                firstRandomAccessSample = samplesObserved
+            }
+        }
+
+        return findings
+    }
+
+    /// A random-access picture with no `NotSync` settles nothing: both sources call it a
+    /// keyframe, and they would whether or not the stream ever sets the attachment.
+    private mutating func settledSource(_ kind: NALUnitInspector.PictureKind,
+                                        notSync: Bool?) -> Source? {
+        switch kind {
+        case .nonRandomAccess, .leadingSkipped, .leadingDecodable:
+            return notSync == true ? .both : .parser
+        case .randomAccess:
+            return notSync == true ? .disagree : nil
+        case .unparseable:
+            unparseableSeen += 1
+            return unparseableSeen >= Self.unparseableLimit ? .attachment : nil
+        }
     }
 }

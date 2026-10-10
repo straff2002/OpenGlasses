@@ -1,8 +1,9 @@
 # Plan HW: Glasses Stream Integrity (keyframes, raw frames under lock, the link we are really on)
 
-**Status:** 📝 Drafted 2026-10-10. Nothing built. P0 and P1 are headless and ship as one PR each;
-P2 is a device session that rides with Plan [EO](EO-hevc-glasses-stream.md) P2 and Plan
-[HJ](HJ-camera-stream-end-recovery.md) P2.
+**Status:** 🚧 P0 built 2026-10-10 (headless: keyframes read from the bitstream, the
+leading-picture rule, the hold's patience, three evidence log lines). P1 is not built. Nothing here
+has been verified on glasses: that is P2, a device session still owed, which rides with Plan
+[EO](EO-hevc-glasses-stream.md) P2 and Plan [HJ](HJ-camera-stream-end-recovery.md) P2.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (sections 3 and 5).
 Outside field reports on DAT 1.0.0 exposed three places where our stream code rests on an
 assumption nobody has checked on hardware: that the SDK marks non-keyframes, that a raw frame is
@@ -72,6 +73,9 @@ self-healing; the device session that turns all of it into findings.
 ## Design
 
 ### 1 · `HEVCNALInspector` (pure)
+
+*As built this is `NALUnitInspector`, and several details below were corrected while building it.
+The text here is the design as drafted; the "Built 2026-10-10" note under P0 lists what changed.*
 
 New file `Services/Camera/HEVCNALInspector.swift`. Input: the sample's data buffer bytes and the
 NAL length-prefix size from the format description's `hvcC` (normally 4). Output:
@@ -176,6 +180,72 @@ P-frame and asserts the hold still refuses it (the field failure reproduced head
 `StreamLivenessTests` gains "a RASL after a CRA is held". Existing `VideoDecoderRoundTripTests`
 stay green unchanged.
 
+**Built 2026-10-10.** Headless only; no glasses were involved. What the code corrected in the
+design above:
+
+- **Line numbers**, re-read on `main` at build 491: `VideoDecoder.isKeyframe` was at
+  `Services/VideoDecoder.swift:243-251`, not `:239-249`. The two hold gates were still at `:185`
+  and `:200`, and `KeyframeHold` at `Services/Camera/StreamCodecPolicy.swift:161`.
+- **The parser is `NALUnitInspector`** (`Services/Camera/NALUnitInspector.swift`), and it reads
+  H.264 as well as HEVC. The SDK's `VideoCodec` offers only raw and hvc1 today, but `VideoDecoder`
+  accepts H.264 and the parser is where a keyframe is defined. For H.264 only an IDR (type 5)
+  counts; a stream that marks recovery points without sending an IDR is covered by the patience
+  rule below.
+- **`PictureKind` grew two things.** `leadingDecodable` for RADL pictures (types 6 and 7), which
+  reference nothing from before their random-access point and so decode wherever the decoder
+  started. And a `leadingMayBeUndecodable` marker on `randomAccess`, true for CRA (21) and
+  BLA_W_LP (16), the two types that may be followed by RASL pictures.
+- **The leading-picture rule follows that marker, not "CRA".** The plan said IDR and BLA release
+  the hold without the flag. BLA_W_LP can carry RASL pictures too, so it sets it; BLA_W_RADL and
+  BLA_N_LP do not. The rule applies only to a decoder that *starts* on such a picture: one that
+  meets a CRA mid-stream has the references.
+- **A RADL does not end the rule.** The plan said the first non-RASL sample clears the flag. RADL
+  and RASL pictures may be interleaved, so a RADL passes and the rule stays; it ends at the first
+  trailing picture or the next random-access picture. A sample the parser cannot read passes
+  without ending it.
+- **The parser refuses more than an overrunning length.** A truncated length field, a unit
+  shorter than its header, a slice with no data after its header, a set forbidden bit, an HEVC
+  header whose temporal id field is zero, a prefix size outside 1 to 4, an empty buffer and a
+  sample with no slice in it are all `.unparseable`. The prefix size comes from the format
+  description; if that cannot be read the sample is `.unparseable` rather than assumed to be 4.
+- **Patience (new).** This change turns a hold that probably never held into one that holds for
+  real. On a stream whose places to start the parser does not recognise (gradual refresh with no
+  random-access picture, say) that would be a black camera, on hardware that cannot be tested at
+  a desk. So the hold counts the readable samples it has refused, across rebuilds, and at
+  `KeyframeHold.patience` (240: more than five of the field note's 45-sample GOPs, 8 s at 30 fps)
+  it stops believing the parser and lets the attachment decide, which is the behaviour that
+  shipped before. A random-access picture actually arriving restores the parser. The decoder logs
+  `keyframeHoldAbandoned` when this happens; **seeing that line in P2 means the parser is wrong
+  about the glasses stream** and needs another look before anything else.
+- **`keyframeSource` is as designed, with one addition.** Its `detail` is one of the four words:
+  `parser` (a non-keyframe the attachment would have passed: the field report confirmed), `both`,
+  `disagree` (a random-access picture marked `NotSync`), `attachment` (30 unreadable samples: the
+  fallback is what is in force). `state` says what the attachment on the deciding sample was
+  (`notSyncAbsent`, `notSyncSet`, `notSyncClear`) and `count` how many samples had been seen. A
+  random-access picture without `NotSync` settles nothing and is never the deciding sample.
+- **`keyframeInterval` (new).** The P2 table read GOP length from a "decoder log" that nothing
+  wrote. This line is written once per stream when the second random-access picture arrives:
+  `count` is the samples since the first, `detail` the kind of picture (`idr`, `cra`, `bla`,
+  `irap`), `state` whether it carried its own parameter sets (`parameterSetsInBand` or
+  `parameterSetsOutOfBand`), which is what `hasParameterSets` is for.
+- **Per stream means per stream.** The evidence starts again when a stream is torn down
+  (`GlassesFramePipeline.reset()`), not when the decoder is rebuilt inside one. The hold's
+  patience is not reset by either.
+
+Tests as built: `NALUnitInspectorTests` (hand-built bytes, both codecs, every refusal above, and a
+run of arbitrary bytes that must never take it past the end of a buffer), the hold's cases in
+`StreamLivenessTests`, `KeyframeEvidenceTests`, and `VideoDecoderKeyframeTests`, which re-wraps
+simulator-encoded samples with no attachments and drives the real decoder: a P-frame is refused,
+a decoder rebuilt mid-GOP waits for the next keyframe, and the parser agrees with the encoder's
+own marking on every sample of an HEVC and an H.264 clip. `VideoDecoderRoundTripTests` is
+unchanged.
+
+Checked while building, with the parser switched off so that only the attachment rule ran: the
+round-trip tests all still passed, and the new decoder tests failed. In particular the P-frame
+with no attachments went into a fresh session and came out as a 320x240 picture. VideoToolbox
+does not refuse a frame whose references it never saw; it draws something. That is the field
+failure, and it is why the hold has to be right rather than relying on the decoder to object.
+
 ### P1: raw pixels, link probe, stall evidence (one PR)
 
 - `.rawPixels` shape and `.convert` action; `PixelBufferImageConverter` shared by decoder and
@@ -203,7 +273,8 @@ of each run, `{hvc1, raw} × {high, medium}`.
 | Measure | Read from |
 |---|---|
 | Whether DAT sets `NotSync`; parser and attachment agreement | `keyframeSource` |
-| GOP length (samples between random-access pictures) | decoder log |
+| GOP length (samples between random-access pictures) | `keyframeInterval` |
+| Whether the hold ever gave up on the parser (it should not) | `keyframeHoldAbandoned` |
 | Frames shown after lock with raw selected, before and after P1 | `frameReceived`, `unsupportedPixelFormat` |
 | Link level per session, and whether it ever changes mid-session | `transportLevel`, the MWDATCore log |
 | Stall episodes: self-heal before teardown, with and without the grace switch | `StallEpisodeRecord` |
