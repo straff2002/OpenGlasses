@@ -1,9 +1,11 @@
 # Plan HX: Glasses Link and Device State (a lost link is heard, and the glasses say when they are hot or out of date)
 
-**Status:** 🚧 P3a shipped 2026-10-10: Devices & Privacy › Glasses has a row to press whenever the
-glasses are not connected, and the camera permission's outcome is shown under it. P0 (the audible
-link drop), P1 (thermal and compatibility state) and the rest of P3 (the diagnosis and its four
-readers) are unbuilt; each is one PR, headless at its core, with a device pass owed after it.
+**Status:** 🚧 P0 and P3a shipped 2026-10-10. P0: a glasses link that drops unasked plays the
+descending pair and tells VoiceOver "Glasses disconnected", and a Disconnect or glasses taken off,
+which stay silent, are no longer withheld from VoiceOver. P3a: Devices & Privacy › Glasses has a row
+to press whenever the glasses are not connected, and the camera permission's outcome is shown under
+it. P1 (thermal and compatibility state) and the rest of P3 (the diagnosis and its four readers) are
+unbuilt; each is one PR, headless at its core. A device pass is owed for P0 and P3a.
 **Amended 2026-10-10:** P3 added — glasses that are added but not connected say why. It stands
 apart from P0 and P1, touches none of their files, and can ship first; a tester is waiting on it.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3, the
@@ -145,6 +147,9 @@ disconnect is still worth one VoiceOver line, because the earcon was skipped and
 user may not have seen the switch take effect. The stale comment is corrected. The
 `announcement(for:)` switch gains the `.glassesConnected` lines it currently marks unreachable.
 
+**Corrected 2026-10-10:** the code disagreed with this section on where the cause comes from, on
+the worn reading and on the delivery. What shipped, and why, is under Phases › P0.
+
 ### P1 · Thermal and compatibility state
 
 - `GlassesDeviceState` gains `thermal: GlassesThermal?` (the app's own enum mapped from
@@ -220,6 +225,86 @@ lost cue suppresses the VoiceOver line; a silent deliberate disconnect announces
 stays suppressed. A source guard (the `TelemetryOptOutGuardTests` pattern) that
 `releaseGlassesHardware` is followed by the cue decision on the loss path, so a refactor cannot
 quietly drop it.
+
+**Shipped 2026-10-10.** `GlassesLinkCuePolicy` (`Services/Accessibility/GlassesLinkCuePolicy.swift`)
+holds the plan's `Cause`, `Cue`, `onLoss` and `onRestore`, and three things the plan did not name:
+`cause(from:to:)`, which reads the cause off the `GlassesUse` either side of the change; a `Ledger`
+that remembers whether the last loss's cue is owed, played or absent; and
+`delivery(stillOwed:route:waited:)`, which says whether an owed cue goes now.
+`AppState.isConnected`'s `didSet` calls `cueGlassesOutOfUse()` straight after
+`releaseGlassesHardware()`, and `cueGlassesInUse()` where it used to call `playConnectTone()`. A
+lost cue is `playDisconnectTone()` and then, for VoiceOver, "Glasses disconnected"; a restore is the
+connect tone as before and, only after a lost cue that was heard, "Glasses connected".
+`SessionAnnouncementPolicy.hasOwnAudioCue` returns `true` for a connection and, for a loss, what the
+new `AnnouncementContext.glassesLossCuePlayed` says; its comment is corrected and
+`announcement(for:)` words both directions. Tests: `GlassesLinkCuePolicyTests` (30: the table, the
+cause, the ledger, the delivery, the worn reading), `SessionAnnouncementTests` (six new, replacing
+the one that asserted the old silence) and `GlassesLinkCueSourceGuardTests` (5, reading
+`OpenGlassesApp.swift`).
+
+**What the code corrected (2026-10-10):**
+- **`applyGlassesPhase(_:)` does not know whether a disconnect was requested.** Nothing sets such
+  a flag: a Disconnect never changes the phase (the SDK has no app-side disconnect, so the link
+  stays up), and `stopObserving()` has no production caller. The request lives in `GlassesUse` as
+  a stand-down with a reason, so the cause is read there: link gone → `linkLost`; link up with a
+  `.user` stand-down → `userDisconnected`; with an `.automatic` one → `doffedStandDown`. The
+  decision is made in `isConnected`'s `didSet`, where the release is, against `appliedGlassesUse`,
+  the value `applyGlassesUse()` last wrote the mirrors from.
+- **`doffedStandDown` is every automatic stand-down.** `GlassesUse` has one automatic reason for
+  both the doff grace and the silence sleep; both are the app's own doing with the link up, and
+  both are silent.
+- **"Glasses removed" is the phase reaching `noGlassesAdded`.** The app has no unregister action;
+  registration gone with nothing listed is done by hand in Meta AI, so it is read as
+  `userDisconnected`. A pair that is still registered or listed and stops answering is `linkLost`.
+- **Nothing produces `appTerminating`.** The app tears nothing down on its way out. The case
+  stays in the policy, silent, for a caller that one day knows. `stopObserving()`, if it ever
+  gains a caller, resets the snapshot to `noGlassesAdded`, which is silent already.
+- **`standDownActive` is never true where the app asks today.** While stood down the glasses are
+  already out of use, so the link going changes nothing `isConnected` reports: no release and no
+  cue. The policy keeps the rule, and `cause(from:to:)` reads a link lost under a stand-down as
+  `linkLost` with the stand-down active, for a caller that hears link changes directly.
+- **`GlassesConnectionService.isWorn` is nil by the time the phase arrives.** The service
+  publishes details first and the phase last, and worn is live only while connected. The snapshot
+  now keeps `lastLiveWorn`, the last reading taken while the link was up, and the cue reads that.
+- **The cue does not go through `AudibleLifecycleCoordinator`.** The coordinator refuses every
+  signal unless Blind Assistant is the selected live preset, its queue belongs to one live session
+  (the next `sessionStarted` empties it), and its falling pair is taught as "the connection dropped
+  and I'm trying to get it back". A glasses cue has to sound for every wearer, with no session.
+  `AppState` delivers it with the coordinator's own two rules, through the same
+  `AudibleLifecyclePolicy.SpeechRoute` reading (now one `speechRoute` property both use): wait
+  while the assistant is speaking or VoiceOver is reading one of the app's announcements, and go
+  anyway after `maxQueuedWait` (8 s), because a long answer must not bury the fact.
+- **The cue waits half a second after the release.** `stopSpeaking()` hands the audio session
+  back a moment later (`endPause()` → `resumeOtherAudio()` → `handBackSession()`), and a
+  deactivation cuts off a tone that is playing; `TurnAudioRelease.toneSettleSeconds` exists for
+  the same reason at the end of a turn. The tone player itself is separate from the speech player
+  and survives `stopSpeaking()`.
+- **Owed is not played.** VoiceOver's own line is decided on the next main-actor turn, before the
+  tone sounds, so it is withheld as soon as the app owes the cue. If the glasses come back before
+  the cue is heard it is dropped (it would now be false) and the restore is an ordinary one.
+- **The fact reaches the policy through the context, not the transition.** The `$isConnected`
+  sink only has the Bool; `glassesLossCuePlayed` is read from the ledger when the context is built.
+- **The restored line comes from the cue, not from the policy.** A connection always has the
+  connect tone, so `hasOwnAudioCue` is always `true` for it; `cueGlassesInUse()` says "Glasses
+  connected" itself, after the tone. The policy's wording for a connection is there for the day
+  the tone goes.
+- **The lines are not in the catalog.** No `SessionAnnouncementPolicy` line is localised; these
+  two follow that.
+- **Losing the Bluetooth audio route with the link up plays nothing.** Two other callers run the
+  same release for that. It is not a link loss, and if the glasses have really gone the link's own
+  drop follows and is cued then.
+
+**Owed on a device:** with the phone locked in a pocket and the wake word listening, walk out of
+range: one descending pair from the phone, and how long after the audio route dropped it came
+(the SDK decides when the link is down). The same with listening off or push-to-talk, where the
+app holds no audio session at that moment and may not be allowed to start the tone from the
+background. Drop the link while the assistant is mid-answer: the answer stops, the tone follows and
+is not cut off, and other audio resumes; if the tone is clipped, `settleSeconds` is too short. Walk
+back in: the connect tone, and "Glasses connected" with VoiceOver on. Take the glasses off, fold
+them, case them: nothing. Disconnect on the session card with VoiceOver on: one "Glasses
+disconnected" and no tone. Remove the app's access in Meta AI: nothing but VoiceOver's line, and
+record whether the phase really reaches `noGlassesAdded`. Glasses that do not report worn: confirm
+what `donState` reads just before a drop.
 
 ### P1: thermal, compatibility, latch (one PR)
 
@@ -328,7 +413,7 @@ whether `noDeviceSeen` is the honest reading of it.
 ## Open questions
 
 1. Should the lost cue repeat if the link stays down? Recommended: no. One cue at loss, the
-   restored line on return; a repeating cue in a pocket is noise.
+   restored line on return; a repeating cue in a pocket is noise. **P0 shipped it that way.**
 2. Speak the update requirement or only post it? Recommended: speak once, because the wearer of a
    refused build otherwise hears nothing from the camera at all.
 3. Does `ThermalLevel` arrive often enough to be useful, or only near shutdown? P2 answers it.
@@ -343,11 +428,20 @@ whether `noDeviceSeen` is the honest reading of it.
 6. (P3) Whether the tester's region or model matters is not something this app decides. P3 makes
    the report say which of the rows above they are in; that answers it or rules the app out.
 
+7. (P0, 2026-10-10) The link-lost cue is `playDisconnectTone()`, the same descending pair that
+   ends every conversation. Out of the blue it is unambiguous; in the middle of a conversation it
+   sounds like the conversation ending, which is half the truth. Should a lost link have its own
+   earcon? Decide after the device pass; the policy and the delivery do not change either way.
+8. (P0, 2026-10-10) Glasses-only audio (`Config.glassesOnlyAudio`) keeps the assistant's voice off
+   the phone speaker when the glasses are away. No tone is gated by it, so the lost cue sounds from
+   the phone. Recommended: leave it; the cue is the one thing that has to be heard there.
+
 ## Dependencies
 
 - **BV** (🚧 P1 and P2 core shipped; index and file agree): P1 closes BV's glasses-thermal
   deferral, and BV's row and file get a dated note saying so.
-- **FF** (🚧, P0 PR1 and PR2 shipped): the delivery coordinator P0 reuses.
+- **FF** (🚧, P0 PR1 and PR2 shipped): P0 reuses its route reading and its bounded wait, not the
+  coordinator itself (see Phases › P0).
 - **HJ** (📋 Planned): its row 3a (a compatibility refusal gives up in every presence) reads the
   same classification; the latch here is the process-wide half and should land first or with it.
 - **CM** P1 (unbuilt): `WearStatePolicy` may later read `isWorn` beside this plan's state.
