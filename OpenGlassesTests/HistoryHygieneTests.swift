@@ -60,6 +60,82 @@ final class HistoryHygieneTests: XCTestCase {
         XCTAssertEqual(bResult?["content"] as? String, HistoryHygiene.interruptedToolResult)
     }
 
+    /// The tool loop appends one user message per result. Two calls in one assistant turn are
+    /// followed by two messages, and the repair has to read both before calling either unanswered.
+    func testTwoResultsInSeparateMessagesAreBothRead() {
+        let history: [[String: Any]] = [
+            ["role": "assistant", "content": [
+                ["type": "tool_use", "id": "a", "name": "x", "input": [:]],
+                ["type": "tool_use", "id": "b", "name": "y", "input": [:]]
+            ]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "a", "content": "first"]]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "b", "content": "second"]]],
+            ["role": "assistant", "content": "both done"],
+        ]
+        let repaired = HistoryHygiene.repairDanglingToolUse(history)
+        XCTAssertEqual(repaired.count, 3, "the two result messages merge into one")
+        let results = repaired[1]["content"] as? [[String: Any]] ?? []
+        XCTAssertEqual(results.compactMap { $0["tool_use_id"] as? String }, ["a", "b"])
+        XCTAssertEqual(results.compactMap { $0["content"] as? String }, ["first", "second"],
+                       "the second tool ran; it must not be reported as interrupted")
+        XCTAssertEqual(repaired[2]["content"] as? String, "both done")
+    }
+
+    /// A turn that yields after its second of three calls leaves the third unanswered.
+    func testSeparateMessagesStillGetASyntheticResultForTheMissingId() {
+        let history: [[String: Any]] = [
+            ["role": "assistant", "content": [
+                ["type": "tool_use", "id": "a", "name": "x", "input": [:]],
+                ["type": "tool_use", "id": "b", "name": "y", "input": [:]],
+                ["type": "tool_use", "id": "c", "name": "z", "input": [:]]
+            ]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "a", "content": "first"]]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "b", "content": "second"]]],
+            ["role": "user", "content": "done"],
+        ]
+        let repaired = HistoryHygiene.repairDanglingToolUse(history)
+        XCTAssertEqual(repaired.count, 3)
+        let results = repaired[1]["content"] as? [[String: Any]] ?? []
+        XCTAssertEqual(results.compactMap { $0["content"] as? String },
+                       ["first", "second", HistoryHygiene.interruptedToolResult])
+        XCTAssertEqual(repaired[2]["content"] as? String, "done", "a plain user turn ends the run")
+    }
+
+    /// A history the single-message repair already wrote back: a synthetic result for `b` merged
+    /// beside `a`, with `b`'s real result stranded in the next message.
+    func testHealsAHistoryTheOldRepairDamaged() {
+        let history: [[String: Any]] = [
+            ["role": "assistant", "content": [
+                ["type": "tool_use", "id": "a", "name": "x", "input": [:]],
+                ["type": "tool_use", "id": "b", "name": "y", "input": [:]]
+            ]],
+            ["role": "user", "content": [
+                ["type": "tool_result", "tool_use_id": "a", "content": "first"],
+                ["type": "tool_result", "tool_use_id": "b", "content": HistoryHygiene.interruptedToolResult]
+            ]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "b", "content": "second"]]],
+        ]
+        let repaired = HistoryHygiene.repairDanglingToolUse(history)
+        XCTAssertEqual(repaired.count, 2)
+        let results = repaired[1]["content"] as? [[String: Any]] ?? []
+        XCTAssertEqual(results.compactMap { $0["tool_use_id"] as? String }, ["a", "b"], "one result per id")
+        XCTAssertEqual(results.compactMap { $0["content"] as? String }, ["first", "second"])
+    }
+
+    func testRepairIsIdempotent() {
+        let history: [[String: Any]] = [
+            ["role": "assistant", "content": [
+                ["type": "tool_use", "id": "a", "name": "x", "input": [:]],
+                ["type": "tool_use", "id": "b", "name": "y", "input": [:]]
+            ]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "a", "content": "first"]]],
+            ["role": "user", "content": [["type": "tool_result", "tool_use_id": "b", "content": "second"]]],
+        ]
+        let once = HistoryHygiene.repairDanglingToolUse(history)
+        let twice = HistoryHygiene.repairDanglingToolUse(once)
+        XCTAssertEqual(once as NSArray, twice as NSArray)
+    }
+
     // MARK: - Image pruning
 
     private func imageMessage(_ text: String) -> [String: Any] {
