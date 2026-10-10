@@ -54,6 +54,10 @@ enum WearablesBootstrap {
         // The Info.plist opt-out is what should stop those uploads; this is the backstop that
         // makes it true in code we own. See MetaTelemetryBlock.
         MetaTelemetryBlock.install()
+        // Plan HW P1. The SDK keeps a log file in our container with no timestamps in it, so
+        // how long it is *now*, before the SDK can write, is what later tells this launch's
+        // lines from an older one's. Asks the file its length and reads none of it.
+        GlassesTransportProbe.shared.markLaunch()
         do {
             try Wearables.configure()
             isConfigured = true

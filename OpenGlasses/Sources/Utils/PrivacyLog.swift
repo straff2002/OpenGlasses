@@ -600,6 +600,13 @@ enum PrivacyLog {
         /// handle producing nothing. `detail` is the format's four-character code, or the number
         /// in hex when the code is not text.
         case unsupportedPixelFormat, pixelConversionFailed
+        /// HW P1. Which link the glasses were on thirty seconds into a stream, and what that
+        /// stream delivered. `detail` is the level (`wifi`, `bluetoothClassic`,
+        /// `bluetoothLowEnergy`, `unknown`) and `state` where it was read from (`processLog`,
+        /// `sdkLogFile`, `none`). `width`, `height` and `frameRate` are the pictures the app
+        /// received over those thirty seconds. They are measurements, written beside the level
+        /// and never used to work one out.
+        case transportLevel
         /// HW P1. One line per link stall, written when the episode is over. `state` is how it
         /// ended (`recovered`, `noPicture`, `rebuildFailed`, `selfRecovered`, `gaveUp`,
         /// `cancelled`), `detail` the rebuild used when there was one, `silence` how long nothing
