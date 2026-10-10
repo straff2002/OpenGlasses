@@ -1240,6 +1240,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
             } catch {
                 PrivacyLog.camera(.glasses, .warmupAttemptFailed, attempt: attempt,
                                   ofAttempts: 2, error: SafeErrorSummary(error))
+                // The glasses refused this build. A second attempt asks them the same question,
+                // so there is none, and the start fails with the sentence every later one will.
+                if let refusal = SDKRefusalLatch.terminalError(for: error) { throw refusal }
                 lastError = error
                 let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
                 consecutiveRecoveryFailures += 1
@@ -1266,8 +1269,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
         // is exactly what swallowed the stop. The warmup now finds its token stale and releases.
         startGeneration.recordStop()
         resetStallBackoff()
-        guard isStreaming else { return }
+        // Before the guard, not after it: while a reconnect is climbing, or after a recovery
+        // that failed, the stream is not up and the detector is still armed. A stop that left it
+        // there left a loop running for a camera nobody wants.
         stopStallDetection()
+        guard isStreaming else { return }
         if let session = streamSession {
             session.stop()
         }

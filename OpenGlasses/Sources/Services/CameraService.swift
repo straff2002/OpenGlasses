@@ -122,6 +122,27 @@ class CameraService: ObservableObject, FilteredStillProviding {
         throw CameraError.incompatible(refusal)
     }
 
+    /// The stop the refusal asked for, kept so a test can wait for it.
+    private(set) var sdkRefusalStandDown: Task<Void, Never>?
+
+    /// The glasses have just refused this build: end whatever the camera still has going by
+    /// itself, through the door a wearer's Stop uses.
+    ///
+    /// The latch above stops the coordinator *asking*. It does nothing for work the backend
+    /// already has under way: a reconnect ladder or a stall recovery climbing for a stream that
+    /// was running, each rung of which builds a session for the glasses to refuse again, for up
+    /// to a minute and a half. A stop ends the intent those ladders read, and a start still in
+    /// flight releases instead of publishing. Sent whether or not this coordinator believes
+    /// anything is running: a reconnect is exactly when it believes nothing is.
+    ///
+    /// A task, because the event arrives synchronously from inside the backend's own work.
+    private func standDownAfterSDKRefusal() {
+        sdkRefusalStandDown = Task { @MainActor [weak self] in
+            await self?.stopStreaming()
+            self?.sdkRefusalStandDown = nil
+        }
+    }
+
     /// The device-facing half. Injectable so tests can drive the coordinator without hardware
     /// (and without touching `Wearables`, which traps in a unit-test process).
     private let backend: GlassesCameraBackend
@@ -274,7 +295,10 @@ class CameraService: ObservableObject, FilteredStillProviding {
                 NoticeCenter.shared.clear(source: .glasses)
             }
         case .sdkRefused:
-            if sdkRefusal.latch() { PrivacyLog.camera(.glasses, .sdkRefusalLatched) }
+            if sdkRefusal.latch() {
+                PrivacyLog.camera(.glasses, .sdkRefusalLatched)
+                standDownAfterSDKRefusal()
+            }
         case .transientNotice(let notice):
             streamingNotice = notice
             onDebugEvent?(notice)

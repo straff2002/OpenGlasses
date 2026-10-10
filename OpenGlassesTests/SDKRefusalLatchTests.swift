@@ -179,10 +179,11 @@ final class SDKRefusalLatchTests: XCTestCase {
     func testALatchedRefusalDoesNotStopAStopOrThePhoneCamera() async throws {
         let (service, backend, phone) = makeService()
         backend.events.send(.sdkRefused)
+        await service.sdkRefusalStandDown?.value   // the latch's own stop, counted below
 
         await service.stopStreaming()
         await service.tearDown()
-        XCTAssertEqual(backend.stopStreamingCount, 1, "stopping is always forwarded")
+        XCTAssertEqual(backend.stopStreamingCount, 2, "stopping is always forwarded")
         XCTAssertEqual(backend.tearDownCount, 1)
 
         // With the glasses away the capture is the phone's, and the latch is about the glasses.
@@ -190,5 +191,161 @@ final class SDKRefusalLatchTests: XCTestCase {
         _ = try await service.capturePhoto()
         XCTAssertEqual(phone.captureCount, 1)
         XCTAssertEqual(backend.captureCount, 0)
+    }
+
+    // MARK: - Terminal for the camera's own retries too (follow-up)
+
+    func testOnlyARefusalOfTheBuildEndsTheRetries() {
+        guard case .incompatible(let message)? =
+                SDKRefusalLatch.terminalError(for: DeviceSessionError.insufficientSDKVersion) else {
+            return XCTFail("a refused build must end the camera's retries")
+        }
+        XCTAssertEqual(message, appUpdate, "the attempt that met the refusal reads like every later one")
+
+        // Everything else is a window that closes, or the wearer's to fix: another attempt may work.
+        let retried: [Error] = [
+            DeviceSessionError.datAppOnTheGlassesUpdateRequired, DeviceSessionError.dwaOutOfStuRange,
+            DeviceSessionError.noEligibleDevice, DeviceSessionError.sessionAlreadyExists,
+            DeviceSessionError.capabilityAlreadyActive, DeviceSessionError.thermalCritical,
+            DeviceSessionError.unexpectedError(description: "x"),
+            CameraError.streamNotReady, CameraError.captureFailed, CancellationError(),
+        ]
+        for error in retried {
+            XCTAssertNil(SDKRefusalLatch.terminalError(for: error), "\(error)")
+            XCTAssertFalse(DATCompatibilityMessage.isSDKRefusal(error), "\(error)")
+        }
+        XCTAssertTrue(DATCompatibilityMessage.isSDKRefusal(DeviceSessionError.insufficientSDKVersion as Error),
+                      "the refusal is still recognised once its type has been erased by a throw")
+    }
+
+    /// A reconnect ladder or a stall recovery lives in the backend, and climbs for a stream that
+    /// was running. The refusal must stop it the way a wearer's Stop does.
+    func testARefusalUnderARunningStreamStopsTheCamera() async throws {
+        let (service, backend, _) = makeService()
+        backend.emitsStreamingEvents = true
+        _ = try await service.startStreaming()
+        XCTAssertTrue(service.isStreaming)
+        XCTAssertTrue(service.readiness.userWantsStream)
+
+        backend.events.send(.sdkRefused)
+        await service.sdkRefusalStandDown?.value
+
+        XCTAssertEqual(backend.stopStreamingCount, 1, "the backend was not told to stop its own work")
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertFalse(service.readiness.userWantsStream, "nothing is wanted from refused glasses")
+        XCTAssertEqual(service.scheduledCameraWorkCount, 0)
+        XCTAssertNil(service.sdkRefusalStandDown)
+    }
+
+    /// While a reconnect climbs the coordinator believes nothing is running, and that is exactly
+    /// when the backend has a ladder armed. The stop is sent whatever this side believes.
+    func testTheStopIsSentEvenWhenNothingLooksLikeItIsRunning() async {
+        let (service, backend, _) = makeService()
+        XCTAssertFalse(service.isStreaming)
+
+        backend.events.send(.sdkRefused)
+        await service.sdkRefusalStandDown?.value
+
+        XCTAssertEqual(backend.stopStreamingCount, 1)
+    }
+
+    func testASecondReportDoesNotStopTwice() async {
+        let (service, backend, _) = makeService()
+        // The real backend reports from two places: the failed start and the session's error stream.
+        backend.events.send(.sdkRefused)
+        backend.events.send(.sdkRefused)
+        await service.sdkRefusalStandDown?.value
+        backend.events.send(.sdkRefused)
+        XCTAssertNil(service.sdkRefusalStandDown)
+
+        XCTAssertEqual(backend.stopStreamingCount, 1)
+    }
+
+    /// After the stop the latch holds: the stream that was running is the last one asked for,
+    /// and a claim on the refused camera is not kept.
+    func testNothingStartsAfterARefusalUnderARunningStream() async throws {
+        let (service, backend, _) = makeService()
+        backend.emitsStreamingEvents = true
+        _ = try await service.startStreaming()
+        backend.events.send(.sdkRefused)
+        await service.sdkRefusalStandDown?.value
+
+        await assertRefused { _ = try await service.startStreaming() }
+        await assertRefused { try await service.claimStream(for: .liveSession) }
+        XCTAssertEqual(backend.startStreamingCount, 1, "only the start from before the refusal")
+        XCTAssertFalse(service.hasStreamClaims)
+    }
+
+    /// A notice or a compatibility reading stops nothing: only the session's refusal does.
+    func testANoticeAloneStopsNothing() async throws {
+        let (service, backend, _) = makeService()
+        backend.emitsStreamingEvents = true
+        _ = try await service.startStreaming()
+
+        backend.events.send(.compatibilityNotice(appUpdate))
+        await Task.yield()
+
+        XCTAssertNil(service.sdkRefusalStandDown)
+        XCTAssertEqual(backend.stopStreamingCount, 0)
+        XCTAssertTrue(service.isStreaming)
+    }
+
+    // MARK: - The retries that cannot run here
+
+    private static var repoRoot: URL {
+        URL(fileURLWithPath: #filePath)   // <repo>/OpenGlassesTests/<thisfile>.swift
+            .deletingLastPathComponent()  // <repo>/OpenGlassesTests
+            .deletingLastPathComponent()  // <repo>
+    }
+
+    /// The Meta backend's source with whole-line `//` comments dropped.
+    private func backendCode() throws -> String {
+        let path = "OpenGlasses/Sources/Services/Camera/MetaCameraBackend.swift"
+        let source = try String(contentsOf: Self.repoRoot.appendingPathComponent(path), encoding: .utf8)
+        return source.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
+
+    private func slice(of code: String, from opening: String, to closing: String,
+                       _ what: String) throws -> Substring {
+        let start = try XCTUnwrap(code.range(of: opening), "the backend no longer has \(what)")
+        let rest = code[start.upperBound...]
+        let end = try XCTUnwrap(rest.range(of: closing), "could not find the end of \(what)")
+        return rest[..<end.lowerBound]
+    }
+
+    /// A stream start makes two warm-up attempts. The second must not be made for refused glasses.
+    func testAWarmUpThatMetTheRefusalIsNotRetried() throws {
+        let warmUp = try slice(of: try backendCode(), from: "private func warmUpStream() async throws {",
+                               to: "\n    }\n", "`warmUpStream()`")
+        let refusal = try XCTUnwrap(
+            warmUp.range(of: "if let refusal = SDKRefusalLatch.terminalError(for: error) { throw refusal }"),
+            "a stream start asks refused glasses for a second session again")
+        let retry = try XCTUnwrap(warmUp.range(of: "guard attempt < 2 else { break }"))
+        XCTAssertLessThan(refusal.lowerBound, retry.lowerBound)
+    }
+
+    /// The coordinator's stop is what ends the reconnect ladder and the stall detector. Both read
+    /// the intent a stop clears, and a stop has to end the detector whether or not a stream is up.
+    func testAStopEndsTheLadderAndTheDetectorWhetherOrNotAStreamIsUp() throws {
+        let stop = try slice(of: try backendCode(), from: "func stopStreaming() async {",
+                             to: "\n    }\n", "`stopStreaming()`")
+        let intent = try XCTUnwrap(stop.range(of: "continuousStreamingIntent = false"))
+        let ladder = try XCTUnwrap(stop.range(of: "cancelReconnect()"))
+        let detector = try XCTUnwrap(stop.range(of: "stopStallDetection()"))
+        let guardLine = try XCTUnwrap(stop.range(of: "guard isStreaming else { return }"))
+        for step in [intent, ladder, detector] {
+            XCTAssertLessThan(step.lowerBound, guardLine.lowerBound,
+                              "a stop during a reconnect returns at the guard: everything that "
+                                  + "ends the camera's own retries has to come before it")
+        }
+    }
+
+    /// Both places the backend can meet the refusal still report it.
+    func testBothPlacesTheBackendMeetsTheRefusalReportIt() throws {
+        let code = try backendCode()
+        XCTAssertEqual(code.components(separatedBy: "events.send(.sdkRefused)").count, 3,
+                       "the failed session start and the session's error stream")
     }
 }
