@@ -49,7 +49,7 @@ struct AnnouncementContext: Equatable {
     /// app's line and the screen reader's line for one event.
     var blindAssistantCuesActive: Bool = false
     /// The app took the cue for the glasses going out of use on itself (Plan HX P0,
-    /// `GlassesLinkCuePolicy.Ledger.appOwnsLossCue`): the descending pair and its own "Glasses
+    /// `GlassesLinkCuePolicy.Ledger.appOwnsLossCue`): the link-lost earcon and its own "Glasses
     /// disconnected" line, played or about to be. False for a loss that is silent by policy — the
     /// wearer pressed Disconnect, or took the glasses off — and that one is the screen reader's
     /// to report, because nothing else will.
@@ -79,7 +79,7 @@ struct SessionAnnouncement: Equatable {
 /// Which session transitions VoiceOver is told about, and which the app already says out loud.
 ///
 /// The whole point is the *subtraction*. This app talks: it plays an ascending cue when the
-/// glasses attach, a chime when a turn opens, a descending cue when the link drops unasked, an
+/// glasses attach, a chime when a turn opens, a slow falling cue when the link drops unasked, an
 /// ambient pad while a turn runs, and it speaks its answers. Announcing those again puts two
 /// voices in one ear a half-second apart, which is worse for the user this phase exists for than
 /// saying nothing at all. So a transition earns an announcement only when the app is otherwise
@@ -95,9 +95,10 @@ enum SessionAnnouncementPolicy {
         case .listening:
             return true
         // Up: `playConnectTone()`, for every connection. Down: only a loss the wearer did not
-        // cause makes a sound (`GlassesLinkCuePolicy`), and that cue brings its own line. A
-        // Disconnect or glasses taken off are silent, so they are announced here instead. The
-        // descending `playDisconnectTone()` at the end of a turn is not about the glasses at all.
+        // cause makes a sound (`playLinkLostTone()`, by `GlassesLinkCuePolicy`), and that cue
+        // brings its own line. A Disconnect or glasses taken off are silent, so they are
+        // announced here instead. The descending `playDisconnectTone()` at the end of a turn is
+        // not about the glasses at all.
         case .glassesConnected(let connected):
             return connected || context.glassesLossCuePlayed
         // The assistant's own voice IS the cue; this is the one that must never double up.

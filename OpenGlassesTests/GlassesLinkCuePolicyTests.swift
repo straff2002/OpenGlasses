@@ -200,6 +200,67 @@ final class GlassesLinkCuePolicyTests: XCTestCase {
         XCTAssertEqual(Policy.delivery(stillOwed: false, route: route(speaking: true), waited: 60), .drop)
     }
 
+    // MARK: - The sound
+
+    /// Three notes, each lower than the last: the shape that says something went away.
+    func testTheLostEarconIsAThreeNoteFall() {
+        let notes = Policy.lostEarcon
+        XCTAssertEqual(notes.count, 3)
+        XCTAssertEqual(notes.map(\.frequency), notes.map(\.frequency).sorted(by: >))
+        XCTAssertEqual(Set(notes.map(\.frequency)).count, 3, "no pitch repeats: a repeated pitch is the failure double")
+    }
+
+    /// The notes are separate players started on a timer, and a new one replaces the last: a note
+    /// that started early would cut the one before it off.
+    func testEachNoteStartsAfterTheOneBeforeItHasEnded() {
+        let notes = Policy.lostEarcon
+        XCTAssertEqual(notes.first?.start, 0)
+        for (earlier, later) in zip(notes, notes.dropFirst()) {
+            XCTAssertGreaterThan(later.start, earlier.end)
+        }
+    }
+
+    func testItIsShortAndEndsOnItsLongestNote() {
+        XCTAssertLessThan(Policy.lostEarconSeconds, 0.75, "well under a second")
+        XCTAssertEqual(Policy.lostEarconSeconds, Policy.lostEarcon.last?.end)
+        XCTAssertEqual(Policy.lostEarcon.map(\.duration).max(), Policy.lostEarcon.last?.duration)
+    }
+
+    /// The end-of-conversation pair it used to be is two 0.1 s notes, 440 then 330 Hz, 0.24 s in
+    /// all (`TextToSpeechService.generateDescendingToneData`). Those numbers are not data the test
+    /// can read, so they are written here: the point is that this cue is not that one.
+    func testItCannotBeTakenForTheEndOfConversationPair() {
+        let pairNote = 0.1, pairLength = 0.24, pairPitches: Set<Double> = [440, 330]
+        XCTAssertGreaterThan(Policy.lostEarcon.count, 2)
+        XCTAssertTrue(Policy.lostEarcon.allSatisfy { $0.duration > pairNote })
+        XCTAssertGreaterThan(Policy.lostEarconSeconds, pairLength * 2)
+        XCTAssertTrue(pairPitches.isDisjoint(with: Policy.lostEarcon.map(\.frequency)))
+        XCTAssertGreaterThan(Policy.lostEarcon[0].frequency, 440, "the first note already differs")
+    }
+
+    /// The temple-tap earcons are the cues whose notes are data. None may be this one, and the
+    /// one other three-note fall among them has to differ in more than pitch.
+    func testItDiffersFromEveryTempleEarcon() throws {
+        let pitches = Policy.lostEarcon.map(\.frequency)
+        for earcon in TempleEarcon.allCases {
+            let tones = earcon.tones
+            XCTAssertNotEqual(tones.map(\.frequency), pitches, "\(earcon)")
+            XCTAssertTrue(Set(tones.map(\.frequency)).isDisjoint(with: pitches),
+                          "\(earcon) shares a pitch with the link-lost earcon")
+            // As `playTempleEarcon` plays them: back to back, 0.03 s apart.
+            let length = tones.reduce(0) { $0 + $1.duration } + 0.03 * Double(max(tones.count - 1, 0))
+            XCTAssertGreaterThan(Policy.lostEarconSeconds, length * 1.5, "\(earcon)")
+        }
+        let ended = TempleEarcon.ended.tones
+        XCTAssertEqual(ended.count, 3, "the other three-note fall")
+        let longestEndedNote = try XCTUnwrap(ended.map(\.duration).max())
+        XCTAssertTrue(Policy.lostEarcon.allSatisfy { $0.duration > longestEndedNote })
+    }
+
+    func testTheVoiceOverLineWaitsForTheEarconToFinish() {
+        XCTAssertGreaterThan(Policy.lostLineDelaySeconds, Policy.lostEarconSeconds)
+    }
+
     // MARK: - Worn, remembered past the link
 
     private func snapshot(worn: Bool?) -> GlassesConnectionSnapshot {

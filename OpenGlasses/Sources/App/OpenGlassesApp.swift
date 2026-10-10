@@ -880,7 +880,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// The app has just stopped using the glasses, and the hardware release has run. Decide
     /// whether the wearer is told (`GlassesLinkCuePolicy`: only a link that dropped unasked, with
-    /// the glasses not known to be off the face) and, if so, tell them: the descending pair, then
+    /// the glasses not known to be off the face) and, if so, tell them: the link-lost earcon, then
     /// "Glasses disconnected" for VoiceOver.
     ///
     /// Not through `audibleLifecycle`. That coordinator speaks for a live session under the Blind
@@ -911,9 +911,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     waited += GlassesLinkCuePolicy.pollSeconds
                 case .play:
                     self.glassesLinkCues.noteLostCuePlayed()
-                    self.speechService.playDisconnectTone()
-                    // The line follows the tone rather than starting under it.
-                    try? await Task.sleep(nanoseconds: UInt64(TurnAudioRelease.toneSettleSeconds * 1_000_000_000))
+                    self.speechService.playLinkLostTone()
+                    // The line follows the earcon rather than starting under it.
+                    try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.lostLineDelaySeconds * 1_000_000_000))
                     guard !Task.isCancelled, let line = GlassesLinkCuePolicy.voiceOverLine(for: .lost) else { return }
                     SessionAnnouncer.say(line)
                     return

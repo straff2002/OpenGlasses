@@ -71,8 +71,8 @@ final class GlassesLinkCueSourceGuardTests: XCTestCase {
     }
 
     /// The function the loss path calls really asks the policy, with the value from before the
-    /// change, and really plays the tone.
-    func testTheCueIsDecidedByThePolicyAndPlaysTheDisconnectTone() throws {
+    /// change, and really plays the link's own earcon.
+    func testTheCueIsDecidedByThePolicyAndPlaysTheLinkLostEarcon() throws {
         let body = try body(of: "cueGlassesOutOfUse", in: try appStateCode())
 
         XCTAssertTrue(body.contains("glassesLinkCues.noteLoss(from: appliedGlassesUse, to: glassesUse"),
@@ -84,8 +84,26 @@ final class GlassesLinkCueSourceGuardTests: XCTestCase {
                           + "the live one is already nil when the link has gone")
         XCTAssertTrue(body.contains("GlassesLinkCuePolicy.delivery("),
                       "the cue no longer waits for the route: it can land on the assistant's voice")
-        XCTAssertTrue(body.contains("speechService.playDisconnectTone()"),
-                      "the link-lost cue no longer plays the disconnect tone")
+        XCTAssertTrue(body.contains("speechService.playLinkLostTone()"),
+                      "the link-lost cue no longer plays its earcon")
+        XCTAssertFalse(body.contains("playDisconnectTone"),
+                       "the link-lost cue is the end-of-conversation pair again: mid-conversation "
+                           + "a dropped link sounds like the conversation ending")
+        XCTAssertTrue(body.contains("GlassesLinkCuePolicy.lostLineDelaySeconds"),
+                      "VoiceOver's line must wait for the earcon, which is longer than the pair "
+                          + "it replaced, or it starts under it")
+    }
+
+    /// The earcon is the policy's notes, played the way every other multi-note cue is.
+    func testTheEarconPlaysThePolicysNotes() throws {
+        let path = "OpenGlasses/Sources/Services/TextToSpeechService.swift"
+        let source = try String(contentsOf: Self.repoRoot.appendingPathComponent(path), encoding: .utf8)
+        let body = try slice(of: source, from: "func playLinkLostTone() {", to: "\n    }\n",
+                             "`playLinkLostTone()`")
+        XCTAssertTrue(body.contains("for note in GlassesLinkCuePolicy.lostEarcon"))
+        XCTAssertTrue(body.contains("playTone(frequency: note.frequency, duration: note.duration)"))
+        // The Blind Assistant's "connection dropped" keeps the pair it was taught with.
+        XCTAssertTrue(source.contains("case .lost: playDisconnectTone()"))
     }
 
     /// `appliedGlassesUse` is only "the value from before" if it is written after `isConnected`.
