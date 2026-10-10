@@ -1,9 +1,11 @@
 # Plan HW: Glasses Stream Integrity (keyframes, raw frames under lock, the link we are really on)
 
-**Status:** 🚧 P0 built 2026-10-10 (headless: keyframes read from the bitstream, the
-leading-picture rule, the hold's patience, three evidence log lines). P1 is not built. Nothing here
-has been verified on glasses: that is P2, a device session still owed, which rides with Plan
-[EO](EO-hevc-glasses-stream.md) P2 and Plan [HJ](HJ-camera-stream-end-recovery.md) P2.
+**Status:** 🚧 P0 and P1 built 2026-10-10, both headless. P0: keyframes read from the bitstream,
+the leading-picture rule, the hold's patience, three evidence log lines. P1: raw frames converted
+on the CPU when the SDK's helper cannot draw them, a link-level probe with a support-report line,
+one log line per stall episode. Nothing here has been verified on glasses: that is P2, a device
+session still owed, which rides with Plan [EO](EO-hevc-glasses-stream.md) P2 and Plan
+[HJ](HJ-camera-stream-end-recovery.md) P2.
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (sections 3 and 5).
 Outside field reports on DAT 1.0.0 exposed three places where our stream code rests on an
 assumption nobody has checked on hardware: that the SDK marks non-keyframes, that a raw frame is
@@ -129,6 +131,10 @@ should become hvc1 under lock; until then, and for anyone who chose raw, the fra
 are shown.
 
 ### 3 · Link-level diagnostic (`GlassesTransportProbe`)
+
+*The level names in this section are the wrong way round, the subsystem it reads was never
+seen, and the "inference" was not built. The text is the design as drafted; the "Built
+2026-10-10" note under P1 says what the SDK's binaries and the code corrected.*
 
 The SDK exposes no transport API (`.claude/rules/dat-conventions.md`: Wi-Fi transport is
 transparent). Two sources of evidence, both recorded, neither trusted alone:
@@ -261,6 +267,115 @@ buffer converts with the right size, an unsupported format returns nil and logs 
 asserting the line is present and plan-letter free;
 `StallEpisodeRecordTests` (fake clock). `OutboundFrameConsumerTests` unaffected: no new consumer.
 
+**Built 2026-10-10.** Headless only; no glasses were involved. What the SDK's binaries and the
+code corrected in the design above:
+
+- **The link levels are the other way round.** Design §3 says `.medium` is Wi-Fi and `.low` is
+  Bluetooth. The SDK's camera module contains the sentence "requires medium (BTC) or high (WiFi)
+  bandwidth link", so `high` is Wi-Fi and `medium` is Bluetooth Classic. `low` is Bluetooth Low
+  Energy by elimination: the SDK has those three transports and nothing in it ties the name to
+  the radio, so the code marks that one as inferred. `GlassesTransportLevel` is `wifi`,
+  `bluetoothClassic`, `bluetoothLowEnergy`, `unknown`.
+- **The lines the parser reads.** The SDK's core module holds two format strings that name a
+  level in use: "DeviceManager: Device … connected with … link, requesting firmware version" and
+  "DeviceManager: .medium link unavailable (…), falling back to .low". The interpolated parts
+  have not been seen. `TransportLevelParser` finds a whole-word `low`, `medium` or `high` between
+  "connected with" and "link" (with or without a leading dot or a type in front), or after
+  "falling back to". The latest line about the link wins. A connection line whose level it
+  cannot read makes the answer `unknown` rather than leaving an older level standing, and a line
+  that is not one of the two is ignored: the transports' own error lines, and "Neither .medium
+  nor .low link levels are available", name no link in use.
+- **The SDK keeps a log file in our container**, which the plan did not know:
+  `Library/Caches/MetaWearablesDAT/Logs/MetaWearablesDAT.log`. On the one phone looked at it
+  holds error-level lines only, each "[ARCLog] [error] [tid:N] [function] [File.swift:LINE]
+  message", with no timestamps. Since August that copy has 161 mentions of the Bluetooth Classic
+  transport (errors as the accessory disconnects), no Wi-Fi line at all, and none of the device
+  manager's lines. That is suggestive and proves nothing about which link carried video: an
+  errors-only log says which transport failed, and the device manager's lines are either below
+  error level or were never written. Settling it stays P2's job.
+- **Two sources, read by what the message says.** `GlassesTransportProbe` reads the process's
+  own unified log (`OSLogStore(scope: .currentProcessIdentifier)`, narrowed by a predicate on
+  `composedMessage` containing "DeviceManager:") and that file. The plan read "the MWDATCore
+  subsystem"; nobody has seen which subsystem the SDK logs under, or whether those lines reach
+  the unified log at all. Each source is parsed alone and the answer says which it came from
+  (`processLog` first, because its entries carry dates; `sdkLogFile`; `none`).
+- **Read back to the launch, not to the start of the stream.** A device connects when the
+  glasses come into reach, which can be long before a stream, so the line that names the link is
+  usually older than the stream it describes. The level in force when the stream starts is the
+  session's starting point, and a different level after that is "changed during the session".
+  The file has no timestamps, so its length is taken before the SDK is configured
+  (`WearablesBootstrap`) to tell this launch's lines from an older one's, and again when a
+  stream starts. Lengths come from `FileHandle`; no file date or attribute is read. A file
+  shorter than its mark is read from the beginning, at most the last 256 KB is read, and a
+  missing file is `unknown`.
+- **Size and rate are facts, not a level.** The plan's "inference" from frame size and rate was
+  not built. Nothing ties a size or a rate to a link: the one field measurement to hand had
+  Bluetooth Classic at 29 to 32 fps at 504x896. `StreamDeliveryMeter` measures the pictures the
+  app received in the first 30 s of a stream (size, and the rate from the first picture to the
+  end of the window) and they are written beside the level in the log line and the support
+  report.
+- **The log line and the report line.** `transportLevel` is written once, 31 s into a stream
+  that is still the current one: `detail` is the level, `state` the source, with `width`,
+  `height` and `frameRate`. The support report always carries one line, for example "Glasses
+  video link: Bluetooth Classic (from the glasses software's log); picture 504×896 at 30 fps",
+  "…: not known; picture …" or "…: not known (no video since the app started)". Building a
+  report reads the sources once more, so a change since the 31 s read shows. Starting and
+  ending a stream only asks the file its length, because a photo starts and stops a stream too;
+  a stream that has ended is read once, up to where it ended, the first time anyone asks.
+- **Nothing to declare.** Both reads are inside the app's own sandbox, nothing is sent, and no
+  line is kept: only the level leaves the parser. No required-reason API is used, so
+  `PrivacyInfo.xcprivacy` and the privacy copy are unchanged.
+- **What raw under lock really did.** The plan says the picture stops. The code shows more:
+  a dropped `.empty` frame stamps neither liveness clock, so a raw stream under lock read as a
+  link stall although every frame was arriving. The detector rebuilt the stream, the rebuilt
+  stream delivered more frames nobody could draw, `waitForStreaming(requireFreshFrame:)` timed
+  out each time, and `StallRecoveryBackoff` waited longer, stepped the tier down and after six
+  frameless rebuilds stopped the camera with its notice. A `.rawPixels` frame is now converted,
+  counts as a picture and stamps both clocks. This rests on the field claim that
+  `makeUIImage()` returns nil in the background; if it does not, the helper's picture is used
+  as before and nothing changes.
+- **`PixelBufferImageConverter`** handles 32BGRA as before, and the two bi-planar 4:2:0 formats
+  (`420v` video range, `420f` full range) through vImage on the CPU, with the matrix the buffer
+  names (Rec. 601 when it says so, Rec. 709 otherwise). Anything else is dropped with
+  `unsupportedPixelFormat`, once per stream, naming the four-character code (in hex when the
+  code is not text). A format it does handle that still produces nothing writes
+  `pixelConversionFailed` (new) instead, so the two are not confused. Neither stamps a clock.
+- **`stallSelfRecovered` already covers part of §4.** Frames returning during the backoff wait
+  before a *later* rebuild were already logged. The first rebuild of an episode has no wait, so
+  its only window for self-healing is the teardown itself, and that is what `stallEpisode` adds.
+  One line per `.linkStalled` verdict, written when the episode is over: `state` is how it ended
+  (`recovered`, `noPicture`, `rebuildFailed`, `selfRecovered`, `gaveUp`, `cancelled`), `detail`
+  the rebuild used, `silence` the seconds without a sample at the verdict (a new log field),
+  `count` the samples that arrived from the old stream between the verdict and the end of its
+  teardown, and `seconds` the time from the end of the teardown to the first fresh picture, good
+  to a fifth of a second. The reconnect ladder shares `recoverFromStall()` and writes none. No
+  call, delay, counter or existing log line moved.
+- **Line numbers**, re-read at build 491: the accessory keys are at `OpenGlasses/Info.plist:315-326`,
+  not `:298-309`; `startStallDetection` was at `MetaCameraBackend.swift:1429` and its
+  `.linkStalled` arm at `:1464`, not `:1302` and `:1337`; `VideoDecoder.makeImage(from:)` was at
+  `:152`, not `:144`; the Wi-Fi line in the DAT conventions is `:195`, not `:164`; the
+  `StreamConfigPolicy` premise comment is `Services/StreamRecoveryPolicy.swift:143-148`, not
+  `:143-145`. EO's paragraph is still at `:58`. There is one entitlements file for the app, not
+  two, and it carries neither Hotspot Configuration nor Wi-Fi info.
+- **Open questions, as answered here.** (1) Shipped in every build: the read is local and the
+  support report is where a field problem is diagnosed. (2) No: the report does not state an
+  inferred level, because there is nothing to infer one from; it states the size and rate as
+  what they are. (3) Still open for a device, and no longer blocking: 32BGRA and both bi-planar
+  formats are converted, and anything else is named in the log.
+
+Tests as built: `StreamCodecPolicyTests` (four shapes), `PixelBufferImageConverterTests` (pixel
+values for 32BGRA, colour within a tolerance for both ranges and both matrices, the unsupported
+cases), `GlassesFramePipelineTests` (sample buffers made in the test, no SDK frame),
+`TransportLevelParserTests`, `GlassesTransportProbeTests` (injected sources, the real file reader
+against temporary files, and one test that writes a line to the unified log and reads it back
+through the real reader), `StreamDeliveryMeterTests`, `SupportReportGlassesLineTests`,
+`StallEpisodeRecordTests`.
+
+**P2 must look at, first:** whether a `transportLevel` line ever names a source other than
+`none`. If the device manager's lines do not reach the unified log (or arrive with the level
+redacted, which reads as `unknown`) and the file stays errors only, this probe cannot answer and
+the link has to be read another way, for example from a sysdiagnose taken during a stream.
+
 **Gates (both PRs):** full suite and Release build green, `SWIFT_EMIT_LOC_STRINGS=NO` on headless
 builds, privacy-logging gate, build number bumped on main after merge; this Status line and the
 index row updated in the same PR.
@@ -275,14 +390,16 @@ of each run, `{hvc1, raw} × {high, medium}`.
 | Whether DAT sets `NotSync`; parser and attachment agreement | `keyframeSource` |
 | GOP length (samples between random-access pictures) | `keyframeInterval` |
 | Whether the hold ever gave up on the parser (it should not) | `keyframeHoldAbandoned` |
-| Frames shown after lock with raw selected, before and after P1 | `frameReceived`, `unsupportedPixelFormat` |
-| Link level per session, and whether it ever changes mid-session | `transportLevel`, the MWDATCore log |
-| Stall episodes: self-heal before teardown, with and without the grace switch | `StallEpisodeRecord` |
+| Frames shown after lock with raw selected, before and after P1 | `frameShape` (`rawPixels`), `frameReceived`, `unsupportedPixelFormat`, `pixelConversionFailed` |
+| Link level per session, and whether it ever changes mid-session | `transportLevel`, the support report's "Glasses video link" line, the SDK's log file |
+| The exact wording of the device manager's link lines, and where they are written | the unified log during a stream, the SDK's log file |
+| Stall episodes: self-heal before teardown, with and without the grace switch | `stallEpisode` |
 
 **Only after P2 confirms the link level on a device**, and in the same PR as the findings: correct
 EO's "Wi-Fi transport gate" paragraph (`EO-hevc-glasses-stream.md:58`), the `StreamConfigPolicy`
 comment (`Services/StreamRecoveryPolicy.swift:143-145`) and the Wi-Fi line in
-`.claude/rules/dat-conventions.md:164`, quoting the observed level. If the device says Wi-Fi after
+`.claude/rules/dat-conventions.md:164`, quoting the observed level. (Line numbers as drafted; the
+P1 note has them re-read.) If the device says Wi-Fi after
 all, those documents stay and this plan records why the field reports did not apply to us.
 
 ### P3: what P2 justifies (separate PRs)
