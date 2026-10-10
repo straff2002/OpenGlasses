@@ -269,6 +269,48 @@ final class ModelFetcherTests: XCTestCase {
         XCTAssertFalse(inferredVision(.qwen, "qwen-turbo"))
     }
 
+    /// The Coding Plan's vision models are an exact list, not a "plus"/"max" substring: the plan
+    /// also serves text-only `qwen3-coder-plus` and `qwen3-max-2026-01-23`.
+    func testInferredVisionQwenCodingPlanTable() {
+        let table: [(id: String, vision: Bool)] = [
+            ("qwen3.7-plus", true), ("qwen3.6-plus", true), ("qwen3.5-plus", true), ("kimi-k2.5", true),
+            ("qwen3.7-plus-2026-08-01", true),
+            ("Qwen3.7-Plus", true), ("  qwen3.6-plus  ", true), ("KIMI-K2.5", true),
+            ("qwen-vl-max", true),
+            ("qwen3-coder-plus", false), ("qwen3-coder-next", false), ("qwen3-max-2026-01-23", false),
+            ("glm-5", false), ("glm-4.7", false), ("MiniMax-M2.5", false),
+            ("qwen-plus", false), ("qwen-max", false), ("qwen3.5-max", false),
+        ]
+        for row in table {
+            XCTAssertEqual(inferredVision(.qwen, row.id), row.vision, "'\(row.id)'")
+        }
+    }
+
+    func testQwenCodingPlanVisionListEntriesAreNormalised() {
+        for id in ModelConfig.qwenCodingPlanVisionModels {
+            XCTAssertEqual(id, id.lowercased().trimmingCharacters(in: .whitespaces), id)
+        }
+    }
+
+    func testQwenCodingPlanModelListIsExactlyWhatThePlanServes() {
+        let ids = ModelFetcher.qwenCodingPlanModels.map(\.id)
+        XCTAssertEqual(ids, [
+            "qwen3.7-plus", "qwen3.6-plus", "kimi-k2.5", "glm-5", "MiniMax-M2.5",
+            "qwen3.5-plus", "qwen3-max-2026-01-23", "qwen3-coder-next", "qwen3-coder-plus", "glm-4.7",
+        ])
+        for removed in ["qwen3.5-max", "qwen-plus", "qwen-max", "qwen-turbo", "qwen-long"] {
+            XCTAssertFalse(ids.contains(removed), removed)
+        }
+    }
+
+    /// A "(vision)" label and the inferred capability come from two lists; this keeps them from
+    /// drifting apart.
+    func testQwenCodingPlanVisionLabelsMatchInference() {
+        for model in ModelFetcher.qwenCodingPlanModels {
+            XCTAssertEqual(inferredVision(.qwen, model.id), model.name.hasSuffix("(vision)"), model.id)
+        }
+    }
+
     func testInferredVisionOpenRouterHeuristic() {
         XCTAssertTrue(inferredVision(.openrouter, "anthropic/claude-3.5-sonnet"))
         // xAI: Grok 4 family is multimodal, earlier text models are not

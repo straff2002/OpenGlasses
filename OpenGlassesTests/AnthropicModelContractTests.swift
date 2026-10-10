@@ -185,11 +185,28 @@ final class AnthropicModelContractTests: XCTestCase {
 
     func testThe55IdsArePriced() {
         XCTAssertEqual(ModelPricing.rate(for: "claude-opus-5-5"), ModelPricing.Rate(4, 20, cached: 0.20))
-        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5-5"), ModelPricing.Rate(2, 10, cached: 0.20))
+        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5-5"), ModelPricing.Rate(2, 10, cached: 0.10))
         XCTAssertEqual(ModelPricing.rate(for: "claude-haiku-5-5"), ModelPricing.Rate(0.10, 0.50))
         // A dated snapshot resolves to its own row, not to the family it shares a prefix with.
-        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5-5-20260901"), ModelPricing.Rate(2, 10, cached: 0.20))
-        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5"), ModelPricing.Rate(3, 15), "the 5 row is untouched")
+        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5-5-20260901"), ModelPricing.Rate(2, 10, cached: 0.10))
+        XCTAssertEqual(ModelPricing.rate(for: "claude-sonnet-5"), ModelPricing.Rate(2, 10, cached: 0.20),
+                       "Sonnet 5 is $2 / $10 with $0.20 cache reads, read 2026-10-10; the $3 / $15 increase never took effect")
         XCTAssertNil(ModelPricing.rate(for: "claude-sonnet-5-6"), "a model with no row stays unpriced")
+    }
+
+    /// Sonnet 5 and Sonnet 5.5 share an input/output price but not a cache-read rate, so a
+    /// 1M-token cache read costs $0.20 on one and $0.10 on the other.
+    func testSonnetCacheReadRatesDiffer() throws {
+        let table: [(model: String, rate: ModelPricing.Rate, cacheReadCost: Double)] = [
+            ("claude-sonnet-5", ModelPricing.Rate(2, 10, cached: 0.20), 0.20),
+            ("claude-sonnet-5-5", ModelPricing.Rate(2, 10, cached: 0.10), 0.10),
+        ]
+        for row in table {
+            XCTAssertEqual(ModelPricing.rate(for: row.model), row.rate, row.model)
+            let cost = try XCTUnwrap(
+                ModelPricing.estimate(model: row.model, tokensIn: 0, tokensOut: 0,
+                                      cacheWriteTokens: 0, cacheReadTokens: 1_000_000), row.model)
+            XCTAssertEqual(cost, row.cacheReadCost, accuracy: 1e-9, row.model)
+        }
     }
 }

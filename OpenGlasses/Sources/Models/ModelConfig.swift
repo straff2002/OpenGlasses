@@ -45,6 +45,16 @@ struct ModelConfig: Codable, Identifiable, Equatable {
                                 learnedToolRejection: learnedToolRejection)
     }
 
+    /// What a one-shot request carries (a summary, a frame analysis, structured output, the intent
+    /// classifier): the Automatic resolution without tools, whatever level is saved. Those callers
+    /// size their cap and their timeout, as short as five seconds, for a quick answer; a model
+    /// saved at High for conversation would think its way past both.
+    func oneShotReasoningResolution() -> ReasoningPolicy.Resolution {
+        ReasoningPolicy.resolve(provider: llmProvider, model: model,
+                                route: ReasoningRoute.route(for: llmProvider),
+                                toolsAttached: false, requested: nil)
+    }
+
     /// Plan GC: the OpenAI endpoint this model's requests go to and the reasoning they carry
     /// there. The model editor and the request builder read the same selection.
     func routeSelection(toolsAttached: Bool, learnedToolRejection: Bool = false,
@@ -76,9 +86,17 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         case .mistral:
             return mistralVisionModels.contains(model.lowercased().trimmingCharacters(in: .whitespaces))
         case .qwen:
-            // Qwen3.5-plus and qwen-vl models support vision
-            let lowerModel = model.lowercased()
-            return lowerModel.contains("vl") || lowerModel.contains("plus") || lowerModel.contains("max") || lowerModel.contains("omni")
+            // The Coding Plan's four vision models, plus a dated snapshot of one of the three
+            // `qwenN-plus` ones. "plus" and "max" are no signal: `qwen3-coder-plus` and
+            // `qwen3-max-2026-01-23` are on the plan and take no images. The substrings keep
+            // Alibaba's dedicated vision families working when this provider is pointed at the
+            // general Model Studio endpoint instead of the Coding Plan.
+            let lowerModel = model.lowercased().trimmingCharacters(in: .whitespaces)
+            if qwenCodingPlanVisionModels.contains(lowerModel) { return true }
+            if qwenCodingPlanVisionModels.contains(where: { $0.hasSuffix("-plus") && lowerModel.hasPrefix($0 + "-") }) {
+                return true
+            }
+            return lowerModel.contains("vl") || lowerModel.contains("omni") || lowerModel.contains("qvq")
         case .xai:
             // Grok 4 family is multimodal; earlier Grok text models are not
             let lowerModel = model.lowercased()
@@ -128,6 +146,16 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         "ministral-3b-2512", "ministral-3b-latest",
         "ministral-8b-2512", "ministral-8b-latest",
         "ministral-14b-2512", "ministral-14b-latest",
+    ]
+
+    /// The Qwen Coding Plan models that take image input: the four its help page marks as vision
+    /// (Alibaba Cloud Model Studio, last updated 2026-09-28, read 2026-10-10). The page says
+    /// "Models not listed above are not supported", and nothing else on the plan accepts images,
+    /// so `qwen3-coder-plus` and `qwen3-max-2026-01-23` stay text-only whatever "plus" or "max"
+    /// suggests. An exact-match list; the gate also accepts a dated snapshot of a `qwenN-plus`
+    /// entry. A model missing here can still be switched on per config (`supportsVision`).
+    static let qwenCodingPlanVisionModels: Set<String> = [
+        "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus", "kimi-k2.5",
     ]
 
     /// Create a new config with defaults for a provider
