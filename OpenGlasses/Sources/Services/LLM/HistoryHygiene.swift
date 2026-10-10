@@ -20,10 +20,15 @@ enum HistoryHygiene {
 
     // MARK: - Dangling tool_use repair
 
-    /// Ensure every assistant `tool_use` block is answered by a `tool_result` in the immediately
-    /// following user turn (Anthropic's required shape). Missing ids — a skipped/malformed block, a
-    /// partially-answered turn, or a turn that threw mid-execution — get a synthetic error result
-    /// merged into that single following user message, so the request is valid.
+    /// Ensure every assistant `tool_use` block is answered by a `tool_result` in the user turn that
+    /// follows it (Anthropic's required shape). Missing ids — a skipped/malformed block, a
+    /// partially-answered turn, or a turn that threw mid-execution — get a synthetic error result,
+    /// and all of the turn's results land in one user message, so the request is valid.
+    ///
+    /// The tool loop appends one user message per result, so a turn that called two tools is
+    /// followed by two of them. The whole run is read before anything is called unanswered:
+    /// judging by the first message alone told the model its second tool was interrupted when it
+    /// had run, and left that tool's real result behind as a second answer to the same id.
     static func repairDanglingToolUse(_ history: [[String: Any]]) -> [[String: Any]] {
         var out: [[String: Any]] = []
         var i = 0
@@ -39,22 +44,35 @@ enum HistoryHygiene {
                 .compactMap { $0["id"] as? String }
             guard !toolUseIds.isEmpty else { continue }
 
-            // Consume the immediately-following user tool_result message if there is one, so all
-            // results for this assistant turn land in a single user message.
+            // Consume every user tool_result message that follows, up to the next message of any
+            // other kind, so all results for this assistant turn land in a single user message.
             var resultBlocks: [[String: Any]] = []
-            var answered = Set<String>()
-            if i < history.count,
-               (history[i]["role"] as? String) == "user",
-               let nextBlocks = history[i]["content"] as? [[String: Any]],
-               nextBlocks.contains(where: { $0["type"] as? String == "tool_result" }) {
-                resultBlocks = nextBlocks
-                for block in nextBlocks where block["type"] as? String == "tool_result" {
-                    if let id = block["tool_use_id"] as? String { answered.insert(id) }
+            var answeredAt: [String: Int] = [:]
+            while i < history.count,
+                  (history[i]["role"] as? String) == "user",
+                  let nextBlocks = history[i]["content"] as? [[String: Any]],
+                  nextBlocks.contains(where: { $0["type"] as? String == "tool_result" }) {
+                for block in nextBlocks {
+                    guard block["type"] as? String == "tool_result",
+                          let id = block["tool_use_id"] as? String else {
+                        resultBlocks.append(block)
+                        continue
+                    }
+                    if let existing = answeredAt[id] {
+                        // One result per id. A real result replaces a synthetic one an earlier
+                        // pass wrote ahead of it; any other repeat is dropped.
+                        if isInterruptedResult(resultBlocks[existing]), !isInterruptedResult(block) {
+                            resultBlocks[existing] = block
+                        }
+                    } else {
+                        answeredAt[id] = resultBlocks.count
+                        resultBlocks.append(block)
+                    }
                 }
-                i += 1   // consume it — we re-emit it (possibly extended) below
+                i += 1   // consume it — we re-emit the merged message below
             }
 
-            for id in toolUseIds where !answered.contains(id) {
+            for id in toolUseIds where answeredAt[id] == nil {
                 resultBlocks.append(["type": "tool_result", "tool_use_id": id, "content": interruptedToolResult])
             }
             if !resultBlocks.isEmpty {
@@ -62,6 +80,10 @@ enum HistoryHygiene {
             }
         }
         return out
+    }
+
+    private static func isInterruptedResult(_ block: [String: Any]) -> Bool {
+        (block["content"] as? String) == interruptedToolResult
     }
 
     // MARK: - Image pruning
