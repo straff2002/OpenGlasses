@@ -535,6 +535,10 @@ enum PrivacyLog {
         /// rather than reused.
         case staleSessionDropped
         case incompatibleDevice, capabilityCreated, capabilityTornDown, capabilityStopTimedOut
+        /// HX P1. `sdkRefusalLatched` is the glasses refusing this build, recorded for the rest
+        /// of the process; `startRefusedByLatch` is a later capture or stream start failing at
+        /// once because of it, with no session attempt.
+        case sdkRefusalLatched, startRefusedByLatch
         case resolutionFloored, sessionReset, tornDown, idleTeardown
         case streamState, streamPausedWhileWanted, streamPausedAfterCapture
         case streamStoppedWhileWanted
@@ -1877,6 +1881,9 @@ enum PrivacyLog {
         case started, stopped, ended, staleEnded, startFailed, notEnabled, alreadyRunning
         case renderFailed, claimed, released
         case telemetryBlocked
+        /// HX P1. What the connected glasses' device state reads, each time it changes: the
+        /// compatibility case, and the thermal level. `state` is the app's own case name.
+        case compatibilityRead, thermalRead
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

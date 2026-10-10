@@ -367,6 +367,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     compatibilityNotice = notice
                     debug(notice)
                 }
+                if DATCompatibilityMessage.isSDKRefusal(error) { events.send(.sdkRefused) }
                 throw error
             }
             let deadline = ContinuousClock.now + .seconds(20)
@@ -473,6 +474,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     self.compatibilityNotice = notice
                     self.debug(notice)
                 }
+                // HX P1: this one is not a notice for the next cycle to clear. The glasses refuse
+                // the build, so the coordinator stops asking them for the rest of the process.
+                if DATCompatibilityMessage.isSDKRefusal(error) { self.events.send(.sdkRefused) }
             }
         }
     }
@@ -801,7 +805,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
         var sessionError: Error?
         var firstError: Error?
         // Fresh cycle, fresh verdict — a stale notice from before a glasses update must not
-        // abort attempts that could now succeed (the watcher re-sets it if still true).
+        // abort attempts that could now succeed (the watcher re-sets it if still true). A refusal
+        // of this build is the exception and is not kept here: the coordinator latches it
+        // (`SDKRefusalLatch`), keeps its notice through this clear, and does not call again.
         compatibilityNotice = nil
         for attempt in 1...4 {
             do {

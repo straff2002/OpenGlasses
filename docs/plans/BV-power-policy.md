@@ -11,10 +11,10 @@ the real phone signals (battery/thermals/Low Power Mode) + glasses battery, and 
 live-mode `FrameThrottler` interval stretch (Gemini Live + OpenAI Realtime) and `device_info`
 posture surfacing. 30 tests (`PowerPolicyTests` + `PowerPolicyServiceTests`).
 
-**Deferred:** glasses thermal (needs the DAT `deviceStateStream` observed — device-pending),
-the deeper consumers (camera snapshot-first escalation + idle stream teardown, smaller
-local-model tier, reading-companion checkpoint), and the device drain/hot-day pass to tune
-thresholds.
+**Deferred:** the deeper consumers (camera snapshot-first escalation + idle stream teardown,
+smaller local-model tier, reading-companion checkpoint), and the device drain/hot-day pass to tune
+thresholds. Glasses thermal was deferred here until 2026-10-10, when Plan
+[HX](HX-glasses-link-and-device-state.md) P1 wired it (see the note at the end).
 
 A battery- and thermal-aware power policy for all-day
 wear, built on one principle: **use the lowest-power combination of sensing, compute and
@@ -97,8 +97,10 @@ readers (walking routes, digest and look-closely) do not close the following che
   separate ownership and device limits; never silently kill them through this policy.
 - [ ] Wire smaller local-model selection for eligible opportunistic work and widened reading
   checkpoints; do not replace a model underneath active inference.
-- [ ] Wire optional glasses thermal observations with missing/stale signal handling, then validate
+- [x] Wire optional glasses thermal observations with missing/stale signal handling, then validate
   on firmware that supplies them. Build fake-stream tests now; only real signal validation needs hardware.
+  **Wired 2026-10-10 by HX P1**, with tests through the fake link source; validation on firmware
+  that reports a level is still owed.
 - [ ] Record drain/hot-day evidence before claiming energy savings or tuning shipped defaults.
 
 Acceptance uses fake clocks, posture changes and resource claims across Direct/offline/Gemini/OpenAI
@@ -133,3 +135,15 @@ it to `PowerPolicyService.glassesThermal` through the existing `ThermalLevel →
 mapping. It is therefore no longer device-pending to *build*; tuning against real readings stays
 in this plan's device pass. The checklist item "Wire optional glasses thermal observations…" is
 ticked when HX P1 merges. The rest of the checklist is unchanged.
+
+**Shipped 2026-10-10 (HX P1).** `PowerPolicyService.glassesThermal` reads
+`GlassesConnectionService.thermal`, which is published only while the glasses' link is up, so a
+reading from glasses that have gone into their case holds no posture down. The mapping
+(`ThermalPressure(_:)` in `Services/Power/PowerPolicyService.swift`) now takes the app's own
+`GlassesThermal`, which `WearablesGlassesLinkSource` maps from the SDK's `ThermalLevel`; that file
+no longer imports the SDK. The table is the one this plan shipped, with one difference that changes
+no posture: an unknown level is no signal (nil) where it used to read as nominal. A change in the
+reading re-evaluates the posture when it happens, not at the next thirty-second sample.
+`PowerPolicyServiceTests` gained five tests (36 with `PowerPolicyTests`). Still owed here: the
+hot-day run, which now also has to answer whether the glasses report a level early enough to matter
+or only near their own shutdown.

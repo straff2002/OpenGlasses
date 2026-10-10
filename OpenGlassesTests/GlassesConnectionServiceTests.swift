@@ -166,6 +166,104 @@ final class GlassesConnectionServiceTests: XCTestCase {
         XCTAssertNil(service.isWorn)
     }
 
+    // MARK: - Thermal and compatibility (Plan HX P1)
+
+    func testThermalIsPublishedOnlyWhileConnected() {
+        let source = FakeLinkSource()
+        let service = make(source)
+        source.sendDevices(["a"])
+        XCTAssertNil(service.thermal, "nothing is read before the device reports")
+
+        source.sendState("a", GlassesDeviceState(link: .connecting, thermal: .severe))
+        XCTAssertNil(service.thermal, "connecting is not connected")
+
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: .severe))
+        XCTAssertEqual(service.thermal, .severe)
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: .normal))
+        XCTAssertEqual(service.thermal, .normal)
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: nil))
+        XCTAssertNil(service.thermal, "a device that stops saying shows nothing")
+
+        // The SDK may still hold the reading for a pair that has gone into its case.
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: .critical))
+        source.sendState("a", GlassesDeviceState(link: .disconnected, thermal: .critical))
+        XCTAssertNil(service.thermal, "a hot reading must not outlive the link")
+    }
+
+    func testCompatibilityIsPublishedOnlyWhileConnected() {
+        let source = FakeLinkSource()
+        let service = make(source)
+        source.sendDevices(["a"])
+        XCTAssertNil(service.compatibility)
+
+        source.sendState("a", GlassesDeviceState(link: .connecting, compatibility: .sdkUpdateRequired))
+        XCTAssertNil(service.compatibility, "connecting is not connected")
+
+        source.sendState("a", GlassesDeviceState(link: .connected))
+        XCTAssertEqual(service.compatibility, .undefined,
+                       "connected glasses that have not said are undefined, not absent")
+        source.sendState("a", GlassesDeviceState(link: .connected, compatibility: .deviceUpdateRequired))
+        XCTAssertEqual(service.compatibility, .deviceUpdateRequired)
+
+        source.sendState("a", GlassesDeviceState(link: .disconnected, compatibility: .deviceUpdateRequired))
+        XCTAssertNil(service.compatibility, "a requirement must not outlive the link")
+    }
+
+    func testThermalAndCompatibilityGoWithTheDeviceAndWithTheObservation() {
+        let source = FakeLinkSource()
+        let service = make(source)
+        let hot = GlassesDeviceState(link: .connected, thermal: .emergency,
+                                     compatibility: .sdkUpdateRequired)
+        source.sendDevices(["a"])
+        source.sendState("a", hot)
+        XCTAssertEqual(service.thermal, .emergency)
+        XCTAssertEqual(service.compatibility, .sdkUpdateRequired)
+
+        // Removed from the list while connected: nothing of it is left to read.
+        source.sendDevices([])
+        XCTAssertNil(service.thermal)
+        XCTAssertNil(service.compatibility)
+
+        // Back in the list, it starts from nothing rather than from memory.
+        source.sendDevices(["a"])
+        XCTAssertNil(service.thermal)
+        XCTAssertNil(service.compatibility)
+
+        source.sendState("a", hot)
+        service.stopObserving()
+        XCTAssertNil(service.thermal)
+        XCTAssertNil(service.compatibility)
+    }
+
+    func testThermalAndCompatibilityAreTheActiveDevices() {
+        let source = FakeLinkSource()
+        let service = make(source)
+        source.sendDevices(["a", "b"])
+        source.sendState("a", GlassesDeviceState(link: .disconnected, thermal: .critical,
+                                                 compatibility: .sdkUpdateRequired))
+        source.sendState("b", GlassesDeviceState(link: .connected, thermal: .light,
+                                                 compatibility: .compatible))
+        XCTAssertEqual(service.thermal, .light, "the connected pair's reading, not the one in its case")
+        XCTAssertEqual(service.compatibility, .compatible)
+    }
+
+    func testThermalAndCompatibilityArePublishedBeforeThePhase() {
+        // `AppState` hears the phase and reads the details back, as it does for the battery.
+        let source = FakeLinkSource()
+        let service = make(source)
+        source.sendDevices(["a"])
+        var seen: [(GlassesThermal?, GlassesCompatibility?)] = []
+        let token = service.$phase.dropFirst().sink { _ in
+            seen.append((service.thermal, service.compatibility))
+        }
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: .moderate,
+                                                 compatibility: .deviceUpdateRequired))
+        token.cancel()
+        XCTAssertEqual(seen.count, 1)
+        XCTAssertEqual(seen.first?.0, .moderate)
+        XCTAssertEqual(seen.first?.1, .deviceUpdateRequired)
+    }
+
     // MARK: - Listener lifecycle
 
     func testOneSubscriptionPerDeviceAndCancelledWhenTheDeviceLeaves() {

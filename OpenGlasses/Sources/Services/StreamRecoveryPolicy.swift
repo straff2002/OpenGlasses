@@ -214,7 +214,17 @@ enum DATCompatibilityMessage {
         return "A newer Avenkin may work better with these glasses — update from the App Store when convenient."
     }
 
-    static func message(for compatibility: Compatibility) -> String? {
+    /// DAT 1.0: the one session error that says the glasses refuse this build. Terminal for the
+    /// process: nothing on the glasses or in Meta AI changes it, so `SDKRefusalLatch` stops every
+    /// later camera start from asking again.
+    static func isSDKRefusal(_ error: DeviceSessionError) -> Bool {
+        if case .insufficientSDKVersion = error { return true }
+        return false
+    }
+
+    /// What the glasses' own compatibility reading asks the wearer to do, or nil when it asks
+    /// nothing. Read at link time through `CompatibilityNoticePolicy` (Plan HX P1).
+    static func message(for compatibility: GlassesCompatibility) -> String? {
         switch compatibility {
         case .deviceUpdateRequired:
             return "Your glasses need a firmware update — open the Meta AI app to update them."
@@ -222,8 +232,12 @@ enum DATCompatibilityMessage {
             return appUpdateRequired
         case .compatible, .undefined:
             return nil
-        @unknown default:
-            return nil
         }
+    }
+
+    /// The SDK's own value, read the same way: mapped where every other device state is, then
+    /// worded above, so there is one sentence per requirement whichever type arrives.
+    static func message(for compatibility: Compatibility) -> String? {
+        message(for: WearablesGlassesLinkSource.map(compatibility))
     }
 }

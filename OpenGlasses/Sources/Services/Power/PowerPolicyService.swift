@@ -1,18 +1,18 @@
 import Foundation
 import Combine
-import MWDATCore
 
-/// Maps the DAT glasses thermal level onto the neutral `ThermalPressure` scale
-/// (docs/plans/BV-power-policy.md P2). Lives here rather than in the pure P1 core so that file
-/// stays `MWDATCore`-free and headless; the mapping itself is still pure and table-tested.
+/// Maps the glasses' thermal level onto the neutral `ThermalPressure` scale
+/// (docs/plans/BV-power-policy.md P2). The input is the app's own `GlassesThermal`, which
+/// `WearablesGlassesLinkSource` maps from DAT's `ThermalLevel`, so this file needs no SDK import
+/// and the mapping stays pure and table-tested.
 ///
-/// DAT's `ThermalLevel` is finer-grained than the phone's four states, so several DAT levels fold
-/// into one band. `.unknown` maps to `.nominal` — an unknown glasses reading must never *raise*
-/// posture (every glasses input is optional and a missing signal can't force a downgrade).
+/// The glasses' scale is finer-grained than the phone's four states, so several levels fold into
+/// one band. A device that does not say has no `GlassesThermal` at all (nil), which the fusion
+/// reads as no signal: a missing glasses reading must never *raise* posture.
 extension ThermalPressure {
-    init(_ level: MWDATCore.ThermalLevel) {
+    init(_ level: GlassesThermal) {
         switch level {
-        case .unknown, .none, .light:
+        case .normal, .light:
             self = .nominal
         case .moderate:
             self = .fair
@@ -20,8 +20,6 @@ extension ThermalPressure {
             self = .serious
         case .critical, .emergency, .shutdown:
             self = .critical
-        @unknown default:
-            self = .nominal
         }
     }
 }
@@ -35,11 +33,10 @@ extension ThermalPressure {
 /// terms — the service never reaches into features. It holds the previous posture so
 /// `PowerPolicy.decide` gets its hysteresis input across successive samples.
 ///
-/// **Glasses signals are optional and currently phone-led.** Glasses battery is fed from
-/// `GlassesConnectionService` (nil until firmware reports it); glasses thermal (DAT 1.0
-/// `Device.thermalLevel`, observed via `Device.addDeviceStateListener`) is not yet observed, so it
-/// defaults absent — a phone-only posture, which the plan requires to be useful on its own. When
-/// the device-state listener is wired, point `glassesThermal` at it via `ThermalPressure(_ level:)`.
+/// **Glasses signals are optional.** Glasses battery and glasses thermal are both fed from
+/// `GlassesConnectionService` by `AppState`, and both are nil whenever the link is down or the
+/// device does not report them, which leaves a phone-only posture: the plan requires that to be
+/// useful on its own. Thermal goes through `ThermalPressure(_ level:)` above.
 @MainActor
 final class PowerPolicyService: ObservableObject {
     static let shared = PowerPolicyService()

@@ -946,6 +946,49 @@ class AppState: ObservableObject, AppStateProtocol {
             voiceOverAnnouncing: SessionAnnouncer.isAnnouncingToVoiceOver)
     }
 
+    // MARK: - Glasses update requirement (Plan HX P1)
+
+    /// Which update sentences have been said since launch (`CompatibilityNoticePolicy`). Shared
+    /// with the camera's own compatibility notice, so one sentence is never said by both.
+    private var compatibilityNotices = CompatibilityNoticePolicy.Ledger()
+    private var compatibilityNoticeTask: Task<Void, Never>?
+
+    /// The connected glasses' compatibility reading changed; nil is the link going.
+    ///
+    /// A requirement the wearer has not heard about is posted and then said once: after the
+    /// connection's own sounds, never on top of speech (the same route reading the link cue above
+    /// uses), and only if the glasses are still connected and still asking by then. The reading
+    /// does not stop the camera by itself; a session the glasses refuse does (`SDKRefusalLatch`).
+    private func glassesCompatibilityChanged(_ compatibility: GlassesCompatibility?) {
+        if let compatibility {
+            PrivacyLog.device(.glasses, .compatibilityRead, state: PrivacyToken.caseName(of: compatibility))
+        }
+        guard case .announce(let message) = compatibilityNotices.note(compatibility) else { return }
+        addDebugEvent(message)
+        NoticeCenter.shared.post(message, severity: .warning, source: .glasses)
+        compatibilityNoticeTask?.cancel()
+        compatibilityNoticeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(CompatibilityNoticePolicy.settleSeconds * 1_000_000_000))
+            while !Task.isCancelled {
+                guard let self else { return }
+                switch CompatibilityNoticePolicy.delivery(
+                    stillOwed: self.compatibilityNotices.isOwed(message), route: self.speechRoute) {
+                case .drop:
+                    return
+                case .wait:
+                    try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.pollSeconds * 1_000_000_000))
+                case .play:
+                    self.compatibilityNotices.noteSaid(message)
+                    let outcome = await self.speechService.speakReporting(message)
+                    if !CompatibilityNoticePolicy.wasHeard(outcome) {
+                        self.compatibilityNotices.noteNotHeard(message)
+                    }
+                    return
+                }
+            }
+        }
+    }
+
     /// A connect the wearer asked for from the glasses controls (the session card's glasses pill,
     /// onboarding) — the only place a failure to connect glasses is reported, because it is the
     /// only place connecting them was the request. Lifts a stand-down; registers only when the link
@@ -3376,6 +3419,26 @@ class AppState: ObservableObject, AppStateProtocol {
                 DispatchQueue.main.async { self?.glassesWornChanged(worn) }
             }
         cancellables.append(wornToken)
+        // The glasses say whether they and this build can work together (Plan HX P1). `nil` is
+        // the link not being up, so a requirement is only ever acted on while connected.
+        let compatibilityToken = glassesService.$compatibility
+            .removeDuplicates()
+            .sink { [weak self] compatibility in
+                self?.glassesCompatibilityChanged(compatibility)
+            }
+        cancellables.append(compatibilityToken)
+        // Hot glasses move the power posture when they say so, not at the next thirty-second
+        // sample. `$thermal` fires in willSet and the posture reads the service back, hence the hop.
+        let thermalToken = glassesService.$thermal
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] thermal in
+                if let thermal {
+                    PrivacyLog.device(.glasses, .thermalRead, state: PrivacyToken.caseName(of: thermal))
+                }
+                DispatchQueue.main.async { self?.powerPolicy.update() }
+            }
+        cancellables.append(thermalToken)
 
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a
@@ -3451,13 +3514,15 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // BR P2: announce a DAT update requirement once per notice — voice-first, the
         // phone may be pocketed; without this an outdated Meta AI app reads as a mystery
-        // connection failure.
+        // connection failure. HX P1: once per process, on the record the link-time notice
+        // keeps, because a build the glasses refuse reaches both paths with the same sentence.
         let compatToken = cameraService.$compatibilityNotice
             .compactMap { $0 }
             .removeDuplicates()
             .sink { [weak self] notice in
                 guard let self else { return }
                 self.addDebugEvent(notice)
+                guard self.compatibilityNotices.claim(notice) else { return }
                 Task { await self.speechService.speak(notice) }
             }
         cancellables.append(compatToken)
@@ -5806,10 +5871,10 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Wire `PowerPolicyService.shared`'s signal sources to the live device signals and drive its
     /// re-evaluation. Phone signals are real (battery / thermals / Low Power Mode); glasses battery
-    /// rides `GlassesConnectionService` (nil until firmware reports it) and glasses thermal is left
-    /// absent until the DAT device-state stream is observed — a phone-only posture, which the plan
-    /// requires to stand on its own. Presence decides *whether* a loop runs; this decides *how
-    /// expensively* — deliberately independent services.
+    /// and glasses thermal ride `GlassesConnectionService`, which publishes both only while the
+    /// link is up (nil when the glasses are away or do not report them), so without glasses this
+    /// is a phone-only posture, which the plan requires to stand on its own. Presence decides
+    /// *whether* a loop runs; this decides *how expensively* — deliberately independent services.
     private func configurePower() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         let power = PowerPolicyService.shared
@@ -5824,6 +5889,11 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         power.phoneThermal = { ThermalPressure(ProcessInfo.processInfo.thermalState) }
         power.glassesBatteryPercent = { [weak self] in self?.glassesService.batteryLevel }
+        // Plan HX P1. Nil while the link is down: a reading from glasses the app can no longer
+        // hear would hold the posture down with nothing left to lift it.
+        power.glassesThermal = { [weak self] in
+            self?.glassesService.thermal.map { ThermalPressure($0) }
+        }
         power.lowPowerMode = { ProcessInfo.processInfo.isLowPowerModeEnabled }
 
         // Live spenders read the posture in their own terms. Live-mode frame throttlers stretch

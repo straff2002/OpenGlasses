@@ -108,6 +108,20 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// one-time announcement.
     @Published private(set) var compatibilityNotice: String?
 
+    // MARK: - A build the glasses refuse (Plan HX P1)
+
+    /// Whether the glasses have refused this build of the app. Set when the backend's device
+    /// session reports it (`.sdkRefused`) and never cleared: see `SDKRefusalLatch`.
+    private(set) var sdkRefusal = SDKRefusalLatch()
+
+    /// Fail a glasses camera start at once when the glasses have refused this build, before the
+    /// backend is asked for a session that can only be refused again.
+    private func refuseIfSDKRefused() throws {
+        guard let refusal = sdkRefusal.startRefusal else { return }
+        PrivacyLog.camera(.glasses, .startRefusedByLatch)
+        throw CameraError.incompatible(refusal)
+    }
+
     /// The device-facing half. Injectable so tests can drive the coordinator without hardware
     /// (and without touching `Wearables`, which traps in a unit-test process).
     private let backend: GlassesCameraBackend
@@ -245,13 +259,18 @@ class CameraService: ObservableObject, FilteredStillProviding {
             refreshReadiness()
         case .debug(let message):
             onDebugEvent?(message)
-        case .compatibilityNotice(let notice):
+        case .compatibilityNotice(let reported):
+            // The backend takes its notice back at the start of every session cycle. That clear
+            // still clears everything else; a refusal of this build stands through it.
+            let notice = sdkRefusal.notice(afterBackendReported: reported)
             compatibilityNotice = notice
             if let notice {
                 NoticeCenter.shared.post(notice, severity: .warning, source: .glasses)
             } else {
                 NoticeCenter.shared.clear(source: .glasses)
             }
+        case .sdkRefused:
+            if sdkRefusal.latch() { PrivacyLog.camera(.glasses, .sdkRefusalLatched) }
         case .transientNotice(let notice):
             streamingNotice = notice
             onDebugEvent?(notice)
@@ -301,6 +320,9 @@ class CameraService: ObservableObject, FilteredStillProviding {
         // isn't ready — the phone is the only camera left, and callers announce the swap.
         let data: Data
         if glassesCameraReachable(configuringIfNeeded: true) && backend.capabilities.stillCapture {
+            // Plan HX P1. Still a glasses capture that fails, not a swap to the phone: the wearer
+            // is pointing the glasses at something, and the sentence says what to do about it.
+            try refuseIfSDKRefused()
             isCaptureInProgress = true
             defer { isCaptureInProgress = false }
             data = try await backend.capturePhoto()
@@ -420,6 +442,8 @@ class CameraService: ObservableObject, FilteredStillProviding {
         if case .unavailable(let reason) = availability(of: .livePreview) {
             throw CameraError.unsupported(reason)
         }
+        // Plan HX P1: likewise a fact that no attempt changes, once the glasses have said it.
+        try refuseIfSDKRefused()
         if let existing = inFlightStart { return try await existing.value }
         let start = Task { @MainActor [weak self] in
             guard let self else { return false }

@@ -90,8 +90,13 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   capture on the same truth. `donState` (`.unknown`/`.doffed`/`.donned`, stable API) is mapped to
   `GlassesDeviceState.worn` (`Bool?`) and published as `GlassesConnectionService.isWorn` (only while
   connected); `GlassesSleepPolicy` uses it for the automatic stand-down (taken off → 30 s grace →
-  stand down → put on → resume), only while the always-on wake word runs. `hingeState`/
-  `thermalLevel` are not read yet.
+  stand down → put on → resume), only while the always-on wake word runs. `thermalLevel` and
+  `compatibility` are mapped to `GlassesDeviceState.thermal` (`GlassesThermal?`, unknown → nil) and
+  `.compatibility` (`GlassesCompatibility`) and published as `GlassesConnectionService.thermal` /
+  `.compatibility` (only while connected): thermal feeds `PowerPolicyService`, and an update
+  requirement is said once per process (`CompatibilityNoticePolicy`). The compatibility reading
+  never stops the camera by itself; a session refused with `.insufficientSDKVersion` does, for the
+  rest of the process (`SDKRefusalLatch`). `hingeState` is not read.
 - `DeviceSession` — owns the connection; create with a device selector, then `addCamera`/`addDisplay`.
   `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,

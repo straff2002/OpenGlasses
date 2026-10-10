@@ -30,10 +30,12 @@ protocol GlassesLinkObservation: AnyObject {
 // MARK: - Meta SDK
 
 /// The Meta DAT SDK as a `GlassesLinkSource`. The only place the SDK's `LinkState`,
-/// `ChargingState` and `RegistrationState` are mapped onto the app's own enums.
+/// `ChargingState`, `DonState`, `ThermalLevel`, `Compatibility` and `RegistrationState` are mapped
+/// onto the app's own enums.
 ///
 /// Uses `Device.addDeviceStateListener(_:)` (MWDATCore 1.0.0, stable API): one listener per device
-/// delivers the full `DeviceState` — link, battery, charging, worn — immediately and on every change.
+/// delivers the full `DeviceState` — link, battery, charging, worn, thermal level, compatibility —
+/// immediately and on every change.
 @MainActor
 final class WearablesGlassesLinkSource: GlassesLinkSource {
     func activate() -> Bool { WearablesBootstrap.ensureConfigured() }
@@ -71,13 +73,17 @@ final class WearablesGlassesLinkSource: GlassesLinkSource {
         let seed = GlassesDeviceState(link: Self.map(device.linkState),
                                       batteryLevel: device.batteryLevel,
                                       charging: Self.map(device.chargingState),
-                                      worn: Self.map(device.donState))
+                                      worn: Self.map(device.donState),
+                                      thermal: Self.map(device.thermalLevel),
+                                      compatibility: Self.map(device.compatibility()))
         Self.deliver { onChange(seed) }
         let token = device.addDeviceStateListener { state in
             let mapped = GlassesDeviceState(link: Self.map(state.linkState),
                                             batteryLevel: state.batteryLevel,
                                             charging: Self.map(state.chargingState),
-                                            worn: Self.map(state.donState))
+                                            worn: Self.map(state.donState),
+                                            thermal: Self.map(state.thermalLevel),
+                                            compatibility: Self.map(state.compatibility))
             Self.deliver { onChange(mapped) }
         }
         return SDKListenerObservation(token)
@@ -112,6 +118,32 @@ final class WearablesGlassesLinkSource: GlassesLinkSource {
         case .unknown: return .unknown
         case .charging: return .charging
         case .notCharging: return .notCharging
+        }
+    }
+
+    /// `ThermalLevel` (MWDATCore 1.0.0, stable, frozen): case for case, with unknown → nil.
+    nonisolated static func map(_ thermal: ThermalLevel) -> GlassesThermal? {
+        switch thermal {
+        case .unknown: return nil
+        case .none: return .normal
+        case .light: return .light
+        case .moderate: return .moderate
+        case .severe: return .severe
+        case .critical: return .critical
+        case .emergency: return .emergency
+        case .shutdown: return .shutdown
+        }
+    }
+
+    /// `Compatibility` (MWDATCore 1.0.0, stable). Not frozen: a case a later SDK adds reads as
+    /// the glasses not having said, which asks nothing of the wearer.
+    nonisolated static func map(_ compatibility: Compatibility) -> GlassesCompatibility {
+        switch compatibility {
+        case .undefined: return .undefined
+        case .compatible: return .compatible
+        case .deviceUpdateRequired: return .deviceUpdateRequired
+        case .sdkUpdateRequired: return .sdkUpdateRequired
+        @unknown default: return .undefined
         }
     }
 }

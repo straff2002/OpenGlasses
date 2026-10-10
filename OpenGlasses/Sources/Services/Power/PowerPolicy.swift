@@ -4,8 +4,8 @@ import Foundation
 /// (DAT `ThermalLevel`) so the fusion table reasons over one scale (docs/plans/BV-power-policy.md).
 ///
 /// Four bands, ordered least→most severe. The phone mapping lives here (Foundation-only, so the
-/// core stays headless and testable); the DAT `ThermalLevel` → `ThermalPressure` mapping lives in
-/// the P2 wiring where `MWDATCore` is imported.
+/// core stays headless and testable); the glasses mapping lives beside the P2 wiring in
+/// `PowerPolicyService.swift` and takes the app's own `GlassesThermal`, not the SDK's type.
 enum ThermalPressure: Int, Comparable, CaseIterable, Equatable {
     case nominal = 0
     case fair

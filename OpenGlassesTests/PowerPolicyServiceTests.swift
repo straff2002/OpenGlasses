@@ -4,20 +4,114 @@ import MWDATCore
 @testable import OpenGlasses
 
 /// Plan BV P2 — the `PowerPolicyService` wiring (injected signal seams, posture publishing,
-/// hysteresis across samples), the DAT thermal mapping, and the live-mode frame-throttle stretch.
+/// hysteresis across samples), the glasses thermal mapping, and the live-mode frame-throttle
+/// stretch. Plan HX P1 added the glasses' live thermal reading as a signal.
 final class PowerPolicyServiceTests: XCTestCase {
 
-    // MARK: - DAT ThermalLevel → ThermalPressure
+    // MARK: - Glasses thermal level → ThermalPressure
 
     func testGlassesThermalMapping() {
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.unknown), .nominal)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.none), .nominal)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.light), .nominal)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.moderate), .fair)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.severe), .serious)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.critical), .critical)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.emergency), .critical)
-        XCTAssertEqual(ThermalPressure(MWDATCore.ThermalLevel.shutdown), .critical)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.normal), .nominal)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.light), .nominal)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.moderate), .fair)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.severe), .serious)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.critical), .critical)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.emergency), .critical)
+        XCTAssertEqual(ThermalPressure(GlassesThermal.shutdown), .critical)
+    }
+
+    /// The SDK's level is mapped once, at the link source, case for case. Unknown is nil there:
+    /// no reading, rather than a cool one.
+    func testTheLinkSourceMapsTheSDKsThermalLevelCaseForCase() {
+        XCTAssertNil(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.unknown))
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.none), .normal)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.light), .light)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.moderate), .moderate)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.severe), .severe)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.critical), .critical)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.emergency), .emergency)
+        XCTAssertEqual(WearablesGlassesLinkSource.map(MWDATCore.ThermalLevel.shutdown), .shutdown)
+    }
+
+    /// The two steps together are the table this plan shipped with, which took the SDK's level
+    /// directly. The one difference is deliberate and changes no posture: an unknown level used
+    /// to read as nominal, and is now no signal at all.
+    func testSDKLevelToPressureIsUnchangedThroughTheAppsOwnEnum() {
+        func pressure(_ level: MWDATCore.ThermalLevel) -> ThermalPressure? {
+            WearablesGlassesLinkSource.map(level).map { ThermalPressure($0) }
+        }
+        XCTAssertNil(pressure(.unknown))
+        XCTAssertEqual(pressure(.none), .nominal)
+        XCTAssertEqual(pressure(.light), .nominal)
+        XCTAssertEqual(pressure(.moderate), .fair)
+        XCTAssertEqual(pressure(.severe), .serious)
+        XCTAssertEqual(pressure(.critical), .critical)
+        XCTAssertEqual(pressure(.emergency), .critical)
+        XCTAssertEqual(pressure(.shutdown), .critical)
+    }
+
+    // MARK: - Glasses thermal moves the posture (Plan HX P1)
+
+    @MainActor
+    func testHotGlassesMoveThePosture() {
+        let service = PowerPolicyService()
+        var thermal: GlassesThermal? = .severe
+        service.glassesThermal = { thermal.map { ThermalPressure($0) } }
+
+        service.update()
+        XCTAssertEqual(service.posture, .conserve)
+        XCTAssertEqual(service.explanation, "conserving — glasses running warm")
+
+        thermal = .critical
+        service.update()
+        XCTAssertEqual(service.posture, .reserve)
+        XCTAssertEqual(service.explanation, "power reserve — glasses running warm")
+
+        thermal = .moderate
+        service.update()
+        XCTAssertEqual(service.posture, .normal, "thermals are bands, not sticky: cooled glasses lift it")
+        XCTAssertNil(service.explanation)
+    }
+
+    @MainActor
+    func testNoGlassesReadingLeavesThePostureAlone() {
+        let service = PowerPolicyService()
+        service.glassesThermal = { nil }
+        service.update()
+        XCTAssertEqual(service.posture, .normal)
+        XCTAssertNil(service.explanation)
+
+        // And it does not soften what the phone says by itself.
+        service.phoneThermal = { .serious }
+        service.update()
+        XCTAssertEqual(service.posture, .conserve)
+        XCTAssertEqual(service.explanation, "conserving — phone running warm")
+    }
+
+    /// The wiring `AppState` does, end to end without `Wearables`: the connection service's
+    /// reading feeds the posture while the link is up, and stops feeding it the moment it is not.
+    @MainActor
+    func testThePostureFollowsTheConnectionServicesReadingAndNeverAStaleOne() {
+        let source = GlassesConnectionServiceTests.FakeLinkSource()
+        let glasses = GlassesConnectionService(source: source, observeNow: true)
+        let service = PowerPolicyService()
+        service.glassesThermal = { [weak glasses] in glasses?.thermal.map { ThermalPressure($0) } }
+
+        source.sendDevices(["a"])
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: .emergency))
+        service.update()
+        XCTAssertEqual(service.posture, .reserve)
+
+        // Into the case, still hot as far as the SDK's last word goes.
+        source.sendState("a", GlassesDeviceState(link: .disconnected, thermal: .emergency))
+        service.update()
+        XCTAssertEqual(service.posture, .normal, "a reading from glasses that have gone holds nothing down")
+        XCTAssertNil(service.explanation)
+
+        // Connected again without a thermal reading: still no signal.
+        source.sendState("a", GlassesDeviceState(link: .connected, thermal: nil))
+        service.update()
+        XCTAssertEqual(service.posture, .normal)
     }
 
     // MARK: - Service fusion & publishing
