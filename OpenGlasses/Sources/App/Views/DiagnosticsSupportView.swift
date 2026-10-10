@@ -33,9 +33,11 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Send to Support",
-                footer: "Today's conversations — in jobs and out of them — with each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone, any connected glasses and the app's event log. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+                footer: "Send Last Conversation carries only your most recent conversation, with the app's events from five minutes before it to five minutes after — nothing else you said today. Send Today's Activity carries all of today's conversations, in jobs and out of them, with the day's app events. Both add each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone and any connected glasses. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
             ) {
                 supportEmailField
+                OGDivider()
+                LastConversationRow(appState: appState, store: appState.conversationStore)
                 OGDivider()
                 Button {
                     appState.openSupportReport(.day(Date()))
@@ -165,6 +167,45 @@ struct DiagnosticsSupportView: View {
         .sheet(isPresented: $showingReport) {
             if let report {
                 DiagnosticsReportSheet(report: report)
+            }
+        }
+    }
+
+    /// "Send Last Conversation": the narrow report, for the person who wants to show one exchange
+    /// without sending everything else they said today.
+    ///
+    /// Its own view so it follows the conversation store: the row is live as soon as something
+    /// has been said, and off — saying why — while there is nothing to send. With conversations
+    /// locked it stays on, because whether there is one cannot be known until Face ID opens them.
+    private struct LastConversationRow: View {
+        let appState: AppState
+        @ObservedObject var store: ConversationStore
+        @State private var problem: AppState.LastConversationProblem?
+
+        private var available: Bool {
+            store.isLocked || JobTranscriptExport.hasConversation(in: store.threads)
+        }
+
+        var body: some View {
+            Button {
+                Task { problem = await appState.openSupportReportForLastConversation() }
+            } label: {
+                OGRow(
+                    "Send Last Conversation", icon: "bubble.left.and.text.bubble.right",
+                    subtitle: available
+                        ? "Only your most recent conversation. Review it, then email it to support"
+                        : "There's no conversation on this phone yet"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!available)
+
+            // Unlocked and found empty needs no line of its own: the row has just gone off and its
+            // subtitle says there is no conversation.
+            if problem == .locked {
+                OGStatusLabel("Conversations are locked. Unlock them with Face ID to send one.", kind: .warn)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
             }
         }
     }

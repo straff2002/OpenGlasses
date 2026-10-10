@@ -20,6 +20,10 @@ import Foundation
 /// A day can also carry the conversations held **outside** any job, because a problem does not
 /// wait for a job to be open.
 ///
+/// A third scope is **one conversation**: a single thread, its AI turns and the app's events around
+/// it, and nothing else from the day — for the person who wants to show one exchange that went
+/// wrong without sending everything else they said.
+///
 /// **Pure.** The inputs are values; the output is the document. No store, no clock and no locale is
 /// read in here, so every rule is a fixture test rather than a hope.
 ///
@@ -27,10 +31,13 @@ import Foundation
 /// chooses where it goes.
 enum JobTranscriptExport {
 
-    /// One job, or everything started on one calendar day.
+    /// One job, everything started on one calendar day, or one conversation thread.
     enum Scope: Equatable {
         case job(sessionId: String)
         case day(Date)
+        /// A single thread, whether a job owns it or not. Reported as a conversation either way:
+        /// see `selection(threadId:threads:sessions:traces:now:)`.
+        case conversation(threadId: String)
     }
 
     enum Speaker: String, Equatable {
@@ -74,11 +81,15 @@ enum JobTranscriptExport {
         let lines: [Line]
     }
 
-    /// A conversation held outside any job on the chosen day.
+    /// A conversation held outside any job on the chosen day, or the one thread a conversation
+    /// scope is about.
     struct Conversation: Equatable {
         let threadId: String
         let title: String
         let lines: [Line]
+        /// "Job 1005" when a job owns this thread and the thread is being reported by itself. Said
+        /// in the file, so the reader knows the job's own log exists and is not in it.
+        var jobNumber: String? = nil
     }
 
     /// The troubleshooting layer's inputs, gathered by the caller.
@@ -134,6 +145,10 @@ enum JobTranscriptExport {
             chosen = sessions.filter { $0.id == id }
         case .day(let day):
             chosen = sessions.filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
+        case .conversation:
+            // No job, even when a job owns the thread: the job's log, its tasks and its other
+            // details are more than the person asked to send.
+            chosen = []
         }
         return chosen.sorted { $0.startedAt < $1.startedAt }
     }
@@ -158,6 +173,111 @@ enum JobTranscriptExport {
         let start = calendar.startOfDay(for: day)
         let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
         return (start, end)
+    }
+
+    // MARK: - One conversation
+
+    /// How far either side of a job or a conversation its period reaches, so the events that led
+    /// up to the first line and the ones that followed the last are in the report.
+    static let windowMargin: TimeInterval = 5 * 60
+
+    /// The conversation "the last conversation" means: the thread someone most recently spoke in.
+    ///
+    /// Judged by the transcript lines, the same ones the file prints — a thread holding only the
+    /// app's own instructions has nothing in it to send, however recently it was opened. Two
+    /// threads whose last lines share an instant resolve to the one the store lists first.
+    static func lastConversation(in threads: [ConversationThread]) -> ConversationThread? {
+        var latest: (thread: ConversationThread, at: Date)?
+        for thread in threads {
+            guard let at = lines(of: thread.messages).last?.timestamp else { continue }
+            if latest.map({ at > $0.at }) ?? true { latest = (thread, at) }
+        }
+        return latest?.thread
+    }
+
+    /// Whether there is a conversation to send at all: the question a button asks before it
+    /// offers one. Stops at the first thread with something said in it.
+    static func hasConversation(in threads: [ConversationThread]) -> Bool {
+        threads.contains { !lines(of: $0.messages).isEmpty }
+    }
+
+    /// What a conversation scope holds.
+    struct ConversationSelection {
+        /// Nil when nothing said in the thread and none of its AI turns is on the phone.
+        let conversation: Conversation?
+        /// The thread's AI turns, whenever they happened.
+        let traces: [TurnTrace]
+        /// The half-open period the app's events and debug log are limited to.
+        let window: (start: Date, end: Date)
+    }
+
+    /// One thread, its AI turns and its period, chosen from values.
+    ///
+    /// - **Lines:** that thread's only.
+    /// - **Turns:** the ones recorded against that thread id. A turn recorded against a job but
+    ///   another thread is not this conversation's.
+    /// - **Period:** from the first thing said or asked to the last, with `windowMargin` either
+    ///   side. With nothing to measure from, the margin either side of `now`.
+    ///
+    /// A thread a job owns is still reported as a conversation, and named as that job's. The
+    /// alternative — widening to the job's report — would add the job log, its tasks and readings
+    /// to a file whose whole point is to carry one conversation; the job's own report is on the
+    /// Job tab for when that is what support needs.
+    static func selection(threadId: String, threads: [ConversationThread], sessions: [FieldSession],
+                          traces: [TurnTrace], now: Date) -> ConversationSelection {
+        let thread = threads.first { $0.id == threadId }
+        let said = lines(of: thread?.messages ?? [])
+        let turns = traces.filter { $0.threadId == threadId }.sorted { $0.at < $1.at }
+
+        var conversation: Conversation?
+        if !said.isEmpty || !turns.isEmpty {
+            let job = sessions.first { $0.conversationThreadId == threadId }
+            let jobNumber = job.map { job in
+                job.jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" } ?? JobTabModel.noJobNumber
+            }
+            conversation = Conversation(threadId: threadId,
+                                        title: thread?.title ?? unsavedConversationTitle,
+                                        lines: said, jobNumber: jobNumber)
+        }
+        return ConversationSelection(
+            conversation: conversation, traces: turns,
+            window: window(around: said.map(\.timestamp) + turns.map(\.at), now: now))
+    }
+
+    /// From the earliest of `moments` to the latest, with `windowMargin` either side.
+    static func window(around moments: [Date], now: Date) -> (start: Date, end: Date) {
+        ((moments.min() ?? now).addingTimeInterval(-windowMargin),
+         (moments.max() ?? now).addingTimeInterval(windowMargin))
+    }
+
+    /// The debug log's lines that fall inside a period.
+    ///
+    /// A debug line is stamped with the time of day only (`[14:32:07] …`), so it is placed on the
+    /// period's first day and on its last, and kept when either lands inside. A line with no stamp
+    /// cannot be placed and is left out: this is the scope that promises nothing from outside the
+    /// conversation. A period of a day or longer holds every time of day, so every stamped line.
+    static func debugLines(_ lines: [String], within window: (start: Date, end: Date),
+                           calendar: Calendar) -> [String] {
+        lines.filter { line in
+            guard let time = debugStamp(of: line) else { return false }
+            if window.end.timeIntervalSince(window.start) >= 86_400 { return true }
+            return [window.start, window.end].contains { day in
+                guard let at = calendar.date(bySettingHour: time.hour, minute: time.minute,
+                                             second: time.second, of: day) else { return false }
+                return at >= window.start && at < window.end
+            }
+        }
+    }
+
+    /// The `[HH:mm:ss]` a debug line starts with.
+    private static func debugStamp(of line: String) -> (hour: Int, minute: Int, second: Int)? {
+        guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return nil }
+        let parts = line[line.index(after: line.startIndex)..<close].split(separator: ":")
+        guard parts.count == 3, parts.allSatisfy({ $0.count == 2 }),
+              let hour = Int(parts[0]), let minute = Int(parts[1]), let second = Int(parts[2]),
+              (0..<24).contains(hour), (0..<60).contains(minute), (0..<60).contains(second)
+        else { return nil }
+        return (hour, minute, second)
     }
 
     // MARK: - Lines
@@ -277,6 +397,36 @@ enum JobTranscriptExport {
 
     static let nothingNote = "Nothing said on this job is on the phone."
 
+    /// The top of a file that holds one conversation. It says what is *not* in it, because that is
+    /// the reason this scope exists.
+    static let conversationPreamble = """
+        One conversation: what was said, as the phone transcribed it, and what the assistant \
+        replied. Times are the phone's clock. Nothing else said that day is in this file. It can \
+        still contain names, addresses and anything else that was said: share it only with people \
+        who should see it.
+        """
+
+    static let conversationTroubleshootingPreamble = """
+        Troubleshooting details are included: for each AI turn in this conversation, which model \
+        answered, what went with the words (the parts of the instructions by size, manual pages, \
+        photos, tools), how long it took and how it ended; this phone and the glasses; and the \
+        app's event log and debug log from five minutes before the conversation to five minutes \
+        after it. The words sent to the AI are the transcript lines themselves. Keys and tokens \
+        are masked.
+        """
+
+    static let jobConversationNote = """
+        This conversation was held on a job. Only the conversation is in this file: the job's own \
+        log is not. For that, send the job's support report from the Job tab.
+        """
+
+    /// The title a conversation is given when its turns are on the phone and its words are not.
+    static let unsavedConversationTitle = "not saved on this phone"
+
+    static let unsavedConversationNote = """
+        Nothing said in this conversation is on the phone. Below are its AI turns only.
+        """
+
     static let untracedNote = """
         No AI turn records: turns in the live voice modes are not recorded yet, and turn recording \
         can be switched off in the Developer panel.
@@ -311,15 +461,28 @@ enum JobTranscriptExport {
                 title = "Job transcripts — \(date) (\(count))"
                 displayName = "Job transcripts \(date).txt"
             }
+        case .conversation(let threadId):
+            // Dated to the minute it began, so two conversations on one day make two files. The
+            // thread's own title stays out of the name and the subject line: it is made from the
+            // first words said, and a subject line is read by more people than the file is.
+            let began = conversations.first?.lines.first?.timestamp
+                ?? details?.traces.first { $0.threadId == threadId }?.at
+                ?? exportedAt
+            title = "Conversation \(kind) — \(format.dateTime(began))"
+            displayName = "Conversation \(kind) \(format.fileDateTime(began)).txt"
         }
+        let aboutOneConversation: Bool
+        if case .conversation = scope { aboutOneConversation = true } else { aboutOneConversation = false }
 
         var out: [String] = [
             "Avenkin — \(title)",
             "Exported \(format.dateTime(exportedAt)) (\(format.offset(exportedAt)))",
         ]
         if let app = details?.app { out.append("App \(app)") }
-        out += ["", preamble]
-        if troubleshooting { out += ["", troubleshootingPreamble] }
+        out += ["", aboutOneConversation ? conversationPreamble : preamble]
+        if troubleshooting {
+            out += ["", aboutOneConversation ? conversationTroubleshootingPreamble : troubleshootingPreamble]
+        }
 
         // Which traces belong where. A trace is claimed by the first thing it matches, so no turn
         // is printed twice.
@@ -331,7 +494,7 @@ enum JobTranscriptExport {
         }
 
         if jobs.isEmpty && conversations.isEmpty {
-            out += ["", "No jobs."]
+            out += ["", aboutOneConversation ? "Nothing from this conversation is on the phone." : "No jobs."]
         }
 
         var printedTurns = 0
@@ -363,13 +526,21 @@ enum JobTranscriptExport {
         }
 
         for conversation in conversations {
-            out += ["", rule("="), "Outside a job: \(conversation.title)", rule("-")]
+            out += ["", rule("="), conversationHeading(conversation, alone: aboutOneConversation),
+                    rule("-")]
             let traces = claim { $0.threadId == conversation.threadId }
             printedTurns += traces.count
             failedTurns += traces.filter { $0.outcome == .failed }.count
+            if aboutOneConversation {
+                if conversation.jobNumber != nil { out += [jobConversationNote, ""] }
+                if conversation.lines.isEmpty { out += [unsavedConversationNote, ""] }
+            }
             let reference = conversation.lines.first?.timestamp ?? traces.first?.at ?? exportedAt
             out += timeline(lines: conversation.lines, traces: traces, events: [],
                             reference: reference, format: format)
+            if aboutOneConversation && troubleshooting && traces.isEmpty && !conversation.lines.isEmpty {
+                out += ["", untracedNote]
+            }
         }
 
         if let details {
@@ -397,7 +568,10 @@ enum JobTranscriptExport {
             }
 
             if !details.debugLog.isEmpty {
-                out += ["", rule("="), "Debug log (newest \(details.debugLog.count))", rule("-")]
+                let which = aboutOneConversation
+                    ? "\(details.debugLog.count) from this period"
+                    : "newest \(details.debugLog.count)"
+                out += ["", rule("="), "Debug log (\(which))", rule("-")]
                 out += details.debugLog
             }
         }
@@ -421,6 +595,14 @@ enum JobTranscriptExport {
 
     private static func rule(_ character: Character) -> String {
         String(repeating: character, count: 60)
+    }
+
+    /// "Outside a job: …" on a day, where the heading sets the conversation apart from the jobs
+    /// around it. A conversation reported alone says whose it is instead.
+    private static func conversationHeading(_ conversation: Conversation, alone: Bool) -> String {
+        guard alone else { return "Outside a job: \(conversation.title)" }
+        if let job = conversation.jobNumber { return "Conversation on \(job): \(conversation.title)" }
+        return "Conversation: \(conversation.title)"
     }
 
     private static func jobHeading(_ job: Job, format: Format) -> String {
@@ -576,6 +758,8 @@ enum JobTranscriptExport {
 
         func date(_ value: Date) -> String { formatter("yyyy-MM-dd").string(from: value) }
         func dateTime(_ value: Date) -> String { formatter("yyyy-MM-dd HH:mm").string(from: value) }
+        /// The same minute with no colon, which a file name cannot carry everywhere.
+        func fileDateTime(_ value: Date) -> String { formatter("yyyy-MM-dd HHmm").string(from: value) }
         func time(_ value: Date, seconds: Bool) -> String {
             formatter(seconds ? "HH:mm:ss" : "HH:mm").string(from: value)
         }
@@ -655,19 +839,30 @@ enum JobTranscriptExporter {
                 events: SessionLogger.readEvents(at: sessions.sessionDirectory(sessionId: session.id)))
         }
 
-        // The period the scope covers: the day, or the job from start to finish with a margin for
-        // the events either side of it.
+        // The period the scope covers: the day, or the job or conversation from start to finish
+        // with a margin for the events either side of it.
+        let margin = JobTranscriptExport.windowMargin
         let window: (start: Date, end: Date)
+        var conversations: [JobTranscriptExport.Conversation] = []
+        var conversationTraces: [TurnTrace] = []
         switch scope {
         case .day(let day):
             window = JobTranscriptExport.window(of: day, calendar: calendar)
         case .job:
-            let start = (chosen.first?.startedAt ?? now).addingTimeInterval(-5 * 60)
-            let end = (chosen.first?.endedAt ?? now).addingTimeInterval(5 * 60)
+            let start = (chosen.first?.startedAt ?? now).addingTimeInterval(-margin)
+            let end = (chosen.first?.endedAt ?? now).addingTimeInterval(margin)
             window = (start, max(end, start))
+        case .conversation(let threadId):
+            // Without the troubleshooting layer a thread's turns are not printed, so they cannot
+            // be what makes an unsaved conversation worth exporting.
+            let selection = JobTranscriptExport.selection(
+                threadId: threadId, threads: store.threads, sessions: sessions.history,
+                traces: options.troubleshooting ? traces.all : [], now: now)
+            window = selection.window
+            conversations = selection.conversation.map { [$0] } ?? []
+            conversationTraces = selection.traces
         }
 
-        var conversations: [JobTranscriptExport.Conversation] = []
         if case .day = scope, options.otherConversations {
             let jobThreads = Set(sessions.history.compactMap(\.conversationThreadId))
             conversations = store.threads
@@ -695,6 +890,17 @@ enum JobTranscriptExporter {
                     trace.fieldSessionId.map { jobIds.contains($0) } == true
                         || trace.threadId.map { jobThreadIds.contains($0) } == true
                 }
+            case .conversation:
+                scoped = conversationTraces
+            }
+            // One conversation's report promises nothing from outside it, so its debug log is cut
+            // to the period too. A job's and a day's keep the newest lines, as they always have.
+            let debugLog: [String]
+            if case .conversation = scope {
+                debugLog = JobTranscriptExport.debugLines(environment.debugLog, within: window,
+                                                          calendar: calendar)
+            } else {
+                debugLog = environment.debugLog
             }
             var events: [String: [SessionLogger.Event]] = [:]
             for session in chosen {
@@ -707,7 +913,7 @@ enum JobTranscriptExporter {
                 phone: environment.phone,
                 app: environment.app,
                 appEvents: environment.appEvents.filter { $0.at >= window.start && $0.at < window.end },
-                debugLog: environment.debugLog)
+                debugLog: debugLog)
         }
 
         if jobs.isEmpty && conversations.isEmpty && (details?.traces.isEmpty ?? true) {
