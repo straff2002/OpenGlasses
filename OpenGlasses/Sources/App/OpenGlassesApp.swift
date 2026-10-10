@@ -754,12 +754,15 @@ class AppState: ObservableObject, AppStateProtocol {
             if !isConnected && oldValue {
                 releaseGlassesHardware()
                 PrivacyLog.device(.glasses, .disconnected)
+                // Whether the wearer hears about it (Plan HX P0). After the release, never before:
+                // the release is what stops the assistant's voice, and the cue must not land on it.
+                cueGlassesOutOfUse()
             } else if isConnected && !oldValue {
                 // Smart connect: glasses just came on (e.g. mid text-only session). Hand
                 // audio + wake word off to them — the mirror of the teardown above. iOS
                 // routes audio output to the Bluetooth device automatically, but the
                 // wake-word listener has to be (re)started on the glasses mic explicitly.
-                speechService.playConnectTone()
+                cueGlassesInUse()
                 PrivacyLog.device(.glasses, .connected)
                 // The link that just came up is the fix for the one error class the app can watch
                 // resolve itself — "Connect glasses first", the SDK's own registered-but-no-device
@@ -859,6 +862,88 @@ class AppState: ObservableObject, AppStateProtocol {
         if glassesPhase != glassesUse.link { glassesPhase = glassesUse.link }
         if glassesStoodDown != glassesUse.stoodDown { glassesStoodDown = glassesUse.stoodDown }
         if isConnected != glassesUse.inUse { isConnected = glassesUse.inUse }
+        appliedGlassesUse = glassesUse
+    }
+
+    // MARK: - Glasses link cue (Plan HX P0)
+
+    /// `glassesUse` as the three mirrors above were last written from it. Read inside
+    /// `isConnected`'s `didSet`, where it is still the value from before the change — which is
+    /// what says whether the glasses went because their link dropped or because someone asked.
+    private var appliedGlassesUse = GlassesUse()
+    /// What became of the cue for the last time the glasses went out of use.
+    private var glassesLinkCues = GlassesLinkCuePolicy.Ledger()
+    private var glassesLinkCueTask: Task<Void, Never>?
+
+    /// The app has just stopped using the glasses, and the hardware release has run. Decide
+    /// whether the wearer is told (`GlassesLinkCuePolicy`: only a link that dropped unasked, with
+    /// the glasses not known to be off the face) and, if so, tell them: the descending pair, then
+    /// "Glasses disconnected" for VoiceOver.
+    ///
+    /// Not through `audibleLifecycle`. That coordinator speaks for a live session under the Blind
+    /// Assistant preset: it refuses every signal for anyone else, and its queue belongs to one
+    /// session (the next session to start empties it). This cue is for every wearer, with or
+    /// without a session, so it is delivered here by the coordinator's own rules: never on top of
+    /// speech, and never held back for ever.
+    private func cueGlassesOutOfUse() {
+        glassesLinkCueTask?.cancel()
+        glassesLinkCueTask = nil
+        let cause = GlassesLinkCuePolicy.cause(from: appliedGlassesUse, to: glassesUse)
+        let cue = glassesLinkCues.noteLoss(from: appliedGlassesUse, to: glassesUse,
+                                           wasWorn: glassesService.snapshot.lastLiveWorn)
+        addDebugEvent("Glasses out of use (\(cause.map { "\($0)" } ?? "no cause")): cue \(cue)")
+        guard cue == .lost else { return }
+        glassesLinkCueTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.settleSeconds * 1_000_000_000))
+            var waited: TimeInterval = 0
+            while !Task.isCancelled {
+                guard let self else { return }
+                switch GlassesLinkCuePolicy.delivery(
+                    stillOwed: self.glassesLinkCues.lostCue == .owed,
+                    route: self.speechRoute, waited: waited) {
+                case .drop:
+                    return
+                case .wait:
+                    try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.pollSeconds * 1_000_000_000))
+                    waited += GlassesLinkCuePolicy.pollSeconds
+                case .play:
+                    self.glassesLinkCues.noteLostCuePlayed()
+                    self.speechService.playDisconnectTone()
+                    // The line follows the tone rather than starting under it.
+                    try? await Task.sleep(nanoseconds: UInt64(TurnAudioRelease.toneSettleSeconds * 1_000_000_000))
+                    guard !Task.isCancelled, let line = GlassesLinkCuePolicy.voiceOverLine(for: .lost) else { return }
+                    SessionAnnouncer.say(line)
+                    return
+                }
+            }
+        }
+    }
+
+    /// The glasses are in use again: the connect tone, as for every connection, and "Glasses
+    /// connected" for VoiceOver when the wearer had been told they were gone.
+    private func cueGlassesInUse() {
+        // A lost cue still waiting is no longer true.
+        glassesLinkCueTask?.cancel()
+        glassesLinkCueTask = nil
+        let cue = glassesLinkCues.noteRestore()
+        speechService.playConnectTone()
+        guard let line = GlassesLinkCuePolicy.voiceOverLine(for: cue) else { return }
+        glassesLinkCueTask = Task { @MainActor [weak self] in
+            // After the rising pair, not under it.
+            try? await Task.sleep(nanoseconds: UInt64(TurnAudioRelease.toneSettleSeconds * 1_000_000_000))
+            guard !Task.isCancelled, self?.isConnected == true else { return }
+            SessionAnnouncer.say(line)
+        }
+    }
+
+    /// Who has the ear right now: the assistant's voice (TTS, or a live model's own audio), or an
+    /// announcement this app handed VoiceOver that has not finished.
+    private var speechRoute: AudibleLifecyclePolicy.SpeechRoute {
+        AudibleLifecyclePolicy.SpeechRoute(
+            assistantSpeaking: speechService.isSpeaking
+                || geminiLiveSession.isModelSpeaking
+                || openAIRealtimeSession.isModelSpeaking,
+            voiceOverAnnouncing: SessionAnnouncer.isAnnouncingToVoiceOver)
     }
 
     /// A connect the wearer asked for from the glasses controls (the session card's glasses pill,
@@ -5598,7 +5683,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     || self.geminiLiveSession.isModelSpeaking
                     || self.openAIRealtimeSession.isModelSpeaking,
                 thinkingSoundPlaying: self.speechService.isPlayingThinkingSound,
-                blindAssistantCuesActive: Self.blindAssistantCuesActive)
+                blindAssistantCuesActive: Self.blindAssistantCuesActive,
+                glassesLossCuePlayed: self.glassesLinkCues.appOwnsLossCue)
         })
         sessionAnnouncer = announcer
 
@@ -5646,10 +5732,14 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         cancellables.append(errorToken)
 
-        // Wired, and currently withheld by the policy: the listen chime, the end-listening tone,
-        // the connect/disconnect cues, and the assistant's own voice already cover these.
+        // Wired, and currently withheld by the policy: the listen chime, the end-listening tone
+        // and the assistant's own voice already cover these.
         observe($isListening) { .listening($0) }
         observe(speechService.$isSpeaking) { .speaking($0) }
+        // The glasses: up is covered by the connect tone, down by the link-lost cue when the app
+        // plays one. A loss that is silent by policy (Disconnect, glasses taken off) is announced.
+        // `observe` announces on the next main-actor turn, after `isConnected`'s `didSet` has
+        // decided the cue, so the context it reads already says whether the app took it.
         observe($isConnected) { .glassesConnected($0) }
 
         configureAudibleLifecycle()
@@ -5675,14 +5765,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let lifecycle = AudibleLifecycleCoordinator(
             isActive: { Self.blindAssistantCuesActive },
             style: { Config.blindAssistantCueStyle },
-            route: { [weak self] in
-                guard let self else { return .init() }
-                return AudibleLifecyclePolicy.SpeechRoute(
-                    assistantSpeaking: self.speechService.isSpeaking
-                        || self.geminiLiveSession.isModelSpeaking
-                        || self.openAIRealtimeSession.isModelSpeaking,
-                    voiceOverAnnouncing: SessionAnnouncer.isAnnouncingToVoiceOver)
-            },
+            route: { [weak self] in self?.speechRoute ?? .init() },
             visualEvidence: { [weak self] in
                 self?.cameraService.readinessNow.hasFreshVisualEvidence ?? false
             },
