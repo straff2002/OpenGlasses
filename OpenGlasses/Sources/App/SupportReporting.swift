@@ -7,15 +7,54 @@ struct SupportPrompt: Identifiable, Equatable {
     let at: Date
     /// A plain sentence for the banner — never an error's own description.
     let reason: String
+    /// The conversation the failed turn belonged to, when it had one.
+    var threadId: String? = nil
 }
 
 /// A support report on its way to the review sheet.
 struct SupportReportRequest: Identifiable {
     let id = UUID()
-    let scope: JobTranscriptExport.Scope
+    var scope: JobTranscriptExport.Scope
     var options: JobTranscriptExporter.Options
     /// Why the report was started, when an error started it. Shown on the sheet and in the email.
     let reason: String?
+    /// The day this report can be widened to on the sheet, when it opened on one conversation
+    /// after a failed turn. Nil everywhere else: the other entry points each name their scope.
+    var widerDay: Date? = nil
+
+    /// From Settings or the Job tab: the scope asked for, with the troubleshooting layer. A day
+    /// carries the conversations outside its jobs unless the person turns that off on the sheet.
+    static func named(_ scope: JobTranscriptExport.Scope) -> SupportReportRequest {
+        let isDay: Bool
+        if case .day = scope { isDay = true } else { isDay = false }
+        return SupportReportRequest(
+            scope: scope,
+            options: .init(troubleshooting: true, otherConversations: isDay),
+            reason: nil)
+    }
+
+    /// After a failed turn: the conversation the turn belonged to, with the whole day one switch
+    /// away on the sheet. A turn recorded against no conversation opens the day, as every failed
+    /// turn did before conversations could be sent alone.
+    ///
+    /// The conversation is the default because the person pressing Send has one failure in mind,
+    /// and the report that answers it should not carry everything else they said that day.
+    /// Widening to the day keeps "everything included", which is what the banner always sent.
+    static func afterFailedTurn(at: Date, threadId: String?, reason: String) -> SupportReportRequest {
+        let everything = JobTranscriptExporter.Options(troubleshooting: true, otherConversations: true)
+        guard let threadId else {
+            return SupportReportRequest(scope: .day(at), options: everything, reason: reason)
+        }
+        return SupportReportRequest(scope: .conversation(threadId: threadId), options: everything,
+                                    reason: reason, widerDay: at)
+    }
+
+    /// The most recent conversation on the phone, or nil when nothing has been said yet.
+    static func lastConversation(in threads: [ConversationThread]) -> SupportReportRequest? {
+        JobTranscriptExport.lastConversation(in: threads).map {
+            SupportReportRequest.named(.conversation(threadId: $0.id))
+        }
+    }
 }
 
 /// Support reporting (support ask, 2026-09-26): every AI turn is traced, a failed one offers to
@@ -48,7 +87,8 @@ extension AppState {
         if let dismissed = supportPromptDismissedAt,
            Date().timeIntervalSince(dismissed) < Self.supportPromptQuietPeriod { return }
         supportPrompt = SupportPrompt(at: trace.at,
-                                      reason: Self.plainReason(trace.failure, rejection: trace.rejectionReason))
+                                      reason: Self.plainReason(trace.failure, rejection: trace.rejectionReason),
+                                      threadId: trace.threadId)
     }
 
     func dismissSupportPrompt() {
@@ -56,24 +96,42 @@ extension AppState {
         supportPromptDismissedAt = Date()
     }
 
-    /// From the banner: the day the failure happened, everything included, ready to review.
+    /// From the banner: the conversation the failure happened in, ready to review, with the whole
+    /// day one switch away (`SupportReportRequest.afterFailedTurn`).
     func openSupportReport(from prompt: SupportPrompt) {
         supportPrompt = nil
         let time = prompt.at.formatted(date: .omitted, time: .shortened)
-        supportReportRequest = SupportReportRequest(
-            scope: .day(prompt.at),
-            options: .init(troubleshooting: true, otherConversations: true),
+        supportReportRequest = .afterFailedTurn(
+            at: prompt.at, threadId: prompt.threadId,
             reason: "An AI turn failed at \(time): \(prompt.reason).")
     }
 
     /// From Settings or the Job tab.
     func openSupportReport(_ scope: JobTranscriptExport.Scope) {
-        let isDay: Bool
-        if case .day = scope { isDay = true } else { isDay = false }
-        supportReportRequest = SupportReportRequest(
-            scope: scope,
-            options: .init(troubleshooting: true, otherConversations: isDay),
-            reason: nil)
+        supportReportRequest = .named(scope)
+    }
+
+    /// Why "Send Last Conversation" did not open the review sheet.
+    enum LastConversationProblem: Equatable {
+        /// Conversations are encrypted and Face ID did not unlock them.
+        case locked
+        case noConversation
+    }
+
+    /// From Settings: the most recent conversation, and nothing else from the day.
+    ///
+    /// Which conversation is the last one cannot be known while conversations are locked, so they
+    /// are unlocked first (Face ID) — the same unlock the review sheet would ask for a moment
+    /// later. Returns what stopped it, or nil once the sheet is up.
+    func openSupportReportForLastConversation() async -> LastConversationProblem? {
+        if conversationStore.isLocked {
+            guard await conversationStore.unlock() else { return .locked }
+        }
+        guard let request = SupportReportRequest.lastConversation(in: conversationStore.threads) else {
+            return .noConversation
+        }
+        supportReportRequest = request
+        return nil
     }
 
     /// Build the report for the review sheet. Unlocks encrypted conversations first (Face ID).

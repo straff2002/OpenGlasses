@@ -64,6 +64,9 @@ struct SupportReportSheet: View {
     @State private var shareItem: ShareItem?
     @State private var lease: StagedExportLease?
     @State private var status: Status?
+    /// The conversation the sheet opened on, kept so the person can come back to it after
+    /// looking at the whole day.
+    @State private var openedOn: JobTranscriptExport.Scope?
 
     private enum Status: Equatable {
         case sharedInstead
@@ -79,11 +82,50 @@ struct SupportReportSheet: View {
         return false
     }
 
+    private var isConversation: Bool {
+        if case .conversation = request.scope { return true }
+        return false
+    }
+
+    /// What the file is rebuilt for: either what it covers or what it includes changing.
+    private struct BuildKey: Equatable {
+        let scope: JobTranscriptExport.Scope
+        let options: JobTranscriptExporter.Options
+    }
+
+    /// After a failed turn the sheet opens on that turn's conversation; this is the way to the
+    /// whole day, which is what the banner sent before a conversation could be sent alone.
+    @ViewBuilder
+    private func coverage(widerDay: Date) -> some View {
+        OGSection(
+            header: "What to send",
+            footer: "This conversation is the one the failed turn was part of, with the app's events around it. The whole day adds every other conversation and job from that day."
+        ) {
+            Picker("What to send", selection: Binding(
+                get: { isDay },
+                set: { wholeDay in
+                    if openedOn == nil { openedOn = request.scope }
+                    request.scope = wholeDay ? .day(widerDay) : (openedOn ?? request.scope)
+                }
+            )) {
+                Text("This conversation").tag(false)
+                Text("The whole day").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             OGScrollPage {
                 if let reason = request.reason {
                     OGNotice(text: reason, systemImage: "exclamationmark.triangle")
+                }
+
+                if let widerDay = request.widerDay {
+                    coverage(widerDay: widerDay)
                 }
 
                 if isDay {
@@ -126,7 +168,7 @@ struct SupportReportSheet: View {
             }
         }
         .tint(accent)
-        .task(id: request.options) { await build() }
+        .task(id: BuildKey(scope: request.scope, options: request.options)) { await build() }
         .onDisappear { releaseLease() }
     }
 
@@ -255,7 +297,9 @@ struct SupportReportSheet: View {
 
     private func summary(_ document: JobTranscriptExport.Document) -> String {
         var parts: [String] = []
-        parts.append(document.jobCount == 1 ? "1 job" : "\(document.jobCount) jobs")
+        // One conversation is not a job, and "0 jobs" would read as something missing.
+        parts.append(isConversation ? "1 conversation"
+                     : document.jobCount == 1 ? "1 job" : "\(document.jobCount) jobs")
         parts.append(document.lineCount == 1 ? "1 line of conversation" : "\(document.lineCount) lines of conversation")
         var turns = document.turnCount == 1 ? "1 AI turn" : "\(document.turnCount) AI turns"
         if document.failedTurnCount > 0 { turns += " (\(document.failedTurnCount) failed)" }

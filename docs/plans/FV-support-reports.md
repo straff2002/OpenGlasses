@@ -30,8 +30,12 @@ when a phone leaves its organisation.
 ## How a report is sent
 
 - **After a failure:** a banner on every tab — *"That didn't work — 10:42, the AI service was busy.
-  Send to support?"* — opens the review sheet for that day, everything included. Dismissed, it
-  stays quiet for ten minutes.
+  Send to support?"* — opens the review sheet on the conversation the failed turn was part of, with
+  **The whole day** one switch away on the sheet (everything included, which is what the banner
+  opened on until 2026-10-10). A turn recorded against no conversation opens the day. Dismissed,
+  the banner stays quiet for ten minutes.
+- **Settings → Diagnostics & Support → Send Last Conversation** (2026-10-10): only the most recent
+  conversation. See *One conversation* below.
 - **Settings → Diagnostics & Support → Send Today's Activity.**
 - **Job tab:** a past job's *Export transcript…* offers *Transcript* or *Support report*; *Export a
   day…* offers the same per day.
@@ -42,6 +46,40 @@ share sheet (a `StagedExportCoordinator.fieldSession` lease, released when the s
 report can include conversations outside jobs (on by default, a toggle on the sheet). Keys and
 tokens are masked across the whole file by `DiagnosticsRedactor`, configured secrets included.
 Nothing leaves the phone until the person sends it.
+
+## One conversation
+
+Added 2026-10-10, after a tester with one slow exchange to show was pointed at *Send Today's
+Activity* and had to send the whole day to show it.
+
+`JobTranscriptExport.Scope.conversation(threadId:)` is one thread and nothing else from the day:
+
+- **Lines:** that thread's only.
+- **AI turns:** the traces recorded against that thread id, whenever they happened. A turn recorded
+  against a job but another thread is not claimed.
+- **App events and debug log:** from the first thing said or asked to the last, five minutes either
+  side — the margin a job's report uses (`JobTranscriptExport.windowMargin`). The debug log is cut
+  to the period for this scope only; its lines carry a time of day and no date, so a line is placed
+  on the period's first and last day and kept when either lands inside, and a line with no stamp is
+  left out. A job's and a day's report keep the newest lines, as before.
+- **The last conversation** is the thread with the newest transcript line
+  (`JobTranscriptExport.lastConversation(in:)`): a thread holding only the app's own instructions is
+  passed over. With conversations locked, Face ID is asked for first, because which thread is the
+  last one cannot be known until they open.
+- **A job's own thread is still reported as a conversation**, headed *Conversation on Job 1005* with
+  a line saying the job's log is not in the file. Widening to the job's report would add the job
+  log, tasks and readings to a file whose point is to carry one conversation; the job's report is
+  on the Job tab when support needs it.
+- **Title and file name** carry the minute the conversation began (*Conversation support report —
+  2026-10-10 14:32*), never the thread's own title: that is made from the first words said, and a
+  subject line is read by more people than the file.
+- A thread whose words were never saved but whose turns were recorded is still sent, as its turns
+  alone, and says so.
+
+The selection, the period and the debug-log cut are pure functions over values
+(`selection(threadId:threads:sessions:traces:now:)`, `window(around:now:)`,
+`debugLines(_:within:calendar:)`), as is which scope each entry point opens
+(`SupportReportRequest.named`, `.afterFailedTurn`, `.lastConversation`).
 
 ## Where reports go
 
@@ -80,6 +118,8 @@ Problem* (Plan DC) still goes to the developer: it reports the app, not a job.
 
 `JobTranscriptExportTests` (the transcript and the support report: turns under the lines they
 answered, prompt blocks, manual pages, tools, timings, failures, job-log events, outside-job
-conversations, unclaimed turns, masking, the no-AI turn), `TurnTraceTests` (outcome mapping, dating,
+conversations, unclaimed turns, masking, the no-AI turn; and for one conversation: which thread is
+the last, whose lines and turns it holds, its period, the debug-log cut, the job-owned thread, the
+unsaved thread, the file's wording, and which scope each entry point opens), `TurnTraceTests` (outcome mapping, dating,
 model naming, retention, persistence and erase, the recorder hooks, off-turn isolation, the
 banner's words), `DataStoreRegistryTests.testTurnTraceAttributesMatchTheRegistry`.
