@@ -8,6 +8,22 @@ final class SpokenSymbolExpanderTests: XCTestCase {
         SpokenSymbolExpander.expand(text, languageCode: language)
     }
 
+    func testBrandPronunciationReachesSpeechWithAndWithoutSymbolExpansion() {
+        XCTAssertEqual(SpokenSymbolExpander.spokenForm(of: "Connecting to Avenkin AI."),
+                       "Connecting to Ah-Ven-Kin A I.")
+        XCTAssertEqual(SpokenSymbolExpander.spokenForm(of: "**Avenkin AI** is ready."),
+                       "Ah-Ven-Kin A I is ready.")
+        XCTAssertEqual(SpokenSymbolExpander.spokenForm(of: "AVENKIN, avenkinAI, Avenkin’s voice."),
+                       "Ah-Ven-Kin, Ah-Ven-Kin A I, Ah-Ven-Kin’s voice.")
+    }
+
+    func testBrandPronunciationKeepsUnrelatedWordsAndIsIdempotent() {
+        let text = "Avenkins myAvenkin Avenkin2 AI railway"
+        XCTAssertEqual(SpeechPronunciation.spokenForm(of: text), text)
+        let spoken = SpeechPronunciation.spokenForm(of: "Avenkin AI")
+        XCTAssertEqual(SpeechPronunciation.spokenForm(of: spoken), spoken)
+    }
+
     // MARK: - Temperature
 
     func testCelsiusAndFahrenheitAreSpelledOut() {

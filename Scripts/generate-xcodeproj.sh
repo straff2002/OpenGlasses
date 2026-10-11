@@ -27,6 +27,14 @@ fi
 # so a capability added to the spec after that copy was made is silently missing from a device
 # build. Warn rather than edit: the file is the developer's own.
 personal_entitlements=Config/Entitlements/Personal/OpenGlasses.entitlements
+if [[ -f project.local.yml ]] && [[ -f "$personal_entitlements" ]]; then
+  for capability in com.apple.developer.networking.HotspotConfiguration com.apple.developer.networking.wifi-info; do
+    if ! /usr/libexec/PlistBuddy -c "Print :$capability" "$personal_entitlements" >/dev/null 2>&1; then
+      echo "warning: $personal_entitlements lacks $capability — glasses camera transport may fail." >&2
+      echo "         Run ./Scripts/setup-local-dev.sh to add it." >&2
+    fi
+  done
+fi
 if [[ -f project.local.yml ]] && [[ -f "$personal_entitlements" ]] \
   && ! grep -q "com.apple.developer.healthkit" "$personal_entitlements"; then
   echo "warning: $personal_entitlements lacks com.apple.developer.healthkit — Apple Health" >&2

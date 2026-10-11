@@ -30,10 +30,11 @@ enum SpokenSymbolExpander {
     /// The copy of `text` to hand a voice engine.
     static func spokenForm(of text: String) -> String {
         // Checked first: language detection is not free, and most replies carry no symbol.
-        guard needsWork(text) else { return text }
+        guard needsWork(text) else { return SpeechPronunciation.spokenForm(of: text) }
         let phone = Locale.preferredLanguages.first
             .flatMap { Locale.Language(identifier: $0).languageCode?.identifier } ?? "en"
-        return expand(text, languageCode: languageCode(of: text, fallback: phone))
+        return SpeechPronunciation.spokenForm(
+            of: expand(text, languageCode: languageCode(of: text, fallback: phone)))
     }
 
     static func expand(_ text: String, languageCode: String) -> String {

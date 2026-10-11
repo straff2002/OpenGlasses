@@ -781,6 +781,7 @@ final class LocalLLMService: ObservableObject {
 
         let effectiveSystem: String
         let effectiveHistory: [(role: String, content: String)]
+        let photoPromptBudget: Int?
         // Long edge the photo may reach the processor at; 0 on a text turn. Assigned once in each
         // branch so the concurrently executing `container.perform` closure captures an immutable
         // value rather than a mutable local.
@@ -808,61 +809,94 @@ final class LocalLLMService: ObservableObject {
                 : Config.compactVisionTurnPrompt(from: systemPrompt)
             effectiveHistory = plan.keepsHistory ? Array(history.suffix(4)) : []
             imageLongEdge = plan.imageLongEdge
+            photoPromptBudget = LocalModelBudget.gemmaPhotoPrefillBudget(
+                promptBudget: plan.promptBudget, availableBytes: headroom)
         } else {
             effectiveSystem = systemPrompt
             effectiveHistory = history
             imageLongEdge = 0
+            photoPromptBudget = nil
             PrivacyLog.localModel(.generationStarted,
                                   model: PrivacyToken(loadedModelId ?? "unknown"),
                                   detail: PrivacyToken("textOnly"))
         }
 
         let report = LockedGenerationReport()
+        let compactPhotoSystem = Config.compactVisionTurnPrompt(from: systemPrompt)
         // `UserInput` (and any `CIImage` in it) isn't `Sendable`, so it is built inside the
         // `@Sendable` closure from Sendable ingredients only.
         let output = try await container.perform { context -> String in
-            var chat: [Chat.Message] = [.system(effectiveSystem)]
-            for turn in effectiveHistory {
-                chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
-            }
-            var resize: CGSize?
-            if let imageData {
-                guard let ciImage = CIImage(data: imageData) else {
-                    throw LocalLLMError.generationFailed("Couldn't decode the photo.")
+            var keptHistory = effectiveHistory
+            var usesCompactSystem = effectiveSystem == compactPhotoSystem
+            var lmInput: LMInput
+            // Preparation supplies the real count, including image tokens. The previous code
+            // calculated plan.promptBudget, then sent 7,305 tokens straight to unchunked prefill
+            // with only 3 GiB of headroom (device crash 2026-10-11).
+            while true {
+                var chat: [Chat.Message] = [.system(usesCompactSystem ? compactPhotoSystem : effectiveSystem)]
+                for turn in keptHistory {
+                    chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
                 }
-                chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
-                // Bounded, not squashed. There was no cap here at all, on the reasoning that
-                // Gemma's processor picks its own canvas and its own soft-token count — true of
-                // the *token* count, and beside the point for memory: preprocessing a
-                // full-resolution frame materialises it as float pixels on top of a resident
-                // multi-gigabyte model, which is where the per-process cap was crossed. The size
-                // is computed aspect-preserving rather than passed as a square, so the crop the
-                // old comment was defending is still intact.
-                resize = LocalModelBudget.imageSize(width: Int(ciImage.extent.width),
-                                                    height: Int(ciImage.extent.height),
-                                                    maxLongEdge: imageLongEdge)
-            } else {
-                chat.append(.user(userMessage))
-            }
+                var resize: CGSize?
+                if let imageData {
+                    guard let ciImage = CIImage(data: imageData) else {
+                        throw LocalLLMError.generationFailed("Couldn't decode the photo.")
+                    }
+                    chat.append(.user(userMessage, images: [.ciImage(ciImage)]))
+                    // Bounded, not squashed. There was no cap here at all, on the reasoning that
+                    // Gemma's processor picks its own canvas and its own soft-token count — true of
+                    // the *token* count, and beside the point for memory: preprocessing a
+                    // full-resolution frame materialises it as float pixels on top of a resident
+                    // multi-gigabyte model, which is where the per-process cap was crossed. The size
+                    // is computed aspect-preserving rather than passed as a square, so the crop the
+                    // old comment was defending is still intact.
+                    resize = LocalModelBudget.imageSize(width: Int(ciImage.extent.width),
+                                                        height: Int(ciImage.extent.height),
+                                                        maxLongEdge: imageLongEdge)
+                } else {
+                    chat.append(.user(userMessage))
+                }
 
-            let userInput = resize.map { UserInput(chat: chat, processing: .init(resize: $0)) }
-                ?? UserInput(chat: chat)
-            let lmInput: LMInput
-            do {
-                lmInput = try await context.processor.prepare(input: userInput)
-            } catch {
-                // Only the text turn can be rescued by hand: a photo turn's soft tokens can
-                // only be produced by the processor, so a failure there has to surface.
-                guard imageData == nil, Gemma4ChatPrompt.isTemplateParseFailure(error) else { throw error }
-                let text = Gemma4ChatPrompt.render(
-                    system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
-                    bosToken: context.tokenizer.bosToken)
-                let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
-                // VLM-factory shape: (1, L). The mask must be explicit — a nil mask reaches
-                // Metal as a null buffer.
-                let promptArray = Self.tokenBatch(tokens, isVisionModel: true)
-                lmInput = LMInput(text: .init(tokens: promptArray,
-                                              mask: ones(like: promptArray).asType(.int8)))
+                let userInput = resize.map { UserInput(chat: chat, processing: .init(resize: $0)) }
+                    ?? UserInput(chat: chat)
+                do {
+                    lmInput = try await context.processor.prepare(input: userInput)
+                } catch {
+                    // Only the text turn can be rescued by hand: a photo turn's soft tokens can
+                    // only be produced by the processor, so a failure there has to surface.
+                    guard imageData == nil, Gemma4ChatPrompt.isTemplateParseFailure(error) else { throw error }
+                    let text = Gemma4ChatPrompt.render(
+                        system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
+                        bosToken: context.tokenizer.bosToken)
+                    let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
+                    // VLM-factory shape: (1, L). The mask must be explicit — a nil mask reaches
+                    // Metal as a null buffer.
+                    let promptArray = Self.tokenBatch(tokens, isVisionModel: true)
+                    lmInput = LMInput(text: .init(tokens: promptArray,
+                                                  mask: ones(like: promptArray).asType(.int8)))
+                }
+
+                guard let photoPromptBudget else { break }
+                let budget = LocalModelBudget.gemmaPhotoPrefillBudget(
+                    promptBudget: photoPromptBudget, availableBytes: MemoryHeadroom.availableBytes())
+                switch LocalModelBudget.photoPromptAction(
+                    tokens: lmInput.text.tokens.size, budget: budget,
+                    historyCount: keptHistory.count, usesCompactSystem: usesCompactSystem) {
+                case .generate: break
+                case .dropOldestHistory:
+                    keptHistory.removeFirst()
+                    continue
+                case .compactSystem:
+                    usesCompactSystem = true
+                    PrivacyLog.localModel(.historyTrimmed, count: keptHistory.count,
+                                          tokens: budget, detail: PrivacyToken("compactPhotoPrompt"))
+                    continue
+                case .refuse:
+                    PrivacyLog.localModel(.imageRefused, tokens: lmInput.text.tokens.size,
+                                          detail: PrivacyToken("prefillBudget"))
+                    throw LocalLLMError.insufficientMemoryForPhoto
+                }
+                break
             }
 
             PrivacyLog.localModel(.tokenShape, tokens: lmInput.text.tokens.size,

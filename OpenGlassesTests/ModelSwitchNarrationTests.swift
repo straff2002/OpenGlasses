@@ -30,6 +30,13 @@ final class ModelSwitchNarrationTests: XCTestCase {
         XCTAssertTrue(ModelSwitchNarrator.routingPhrase(to: claude).contains("Claude"))
     }
 
+    func testPhotoCapabilitySwitchNamesClaudeAndTheReason() {
+        let phrase = ModelSwitchNarrator.fallbackPhrase(
+            from: .init(name: "ChatGPT", isLocal: false), to: claude, failure: .visionUnavailable)
+        XCTAssertTrue(phrase.contains("ChatGPT can't analyze photos"))
+        XCTAssertTrue(phrase.contains("Claude"))
+    }
+
     // MARK: - Exhaustion phrasing (real reason, not the generic line)
 
     func testExhaustionReflectsRateLimit() {

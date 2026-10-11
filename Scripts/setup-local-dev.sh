@@ -143,6 +143,13 @@ ensure_personal_capabilities() {
   local file=Config/Entitlements/Personal/OpenGlasses.entitlements
   [[ -f "$file" ]] || return 0
   local buddy=/usr/libexec/PlistBuddy
+  # DAT's camera transport requires both Wi-Fi capabilities, including on personal overlays.
+  for capability in com.apple.developer.networking.HotspotConfiguration com.apple.developer.networking.wifi-info; do
+    if ! "$buddy" -c "Print :$capability" "$file" >/dev/null 2>&1; then
+      "$buddy" -c "Add :$capability bool true" "$file"
+      echo "  Added $capability to $file"
+    fi
+  done
   if ! "$buddy" -c "Print :com.apple.developer.healthkit" "$file" >/dev/null 2>&1; then
     "$buddy" -c "Add :com.apple.developer.healthkit bool true" "$file"
     echo "  Added com.apple.developer.healthkit to $file"

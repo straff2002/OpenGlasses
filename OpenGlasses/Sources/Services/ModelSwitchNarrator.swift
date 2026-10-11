@@ -21,6 +21,8 @@ enum ModelSwitchNarrator {
     /// hop of a turn only (not once per hop, not on restore).
     static func fallbackPhrase(from: Model, to: Model, failure: ModelFallbackChain.FailureClass) -> String {
         switch failure {
+        case .visionUnavailable:
+            return "\(from.name) can't analyze photos — using \(to.name) for this picture."
         case .needsBiggerWindow:
             return from.isLocal
                 ? "That's a bit much for the on-device model — switching to \(to.name)."
@@ -44,6 +46,8 @@ enum ModelSwitchNarrator {
     static func exhaustionPhrase(lastError: Error) -> String {
         let reason: String
         switch ModelFallbackChain.classify(lastError) {
+        case .visionUnavailable:
+            reason = "no model could analyze the picture"
         case .needsBiggerWindow:
             reason = "that was too long for all of them"
         case .retryOtherModel:
