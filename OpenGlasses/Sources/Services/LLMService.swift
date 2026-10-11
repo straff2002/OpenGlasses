@@ -756,6 +756,10 @@ class LLMService: ObservableObject {
     }
 
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        // Capture the choice before prompt preparation can suspend and the picker can change.
+        guard let requestedModel = Config.activeModel else {
+            throw LLMError.missingAPIKey("No model configured — add one in Settings")
+        }
         let previousFieldSourceID = fieldConversationSourceID
         fieldConversationSourceID = previousFieldSourceID ?? UUID().uuidString
         defer { fieldConversationSourceID = previousFieldSourceID }
@@ -794,10 +798,10 @@ class LLMService: ObservableObject {
                                          sessionId: FieldSessionService.shared.activeSession?.id)
         }
 
-        guard let requestedModel = Config.activeModel else {
-            throw LLMError.missingAPIKey("No model configured — add one in Settings")
-        }
         var modelConfig = try medicalInferenceModel(requested: requestedModel)
+        if imageData != nil, modelConfig.id != requestedModel.id {
+            throw LLMError.invalidConfiguration("Local-only privacy settings prevent sending this photo to the selected model. Select an available on-device vision model and try again.")
+        }
 
         // Plan GB P5: spend caps — warn at 80%, ask at 100%, fall back only when opted in.
         var spendCapNotice: String?
@@ -813,6 +817,9 @@ class LLMService: ObservableObject {
             PrivacyLog.model(.spendCap, detail: PrivacyToken("confirmed-\(window.rawValue)"))
             return reply
         case .useCheaperModel(let cheaper, let notice):
+            guard imageData == nil else {
+                throw LLMError.invalidConfiguration("The selected model's spending limit prevents this photo request. Review the limit or select another vision model and try again.")
+            }
             modelConfig = try medicalInferenceModel(requested: cheaper)
             spendCapNotice = notice
         }
@@ -862,12 +869,13 @@ class LLMService: ObservableObject {
             return "I can't look at photos with the current on-device model. Switch to a vision-capable local model like SmolVLM2, or a cloud model, and try again."
         }
 
-        // Vision honesty (ChatGPT/Codex subscription provider): whether the codex catalog
-        // accepts image input was never actually confirmed on device (see
-        // `ChatGPTVisionGate`), so treat it like the on-device gate above — decline honestly
-        // before a vision-insisting system prompt is ever built or an image byte is sent.
+        // The ChatGPT subscription integration cannot currently analyze images. Its photo
+        // requests use another vision-capable provider through the cascade below.
         if case .declineVision(let message) = ChatGPTVisionGate.decide(provider: provider, hasImage: imageData != nil) {
             return message
+        }
+        if imageData != nil, !isOnDevice, !modelConfig.visionEnabled {
+            throw LLMError.invalidConfiguration("The selected model has image input disabled. Enable Vision in its settings or select a vision model and try again.")
         }
 
         // Per-model: the lean prompt exists for tight providers (Groq's 8k cap) and would
@@ -1126,8 +1134,9 @@ class LLMService: ObservableObject {
 
         let candidates = ModelFallbackChain.candidates(
             activeId: Config.activeModelId, saved: Config.savedModels,
-            fallbackOrder: Config.modelFallbackOrder)
-        guard Config.modelCascadeEnabled, candidates.count > 1 else {
+            fallbackOrder: Config.modelFallbackOrder, requiresVision: imageData != nil)
+        // A photo needs a capable model even when the text-request fallback switch is off.
+        guard (Config.modelCascadeEnabled || imageData != nil), !candidates.isEmpty else {
             return try await send()
         }
 

@@ -37,6 +37,9 @@ enum ModelRoutingPolicy {
         activeModelId: String?,
         phoneModelId: String? = nil
     ) -> ModelTurnRoute {
+        // Photos stay with the user's selection, including when auto-routing or offline
+        // handoff would otherwise choose an agent or a different model.
+        if isPhoto { return .keepCurrent }
         if let phoneModelId { return .phoneHandoff(toId: phoneModelId) }
         // Fast-tier queries go to the agent model when agentic mode is on and the model is ready.
         // The on-device MLX agent only runs when the user opted in (it can fatally crash); a cloud

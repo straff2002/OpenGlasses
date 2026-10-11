@@ -258,6 +258,31 @@ enum LocalModelBudget {
     static let fullImageLongEdge = 1_344
     static let constrainedImageLongEdge = 896
 
+    /// Gemma's image prefill materializes logits for every prompt token (262k vocabulary),
+    /// alongside activations and attention. Budget for 2 MiB per token and leave 1 GiB for the
+    /// image encoder, decoding and the rest of the app. This is an admission estimate, not a
+    /// claim about the model's theoretical context window. Check the processor's actual tokens,
+    /// including image tokens, before entering the uncatchable Metal allocation path.
+    static func gemmaPhotoPrefillBudget(promptBudget: Int, availableBytes: Int64) -> Int {
+        guard availableBytes > 0 else { return promptBudget }
+        let remaining = max(0, availableBytes - multimodalRefusalHeadroomBytes)
+        return min(promptBudget, Int(remaining / (2 * 1024 * 1024)))
+    }
+
+    enum PhotoPromptAction: Equatable {
+        case generate
+        case dropOldestHistory
+        case compactSystem
+        case refuse
+    }
+
+    static func photoPromptAction(tokens: Int, budget: Int, historyCount: Int,
+                                  usesCompactSystem: Bool) -> PhotoPromptAction {
+        guard tokens > budget else { return .generate }
+        if historyCount > 0 { return .dropOldestHistory }
+        return usesCompactSystem ? .refuse : .compactSystem
+    }
+
     /// Per-turn plan for an image turn.
     ///
     /// Pure — the caller supplies both the device's RAM and the headroom measured *at turn time*,

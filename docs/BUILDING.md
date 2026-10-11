@@ -117,6 +117,27 @@ The failure mode when either end is wrong: approval completes in the Meta AI app
 
 On iPhone: Meta AI app → Settings → About → tap version number **5 times** → toggle Developer Mode on.
 
+With DAT 0.9 and later, also **apply/update the Developer Mode settings on the glasses** in
+Meta AI. The phone's toggle alone is not sufficient. Update Meta AI first if that option is missing.
+Bluetooth audio, a connected device and granted camera permission can all work while the
+camera's device session fails before starting. Meta traced a matching `Device unavailable`
+startup failure to settings that had not been pushed to the glasses
+([Meta's explanation and confirmed recovery](https://github.com/facebook/meta-wearables-dat-ios/discussions/116)).
+
+Camera transport also needs the Hotspot Configuration and Access Wi-Fi Information capabilities
+in the **signed app**. Both keys are in the committed entitlements; existing personal overlays
+can add them with `./Scripts/setup-local-dev.sh`. Allow Xcode to update provisioning profiles
+for these capabilities, then rebuild and install. Accept the glasses Wi-Fi Join prompt and allow
+Local Network access when asked. Meta's
+[CameraAccess entitlements](https://github.com/facebook/meta-wearables-dat-ios/blob/main/samples/CameraAccess/CameraAccess/CameraAccess.entitlements)
+show the required keys.
+
+If startup instead reports `Session ended by device`, end any broadcast shown in Meta AI. If it
+persists, close the glasses in their charging case for a minute and retry. This is a known
+[device-side session recovery issue](https://github.com/facebook/meta-wearables-dat-ios/issues/231),
+and repeated app restarts cannot reliably clear it. An `unexpectedError` without a recognized
+reason does not identify either condition; export a new support report after trying again.
+
 ### 6. Build & Run
 
 The repo ships [`project.base.yml`](../project.base.yml) plus an optional [`project.local.yml`](../project.local.yml.example) overlay; XcodeGen writes `OpenGlasses.xcodeproj` locally. Do not commit the generated project.

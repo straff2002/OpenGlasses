@@ -138,6 +138,8 @@ enum CameraErrorPolicy {
     /// stream's error publisher.
     static func retryDisposition(for error: DeviceSessionError) -> RetryDisposition {
         switch error {
+        case .dwaUnavailable:
+            return .stopRetrying(notice: DeviceSessionFailureReason.developerAppUnavailable.notice)
         case .datAppOnTheGlassesUpdateRequired,
              // DAT 1.0: terminal — the glasses refuse an app built against this SDK. Only a newer
              // OpenGlasses build fixes it, so the notice says to update the app.

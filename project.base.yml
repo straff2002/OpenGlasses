@@ -156,6 +156,9 @@ targets:
         com.apple.developer.weatherkit: true
         com.apple.developer.carplay-voice-based-conversation: true
         com.apple.developer.kernel.increased-memory-limit: true
+        # DAT camera Wi-Fi transport. XcodeGen rewrites the entitlements file from this list.
+        com.apple.developer.networking.HotspotConfiguration: true
+        com.apple.developer.networking.wifi-info: true
         com.apple.security.application-groups:
           - group.com.openglasses.app
     settings:

@@ -673,6 +673,15 @@ struct Config {
         return savedModels.first(where: { $0.id == id }) ?? savedModels.first
     }
 
+    /// Photos can use a vision fallback even when the selected text model cannot see images.
+    static var hasVisionCapableModel: Bool {
+        let localOnly = MedicalLLMRoutingPolicy.isEnforced(hipaaMode: hipaaMode, localOnly: hipaaLocalOnly)
+        return savedModels.contains { model in
+            (!localOnly || model.llmProvider == .local)
+                && ModelFallbackChain.candidate(from: model).supportsVision
+        }
+    }
+
     /// Migrate from old single-provider config to multi-model array
     private static func migrateFromLegacy() -> [ModelConfig] {
         var models: [ModelConfig] = []

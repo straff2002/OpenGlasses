@@ -136,6 +136,31 @@ final class ModelCascadeTests: XCTestCase {
                        LocalModelBudget.contextWindow(for: "mlx-community/Qwen2.5-0.5B-Instruct-4bit"))
     }
 
+    func testPhotoCandidatesPreferCloudVisionAfterTheSelectedModel() {
+        var selected = config("chatgpt", provider: .chatgpt)
+        selected.supportsVision = true // unsupported subscription path must still be skipped
+        var local = config("local", provider: .local)
+        local.supportsVision = true
+        let claude = config("claude", provider: .anthropic)
+        let chain = ModelFallbackChain.candidates(activeId: selected.id,
+            saved: [selected, local, claude], fallbackOrder: [local.id, claude.id],
+            requiresVision: true)
+        XCTAssertEqual(chain.map(\.id), ["chatgpt", "claude", "local"])
+        XCTAssertFalse(chain[0].supportsVision)
+        XCTAssertEqual(ModelFallbackChain.next(candidates: chain, tried: [],
+            needs: .init(requiresVision: true, isBackgrounded: false),
+            failure: .retryOtherModel, currentWindow: 0)?.id, "claude")
+    }
+
+    func testExplicitlySelectedLocalVisionModelStillLeads() {
+        var local = config("local", provider: .local)
+        local.supportsVision = true
+        let chain = ModelFallbackChain.candidates(activeId: local.id,
+            saved: [local, config("claude", provider: .anthropic)], fallbackOrder: [],
+            requiresVision: true)
+        XCTAssertEqual(chain.map(\.id), ["local", "claude"])
+    }
+
     // MARK: - driver
 
     private func run(_ candidates: [ModelFallbackChain.Candidate],

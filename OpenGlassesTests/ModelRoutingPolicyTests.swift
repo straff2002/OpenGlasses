@@ -39,7 +39,15 @@ final class ModelRoutingPolicyTests: XCTestCase {
     }
 
     func testPhotoTurnNeverUsesAgent() {
-        XCTAssertEqual(decide(isPhoto: true), .switchModel(toId: "tier-model"))
+        XCTAssertEqual(decide(isPhoto: true), .keepCurrent)
+    }
+
+    func testPhotoTurnKeepsSelectedModelDuringOfflineHandoff() {
+        XCTAssertEqual(ModelRoutingPolicy.decide(
+            isFastTier: true, agentModeEnabled: true, agentModelDownloaded: true,
+            agentIsCloud: false, localAgentEnabled: true, isPhoto: true,
+            autoRoutingEnabled: true, tierModelId: "tier", activeModelId: "selected",
+            phoneModelId: "local"), .keepCurrent)
     }
 
     func testAgentSkippedWhenModeOffOrNotDownloaded() {

@@ -31,7 +31,7 @@ struct ChatComposer: View {
     @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
     @ScaledMetric(relativeTo: .title) private var sendGlyph: CGFloat = 32
 
-    private var visionEnabled: Bool { Config.activeModel?.visionEnabled ?? false }
+    private var visionEnabled: Bool { Config.hasVisionCapableModel }
     private var canSend: Bool {
         !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !appState.isProcessing
     }

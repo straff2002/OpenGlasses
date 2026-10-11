@@ -669,7 +669,7 @@ struct SmartRoutingView: View {
                         get: { Config.modelCascadeEnabled },
                         set: { Config.setModelCascadeEnabled($0) }
                     ),
-                    info: "If a model can't handle a request — the prompt is too long, it's rate-limited, or it returns nothing — the assistant automatically tries the next model instead of failing. It prefers your active (often on-device) model and only falls over to cloud when needed."
+                    info: "If a model can't handle a request — the prompt is too long, it's rate-limited, or it returns nothing — the assistant automatically tries the next model instead of failing. Photos always require a vision-capable model: your selected model gets the first attempt when it supports images, then cloud vision models are preferred before local fallbacks."
                 )
                 InfoToggle(
                     title: "Narrate Model Switches",

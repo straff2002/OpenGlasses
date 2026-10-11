@@ -46,6 +46,8 @@ enum ModelFallbackChain {
         case needsBiggerWindow
         /// Fatal for this candidate only (bad/expired key for this provider) — skip it, try next.
         case terminalForCandidate
+        /// The selected model cannot analyze the attached image.
+        case visionUnavailable
         /// Fatal for the whole turn — every model would fail identically (malformed request,
         /// invalid configuration) or the user cancelled. Don't cascade.
         case terminalForTurn
@@ -176,7 +178,8 @@ enum ModelFallbackChain {
     static func candidates(
         activeId: String,
         saved: [ModelConfig],
-        fallbackOrder: [String]
+        fallbackOrder: [String],
+        requiresVision: Bool = false
     ) -> [Candidate] {
         let byId = Dictionary(saved.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var orderedIds: [String] = []
@@ -188,7 +191,13 @@ enum ModelFallbackChain {
         push(activeId)
         fallbackOrder.forEach(push)
         saved.forEach { push($0.id) }
-        return orderedIds.compactMap { byId[$0] }.map(candidate(from:))
+        let candidates = orderedIds.compactMap { byId[$0] }.map(candidate(from:))
+        guard requiresVision else { return candidates }
+        // Honor a capable selection first, then prefer cloud vision over automatic local
+        // inference. Preserve the user's fallback order within each group.
+        let selected = candidates.filter { $0.id == activeId }
+        let fallbacks = candidates.filter { $0.id != activeId }
+        return selected + fallbacks.filter { !$0.isLocalMLX } + fallbacks.filter(\.isLocalMLX)
     }
 
     /// Map a saved model to a cascade candidate.
@@ -201,7 +210,7 @@ enum ModelFallbackChain {
         return Candidate(
             id: config.id,
             isLocalMLX: isLocalMLX,
-            supportsVision: config.visionEnabled,
+            supportsVision: provider != .chatgpt && provider != .appleOnDevice && config.visionEnabled,
             contextTokens: window
         )
     }
@@ -249,6 +258,11 @@ enum ModelCascade {
             failure: .retryOtherModel, currentWindow: 0
         ) else {
             throw LLMError.missingAPIKey(noEligibleCandidateMessage(candidates: candidates, needs: needs))
+        }
+        // Initial capability filtering used to silently skip the selected model. Report
+        // this switch too, so a ChatGPT photo routed to Claude names the model that sees it.
+        if needs.requiresVision, let selected = candidates.first, selected.id != current.id {
+            await onSwitch(selected, current, selected.supportsVision ? .retryOtherModel : .visionUnavailable)
         }
         var tried = Set<String>()
         var attempts = 0

@@ -1,4 +1,5 @@
 import Foundation
+import MWDATCore
 
 /// A bounded, public description of *what went wrong* — never of *what was being sent*.
 ///
@@ -7,7 +8,8 @@ import Foundation
 /// frequently the offending value, and a server-shaped error routinely carries a fragment of the
 /// response body. An error inherits the classification of the request that produced it, so a
 /// description built from a request that carried a transcript, an entity id, or an auth code is
-/// user-content class. **This type never reads one.**
+/// user-content class. This type never publishes one. Known DAT startup payloads are matched
+/// exactly to a closed vocabulary; an unmatched payload stays unknown.
 ///
 /// What it produces instead is a category from a closed vocabulary, optionally a case/domain
 /// token that has survived `PrivacyToken`'s shape filter, and optionally a number. A number
@@ -89,6 +91,11 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         }
         if let llm = error as? LLMError {
             self = Self.model(llm)
+            return
+        }
+        // A closed vocabulary, never the SDK's free-form unexpectedError description.
+        if let reason = DeviceSessionFailureReason(error) {
+            self.init(category: .cannotConnect, detail: PrivacyToken(reason.rawValue))
             return
         }
 

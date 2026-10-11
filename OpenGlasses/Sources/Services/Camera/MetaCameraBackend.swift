@@ -941,6 +941,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
                     PrivacyLog.camera(.glasses, .incompatibleDevice)
                     throw CameraError.incompatible(notice)
                 }
+                if let reason = DeviceSessionFailureReason(error),
+                   attempt >= reason.maximumStartAttempts {
+                    await resetSession()
+                    throw CameraError.sessionUnavailable(reason)
+                }
                 if Self.isSessionAlreadyExists(error) {
                     // The phantom is a glasses-side session still tearing down — either our
                     // own previous one, or one LEAKED by a killed/reinstalled app instance
@@ -965,7 +970,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
             if Self.isSessionAlreadyExists(rootError) || Self.isSessionAlreadyExists(finalError) {
                 throw CameraError.sessionBusy
             }
-            throw rootError
+            throw DeviceSessionFailureReason.recoveryError(rootError)
         }
     }
 
@@ -1179,12 +1184,14 @@ final class MetaCameraBackend: GlassesCameraBackend {
             try await warmUpStream()
         } catch {
             continuousStreamingIntent = false
+            _ = startGeneration.finish(startToken)
             // The last `.stopped` of a failed warmup is one of ours, so it reported `.waiting` —
             // correct while the ladder was climbing, wrong now that it has given up. Say stopped
             // explicitly, or the preview sits on "Connecting…" forever instead of showing the
             // error this throw is about to produce.
             events.send(.status(.stopped))
             report(waitReason: nil)   // the ladder has stopped climbing; nothing is pending
+            await resetSession()
             throw error
         }
 
@@ -1243,6 +1250,10 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 // The glasses refused this build. A second attempt asks them the same question,
                 // so there is none, and the start fails with the sentence every later one will.
                 if let refusal = SDKRefusalLatch.terminalError(for: error) { throw refusal }
+                if let reason = DeviceSessionFailureReason(error),
+                   attempt >= reason.maximumStartAttempts {
+                    throw CameraError.sessionUnavailable(reason)
+                }
                 lastError = error
                 let action = StreamRecoveryPolicy.action(consecutiveFailures: consecutiveRecoveryFailures)
                 consecutiveRecoveryFailures += 1
@@ -1255,7 +1266,7 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 try await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
-        throw lastError ?? CameraError.streamNotReady
+        throw DeviceSessionFailureReason.recoveryError(lastError ?? CameraError.streamNotReady)
     }
 
     /// Stop continuous video streaming. Session is kept alive for reuse.

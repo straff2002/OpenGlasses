@@ -40,7 +40,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
     private let localCueSynth = AVSpeechSynthesizer()
 
     private func speakLocalCue(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
+        let utterance = AVSpeechUtterance(string: SpeechPronunciation.spokenForm(of: text))
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         localCueSynth.speak(utterance)
     }
@@ -62,6 +62,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
 
     // Camera streaming control
     var onRequestStartCamera: (() async -> Bool)?
+    var cameraFailureNotice: (() -> String?)?
 
     /// Awaited as a session starts, before the camera, the audio session or the socket are touched
     /// — the moment `AppState` says "Connecting to Avenkin AI." through the app's own voice, once
@@ -446,6 +447,8 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             basePrompt: Config.systemPrompt(device: LLMService.deviceInUse()),   // Plan FY F3: read once per session
             modeID: mode.id)
 
+        prompt += "\n\n" + SpeechPronunciation.liveVoiceInstruction
+
         if isCameraStreaming {
             prompt += """
 
@@ -457,14 +460,7 @@ class OpenAIRealtimeSessionManager: ObservableObject {
             awareness of the user's environment through these camera frames.
             """
         } else {
-            prompt += """
-
-
-            VISION:
-            You are running on the user's smart glasses. The camera is still connecting and you \
-            have NOT received any images yet. If the user asks you to look at something, tell them the camera \
-            is still connecting. Do NOT guess what the user might be looking at.
-            """
+            prompt += LiveCameraFailureInstruction.unavailable(reason: cameraFailureNotice?())
         }
 
         if let location = locationContext?() {

@@ -57,7 +57,7 @@ class GeminiLiveSessionManager: ObservableObject {
     private let localCueSynth = AVSpeechSynthesizer()
 
     private func speakLocalCue(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
+        let utterance = AVSpeechUtterance(string: SpeechPronunciation.spokenForm(of: text))
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         localCueSynth.speak(utterance)
     }
@@ -82,6 +82,7 @@ class GeminiLiveSessionManager: ObservableObject {
 
     // Camera streaming control — set by AppState to start/check camera streaming
     var onRequestStartCamera: (() async -> Bool)?
+    var cameraFailureNotice: (() -> String?)?
 
     /// Awaited as a session starts, before the camera, the audio session or the socket are touched
     /// — the moment `AppState` says "Connecting to Avenkin AI." through the app's own voice, once
@@ -644,6 +645,8 @@ class GeminiLiveSessionManager: ObservableObject {
             basePrompt: Config.systemPrompt(device: LLMService.deviceInUse()),   // Plan FY F3: read once per session
             modeID: mode.id)
 
+        prompt += "\n\n" + SpeechPronunciation.liveVoiceInstruction
+
         // Vision prompt depends on whether camera frames are actually flowing.
         // When streaming: full vision instructions.
         // When not streaming: tell Gemini camera is connecting, and critically —
@@ -660,15 +663,7 @@ class GeminiLiveSessionManager: ObservableObject {
             environment through these camera frames.
             """
         } else {
-            prompt += """
-
-
-            VISION:
-            You are running on the user's smart glasses. The camera is still connecting and you have \
-            NOT received any video frames yet. If the user asks you to look at something or describe what you see, \
-            tell them the camera is still connecting and to try again in a moment. Do NOT describe or guess what \
-            the user might be looking at — only describe things from actual video frames you have received.
-            """
+            prompt += LiveCameraFailureInstruction.unavailable(reason: cameraFailureNotice?())
         }
 
         // Where the assistant's own settings live — the same block Direct Mode carries.

@@ -23,6 +23,9 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// streaming resumes, so a stale notice cannot outlive the condition it describes.
     @Published var streamingNotice: String?
 
+    /// A failed start is not a camera still connecting. Live prompts and UI read this reason.
+    @Published private(set) var streamingFailureNotice: String?
+
     /// True while `startStreaming()` is in flight. The glasses camera cold-starts in seconds — a
     /// session, then a stream, then the first frame — and device-traced 2026-08-23 that was up to
     /// 20 s of a button that said "Camera" and looked broken, so the wearer pressed it repeatedly.
@@ -279,6 +282,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
             isStreaming = streaming
             if streaming {
                 streamingNotice = nil
+                streamingFailureNotice = nil
                 NoticeCenter.shared.clear(source: .camera)   // the condition has cleared
             }
             refreshReadiness()
@@ -494,6 +498,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
     private func performStart() async throws -> Bool {
         let token = startGeneration.beginStart()
         isStartingStream = true
+        streamingFailureNotice = nil
         // Intent is recorded *before* the await, and it is what keeps the cold-start window honest:
         // for up to twenty seconds there is no stream and no frame, and the only true statement
         // about the camera in that window is that somebody wants it on.
@@ -503,7 +508,20 @@ class CameraService: ObservableObject, FilteredStillProviding {
             isStartingStream = false
             refreshReadiness()
         }
-        try await backend.startStreaming()
+        do {
+            try await backend.startStreaming()
+        } catch {
+            if startGeneration.finish(token) == .commit {
+                userWantsStream = false
+                // Only app-owned recovery text may enter a live model's instructions.
+                let notice = (error as? CameraError)?.errorDescription
+                    ?? DeviceSessionFailureReason(error)?.notice
+                    ?? "The camera couldn't start. Check the camera status in the app, then try again."
+                streamingFailureNotice = notice
+                NoticeCenter.shared.post(notice, severity: .warning, source: .camera)
+            }
+            throw error
+        }
         // Plan EW. Everything above this line took seconds, and a stop may have landed inside it.
         // If one did, this start has been superseded: release the stream the cold start just
         // brought up instead of publishing it as running. A late start that claims the camera
@@ -707,6 +725,7 @@ enum CameraError: LocalizedError {
     case sdkNotRegistered
     case streamNotReady
     case sessionBusy
+    case sessionUnavailable(DeviceSessionFailureReason)
     /// The session was refused for a compatibility reason (e.g. the glasses-side DAT app is
     /// too old for this SDK). Carries the actionable `DATCompatibilityMessage` copy.
     case incompatible(String)
@@ -724,6 +743,7 @@ enum CameraError: LocalizedError {
         case .sdkNotRegistered: return "Meta SDK not registered — open Meta app first"
         case .streamNotReady: return "Camera stream not ready — try again"
         case .sessionBusy: return "The glasses are still releasing a previous camera session — try again in about a minute"
+        case .sessionUnavailable(let reason): return reason.notice
         case .incompatible(let message): return message
         case .unsupported(let message): return message
         }

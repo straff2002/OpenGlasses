@@ -2835,6 +2835,12 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         geminiLiveSession.onRequestStartCamera = cameraStartHandler
         openAIRealtimeSession.onRequestStartCamera = cameraStartHandler
+        geminiLiveSession.cameraFailureNotice = { [weak self] in
+            self?.cameraService.streamingFailureNotice
+        }
+        openAIRealtimeSession.cameraFailureNotice = { [weak self] in
+            self?.cameraService.streamingFailureNotice
+        }
         geminiLiveSession.onRequestStopCamera = cameraStopHandler
         openAIRealtimeSession.onRequestStopCamera = cameraStopHandler
         // Plan FF P1/PR5 over FD P1: the reconnect path reads the camera's own snapshot before it
@@ -6244,7 +6250,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Reuse an already-available live frame for vision-capable models without trying to
     /// start the camera. This avoids re-triggering fragile Meta camera permission flows.
     private func currentVisionFrameDataIfAvailable() -> Data? {
-        guard Config.activeModel?.visionEnabled == true else { return nil }
+        guard Config.hasVisionCapableModel else { return nil }
         // Frame pinning (Plan CE): a held pin IS the referent — multi-turn "and the label? and
         // the connector?" interrogates the same scene, whether or not the camera still streams.
         if Config.framePinEnabled, let pinned = framePin.pinnedFrame,
@@ -6319,13 +6325,26 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Timestamp of the last smart camera activation (for cooldown window).
     private var lastSmartCameraActivation: Date?
 
+    /// Decide routing before an automatic capture suspends the turn. Every path that may
+    /// attach a camera image must keep the model shown in the picker.
+    private func expectsCameraImage(for query: String) -> Bool {
+        guard Config.hasVisionCapableModel else { return false }
+        if cameraService.readinessNow.hasFreshVisualEvidence { return true }
+        let behavior = Config.activePresetCameraBehavior
+        if behavior == "always" { return true }
+        guard Config.smartCameraEnabled || behavior == "smart" else { return false }
+        if let activation = lastSmartCameraActivation,
+           Date().timeIntervalSince(activation) < Config.smartCameraCooldown { return true }
+        return VisionIntentDetector.classify(query) == .vision
+    }
+
     /// Determine image data for a query using smart camera logic:
     /// 1. If camera is already streaming, reuse the latest frame (existing behavior).
     /// 2. If smart camera is enabled and query is vision-related, activate camera and capture.
     /// 3. If preset has "always" camera behavior, keep camera on.
     /// 4. Otherwise, no image.
     private func smartCameraImageData(for query: String) async -> Data? {
-        guard Config.activeModel?.visionEnabled == true else { return nil }
+        guard Config.hasVisionCapableModel else { return nil }
 
         // Already have a live frame? Use it (cheapest path).
         if let existing = currentVisionFrameDataIfAvailable() {
@@ -6591,7 +6610,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let turnCount = conversationStore.threads
             .first(where: { $0.id == conversationStore.activeThreadId })?
             .messages.filter({ $0.role == "user" }).count ?? 0
-        let hasImage = isPhotoCommand(query) // pre-check; smartCamera may override below
+        let hasImage = isPhotoCommand(query) || expectsCameraImage(for: query)
         let classification = conversationClassifier.classify(query, hasImage: hasImage, conversationTurnCount: turnCount)
         PrivacyLog.app(.turnClassified, detail: PrivacyToken(classification.modelTier.rawValue),
                        tool: classification.directToolCall.map { PrivacyToken($0.toolName) })
@@ -6722,7 +6741,7 @@ class AppState: ObservableObject, AppStateProtocol {
             agentModelDownloaded: Config.agentModelDownloaded,
             agentIsCloud: agentIsCloud,
             localAgentEnabled: Config.localAgentEnabled,
-            isPhoto: isPhotoCommand(query),
+            isPhoto: hasImage,
             autoRoutingEnabled: Config.autoModelRoutingEnabled,
             tierModelId: tierModel?.id,
             activeModelId: Config.activeModelId,
