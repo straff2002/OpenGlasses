@@ -298,3 +298,98 @@ made under §9.1 only while no released phone reads format 3; otherwise it is fo
   Add `service_history`, or fold it into `field_session` as an action so live sessions get it?
 6. **A phone removed from the organisation.** Jobs ahead, and so their history, are not touched
   by a removal today. Should a removal erase office-supplied history on jobs ahead?
+
+---
+
+## Amendment 2026-10-18: site requirements and warranty status
+
+From a comparison of Field Assist, feature by feature, against two field-service
+knowledge-management products (2026-10-18). Both put two things in the technician's hand before
+the visit that nothing in HT, HU or HV carries: **what the site demands of a visitor** (access,
+induction, PPE, hazards, who to ask for) and **whether the unit is under warranty**. Both are
+things the office knows and the phone cannot compute, so they ride the same signed job file, under
+the same rules as the history: office-authored, bounded, internal, cleared at close. Status
+unchanged: 📝 drafted, nothing implemented.
+
+### The `site_requirements` member (format 3)
+
+A second optional member beside `history`, for the site rather than a unit. Plain text under
+`checkText` rules.
+
+```json
+"site_requirements": {
+  "as_of": "2026-10-07T18:00:00Z",
+  "items": [
+    { "kind": "induction", "text": "Site induction at the gatehouse before entering the plant room.", "severity": "warning" },
+    { "kind": "ppe", "text": "Hard hat, hi-vis and safety boots on site.", "severity": "warning" },
+    { "kind": "hazard", "text": "Asbestos register: boiler-room ceiling. Do not disturb.", "severity": "warning" },
+    { "kind": "access", "text": "Deliveries entrance on the north side; parking in bay 4.", "severity": "info" },
+    { "kind": "contact", "text": "Ask for the facilities desk, extension 221.", "severity": "info" }
+  ]
+}
+```
+
+- `as_of` (required), as for `history`.
+- `kind` one of `access`, `induction`, `ppe`, `hazard`, `contact`, `other` (an unknown kind
+  refuses, for the same reason an unknown flag kind does). `text` ≤ 240. `severity` `info` or
+  `warning`; the office decides which, the phone never promotes one.
+- **Bounds:** ≤ 8 items and the whole member ≤ 4 KiB. With `history` at its limit the job stays
+  under the 48 KiB budget.
+- **Authored only by the office.** The phone never creates, edits or infers a requirement, and
+  keeps nothing per site between jobs: a later job at the same site carries its own block.
+- **Not Plan HV.** HV's site vault says how the units at a site work together and is vault
+  content; this says what the site asks of the person arriving and is job content.
+
+**On the phone.** `OfficeSiteRequirements` (`Codable`, `Equatable`, `Sendable`), decoded with
+`decodeIfPresent` onto `UpcomingJob` and copied to `FieldSession` by `applyJobAhead`, cleared
+when the job closes; the log records a count (`office_site_requirements`), never the text.
+
+**In the brief.** The *Site and history* section opens with the requirements, before this
+phone's visits and the office's, because they are needed before the technician is out of the
+van: `warning` items first, each one line, then `info` items, cited "From the office, as of 7 Oct
+2026". The empty line is unchanged. A spoken "what do I need on site?" is answered from the
+brief's section; no new tool.
+
+**Hearing them.** `JobBriefSpeech.spoken` and `startedLines(for:)` read `warning` requirements
+in full, before the `warning` flags, and the flags keep their two-at-most rule. A safety
+requirement the office marked is never trimmed to "and N more". Said once at Start, not on resume;
+an `officeSiteRequirementsSpoken` event records the count.
+
+**Audience.** Internal, exactly as §6: never on the work order, the customer summary, the sign-off
+or the record; not ingested into the personal brain.
+
+### `warranty` on a unit
+
+`history.units[]` gains an optional `warranty`:
+
+```json
+"warranty": { "status": "in_warranty", "until": "2027-03-01", "note": "Parts only; labour excluded." }
+```
+
+- `status` one of `in_warranty`, `expired`, `unknown` (an unknown value refuses); `until` an ISO
+  8601 date, optional; `note` ≤ 160, optional. Authored by the office from its FSM; a unit without
+  a `warranty` member has no status, which is said as such.
+- **In the brief:** one phrase on the unit's line, "under warranty until 1 Mar 2027 (office, as of
+  7 Oct)"; `expired` is said as "warranty expired 1 Mar 2026"; `unknown` is not said unprompted.
+- **In the tool:** `service_history` answers "is this under warranty?" with the status, the date,
+  the note and the as-of; with no member, "The office sent no warranty status for this unit."
+- **Audience:** internal for v1, like the rest of the block (open question 7 below).
+
+### Phases and tests
+
+Folded into the existing phases rather than new ones: P0 adds both members to the contract, the
+model, the validator and the signed fixture; P1 the brief lines; P2 the warranty answer in the
+tool; P3 the spoken requirements. Tests: `SiteRequirementsValidationTests` (every bound, unknown
+kind, unknown severity, bad `as_of`, format 2 refuses); `OfficeServiceHistoryValidationTests`
+gains the `warranty` cases; `JobBriefOfficeHistoryTests` gains the requirement lines, their order
+and the warranty phrase; `JobStartFlagSpeechTests` gains requirements-before-flags, in full, once;
+`ServiceHistoryToolTests` gains the warranty answers; `OfficeHistoryAudienceTests` asserts no
+requirement or warranty string on the work order, summary, sign-off, record or export.
+
+### Open questions added
+
+7. **Warranty on the work order.** A customer may reasonably be told the unit is under warranty.
+   v1 keeps it internal; the technician says it in words. Should `in_warranty` appear on the
+   work order, and only that status?
+8. **Requirements that change on the day.** A Plan HN job update can carry a fresh
+   `site_requirements` block; is a changed `warning` item re-read on the update, or only shown?

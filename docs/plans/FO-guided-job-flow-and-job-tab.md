@@ -1737,6 +1737,13 @@ Tests: `JobTranscriptExportTests` (headless). No device run.
   it is voice or typed.
 - Should the brief include the customer's phone number as a "call ahead" action? Leaning yes, via
   the existing call tool, on request only.
+- **A technician declaration at close** (noted 2026-10-18, from a comparison against two
+  field-service knowledge-management products), distinct from the customer sign-off (P2c): a
+  named, typed attestation the organisation requires of its own technician — "refrigerant
+  recovered and weighed", "isolation restored and tested" — spoken or tapped at close, recorded on
+  the work record with the time and the technician's name (the Plan FP setting), never inferred
+  from the transcript. If a pilot asks, the organisation profile (Plan CT) lists the declarations a
+  job kind requires and Plan EM's record carries them. Not scheduled.
 
 ## P0 inventory (2026-09-21)
 

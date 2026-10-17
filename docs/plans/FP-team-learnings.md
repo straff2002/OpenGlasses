@@ -841,6 +841,13 @@ it. `DeliveryRequest.confirmation` still says "Job report"; a bundle needs its o
    `subject` of kind `symptom` within an equipment type, matched by the office's own vocabulary
    rather than free text, and how is its reach bounded so a dryer finding never answers for a
    dishwasher? Not needed for P1–P3; it changes retrieval, so it is decided before P4.
+8. **A recorded job as an origin** (noted 2026-10-18, from a comparison against two field-service
+   knowledge-management products, both of which treat recorded sessions as the raw material of a
+   knowledge base). Plan HE already delivers a recorded job to the office behind consent and a
+   blur pass. Should the office's review pass (decision 2 above) read recordings as well as
+   reports, drafting candidates under the same person-approves rule? Office-side only, a
+   successor to FX20; the phone is unchanged, and the contract's `origin` would gain a
+   `recording` case when the office pass first reads one.
 
 Related: [F Field Assist](F-field-assist.md), [ED manual retrieval](ED-vault-manual-retrieval.md),
 [EG vault packs](EG-vault-packs.md), [EJ retrieval fidelity](EJ-manual-retrieval-fidelity.md),
