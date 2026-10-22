@@ -52,7 +52,9 @@ final class RokidMicrophoneBackendTests: XCTestCase {
         let saved = Config.rokidPeripheralID
         defer { Config.rokidPeripheralID = saved }
 
-        Config.rokidPeripheralID = ""
+        // `rokidPairingConfigured` is "the default has been written at all", so the unpaired
+        // state is `nil`, not the empty string.
+        Config.rokidPeripheralID = nil
         let backend = RokidMicrophoneBackend(transport: MockTransport())
         XCTAssertFalse(backend.isAvailable)
 
