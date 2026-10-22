@@ -40,6 +40,57 @@ Relevant to this app's HUD:
   category (see "Camera & microphone" below); `Ai`/`ARTC` are the frame/audio streams (not
   yet wired).
 
+## Authoritative protocol (CXR-M SDK 1.0.8, decompiled)
+
+`buildwithfenna/rokid-docs` (MIT) decompiles `com.rokid.cxr:client-m` **1.0.8**, built
+2026-02-02 — the current SDK, not the 2019 pod. It settles the protocol shape.
+
+**Transport — two Bluetooth layers on Android.** (1) BLE GATT is used only to discover the
+device and *read a characteristic whose value is the RFCOMM socket UUID*; (2) a classic
+Bluetooth **RFCOMM socket** then carries the `CXRSocketProtocol` stream. That split is why
+an iOS port is not a recompile: iOS exposes no public RFCOMM API, so the iOS channel has to
+carry the same stream over BLE GATT or MFi iAP2 instead of a socket.
+
+**Frame layer (`CXRSocketProtocol`, native JNI).** `request(reqId, cmd, Caps)` /
+`send(cmd, Caps, byte[])`; callbacks `onResponse(reqId, Caps)`, `onNotify(cmd, Caps)`,
+`onReceived(cmd, Caps, byte[])`, `onAudioStream`, `onARTCFrame(byte[])`, `onDisconnect`.
+Protocol version 4. The outer frame header lives in `libcxr-sock-proto-jni`, so it is not
+derivable from the decompiled Java.
+
+**Payload (`Caps`)** — ordered typed tuple, serialized natively. Types `V` void, `i` int32,
+`u` uint32, `l` int64, `k` uint64, `f` float, `d` double, `S` string, `B` binary, `O` nested
+Caps. A message is `[0]` command string, `[1]` optional JSON payload.
+
+**Channels and commands:**
+
+| channel | commands |
+| --- | --- |
+| `Dev` | `Dev_TimeUpdate`, `Dev_GetGlassInfo`, `Dev_GlassBrightness`, `Dev_GlassSound` |
+| `Ai` | `Ai_Start`, `Ai_Heartbeat`, `ASR_Result`/`_None`/`_End`/`_Error`, `TTS_Result`, `TTS_AudioFinished`, `Ai_OpenCamera`, `Ai_TakePhoto` (JSON `{width,height,quality}`), `Exit`, `NoNetwork`, `Ai_Error`, `Pic_UploadError` |
+| `Med` | `UnSync_Count`, `Sync_Start`, `Med_Take_Photo_Url` |
+| `Sys` | `WordTips_SetTvConfig`, `WordTips_AiContent`, `WordTips_SendData` |
+| `Trans` | `Trans_SetTvConfig`, `Trans_Result` |
+| `Settings` | `Settings_Update` (`settings_photo_*`, `settings_video_*`, `settings_screen_offTimeout`, …) |
+| `ARTC` | `OnStop` |
+
+**Pairing.** Reconnection verifies the serial number: AES/CBC/PKCS5, key = `clientSecret`
+(dashes stripped), IV = its first 16 bytes, decrypting a stored `snEncryptContent` and
+checking it contains the glasses `deviceId`. First pairing skips the check, then syncs time.
+
+**Camera** is still-capture only: `Ai_TakePhoto` returns bytes via
+`PhotoResultCallback.onPhotoResult(status, byte[])`, and `Med_Take_Photo_Url` returns a URL.
+There is no live-frame channel; ARTC delivers frames solely as `onARTCFrame(byte[])`.
+
+**Microphone.** `AudioController.setCommunicationDevice()` routes to the Bluetooth SCO
+(glasses speaker/mic) — the HFP path this app already uses; the ARTC audio stream is a
+separate, SDK-internal channel.
+
+> **Correction to Phase 0.** `RokidCommand` currently emits the legacy
+> `{"cmd","key","param"}` JSON, but the current CXR-M SDK speaks `Caps` tuples over the
+> channels above — so the JSON wire will not be understood by CXR-M firmware. The seam,
+> renderer and tests stay correct at the `GlassesDisplayBackend` level; only `RokidWireCodec`
+> needs to become a Caps encoder, which requires the native frame header or an iOS SDK.
+
 ## Two integration paths
 
 1. **Official Rokid Mobile SDK** (CocoaPods `RokidSDK ~> 1.10.2`) — requires a Rokid
