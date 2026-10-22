@@ -56,6 +56,26 @@ Set the team in *Signing & Capabilities*, select the iPhone, run. Then:
 - **Pass (native ARTC/Ai — not implemented):** `RokidMicrophoneBackend.startCapture()` throws
   `.streamUnavailable` until the envelope exists. That is the intended behaviour, not a bug.
 
+## What the decompiled CXR-M SDK settles (and what it does not)
+
+From `com.rokid.cxr:client-m` **1.0.8** (`buildwithfenna/rokid-docs`):
+
+- **BLE is only the handshake.** The SDK connects GATT, discovers services, requests the MTU,
+  then *reads one characteristic whose value is the RFCOMM socket UUID*, and opens a classic
+  Bluetooth socket with that UUID. iOS has no public RFCOMM API, so the equivalent channel has
+  to carry the `CXRSocketProtocol` stream itself (BLE notify/write or MFi iAP2) — not merely
+  hand over the UUID. That is the architectural reason an iOS port is not a recompile, and it
+  is the most useful thing to confirm on the wire.
+- **Payload is `Caps`** — ordered typed tuples (`V i u l k f d S B O`), command string first,
+  optional JSON second. The channel/command vocabulary is pinned in
+  `Sources/Services/Display/Rokid/RokidCXRProtocol.swift` and does not need rediscovering.
+- **Pairing re-verifies the serial number**: AES/CBC/PKCS5, key = `clientSecret` (dashes
+  stripped), IV = its first 16 bytes, decrypting a stored blob that must contain the glasses
+  `deviceId`. First pairing skips the check, then syncs time.
+- **Not settled:** the outer frame header lives in `libcxr-sock-proto-jni`, so a capture is
+  still required (below) — it now needs to confirm the **header** rather than rediscover the
+  vocabulary.
+
 ## Closing the protocol gaps (2–4) by capture
 
 This is the route that needs no vendor account.
