@@ -3,25 +3,35 @@ import Foundation
 
 /// Plan AH (Rokid) — the app's CoreBluetooth stack for Rokid Glasses, and the only
 /// device-gated piece of the Rokid path. **Ships dark**: nothing reaches this class until
-/// the user pairs the glasses in Settings and selects the Rokid backend, and the wire
-/// assumptions below (characteristic UUIDs, Caps framing, any app-level handshake) are a
-/// community reconstruction awaiting hardware validation.
+/// the user pairs the glasses in Settings and selects the Rokid backend.
+///
+/// The service and characteristic UUIDs below are **recovered, not guessed**: they are read
+/// out of the glasses' own GATT server registration (`com.rokid.cxrservice`
+/// `BLEServiceManager`, shipped in `CXRService.apk`) and confirmed against the device's live
+/// GATT table. The stated properties come from that same registration.
+///
+/// Still open, and the reason this class is inert: the `Caps` frame header (the native
+/// `CXRProtocol` envelope) and the serial/auth handshake. See `docs/rokid-rv101.md`.
 ///
 /// Decisions (named per plan): **foreground-only v1** — no `bluetooth-central` background
 /// mode, no state restoration; consistent with the app's other lifecycle constraints and
 /// with `EvenBLETransport`. Rokid glasses are a single peripheral (one micro-display).
-///
-/// The community docs name the characteristics (`IOS_WRITE_CHAR`, `IOS_NOTIFY_CHAR`, …)
-/// but not their UUIDs, so the constants here are placeholders resolved by the Phase 1
-/// capture pass — same honesty stance as the EVEN reconstruction.
 @MainActor
 final class RokidBLETransport: NSObject, ObservableObject, RokidTransporting {
 
-    // TODO(capture-validate): placeholder UUIDs — the community docs give characteristic
-    // *names* only. Resolve from a BLE capture of the Rokid app once hardware is in hand.
-    nonisolated(unsafe) static let writeCharUUID = CBUUID(string: "0000FF01-0000-1000-8000-00805F9B34FB")
-    nonisolated(unsafe) static let notifyCharUUID = CBUUID(string: "0000FF02-0000-1000-8000-00805F9B34FB")
-    nonisolated static let advertisedNamePrefix = "Rokid"
+    /// `COMPOUND_SERVICE_UUID` — the single service the glasses expose for phone traffic.
+    nonisolated(unsafe) static let serviceUUID = CBUUID(string: "00009100-0000-1000-8000-00805F9B34FB")
+    /// `IOS_WRITE_CHAR_UUID` — property WRITE (0x08), permission WRITE. Phone → glasses.
+    nonisolated(unsafe) static let writeCharUUID = CBUUID(string: "00009201-0000-1000-8000-00805F9B34FB")
+    /// `IOS_NOTIFY_CHAR_UUID` — property NOTIFY (0x10), permission READ. Glasses → phone.
+    nonisolated(unsafe) static let notifyCharUUID = CBUUID(string: "00009202-0000-1000-8000-00805F9B34FB")
+    /// `IOS_CONNECTION_CHAR_UUID` — property READ; carries the connection record.
+    nonisolated(unsafe) static let connectionCharUUID = CBUUID(string: "00009300-0000-1000-8000-00805F9B34FB")
+    /// `RFCOMM_CONNECTION_CHAR_UUID` — property READ; carries the socket UUID iOS has no
+    /// public API for, which is why the stream has to ride the notify/write pair instead.
+    nonisolated(unsafe) static let rfcommConnectionCharUUID = CBUUID(string: "00009301-0000-1000-8000-00805F9B34FB")
+    /// The glasses name their adapter `Glasses_<id>`; accept both spellings.
+    nonisolated static let advertisedNamePrefixes = ["Rokid", "Glasses"]
 
     var onEvent: (([UInt8]) -> Void)?
     var onDisconnect: ((Error?) -> Void)?
@@ -132,7 +142,7 @@ extension RokidBLETransport: CBCentralManagerDelegate, CBPeripheralDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                                     advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
-        guard name.hasPrefix(Self.advertisedNamePrefix) else { return }
+        guard Self.advertisedNamePrefixes.contains(where: { name.hasPrefix($0) }) else { return }
         let id = peripheral.identifier
         Task { @MainActor in
             if !self.discovered.contains(where: { $0.id == id }) {

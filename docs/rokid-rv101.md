@@ -184,6 +184,45 @@ exist.
 `concurrentWithMic: true` is an assumption (QCS6490 has both an 8-mic array and a camera;
 mutual exclusivity has not been confirmed on the Rokid SDK) and is flagged as unverified.
 
+## Recovered from the device (live, 2026-10-22)
+
+Read directly off the user's retail RV101 over `adb` (serial `1901092546045016`), so these are
+observations rather than reconstruction:
+
+- **Identity**: model `RG-glasses`, Android 12 / SDK 32, build `SKQ1.240613.001`, firmware
+  `1.27.009-20261014-150203`, manufacturer `Rokid`. Bluetooth adapter MAC
+  `AC:86:D1:58:DE:59`, adapter name `Glasses_5016`.
+- **GATT (closes gap 3)** — one service, `00009100-0000-1000-8000-00805F9B34FB`, with six
+  characteristics in registration order:
+
+  | UUID suffix | Name | Properties |
+  | --- | --- | --- |
+  | `9300` | `IOS_CONNECTION_CHAR` | READ |
+  | `9301` | `RFCOMM_CONNECTION_CHAR` | READ |
+  | `9201` | `IOS_WRITE_CHAR` | WRITE (0x08), permission WRITE |
+  | `9202` | `IOS_NOTIFY_CHAR` | NOTIFY (0x10), permission READ |
+  | `9203` | `IOS_MFI_PAIRING_CHAR` | reserved for the MFi path |
+  | `9204` | `IOS_MFI_NOTIFY_CHAR` | reserved for the MFi path |
+
+  The iOS transport pair is therefore **write `9201`, notify `9202`**, both under service
+  `9100`.
+- **`/system/etc/cxr-service.json`** — the phone-link config the glasses ship with:
+  `mtu { android: 4096, iphone_gatt: 500, iphone_socket: 4080 }` (an iOS write must stay
+  under 500 bytes), `gatt.notify_timeout: 600`, `artc.frame_queue_size: 12`, `cxrproto`
+  buffers 4 MiB / 2 MiB, and the MFi protocols `com.rokid.aiglasses` (id 194) and
+  `com.rokid.global.aiglasses` (id 195). `identification_information` lists
+  `RG301 Rokid Glasses`, confirming the RV101's product id.
+- **Live traffic**: `cxr-service` served `Sys` and `Dev` requests from a connected phone
+  throughout (`recv Request: id … cmd Sys`, `sending ShortMessage notify`), and the assist
+  server was pushing `Sys / WordTips_AllDevices` — the `WordTips` overlay really is the text
+  path this backend renders to.
+- **Not recoverable this way**: the `Caps` frame header. HCI snoop logging does not activate
+  on this build (`mSnoopLogSettingAtEnable = empty` even with `bluetooth_hci_log=1` and
+  `bluetooth.btsnooplogmode=full`, and the bugreport reports no logs in
+  `/data/vendor/ssrdump/`). The envelope lives in the native `CXRProtocol` code
+  (`libcxr_service_jni.so`, symbols intact), so it needs a native disassembly or an Apple
+  PacketLogger capture.
+
 ## Open gaps (Phase 1 — needs hardware + one decision)
 
 1. **Channel**: confirm raw BLE is reachable on the user's RV101, versus the Rokid SDK
