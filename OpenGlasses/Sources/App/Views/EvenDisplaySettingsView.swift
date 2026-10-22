@@ -7,6 +7,7 @@ import SwiftUI
 /// renders the HUD is a supported hybrid.
 struct EvenDisplaySettingsView: View {
     @State private var backend = Config.displayBackend
+    @State private var cameraBackend = Config.cameraBackend
     @StateObject private var scanner = EvenBLETransport()
     @StateObject private var rokidScanner = RokidBLETransport()
     @State private var scanning = false
@@ -24,6 +25,21 @@ struct EvenDisplaySettingsView: View {
                 }
             } footer: {
                 Text("Which glasses render the in-lens HUD. Camera and voice are unaffected — Ray-Ban camera plus EVEN G2 display works together. Takes effect on the next HUD update.")
+            }
+
+            Section {
+                Picker("Camera", selection: $cameraBackend) {
+                    ForEach(CameraBackendChoice.allCases, id: \.self) { choice in
+                        Text(choice.displayName).tag(choice)
+                    }
+                }
+                .onChange(of: cameraBackend) { _, newValue in
+                    Config.cameraBackend = newValue
+                }
+            } header: {
+                Text("Camera")
+            } footer: {
+                Text("Which glasses capture photos. Display and camera are independent — a Rokid HUD with a Ray-Ban camera is a working hybrid. Takes effect on the next launch.")
             }
 
             if backend == .evenG2 {
