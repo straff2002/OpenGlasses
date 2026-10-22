@@ -8,7 +8,12 @@ enum GlassesBackendFactory {
         #if AVENKIN_PHONE_ONLY
         return UnsupportedGlassesCameraBackend()
         #else
-        return MetaCameraBackend()
+        switch Config.cameraBackend {
+        case .metaRayBan:
+            return MetaCameraBackend()
+        case .rokidRV101:
+            return RokidCameraBackend(transport: RokidCameraTransport())
+        }
         #endif
     }
 

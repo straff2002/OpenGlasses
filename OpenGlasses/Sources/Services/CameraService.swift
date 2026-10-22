@@ -212,7 +212,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
         let backend = backend ?? GlassesBackendFactory.camera()
         self.backend = backend
         self.phoneSource = phoneCamera ?? PhoneCameraSource()
-        backendEvents = backend.events.sink { [weak self] event in
+        backendEvents = self.backend.events.sink { [weak self] event in
             self?.handle(event)
         }
     }
