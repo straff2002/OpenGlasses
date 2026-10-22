@@ -240,6 +240,27 @@ observations rather than reconstruction:
    third source in `AudioSourceArbiter`/`CaptureAudioRouter`. The seam and the honest
    capability set exist; the Bluetooth-headset route needs nothing.
 
+## Frame format, from the device's own service
+
+Recovered from `libcxr_service_jni.so` on the glasses (arm64, 708,608 bytes) with Ghidra:
+
+- **Control/session packets** (`ControlSessionPacket::parse`): magic `'@' '@'` in bytes 0–1,
+  big-endian total length in 2–3, two bytes at 4–5 (type/sequence), then TLV entries from
+  byte 6 — each entry is a big-endian length, a big-endian id, then `length − 4` bytes of body.
+- **MFi/iAP2 link packets** (`NativeMFIModule::buildLinkSyncPacket`): `0xFF 0x5A`, length,
+  type/sequence, body, and a trailing checksum byte equal to the two's complement of the sum
+  of the preceding bytes.
+- **Commands and replies over the active channel use neither envelope.**
+  `CXRProtocol::handleReadPacket` appends bytes to a buffer and repeatedly calls
+  `rokid::Caps::parse2`, which returns the number of bytes consumed. The payload is a
+  self-delimiting `Caps` blob, which is why no length header appears in the SDK docs.
+- The device config reports `mtu.iphone_gatt = 500` and `gatt.notify_timeout = 600`.
+
+Still unknown: the `Caps` element encoding (type tag plus length prefixes). `Caps::serialize`
+and `parse2` are JNI thunks in this library, so their bodies are not in it. That is the only
+remaining blocker to a working write path, and a short PacketLogger capture closes it faster
+than further static work.
+
 ## Honesty note
 
 Everything above the transport is deterministic and unit-tested; the Bluetooth/network edge
