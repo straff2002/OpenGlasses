@@ -109,6 +109,11 @@ separate, SDK-internal channel.
   `clearCustomView`) primitives.
 - `OpenGlasses/Sources/Services/Display/Rokid/RokidScreenRenderer.swift` —
   `HUDScreen`/content → commands, with the reconstructed `Ntf`/`Custom_View` param shapes.
+- `OpenGlasses/Sources/Services/Display/Rokid/RokidCXRProtocol.swift` — the authoritative
+  CXR-M channel/command vocabulary and `Caps` type tags. Additive: the transport is not yet
+  migrated to it.
+- `OpenGlasses/Sources/Services/Display/Rokid/RokidCXRRenderer.swift` — `HUDScreen`/content →
+  the documented `Sys/WordTips_*` text overlay, with items flattened to numbered lines.
 - `OpenGlasses/Sources/Services/Display/Rokid/RokidDisplayBackend.swift` —
   `GlassesDisplayBackend` conformance, `RokidTransporting` seam, `Config` keys
   (`rokidPeripheralID`, `rokidPairingConfigured`).
@@ -129,6 +134,11 @@ separate, SDK-internal channel.
   `RokidMicrophoneBackend` (ARTC/`Ai` stream not implemented; HFP route reported as real).
 - `OpenGlassesTests/RokidMicrophoneBackendTests.swift` — capability/availability/frame
   hand-off tests over a mock transport.
+
+**Display limit.** CXR-M documents no custom-HUD, item or button API — only the
+`Sys/WordTips_*` text overlay — so on Rokid a `HUDScreen` is flattened to a caption and
+`GlassesDisplayBackend.onItemSelected` cannot be driven from the display. Items are shown
+numbered but are not selectable.
 
 Display selection: **Settings → Display Backend → "Rokid RV101"**. Camera selection is
 `Config.cameraBackend` (`CameraBackendChoice`), read once at `CameraService` init — a change
