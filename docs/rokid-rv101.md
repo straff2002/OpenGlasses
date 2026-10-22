@@ -1,7 +1,8 @@
 # Rokid RV101 (Rokid Glasses) — Integration Notes
 
-Status: **Phase 0 shipped** — display *and* camera backends (deterministic command layer,
-renderer, `GlassesDisplayBackend` + `GlassesCameraBackend` conformances, CoreBluetooth
+Status: **Phase 0 shipped** — display, camera and microphone seams (deterministic command
+layer, renderer, `GlassesDisplayBackend` / `GlassesCameraBackend` conformances, a
+`GlassesMicrophoneBackend` contract with an honest two-path capability set, CoreBluetooth
 skeleton), all unit-tested. The Bluetooth/network edge ships dark (see "Open gaps").
 Channel selection and hardware validation are Phase 1.
 
@@ -69,6 +70,14 @@ Relevant to this app's HUD:
   placeholder, and `RokidCameraBackend: GlassesCameraBackend`.
 - `OpenGlassesTests/RokidCameraBackendTests.swift` — camera-backend tests over a mock
   transport.
+- `OpenGlasses/Sources/Services/Microphone/GlassesMicrophoneBackend.swift` — the
+  `GlassesMicrophoneBackend` contract and the honest `MicrophoneCapabilities` (native
+  stream vs Bluetooth-headset route).
+- `OpenGlasses/Sources/Services/Microphone/Rokid/RokidMicrophoneBackend.swift` —
+  `RokidAudioTransporting` seam, the dark `RokidAudioTransport` placeholder, and
+  `RokidMicrophoneBackend` (ARTC/`Ai` stream not implemented; HFP route reported as real).
+- `OpenGlassesTests/RokidMicrophoneBackendTests.swift` — capability/availability/frame
+  hand-off tests over a mock transport.
 
 Display selection: **Settings → Display Backend → "Rokid RV101"**. Camera selection is
 `Config.cameraBackend` (`CameraBackendChoice`), read once at `CameraService` init — a change
@@ -90,11 +99,26 @@ iPhone camera until a real transport lands.
 - **Live frames** (`Ai`/`ARTC`): out of scope until a network ingest exists — the app's
   whole vision stack is built on `CameraService.framePublisher`, which only a real frame
   transport can feed.
-- **Microphone** (8-mic array): **deferred**. There is no `GlassesMicrophoneBackend` seam to
-  mirror — the app's mic input is AVAudioSession/phone-centric (`AudioCapture/*`,
-  `ASR/SenseVoiceRecognizer`), and the glasses' mic audio (over `Ai`/`ARTC`) is a different
-  transport again. The honest next slice is display → camera → a dedicated audio-source
-  abstraction, in that order.
+- **Microphone** (8-mic array): two paths, and the seam now says which is which.
+  - *Bluetooth headset — works today.* The glasses pair as an HFP headset and
+    `AVAudioSession` routes the whole voice loop through them (wake word, transcription,
+    LLM, tools, TTS) with no protocol code at all — exactly what `GlassesTier.audioOnly`
+    describes, and `MicRoutePolicy.bluetoothMicPorts` is where the route is recognised.
+  - *ARTC / `Ai` audio — not implemented.* The device's own microphone as framed audio
+    inside CXRService. `RokidMicrophoneBackend` declares `streamsWearerAudio: false`,
+    `liveStream: false`, `routesViaBluetoothHFP: true`, so no caller can believe a native
+    stream exists; `startCapture()` throws `.streamUnavailable` rather than opening a
+    microphone that would never deliver. The frame contract is in place for when the
+    envelope is captured: `onAudioFrame` carries encoded frames exactly as the vendor
+    protocol puts them on the wire, described by `MicrophoneCapabilities.encoding`
+    (Opus, 16 kHz mono, ~20 ms — the shape Meta's capture protocol documents on opcode
+    `0x59`).
+
+Note the existing `CaptureAudioRouter` is a *phone-mic* source router (the listener's shared
+tap vs a standalone engine); it has no glasses-stream source, and the Meta
+`microphoneAudio` notification is likewise modelled but not consumed anywhere. Decoding
+Opus and adding a third source to `AudioSourceArbiter` is the follow-on once real bytes
+exist.
 
 `concurrentWithMic: true` is an assumption (QCS6490 has both an 8-mic array and a camera;
 mutual exclusivity has not been confirmed on the Rokid SDK) and is flagged as unverified.
@@ -112,8 +136,9 @@ mutual exclusivity has not been confirmed on the Rokid SDK) and is flagged as un
    param shapes against what the device accepts.
 6. **Camera still-fetch / live-frame ingest**: the `Med` capture + network fetch, and the
    WiFi path that would feed `CameraService.framePublisher` for `Ai`/`ARTC` live frames.
-7. **Microphone audio**: a dedicated audio-source abstraction for the 8-mic array (deferred;
-   see "Camera & microphone").
+7. **Microphone audio**: the ARTC/`Ai` frame encoding plus an Opus decode step, then a
+   third source in `AudioSourceArbiter`/`CaptureAudioRouter`. The seam and the honest
+   capability set exist; the Bluetooth-headset route needs nothing.
 
 ## Honesty note
 
