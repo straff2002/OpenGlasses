@@ -54,12 +54,16 @@ carry the same stream over BLE GATT or MFi iAP2 instead of a socket.
 **Frame layer (`CXRSocketProtocol`, native JNI).** `request(reqId, cmd, Caps)` /
 `send(cmd, Caps, byte[])`; callbacks `onResponse(reqId, Caps)`, `onNotify(cmd, Caps)`,
 `onReceived(cmd, Caps, byte[])`, `onAudioStream`, `onARTCFrame(byte[])`, `onDisconnect`.
-Protocol version 4. The outer frame header lives in `libcxr-sock-proto-jni`, so it is not
-derivable from the decompiled Java.
+Protocol version 4. **RECOVERED** — the frame header is the iAP2 link frame, not something
+`libcxr-sock-proto-jni` invents; see `docs/rokid-caps-encoding.md` §4.
 
-**Payload (`Caps`)** — ordered typed tuple, serialized natively. Types `V` void, `i` int32,
+**Payload (`Caps`)** — ordered typed tuple, serialized natively in `libcaps.so` (a
+`DT_NEEDED` of `libcxr-service-jni.so`, not of the JNI shim itself). Types `V` void, `i` int32,
 `u` uint32, `l` int64, `k` uint64, `f` float, `d` double, `S` string, `B` binary, `O` nested
-Caps. A message is `[0]` command string, `[1]` optional JSON payload.
+Caps. **RECOVERED** — integers are LEB128, floats are little-endian, `S` is `uleb128` +
+UTF-8, `B` and every blob total are big-endian `u32`. A command is
+`(route, seq, channel, {method, payload})`, not `{"cmd","key","param"}`. Full grammar in
+`docs/rokid-caps-encoding.md` §5.
 
 **Channels and commands:**
 
@@ -85,11 +89,11 @@ There is no live-frame channel; ARTC delivers frames solely as `onARTCFrame(byte
 (glasses speaker/mic) — the HFP path this app already uses; the ARTC audio stream is a
 separate, SDK-internal channel.
 
-> **Correction to Phase 0.** `RokidCommand` currently emits the legacy
-> `{"cmd","key","param"}` JSON, but the current CXR-M SDK speaks `Caps` tuples over the
-> channels above — so the JSON wire will not be understood by CXR-M firmware. The seam,
-> renderer and tests stay correct at the `GlassesDisplayBackend` level; only `RokidWireCodec`
-> needs to become a Caps encoder, which requires the native frame header or an iOS SDK.
+> **Correction to Phase 0 — done.** `RokidCommand` used to emit the legacy
+> `{"cmd","key","param"}` JSON, which CXR-M firmware does not understand. `RokidWireCodec` is
+> now a Caps/iAP2 encoder (`RokidCapsCodec.swift`), with the frame layout and checksum
+> recovered from a capture rather than from an iOS SDK. The seam, renderer and tests were
+> unaffected, as predicted.
 
 ## Two integration paths
 
@@ -216,18 +220,26 @@ observations rather than reconstruction:
   throughout (`recv Request: id … cmd Sys`, `sending ShortMessage notify`), and the assist
   server was pushing `Sys / WordTips_AllDevices` — the `WordTips` overlay really is the text
   path this backend renders to.
-- **Not recoverable this way**: the `Caps` frame header. HCI snoop logging does not activate
-  on this build (`mSnoopLogSettingAtEnable = empty` even with `bluetooth_hci_log=1` and
+- **Caps frame header — recovered elsewhere.** HCI snoop logging does not activate on this
+  build (`mSnoopLogSettingAtEnable = empty` even with `bluetooth_hci_log=1` and
   `bluetooth.btsnooplogmode=full`, and the bugreport reports no logs in
-  `/data/vendor/ssrdump/`). The envelope lives in the native `CXRProtocol` code
-  (`libcxr_service_jni.so`, symbols intact), so it needs a native disassembly or an Apple
-  PacketLogger capture.
+  `/data/vendor/ssrdump/`). An Apple PacketLogger capture of the phone side closed it
+  instead. The `Caps` implementation itself is `/system/lib64/libcaps.so` (71,128 bytes),
+  which `libcxr-service-jni.so` imports and which can be pulled over adb to cross-check the
+  wire format — `libcxr_service_jni.so` only imports `rokid::Caps`, it does not define it.
 
 ## Open gaps (Phase 1 — needs hardware + one decision)
 
 1. **Channel**: confirm raw BLE is reachable on the user's RV101, versus the Rokid SDK
    being mandatory (iOS partner access).
-2. **Caps framing**: recover the binary serialization from a BLE capture of the Rokid app.
+2. **Caps framing**: ~~recover the binary serialization from a BLE capture of the Rokid app.~~
+   **CLOSED** — recovered from an Apple PacketLogger capture; see
+   `docs/rokid-caps-encoding.md`. Validated on **3,216 frames in both directions**, 3,215 of
+   which re-encode byte-identically including the checksum; the one exception is a frame
+   truncated at an ACL fragment boundary. Implemented as `RokidCapsCodec.swift`. Transport
+   finding from the
+   same doc: the command channel is **Classic BT → RFCOMM → iAP2 (`ff 5a`)**, not BLE
+   GATT — the BLE characteristics are only a bootstrap.
 3. **GATT UUIDs**: the concrete service/characteristic UUIDs for the write/notify paths
    (currently placeholders in `RokidBLETransport`).
 4. **Auth handshake**: any app-level handshake after connect (the EVEN G2 has a 7-packet
@@ -256,10 +268,27 @@ Recovered from `libcxr_service_jni.so` on the glasses (arm64, 708,608 bytes) wit
   self-delimiting `Caps` blob, which is why no length header appears in the SDK docs.
 - The device config reports `mtu.iphone_gatt = 500` and `gatt.notify_timeout = 600`.
 
-Still unknown: the `Caps` element encoding (type tag plus length prefixes). `Caps::serialize`
-and `parse2` are JNI thunks in this library, so their bodies are not in it. That is the only
-remaining blocker to a working write path, and a short PacketLogger capture closes it faster
-than further static work.
+**Caps element encoding — RECOVERED** (2026-10-22, from a phone-side PacketLogger capture).
+Full grammar, byte layouts, tag table, route map and the two-direction message vocabulary are
+in `docs/rokid-caps-encoding.md`. Summary:
+
+    ff 5a | u16 BE frameLength (counted from the ff) | 0x40 | u32 BE ts_us | 00 01 | Caps | u8 checksum
+    Caps:  [u32 BE total][0x05][uleb128 count][count tag bytes][values]
+
+Integer values are LEB128 (`i`/`l` signed, `u`/`k` unsigned), `f`/`d` are little-endian IEEE-754,
+`S` is `uleb128` + UTF-8, `B` is `u32 BE` + bytes, and `O` recurses into a complete nested
+blob. The checksum is the two's complement of every byte from the leading `0xFF` through the
+last Caps byte. Routes: `0x1001` request, `0x1002` reply, `0x1003` notification, `0x2001`
+event, `0x3001` audio play, `0x3003` audio stop.
+
+> The earlier text here describing `05 <u8 n> <n-byte path>` as a routing prefix, and listing
+> a 4-byte trailer plus "doubled tags" as open blockers, was **wrong**. The `05` is a constant
+> version byte, and both artefacts came from misreading `frameLength` as a payload length
+> instead of a whole-frame length. Both are superseded.
+
+Consequence for the app: the transport is **MFi/iAP2 over RFCOMM (Classic BT)**, so
+`RokidBLETransport`'s BLE path is bootstrap-only and `RokidWireCodec` emits Caps tuples over
+the iAP2 channel, not GATT writes.
 
 ## Honesty note
 

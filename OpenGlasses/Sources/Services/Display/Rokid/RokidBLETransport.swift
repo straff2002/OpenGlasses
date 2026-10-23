@@ -10,8 +10,13 @@ import Foundation
 /// `BLEServiceManager`, shipped in `CXRService.apk`) and confirmed against the device's live
 /// GATT table. The stated properties come from that same registration.
 ///
-/// Still open, and the reason this class is inert: the `Caps` frame header (the native
-/// `CXRProtocol` envelope) and the serial/auth handshake. See `docs/rokid-rv101.md`.
+/// **Status.** The `Caps` frame header is no longer open: it is the iAP2 link frame now
+/// implemented in `RokidCapsCodec.swift`, recovered from a PacketLogger capture — see
+/// `docs/rokid-caps-encoding.md`. Two things still gate this class. First, `connect()` has no
+/// handshake. Second, and more fundamentally, the command channel is **MFi/iAP2 over Classic
+/// Bluetooth, not GATT** (capture: ACL handle 12, CID `0x0051` out / `0x0b08` back), so the
+/// UUIDs below are a discovery/notification bootstrap only. Real command traffic needs an
+/// `EASession` transport over `com.rokid.aiglasses`, which `Info.plist` now declares.
 ///
 /// Decisions (named per plan): **foreground-only v1** — no `bluetooth-central` background
 /// mode, no state restoration; consistent with the app's other lifecycle constraints and

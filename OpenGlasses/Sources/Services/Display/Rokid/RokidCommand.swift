@@ -2,16 +2,18 @@ import Foundation
 
 /// Plan AH (Rokid) — the deterministic, SDK-free command layer for Rokid Glasses (RV101).
 ///
-/// Rokid's glasses speak a JSON command vocabulary — `{"cmd","key","param"}` — carried over
-/// a proprietary binary "Caps" serialization on the Bluetooth channel. This file pins the
-/// *command* layer only. Of the 21 documented command categories, exactly one primitive has
-/// a published parameter schema (`Sys/Tts_SendPlayTts` → `{"content":"…"}`); the visual-HUD
-/// commands used here (`Ntf`, `Custom_View`) are community-reconstructed and ship dark until
-/// a capture-log / hardware pass confirms them.
+/// Rokid's glasses take a channel/method command with an optional JSON payload, carried in
+/// a binary `Caps` tuple on the CXR-M channel. This file pins the *command* layer; the
+/// recovered wire format lives in `RokidCapsCodec`.
 ///
-/// Every byte produced here is deterministic and unit-tested at the JSON layer. The Caps
-/// binary framing is deliberately a transport concern (`RokidWireCodec`) so the command
-/// model stays put when the wire is finally recovered.
+/// Only one primitive here has a schema attested by the device capture — the brightness and
+/// volume setters take a bare integer, and the rest carry JSON text, which is what the
+/// observed frames do. The visual-HUD commands used below (`Ntf`, `Custom_View`) are
+/// community-reconstructed: no `Ntf` frame appears in the capture, so they ship dark until
+/// one does.
+///
+/// Everything produced here is deterministic and unit-tested, and the encoding round-trips
+/// through `RokidWireCodec` in both directions.
 struct RokidCommand: Equatable {
     /// Command category — one of the 21 documented prefixes (`Sys`, `Ntf`, `Custom_View`, …).
     let cmd: String
@@ -27,11 +29,28 @@ struct RokidCommand: Equatable {
         self.param = param
     }
 
-    /// UTF-8 bytes for the transport. This is the *interim* wire form (raw JSON); the
-    /// device expects Caps-framed bytes and `RokidWireCodec.encode` is the single place
-    /// that changes when that framing lands.
+    /// The iAP2 link frame that carries this command, with sequence and timestamp zero.
+    ///
+    /// This form exists for tests and for anything that just needs *a* valid frame. A real
+    /// send must use the connection's own sequence counter and a rising timestamp — see
+    /// `encoded(sequence:timestampMicroseconds:)`, which `RokidDisplayBackend` uses.
     func encoded() -> [UInt8] {
-        Array(RokidWireCodec.encode(self))
+        encoded(sequence: 0, timestampMicroseconds: 0)
+    }
+
+    /// The iAP2 link frame that carries this command.
+    ///
+    /// - Parameters:
+    ///   - sequence: per-connection frame counter; the glasses echo it in responses.
+    ///   - timestampMicroseconds: frame timestamp, in microseconds.
+    func encoded(sequence: UInt32, timestampMicroseconds: UInt32) -> [UInt8] {
+        RokidIAP2Packet.encodeCommand(
+            sequence: sequence,
+            channel: cmd,
+            method: key,
+            payload: .string(param),
+            timestampMicroseconds: timestampMicroseconds
+        )
     }
 
     /// Render a parameter object to its JSON text.
@@ -75,17 +94,29 @@ extension RokidCommand {
     }
 }
 
-/// Interim wire codec: raw JSON today, Caps binary when recovered from hardware.
+/// The command <-> wire bridge.
+///
+/// A `RokidCommand` is `(cmd, key, param)`; on the wire that is the Caps tuple
+/// `(route, sequence, cmd, object{key, param})` inside an iAP2 link frame — see
+/// `RokidCapsCodec` and `RokidIAP2Packet`, which carry the recovered format.
 enum RokidWireCodec {
     static func encode(_ command: RokidCommand) -> Data {
-        let object: [String: String] = ["cmd": command.cmd, "key": command.key, "param": command.param]
-        // A [String: String] of non-nil strings cannot fail JSONSerialization.
-        return (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+        Data(command.encoded())
     }
 
     static func decode(_ bytes: [UInt8]) -> RokidCommand? {
-        guard let object = try? JSONSerialization.jsonObject(with: Data(bytes)) as? [String: String],
-              let cmd = object["cmd"], let key = object["key"] else { return nil }
-        return RokidCommand(cmd: cmd, key: key, param: object["param"] ?? "{}")
+        guard let frame = RokidIAP2Packet.decode(bytes) else { return nil }
+        // (route, sequence, channel, object{method, payload})
+        guard frame.caps.count >= 4,
+              case .string(let channel) = frame.caps[2],
+              case .object(let members) = frame.caps[3],
+              !members.isEmpty,
+              case .string(let method) = members[0] else { return nil }
+
+        var param = "{}"
+        if members.count >= 2, case .string(let payload) = members[1] {
+            param = payload
+        }
+        return RokidCommand(cmd: channel, key: method, param: param)
     }
 }

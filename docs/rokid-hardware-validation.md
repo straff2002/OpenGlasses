@@ -66,38 +66,62 @@ From `com.rokid.cxr:client-m` **1.0.8** (`buildwithfenna/rokid-docs`):
   to carry the `CXRSocketProtocol` stream itself (BLE notify/write or MFi iAP2) — not merely
   hand over the UUID. That is the architectural reason an iOS port is not a recompile, and it
   is the most useful thing to confirm on the wire.
-- **Payload is `Caps`** — ordered typed tuples (`V i u l k f d S B O`), command string first,
-  optional JSON second. The channel/command vocabulary is pinned in
-  `Sources/Services/Display/Rokid/RokidCXRProtocol.swift` and does not need rediscovering.
+- **Payload is `Caps`** — ordered typed tuples (`V i u l k f d S B O`). **Recovered** and
+  implemented: `(route, sequence, channel, object{method, payload})`, integers are LEB128,
+  floats little-endian, strings `uleb128` + UTF-8. Full grammar and the two-direction
+  vocabulary are in `docs/rokid-caps-encoding.md`.
 - **Pairing re-verifies the serial number**: AES/CBC/PKCS5, key = `clientSecret` (dashes
   stripped), IV = its first 16 bytes, decrypting a stored blob that must contain the glasses
   `deviceId`. First pairing skips the check, then syncs time.
-- **Not settled:** the outer frame header lives in `libcxr-sock-proto-jni`, so a capture is
-  still required (below) — it now needs to confirm the **header** rather than rediscover the
-  vocabulary.
+- **Also settled by capture:** the outer frame header is the iAP2 link frame
+  (`ff 5a | u16 BE frameLength | 0x40 | u32 BE ts | 00 01 | Caps | u8 checksum`), the checksum
+  being the two's complement of every preceding byte. It is **not** a `libcxr-sock-proto-jni`
+  invention, and the `Caps` implementation itself is `libcaps.so` (a `DT_NEEDED` of
+  `libcxr-service-jni.so`), not the JNI shim.
 
-## Closing the protocol gaps (2–4) by capture
+## Gap 2 (and gap 3) are settled by capture — done
 
-This is the route that needs no vendor account.
+The capture route needed no vendor account, and it has been executed:
 
-1. Install the Apple Bluetooth logging profile on the iPhone (developer portal → *More* →
-   *Bluetooth*). Reboot; enable logging; install **PacketLogger** on the Mac.
-2. Launch the official Rokid app, bind the glasses, then exercise, in order: connect, speak to TTS,
-   push a notification, take a photo, enable the mic.
-3. Stop logging, save the `.pklg`, and export the ATT write/notify payloads.
-4. Extract three things:
-   - the **service and characteristic UUIDs** actually used (closes gap 3);
-   - the **first ~40 frames after connect** (closes gap 4, the handshake);
-   - the **byte layout** of TTS / notification / camera / mic commands (closes gap 2, Caps).
-5. Send those back. Then only three constants/decoders change: the UUIDs in `RokidBLETransport`, the
-   envelope in `RokidWireCodec`, and the `connect()` handshake. The seams and the tests do not move.
+1. ~~Install the logging profile, capture a `.pklg`.~~ Done; dissected with `tshark`.
+2. ~~Export the ATT write/notify payloads.~~ **The commands are not on ATT at all.** They ride
+   Classic BT → RFCOMM → iAP2 (`ff 5a`) on ACL handle 12, CID `0x0051` outbound and
+   `0x0b08` inbound. The only ATT in the log is ten frames on handle `0x0016` of a different
+   connection — nothing to do with Rokid commands.
+3. Results, all in `docs/rokid-caps-encoding.md`: the **frame layout and checksum** (gap 2), the
+   **Caps grammar**, the **route map** (`0x1001` request / `0x1002` reply / `0x1003`
+   notification / `0x2001` event / `0x2002` photo chunk / `0x2003` binary chunk /
+   `0x3001` audio play / `0x3002` audio data / `0x3003` audio stop), and the **command
+   vocabulary in both directions** — validated on 3,216 frames, 3,215 of which re-encode
+   byte-identically.
+4. Gap 3 (UUIDs) was already closed from `cxr-service.json` and the GATT probe: service `9100`,
+   write `9201`, notify `9202`.
+
+What a capture could **not** settle, and what hardware still has to answer, is below.
 
 ## Order of work once real bytes exist
 
-1. UUIDs → the transport connects.
-2. Caps envelope → `RokidWireCodec`.
-3. Handshake → `RokidBLETransport.connect()`.
+1. ~~UUIDs~~ → known **and already wired**: `RokidBLETransport` carries service `9100`,
+   write `9201`, notify `9202`, and the two read-only characteristics `9300`
+   (`IOS_CONNECTION_CHAR`) and `9301` (`RFCOMM_CONNECTION_CHAR`). Nothing to do here —
+   but note these are a discovery bootstrap, not the command path (see item 3).
+2. ~~Caps envelope~~ → done. `RokidCapsCodec.swift` encodes/decodes both directions;
+   `RokidWireCodec` emits iAP2 frames.
+3. Handshake → **`connect()` is now written, not just specified.** `RokidMFITransport`
+   opens an `EASession` over `com.rokid.aiglasses` (declared in `Info.plist`) and pumps
+   its streams on a dedicated run-loop thread. Set
+   `UserDefaults.standard.set(true, forKey: "rokidUsesMFI")` to select it; the BLE
+   transport stays the default so nothing changes silently. **Open:** whether it works.
+   There is no app-level handshake to implement — MFi identification and authentication
+   are done by iOS against the Apple Authentication Coprocessor, which the device has at
+   `/sys/devices/platform/soc/988000.i2c/i2c-2/2-0010` (`acp_certificate`,
+   `acp_challenge_data`, `acp_serial_number` all present). What hardware must settle is
+   (a) whether iOS surfaces the accessory for our protocol at all, (b) whether Rokid's own
+   app is hoarding the session — Classic MFi usually permits one, so force-quit it — and
+   (c) the `.rawCaps` vs `.framed` question above.
 4. Param schemas → validate `RokidCommand.notification` / `.customView` against the device.
+   Neither appears anywhere in the capture, so their shapes are guesses and should be
+   expected to be wrong.
 5. Still capture → `Med` command + network fetch in `RokidCameraTransport.captureStill()`.
 6. ARTC audio + live frames → `RokidAudioTransport` / `RokidCameraTransport`, then flip
    `MicrophoneCapabilities.streamsWearerAudio` / `CameraCapabilities.liveFrames` **only** when they
