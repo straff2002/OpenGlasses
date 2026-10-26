@@ -80,8 +80,16 @@ Added 2026-10-26, design only — nothing below is built.
 | **B. Official iOS SDK** | the phone, through Rokid's SDK | SDK access, app keys, licence; maybe MFi registration | depends on the SDK's transport |
 | **C. On-glasses agent** | an Avenkin agent running on the glasses | Agent Store review of the agent | a Bluetooth LE peripheral background mode — no MFi |
 
-Route A is what Phase 0 built, and it is blocked on MFi. Route B depends on what Rokid offers.
-Route C is the one we can design and test now, and it needs nothing from Apple's MFi programme.
+**The target is wearers outside mainland China (owner, 2026-10-26)** — that is what the contributor
+is doing with their glasses. That sets the order:
+
+1. **Route B leads.** A phone-side Rokid SDK reaches any wearer the App Store reaches, with no
+   dependence on Rokid's Agent Store. It waits on what Rokid offers this account.
+2. **Route A next.** Phase 0 is built; it waits on Rokid registering the app for MFi.
+3. **Route C is the fallback.** It needs nothing from Apple's MFi programme, but it reaches wearers
+   only through Rokid's Agent Store, whose documentation mentions only users in mainland China.
+   The command-line install puts the agent on a developer's own glasses, not a customer's. C moves
+   up only if Rokid confirms the store reaches wearers elsewhere.
 
 ### Route C — an AIUI agent on the glasses, the phone as a Bluetooth LE peripheral
 
@@ -219,8 +227,9 @@ Agent Store reaches wearers outside mainland China, and under what agreement.
   loop.
 - Whether Rokid appears in the public Display Backend picker before Phase 1, as EVEN G2 does, or
   moves under Developer with the camera switch.
-- **Which Rokid route leads.** Route C needs nothing from Apple's MFi programme and can start with
-  C0 today; Route A waits on MFi registration; Route B waits on what Rokid offers.
+- ~~Which Rokid route leads~~ — **decided 2026-10-26:** B, then A, with C as the fallback, because
+  the target is wearers outside mainland China (see "Three routes"). C0, the shared payload, is still
+  worth building for Meta's Web App surface on its own.
 - **Reversing Plan BP's "the mirror is not a backend" decision** so Meta's Web App and Rokid share
   one hosted backend with selections. BP's mirror mode would remain.
 - **Publishing an Avenkin agent in Rokid's Agent Store** — under whose account, and on what terms.
