@@ -3,8 +3,8 @@
 **Status:** 🚧 Phase 0 built 2026-10-26 from an outside contribution — every layer that can be
 finished without hardware, with the Bluetooth/MFi edge shipped dark. Hardware validation (Phase 1)
 is owed and needs a Rokid RV101 in hand. **Held, not merged (owner, 2026-10-26):** the branch waits
-for Rokid's answer on developer access and MFi registration, so an App Store review never meets a
-Rokid option that does nothing.
+for a working Rokid route — now CXR-L, once the developer account's scopes and app name are agreed —
+so an App Store review never meets a Rokid option that does nothing.
 
 **Design added 2026-10-26 (no code):** three routes to the Rokid display, including an on-glasses
 AIUI agent with the phone as a Bluetooth LE peripheral, which needs no MFi; and a shared on-glasses
@@ -77,19 +77,67 @@ Added 2026-10-26, design only — nothing below is built.
 | Route | What draws the HUD | Needs from Rokid | Needs from Apple |
 | --- | --- | --- | --- |
 | **A. Reconstructed CXR** (Phase 0) | the phone, through Rokid's command protocol | MFi registration of this bundle ID | the MFi protocol in `Info.plist` (App Review checks the registration) |
-| **B. Official iOS SDK** | the phone, through Rokid's SDK | SDK access, app keys, licence; maybe MFi registration | depends on the SDK's transport |
+| **B. CXR-L, Rokid's phone SDK** | the phone, through a Custom View on the glasses | the `scopes` and `appName` agreed with Rokid's open platform; the SDK licence | a URL scheme and `rokidai` query in `Info.plist`, and `bluetooth-central` (already declared) — **no MFi** |
 | **C. On-glasses agent** | an Avenkin agent running on the glasses | Agent Store review of the agent | a Bluetooth LE peripheral background mode — no MFi |
 
 **The target is wearers outside mainland China (owner, 2026-10-26)** — that is what the contributor
 is doing with their glasses. That sets the order:
 
-1. **Route B leads.** A phone-side Rokid SDK reaches any wearer the App Store reaches, with no
-   dependence on Rokid's Agent Store. It waits on what Rokid offers this account.
-2. **Route A next.** Phase 0 is built; it waits on Rokid registering the app for MFi.
+1. **Route B leads, and it is real.** Rokid's CXR-L SDK has an iOS build, works with Hi Rokid
+   outside mainland China, and needs no MFi accessory protocol. It reaches any wearer the App Store
+   reaches. See "Route B — CXR-L" below.
+2. **Route A is superseded unless B fails.** Phase 0's seams, codec and tests stay — they are what
+   a CXR-L backend plugs into — but the reconstructed transport waits on MFi registration that
+   Route B does not need.
 3. **Route C is the fallback.** It needs nothing from Apple's MFi programme, but it reaches wearers
    only through Rokid's Agent Store, whose documentation mentions only users in mainland China.
    The command-line install puts the agent on a developer's own glasses, not a customer's. C moves
    up only if Rokid confirms the store reaches wearers elsewhere.
+
+### Route B — CXR-L, Rokid's phone SDK (docs checked 2026-10-26)
+
+From Rokid's open platform (`open.rokid.com`, SDK section → CXR-L, docs version 1.0.4):
+
+- **What it is.** "The CXR-L SDK runs on the mobile phone. It works with Rokid Glasses and the
+  Rokid AI App (or Hi Rokid)" — Rokid AI App in mainland China, **Hi Rokid overseas**. The same
+  model as Meta's: the wearer authorises our app in Rokid's app once, and our app then talks to the
+  glasses itself.
+- **iOS.** CocoaPods `RGCxrClient` 1.0.4 with `RGCoreKit`, iOS 13+, an `ios_cxr_l_sample` project.
+  `CxrClient.shared` with Combine publishers throughout.
+- **`Info.plist`.** A URL scheme for the authorisation callback (forwarded to
+  `CxrClient.shared.handleOpenURL`), `rokidai` in `LSApplicationQueriesSchemes`, `bluetooth-central`
+  in `UIBackgroundModes` and the Bluetooth usage strings. **No `UISupportedExternalAccessoryProtocols`
+  entry** — so App Review's MFi question does not arise on this route.
+- **Authorisation.** `client.auth.authenticate(scopes:appName:completion:)` returns a token;
+  "scopes and appName must follow what you agreed with the Rokid open platform" — this is the part
+  the developer account is for. `statePublisher` reports expiry and logout.
+- **Sessions.** `CustomView` (the phone sends a layout) or `CustomApp` (the phone installs and
+  starts an Android APK on the glasses, built with the glasses-side CXR-S SDK, and exchanges custom
+  commands with it). Nothing works until the "scene is built": for a Custom View, until it is open
+  on the glasses.
+- **Display.** `sendCustomViewIcons`, `openCustomView`, `updateCustomView` (only changed nodes),
+  `closeCustomView`, `customViewRunningEventPublisher`. The layout is JSON with Android-style views —
+  `LinearLayout`, `RelativeLayout`, `TextView`, `ImageView` — so a real HUD, not the text overlay
+  Route A was limited to.
+- **Camera.** `takePhotoWithData(width:height:quality:callback:)` returns JPEG `Data` — a direct fit
+  for `GlassesCameraBackend.capturePhoto()`. Stills only; no live frames, as Phase 0 declared.
+- **Audio.** `startRecord(_:codec:mode:)` / `stopRecord(_:)` with `audioEventPublisher`, and audio can
+  be pushed to the glasses to play. That fills the native-audio gap in `RokidMicrophoneBackend`.
+- **Device control.** Brightness and volume, 0–15, as soon as the link is up.
+- **The catch: photo and audio need the Custom View open.** The capability matrix allows audio and
+  photo only once a Custom View (or Custom App) is running, so the camera works while our HUD is
+  showing. The backend opens a minimal Custom View before a capture if none is open.
+
+**Fit with Phase 0.** A `CXRLDisplayBackend` renders `HUDScreen` to Custom View JSON — a driven
+renderer like EVEN's — and `RokidCameraBackend` / `RokidMicrophoneBackend` get a CXR-L transport
+behind the seams they already have. Their capability declarations hold; the stubs become real.
+
+**Before adopting it** (the rule for any new SDK): read the SDK licence; review what it sends home
+by default and disable or disclose it in `PrivacyInfo.xcprivacy` and the in-app privacy copy in the
+same PR; pin it exactly; and package it for SwiftPM (an xcframework in a binary target), since the
+project does not use CocoaPods. Confirm that Hi Rokid on iOS answers the `rokidai` scheme — the iOS
+pages name only Rokid AI App — and whether Custom Commands need a glasses-side APK we would have
+to build and ship (only if a Custom View is not enough).
 
 ### Route C — an AIUI agent on the glasses, the phone as a Bluetooth LE peripheral
 
@@ -214,7 +262,7 @@ Agent Store reaches wearers outside mainland China, and under what agreement.
 
 ## Decisions owed
 
-- **Rokid developer access (owner signing up, 2026-10-26).** MFi approval is per app: Rokid is an
+- **Rokid developer access (owner signed up, 2026-10-26; Route B's SDK found the same day).** MFi approval is per app: Rokid is an
   MFi licensee and registered its own app, but it has not registered this one, and only the
   accessory maker can. Ask Rokid for (1) its iOS SDK and app keys for this bundle ID, (2) MFi
   registration of the bundle ID for `com.rokid.aiglasses` if that SDK or our transport uses it,
@@ -227,9 +275,11 @@ Agent Store reaches wearers outside mainland China, and under what agreement.
   loop.
 - Whether Rokid appears in the public Display Backend picker before Phase 1, as EVEN G2 does, or
   moves under Developer with the camera switch.
-- ~~Which Rokid route leads~~ — **decided 2026-10-26:** B, then A, with C as the fallback, because
-  the target is wearers outside mainland China (see "Three routes"). C0, the shared payload, is still
-  worth building for Meta's Web App surface on its own.
+- ~~Which Rokid route leads~~ — **decided 2026-10-26:** B (CXR-L), with A only if B fails and C as
+  the fallback, because the target is wearers outside mainland China (see "Three routes"). C0, the
+  shared payload, is still worth building for Meta's Web App surface on its own.
+- **The CXR-L `scopes` and `appName`** to agree with Rokid's open platform under the new developer
+  account, plus the SDK licence and its default telemetry.
 - **Reversing Plan BP's "the mirror is not a backend" decision** so Meta's Web App and Rokid share
   one hosted backend with selections. BP's mirror mode would remain.
 - **Publishing an Avenkin agent in Rokid's Agent Store** — under whose account, and on what terms.
