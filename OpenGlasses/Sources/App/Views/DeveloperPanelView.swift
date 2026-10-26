@@ -20,6 +20,15 @@ struct DeveloperPanelView: View {
     @AppStorage("dictationVoiceProcessingEnabled") private var dictationVoiceProcessingEnabled = false
     /// Plan JM P3 — `Config.recognizerComparisonEnabled`, the same key and default (off).
     @AppStorage("recognizerComparisonEnabled") private var recognizerComparisonEnabled = false
+    /// `Config.cameraBackend`, the same key and default (Ray-Ban Meta).
+    @AppStorage("cameraBackend") private var cameraBackend: CameraBackendChoice = .metaRayBan
+
+    private var rokidCameraBinding: Binding<Bool> {
+        Binding(
+            get: { cameraBackend == .rokidRV101 },
+            set: { cameraBackend = $0 ? .rokidRV101 : .metaRayBan }
+        )
+    }
 
     init(appState: AppState) {
         self.appState = appState
@@ -145,6 +154,25 @@ struct DeveloperPanelView: View {
                     OGRow(
                         "Turn Timeline", icon: "waveform.path.ecg",
                         subtitle: "Recorded voice turns, stage breakdown, cohort latency"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Rokid RV101 support is early and unproven on hardware, so its camera switch and the
+            // link probe live here rather than in the glasses settings everyone sees.
+            OGSection(
+                header: "Rokid Glasses",
+                footer: "Early support that has not been tested on the glasses yet. The camera choice applies from the next launch, and until the glasses can send photos, captures use the iPhone camera."
+            ) {
+                OGRow("Use the Rokid camera", isOn: rokidCameraBinding, icon: "camera")
+                OGDivider()
+                NavigationLink {
+                    RokidDiagnosticsView()
+                } label: {
+                    OGRow(
+                        "Rokid glasses probe", icon: "antenna.radiowaves.left.and.right",
+                        subtitle: "Accessory list, link probes and the raw frame log"
                     )
                 }
                 .buttonStyle(.plain)

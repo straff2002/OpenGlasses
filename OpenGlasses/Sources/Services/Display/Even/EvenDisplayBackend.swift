@@ -106,11 +106,13 @@ final class EvenDisplayBackend: GlassesDisplayBackend {
 enum DisplayBackendChoice: String, CaseIterable {
     case metaRayBan
     case evenG2
+    case rokidRV101
 
     var displayName: String {
         switch self {
         case .metaRayBan: return "Ray-Ban Display"
         case .evenG2: return "EVEN G2"
+        case .rokidRV101: return "Rokid RV101"
         }
     }
 }

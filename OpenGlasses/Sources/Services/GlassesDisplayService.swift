@@ -65,12 +65,19 @@ final class GlassesDisplayService: ObservableObject {
         return backend
     }()
 
+    private lazy var rokidBackend: RokidDisplayBackend = {
+        let backend = RokidDisplayBackend()
+        wire(backend)
+        return backend
+    }()
+
     /// The backend the config selects. Resolved per call — switching backends in
     /// Settings takes effect on the next render.
     private var activeBackend: GlassesDisplayBackend {
         switch Config.displayBackend {
         case .metaRayBan: return metaBackend
         case .evenG2: return evenBackend
+        case .rokidRV101: return rokidBackend
         }
     }
 
