@@ -6,8 +6,8 @@ import XCTest
 /// `RokidMFITransport` can only open an `EASession` for a protocol listed under
 /// `UISupportedExternalAccessoryProtocols`, so a hardware spike adds them locally. App Review
 /// rejects a build that declares an MFi accessory protocol unless the accessory maker has
-/// registered the app with Apple's MFi program, and Rokid has not — so the local edit must never
-/// reach a commit. This reads the authored plist the way `TelemetryOptOutGuardTests` does.
+/// registered that app with Apple's MFi program. Registration is per app, and Rokid has registered
+/// its own app but not this one — so the local edit must never reach a commit. This reads the authored plist the way `TelemetryOptOutGuardTests` does.
 final class RokidAccessoryProtocolGuardTests: XCTestCase {
 
     // `#filePath` is baked in at compile time, so it resolves the same on a developer machine and

@@ -2,7 +2,9 @@
 
 **Status:** 🚧 Phase 0 built 2026-10-26 from an outside contribution — every layer that can be
 finished without hardware, with the Bluetooth/MFi edge shipped dark. Hardware validation (Phase 1)
-is owed and needs a Rokid RV101 in hand.
+is owed and needs a Rokid RV101 in hand. **Held, not merged (owner, 2026-10-26):** the branch waits
+for Rokid's answer on developer access and MFi registration, so an App Store review never meets a
+Rokid option that does nothing.
 
 **Origin:** a contributor with a retail RV101 built a third backend on the seams Plan
 [AH](even-display-backend.md) (display) and Plan [CQ](CQ-third-party-glasses-backends.md) (camera)
@@ -66,7 +68,16 @@ framed stream and an Opus decode. Both wait for Phase 1.
 
 ## Decisions owed
 
-- Whether to approach Rokid to register the app for MFi (needed before the MFi path can ship), or
-  to keep Rokid support to the BLE path and the Bluetooth-headset voice loop.
+- **Rokid developer access (owner signing up, 2026-10-26).** MFi approval is per app: Rokid is an
+  MFi licensee and registered its own app, but it has not registered this one, and only the
+  accessory maker can. Ask Rokid for (1) its iOS SDK and app keys for this bundle ID, (2) MFi
+  registration of the bundle ID for `com.rokid.aiglasses` if that SDK or our transport uses it,
+  and (3) the SDK's licence and what it sends home by default. A community iOS app integrates a
+  Rokid iOS SDK (`RGCxrClient`) with custom-view calls; if it is real and licensable, it replaces
+  the reconstructed transport as Phase 1 and lifts the text-overlay-only display limit. Its
+  telemetry is reviewed and disabled or disclosed in the same PR (the rule for any new SDK), and it
+  needs an xcframework or SwiftPM wrapper, since the project does not use CocoaPods.
+- Failing that, whether to keep Rokid support to the BLE path and the Bluetooth-headset voice
+  loop.
 - Whether Rokid appears in the public Display Backend picker before Phase 1, as EVEN G2 does, or
   moves under Developer with the camera switch.

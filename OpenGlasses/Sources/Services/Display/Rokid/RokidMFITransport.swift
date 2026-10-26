@@ -70,9 +70,10 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
     ///
     /// **Not declared in the committed `Info.plist`, on purpose.** iOS only opens an `EASession`
     /// for a protocol listed under `UISupportedExternalAccessoryProtocols`, and App Review rejects
-    /// a build that lists an MFi protocol unless the accessory maker has registered the app with
-    /// Apple's MFi program — Rokid has not. Add both strings to `Info.plist` locally for a hardware
-    /// spike and never commit them; `RokidAccessoryProtocolGuardTests` fails if they land.
+    /// a build that lists an MFi protocol unless the accessory maker has registered that app with
+    /// Apple's MFi program. Registration is per app: Rokid is an MFi licensee and registered its own
+    /// app, but not this one. Add both strings to `Info.plist` locally for a hardware spike and never
+    /// commit them; `RokidAccessoryProtocolGuardTests` fails if they land.
     nonisolated static let protocolStrings = [
         "com.rokid.aiglasses",
         "com.rokid.global.aiglasses",
