@@ -153,8 +153,8 @@ The two ACL handles are **not concurrent**. Handle 77 spans `1792701545.557 → 
 (2.43 s) and handle 76 spans `1792701578.010 → 1792701582.342` (4.33 s), separated by a
 **30.022 s gap with zero interleaving** — a disconnect and reconnect, not two simultaneous
 peers. Handle 76 is identifiable as the glasses by its Device Name: the `ReadByTypeRsp`
-`09 0e 16 00 476c61737365735f35303136` returns `entryLen 0x0e`, handle `0x0016`, value
-**`Glasses_5016`**.
+`09 0e 16 00 476c61737365735f58585858` returns `entryLen 0x0e`, handle `0x0016`, value
+**`Glasses_XXXX`**.
 
 MTU negotiation is visible: `MTUReq 527` (`020f02`) → `MTURsp 247` (`03f700`); the CCCDs on
 `0x0017`, `0x001a`, `0x001d` and `0x0025` are all enabled with value `0200`.
@@ -346,7 +346,7 @@ request frames,
 
 ### Second-capture additions
 
-`Packetlog3.pklg` runs the same Classic stack — ACL handle 20 to `AC:86:D1:58:DE:59`, 883
+`Packetlog3.pklg` runs the same Classic stack — ACL handle 20 to `<glasses address>`, 883
 outbound and 1,070 inbound ACL records — and confirms every rule above: 282 outbound frames and
 730 inbound frames pass the sync/length/type/checksum test, and 892 parse to a self-consistent
 Caps blob. It also widens the vocabulary and adds two routes:
@@ -354,15 +354,15 @@ Caps blob. It also widens the vocabulary and adds two routes:
 | Route | Shape | Direction | n | Members |
 |---|---|---|---|---|
 | `0x1004` | `uuuSkuS` | phone→glasses | 1 | `(4100, 1, 13, "<uuid>", <ns clock>, 195, "")` |
-| `0x1005` | `uuuiS` | glasses→phone | 1 | `(4101, 1, 14, 1, "28:34:FF:27:3D:0F")` |
+| `0x1005` | `uuuiS` | glasses→phone | 1 | `(4101, 1, 14, 1, "<phone address>")` |
 
 Those two are a matched pair and both decode cleanly — a **host identification and clock-sync
 exchange**, and the closest thing to a handshake the Classic link contains:
 
 - `0x1004` carries `k` = `1_792_715_804_308_702_000`, a nanosecond wall clock whose second
   component lands inside this capture's own window, and an `S` = a UUID
-  (`7050c2b0-ce7a-43e4-9d12-ccf78672aa23`). The trailing `S` is empty.
-- `0x1005` answers with `i` = 1 and `S` = `28:34:FF:27:3D:0F`, the *phone's* Bluetooth address
+  (`<host UUID>`). The trailing `S` is empty.
+- `0x1005` answers with `i` = 1 and `S` = `<phone address>`, the *phone's* Bluetooth address
   from the capture's own `Address:` line.
 
 So the glasses learn which host is talking and acknowledge with the host's address. The `u` = 13
@@ -394,7 +394,7 @@ bytes, but continuation frames longer than that also occur, so do not hard-code 
 
 Channels widen well beyond the seven in `RokidCXRChannel`: `Order`, `Proxy`, `Pay`, `Settings`,
 `Wifi`, `Trans`, `Jsa`, `Music` — plus a bare UUID
-(`7050c2b0-ce7a-43e4-9d12-ccf78672aa23`) and the phone's own address (`28:34:FF:27:3D:0F`)
+(`<host UUID>`) and the phone's own address (`<phone address>`)
 appearing where a channel name would be. Methods seen for the first time here: `Order_Update`,
 `Proxy_NetResponse`, `Proxy_NetRequest`, `Pay_NetProxyRequest`, `Pay_DeviceProxyRequest`,
 `Sys_Msg_Tts_Stopped`, `WordTips_AllDevices`, `Wifi_Status`, `Dev_GetGlassInfo`,
@@ -404,10 +404,10 @@ appearing where a channel name would be. Methods seen for the first time here: `
 (secrets redacted here; see the warning below):
 
 ```json
-{"deviceName":"Glasses_5016","deviceSpecies":"glasses","batteryLevel":100,"devicePanel":"1",
+{"deviceName":"Glasses_XXXX","deviceSpecies":"glasses","batteryLevel":100,"devicePanel":"1",
  "wearingStatus":"1","isCharging":true,"deviceKey":"<redacted>",
  "deviceSecret":"<redacted>",
- "deviceTypeId":"B4BED4DBF1F94F88BF22F79A4D70A7C7","deviceId":"1901092546045016",
+ "deviceTypeId":"B4BED4DBF1F94F88BF22F79A4D70A7C7","deviceId":"<serial>",
  "deviceSeed":"<redacted>","otaCheckUrl":"https://ota.rokid.com",
  "otaCheckApi":"/v1/extended/ota/check","brightness":5,"sound":7,
  "systemVersion":"1.27.009-20261014-150203","buildTypeIsUser":true,"RV600":false,
@@ -562,18 +562,8 @@ CI run as the real gate.
 
 ## 11. Reproducing
 
-```powershell
-# analysis scripts live in _rokid\
-python _rokid\cxrparse.py        # pklg records -> ACL/L2CAP reassembly
-python _rokid\cxrcodec.py        # reference encoder (the `B` rule now matches §5)
-python _rokid\rx_parse.py        # glasses->phone direction (expect 248/248)
-python _rokid\verify_vectors.py  # every Swift test hex literal vs the capture (650/650)
-python _rokid\probe_final.py     # authoritative parser: 3216 frames, 3215/3216 byte-identical
-python _rokid\audit_tests2.py    # every hex literal in the Swift tests, re-parsed here
-python _rokid\survey3.py         # second capture: record types, CIDs, non-0x40 scan
-python _rokid\dump_att3.py       # second capture: ATT opcode/handle/payload census
-python _rokid\conn_split.py      # second capture: roles per (record type, ACL handle)
-python _rokid\find_rokid_link.py # locate Glasses_5016, dump that link chronologically
-python _rokid\dump_cmd_char.py   # the 16 attribute-0x0016 frames and their pairing
-python _rokid\link_timing.py     # proves the two ACL handles are a reconnect, not peers
-```
+The analysis scripts and the PacketLogger captures are kept off-repo: a capture carries the
+glasses' `deviceKey`, `deviceSecret` and `deviceSeed` in cleartext (§6), so it is a credential.
+What the repo keeps is the result — every hex literal in `RokidCapsCodecTests` was checked
+against the captures (650/650), and the codec re-encodes 3,215 of 3,216 captured frames
+byte-identically.

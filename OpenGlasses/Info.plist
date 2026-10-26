@@ -464,8 +464,6 @@
 	<key>UISupportedExternalAccessoryProtocols</key>
 	<array>
 		<string>com.meta.ar.wearable</string>
-		<string>com.rokid.aiglasses</string>
-		<string>com.rokid.global.aiglasses</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

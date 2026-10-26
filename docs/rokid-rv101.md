@@ -42,7 +42,7 @@ Relevant to this app's HUD:
 
 ## Authoritative protocol (CXR-M SDK 1.0.8, decompiled)
 
-`buildwithfenna/rokid-docs` (MIT) decompiles `com.rokid.cxr:client-m` **1.0.8**, built
+A public community write-up of `com.rokid.cxr:client-m` **1.0.8**, built
 2026-02-02 — the current SDK, not the 2019 pod. It settles the protocol shape.
 
 **Transport — two Bluetooth layers on Android.** (1) BLE GATT is used only to discover the
@@ -145,7 +145,8 @@ separate, SDK-internal channel.
 numbered but are not selectable.
 
 Display selection: **Settings → Display Backend → "Rokid RV101"**. Camera selection is
-`Config.cameraBackend` (`CameraBackendChoice`), read once at `CameraService` init — a change
+`Config.cameraBackend` (`CameraBackendChoice`), switched under **Settings → Advanced → Developer →
+Rokid Glasses** while the transport is dark, and read once at `CameraService` init — a change
 takes effect on next launch (unlike display, which switches live). XcodeGen globs
 `OpenGlasses/Sources` and `OpenGlassesTests`, so no project file edit is needed — run
 `./Scripts/generate-xcodeproj.sh` after adding these files.
@@ -190,12 +191,12 @@ mutual exclusivity has not been confirmed on the Rokid SDK) and is flagged as un
 
 ## Recovered from the device (live, 2026-10-22)
 
-Read directly off the user's retail RV101 over `adb` (serial `1901092546045016`), so these are
+Read directly off a retail RV101 over `adb`, so these are
 observations rather than reconstruction:
 
 - **Identity**: model `RG-glasses`, Android 12 / SDK 32, build `SKQ1.240613.001`, firmware
   `1.27.009-20261014-150203`, manufacturer `Rokid`. Bluetooth adapter MAC
-  `AC:86:D1:58:DE:59`, adapter name `Glasses_5016`.
+  `<glasses address>`, adapter name `Glasses_XXXX`.
 - **GATT (closes gap 3)** — one service, `00009100-0000-1000-8000-00805F9B34FB`, with six
   characteristics in registration order:
 

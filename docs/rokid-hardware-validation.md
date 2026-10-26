@@ -31,7 +31,7 @@ Set the team in *Signing & Capabilities*, select the iPhone, run. Then:
 
 1. **Settings → Display Backend → "Rokid RV101" → Scan for Glasses → Pair.** Note the peripheral
    UUID stored in `Config.rokidPeripheralID`.
-2. **Settings → Camera → "Rokid RV101"** (read once at `CameraService` init — relaunch to apply).
+2. **Settings → Advanced → Developer → Rokid Glasses → "Use the Rokid camera"** (read once at `CameraService` init — relaunch to apply).
 
 ## Per-surface pass criteria
 
@@ -58,7 +58,7 @@ Set the team in *Signing & Capabilities*, select the iPhone, run. Then:
 
 ## What the decompiled CXR-M SDK settles (and what it does not)
 
-From `com.rokid.cxr:client-m` **1.0.8** (`buildwithfenna/rokid-docs`):
+From a community write-up of `com.rokid.cxr:client-m` **1.0.8**:
 
 - **BLE is only the handshake.** The SDK connects GATT, discovers services, requests the MTU,
   then *reads one characteristic whose value is the RFCOMM socket UUID*, and opens a classic
@@ -108,10 +108,13 @@ What a capture could **not** settle, and what hardware still has to answer, is b
 2. ~~Caps envelope~~ → done. `RokidCapsCodec.swift` encodes/decodes both directions;
    `RokidWireCodec` emits iAP2 frames.
 3. Handshake → **`connect()` is now written, not just specified.** `RokidMFITransport`
-   opens an `EASession` over `com.rokid.aiglasses` (declared in `Info.plist`) and pumps
+   opens an `EASession` over `com.rokid.aiglasses` and pumps
    its streams on a dedicated run-loop thread. Set
    `UserDefaults.standard.set(true, forKey: "rokidUsesMFI")` to select it; the BLE
-   transport stays the default so nothing changes silently. **Open:** whether it works.
+   transport stays the default so nothing changes silently. The two protocol strings are
+   **not** in the committed `Info.plist` — App Review rejects an undeclared MFi accessory
+   protocol unless Rokid registers the app — so add them to `UISupportedExternalAccessoryProtocols`
+   locally for the spike and do not commit that edit. **Open:** whether it works.
    There is no app-level handshake to implement — MFi identification and authentication
    are done by iOS against the Apple Authentication Coprocessor, which the device has at
    `/sys/devices/platform/soc/988000.i2c/i2c-2/2-0010` (`acp_certificate`,

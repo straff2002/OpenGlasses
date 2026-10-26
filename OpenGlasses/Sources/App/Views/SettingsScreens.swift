@@ -1328,12 +1328,6 @@ struct AdvancedSettingsScreen: View {
                 }
 
                 NavigationLink {
-                    RokidDiagnosticsView()
-                } label: {
-                    Label("Rokid glasses probe", systemImage: "antenna.radiowaves.left.and.right")
-                }
-
-                NavigationLink {
                     PromptInspectorView(appState: appState)
                 } label: {
                     Label("Prompt Inspector", systemImage: "doc.text.magnifyingglass")

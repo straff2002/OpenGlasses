@@ -66,8 +66,13 @@ enum RokidMFIError: LocalizedError, Equatable {
 final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
 
     /// The two `mfi.eap` names in the glasses' `cxr-service.json`, in preference order:
-    /// `com.rokid.aiglasses` (id 194) and `com.rokid.global.aiglasses` (id 195). Both are
-    /// declared in `Info.plist` under `UISupportedExternalAccessoryProtocols`.
+    /// `com.rokid.aiglasses` (id 194) and `com.rokid.global.aiglasses` (id 195).
+    ///
+    /// **Not declared in the committed `Info.plist`, on purpose.** iOS only opens an `EASession`
+    /// for a protocol listed under `UISupportedExternalAccessoryProtocols`, and App Review rejects
+    /// a build that lists an MFi protocol unless the accessory maker has registered the app with
+    /// Apple's MFi program — Rokid has not. Add both strings to `Info.plist` locally for a hardware
+    /// spike and never commit them; `RokidAccessoryProtocolGuardTests` fails if they land.
     nonisolated static let protocolStrings = [
         "com.rokid.aiglasses",
         "com.rokid.global.aiglasses",
@@ -116,7 +121,8 @@ final class RokidMFITransport: NSObject, ObservableObject, RokidTransporting {
     // MARK: - Discovery
 
     /// Re-read the MFi accessory list. MFi has no scan: iOS surfaces an accessory once it is
-    /// paired over Bluetooth *and* its protocol appears in `Info.plist`.
+    /// paired over Bluetooth *and* its protocol appears in `Info.plist` (a local, uncommitted
+    /// edit — see ``protocolStrings``).
     func refresh() {
         discovered = EAAccessoryManager.shared().connectedAccessories.compactMap {
             accessory -> (id: String, name: String)? in

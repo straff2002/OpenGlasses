@@ -2,8 +2,8 @@ import Foundation
 
 /// Authoritative CXR-M command vocabulary for Rokid Glasses (RV101).
 ///
-/// Derived from the decompiled `com.rokid.cxr:client-m` **1.0.8** SDK
-/// (`buildwithfenna/rokid-docs`, MIT): a CXR message is a `Caps` tuple addressed to a named
+/// Modelled on the `com.rokid.cxr:client-m` **1.0.8** SDK as publicly documented by the
+/// community, written here from the wire format rather than ported: a CXR message is a `Caps` tuple addressed to a named
 /// channel, where `[0]` is the command string and `[1]` an optional JSON payload.
 ///
 /// This type pins only the *model* — channel names, command names, argument order and Caps
