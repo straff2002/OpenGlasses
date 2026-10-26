@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: a59f191fa535165f1cb158e0c9f26c74b32a7ae6e8d10cf988609ab0dc265ee2 -->
+     source-sha256: 1b3f3a95524eda1b55e5e046f8c0a5dc17924679b1db9d4dee865eb494337b52 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -153,17 +153,20 @@ line. Importing the PDF itself gets the same treatment inside the app, so the tw
 <p>A few habits that pay off:</p>
 <ul>
 <li><strong>One file per manual, one manual per model family.</strong> A combined 900-page binder still works, but a technician hears the title in every citation, so shorter, specific titles read better.</li>
-<li><strong>Trim what does not help in the field.</strong> Warranty terms, ordering forms and marketing pages add index time and add nothing to answers. Delete those pages before you copy the file in.</li>
+<li><strong>Trim what does not help in the field.</strong> Warranty terms, ordering forms and marketing pages add index time and add nothing to answers. Delete those pages before you copy the file in. Trim from the back of the book: deleting front pages shifts every page's position against its printed number. Leave a manufacturer's PDF that you bundle as a <code>source</code> untouched.</li>
+<li><strong>Check for the same document under two names.</strong> Manufacturers re-publish a document under a new file name or link, so two downloads with different names, and even different checksums, can hold identical text. A matching page count is the quick tell; then compare the text (<code>pdftotext a.pdf - | diff - &lt;(pdftotext b.pdf -)</code> on a Mac or Linux). Keep one copy. A duplicate brings every passage back twice under two titles, crowding out passages the technician needed.</li>
 <li><strong>Keep fault-code tables in the core too.</strong> The manual's fault-code chapter is retrieved fine, but a code that also sits in <code>error_codes.md</code> is found instantly by the nameplate lookup without a search at all.</li>
 <li><strong>A code book or standard imports the same way.</strong> Keep it as one file so a citation's page matches the printed book. Clause and rule numbers are looked up exactly — "clause 3.9.4.2", "rule 26-700", "section 110.26" — and the answer leads with the clause itself rather than the places that refer to it. Trim the index at the back, but leave the contents pages in if you want; they are recognised and never quoted as the clause.</li>
 </ul>
 <h2 id="step-2-write-the-core-files">Step 2 · Write the core files</h2>
 <p>Markdown, plain text, any editor. Two conventions matter because the app relies on them.</p>
 <h3 id="headings-define-lookup-sections">Headings define lookup sections</h3>
-<p>When a technician says <em>"look up fault T02"</em> or points the glasses at a display, the app splits each core file at <code>##</code> and <code>###</code> headings and returns the whole section that contains an exact match for the code. So group codes under a heading per manufacturer or model, and put the code in a table row or at the start of a line. A section that runs on for pages will be read back in full, so keep sections tight.</p>
+<p>When a technician says <em>"look up fault T02"</em> or points the glasses at a display, the app splits each core file at <code>##</code> and <code>###</code> headings and returns the whole section that contains an exact match for the code. So group codes under a heading per controller or family, name the models it covers in the section's first line, and put each code in a table row or at the start of a line. A section that runs on for pages will be read back in full, so keep sections tight.</p>
 <pre><code class="language-markdown"># Fault Codes
 
-## Acme RTU-500 (Series 5 controller)
+## Series 5 controller faults
+
+Models: Acme RTU-500, RTU-550. Source: RTU-500 Service Manual.
 
 | Code | Meaning                     | First check                                |
 |------|-----------------------------|--------------------------------------------|
@@ -171,12 +174,17 @@ line. Importing the PDF itself gets the same treatment inside the app, so the tw
 | ZX3  | Condenser fan failure       | Fan capacitor, fan relay                   |
 | ZX1  | Discharge line sensor fault | Sensor resistance vs. table on page 61     |
 
-## Acme RTU-700 (Series 7 controller)
+## Series 7 controller faults
+
+Models: Acme RTU-700. Source: RTU-700 Service Manual.
 
 | Code | Meaning                     | First check                                |
 |------|-----------------------------|--------------------------------------------|
 | F12  | High pressure lockout       | Condenser coil, fan staging                |
 </code></pre>
+<blockquote>
+<p><strong>A model number goes in exactly one heading: the model's own heading in <code>models.md</code>.</strong> The app reads every <code>##</code> and <code>###</code> heading in every core file as a possible list of models; that is how it knows which machine the technician means (see <strong>A nameplate reference</strong> below). If RTU-500 also headed a section in <code>error_codes.md</code>, saying "RTU-500" would match two sections, and the session could not settle on the machine. A manual's own number (<code>SM-5002</code>) in a heading reads as a model too. Put those numbers in the section's first line, as above: lookups still find them there, and they don't compete with the model's own heading. Topic headings like <em>Series 5 controller faults</em>, <em>Service Test 56</em> or <em>R-454B detection</em> are safe.</p>
+</blockquote>
 <h3 id="a-safety-file-the-assistant-repeats-before-risky-steps">A safety file the assistant repeats before risky steps</h3>
 <p>The assistant is instructed by the manifest to remind the technician of safety steps before opening electrical panels or the refrigerant circuit. Put the reminders you want spoken in <code>safety.md</code>, in your own words and to your own site rules. Lockout, PPE, recovery before opening the circuit, gas isolation for furnaces, and anything specific to Manitoba code belong here.</p>
 <h3 id="a-nameplate-reference">A nameplate reference</h3>
@@ -184,6 +192,24 @@ line. Importing the PDF itself gets the same treatment inside the app, so the tw
 <p><strong>Put every spelling of a model in that model's own heading.</strong> Manuals and nameplates rarely agree — <code>SLP99UH090XV60CK</code> on the plate, <code>SLP99UHXV-090-60C</code> in the parts list, <code>090XV60C</code> in a table. A lookup returns whole <code>##</code> sections in file order and stops at three, so a spelling that appears anywhere earlier in the file — an introduction, a summary table, a compatibility note — spends one of those three slots and can push the model's own section out of the answer. A heading that carries all the spellings costs nothing and cannot be crowded out:</p>
 <pre><code class="language-markdown">## SLP99UH090XV60CK (SLP99UHXV-090-60C, 090XV60C, SLP99UH090V60CK)
 </code></pre>
+<p>Put the alternative spellings in brackets rather than separating them with slashes. The part before the bracket is the model's name: what the assistant says back and what the <strong>Active Session</strong> card shows. With slashes there is no bracket, so the whole line becomes the name.</p>
+<h3 id="many-models-many-manuals-a-model-to-manual-map">Many models, many manuals: a model-to-manual map</h3>
+<p>A vault for one product line can let the manuals speak for themselves. A vault that spans several families (dozens or hundreds of models, a few service manuals, many owner guides) needs a map, or the assistant will happily answer a question about one model from a passage written for another. Make <code>models.md</code> that map: one section per model, listing the documents that apply to it and nothing else.</p>
+<pre><code class="language-markdown">## RTU-500A (RTU-500A01, RTU-500A02)
+Service: D01 (engineering versions 01 and 02 only). Owner: D04. Other: D07.
+
+## RTU-550A
+Owner: D04. No service manual loaded.
+</code></pre>
+<ul>
+<li><strong>Give each document a short ID</strong> (<code>D01</code>, <code>D04</code>) and start its manifest <code>title</code> with it, so the map, the citations and your own records all point at the same thing. A <code>document_index.md</code> core file with one line per ID (<code>D01: RTU-500 Service Manual SM-5002 Rev B</code>) gives the assistant the lookup.</li>
+<li><strong>Confirm applicability from evidence:</strong> the model list on the manual's cover or inside it, or the manufacturer's own catalogue entry for the model. A model number that merely starts the same way is not evidence. When a manual lists engineering versions (suffixes), record exactly the ones it lists.</li>
+<li><strong>Say the difference between kinds of document.</strong> An owner guide or quick-start sheet does not make a model serviceable from the vault; the map should show which models have a service manual and which do not, so the assistant can say so.</li>
+<li><strong>Add a rule that holds the assistant to the map</strong>, for example: <em>"Identify the exact model first, then use only the documents listed for it in models.md. A passage written for another model is not evidence."</em></li>
+<li><strong>Keep rules proportionate.</strong> A rule demanding the serial range before every question slows down a filter-light question for no gain. Ask for the details only where a manual makes the answer depend on them.</li>
+<li><strong>Mind the budget.</strong> One short section per model is about 40 bytes; three hundred models is roughly 12 KB of the 32 KB core.</li>
+<li><strong>Sibling brands.</strong> One service manual often covers several of a manufacturer's brands. Decide deliberately whether those models belong in the vault: a model with no section is refused as out of scope, even when a loaded manual covers it.</li>
+</ul>
 <h3 id="parts-so-a-number-the-assistant-says-can-be-checked">Parts, so a number the assistant says can be checked</h3>
 <p>A part number is the one thing on a job report that somebody else acts on: base orders against it.
 So the app never writes a number down without looking it up first, and a number it cannot find is
@@ -275,6 +301,10 @@ is the honest answer.</p>
 <td>Optional. Where the manufacturer publishes this manual, as an <code>https://</code> link. Offered as a button that opens outside the app; it is never a substitute for bundling the original.</td>
 </tr>
 <tr>
+<td><code>edition</code> (per document)</td>
+<td>Optional. Which revision or edition this is (<code>"Rev C"</code>, <code>"2024"</code>, <code>"3rd edition"</code>) when the vault holds more than one of the same work. Documents of the same <code>kind</code> whose titles are identical once the edition is taken out are treated as editions: the newest answers by default, and an older one only when the technician asks for it by name or asks what changed.</td>
+</tr>
+<tr>
 <td><code>procedures_dir</code></td>
 <td>Omit it if you have no procedures.</td>
 </tr>
@@ -304,6 +334,8 @@ is the honest answer.</p>
 <blockquote>
 <p><strong>The importer refuses a manifest whose rules do not mention fabrication and citation.</strong> Your <code>prompt_rules</code> must include a rule containing the word <em>fabricate</em> and one containing <em>cite</em>. The rules above satisfy that; reword them freely as long as those two words survive.</p>
 <p><strong>The title is the citation.</strong> Whatever you put in <code>title</code> is what the technician hears: <em>"Source: RTU-500 Service Manual, page 42"</em>. Name it the way your people already refer to the book.</p>
+<p><strong>Write titles to be heard, and make every one different.</strong> Say what the document is and which one: product type, document number, revision, as in <em>RTU-500 Rooftop Unit Service Manual SM-5002 Rev B</em>. Twelve titles that all read <em>Owner's Manual</em> tell the technician nothing. Leave out separators like <code>|</code>, which only get in the way when a title is read aloud.</p>
+<p><strong>Two revisions of one document.</strong> If the newer one replaces the older for every model, keep only the newer. If you need both, decide which case you are in. When the newer one supersedes the older, give both the same title and an <code>edition</code>, so the newest answers by default. When each revision covers different models (common for kits and accessories), leave <code>edition</code> out, keep the revision in each title, and map each model to its own revision in <code>models.md</code>. A year in the title counts as an edition label too: two same-kind titles that differ only by year are treated as editions, and the older one drops out of answers unless asked for.</p>
 </blockquote>
 <h2 id="step-4-procedures-optional">Step 4 · Procedures (optional)</h2>
 <p>A procedure is a branching checklist the assistant walks a technician through by voice: <em>"next"</em>, <em>"go back"</em>, <em>"repeat that"</em>, and branch choices from what the technician reports. Skip this for your first import; add one once the question-and-answer loop works.</p>
@@ -730,7 +762,8 @@ Read from: band from Example Book, page 6, §QR-12; factor from Example Book, pa
 <li>Say <em>"Start a session in Acme RTU Service."</em></li>
 <li><strong>Read the nameplate first.</strong> With the plate in view say <em>"Look up this nameplate"</em>, or simply say the model. The app reads the plate on the phone, matches the model against your core files and then against the manuals, and — when it resolves to exactly one of the models named in your <code>##</code> headings — remembers it for the rest of the session. The assistant says which machine it settled on, and the <strong>Active Session</strong> card on the Field Assist screen shows the model; tap it for the heading it matched, whether it came from the plate, your voice or the work order, and the time. If the read was wrong, correct it by voice — <em>"no, it's the 070"</em> — or tap <strong>Change</strong> on that card and pick from your own model list; <strong>Clear</strong> forgets it. When the glasses have a display, the model appears there too, on one line, each time it changes.</li>
 </ol>
-<p>From then on the session answers for that machine: a table row printed for a different model of the same family ranks below the row that covers yours. This is also what makes the next test work, so do this one first.
+<p>From then on the session answers for that machine: a table row printed for a different model of the same family ranks below the row that covers yours. This is also what makes the next test work, so do this one first.</p>
+<p>Say each model that has a service manual in the vault, one at a time. Each should settle straight away and show on the <strong>Active Session</strong> card. If one doesn't, or the assistant asks which one you mean when the model has only one section, its number is in a second heading somewhere in your core files (see <strong>Headings define lookup sections</strong>); move it into that section's first line.
 4. Ask about a code you know is in the manual: <em>"What does fault ZX9 mean on the RTU-500?"</em> The answer should end with a source line naming the manual and page.
 5. Ask about a machine you do not have — <em>"how do I replace the heat exchanger on a Carrier 58MVB"</em>. The answer should name the models your vault does cover and refuse: <em>"The loaded manuals cover Acme RTU Service models RTU-500, RTU-750 and 2 more; 58MVB is not one of them. Confirm the nameplate or load its manual."</em> This works only because your model headings list every spelling of every model (Step 1); a vault whose headings name no models never refuses on equipment, and behaves exactly as it did before.
 6. Ask something the manuals do not cover, for example a torque spec that is not in the book. The correct answer is that the loaded manuals do not cover it and to escalate.</p>
@@ -1009,6 +1042,13 @@ product.</p>
 <h3 id="2-building-a-vault-for-a-customer">2 · Building a vault for a customer</h3>
 <p>Here you assemble the whole vault for one customer: their core files, their manuals, their procedures. You test it, then you hand it over finished. Their technicians do not each repeat the work; one person prepares the manuals once and everyone else uses the result.</p>
 <p>The manuals in such a vault are normally the customer's own. They already hold them through their OEM portal access, their dealer relationship, or the equipment itself. What you are providing is the assembly, the text extraction and the testing. If you intend to reuse one master set of manuals across several customers, that is redistribution and it needs the manufacturer's permission, so check your agreements first.</p>
+<p>Before you hand it over:</p>
+<ul>
+<li><strong>Keep a maintainer's record outside the vault folder.</strong> For each manual: where it came from, its checksum, its revision, and the evidence that it applies to each model you mapped it to. Keep your test results alongside. The folder that goes on the phone holds only what the manifest lists; the record is what lets you, or whoever maintains the vault after you, update it next year without redoing the research.</li>
+<li><strong>Write the test questions from your own map.</strong> For each question, look the model up in <code>models.md</code> and confirm the document you expect the answer to cite is listed for it. A test that asks about a model the map doesn't link to the document fails for the wrong reason.</li>
+<li><strong>Test on the build the customer will run.</strong> Import the exact folder you will deliver on a phone with that build, run your questions, and record the build, the AI model, the answer and the page it cited. Write the customer's instructions against that build, not against older release notes.</li>
+<li><strong>Check the folder you deliver, not the one you worked in.</strong> If you use a script to check the vault, run it against the final folder, as the last step, and make sure it actually runs. A report is only as good as the copy it was made from.</li>
+</ul>
 <p>Delivery is by hand, or by link. By hand: you install the finished folder on the phones you are already setting up, importing once per phone, a few minutes each. By link: you build a vault archive and put it on your own site, and their technicians add it from the link or the code — see <strong>Publishing a vault</strong> above. One scan can also set the phones up: ask us for an enrolment profile for the customer's organisation, and scanning its code (or entering its licence key) applies the organisation's configuration and installs its pack — the core files and procedures, published as in situation 3. A pack never carries manuals, so those still go by hand or by link; delivering them in the same step is planned.</p>
 <h3 id="3-publishing-a-pack">3 · Publishing a pack</h3>
 <p>The parts you authored, the core files and the procedures, can be published as a <strong>pack</strong> that other Field Assist users install from the app's Packs list, and that a team licence can include for a whole organisation. What you are publishing is your fault-code tables, nameplate decoding, safety rules and diagnostics, which is where your field knowledge lives.</p>
@@ -1039,14 +1079,19 @@ product.</p>
 <h2 id="checklist-before-you-send-a-vault-to-a-customer">Checklist before you send a vault to a customer</h2>
 <ul>
 <li>[ ] Every PDF selects text on the computer, or you have decided to let the phone read it.</li>
-<li>[ ] Each manual's <code>title</code> is the name the crew already uses.</li>
-<li>[ ] Fault codes sit under a heading per model, one code per row.</li>
+<li>[ ] No two documents hold the same text under different names.</li>
+<li>[ ] Each manual's <code>title</code> is the name the crew already uses, says what the document is, and is different from every other title.</li>
+<li>[ ] Fault codes sit under a heading per controller or family, with the models named in the section's first line, one code per row.</li>
+<li>[ ] No model number or manual number appears in a heading outside <code>models.md</code>, and each model's spellings sit in its own heading, in brackets.</li>
+<li>[ ] For a vault spanning several families, <code>models.md</code> lists the documents that apply to each model, confirmed from the manual or the manufacturer's catalogue.</li>
 <li>[ ] <code>safety.md</code> says what you want spoken, in your words.</li>
 <li>[ ] Core files total well under 32 KB.</li>
 <li>[ ] Any site document has no contact details, passwords or links, and its serials are the customer's.</li>
 <li>[ ] Import shows a section count for every manual.</li>
+<li>[ ] Saying each serviceable model settles the session on it without asking which one.</li>
 <li>[ ] A known fault code answers with a page citation.</li>
 <li>[ ] An out-of-scope question answers with "the manuals do not cover this".</li>
+<li>[ ] The test questions were run on the build the customer will use, and the results are in your maintainer's record.</li>
 </ul>
 </div>
 </main>
