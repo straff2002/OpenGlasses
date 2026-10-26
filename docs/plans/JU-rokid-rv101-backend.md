@@ -103,23 +103,27 @@ are unchanged; the agent is a display and a button panel, nothing more.
   framed because a payload can exceed one notification: each frame carries a sequence number, the
   frame count and its index, and the agent reassembles by sequence and drops an incomplete one. The
   `renderKey` already in the payload lets the agent skip a screen it is already showing.
-- **Glasses → phone: selections.** A write characteristic carries `{renderKey, itemId}` when the
-  wearer picks an item; a `renderKey` that no longer matches the current screen is ignored, so a
-  late tap cannot act on a screen that has changed. AIUI's documentation shows no explicit write
-  call — if writes turn out to be unavailable, selection falls back to the voice grammar ("one",
-  "two") that `selectItem(index:)` already serves, and the route still works as a display.
-- **Hello.** On connect the agent writes a capabilities record: renderer name and payload version,
-  screen size, colour (Rokid is monochrome per its design guide), and input kind. The phone
-  condenses to it as it already does for the other backends. Without writes, the phone assumes the
-  RV101's known values for a connected Rokid agent, and the agent refuses a payload version it
-  does not understand rather than drawing a guess.
+- **Glasses → phone: selections, by voice first.** AIUI documents no Bluetooth write (see below),
+  so the design does not depend on one. Items are numbered on the glasses and chosen with the voice
+  grammar ("one", "two") that `selectItem(index:)` already serves. If a write turns out to exist,
+  a write characteristic carries `{renderKey, itemId}` for taps, and a `renderKey` that no longer
+  matches the current screen is ignored, so a late tap cannot act on a screen that has changed.
+- **Capabilities, assumed until the agent can say.** Without a write, the agent cannot tell the
+  phone what it can draw, so the phone uses the RV101's documented values for a connected Rokid
+  agent: a 480 px wide canvas 120–352 px tall, one green channel over black, numbered items. The
+  agent refuses a payload version it does not understand rather than drawing a guess. With a write,
+  the agent sends the capabilities record on connect instead.
 
 **Constraints the design must meet.**
 
-1. **The link is private by default.** HUD screens can carry answers, notes and job details. Every
-   characteristic requires an encrypted, bonded link; if AIUI's runtime cannot bond, the route ships
-   with a one-time pairing code shown on the phone and entered on the glasses, and stays off when
-   HIPAA mode is on, as the Web App mirror does.
+1. **The payload is private even if the link is not.** HUD screens can carry answers, notes and
+   job details, and AIUI documents neither bonding nor a write, so the phone cannot rely on an
+   encrypted link or check who subscribed. Instead every payload is encrypted end to end: at pairing
+   the phone shows a one-time code that the wearer enters in the agent once, both ends derive a key
+   from it, and the phone encrypts each payload (AES-GCM) for the agent to decrypt with Web Crypto,
+   which AIUI provides. Any other device that subscribes gets ciphertext. The route stays off when
+   HIPAA mode is on, as the Web App mirror does. How comfortable that one-time code is to enter on
+   the glasses is checked in C2.
 2. **Discovery happens in the foreground.** A backgrounded iOS peripheral moves its service UUID
    into Apple's overflow area, which a non-Apple central generally cannot see, so the first
    connection is made with the app open; an established connection continues in the background
@@ -130,6 +134,25 @@ are unchanged; the agent is a display and a button panel, nothing more.
 4. **The agent is ours and small.** Its source lives in this repository (a `glasses-agents/rokid/`
    folder), renders only the shared payload, makes no network calls of its own, and is reviewed
    against the same privacy rules as the app.
+5. **The HUD shows only while the agent is open.** AIUI runs an agent only while one of its pages
+   or widgets is open; background running is reserved and unsupported. So Route C is a HUD the
+   wearer opens, not one that wakes itself — unlike Meta's native display. Whether a widget can stay
+   on the glasses and keep the connection is the first thing C2 checks; until then the phone treats
+   a dropped subscription as the agent closing, and goes back to speaking its answers.
+
+### What Rokid's AIUI documentation says (checked 2026-10-26)
+
+| Question | Answer in the docs |
+| --- | --- |
+| Can the agent read the phone's screens? | **Yes.** Bluetooth LE client in the Web Bluetooth shape: `requestDevice`/`scanDevices` filtered by service UUID, `gatt.connect()`, `getPrimaryService`, `getCharacteristic`, `startNotifications()` and `characteristicvaluechanged`. Scanning and first connection need the page to be open and the wearer able to interact. |
+| Can it write back? | **Not documented.** The API page and reference show no `writeValue`, `writeValueWithResponse`, `writeValueWithoutResponse` or `readValue`. Treated as unavailable. |
+| Bonding or encryption? | **Not documented.** Hence constraint 1. |
+| Message size (MTU)? | **Not documented.** The frame codec does not assume one. |
+| Does it run in the background? | **No.** Agent Workers run with the `instant` or `foreground` lifetime, `foreground` only "while the current agent has an open Page or Widget"; the `background` lifetime is "reserved and is not supported in the current release". Workers cannot draw, and the only trigger is `open`. Hence constraint 5. |
+| What happens when the page is hidden? | **Not documented.** `onHide` fires when a page is "moved to the background"; nothing says whether timers or connections survive. |
+| The screen? | A 480 px wide canvas, 120–352 px tall, scrolling past that; one green channel (`#40ff5e`) over black, black being see-through; type from 11 to 24 px; errors stay green. Applies to Rokid Glasses 1 and 2. |
+| Installing without the store? | **Yes, for development:** `npm install -g @yodaos-pkg/aix-cli` (Node 20+ and ADB), then `aix install` and `aix launch-page` with debugging allowed on the glasses. Whether that install persists, or can be shared with a few wearers, is not documented. |
+| The Agent Store? | Review is about minimum necessary permissions, a description that matches the code, and an agent that starts, responds and returns normally; 3–5 preview files with at least one image and one video. The page mentions only users in mainland China; availability elsewhere, account type, fees and the developer agreement are not stated. |
 
 ## The shared on-glasses HUD format
 
@@ -176,9 +199,10 @@ owner.
 - **C3 — on the glasses and in the store.** Pairing, background reconnect, battery and legibility
   on a real RV101; then Agent Store submission. Rokid joins onboarding when C3 passes.
 
-**To confirm before C1:** whether AIUI's Bluetooth API can write; whether it bonds; how an agent is
-launched and whether it keeps running while the wearer does something else; the notification size
-it receives; and the Agent Store's terms.
+**To confirm before C1** (the docs leave these open — ask Rokid or test with the CLI install):
+whether the Bluetooth API can write after all; whether it bonds; whether a widget can stay open and
+hold the connection; whether a connection survives `onHide`; the notification size; whether the
+Agent Store reaches wearers outside mainland China, and under what agreement.
 
 ## Decisions owed
 
