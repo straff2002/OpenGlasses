@@ -141,7 +141,7 @@ enum FieldSessionContextSnapshot {
         case .declined:
             lines.append("JOB NUMBER: the technician said they do not have one. This is recorded and the work record still goes out. Do not ask again.")
         case .needsReference, .asked:
-            lines.append("JOB NUMBER: outstanding. The app asks for it itself — do not ask for it, do not offer one, and never infer it from an asset id, a work order or anything said earlier.")
+            lines.append("JOB NUMBER: outstanding. The app asks for it itself — do not ask for it, do not offer one, and never infer it from an asset id, a work order or anything said earlier. If the technician's words this turn answer it (\"job number …\", \"name …\", \"call it …\"), record what they said, verbatim, with field_session 'set_job_reference'.")
         case .confirming(let candidate, _):
             lines.append("JOB NUMBER: the app heard " + quote(candidate) + " and is reading it back for confirmation. Do not treat it as recorded and do not repeat it.")
         case .outstanding:

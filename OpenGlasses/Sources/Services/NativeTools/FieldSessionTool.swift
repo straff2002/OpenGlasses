@@ -13,14 +13,19 @@ final class FieldSessionTool: NativeTool {
     /// Nil in headless contexts, where the service call alone is the whole behaviour.
     private let flow: GuidedJobFlow?
     /// The technician's words this turn, read when a job ends: a passed test said in the same
-    /// breath as "close the job" goes on the record even when the model leaves `test_result` out.
+    /// breath as "close the job" goes on the record even when the model leaves `test_result` out,
+    /// and a job ends only when those words ask for it (Plan KD P0).
     private let currentUtterance: @MainActor () -> String?
+    /// What the assistant said last, so "yes" to "shall I close the job?" ends it.
+    private let previousReply: @MainActor () -> String?
 
     init(service: FieldSessionService? = nil, flow: GuidedJobFlow? = nil,
-         currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() }) {
+         currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() },
+         previousReply: @escaping @MainActor () -> String? = { TechnicianWords.previousReply() }) {
         sessionService = service
         self.flow = flow
         self.currentUtterance = currentUtterance
+        self.previousReply = previousReply
     }
 
     let name = "field_session"
@@ -28,15 +33,18 @@ final class FieldSessionTool: NativeTool {
     Start, pause, resume, end, update, or query a Field Assist session for grounded, domain-specific technical support \
     including installed custom vaults. Sessions load a knowledge vault and emit an audit log. \
     Use 'start' when the technician begins work on equipment, 'set_job_reference' whenever the \
-    technician gives or corrects a job/work-order number, and 'end' when they finish. Only confirm \
-    that a job reference was recorded after this tool action succeeds. \
+    technician gives or corrects a job/work-order number, 'set_job_details' when they name or \
+    rename the open job ("call it…", "name it…", "the job name is…"), and 'end' only when they say \
+    to end, close, finish or cancel the job. Only confirm that a job reference was recorded after \
+    this tool action succeeds. \
     Use 'recall' to retrieve older technician reports, readings and task results for the current \
     equipment when they are absent from the working context. Reports are not independently \
     verified. Read subsequent records for corrections; paginate until the relevant record is complete. \
     For the user's default vault, omit vault or use 'default'. Use 'vaults' to discover installed \
     vault IDs, names and the configured default. Never substitute another vault after a failure \
     without the user's choice. An equipment/asset name does not select its knowledge vault. \
-    The default applies to new jobs only; an active job keeps its vault until ended. \
+    The default applies to new jobs only, and an open job keeps its vault: never end a job to \
+    change its vault or its name — ask the technician; a different vault applies to their next job. \
     'next_unit' when the technician moves to another machine on the same job ("next unit", "now \
     the second furnace") — pass 'unit' with its model if they say it, as said; work from then on \
     is recorded against that unit. \
@@ -55,7 +63,7 @@ final class FieldSessionTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'next_unit' to move to another machine on the same job, 'separate_earlier_work' when work recorded before the first identification was on a different machine, 'pause' to pause billing, 'resume' to continue, 'end' to finish, 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
+                "description": "Action: 'start' to begin a new session, 'set_job_reference' to record or correct its job/work-order number, 'set_job_details' to name or rename the open job (and optionally its job_reference), 'next_unit' to move to another machine on the same job, 'separate_earlier_work' when work recorded before the first identification was on a different machine, 'pause' to pause billing, 'resume' to continue, 'end' to finish (only when the technician asks to end, close, finish or cancel the job), 'status' to query the active session, 'list' for history, 'recall' for older current-equipment records, 'vaults' for installed vault IDs/names and the configured default, 'escalate' to flag the session for a human expert, 'export' to produce a work-order PDF + audit JSON, 'add_upcoming_job' to record a job ahead, 'brief_next_job' to have the app read the next job's brief aloud, 'brief_more' to read one section of it in full."
             ],
             "format": [
                 "type": "string",
@@ -77,9 +85,13 @@ final class FieldSessionTool: NativeTool {
                 "type": "string",
                 "description": "Optional equipment/asset identifier (e.g. 'Unit 47B', 'Carrier 30RB s/n 1234')."
             ],
+            "name": [
+                "type": "string",
+                "description": "On 'set_job_details': the job's name, exactly as the technician said it."
+            ],
             "job_reference": [
                 "type": "string",
-                "description": "The technician's exact job or work-order number. Required on 'set_job_reference'; optional on 'start' when they already said it (\"start job 1005\"). Pass only a number they actually gave. Do not invent or normalize it, and never take it from an asset id."
+                "description": "The technician's exact job or work-order number. Required on 'set_job_reference'; optional on 'set_job_details', and on 'start' when they already said it (\"start job 1005\"). Pass only a number they actually gave. Do not invent or normalize it, and never take it from an asset id."
             ],
             "customer": [
                 "type": "string",
@@ -157,6 +169,8 @@ final class FieldSessionTool: NativeTool {
             return await startSession(args: args, service: service)
         case "set_job_reference":
             return setJobReference(args: args, service: service)
+        case "set_job_details":
+            return setJobDetails(args: args, service: service)
         case "next_unit":
             return nextUnit(args: args, service: service)
         case "separate_earlier_work":
@@ -182,7 +196,7 @@ final class FieldSessionTool: NativeTool {
         case "brief_more":
             return await briefMore(args: args)
         default:
-            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'next_unit', 'separate_earlier_work', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', 'export', 'add_upcoming_job', 'brief_next_job', or 'brief_more'."
+            return "Unknown action '\(action)'. Use 'start', 'set_job_reference', 'set_job_details', 'next_unit', 'separate_earlier_work', 'pause', 'resume', 'end', 'status', 'list', 'recall', 'vaults', 'escalate', 'export', 'add_upcoming_job', 'brief_next_job', or 'brief_more'."
         }
     }
 
@@ -310,6 +324,11 @@ final class FieldSessionTool: NativeTool {
         guard !reference.isEmpty else {
             return "Could not record job reference: job_reference cannot be empty."
         }
+        // The number it already holds, said again (Plan KD P0): nothing to record, and nothing to
+        // write into the job log a second time.
+        if service.activeSession?.jobReference == reference {
+            return "Job reference \(reference) is already recorded for this job; nothing was changed."
+        }
         // Through the flow when there is one, so the intake stops asking and the job's conversation
         // takes the number as its title (Plan FO P1).
         if let flow { flow.supplyJobReference(reference) } else { service.setJobReference(reference) }
@@ -317,6 +336,34 @@ final class FieldSessionTool: NativeTool {
             return "Could not record job reference."
         }
         return "Job reference \(reference) is recorded for this active session and will be included in its submitted record."
+    }
+
+    /// Name or rename the open job (Plan KD P0). A job's name could only be given at `start`, so
+    /// the model ended and restarted a job to rename it; this changes it in place, and the job
+    /// stays open with everything recorded on it.
+    private func setJobDetails(args: [String: Any], service: FieldSessionService) -> String {
+        guard service.activeSession != nil else {
+            return "Could not update the job: no Field Assist session is active."
+        }
+        func text(_ key: String) -> String? {
+            let value = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value?.isEmpty == false ? value : nil
+        }
+        let name = text("name") ?? text("asset_id")
+        let reference = text("job_reference")
+        guard name != nil || reference != nil else {
+            return "Nothing was changed: pass 'name' (the job's name, as the technician said it) or 'job_reference'."
+        }
+        var said: [String] = []
+        if let name {
+            said.append(service.setJobName(name)
+                ? "The job is now named \(name)."
+                : "The job is already named \(name); nothing was changed.")
+        }
+        if let reference {
+            said.append(setJobReference(args: ["job_reference": reference], service: service))
+        }
+        return (said + ["The job stays open."]).joined(separator: " ")
     }
 
     /// "Next unit" (Plan GB P2): the job moves to another machine, identified or not. A model the
@@ -397,6 +444,10 @@ final class FieldSessionTool: NativeTool {
     private func endSession(args: [String: Any], service: FieldSessionService) async -> String {
         let outcomeRaw = (args["outcome"] as? String) ?? "resolved"
         let outcome = FieldSession.Outcome(rawValue: outcomeRaw) ?? .resolved
+        // Before anything is recorded: a refused end writes no passed check either.
+        if let refusal = Self.endRefusal(outcome: outcome, said: currentUtterance(), previousReply: previousReply()) {
+            return refusal
+        }
         if outcome == .resolved, let passed = Self.passedTest(stated: args["test_result"] as? String,
                                                               said: currentUtterance()) {
             service.recordPassedFinalCheck(note: passed)
@@ -422,6 +473,31 @@ final class FieldSessionTool: NativeTool {
             return "Could not end session: \(error.localizedDescription)"
         }
     }
+
+    /// Why the model's `end` is refused, or nil when the technician asked for it (Plan KD P0).
+    ///
+    /// Only the model's call is gated. The app's own closes — the Job tab, the close sequence's
+    /// screen route, an access withdrawal — reach `GuidedJobFlow.closeJob` or the service without
+    /// passing through this tool. A turn with no captured words (an agent turn, a live session)
+    /// may still end a job, as before, but never cancel one: a cancelled job drops its record from
+    /// delivery, and only the technician can say that. Pure.
+    static func endRefusal(outcome: FieldSession.Outcome, said: String?, previousReply: String?) -> String? {
+        guard let said else {
+            return outcome == .cancelled ? cancelRefusal : nil
+        }
+        if TechnicianRequest.asksToEndJob(said)
+            || TechnicianRequest.confirmsEndingJob(said, previousReply: previousReply) {
+            return nil
+        }
+        return outcome == .cancelled ? cancelRefusal : endRefusalText
+    }
+
+    static let endRefusalText = "Not ended — the technician didn't ask to end the job, so it stays open with "
+        + "everything recorded on it. Never end a job to rename it or to change its vault: a name goes in with "
+        + "'set_job_details', and a different vault applies to the next job. If you think the job is finished, "
+        + "ask the technician."
+    static let cancelRefusal = "Not cancelled — only the technician can cancel a job, and they didn't say to. "
+        + "The job stays open. Ask them what they want done with it."
 
     /// The words that say the final check passed: the model's `test_result` when it passed one
     /// that reads as a pass, else the technician's own sentence when it does. A test that failed

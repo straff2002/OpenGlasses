@@ -76,6 +76,7 @@ final class TableLookupTool: NativeTool {
         }
         let column = (args["column"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let document = (args["document"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let refusal = Self.sizeRefusal(row: row, said: currentUtterance()) { return refusal }
 
         let sources = Self.sources(store: store, session: session, documentStore: documentStore,
                                    namedDocument: document?.isEmpty == false,
@@ -84,6 +85,23 @@ final class TableLookupTool: NativeTool {
                                                 document: document), in: sources)
         noteForShowing(outcome, session: session, documentStore: documentStore)
         return TableLookup.render(outcome)
+    }
+
+    /// Why a lookup is refused before it runs (Plan KD P0): the technician said an aught size —
+    /// "4/0", "four aught" — and the model passed the bare number it starts with, which is No. 4,
+    /// a different conductor. Nil when the words name no aught size, when the row passed is one,
+    /// or when the technician also said the bare number on its own. Pure.
+    static func sizeRefusal(row: String, said: String?) -> String? {
+        guard let said, let size = AWGSize.find(in: said), AWGSize.find(in: row) == nil else { return nil }
+        var bare = row.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        for prefix in ["no.", "no ", "#"] where bare.hasPrefix(prefix) {
+            bare = String(bare.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        guard bare == String(size.prefix(1)) else { return nil }
+        let withoutSizes = said.replacingOccurrences(of: #"[1-4]\s*/\s*0"#, with: " ", options: .regularExpression)
+        guard !TechnicianRequest.words(withoutSizes).contains(bare) else { return nil }
+        return "Not looked up: the technician said \(size), an aught size, and row \"\(row)\" is No. \(bare) — a "
+            + "different conductor. Call again with row \"\(size)\"."
     }
 
     /// The vault's tables a lookup may read: its manuals' (never a team learning's, which has

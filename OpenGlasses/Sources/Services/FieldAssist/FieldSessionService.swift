@@ -713,6 +713,22 @@ final class FieldSessionService: ObservableObject {
         logger?.append(.init(timestamp: Date(), kind: .jobReferenceSet, text: trimmed, payload: nil))
     }
 
+    /// Name or rename the open job (Plan KD P0), in place: the job stays open with everything on
+    /// it. Returns false when there is no job or it already has that name — nothing is logged
+    /// then, so a name said twice is one line in the job log.
+    @discardableResult
+    func setJobName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let previous = activeSession, previous.assetId != trimmed else { return false }
+        mutateSession {
+            $0.assetId = trimmed
+            return ()
+        }
+        logger?.append(.init(timestamp: Date(), kind: .jobNameSet, text: trimmed,
+                             payload: previous.assetId.map { ["previous": AnyCodable($0)] }))
+        return true
+    }
+
     // MARK: - Guided job flow (Plan FO P1)
 
     /// Carry what was known before the visit onto the job just started from it (Plan FO P3c):

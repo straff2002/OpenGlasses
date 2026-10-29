@@ -79,6 +79,39 @@ final class RuleChainSessionTests: XCTestCase {
         try await RuleChainTool(documentStore: store, sessionService: service).execute(args: args)
     }
 
+    // MARK: - Started on request (Plan KD P0)
+
+    /// The retest: a chain started on a question it happened to answer, and later replaced the
+    /// chain in hand the same way. Both go through 'start', and both are refused without the
+    /// technician's words.
+    func testAChainStartsOnlyWhenTheTechnicianAsksForIt() async throws {
+        let (service, store, _) = try await startSession()
+        func tool(_ said: String) -> RuleChainTool {
+            RuleChainTool(documentStore: store, sessionService: service, currentUtterance: { said },
+                          previousReply: { nil })
+        }
+        let unasked = try await tool("what's the voltage drop on a 30 metre run of 6 copper")
+            .execute(args: ["action": "start", "chain": "Voltage drop on a run"])
+        XCTAssertEqual(unasked, RuleChainTool.notAskedRefusal)
+        XCTAssertNil(service.activeChain, "nothing started")
+
+        let asked = try await tool("run the voltage drop on a run chain")
+            .execute(args: ["action": "start", "chain": "Voltage drop on a run"])
+        XCTAssertTrue(asked.contains("Started the chain 'Voltage drop on a run'"), asked)
+
+        let replaced = try await tool("what does the conductor carry at 40 degrees")
+            .execute(args: ["action": "start", "chain": "Check an installed conductor"])
+        XCTAssertEqual(replaced, RuleChainTool.notAskedRefusal)
+        XCTAssertEqual(service.activeChain?.chain.name, "Voltage drop on a run", "the chain in hand is left alone")
+    }
+
+    func testThePromptOffersAChainByNameAndStartsItOnlyOnRequest() async throws {
+        let (service, _, _) = try await startSession()
+        let idle = try XCTUnwrap(service.chainPromptContext())
+        XCTAssertTrue(idle.contains("offer it by name; start it (rule_chain 'start', its name) only when they ask"), idle)
+        XCTAssertFalse(idle.contains("offer it and start it"), idle)
+    }
+
     // MARK: - Import
 
     func testAChainThatNamesATableTheVaultLacksIsReportedAtImportAndKeptMarked() async throws {
@@ -237,7 +270,7 @@ final class RuleChainSessionTests: XCTestCase {
         // Rating group 3 is not a column of Table 98.
         let stopped = try await chain(["action": "answer", "value": "3"], service, store)
         XCTAssertTrue(stopped.contains("Stopped at step 7: Table 98 has no column \"Rating group 3 › Band B\""), stopped)
-        XCTAssertTrue(stopped.contains("Offer to show the page with show_source"), stopped)
+        XCTAssertTrue(stopped.contains("Offer to show the page; open it with show_source only if they ask."), stopped)
         // Plan JW P0: said so that it is plainly over, the table named, no further values asked.
         XCTAssertTrue(stopped.contains("The chain 'Check an installed conductor' has ended and is not running."), stopped)
         XCTAssertTrue(stopped.contains("It could not read Table 98 at that step."), stopped)
@@ -279,7 +312,7 @@ final class RuleChainSessionTests: XCTestCase {
         XCTAssertTrue(refused.hasPrefix("The chain 'Size widgets for a load' was not started: it needs Table 89, which no "
                                         + "loaded manual's tables include; and Table 92 (PDF page 6 of Invented Book A), "
                                         + "whose grid could not be read. Nothing was started or recorded."), refused)
-        XCTAssertTrue(refused.contains("Offer to show that table's page with show_source"), refused)
+        XCTAssertTrue(refused.contains("Offer to show that table's page, to work it from the book; open it with show_source only if they ask."), refused)
         XCTAssertTrue(refused.contains("manual_figure"), refused)
         XCTAssertEqual(service.activeChain?.chain.name, "Voltage drop on a run", "the running chain is left alone")
         // "Show me the table" opens the unread table's page.

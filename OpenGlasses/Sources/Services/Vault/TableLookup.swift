@@ -82,6 +82,25 @@ enum TableLookup {
         /// Pages of the same table, in the same document, whose grid could not be read — rows
         /// printed there are not in this lookup.
         let unreadPages: [ManualTable.Page]
+        /// How the row was found (Plan KD P0). Anything but its name is said in the result when
+        /// the name differs from what was asked.
+        var basis: RowBasis = .exact
+        /// The row as asked, for saying so.
+        var askedRow: String? = nil
+    }
+
+    /// How a lookup's row was found (Plan KD P0).
+    enum RowBasis: String, Equatable {
+        /// By the row's own heading, or a run of its headings.
+        case exact
+        /// By the AWG size its heading prints, in another form ("0000" for "4/0").
+        case awg
+        /// By a number its heading holds, or a printed range that holds it.
+        case number
+        /// By the words of its headings.
+        case words
+        /// By a chain's row rule (`at_least`, `at_most`) or a column search: the rule's choice.
+        case rule
     }
 
     enum Outcome: Equatable {
@@ -120,11 +139,12 @@ enum TableLookup {
         }
 
         switch resolveRow(request.row, in: table) {
-        case .rows(let rows):
-            return unlessUnclear(Found(source: source, rows: rows, columns: columns, between: nil, unreadPages: unread))
+        case .rows(let rows, let basis):
+            return unlessUnclear(Found(source: source, rows: rows, columns: columns, between: nil, unreadPages: unread,
+                                       basis: basis, askedRow: request.row))
         case .between(let lower, let upper, let value):
             return unlessUnclear(Found(source: source, rows: [lower, upper], columns: columns, between: value,
-                                       unreadPages: unread))
+                                       unreadPages: unread, basis: .number, askedRow: request.row))
         case .ambiguous(let rows):
             return .ambiguous(.row, asked: request.row, candidates: rows.map(rowName))
         case .outside(let range):
@@ -328,7 +348,7 @@ enum TableLookup {
     // MARK: Rows
 
     private enum RowMatch {
-        case rows([ManualTable.Row])
+        case rows([ManualTable.Row], RowBasis)
         case between(ManualTable.Row, ManualTable.Row, Double)
         case ambiguous([ManualTable.Row])
         /// A number outside the rows' range; the range, to say.
@@ -344,13 +364,27 @@ enum TableLookup {
         let key = normalised(asked)
         guard !key.isEmpty, !rows.isEmpty else { return .none }
 
+        // 0. An AWG aught size (Plan KD P0), before anything reads it as numbers: "4/0", "4/0 AWG",
+        // "0000" and "four aught" are one size, and a row printed in any of those forms is that
+        // row. An aught size that no row prints finds nothing — never row 4, never row 0.
+        if let size = askedAWGSize(asked, in: table) {
+            if case .rows(let found, _) = exactRow(key, in: rows) { return .rows(found, .exact) }
+            let sized = rows.filter { awgSize(of: $0, in: table) == size }
+            if sized.count == 1 { return .rows(sized, .awg) }
+            if sized.count > 1 {
+                // "4/0 aluminum" over a copper and an aluminum 4/0: the other words decide.
+                let others = significantWords(asked).filter { !AWGSize.isSizeWord($0) }
+                let narrowed = sized.filter { others.isSubset(of: significantWords($0.path.joined(separator: " "))) }
+                return !others.isEmpty && narrowed.count == 1 ? .rows(narrowed, .awg) : .ambiguous(sized)
+            }
+            return .none
+        }
+
         // 1. Exactly a header: one of the row's headers, or a run of them ("QXRT three conductors").
-        let exact = rows.filter { suffixesAndParts($0.path).contains(key) }
-        if exact.count == 1 { return .rows(exact) }
-        if exact.count > 1 {
-            let whole = exact.filter { normalised($0.path.joined(separator: " ")) == key
-                || normalised($0.path.dropFirst().joined(separator: " ")) == key }
-            return whole.count == 1 ? .rows(whole) : .ambiguous(exact)
+        switch exactRow(key, in: rows) {
+        case .rows(let found, let basis): return .rows(found, basis)
+        case .ambiguous(let found): return .ambiguous(found)
+        default: break
         }
 
         // Past an exact name, the rows are matched by number or by words, and every row is a
@@ -362,13 +396,25 @@ enum TableLookup {
         // rows either side of it. Words beside the number narrow the rows first ("QXRT 35").
         if let value = number(in: asked) {
             let others = significantWords(asked.replacingOccurrences(of: numberText(in: asked) ?? "", with: " "))
-            // Words no row prints (a unit said after the number) narrow nothing.
-            let filtered = rows.filter { others.isSubset(of: significantWords($0.path.joined(separator: " "))) }
-            let narrowed = others.isEmpty || filtered.isEmpty ? rows : filtered
+            let rowWords = { (row: ManualTable.Row) in significantWords(row.path.joined(separator: " ")) }
+            let filtered = rows.filter { others.isSubset(of: rowWords($0)) }
+            // Words no row prints (a unit said after the number) narrow nothing — but a number
+            // no row prints is never dropped (Plan KD P0): "4 0" is not 4 with a word left over.
+            let leftoverNumbers = others.filter { $0.first?.isNumber == true }
+            let narrowed: [ManualTable.Row]
+            if others.isEmpty {
+                narrowed = rows
+            } else if !filtered.isEmpty {
+                narrowed = filtered
+            } else if leftoverNumbers.isEmpty {
+                narrowed = rows
+            } else {
+                narrowed = rows.filter { leftoverNumbers.isSubset(of: rowWords($0)) }
+            }
             let keyed = narrowed.compactMap { row in numericKey(of: row).map { (row, $0) } }
             if !keyed.isEmpty {
                 let hits = keyed.filter { $0.1.contains(value) }.map(\.0)
-                if hits.count == 1 { return .rows(hits) }
+                if hits.count == 1 { return .rows(hits, .number) }
                 if hits.count > 1 { return .ambiguous(hits) }
                 let below = keyed.filter { $0.1.upper < value }
                 let above = keyed.filter { $0.1.lower > value }
@@ -381,13 +427,56 @@ enum TableLookup {
                 guard lower.count == 1, upper.count == 1 else { return .ambiguous(lower + upper) }
                 return .between(lower[0], upper[0], value)
             }
+            if !leftoverNumbers.isEmpty, narrowed.isEmpty { return .none }
         }
 
         // 3. The nearest words.
         switch bestByWords(asked, among: rows.map(\.path)) {
-        case .one(let index): return .rows([rows[index]])
+        case .one(let index): return .rows([rows[index]], .words)
         case .several(let indexes): return .ambiguous(indexes.map { rows[$0] })
         case .none: return .none
+        }
+    }
+
+    /// The row whose headers, or a run of them, are exactly `key`; several when more than one fits
+    /// and none fits whole.
+    private static func exactRow(_ key: String, in rows: [ManualTable.Row]) -> RowMatch {
+        let exact = rows.filter { suffixesAndParts($0.path).contains(key) }
+        if exact.count == 1 { return .rows(exact, .exact) }
+        guard exact.count > 1 else { return .none }
+        let whole = exact.filter { normalised($0.path.joined(separator: " ")) == key
+            || normalised($0.path.dropFirst().joined(separator: " ")) == key }
+        return whole.count == 1 ? .rows(whole, .exact) : .ambiguous(exact)
+    }
+
+    /// The AWG size the asked row names (Plan KD P0), or nil. A bare "0" is 1/0 only in a table
+    /// that prints aught sizes; in a table of temperatures it is the number 0.
+    private static func askedAWGSize(_ asked: String, in table: ManualTable) -> String? {
+        guard let size = AWGSize.find(in: asked) else { return nil }
+        if asked.trimmingCharacters(in: .whitespaces) == "0" {
+            return printsAughtSizes(table) ? size : nil
+        }
+        return size
+    }
+
+    /// The AWG size a row's headings print, or nil. A heading of a bare "0" counts only in a table
+    /// that prints another aught size.
+    private static func awgSize(of row: ManualTable.Row, in table: ManualTable) -> String? {
+        for header in row.path {
+            let text = header.trimmingCharacters(in: .whitespaces)
+            if text == "0" { if printsAughtSizes(table) { return "1/0" } else { continue } }
+            if let size = AWGSize.canonical(text) { return size }
+        }
+        return nil
+    }
+
+    /// Whether some row prints an aught size other than a bare "0": "1/0", "00", "0000".
+    private static func printsAughtSizes(_ table: ManualTable) -> Bool {
+        table.rows.contains { row in
+            row.path.contains { header in
+                let text = header.trimmingCharacters(in: .whitespaces)
+                return text != "0" && AWGSize.canonical(text) != nil
+            }
         }
     }
 
@@ -632,17 +721,42 @@ enum TableLookup {
             let table = source.table
             return "\(table.displayName) is printed on " + pages.map(spokenPage).joined(separator: ", ")
                 + " of \(source.documentName) as a picture, and \(unclearReason(part)), so there is no value to give. "
-                + "Do not answer from memory. Tell the technician, and offer to show the page with show_source.\n"
+                + "Do not answer from memory. Tell the technician, and offer to show the page (open it with show_source only if they ask).\n"
                 + sourceLine(documentName: source.documentName, label: table.label, pages: pages)
         case .notExtracted(let source):
             let table = source.table
             return "\(table.displayName) is printed on \(spokenPage(table.page)) of \(source.documentName), "
                 + "but its grid could not be read from the PDF (\(reason(table.failure))), so there is no cell to give. "
-                + "Do not answer from memory. Tell the technician, and offer to show the page with show_source.\n"
+                + "Do not answer from memory. Tell the technician, and offer to show the page (open it with show_source only if they ask).\n"
                 + sourceLine(documentName: source.documentName, label: table.label, pages: [table.page])
         case .found(let found):
             return renderFound(found)
         }
+    }
+
+    /// What a row found by number or by words says when it is not the row asked for (Plan KD P0):
+    /// "4/0" answered from row 4 was the retest's wrong answer. Row matching no longer does that,
+    /// and this says so plainly if anything ever does. Nil when the row is the one asked for — a
+    /// range that holds the number, "2.5" for "2.5 mm²". Pure.
+    static func mismatchLine(_ found: Found) -> String? {
+        guard found.between == nil, found.basis == .number || found.basis == .words,
+              let asked = found.askedRow?.trimmingCharacters(in: .whitespacesAndNewlines), !asked.isEmpty,
+              let row = found.rows.first else { return nil }
+        let rowWords = significantWords(row.path.joined(separator: " "))
+        let askedSize = AWGSize.find(in: asked)
+        let differs: Bool
+        if let askedSize {
+            differs = row.path.lazy.compactMap(AWGSize.canonical).first != askedSize
+        } else {
+            // Every number asked beyond the one matched must be printed in the row.
+            let primary = numberText(in: asked).map { normalised($0) }
+            let extra = significantWords(asked).filter { $0.first?.isNumber == true && $0 != primary }
+            differs = !extra.isSubset(of: rowWords)
+        }
+        guard differs else { return nil }
+        let how = found.basis == .number ? "by number" : "by its words"
+        return "Asked for row \"\(asked)\"; matched row \"\(rowName(row))\" \(how) — not the same row. "
+            + "Do not answer from it; ask which \(askedSize == nil ? "row" : "size")."
     }
 
     /// Why a lookup on a table read from a picture gives no value (Plan JN P2).
@@ -702,6 +816,7 @@ enum TableLookup {
         let table = source.table
         let pictured = table.source.isRecognised
         var lines = ["\(table.displayName), \(source.documentName):"]
+        if let mismatch = mismatchLine(found) { lines.append(mismatch) }
         func rowLine(_ row: ManualTable.Row) -> String {
             let cells = found.columns.map { index -> String in
                 let cell = index < row.cells.count ? row.cells[index] : ManualTable.Cell(text: "")
@@ -743,13 +858,14 @@ enum TableLookup {
                 lines.append("This table is printed as a picture, and the value was read from that picture on the phone, not "
                              + "from the PDF's text, then checked against the page. Say it was "
                              + pictureNote(documentName: source.documentName, page: pages(of: found)[0])
-                             + " and " + TableChecks.checkedNote(mark) + ", and offer to show the page with show_source.")
+                             + " and " + TableChecks.checkedNote(mark) + ", and offer to show the page (open it with "
+                             + "show_source only if they ask).")
             } else {
                 lines.append("This table is printed as a picture, and the value was read from that picture on the phone, not "
                              + "from the PDF's text. Say it was " + pictureNote(documentName: source.documentName,
                                                                              page: pages(of: found)[0])
                              + ", read the value back to the technician to check against the page, and offer to show the page "
-                             + "with show_source.")
+                             + "(open it with show_source only if they ask).")
             }
         }
         lines.append("Read the value out as printed, with its row, column and page. Do not interpolate, round, "
@@ -788,7 +904,7 @@ extension TableLookup {
             // `resolve` gave the two rows only with every key of the table clear (Plan JN P1).
             let row = rule == .atLeast ? found.rows[1] : found.rows[0]
             return unlessUnclear(Found(source: found.source, rows: [row], columns: found.columns, between: nil,
-                                       unreadPages: found.unreadPages))
+                                       unreadPages: found.unreadPages, basis: .rule, askedRow: found.askedRow))
         case .notFound(.row, _, _):
             guard let value = number(in: request.row),
                   case .success(let resolved) = resolveTable(request, in: sources),
@@ -806,7 +922,7 @@ extension TableLookup {
             }
             guard let pick else { return outcome }
             let found = Found(source: resolved.source, rows: [pick], columns: columns, between: nil,
-                              unreadPages: resolved.unread)
+                              unreadPages: resolved.unread, basis: .rule, askedRow: request.row)
             // The first or last row by key: a misread key anywhere may have moved which that is.
             if resolved.source.table.rows.contains(where: \.keyUncertain) {
                 return .unclear(resolved.source, pages: pages(of: found), part: .rowKey)
@@ -880,7 +996,7 @@ extension TableLookup {
         }
         guard let row = chosen.first else { return .none(resolved.source, column: column, range: range) }
         let found = Found(source: resolved.source, rows: [row], columns: [column], between: nil,
-                          unreadPages: resolved.unread)
+                          unreadPages: resolved.unread, basis: .rule)
         if case .unclear(let source, let pages, let part) = unlessUnclear(found) {
             return .refused(.unclear(source, pages: pages, part: part))
         }

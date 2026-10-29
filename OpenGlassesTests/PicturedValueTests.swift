@@ -40,7 +40,7 @@ final class PicturedValueTests: XCTestCase {
         TableLookup.resolve(.init(table: "Table Q7", row: row, column: column), in: [source(table)])
     }
 
-    private let doNotAnswer = "Do not answer from memory. Tell the technician, and offer to show the page with show_source."
+    private let doNotAnswer = "Do not answer from memory. Tell the technician, and offer to show the page (open it with show_source only if they ask)."
 
     // MARK: - A recognised cell is given, and says where it came from
 
@@ -52,7 +52,7 @@ final class PicturedValueTests: XCTestCase {
                                 text)
         XCTAssertTrue(row.hasSuffix(" — read from a picture of the table on page 31 of Invented Book"), row)
         XCTAssertTrue(text.contains("read the value back to the technician"), text)
-        XCTAssertTrue(text.contains("offer to show the page with show_source"), text)
+        XCTAssertTrue(text.contains("offer to show the page (open it with show_source only if they ask)"), text)
         XCTAssertTrue(text.contains("Notes printed with a table read from a picture are not read"), text)
         XCTAssertTrue(text.hasSuffix("Source: Invented Book, page 7 (printed 31), Table Q7"), text)
     }

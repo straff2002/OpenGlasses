@@ -322,6 +322,36 @@ final class ManualFigureTests: XCTestCase {
                      "an empty call asks for a figure rather than repeating the last one")
     }
 
+    /// Plan KD P0: "printed page 57" opened PDF page 57. A printed page goes through the
+    /// manual's printed page numbers, an unknown one is refused, and the reply names both pages.
+    func testAPrintedPageOpensThePageThatPrintsItAndSaysWhichOpened() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        let document = try XCTUnwrap(store.list(namespace: DocumentStore.vaultNamespace(Self.vaultId)).first)
+        store.setPageLabels([PageLabel(page: 1, label: "29", source: .printed),
+                             PageLabel(page: 2, label: "30", source: .printed)], documentId: document.id)
+        let tool = ManualFigureTool(documentStore: store, sessionService: service, currentUtterance: { nil })
+
+        let printed = try await tool.execute(args: ["printed_page": "30"])
+        XCTAssertEqual(service.stagedFigure?.page, 2)
+        XCTAssertTrue(printed.contains("Opened PDF page 2 (printed page 30)"), printed)
+
+        service.stageFigure(nil)
+        let unknown = try await tool.execute(args: ["printed_page": "2"])
+        XCTAssertTrue(unknown.contains("No loaded manual has a page printed \"2\""), unknown)
+        XCTAssertNil(service.stagedFigure, "never PDF page 2 in its place")
+
+        // The words say printed even when the call passes the number as 'page'.
+        let said = ManualFigureTool(documentStore: store, sessionService: service,
+                                    currentUtterance: { "show me printed page 30" })
+        _ = try await said.execute(args: ["page": 30])
+        XCTAssertEqual(service.stagedFigure?.page, 2)
+
+        service.stageFigure(nil)
+        let byPDFPage = try await tool.execute(args: ["page": 1])
+        XCTAssertTrue(byPDFPage.contains("Opened PDF page 1 (printed page 29)"), byPDFPage)
+    }
+
     func testTheToolSaysWhenTheDocumentHasNoPageToShow() async throws {
         let store = makeStore()
         let service = try await startSession(store: store)

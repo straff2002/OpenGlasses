@@ -116,6 +116,17 @@ struct DictationVocabulary: Equatable, Sendable {
         return out
     }
 
+    // MARK: - After recognition
+
+    /// A transcript as the trades in force read it (Plan KD P0): with the electrical trade, every
+    /// spoken AWG aught size is written as printed ("four aught" → "4/0"), so the model and
+    /// `table_lookup` see the size the technician said rather than a "4" and a word. Nothing else
+    /// is rewritten, and without the electrical trade nothing at all.
+    static func postProcess(_ transcript: String, trades: [FieldTrade]) -> String {
+        guard trades.contains(.electrical) else { return transcript }
+        return AWGSize.rewritingSpokenSizes(in: transcript)
+    }
+
     // MARK: - Trade glossaries
 
     /// The words a technician in this trade says that a general recogniser hears badly:
@@ -150,6 +161,9 @@ struct DictationVocabulary: Equatable, Sendable {
         // Wire gauges and sizes said aloud
         "AWG", "14 gauge", "12 gauge", "10 gauge", "8 gauge", "6 gauge", "4 gauge", "2 gauge",
         "1/0", "2/0", "3/0", "4/0", "kcmil", "MCM",
+        // The aught sizes as printed in some books and as said aloud (Plan KD P0)
+        "00", "000", "0000", "one aught", "two aught", "three aught", "four aught", "double aught",
+        "triple aught", "quadruple aught",
         // Cable and conduit
         "Romex", "NM-B", "THHN", "MC cable", "EMT", "conduit", "junction box",
         // Protection said letter by letter

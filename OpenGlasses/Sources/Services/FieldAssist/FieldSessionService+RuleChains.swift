@@ -284,7 +284,8 @@ extension FieldSessionService {
             + keptChains.compactMap { kept in kept.chain.map { ($0, ChainOrigin.kept) } }
         if !offered.isEmpty {
             var lines = ["RULE CHAINS this vault offers. When the technician's question is one a chain answers, offer it "
-                         + "and start it with rule_chain 'start' (pass its name); never work its steps yourself:"]
+                         + "by name; start it (rule_chain 'start', its name) only when they ask for it or say yes to "
+                         + "your offer. Never work its steps yourself:"]
             lines += offered.prefix(8).map { chain, origin in
                 "- \(chain.name)" + (origin.marking.map { " (\($0))" } ?? "")
                     + (chain.answers.isEmpty ? "" : ": \(chain.answers)")

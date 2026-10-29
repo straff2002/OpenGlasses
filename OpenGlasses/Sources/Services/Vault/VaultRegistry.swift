@@ -269,12 +269,33 @@ enum VaultSelection {
         // Exact IDs are authoritative, even if another vault has the same display name.
         if let exact = manifests.first(where: { $0.id == value }) { return exact.id }
         guard !key.isEmpty else { throw Failure.unknown(value) }
-        let matches = manifests.filter { normalized($0.id) == key || normalized($0.name) == key }
+        var matches = manifests.filter { normalized($0.id) == key || normalized($0.name) == key }
+        // "The … vault": a name copied from the app's own sentence about it carries words the
+        // vault's name does not (Plan KD P0). Tried only when the name as given matched nothing,
+        // on both sides alike, so a vault really named "… Vault" still matches as it always did.
+        let bare = normalized(withoutVaultWords(value))
+        if matches.isEmpty, !bare.isEmpty, bare != key {
+            matches = manifests.filter {
+                normalized($0.id) == bare || normalized($0.name) == bare
+                    || normalized(withoutVaultWords($0.name)) == bare
+            }
+        }
         guard matches.count == 1 else {
             if matches.isEmpty { throw Failure.unknown(value) }
             throw Failure.ambiguous(value)
         }
         return matches[0].id
+    }
+
+    /// `value` with a leading "the" and a trailing "vault" (or "vaults") left out, word-wise.
+    static func withoutVaultWords(_ value: String) -> String {
+        var words = value.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        func bare(_ word: String) -> String {
+            word.lowercased().trimmingCharacters(in: .punctuationCharacters)
+        }
+        if let first = words.first, bare(first) == "the" { words.removeFirst() }
+        if let last = words.last, ["vault", "vaults"].contains(bare(last)) { words.removeLast() }
+        return words.joined(separator: " ")
     }
 
     private static func normalized(_ value: String) -> String {
