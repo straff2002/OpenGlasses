@@ -180,7 +180,8 @@ enum GlassesLinkCuePolicy {
     ///   is three, each longer than either of that pair's, and lasts more than twice as long. It
     ///   starts a fourth above that pair, so the first note already differs.
     /// - the connect pair, the session-restored triad and the unmute pair rise. This only falls.
-    /// - the listening tones (880 Hz, 440 Hz) and the held and rejected blips are single notes.
+    /// - the listening cues (`ListeningCuePolicy`) are two quick notes each, over in under a
+    ///   fifth of a second; the held and rejected blips are single notes.
     /// - the failure double and the recording doubles repeat one pitch. No pitch repeats here.
     /// - the temple-tap "ended" earcon (660, 494, 330 Hz) is the other three-note fall. It is
     ///   staccato, an octave wide and done in a third of a second, in answer to the wearer's own

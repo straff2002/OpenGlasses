@@ -741,7 +741,9 @@ struct OpenGlassesApp: App {
                             await appState.wakeWordService.reconfigureAudioSessionIfNeeded()
                             // Small delay for route to stabilize after foregrounding
                             try? await Task.sleep(nanoseconds: 500_000_000)
-                            try? await appState.wakeWordService.startListening()
+                            // Plan KD P1: a refusal here is reported (it used to be dropped), and
+                            // a start that works clears one refused in the background.
+                            await appState.restartWakeWordOnForeground()
                         }
                     }
                 }
@@ -1214,9 +1216,18 @@ class AppState: ObservableObject, AppStateProtocol {
     /// it right after can leave it `true`. A glasses link coming up clears `errorMessage`
     /// automatically only while this is set — never an unrelated failure.
     @Published private(set) var errorMessageIsGlassesConnection = false
+    /// The same rule for the wake-word listener's own failure (Plan KD P1): set only right after
+    /// `armWakeWord` reports it, so a listener that starts clears that message and nothing else.
+    @Published private(set) var errorMessageIsListenerFailure = false
     @Published var errorMessage: String? {
-        didSet { errorMessageIsGlassesConnection = false }
+        didSet {
+            errorMessageIsGlassesConnection = false
+            errorMessageIsListenerFailure = false
+        }
     }
+    /// The last wake-word start failed and no listener has started since. The session card reads
+    /// it through `WakeListenerFailurePolicy.isDown`, so it never says "Ready" over a dead mic.
+    @Published private(set) var wakeListenerFailed = false
     @Published var currentMode: AppMode = Config.appMode
     @Published var activePersona: Persona? {
         // Mirrored into `Config` as well as memory: the static prompt assembly resolves the
@@ -4638,6 +4649,11 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append($isListening.sink(receiveValue: reevaluateTempleClaim))
         cancellables.append($isProcessing.sink(receiveValue: reevaluateTempleClaim))
         cancellables.append(wakeWordService.$isListening.sink(receiveValue: reevaluateTempleClaim))
+        // Plan KD P1: whichever path started it, a running listener ends a recorded failure.
+        cancellables.append(wakeWordService.$isListening.sink { [weak self] running in
+            guard running else { return }
+            DispatchQueue.main.async { self?.noteWakeListenerRunning() }
+        })
         cancellables.append(geminiLiveSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
         cancellables.append(openAIRealtimeSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
         if Config.mediaTriggerEnabled { mediaTrigger.start() }
@@ -4652,12 +4668,15 @@ class AppState: ObservableObject, AppStateProtocol {
         // from the assistant's own voice coming back through it. There is no echo cancellation on
         // this path — without this the reply cut itself off one to two seconds in, every time.
         // The route is read now, not cached: the phone's loudspeaker is the case where the reply
-        // is loudest in the microphone (build 420 cut every answer off on it).
+        // is loudest in the microphone (build 420 cut every answer off on it), and the phone's mic
+        // under Bluetooth speakers has no echo cancellation either (build 581).
         wakeWordService.assistantSpeechContext = { [weak self] in
             guard let self, self.speechService.isSpeaking else { return .silent }
-            let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
+            let route = AVAudioSession.sharedInstance().currentRoute
             return .speaking(text: self.speechService.lastSpokenText,
-                             openSpeaker: MicRoutePolicy.isOpenSpeaker(outputs))
+                             openSpeaker: MicRoutePolicy.hasNoEchoPath(
+                                inputs: route.inputs.map(\.portType),
+                                outputs: route.outputs.map(\.portType)))
         }
 
         // Voice-activity barge-in: user starts speaking during TTS → stop and process new query
@@ -6879,16 +6898,28 @@ class AppState: ObservableObject, AppStateProtocol {
         // after whatever was being said, and before the microphone re-arms, so the next thing
         // heard is the answer. Speaks only when something is genuinely due, and the ask budget
         // means a technician who ignores it is not nagged.
-        await guidedJobFlow.speakPendingQuestionIfDue()
+        let appAskedQuestion = await guidedJobFlow.speakPendingQuestionIfDue()
         guard !spokenTurnGate.isReplacing else { return }
         // The user may have disabled listening while the turn was finishing — a finish stage must
         // never turn the microphone back on behind their back. But it must still CLOSE the
         // conversation: returning with `inConversation` left true stranded the app until a
         // force-quit, because every later wake word was then dropped as `alreadyProcessing`.
         // `returnToWakeWord()` re-checks the toggle before it goes near the mic.
+        // Plan KD P1: with "One Question at a Time" on, the answer ends the conversation — unless
+        // the turn asked the wearer something back, which still gets its one capture.
+        let singleQuestion = Config.singleQuestionPerActivation
+        let answerOwed = FinishStagePolicy.answerOwed(lastSpoken: speechService.lastSpokenText,
+                                                      appAskedQuestion: appAskedQuestion,
+                                                      handsFreeModeRunning: teleprompterService.isActive)
         if FinishStagePolicy.action(listeningEnabled: listeningEnabled,
-                                    inConversation: inConversation) == .endConversation {
-            if !listeningEnabled { PrivacyLog.wakeWord(.listenerSkippedDisabled) }
+                                    inConversation: inConversation,
+                                    singleQuestion: singleQuestion,
+                                    answerOwed: answerOwed) == .endConversation {
+            if !listeningEnabled {
+                PrivacyLog.wakeWord(.listenerSkippedDisabled)
+            } else if singleQuestion && inConversation {
+                PrivacyLog.app(.conversationEnded, detail: PrivacyToken("singleQuestion"))
+            }
             await returnToWakeWord()
             return
         }
@@ -8996,13 +9027,37 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Open the wake-word listener, reporting failure the way the wearer can act on.
+    ///
+    /// Plan KD P1: a start refused while the app is not in front (the end-of-turn re-arm racing
+    /// the app into the background, build 581) is recorded but shows no instruction — the
+    /// foreground re-arm is what fixes it. Either way the failure is cleared by the next listener
+    /// that starts (`noteWakeListenerRunning`).
     private func armWakeWord() async {
         do {
             try await wakeWordService.startListening()
         } catch {
-            PrivacyLog.wakeWord(.listenAttemptFailed, error: SafeErrorSummary(error))
-            errorMessage = String(localized: "Tap Test Microphone to restart")
+            let appActive = UIApplication.shared.applicationState == .active
+            PrivacyLog.wakeWord(.listenAttemptFailed,
+                                reason: PrivacyToken(appActive ? "foreground" : "background"),
+                                error: SafeErrorSummary(error))
+            wakeListenerFailed = true
+            if let message = WakeListenerFailurePolicy.message(appActive: appActive) {
+                errorMessage = message
+                errorMessageIsListenerFailure = true
+            }
         }
+    }
+
+    /// The foreground's restart of the wake-word listener, through the same failure reporting as
+    /// every other re-arm. The caller has already read the master switch (`WakeAutoRestartPolicy`).
+    func restartWakeWordOnForeground() async {
+        await armWakeWord()
+    }
+
+    /// A listener started: the microphone works, so the failure it replaced is over.
+    private func noteWakeListenerRunning() {
+        if wakeListenerFailed { wakeListenerFailed = false }
+        if errorMessageIsListenerFailure { errorMessage = nil }
     }
 
     /// Try again, a bounded number of times, after a skip whose condition can clear on its own.

@@ -303,8 +303,12 @@ final class GuidedJobFlow: ObservableObject {
     ///
     /// Safe to call on every turn: it speaks only when something is genuinely due, and the ask
     /// budget means a technician who ignores it twice is left alone.
-    func speakPendingQuestionIfDue() async {
-        guard sessions.activeSession?.isActive == true else { return }
+    ///
+    /// Returns whether a question was put, so the finish stage can keep the microphone open for
+    /// its answer when the wearer has asked for one question per activation (Plan KD P1).
+    @discardableResult
+    func speakPendingQuestionIfDue() async -> Bool {
+        guard sessions.activeSession?.isActive == true else { return false }
 
         if let question = pendingUnitQuestion,
            let pending = sessions.activeSession?.pendingUnitChange, pending.asked == 0 {
@@ -316,18 +320,19 @@ final class GuidedJobFlow: ObservableObject {
                                     detail: ["kind": AnyCodable("unit_change"),
                                              "candidate": AnyCodable(pending.candidate.modelToken)])
             await seams.speak(question.spoken)
-            return
+            return true
         }
 
-        guard intakeState.hasQuestionDue else { return }
+        guard intakeState.hasQuestionDue else { return false }
         let outcome = intakeState.advance(.questionAsked)
-        guard case .asked(let attempt) = outcome.state else { return }
+        guard case .asked(let attempt) = outcome.state else { return false }
         sessions.updateJobIntake(outcome.state)
         let line = attempt == 1 ? JobIntakePrompt.ask.spoken : JobIntakePrompt.askAgain.spoken
         sessions.logJobQuestion(line, asked: true,
                                 detail: ["kind": AnyCodable("job_reference"),
                                          "attempt": AnyCodable(attempt)])
         await seams.speak(line)
+        return true
     }
 
     /// Make sure the next turn lands in the job's conversation. Called before the store is asked

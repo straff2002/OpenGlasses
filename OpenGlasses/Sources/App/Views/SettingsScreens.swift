@@ -11,6 +11,7 @@ struct VoiceTriggersSettingsScreen: View {
     // the clamp and the defaulting stay in one place rather than being re-implemented per control.
     @State private var pauseWindow = SpeechContinuationPolicy.nearestPreset(to: Config.speechPauseWindow)
     @State private var bargeInEnabled = Config.speechBargeInEnabled
+    @State private var singleQuestion = Config.singleQuestionPerActivation
     // Plan JM P1 — "Check what I said before sending", read back through `Config` for the clamp.
     @State private var checkBeforeSending = Config.checkBeforeSendingEnabled
     @State private var checkBeforeSendingSeconds = Config.checkBeforeSendingSeconds
@@ -206,7 +207,19 @@ struct VoiceTriggersSettingsScreen: View {
                             Config.setSpeechBargeInEnabled(newValue)
                         }
                     ),
-                    info: "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. While it is speaking through the iPhone's own loudspeaker, only \"stop\" or the wake phrase interrupt it — the phone's microphone hears the answer, and the room, too loudly to tell you apart. Saying \"stop\", or the wake phrase, interrupts it either way."
+                    info: "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. While it is speaking through the iPhone's own loudspeaker — or through anything on Bluetooth while you talk into the iPhone's microphone — only \"stop\" or the wake phrase interrupt it: the phone's microphone hears the answer, and the room, too clearly to tell you apart. Saying \"stop\", or the wake phrase, interrupts it either way."
+                )
+
+                InfoToggle(
+                    title: "One Question at a Time",
+                    isOn: Binding(
+                        get: { singleQuestion },
+                        set: { newValue in
+                            singleQuestion = newValue
+                            Config.singleQuestionPerActivation = newValue
+                        }
+                    ),
+                    info: "On, each answer ends the conversation: say the wake phrase or tap Tap & Talk to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist."
                 )
             } header: {
                 Text("Pause & Interruptions")

@@ -668,10 +668,27 @@ struct StatusIndicator: View {
             case .disconnected: return openAISession.reconnecting ? String(localized: "Reconnecting...") : String(localized: "Disconnected")
             }
         } else {
-            if appState.isListening { return String(localized: "Listening...") }
-            if appState.speechService.isSpeaking { return String(localized: "Speaking...") }
-            return String(localized: "Ready")
+            switch WakeListenerFailurePolicy.directHeadline(
+                isListening: appState.isListening,
+                isSpeaking: appState.speechService.isSpeaking,
+                listenerDown: wakeListenerDown) {
+            case .listening: return String(localized: "Listening...")
+            case .speaking: return String(localized: "Speaking...")
+            case .notListening: return WakeListenerFailurePolicy.headline
+            case .ready: return String(localized: "Ready")
+            }
         }
+    }
+
+    /// Plan KD P1: the wake-word listener is expected and a start of it failed — the card must not
+    /// say "Ready" over a microphone nobody is listening on.
+    private var wakeListenerDown: Bool {
+        WakeListenerFailurePolicy.isDown(failed: appState.wakeListenerFailed,
+                                         listeningEnabled: appState.listeningEnabled,
+                                         pushToTalk: pushToTalk,
+                                         micMuted: appState.micMuted,
+                                         inConversation: appState.inConversation,
+                                         listenerRunning: appState.wakeWordService.isListening)
     }
 
     /// Why the selected live mode's last session ended, while none is running (Plan HY P1).
