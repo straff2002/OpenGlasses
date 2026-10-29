@@ -186,11 +186,16 @@ enum ModelFallbackChain {
     /// No foreground-hop / app-Shortcut providers exist in the current provider set, so every saved
     /// model is a valid automatic candidate; if one is ever added it must be excluded here (it
     /// would break hands-free operation — see the plan's guardrails).
+    ///
+    /// A photo turn with a Vision model chosen (Plan KA P1, `Config.visionRoleModelId`) tries that
+    /// model first and then today's order; it answers the photo turn itself. Without one, or with
+    /// one that no longer sees photos, the order is exactly today's.
     static func candidates(
         activeId: String,
         saved: [ModelConfig],
         fallbackOrder: [String],
-        requiresVision: Bool = false
+        requiresVision: Bool = false,
+        visionModelId: String? = nil
     ) -> [Candidate] {
         let byId = Dictionary(saved.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var orderedIds: [String] = []
@@ -208,7 +213,12 @@ enum ModelFallbackChain {
         // inference. Preserve the user's fallback order within each group.
         let selected = candidates.filter { $0.id == activeId }
         let fallbacks = candidates.filter { $0.id != activeId }
-        return selected + fallbacks.filter { !$0.isLocalMLX } + fallbacks.filter(\.isLocalMLX)
+        let ordered = selected + fallbacks.filter { !$0.isLocalMLX } + fallbacks.filter(\.isLocalMLX)
+        guard let visionModelId,
+              let chosen = ordered.first(where: { $0.id == visionModelId && $0.supportsVision }) else {
+            return ordered
+        }
+        return [chosen] + ordered.filter { $0.id != chosen.id }
     }
 
     /// Map a saved model to a cascade candidate.

@@ -332,6 +332,10 @@ struct AIPersonalitySettingsScreen: View {
     @State private var editingModel: ModelConfig? = nil
     @State private var showAddModel = false
     @ScaledMetric(relativeTo: .body) private var modelRowMinHeight: CGFloat = 44
+    /// Plan KA P1: what a key just added can also do, until each is used or the card dismissed.
+    @State private var keyCard: ModelRoleKeyCard?
+    @State private var keyCardError: String?
+    @State private var rolesRevision = 0
 
     // Intelligence settings
     @State private var intentClassifierEnabled = Config.intentClassifierEnabled
@@ -385,6 +389,28 @@ struct AIPersonalitySettingsScreen: View {
                 Text("AI Models")
             } footer: {
                 Text("Models are the AI you talk to. Add a key for any provider you want — you can switch between them anytime from the main screen.")
+            }
+
+            // MARK: Roles (Plan KA P1)
+            if let keyCard {
+                ModelRoleSuggestionCard(title: keyCard.title, suggestions: keyCard.suggestions,
+                                        onUse: { chosen in
+                                            let result = keyCard.applying(chosen, appState: appState)
+                                            self.keyCard = result.card
+                                            keyCardError = result.error
+                                            modelConfigs = Config.savedModels
+                                            rolesRevision += 1
+                                        },
+                                        onDismiss: {
+                                            self.keyCard = nil
+                                            keyCardError = nil
+                                        })
+                if let keyCardError {
+                    OGStatusLabel(keyCardError, kind: .error)
+                }
+            }
+            ModelRolesSection(appState: appState, revision: rolesRevision) {
+                modelConfigs = Config.savedModels
             }
 
             Section {
@@ -556,13 +582,21 @@ struct AIPersonalitySettingsScreen: View {
                 if let idx = modelConfigs.firstIndex(where: { $0.id == updated.id }) {
                     modelConfigs[idx] = updated
                     Config.setSavedModels(modelConfigs)
+                    rolesRevision += 1
                 }
             }
         }
+        // A live model added from the sheet's Realtime tab becomes the Live role's value.
+        .onChange(of: showAddModel) { _, showing in
+            if !showing { rolesRevision += 1 }
+        }
         .sheet(isPresented: $showAddModel) {
-            AddModelView { newModel in
+            AddModelView { newModel, listed in
                 modelConfigs.append(newModel)
                 Config.setSavedModels(modelConfigs)
+                keyCardError = nil
+                keyCard = ModelRoleKeyCard.forAdded(newModel, listed: listed)
+                rolesRevision += 1
             }
         }
         .onDisappear {

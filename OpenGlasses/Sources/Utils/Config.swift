@@ -717,6 +717,38 @@ struct Config {
         return savedModels.first(where: { $0.id == id }) ?? savedModels.first
     }
 
+    // MARK: - Roles (Plan KA P1)
+
+    private static let visionRoleModelKey = "visionRoleModelId"
+
+    /// The Vision role: the saved model a photo turn tries first, ahead of the fallback order, or
+    /// nil for Automatic (today's order). A stored id that no longer names a saved model that sees
+    /// photos reads as nil, so deleting the model or switching it to text-only needs no cleanup.
+    static var visionRoleModelId: String? {
+        ModelRoleCatalog.visionModelId(stored: UserDefaults.standard.string(forKey: visionRoleModelKey),
+                                       saved: savedModels)
+    }
+
+    static func setVisionRoleModelId(_ id: String?) {
+        if let id, !id.isEmpty {
+            UserDefaults.standard.set(id, forKey: visionRoleModelKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: visionRoleModelKey)
+        }
+    }
+
+    /// The Live role: the live model Live mode uses — the legacy Gemini or OpenAI one while the
+    /// app is in that older mode, as the conversation's model picker shows it — or nil with none
+    /// saved. The value is `activeRealtimeModelID`; there is no second copy.
+    static var liveRoleModelId: String? {
+        let saved = savedRealtimeModels
+        switch appMode {
+        case .geminiLive where saved.contains(where: { $0.id == "legacy-gemini" }): return "legacy-gemini"
+        case .openaiRealtime where saved.contains(where: { $0.id == "legacy-openai" }): return "legacy-openai"
+        default: return activeRealtimeModel?.id
+        }
+    }
+
     /// Photos can use a vision fallback even when the selected text model cannot see images.
     static var hasVisionCapableModel: Bool {
         let localOnly = MedicalLLMRoutingPolicy.isEnforced(hipaaMode: hipaaMode, localOnly: hipaaLocalOnly)
@@ -2064,6 +2096,13 @@ struct Config {
 
     static func setASREnginePreference(_ preference: ASREnginePreference) {
         UserDefaults.standard.set(preference.rawValue, forKey: "asrEnginePreference")
+    }
+
+    /// The Dictation role's one writer: the recogniser, and the cloud-dictation switch with it —
+    /// on for a cloud recogniser, off for any other — so the switch is the choice itself.
+    static func chooseRecognizer(_ preference: ASREnginePreference) {
+        setASREnginePreference(preference)
+        cloudDictationEnabled = preference.isCloud
     }
 
     // MARK: - App Mode
@@ -4977,26 +5016,6 @@ struct Config {
             disabled.subtract(internetRequiringTools)
         }
         setDisabledTools(disabled)
-    }
-
-    // MARK: - Local Model Roles
-
-    /// Preferred local model for text conversation (e.g. "mlx-community/Qwen2.5-3B-Instruct-4bit").
-    static var localTextModelId: String {
-        UserDefaults.standard.string(forKey: "localTextModelId") ?? ""
-    }
-
-    static func setLocalTextModelId(_ id: String) {
-        UserDefaults.standard.set(id, forKey: "localTextModelId")
-    }
-
-    /// Preferred local model for vision/photo tasks (e.g. "mlx-community/SmolVLM2-2.2B-Instruct-mlx").
-    static var localVisionModelId: String {
-        UserDefaults.standard.string(forKey: "localVisionModelId") ?? ""
-    }
-
-    static func setLocalVisionModelId(_ id: String) {
-        UserDefaults.standard.set(id, forKey: "localVisionModelId")
     }
 
     // MARK: - Agent Model

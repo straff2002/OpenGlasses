@@ -190,15 +190,21 @@ enum CloudVoiceRequests {
     }
 
     /// The speech models in the key's list, and nothing else. The list also carries chat, image,
-    /// embedding and Live models; only an id naming `tts` that answers `generateContent` is offered.
+    /// embedding and Live models. What a model is for is the classifier's call (`ModelKind.speech`,
+    /// Plan KA P1), as for every other picker; the id must still pass the URL-safety check, since
+    /// it goes into the request's path, and the model must answer `generateContent`, the method
+    /// the speech request calls.
     static func parseGeminiSpeechModels(_ data: Data) throws -> [GeminiSpeechModel] {
         let response = try JSONDecoder().decode(GeminiModelsResponse.self, from: data)
         var seen = Set<String>()
         return (response.models ?? []).compactMap { model -> GeminiSpeechModel? in
             guard let name = model.name else { return nil }
             let id = name.hasPrefix("models/") ? String(name.dropFirst("models/".count)) : name
-            guard isGeminiSpeechModelID(id),
-                  model.supportedGenerationMethods?.contains("generateContent") == true,
+            let methods = model.supportedGenerationMethods.map(Set.init)
+            guard ModelKindClassifier.kind(provider: .gemini, id: id,
+                                           metadata: ModelListMetadata(generationMethods: methods)) == .speech,
+                  isGeminiSpeechModelID(id),
+                  methods?.contains("generateContent") == true,
                   seen.insert(id).inserted else { return nil }
             let shown = model.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return GeminiSpeechModel(id: id, displayName: shown.isEmpty ? id : shown)

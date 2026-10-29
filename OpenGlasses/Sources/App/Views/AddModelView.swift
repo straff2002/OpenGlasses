@@ -26,7 +26,9 @@ struct AddModelView: View {
     @State private var providerTemplateID: String?
     @State private var saveError: String?
 
-    let onAdd: (ModelConfig) -> Void
+    /// The saved model and the list its key returned, so the "this key can also…" card can read
+    /// what the key reaches (Plan KA P1). The list is empty when none was loaded.
+    let onAdd: (ModelConfig, [ModelFetcher.RemoteModel]) -> Void
 
     var body: some View {
         NavigationStack {
@@ -96,7 +98,7 @@ struct AddModelView: View {
                             smallContext: smallContext,
                             providerTemplateID: providerTemplateID
                         )
-                        onAdd(config)
+                        onAdd(config, availableModels)
                         dismiss()
                     }
                     .disabled(!canAdd)
