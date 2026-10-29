@@ -37,8 +37,8 @@ enum JobReferenceClassifier {
         if affirmativePhrases.contains(normalised) { return .affirmative }
         if negativePhrases.contains(normalised) { return .negative }
 
-        let stripped = stripCarrierPhrase(from: trimmed)
-        if looksLikeReference(stripped) { return .reference(stripped) }
+        let (stripped, carried) = strip(trimmed)
+        if looksLikeReference(stripped, afterCarrier: carried) { return .reference(stripped) }
         return .unrelated
     }
 
@@ -48,12 +48,19 @@ enum JobReferenceClassifier {
     ///
     /// Must contain a digit: alphabetic-only answers ("the Henderson job") are real but cannot be
     /// told apart from ordinary speech, and guessing at one is worse than asking again.
-    static func looksLikeReference(_ candidate: String) -> Bool {
-        guard !candidate.isEmpty, candidate.count <= maximumLength else { return false }
+    ///
+    /// `afterCarrier` is true when the technician introduced the answer — "job number …", "name
+    /// …", "call it …" (Plan KD P0). A job named in words ("electric vault test 1.3") is longer
+    /// than a bare number, and the carrier says it is the answer, so it may run to six words and
+    /// forty characters; the read-back still catches a mishearing.
+    static func looksLikeReference(_ candidate: String, afterCarrier: Bool = false) -> Bool {
+        let (lengthLimit, wordLimit) = afterCarrier
+            ? (maximumCarriedLength, maximumCarriedWords) : (maximumLength, maximumWords)
+        guard !candidate.isEmpty, candidate.count <= lengthLimit else { return false }
         guard !candidate.contains("?") else { return false }
         guard candidate.rangeOfCharacter(from: .decimalDigits) != nil else { return false }
         let words = candidate.lowercased().split(whereSeparator: { $0 == " " }).map(String.init)
-        guard !words.isEmpty, words.count <= maximumWords else { return false }
+        guard !words.isEmpty, words.count <= wordLimit else { return false }
         guard !questionOpeners.contains(words[0]) else { return false }
         for word in words {
             let bare = word.trimmingCharacters(in: .punctuationCharacters)
@@ -75,15 +82,23 @@ enum JobReferenceClassifier {
     /// to strip as cleanly as "no its 1005", but what comes back is the technician's own spelling
     /// of the number, character for character.
     static func stripCarrierPhrase(from text: String) -> String {
+        strip(text).text
+    }
+
+    /// The text with its carrier phrases off, and whether one of them introduced a job number or
+    /// name ("job number", "name", "call it") rather than being filler ("yeah", "um", "it's").
+    static func strip(_ text: String) -> (text: String, carried: Bool) {
         var current = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var carried = false
         for _ in 0..<maximumCarrierStrips {
             guard let phrase = carrierPhrases.first(where: { matchesPrefix($0, of: current) }),
                   let remainder = dropPrefixWords(phrase, from: current) else { break }
+            if !fillerCarriers.contains(phrase) { carried = true }
             current = remainder
         }
         // A trailing full stop or exclamation is the recogniser's, not the technician's.
         while let last = current.last, ".!,".contains(last) { current = String(current.dropLast()) }
-        return current.trimmingCharacters(in: .whitespaces)
+        return (current.trimmingCharacters(in: .whitespaces), carried)
     }
 
     /// Whether `phrase` is the start of `text` once both are reduced to bare lowercase words.
@@ -121,6 +136,9 @@ enum JobReferenceClassifier {
 
     private static let maximumLength = 24
     private static let maximumWords = 4
+    /// Once a carrier said this is the answer (Plan KD P0).
+    private static let maximumCarriedLength = 40
+    private static let maximumCarriedWords = 6
     private static let maximumCarrierStrips = 4
     private static let allowedPunctuation = CharacterSet(charactersIn: " -/#._")
 
@@ -128,6 +146,11 @@ enum JobReferenceClassifier {
     /// they are matched against. Most words first, so "job number" wins over "job".
     private static let carrierPhrases: [String] = [
         "no its job number", "no its job", "the job number is", "the work order number is",
+        "the job name is", "job name", "the name is", "name it", "name", "named",
+        "call it", "its called", "it is called",
+        // "Job number" as the recogniser has heard it on site. Only ever a leading carrier, so
+        // "voltage drop on number 6" never reaches it.
+        "drop number",
         "job number", "job no", "job ref", "job reference", "job id", "job",
         "work order number", "work order no", "work order", "workorder",
         "ticket number", "ticket no", "ticket", "reference", "ref",
@@ -139,6 +162,12 @@ enum JobReferenceClassifier {
         let (a, b) = ($0.split(separator: " ").count, $1.split(separator: " ").count)
         return a == b ? $0.count > $1.count : a > b
     }
+
+    /// Carriers that say nothing about the answer being a job number or name.
+    private static let fillerCarriers: Set<String> = [
+        "its", "it is", "thats", "that is", "no its", "no it is", "no", "yeah", "yep", "yes",
+        "erm", "um", "uh",
+    ]
 
     private static let declinePhrases: Set<String> = [
         "i dont have one", "i do not have one", "i havent got one", "i have not got one",

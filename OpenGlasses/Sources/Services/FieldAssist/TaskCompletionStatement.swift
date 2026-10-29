@@ -197,4 +197,13 @@ enum TechnicianWords {
         let words = app.turnUtterance.trimmingCharacters(in: .whitespacesAndNewlines)
         return words.isEmpty ? nil : words
     }
+
+    /// What the assistant said last, before the turn in flight: what a bare "yes" answers (Plan
+    /// KD P0 — "shall I close the job?", "want me to run the sizing chain?"). Nil outside a turn,
+    /// as `current()` is.
+    @MainActor static func previousReply() -> String? {
+        guard let app = AppStateProvider.shared, app.isProcessing else { return nil }
+        let reply = app.lastResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reply.isEmpty ? nil : reply
+    }
 }

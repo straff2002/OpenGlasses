@@ -268,6 +268,35 @@ final class GuidedJobFlow: ObservableObject {
         return true
     }
 
+    /// A typed message while the app's job-number question is open (Plan KD P0): the answer to it,
+    /// taken by the same classifier the spoken answer goes through, and recorded as typed — a
+    /// typed number has nothing to mishear, so it needs no read-back, as the Job tab's field does
+    /// not. Returns the app's reply line when the message was the answer and must go no further;
+    /// nil otherwise, with the question still open and the message bound for the model.
+    ///
+    /// Only the job number: the change-of-unit question and the evidence review are answered by
+    /// voice or by their own buttons, and a typed turn reaching them would be a second route to
+    /// the same decision.
+    func handleTypedAnswer(_ text: String) -> String? {
+        guard sessions.activeSession != nil, intakeState.awaitsAnswer else { return nil }
+        let outcome: JobIntakeOutcome
+        switch JobReferenceClassifier.classify(text) {
+        case .reference(let candidate):
+            outcome = intakeState.advance(.referenceSupplied(candidate))
+        case .decline:
+            outcome = intakeState.advance(.heard(text))
+        case .affirmative, .negative:
+            // Only an answer while a heard number is being read back.
+            guard case .confirming = intakeState else { return nil }
+            outcome = intakeState.advance(.heard(text))
+        case .unrelated:
+            return nil
+        }
+        guard outcome.recordedReference != nil || outcome.consumesUtterance else { return nil }
+        commit(outcome, spokenAnswer: text)
+        return outcome.prompt?.spoken
+    }
+
     /// Put the app's outstanding question, if one is due. Called at the end of a turn, after the
     /// reply has been spoken and before the microphone re-arms, so the next thing heard is the
     /// answer.

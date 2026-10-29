@@ -12,11 +12,12 @@ final class ManualFigureTool: NativeTool {
     let name = "manual_figure"
     let description = """
     Show a numbered figure, table or page from the manuals loaded on this phone, or re-open the source a previous answer cited. Pass 'figure' ("Figure 58", or just \
-    "58"), or 'page' with a printed page number ("open page 20"), or 'again' to bring back the \
-    last figure or page shown ("show me that source", "show that figure again"). The page opens on the technician's phone and is \
+    "58"), or 'printed_page' with the page number printed on the page ("printed page 57"), or \
+    'page' with the PDF's own page number (the viewer's count, which may differ from the printed \
+    one), or 'again' to bring back the last figure or page shown ("show me that source", "show that figure again"). The page opens on the technician's phone and is \
     attached to your next turn as an image when one is available, so you can read the drawing \
     yourself. Use it when the technician names a figure or asks to see a wiring diagram, and after \
-    citing one. A manual imported as extracted text has no page to show — the tool says so, and \
+    citing one. Say the page it reports it opened, PDF and printed, never the one you asked for. A manual imported as extracted text has no page to show — the tool says so, and \
     the citation is still correct. Uses your loaded manuals, or the active Field Assist session. In a personal library, name the manual when several are loaded; camera lookup requires Field Assist.
     """
     let parametersSchema: [String: Any] = [
@@ -28,7 +29,11 @@ final class ManualFigureTool: NativeTool {
             ],
             "page": [
                 "type": "integer",
-                "description": "The printed page for an imported manual, or the photographed page index for a captured manual."
+                "description": "The PDF page number (the viewer's count from the first page of the file, not the number printed on the page) for an imported manual, or the photographed page index for a captured manual."
+            ],
+            "printed_page": [
+                "type": "string",
+                "description": "The page number as printed on the page (\"57\", \"iv\", \"A-3\") when the technician says one. Opened through the manual's printed page numbers; refused, never guessed, when no page carries it."
             ],
             "document": [
                 "type": "string",
@@ -46,7 +51,8 @@ final class ManualFigureTool: NativeTool {
     /// Session to stage on; nil means the shared service. Injectable for tests.
     private let injectedSession: FieldSessionService?
     /// The technician's words this turn: "page 34 of the service manual" names the book even when
-    /// the call leaves `document` out.
+    /// the call leaves `document` out, and "printed page 57" is a printed page even when the call
+    /// passes `page` (Plan KD P0).
     private let currentUtterance: @MainActor () -> String?
 
     init(documentStore: DocumentStore?, sessionService: FieldSessionService? = nil,
@@ -87,6 +93,9 @@ final class ManualFigureTool: NativeTool {
                     + captures.map { "\($0.title) (\($0.captureID))" }.joined(separator:"; ")
             }
             if let m = captures.first {
+                if printedPage(args) != nil {
+                    return "A photographed manual has no printed page numbers to open by: name the photographed page, from 1 to \(m.pageCount). Nothing was opened."
+                }
                 var page = Self.integer(args["page"])
                 if page == nil, let figure = args["figure"] as? String, let documentStore {
                     page = Self.candidateLabels(for:figure).lazy.compactMap { label in
@@ -118,6 +127,7 @@ final class ManualFigureTool: NativeTool {
 
         let requestedFigure = (args["figure"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let requestedPage = Self.integer(args["page"])
+        let requestedPrinted = printedPage(args)
 
         // This tool asks the index by caption and by page rather than by similarity, so it never
         // builds a retriever and would not otherwise get the retriever's availability check. A
@@ -129,7 +139,28 @@ final class ManualFigureTool: NativeTool {
         // orders by document name, so "page 34" alone always opened the Installation Instructions
         // — twice, for a technician who had said "page 34 of the service manual" both times.
         var passage: VaultRetriever.Passage?
-        if let requestedFigure, !requestedFigure.isEmpty {
+        if let requestedPrinted {
+            // A printed page (Plan KD P0): through each manual's printed page numbers, never as the
+            // PDF page of the same number — "printed page 57" opened PDF page 57 on the retest.
+            let documents = documentStore.list(namespace: namespace).filter { isAvailable($0.id) }
+            var hits: [DocumentStore.Passage] = []
+            var repeated: [String] = []
+            for document in documents {
+                let pages = documentStore.pageLabels(documentId: document.id).physicalPages(forPrinted: requestedPrinted)
+                if pages.count > 1 { repeated.append(document.name); continue }
+                guard let physical = pages.first else { continue }
+                hits += documentStore.passages(onPage: physical, documentIds: [document.id], limit: 1)
+            }
+            guard !hits.isEmpty else {
+                return Self.printedPageRefusal(requestedPrinted, repeatedIn: repeated)
+            }
+            switch ManualDocumentChoice.pick(hits, document: chosen, said: currentUtterance(),
+                                             editions: session.documentEditions(of: store)) {
+            case .found(let hit): passage = Self.retrieved(hit)
+            case .problem(let sentence):
+                return sentence.replacingOccurrences(of: "{what}", with: "Printed page \(requestedPrinted)")
+            }
+        } else if let requestedFigure, !requestedFigure.isEmpty {
             var lastProblem: String?
             for label in Self.candidateLabels(for: requestedFigure) {
                 let hits = documentStore.passages(figure: label, namespace: namespace, limit: 40)
@@ -170,7 +201,56 @@ final class ManualFigureTool: NativeTool {
         // anything else is the app putting a page up (Plan GB P1).
         staged.origin = session.turnAskedForPage ? .requested : .automatic
         session.stageFigure(staged)
-        return show(staged, session: session, opening: "Showing")
+        // A page asked for by number says which page opened, both ways (Plan KD P0): the retest's
+        // reply never said, so the model claimed the printed page it had asked for.
+        let opened = requestedPrinted != nil || (requestedFigure?.isEmpty != false && requestedPage != nil)
+            ? Self.openedPageLine(physical: staged.page,
+                                  printed: documentStore.pageLabels(documentId: staged.documentId)
+                                      .printed(forPhysical: staged.page),
+                                  documentTitle: staged.documentTitle)
+            : nil
+        return show(staged, session: session, opening: "Showing", openedLine: opened)
+    }
+
+    /// The printed page the call or the technician's words ask for: `printed_page`, else "printed
+    /// page 57" in the words this turn.
+    private func printedPage(_ args: [String: Any]) -> String? {
+        if let value = args["printed_page"] {
+            let text = (value as? String) ?? (value as? NSNumber)?.stringValue ?? ""
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return currentUtterance().flatMap(Self.printedPage(in:))
+    }
+
+    /// "printed page 57", "printed page number iv", "page 57 printed" → the label. Pure.
+    static func printedPage(in said: String) -> String? {
+        for pattern in [#"(?i)\bprinted\s+page\s+(?:number\s+|no\.?\s*)?([A-Za-z0-9][A-Za-z0-9-]*)"#,
+                        #"(?i)\bpage\s+([A-Za-z0-9][A-Za-z0-9-]*)\s+(?:as\s+)?printed\b"#] {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: said, range: NSRange(said.startIndex..., in: said)),
+                  let range = Range(match.range(at: 1), in: said) else { continue }
+            return String(said[range])
+        }
+        return nil
+    }
+
+    /// Why a printed page was not opened. Pure.
+    static func printedPageRefusal(_ label: String, repeatedIn documents: [String]) -> String {
+        if !documents.isEmpty {
+            return "Printed page \(label) is printed on more than one page of " + documents.joined(separator: "; ")
+                + " (front matter and body, most likely), so nothing was opened. Ask the technician for the PDF page, "
+                + "or a figure or table number."
+        }
+        return "No loaded manual has a page printed \"\(label)\" that the app could read, so nothing was opened — "
+            + "not PDF page \(label) either, which is a different page. Ask the technician for the PDF page, or a "
+            + "figure or table number."
+    }
+
+    /// "Opened PDF page 63 (printed page 57) of Book." — what actually opened. Pure.
+    static func openedPageLine(physical: Int, printed: String?, documentTitle: String) -> String {
+        let label = printed.map { " (printed page \($0))" } ?? " (the app knows no printed page number for it)"
+        return "Opened PDF page \(physical)\(label) of \(documentTitle). Say this page, not the one you asked for."
     }
 
     // MARK: - Staging → phone, lens, and the answer
@@ -179,7 +259,7 @@ final class ManualFigureTool: NativeTool {
     /// flashes the lens cue and writes the audit line. All this does is say what happened, so a
     /// headless caller gets the same answer without an app around it.
     private func show(_ staged: FieldSessionService.StagedFigure,
-                      session: FieldSessionService, opening: String) -> String {
+                      session: FieldSessionService, opening: String, openedLine: String? = nil) -> String {
         let presenter = ManualFigurePresenter(figure: staged, sourceURL: session.sourcePDFURL(for: staged))
         // Asked for out loud rather than tapped: the audit records which it was, because a
         // technician reading a page and a technician asking to be shown one are different evidence.
@@ -188,6 +268,7 @@ final class ManualFigureTool: NativeTool {
             session.logCitationOpened(staged.asCitation, origin: .voice)
         }
         var lines = ["\(opening) \(staged.name) on the technician's phone. Source: \(staged.citation)."]
+        if let openedLine { lines.append(openedLine) }
         if presenter.hasPicture {
             lines.append("The page is attached to your next turn as an image, so read the drawing there rather than describing it from the labels.")
         } else {

@@ -129,6 +129,9 @@ final class SessionLogger {
             /// A nameplate or display field was written down, with its source.
             case identityFieldRecorded = "identity_field_recorded"
             case jobReferenceSet = "job_reference_set"
+            /// The open job was named or renamed (Plan KD P0): the new name as the text, the old
+            /// one in the payload. The job's own record, as its job number is.
+            case jobNameSet = "job_name_set"
             /// The app put one of the guided flow's two questions to the technician — the job
             /// number, or whether the previous job is finished (Plan FO). Asked by the app itself,
             /// so the record shows it happened whatever the model did.

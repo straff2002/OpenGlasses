@@ -18,7 +18,8 @@ final class ShowSourceTool: NativeTool {
     every cited page as one paged sheet, a clause number as printed, "table" for the table the \
     answer cited (its row highlighted), or a table number such as "Table 99". Pass 'document' \
     when the technician names the book. It opens only what the last answer cited, so search with \
-    manual_lookup or table_lookup and answer first. If it reports that the phone is locked, tell the technician "It's on your phone." and \
+    manual_lookup or table_lookup and answer first. Only when the technician asks to see a page, \
+    table or source — otherwise offer it, and it opens nothing. If it reports that the phone is locked, tell the technician "It's on your phone." and \
     do not say the page is showing. Uses your loaded manuals, or the active Field Assist session. In a personal library, name the manual when several are loaded; camera lookup requires Field Assist.
     """
     let parametersSchema: [String: Any] = [
@@ -38,13 +39,31 @@ final class ShowSourceTool: NativeTool {
 
     private let documentStore: DocumentStore?
     private let injectedSession: FieldSessionService?
+    /// The technician's words this turn: a page opens only when they asked to see one (Plan KD P0).
+    private let currentUtterance: @MainActor () -> String?
 
-    init(documentStore: DocumentStore?, sessionService: FieldSessionService? = nil) {
+    init(documentStore: DocumentStore?, sessionService: FieldSessionService? = nil,
+         currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() }) {
         self.documentStore = documentStore
         self.injectedSession = sessionService
+        self.currentUtterance = currentUtterance
+    }
+
+    /// What the model is told when the turn asked to see nothing (Plan KD P0).
+    static let notAskedReply = "Not opened — the technician didn't ask to see a page; offer it."
+
+    /// Whether the model's call may open anything: only on a turn whose words asked to see a page,
+    /// a table or a source, typed or spoken (Plan KD P0). The retest had pages open before the
+    /// answer, because results invited the call. A turn with no captured words (a live session)
+    /// is not gated, as `TechnicianWords` documents. The app's own citation taps never come
+    /// through this tool. Pure.
+    static func mayOpen(said: String?) -> Bool {
+        guard let said else { return true }
+        return TechnicianRequest.asksToSee(said)
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        guard Self.mayOpen(said: currentUtterance()) else { return Self.notAskedReply }
         if !Config.fieldAssistActive {
             return PersonalManualLibrary.shared.show(args, documentStore: documentStore)
         }

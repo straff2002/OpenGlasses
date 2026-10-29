@@ -8,7 +8,9 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var reportedBy: ReportIdentity? = nil
     let id: String
     let vaultId: String
-    let assetId: String?
+    /// The job's name or the equipment it is on, given at the start or renamed while it is open
+    /// (`FieldSessionService.setJobName`, Plan KD P0).
+    var assetId: String?
     let mode: Mode
     let startedAt: Date
     var endedAt: Date?

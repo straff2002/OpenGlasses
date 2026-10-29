@@ -25,13 +25,15 @@ final class RuleChainTool: NativeTool {
     a conductor for a load, or checking whether an installed one carries it. It also runs a chain \
     proposed with propose_chain once the technician says go, and chains kept on this phone; both are \
     unreviewed, so say so. Actions: 'list' (the chains by name: read the names out), 'start' (pass \
-    'chain', its name; it replaces a chain already running), 'answer' (pass 'value', the technician's reply to the current question, as said), \
+    'chain', its name; it replaces a chain already running; only when the technician asks for that \
+    chain, asks to run a chain, or says yes to the one you offered), 'answer' (pass 'value', the technician's reply to the current question, as said), \
     'status', 'stop', 'keep' (keep the proposed chain that just ran to a result on this phone, when \
     the technician asks), 'share' (the kept chains as a chains.md file, by the share sheet). The \
     current question is in the system prompt: ask it in your own words. Never pass a value the \
     technician did not say, and never work a step yourself. When it finishes, say the result and \
     read back the steps with their pages; when it stops it has ended: say why, offer to show the page \
-    and ask for no more of its values. \
+    and ask for no more of its values. Offer a chain by name when one answers the question; never \
+    start one the technician did not ask for. \
     Requires an active session.
     """
     let parametersSchema: [String: Any] = [
@@ -60,14 +62,22 @@ final class RuleChainTool: NativeTool {
     private let settings: () -> DeliverySettings
     /// Where the shared fragment's file is staged.
     private let injectedExports: StagedExportCoordinator?
+    /// The technician's words this turn, and what the assistant said before them: a chain starts
+    /// only when those words ask for it (Plan KD P0).
+    private let currentUtterance: @MainActor () -> String?
+    private let previousReply: @MainActor () -> String?
 
     init(documentStore: DocumentStore?, sessionService: FieldSessionService? = nil,
          settings: @escaping () -> DeliverySettings = { DeliverySettings.load() },
-         exports: StagedExportCoordinator? = nil) {
+         exports: StagedExportCoordinator? = nil,
+         currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() },
+         previousReply: @escaping @MainActor () -> String? = { TechnicianWords.previousReply() }) {
         self.documentStore = documentStore
         self.injectedSession = sessionService
         self.settings = settings
         self.injectedExports = exports
+        self.currentUtterance = currentUtterance
+        self.previousReply = previousReply
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -185,6 +195,12 @@ final class RuleChainTool: NativeTool {
             if case .ask(let ask) = running.current { lines.append(Self.askLine(ask)) }
             return lines.joined(separator: "\n")
         }
+        // Asked for, or not started (Plan KD P0) — a new chain and one that replaces a running
+        // chain alike, so a question about something else never stops the chain in hand either.
+        if let refusal = Self.startRefusal(chain: chain.name, said: currentUtterance(), previousReply: previousReply(),
+                                           proposed: session.pendingProposal?.proposal.chain.name) {
+            return refusal
+        }
         let tables = self.tables(session)
         // A chain that cannot read one of its tables would ask its questions and then stop at that
         // step (Plan JW P0): it is refused before anything starts, and a running chain is left alone.
@@ -212,6 +228,27 @@ final class RuleChainTool: NativeTool {
         }
     }
 
+    /// Why the model's `start` is refused, or nil when the technician asked for the chain (Plan KD
+    /// P0): their words name it, ask to run a chain, or say yes to the chain offered last turn —
+    /// named in the assistant's last reply, or the proposal read back and waiting for go. The
+    /// partner's retest had a chain start on a question it happened to answer, because the
+    /// prompt told the model to start one whenever a chain fits. A turn with no captured words (a
+    /// live session) is not gated, as `TechnicianWords` documents. Pure.
+    static func startRefusal(chain name: String, said: String?, previousReply: String?, proposed: String?) -> String? {
+        guard let said else { return nil }
+        if TechnicianRequest.names(chain: name, in: said) || TechnicianRequest.asksToRunChain(said) { return nil }
+        if TechnicianRequest.isShortAffirmative(said) {
+            if proposed == name { return nil }
+            if let previousReply, !TechnicianRequest.chainsMentioned(in: previousReply, among: [name]).isEmpty {
+                return nil
+            }
+        }
+        return notAskedRefusal
+    }
+
+    static let notAskedRefusal = "Not started — the technician didn't ask for a chain. Answer their question; "
+        + "you may offer the chain by name."
+
     /// Why a chain was not started, and what can be shown instead. Pure.
     static func refusal(_ chain: ChainDefinition, unreadable: [UnreadableTable]) -> String {
         let missing = unreadable.filter { $0.source == nil }.map(\.label)
@@ -221,7 +258,7 @@ final class RuleChainTool: NativeTool {
         if !unread.isEmpty { parts.append(unread.joined(separator: ", ") + ", whose grid could not be read") }
         var text = "The chain '\(chain.name)' was not started: it needs " + parts.joined(separator: "; and ")
             + ". Nothing was started or recorded. Tell the technician which table it needs. "
-        if !unread.isEmpty { text += "Offer to show that table's page with show_source, to work it from the book. " }
+        if !unread.isEmpty { text += "Offer to show that table's page, to work it from the book; open it with show_source only if they ask. " }
         if !missing.isEmpty { text += "For a table no loaded manual's tables include, offer to look for its page with manual_figure ('figure': its label)." }
         return text.trimmingCharacters(in: .whitespaces)
     }
@@ -356,7 +393,7 @@ final class RuleChainTool: NativeTool {
         if let table { lines.append("It could not read \(table) at that step.") }
         lines.append("Tell the technician why. Do not ask the technician for any more values for this chain, and do "
                      + "not answer from memory or guess the value. "
-                     + (stop.sourceLine == nil ? "" : "Offer to show the page with show_source. ")
+                     + (stop.sourceLine == nil ? "" : "Offer to show the page; open it with show_source only if they ask. ")
                      + "What was worked so far is recorded on the job. To try again, the chain must be started "
                      + "again with rule_chain 'start', only when the technician asks.")
         return lines
@@ -364,8 +401,8 @@ final class RuleChainTool: NativeTool {
 
     /// Said whenever a step used a value read from a picture of a table (Plan JN P2).
     static let pictureLine = "A step marked \"from a picture\" used a value read from a picture of a table on the phone, "
-        + "not from the PDF's text: say so when you read that step back, and offer to show the page with show_source "
-        + "so the technician can check it."
+        + "not from the PDF's text: say so when you read that step back, and offer to show the page so the "
+        + "technician can check it (open it with show_source only if they ask)."
 
     private static func askLine(_ ask: ChainAsk) -> String {
         var line = ""

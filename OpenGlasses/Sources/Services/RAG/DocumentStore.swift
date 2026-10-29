@@ -384,8 +384,9 @@ final class DocumentStore: ObservableObject {
             .filter { ($0.figure ?? "").lowercased() == needle }, limit: limit)
     }
 
-    /// Chunks off one printed page, drawings first. The page number is the one the manual prints,
-    /// which is the one a technician reads out.
+    /// Chunks off one page, drawings first. The page is the PDF's own (physical, 1-based) page,
+    /// which is not always the number the manual prints on it: a printed page goes through
+    /// `pageLabels(documentId:)` first (Plan KD P0).
     func passages(onPage page: Int, namespace: String? = nil,
                   documentIds: [String]? = nil, limit: Int = 4) -> [Passage] {
         ordered(fetchChunks(namespace: namespace, documentIds: documentIds).filter { $0.page == page },

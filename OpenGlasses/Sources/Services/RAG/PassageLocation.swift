@@ -97,9 +97,15 @@ struct PageLabelMap: Equatable {
     /// does — "page 3" of the front matter and of the body cannot both be right, and opening either
     /// would be a guess.
     func physical(forPrinted label: String) -> Int? {
-        let wanted = label.trimmingCharacters(in: .whitespaces).lowercased()
-        let hits = byPage.filter { $0.value.lowercased() == wanted }.map(\.key)
+        let hits = physicalPages(forPrinted: label)
         return hits.count == 1 ? hits[0] : nil
+    }
+
+    /// Every physical page that carries `label`, in page order: none, one, or — front matter and
+    /// body both printing "3" — several, which a caller refuses rather than picks from.
+    func physicalPages(forPrinted label: String) -> [Int] {
+        let wanted = label.trimmingCharacters(in: .whitespaces).lowercased()
+        return byPage.filter { $0.value.lowercased() == wanted }.map(\.key).sorted()
     }
 }
 

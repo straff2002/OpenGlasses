@@ -7449,7 +7449,11 @@ class AppState: ObservableObject, AppStateProtocol {
         return threadId
     }
 
-    func handleTranscription(_ text: String) async {
+    func handleTranscription(_ transcript: String) async {
+        // The electrical trade's spoken sizes, written as printed (Plan KD P0), before anything
+        // reads the words — the job question, the commands and the model alike.
+        let text = Config.fieldAssistEnabled
+            ? DictationVocabulary.postProcess(transcript, trades: FieldTradeSetting.current.trades) : transcript
         // Shared consent surface, voice half (BN P1): while an approve/deny prompt is pending, a
         // short spoken yes/no answers THE PROMPT — never the model. Checked before the
         // isProcessing guard because the turn that raised the prompt is still in flight,
@@ -7972,6 +7976,25 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // A typed turn belongs to the job's conversation exactly as a spoken one does (Plan FO P1).
         guidedJobFlow.prepareThreadForTurn(.typed)
+
+        // The app's job-number question, answered by typing (Plan KD P0). A spoken answer reaches
+        // the flow through `preLLMHandlers`, which a typed turn never runs; without this, "job
+        // number 1005" typed into the chat went to the model and the question stayed open. Only
+        // a message the person typed: a held question replayed, or one carrying a picture, is not
+        // an answer to it.
+        if recordUserTurn, imageData == nil, let reply = guidedJobFlow.handleTypedAnswer(query) {
+            PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("jobQuestionTyped"))
+            if Config.conversationPersistenceEnabled {
+                if conversationStore.activeThreadId == nil {
+                    conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
+                }
+                conversationStore.appendMessage(role: "user", content: query)
+                conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
+            }
+            lastResponse = reply
+            if speakResponse { await speechService.speak(reply) }
+            return
+        }
 
         // Track in conversation store
         if Config.conversationPersistenceEnabled {
