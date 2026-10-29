@@ -1,7 +1,7 @@
 // OpenAI Realtime protocol probe (Plan KC P0 evidence). Node 22+ (global WebSocket with headers).
 //   OPENAI_API_KEY=sk-... node Scripts/openai-realtime-probe.mjs
 // Reads the key from the environment only. Prints event TYPES and error codes, never content
-// or the key (the last case also prints transcripts of its synthetic question and the reply).
+// or the key (the whole-turn and dictation cases also print transcripts of their synthetic speech).
 // Costs a few cents: each case asks for one short spoken reply.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -144,6 +144,32 @@ function turn(model) {
     ws.onerror = () => {};
   });
 }
-if (process.platform === "darwin") for (const model of ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"]) {
+// PROBE_DICTATION_ONLY=1 runs only the dictation upload below.
+if (process.platform === "darwin" && !process.env.PROBE_DICTATION_ONLY) for (const model of ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"]) {
   print(`GA turn: photo, speech, tool, ${model} + gpt-live-transcribe`, await turn(model));
+}
+
+// Dictation (Plan KC P2): the upload `OpenAIDictationRequest` makes, a WAV of spoken audio with the
+// model, `response_format: json` and a vocabulary prompt, to `/v1/audio/transcriptions`. Prints the
+// reply's field names and the synthetic question's transcript.
+async function dictation(model) {
+  const dir = mkdtempSync(join(tmpdir(), "dictation-probe-"));
+  // Spelled as a technician says it: `say` reads "R-454B" as "R negative 454 B".
+  execFileSync("say", ["-o", join(dir, "d.wav"), "--data-format=LEI16@16000", "Check the TXV on the R four fifty four B unit."]);
+  const form = new FormData();
+  form.append("model", model);
+  form.append("response_format", "json");
+  form.append("prompt", "TXV, R-454B");
+  form.append("file", new Blob([readFileSync(join(dir, "d.wav"))], { type: "audio/wav" }), "question.wav");
+  const reply = await fetch("https://api.openai.com/v1/audio/transcriptions",
+                            { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+  const body = await reply.json().catch(() => ({}));
+  const findings = [`HTTP ${reply.status}`, `fields: ${Object.keys(body).join(", ") || "(none)"}`];
+  if (typeof body.text === "string") findings.push(`transcript: "${body.text}"`);
+  const errors = body.error ? [`${body.error.type}/${body.error.code}: ${redact(body.error.message)}`] : [];
+  return { types: new Map(), errors, findings };
+}
+// The outgoing model beside its replacement, on the same synthetic question, until it goes.
+if (process.platform === "darwin") for (const model of ["gpt-transcribe", "gpt-4o-transcribe"]) {
+  print(`Dictation upload, ${model}`, await dictation(model));
 }

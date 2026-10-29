@@ -4,7 +4,9 @@
 key the same day (see "What the probe found"). Decisions 1, 3, 4 and 5 taken at their defaults
 ("let's fix that then"). P1 built 2026-10-29 (PR 894; live check and catalog sync PR 895) — model
 IDs before 2027-01-20; decision 2 taken at its default after the price check (rewrite once, with
-one notice). P2 (dictation before 2027-02-26) and the P3 device pass not started. Drafted
+one notice). P2 built 2026-10-30 (PR 896) — dictation on `gpt-transcribe`, checked live; the new
+model drops hyphens from codes, so the vocabulary's spelling is restored. The P3 device pass not
+started. Drafted
 2026-10-29 (PR 890).
 **Origin:** found while drafting Plan KB (the OpenAI voice after 2027-01-06, PR 889), which puts it
 out of scope as its decision 6. This is that plan.
@@ -301,13 +303,35 @@ output is mostly the spoken reply's transcript. `gpt-realtime-2.1-mini` matches
 - `Config.openAIRealtimeModelConfig` (the legacy shortcut) skips IDs the table marks as removed.
 - Tests for the table, the rewrite and the legacy shortcut.
 
-### P2 — Dictation's transcription model before 2027-02-26 (headless)
+### P2 — Dictation's transcription model before 2027-02-26 (headless) — 🚧 built 2026-10-30
 
-`OpenAIDictationService.model` `gpt-4o-transcribe` → `gpt-transcribe`. The probe gains one
-`/v1/audio/transcriptions` request with a few seconds of generated speech, to confirm that the
-default JSON still has `text` (it adds `languages`, which the parser ignores). A test pins the
-model and checks that the response parsing tolerates the extra field. This is small enough to ride
-with P1 if both are scheduled together.
+**As built:** `OpenAIDictationRequest.model` is `gpt-transcribe`; nothing else in the upload
+changed (`response_format: json`, the vocabulary `prompt`, a 16 kHz WAV). `transcript(from:)`
+already read only `text`; new tests pin the model and feed it replies with `languages` (as strings
+and as objects) and `usage` beside `text`. The probe gains the upload as the app sends it (spoken
+audio from macOS `say`, the model, `json`, a vocabulary prompt) for both the new and the outgoing
+model, printing the HTTP status, the reply's field names and the transcript;
+`PROBE_DICTATION_ONLY=1` runs it alone. The realtime beta adapter's own `gpt-4o-mini-transcribe` is
+left alone: that profile now serves only compatible servers and Qwen, whose model names are their
+own, and its golden output stays byte-identical.
+
+**What the live check found** (2026-10-30, the owner's key; synthetic `say` speech, clean audio,
+eight trade codes spoken as a technician says them — "R four fifty four B", "X R seventy seven
+twenty"): both models **heard** every code, 8/8, with the app's prompt, a "Vocabulary:"-labelled
+prompt or none. But `gpt-transcribe` **never wrote the hyphen** — 0/8 whatever the prompt ("R454B",
+"XR7720", "SLP99") — where `gpt-4o-transcribe` with the app's prompt kept it 4/8. The prompt still
+reaches the model; it no longer sets the spelling. That matters downstream: refrigerant lookup
+ignores hyphens, but `VaultModelIndex.resolve` matches the printed spelling, so by its code
+"XR7720" does not reach a manual printing "XR-7720" (its parts are too short to be model-like; read,
+not run). So P2 also adds
+`OpenAIDictationRequest.restoringVocabularySpellings`: a transcript word that equals a vocabulary
+code once only letters and digits are compared takes the vocabulary's spelling (codes only — a
+letter and a digit, at least three, no spaces; whole words only; a key two vocabulary spellings
+share is left alone). A first run that `say`-read "R-454B" as "R negative 454 B" made the new model
+look worse at hearing codes; that was the synthetic audio, and the probe now spells its codes the
+way they are said. **Owed:** a noisy-room comparison (the clean synthetic audio cannot show one,
+Plan JM's reason for the prompt) and P3. Code terms *outside* the vocabulary come back without
+their hyphens too; making the manual index hyphen-insensitive would cover those, and is not done.
 
 ### P3 — Device pass (after P0, and again after P1)
 

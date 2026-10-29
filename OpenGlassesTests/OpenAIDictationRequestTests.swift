@@ -25,7 +25,7 @@ final class OpenAIDictationRequestTests: XCTestCase {
         let body = try XCTUnwrap(request.httpBody)
         let text = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(text.hasPrefix("--\(boundary)\r\n"))
-        XCTAssertTrue(text.contains("Content-Disposition: form-data; name=\"model\"\r\n\r\ngpt-4o-transcribe\r\n"))
+        XCTAssertTrue(text.contains("Content-Disposition: form-data; name=\"model\"\r\n\r\ngpt-transcribe\r\n"))
         XCTAssertTrue(text.contains("Content-Disposition: form-data; name=\"prompt\"\r\n\r\nXR-7720, R-454B\r\n"))
         XCTAssertTrue(text.contains("Content-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n"))
         XCTAssertTrue(text.contains("Content-Disposition: form-data; name=\"file\"; filename=\"question.wav\"\r\nContent-Type: audio/wav\r\n\r\n"))
@@ -78,5 +78,55 @@ final class OpenAIDictationRequestTests: XCTestCase {
                        "Check the TXV.")
         XCTAssertNil(OpenAIDictationRequest.transcript(from: Data("not json".utf8)))
         XCTAssertNil(OpenAIDictationRequest.transcript(from: Data(#"{"error":{}}"#.utf8)))
+    }
+
+    func testTheModelIsTheCurrentRecordedSpeechModel() {
+        // `gpt-4o-transcribe` goes on 2027-02-26; `gpt-transcribe` is OpenAI's named replacement.
+        XCTAssertEqual(OpenAIDictationRequest.model, "gpt-transcribe")
+        XCTAssertEqual(OpenAIDictationRequest.fields(vocabulary: []).first?.value, "gpt-transcribe")
+    }
+
+    func testTheTranscriptIgnoresTheLanguagesField() {
+        let reply = #"{"text":" Check the TXV. ","languages":["en"],"usage":{"type":"duration","seconds":3}}"#
+        XCTAssertEqual(OpenAIDictationRequest.transcript(from: Data(reply.utf8)), "Check the TXV.")
+        let objects = #"{"languages":[{"language":"en","probability":0.98}],"text":"R-454B"}"#
+        XCTAssertEqual(OpenAIDictationRequest.transcript(from: Data(objects.utf8)), "R-454B",
+                       "whatever shape `languages` takes, only `text` is read")
+    }
+
+    // MARK: - Vocabulary spellings
+
+    private func restored(_ text: String, _ vocabulary: [String]) -> String {
+        OpenAIDictationRequest.restoringVocabularySpellings(in: text, vocabulary: vocabulary)
+    }
+
+    func testACodeWrittenWithoutItsHyphenTakesTheVocabularySpelling() {
+        // What gpt-transcribe wrote on 2026-10-29 for spoken "R four fifty four B", "X R seventy seven twenty".
+        XCTAssertEqual(restored("Check the TXV on the R454B unit.", ["TXV", "R-454B"]), "Check the TXV on the R-454B unit.")
+        XCTAssertEqual(restored("Replace the XR7720 contactor, then the xr7720 relay.", ["XR-7720"]),
+                       "Replace the XR-7720 contactor, then the XR-7720 relay.")
+        XCTAssertEqual(restored("Fit SLP-99 or SLP99?", ["SLP-99"]), "Fit SLP-99 or SLP-99?")
+        XCTAssertEqual(restored("The ZP54-K5E is fitted.", ["ZP-54K5E"]), "The ZP-54K5E is fitted.")
+    }
+
+    func testOnlyWholeCodeWordsChange() {
+        XCTAssertEqual(restored("Top up the R32 and the R322 and the R32B.", ["R-32"]),
+                       "Top up the R-32 and the R322 and the R32B.", "a longer word is a different code")
+        XCTAssertEqual(restored("Check the van stock and low voltage.", ["van-stock", "low-voltage", "Copeland ZP54"]),
+                       "Check the van stock and low voltage.", "words, spaced terms and letter-only terms are not codes")
+        XCTAssertEqual(restored("XR15 on site.", ["XR15"]), "XR15 on site.", "a term without punctuation changes nothing")
+        XCTAssertEqual(restored("", ["R-454B"]), "")
+        XCTAssertEqual(restored("R454B", []), "R454B")
+    }
+
+    func testTwoSpellingsOfOneCodeAreLeftAsTranscribed() {
+        XCTAssertEqual(restored("Order the AB12 part.", ["AB-12", "A-B12"]), "Order the AB12 part.")
+        XCTAssertEqual(restored("Order the AB12 part.", ["AB-12", " AB-12 "]), "Order the AB-12 part.",
+                       "the same spelling twice is one spelling")
+    }
+
+    func testTextInOtherScriptsPassesThrough() {
+        XCTAssertEqual(restored("请检查 R454B 机组。", ["R-454B"]), "请检查 R-454B 机组。")
+        XCTAssertEqual(restored("检查R454B机组", ["R-454B"]), "检查R454B机组", "not a word of its own")
     }
 }

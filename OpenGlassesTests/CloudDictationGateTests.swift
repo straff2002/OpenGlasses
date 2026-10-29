@@ -240,6 +240,13 @@ final class CloudDictationGateTests: XCTestCase {
         let text = try await service.transcribe(samples: [Float](repeating: 0.01, count: 4_800),
                                                 sampleRate: 48_000, vocabulary: ["flare nut"])
         XCTAssertEqual(text, "Torque the flare nut.")
+        service.send = { request in
+            let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(#"{"text":"Replace the XR7720 contactor.","languages":["en"]}"#.utf8), ok)
+        }
+        let code = try await service.transcribe(samples: [Float](repeating: 0.01, count: 4_800),
+                                                sampleRate: 48_000, vocabulary: ["XR-7720"])
+        XCTAssertEqual(code, "Replace the XR-7720 contactor.", "the vocabulary's spelling comes back")
         XCTAssertEqual(lastRequest?.url, OpenAIDictationRequest.url)
         XCTAssertEqual(lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test-invented")
 

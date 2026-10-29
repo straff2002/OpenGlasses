@@ -10,7 +10,10 @@ import Foundation
 enum OpenAIDictationRequest {
 
     static let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
-    static let model = "gpt-4o-transcribe"
+    /// OpenAI's recommended model for recorded speech. It replaced `gpt-4o-transcribe`, which OpenAI
+    /// removes on 2027-02-26 (Plan KC P2). Its `json` reply adds `languages` beside `text`;
+    /// `transcript(from:)` reads only `text`.
+    static let model = "gpt-transcribe"
     /// The rate the audio is uploaded at: plenty for speech, and a third of a 48 kHz capture.
     static let uploadSampleRate = 16_000
     /// The vocabulary rides in `prompt`. Bounded so a large vault cannot turn the prompt into an
@@ -105,6 +108,42 @@ enum OpenAIDictationRequest {
               let text = json["text"] as? String else { return nil }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// The transcript with each code from the vocabulary in the vocabulary's own spelling.
+    ///
+    /// `gpt-transcribe` hears a part number as well as `gpt-4o-transcribe` did but never writes its
+    /// hyphen ("XR7720" for "XR-7720", "R454B" for "R-454B"), whatever the prompt says, and the
+    /// manual index matches the printed spelling. A transcript word that equals a vocabulary term
+    /// once letters and digits are all that is compared takes the term's spelling. Codes only (a
+    /// letter and a digit, at least three of them, no spaces), whole words only, and a key two
+    /// vocabulary spellings share is left as transcribed.
+    static func restoringVocabularySpellings(in text: String, vocabulary: [String]) -> String {
+        func key<S: StringProtocol>(_ word: S) -> String { word.uppercased().filter { $0.isLetter || $0.isNumber } }
+        var spellings: [String: String] = [:]
+        var ambiguous = Set<String>()
+        for raw in vocabulary {
+            let term = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let termKey = key(term)
+            guard termKey.count >= 3, termKey != term.uppercased(), !term.contains(where: \.isWhitespace),
+                  termKey.contains(where: \.isNumber), termKey.contains(where: \.isLetter) else { continue }
+            if let known = spellings[termKey], known != term { ambiguous.insert(termKey) } else { spellings[termKey] = term }
+        }
+        for termKey in ambiguous { spellings[termKey] = nil }
+        guard !spellings.isEmpty else { return text }
+
+        var out = ""
+        var word = ""
+        func flush() {
+            if !word.isEmpty, let spelling = spellings[key(word)] { out += spelling } else { out += word }
+            word = ""
+        }
+        for character in text {
+            if character.isLetter || character.isNumber || character == "-" { word.append(character) }
+            else { flush(); out.append(character) }
+        }
+        flush()
+        return out
+    }
 }
 
 /// Why an OpenAI dictation upload did not produce a transcript. Each case names a fixed token for
@@ -178,6 +217,6 @@ final class OpenAIDictationService {
         guard let text = OpenAIDictationRequest.transcript(from: data) else {
             throw OpenAIDictationError.unreadableResponse
         }
-        return text
+        return OpenAIDictationRequest.restoringVocabularySpellings(in: text, vocabulary: vocabulary)
     }
 }
