@@ -25,6 +25,9 @@ struct VaultModelIndex: Equatable {
         let file: String
         /// Every model-like token in the heading, uppercased, in heading order.
         let tokens: [String]
+
+        /// `tokens` without their hyphens (`VaultModelIndex.key`), in the same order.
+        var keys: [String] { tokens.map(VaultModelIndex.key) }
     }
 
     let vaultName: String
@@ -36,6 +39,8 @@ struct VaultModelIndex: Equatable {
     /// `knownModelTokens`, and the reason a series name or an accessory part number a vault
     /// mentions in prose is never mistaken for another manufacturer's machine.
     let vaultTokens: Set<String>
+    /// `vaultTokens` without their hyphens.
+    private let vaultKeys: Set<String>
 
     var isEmpty: Bool { models.isEmpty }
 
@@ -170,6 +175,7 @@ struct VaultModelIndex: Equatable {
         self.models = models
         self.knownModelTokens = known
         self.vaultTokens = all.union(known)
+        self.vaultKeys = Set(vaultTokens.map(Self.key))
     }
 
     // MARK: - What a model number looks like
@@ -230,18 +236,27 @@ struct VaultModelIndex: Equatable {
 
     // MARK: - Matching
 
+    /// A spelling as matching compares it: uppercased, without its hyphens. Cloud dictation writes
+    /// a code without its hyphens whatever the vocabulary says (`XR7720` for a printed `XR-7720`),
+    /// and a typed question often does too; the hyphens are the only thing dropped, so what counts
+    /// as a model (`isModelLike`) and the length floors below are as before.
+    static func key(_ spelling: String) -> String {
+        spelling.uppercased().replacingOccurrences(of: "-", with: "")
+    }
+
     /// The models a single token names: an exact spelling first, then a spelling one is part of —
-    /// OCR splits a nameplate (`SLP99UH 090XV60CK`) and a technician says half of it.
+    /// OCR splits a nameplate (`SLP99UH 090XV60CK`) and a technician says half of it. Both are
+    /// compared without hyphens (`key`), so `QZ4417`, `QZ-4417` and `QZ44-17` are one spelling.
     func resolve(token: String) -> [Model] {
-        let needle = token.uppercased()
+        let needle = Self.key(token)
         guard !needle.isEmpty else { return [] }
-        let exact = models.filter { $0.tokens.contains(needle) }
+        let exact = models.filter { $0.keys.contains(needle) }
         if !exact.isEmpty { return exact }
         guard needle.count >= Self.headingMinimumLength - 1 else { return [] }
         return models.filter { model in
-            model.tokens.contains { spelling in
+            zip(model.tokens, model.keys).contains { printed, spelling in
                 (spelling.count >= needle.count && spelling.contains(needle))
-                    || (needle.count > spelling.count && spelling.count >= 5 && needle.contains(spelling))
+                    || (needle.count > spelling.count && printed.count >= 5 && needle.contains(spelling))
             }
         }
     }
@@ -268,11 +283,15 @@ struct VaultModelIndex: Equatable {
     }
 
     /// A correction spoken as a fragment — "no, it's the 070". Substring over every spelling, so a
-    /// size group reaches its model without being a token in its own right.
+    /// size group reaches its model without being a token in its own right; hyphens aside, too.
     func match(fragment: String) -> [Model] {
         let needle = fragment.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard needle.count >= 2 else { return [] }
-        let byToken = models.filter { $0.tokens.contains { $0.contains(needle) } }
+        let needleKey = Self.key(needle)
+        let byToken = models.filter { model in
+            model.tokens.contains { $0.contains(needle) }
+                || (needleKey.count >= 2 && model.keys.contains { $0.contains(needleKey) })
+        }
         if !byToken.isEmpty { return byToken }
         return models.filter { $0.heading.uppercased().contains(needle) }
     }
@@ -281,9 +300,15 @@ struct VaultModelIndex: Equatable {
     /// anything else its core prints.
     func isKnown(token: String) -> Bool {
         let needle = token.uppercased()
-        if vaultTokens.contains(needle) { return true }
+        if mentions(token: needle) { return true }
         if series(of: needle) != nil { return true }
         return !resolve(token: needle).isEmpty
+    }
+
+    /// Whether the core prints this token anywhere, hyphens aside — a model spelling, or an
+    /// accessory or series name in prose.
+    func mentions(token: String) -> Bool {
+        vaultTokens.contains(token.uppercased()) || vaultKeys.contains(Self.key(token))
     }
 
     /// The sentence a question about another manufacturer's machine gets back. Named models, so the

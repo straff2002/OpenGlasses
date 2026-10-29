@@ -241,3 +241,30 @@ thing with none of the consequences. The old item 5's paragraph also had to chan
 reader that a question about a subject the manuals cover asked about a machine they do not is
 **not** refused, which is exactly what P1 made false for a vault with model headings.
 
+
+## Hyphenless codes (2026-10-30)
+
+**A code written without its hyphens is the printed code.** Cloud dictation's new model never
+writes a code's hyphens ([Plan KC](KC-openai-realtime-current-protocol.md) P2: "XR7720" for
+"XR-7720", 0 of 8), and a typed question often leaves them out. A test proved the gap before the
+fix: `resolve(token: "QZ4417")` found nothing in a vault titled `## QZ-4417`, because matching
+compared the printed spelling and the hyphen-split parts (`QZ`, `4417`) are not model-like.
+`VaultModelIndex` now compares spellings by `key` (uppercased, hyphens removed) in `resolve`
+(exact and substring), `match(fragment:)`, and the new `mentions(token:)` that `isKnown` and
+`JobChangeDetector`'s accessory check use. `match(text:)`'s intersection is unchanged. The shape
+screen (`isModelLike`, `codeShape`) is unchanged, and so are the length floors: the substring
+floor still reads the printed spelling's length, so a five-character `XX-15` keeps the reach it had.
+
+`CodeTokenizer.contains`, which the token search, the retrieval boost and the model scope penalty
+all use, falls back to the same comparison when the exact one fails: hyphens that join two letters
+or digits are taken out of the passage, and the token is matched whole against that. Only for a
+code of four or more characters with a letter and two digits, so `E5`, `R22`, a range `7-9` and a
+rule number `26-700` are matched as written. It still matches only the whole hyphenated code:
+"QZ4417" is not found in "QZV-4417-60B". Unlike the model index, `R454B` qualifies here (it finds
+"R-454B" in a passage); it is still never a machine. Tests: `HyphenlessModelCodeTests`, invented
+model numbers.
+
+Not changed: a question that types the hyphen ("QZ-4417") against a manual that prints "QZ4417"
+still boosts retrieval only on the part `4417`, because `CodeTokenizer.words` splits at hyphens.
+The model index matches that case. Team-learning identity (`ModelScope.identity`) still compares
+the spelling as written, per its contract.

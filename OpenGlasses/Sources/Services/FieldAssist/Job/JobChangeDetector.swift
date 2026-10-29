@@ -65,8 +65,8 @@ enum JobChangeDetector {
         if matches.count > 1 { return .unclear(reason: .severalModels) }
         // No model section matched. If the text still names something the vault writes about, it
         // is an accessory or a part, not another machine — and must not raise the question.
-        let tokens = VaultModelIndex.modelLikeTokens(in: text).map { $0.uppercased() }
-        if tokens.contains(where: { index.vaultTokens.contains($0) }) {
+        let tokens = VaultModelIndex.modelLikeTokens(in: text)
+        if tokens.contains(where: index.mentions(token:)) {
             return .unclear(reason: .notAModel)
         }
         return .none
