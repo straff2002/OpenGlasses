@@ -150,11 +150,52 @@ enum CodeTokenizer {
     }
 
     /// Case-insensitive whole-token containment: "E5" matches "code E5 means" but not "E50".
+    ///
+    /// A code is also found with its hyphens written differently: "QZ4417" in "the QZ-4417 board"
+    /// and the reverse, "QZV441760B" in "QZV-4417-60B". Cloud dictation writes a code without its
+    /// hyphens whatever the vocabulary says, and manuals print them. Only for a code of four or
+    /// more characters with a letter and two digits (`isHyphenFoldable`), and only as the whole
+    /// hyphenated code: "QZ4417" is not found in "QZV-4417-60B", "79" is not a range "7-9", and
+    /// "E5" stays exact.
     static func contains(_ haystack: String, token: String) -> Bool {
         guard !token.isEmpty else { return false }
         // Both sides read full-width forms as ASCII (Plan JY P5a).
         let lowerHay = foldedForms(haystack).lowercased()
         let lowerToken = foldedForms(token).lowercased()
+        if containsWhole(lowerHay, token: lowerToken) { return true }
+        guard lowerHay.contains("-") || lowerToken.contains("-") else { return false }
+        let key = lowerToken.replacingOccurrences(of: "-", with: "")
+        guard isHyphenFoldable(key) else { return false }
+        return containsWhole(joiningHyphenatedWords(lowerHay), token: key)
+    }
+
+    /// A code whose hyphens are a matter of spelling: four or more letters and digits, at least
+    /// one letter and two digits — "QZ4417", "R454B". Shorter codes ("E5", "R22") and numbers
+    /// (a range, a rule number) are matched only as written.
+    static func isHyphenFoldable(_ key: String) -> Bool {
+        key.count >= 4 && key.allSatisfy { $0.isLetter || $0.isNumber }
+            && key.contains(where: \.isLetter) && key.filter(\.isNumber).count >= 2
+    }
+
+    /// `text` with every hyphen that joins two letters or digits taken out, so a hyphenated code
+    /// reads as one word ("qzv-4417-60b" → "qzv441760b"). Every other character is kept.
+    private static func joiningHyphenatedWords(_ text: String) -> String {
+        let characters = Array(text)
+        var out = String()
+        out.reserveCapacity(characters.count)
+        for (i, c) in characters.enumerated() {
+            if c == "-", i > 0, i + 1 < characters.count,
+               characters[i - 1].isLetter || characters[i - 1].isNumber,
+               characters[i + 1].isLetter || characters[i + 1].isNumber {
+                continue
+            }
+            out.append(c)
+        }
+        return out
+    }
+
+    /// Whole-token containment of an already folded, lowercased token.
+    private static func containsWhole(_ lowerHay: String, token lowerToken: String) -> Bool {
         var searchStart = lowerHay.startIndex
         while let range = lowerHay.range(of: lowerToken, range: searchStart..<lowerHay.endIndex) {
             let leadingOK = range.lowerBound == lowerHay.startIndex

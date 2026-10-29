@@ -381,3 +381,6 @@ turn on a compatible model set to the beta profile, if a beta-speaking server is
 - A close with code 3000 (what OpenAI sends after `invalid_api_key`) counts as retryable in
   `RealtimeJSONSessionService`. It is harmless today, because the `error` event before it is already
   terminal. P0's error tests should pin that order.
+- P2's hyphenless transcripts: vault matching now treats a code without its hyphens as the
+  printed code ("XR7720" reaches a manual printing "XR-7720"), for codes outside the dictation
+  vocabulary too. Recorded under [Plan EL](EL-equipment-identity.md#hyphenless-codes-2026-10-30).
