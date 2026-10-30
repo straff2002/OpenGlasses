@@ -267,6 +267,9 @@ final class ModelAvailabilityTests: XCTestCase {
         XCTAssertEqual(LLMProvider.openai.defaultModel, "gpt-5.4-mini")
         XCTAssertEqual(LLMProvider.zai.defaultModel, "glm-5.3")
         XCTAssertEqual(LLMProvider.minimax.defaultModel, "MiniMax-M3")
+        XCTAssertEqual(LLMProvider.openrouter.defaultModel, "anthropic/claude-sonnet-5.5")
+        XCTAssertEqual(LLMProvider.custom.defaultModel, LLMProvider.openai.defaultModel,
+                       "a custom server's default address is OpenAI's, so it follows OpenAI's default")
         XCTAssertEqual(Config.claudeModel, LLMProvider.anthropic.defaultModel)
         XCTAssertEqual(ModelFetcher.miniMaxProbeModels.first?.0, LLMProvider.minimax.defaultModel)
     }

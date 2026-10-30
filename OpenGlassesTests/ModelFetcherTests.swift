@@ -179,6 +179,9 @@ final class ModelFetcherTests: XCTestCase {
             XCTAssertTrue(inferredVision(provider, provider.defaultModel), provider.rawValue)
         }
         XCTAssertFalse(inferredVision(.groq, LLMProvider.groq.defaultModel))
+        XCTAssertTrue(inferredVision(.groq, "qwen/qwen3.8-27b"), "Groq's preview image model")
+        XCTAssertTrue(inferredVision(.custom, LLMProvider.custom.defaultModel),
+                      "a custom model at an OpenAI-style address keeps the camera")
     }
 
     // MARK: - ModelConfig.inferredSupportsVision

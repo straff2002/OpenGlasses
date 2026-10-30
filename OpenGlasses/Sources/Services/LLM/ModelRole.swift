@@ -215,7 +215,7 @@ enum ModelRoleDefaults {
         case .vision:
             // A cheap, fast model that takes images; a provider's own default where that is one.
             // Each was read against its provider's docs on 2026-10-30 (Plan KA P2) and takes
-            // image input there. Groq's only image model is a preview, so Groq has none.
+            // image input there. Groq's only image model is a preview; the owner took it anyway.
             switch provider {
             case .anthropic: return "claude-haiku-5-5"
             case .openai: return "gpt-5.4-mini"
@@ -227,6 +227,7 @@ enum ModelRoleDefaults {
             case .qwen: return "qwen3.7-plus"
             case .minimax: return "MiniMax-M3.1-Flash"
             case .openrouter: return "anthropic/claude-haiku-5.5"
+            case .groq: return "qwen/qwen3.8-27b"
             default: return nil
             }
         case .voice:
