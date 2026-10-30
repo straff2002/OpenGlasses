@@ -1,8 +1,9 @@
 # Plan KD — Vault Retest on 581 (jobs that end themselves, chains nobody asked for, 4/0, printed pages, the app hearing itself)
 
 **Status:** 🚧 P0 built 2026-10-30 (headless) — all eight P0 items. P1 built 2026-10-30 (headless) —
-all four P1 items; its check on the glasses is owed. P2, P3 and the partner's re-run of P0 on the
-phone are owed. See "P0 as built" and "P1 as built" below. Drafted from the partner's structured retest of
+all four P1 items; its check on the glasses is owed. P2 built 2026-10-30 (headless) — all four P2
+items. P3 and the partner's re-run of P0 on the phone are owed. See "P0 as built", "P1 as built"
+and "P2 as built" below. Drafted from the partner's structured retest of
 the code-book vault on build 581 (2026-10-29: five jobs, table questions by number and in plain
 words, two rule chains, glasses then phone). Every cause below was traced to code on main at
 597; nothing merged between 581 and 597 touches `field_session`, `rule_chain`, `table_lookup`,
@@ -191,8 +192,48 @@ pass through the tools. `TechnicianRequest` is the one pure reader of the turn's
   full heading).
 - `list` is spoken and shown verbatim.
 
+**P2 as built (2026-10-30).** Headless; the turn rule and the ended turn only bite on a Direct-mode
+turn, and nothing here has been run against a live model yet.
+
+- `answer` takes `step`, the name of the question the chain is waiting for (case, spaces and
+  underscores aside). The name, not the number: the result and the prompt block both give it, a
+  chain sets each name once, and "step k of n" counts lookups and sums as well, so a model
+  counting only the questions would name another step. A missing step, a step already answered
+  (said with its value) or a later one is refused, naming the step the chain is waiting for.
+- `AppState.turnSerial` counts every spoken or typed turn (the same words twice included);
+  `TechnicianWords.currentTurn()` reads it, nil exactly when `current()` is. The run keeps the turn
+  its question was put in (`ActiveChainRun.questionTurn`): the start's turn, then the turn of each
+  answer, taken or not. An answer in that turn is refused, so a turn takes at most one answer and
+  a restarted chain takes nothing copied from earlier. A turn with no captured words (an agent turn,
+  a live session) cannot be told apart, so the turn rule stays out of the way there, as P0's gates
+  do; the step rule always applies. The question turn is not kept over a relaunch.
+- `ToolTurnEnd`: a result can end the turn. A question result (`start`, `answer`, and the repeated
+  question of a chain already running) ends with an "End of turn — ask the technician this and stop"
+  line carrying the question; `runToolLoop` runs nothing else from that round (each call answered
+  as not run), offers no further round, and makes the wrap-up request with tools withheld (the
+  existing `performWrapUp`), saying the question itself if the model says nothing. A live session
+  has no loop to stop and reads the same line as an instruction. "Call 'answer' with what they
+  say" is gone; the question tells the model to wait for the technician's next turn.
+- Every `rule_chain` result opens "Running now: <name>, step k of n." while a chain runs, or
+  "Running now: no rule chain." from the call that ended one. The ACTIVE RULE CHAIN block names
+  the step to pass and says it was written at the start of the turn and a result overrides it.
+- At `start`, each lookup's column is resolved with `TableLookup.resolve` against the table's
+  extracted headings: a written column that fits several headings, or none, refuses the start
+  with the candidates (or the columns) and says the chain file must name the full heading; a
+  column that is a value alone (`{size}`) is refused when a heading such a value could be is
+  printed under several groups. A column mixing heading words and values is still settled when it
+  runs. `chains-validate` already reported ambiguous columns and is unchanged.
+- `list`, when the technician's words ask what chains there are ("chains", or "list" with
+  "chain", and no run verb), ends the turn on the app's own words: a heading, the names exactly as
+  `start` takes them with the running one marked, and "Say a chain's name to run it." — said and
+  shown without another model request. A list the model fetched for itself comes back as before.
+- Owed: a live check that each provider honours the withheld tools on the question wrap-up; the
+  partner's chain file naming the conduit-fill table's column by full heading; new strings into
+  the catalog (P3).
+
 ### P3 — polish
 
+- Catalog entries for the strings P1 and P2 added (owner decision 2026-10-30).
 - A repeated last paragraph is collapsed before speech and history; consider Responses for the
   gpt-6-luna family's tool turns.
 - A retrieved table is attached to the model only when its label is the one asked or looked up;
