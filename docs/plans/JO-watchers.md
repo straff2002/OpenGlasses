@@ -1,7 +1,8 @@
 # Plan JO — Watchers ("tell me the score", "tell me when they announce a show near here", "I'm waiting on a letter")
 
 **Status:** 📝 Drafted (not scheduled), 2026-10-21 — nothing built. Owner decisions taken the same day,
-see [Decisions](#decisions-for-greig-taken-2026-10-21).
+see [Decisions](#decisions-for-greig-taken-2026-10-21). Errands and the leaving-home offer added
+2026-10-31 as P4; their decisions are still [open](#errand-decisions-open).
 **Builds on:** `AgentScheduler` (typed tasks, as Plan [IW](IW-goals-and-activity-trail.md) P2's goal
 check-ins), `AgentNotificationQueue`, Plan [BZ](BZ-notification-digest.md) (digest, `NotificationPriority`),
 Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, quiet hours), Plan IW (activity
@@ -55,6 +56,9 @@ each of those can and can't promise. An always-on tier is named and left for lat
   when a matching item appears in a source the app can read (calendar, reminders, the gateway's
   events), "the council letter you were waiting on — there's a reminder from the council for
   Thursday". "What am I waiting on?" lists them.
+- **Errands, when you're passing.** "Remind me to buy milk" → near a supermarket, one sentence:
+  "There's a supermarket just here. You wanted milk." Leaving home: "Heading out? Want the lights off?"
+  Both are offers the wearer said yes to, not a phone watching where they go by default.
 - **Bounded.** At most three unprompted spoken findings a day across all watchers (the rest wait in
   the digest), never in quiet hours, a meeting or a live session, and a finding that has gone stale
   (a half-time score after full time) is dropped, not delivered late.
@@ -83,6 +87,11 @@ each of those can and can't promise. An always-on tier is named and left for lat
 - **No push.** No `registerForRemoteNotifications`, no `aps-environment` entitlement, no sender.
   `OpenClawEventClient` receives the gateway's heartbeat/cron events over a WebSocket and speaks them —
   only while the app is alive and connected.
+- **Places and errands (checked 2026-10-31).** `GeofenceTool` needs a named place and shares iOS's
+  20-region cap (`Armability.atCapacity`). `SaveLocationTool` keeps the wearer's named places.
+  `SafetyRule` holds a `HomeRegion` for its "block actuation away from home" rule, which is off until
+  a home is set. `MKLocalSearch` is already in use (`WalkingRouteService`, `LocationSearchTool`).
+  `AppleRemindersTool` reads Reminders. Nothing connects an unfinished errand to where the wearer is.
 - **Delivery is solved.** `AgentNotificationQueue` (priority, reconnect delivery, "told you" log),
   `NotificationDigestService` + `NotificationPriority` (staleness: low 30 min, medium 2 h, high never),
   `MyDayDeliveryPolicy` (quiet hours, protected data), `PresenceMonitor`, `HeldRecommendationStore`.
@@ -212,6 +221,47 @@ availability: calendar, reminders, the gateway's events (P3). Mail is not a sour
 run on demand: "is there anything about reference 48-2211?" searches the readable sources for the
 token and reports matches with where they were found — never a guess at what the reference is.
 
+### Errands and the leaving-home offer
+
+Both are watchers, so they get the matcher, delivery caps, screen and removal above; only the trigger
+is new. They belong here because the hard part is restraint, which this plan already has rules for.
+
+**What counts as an errand.** `WatcherKind.errand(item, placeKind)` holds a thing and the kind of
+place that has it (`supermarket`, `pharmacy`, `hardware`…). It comes from the wearer saying so, or
+from one Reminders list the wearer picks, and from nowhere else. Scanning notes for words like "get"
+or "pick up" is out: "pick up the kids" and "get the invoice to the office" aren't shopping. Saying "remind me
+to buy milk" can be followed by one offer: "Want me to tell you when you're near a shop?"
+
+**When it runs.** `WatchRunner` needs a wake, and the app can't track position all day. So:
+
+1. Significant-location-change (P2 of this plan) wakes the app after a real move.
+2. On that wake, with errands pending, search a ~1 km tile with `MKLocalSearch` filtered to the
+   errands' place kinds. Only the tile's rounded centre leaves the phone, in keeping with
+   `CoarseArea`. Results are cached per tile for a day; the precise position is compared on the phone.
+3. The nearest few shops become `CLCircularRegion`s (at most 5, ~150 m). Entering one is the trigger.
+   Errand regions are reserved last and released first, so the wearer's own geofences always win
+   the 20-region cap.
+
+**`ErrandPolicy` (pure)** turns a wake into a `Finding` or nothing: the fix is good enough (accuracy
+under 100 m), the wearer isn't within 400 m of home, where a nearby shop tells them nothing, the same shop
+hasn't been mentioned in 3 hours, the same item not in 12 hours. Findings use `WatchDeliveryPolicy`
+as they stand (daily cap, quiet hours, no speech in a meeting or live session) with a 10-minute
+time-to-live: past the shop, the moment has gone. A finished reminder ends its errand.
+
+**Leaving home.** Exiting the wearer's home region is the trigger, and it only offers. It's an opt-in
+watcher naming one Home Assistant or HomeKit scene ("Want me to run Away?"). Three things to note:
+
+- The offer has to leave the app listening for the answer, and `AgentNotificationQueue.enqueue` has
+  no way to ask that. P4 adds it.
+- A yes goes through the normal tool path and confirmation; the watcher runs nothing itself.
+- The "block actuation away from home" safety rule fires at exactly this moment, because the wearer
+  has just left the region. The rule stays as it is, and the offer isn't made while that rule is on
+  unless the wearer has explicitly allowed this one scene.
+
+**Gates.** Location Always is required, and without it the watcher says it can't work rather than
+half-working. HIPAA mode: errands off, because a place search is egress. Local-only: blocked.
+Field Assist: errands don't run during a job, so a van's day of stops can't set them off.
+
 ### Gates and modes
 
 - **HIPAA mode:** watchers off (every source is public-web egress, as `WebSearchTool`); expectations
@@ -247,6 +297,14 @@ score heard after a locked evening; a show watcher firing on a morning unlock).
 counts), the 90-day decline memory, `Expectation` over calendar, reminders and gateway events, IW
 "waiting" steps, and on-demand digging over those sources.
 
+**P4 — Errands and the leaving-home offer** (after P2, which provides the location wakes).
+`WatcherKind.errand`, `ErrandPolicy`, the tile search with its route and privacy copy, dynamic shop
+regions with the cap rule, the Reminders-list picker, the offer after "remind me to buy…", the
+leaving-home watcher and an expects-a-reply delivery. Tests: every policy rule, region reservation
+at the cap, the safety-rule interaction, a finished reminder, the 10-minute drop. **Device pass
+owed:** a real walk past a shop with the phone locked, a week of battery readings, and how soon a
+region exit actually wakes the app, because a late wake makes both features useless.
+
 ## Later: always-on
 
 A watcher that must fire at a given minute regardless of the phone needs a process that is always
@@ -280,6 +338,14 @@ phone tier, never a prerequisite for it — every watcher in this plan works pho
    calendar, reminders and the gateway's events.
 6. **Daily cap — 3** spoken findings a day, ≥ 60 min apart, the rest in the digest.
 7. **Always-on tier — its own plan later**, after P2's device pass shows what the phone tier delivers.
+
+### Errand decisions (open)
+
+1. **Where errands come from.** Recommended: the wearer's words plus one chosen Reminders list.
+2. **Do errands share the daily cap of 3?** Recommended: yes. A separate allowance is how a phone
+   becomes a nag.
+3. **Leaving-home offer.** Recommended: keep it, opt-in, naming one scene, offered and never run
+   unasked.
 
 ## Out of scope
 
