@@ -4,7 +4,7 @@ import XCTest
 /// Saying goodbye to a live session, and the words the session is given about who it is talking to.
 final class LiveVoiceEndTests: XCTestCase {
 
-    private let parser = VoiceCommandParser.default.named("Max")
+    private let parser = VoiceCommandParser.default.named("Juno")
     private let start = Date(timeIntervalSince1970: 1_000)
 
     // MARK: - Phrases
@@ -23,9 +23,22 @@ final class LiveVoiceEndTests: XCTestCase {
         }
     }
 
+    func testAQuestionAboutGoingIsNotAGoodbye() {
+        for phrase in ["where do I have to go", "how far do I have to go", "do I have to go",
+                       "how much further have I got to go", "so what time have we got to go"] {
+            XCTAssertEqual(VoiceCommandParser.default.match(.goodbye, in: phrase)?.demotedBy,
+                           .questionAboutGoing, phrase)
+            XCTAssertFalse(backstop(phrase), phrase)
+        }
+    }
+
+    func testAQuestionBeforeAnOlderGoodbyeStillEndsIt() {
+        XCTAssertTrue(VoiceCommandParser.default.isGoodbye("what time is it, bye"))
+    }
+
     func testThanksFollowsTheAssistantsNameNotAFixedOne() {
-        XCTAssertTrue(parser.isGoodbye("thanks Max"))
-        XCTAssertTrue(parser.isGoodbye("thank you max"))
+        XCTAssertTrue(parser.isGoodbye("thanks Juno"))
+        XCTAssertTrue(parser.isGoodbye("thank you juno"))
         XCTAssertFalse(parser.isGoodbye("thanks Claude"), "the old fixed name is gone")
         XCTAssertFalse(VoiceCommandParser.default.isGoodbye("thanks claude"))
     }

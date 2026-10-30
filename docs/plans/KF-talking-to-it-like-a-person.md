@@ -116,6 +116,12 @@ Four places where the app makes the wearer work around it.
   session open. At the limit, speech under 6 s old may be someone mid-sentence, so the end waits for
   the model's answer, for at most 20 s, or a TV would hold the session open after all. The idle
   warning's own audio answers nobody.
+- "Got to go" and "I have to go" also ask about a journey ("how far do I have to go"), and they
+  end an utterance just as a sign-off does, so a question word before one of them demotes it. This
+  applies in Direct as well, which has no word limit. A reply to a turn the wearer spoke over
+  doesn't count as a reply to what they said over it, and a JSON provider's late transcript is
+  cleared when the next speech starts, so the backstop can't read an old "bye" at the end of a
+  later turn.
 
 Tests: the goodbye matrix (phrase, question, job active, tool running, tool plus backstop firing
 once), the prompt block by mode, idle timing with a silent turn, parser additions and the existing

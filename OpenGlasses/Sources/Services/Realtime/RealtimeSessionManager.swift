@@ -315,6 +315,10 @@ class RealtimeSessionManager: ObservableObject {
         providerSession.onUserSpeechStarted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.idleClock.noteSpeechHeard()
+            // A JSON provider's whole transcript can land after its turn ended. Left in place, it
+            // would be read as the wearer's words at the end of the next turn, which is the
+            // difference between a question answered and a session ended on an old "bye".
+            if !self.providerSession.inputTranscriptionIsDelta { self.userTranscript = "" }
         }
         // Wire provider audio → playback
         providerSession.onAudioReceived = { [weak self] data in
@@ -330,6 +334,10 @@ class RealtimeSessionManager: ObservableObject {
             // FF P1/PR5: an answer the wearer spoke over is committed marked. What they heard of it
             // is unknown, and a handover must never present it as delivered.
             self.conversationRecorder.noteInterruption()
+            // The answer spoken over is not a reply to whatever was said over it, and a wearer who
+            // cuts the idle warning off is answered as usual.
+            self.turnHadReply = false
+            self.idleWarningInTurn = false
         }
 
         // Wire turn complete

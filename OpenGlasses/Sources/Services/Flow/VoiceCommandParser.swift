@@ -54,6 +54,9 @@ struct VoiceCommandParser {
         /// A sign-off must *end* the utterance. `"that's all i wanted to ask about the weather"`
         /// keeps going after `"that's all"`, so it is speech about a topic, not a farewell.
         case nonFinalClose = "non-final-close"
+        /// `"how far do i have to go"` ends on a sign-off and asks a question: the words that say
+        /// the wearer is leaving also ask about a journey.
+        case questionAboutGoing = "question-about-going"
     }
 
     /// The outcome of testing one command against a transcript.
@@ -85,6 +88,15 @@ struct VoiceCommandParser {
         "for", "the", "help", "everything", "that", "all", "much", "very", "so", "again",
         "later", "night", "and", "have", "a", "good", "one", "day", "cheers", "it", "was",
         "great", "appreciate", "i",
+    ]
+
+    /// The sign-offs that are also ordinary words about going somewhere.
+    static let departurePhrases: Set<String> = ["got to go", "gotta go", "i have to go"]
+
+    /// Any of these before a departure phrase makes the utterance a question about it. Wider than
+    /// `interrogativeLeadIns` because the question can open anywhere: `"so how far do i have to go"`.
+    static let departureQuestionWords: Set<String> = [
+        "how", "where", "when", "what", "why", "who", "which", "do", "does", "did", "should", "must",
     ]
 
     /// Test one command against a transcript. `nil` means no phrase matched at all.
@@ -124,6 +136,13 @@ struct VoiceCommandParser {
                     let trailing = tokens[range.upperBound...]
                     if !trailing.allSatisfy({ Self.closeTrailerWords.contains($0) }) {
                         demotion = demotion ?? .nonFinalClose
+                        continue
+                    }
+
+                    // Rule C — a question about going somewhere.
+                    if Self.departurePhrases.contains(phrase),
+                       tokens[..<range.lowerBound].contains(where: Self.departureQuestionWords.contains) {
+                        demotion = demotion ?? .questionAboutGoing
                         continue
                     }
                 }
