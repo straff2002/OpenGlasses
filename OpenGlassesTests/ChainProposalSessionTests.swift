@@ -110,8 +110,9 @@ final class ChainProposalSessionTests: XCTestCase {
     }
 
     private func chain(_ args: [String: Any], _ job: Job) async throws -> String {
-        try await RuleChainTool(documentStore: job.store, sessionService: job.service,
-                                settings: { DeliverySettings() }, exports: exports).execute(args: args)
+        try await RuleChainFixtures.run(RuleChainTool(documentStore: job.store, sessionService: job.service,
+                                                      settings: { DeliverySettings() }, exports: exports),
+                                        args, job.service)
     }
 
     private var proposal: [String: Any] {
@@ -333,8 +334,8 @@ final class ChainProposalSessionTests: XCTestCase {
         XCTAssertEqual(relaunched.activeSession?.spokenReadings.count, readings, "nothing filed mid-chain")
 
         let tool = RuleChainTool(documentStore: job.store, sessionService: relaunched)
-        _ = try await tool.execute(args: ["action": "answer", "value": "5"])
-        let done = try await tool.execute(args: ["action": "answer", "value": "2"])
+        _ = try await RuleChainFixtures.run(tool, ["action": "answer", "value": "5"], relaunched)
+        let done = try await RuleChainFixtures.run(tool, ["action": "answer", "value": "2"], relaunched)
         XCTAssertTrue(done.contains("Finished. Say the result: Use QMX90 › two conductors"), done)
         XCTAssertEqual(relaunched.activeSession?.spokenReadings.count, (readings ?? 0) + 1)
         XCTAssertNil(relaunched.activeSession?.ruleChainRun, "an ended chain is no longer kept with the job")

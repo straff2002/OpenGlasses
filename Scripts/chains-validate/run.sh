@@ -20,6 +20,8 @@ swiftc -O -parse-as-library -target "$(uname -m)-apple-macos26.0" -o "$build/cha
   "$src/Vault/TableExtractor.swift" "$src/Vault/TableChecks.swift" "$src/Vault/PDFTableReader.swift" \
   "$src/Vault/RecognisedTable.swift" "$src/Vault/CellCertainty.swift" "$src/Vault/PictureRegion.swift" \
   "$src/Vault/PictureTableReading.swift" "$src/Vault/VisionTableReader.swift" "$src/Vault/LexicalSupport.swift" \
+  "$src/Vault/TermRule.swift" "$src/Vault/AWGSize.swift" "$src/Vault/TableDirectory.swift" \
+  "$src/Vault/CaptionWords.swift" "$src/Vault/CodeTokenizer.swift" "$src/Vault/TermRuleStopwords.swift" "$src/Vault/DocumentLanguageProfile.swift" \
   "$src/NativeTools/ArithmeticExpression.swift" "$src/NativeTools/UnitConversionTool.swift"
 
 exec "$build/chains-validate" "$@"

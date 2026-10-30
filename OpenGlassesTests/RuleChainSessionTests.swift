@@ -76,7 +76,7 @@ final class RuleChainSessionTests: XCTestCase {
     }
 
     private func chain(_ args: [String: Any], _ service: FieldSessionService, _ store: DocumentStore) async throws -> String {
-        try await RuleChainTool(documentStore: store, sessionService: service).execute(args: args)
+        try await RuleChainFixtures.run(RuleChainTool(documentStore: store, sessionService: service), args, service)
     }
 
     // MARK: - Started on request (Plan KD P0)
@@ -101,7 +101,7 @@ final class RuleChainSessionTests: XCTestCase {
 
         let replaced = try await tool("what does the conductor carry at 40 degrees")
             .execute(args: ["action": "start", "chain": "Check an installed conductor"])
-        XCTAssertEqual(replaced, RuleChainTool.notAskedRefusal)
+        XCTAssertEqual(RuleChainFixtures.withoutRunningNow(replaced), RuleChainTool.notAskedRefusal)
         XCTAssertEqual(service.activeChain?.chain.name, "Voltage drop on a run", "the chain in hand is left alone")
     }
 

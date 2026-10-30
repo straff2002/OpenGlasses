@@ -15,6 +15,10 @@ struct ActiveChainRun: Equatable {
     var sources: [String: String] = [:]
     /// Every answer given, in order, taken or not: replayed through the runner on a relaunch.
     var answers: [String] = []
+    /// The turn the current question was put in (`TechnicianWords.currentTurn()`), when that turn
+    /// had captured words (Plan KD P2): its answer has to come from a later turn. Not kept over a
+    /// relaunch, where the turns count from the start again.
+    var questionTurn: Int? = nil
 }
 
 /// A running chain as the job record keeps it (Plan JJ P3): the chain as `chains.md` writes it,
@@ -117,26 +121,29 @@ extension FieldSessionService {
     }
 
     /// Start a chain and run it to its first question (or its end).
+    /// `turn` is the turn it starts in, which its first question is put in.
     func startChain(_ chain: ChainDefinition, tables: [TableLookup.Source], origin: ChainOrigin = .authored,
-                    sources: [String: String] = [:]) throws -> ChainProgress {
+                    sources: [String: String] = [:], turn: Int? = nil) throws -> ChainProgress {
         guard let session = activeSession else { throw ChainError.noSession }
         if let running = activeChain { throw ChainError.alreadyRunning(running.chain.name) }
         var state = ChainState()
         let step = ChainRunner.advance(chain, state: &state, answer: nil, tables: tables)
         let run = ActiveChainRun(sessionId: session.id, chain: chain, state: state, current: step,
-                                 origin: origin, sources: sources)
+                                 origin: origin, sources: sources, questionTurn: turn)
         // A proposal that starts is the running chain now, not one waiting for go.
         if origin == .proposed { chainProposal = nil }
         chainRun = run
         return settle(run, newEntries: state.entries)
     }
 
-    /// The technician's answer to the chain's current question.
-    func answerChain(_ answer: String, tables: [TableLookup.Source]) throws -> ChainProgress {
+    /// The technician's answer to the chain's current question, given in `turn`. The question it
+    /// puts next — or the same one again, when the answer was not taken — is put in that turn.
+    func answerChain(_ answer: String, tables: [TableLookup.Source], turn: Int? = nil) throws -> ChainProgress {
         guard var run = activeChain else { throw ChainError.notRunning }
         let before = run.state.entries.count
         run.answers.append(answer)
         run.current = ChainRunner.advance(run.chain, state: &run.state, answer: answer, tables: tables)
+        run.questionTurn = turn
         chainRun = run
         return settle(run, newEntries: Array(run.state.entries.dropFirst(before)))
     }
@@ -329,6 +336,10 @@ extension FieldSessionService {
         """
     }
 
+    /// The block is as of the turn's start; a rule_chain result says what is running now.
+    static let supersededLine = "This block was written at the start of the turn. A rule_chain result says which "
+        + "chain is running now and which step it is waiting for; where they differ, the result is right."
+
     static func chainPromptBlock(chain: ChainDefinition, state: ChainState, ask: ChainAsk,
                                  origin: ChainOrigin = .authored) -> String {
         let marked = origin.marking.map { " (\($0))" } ?? ""
@@ -338,13 +349,17 @@ extension FieldSessionService {
         if let again = ask.again {
             lines.append("Their last answer was not taken: \(again)")
         }
-        lines.append("When they answer, call rule_chain action 'answer' with what they said. Never answer for them, "
-                     + "assume a value, or work a step yourself: the chain does the lookups and the arithmetic, and "
-                     + "reads every step back with its page.")
+        lines.append("Ask it and stop: their answer comes in their next turn. Then call rule_chain action 'answer' "
+                     + "with step \"\(ask.name)\" and only what they said in that turn. Never answer for them, take a "
+                     + "value from earlier in the conversation, assume a value, or work a step yourself: the chain "
+                     + "does the lookups and the arithmetic, and reads every step back with its page.")
         let done = state.entries.map(\.text)
         if !done.isEmpty {
             lines.append("So far: " + done.joined(separator: "; "))
         }
+        // Built once per turn (Plan KD P2): after a switch mid-turn this block is out of date, and
+        // every rule_chain result opens with what is running now.
+        lines.append(supersededLine)
         return lines.joined(separator: "\n")
     }
 }

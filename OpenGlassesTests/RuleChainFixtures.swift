@@ -85,3 +85,31 @@ enum RuleChainFixtures {
         return tables.map { TableLookup.Source(documentId: "a", documentName: "Invented Book A", table: $0) }
     }
 }
+
+extension RuleChainFixtures {
+
+    /// `args` with an answer naming the step `service`'s chain is waiting for, as the tool has
+    /// required since Plan KD P2 — for the tests written before it, which pass only the value. An
+    /// answer that already names a step, and every other action, is left as it is.
+    @MainActor static func answering(_ args: [String: Any], _ service: FieldSessionService) -> [String: Any] {
+        guard (args["action"] as? String) == "answer", args["step"] == nil,
+              let run = service.activeChain, case .ask(let ask) = run.current else { return args }
+        var named = args
+        named["step"] = ask.name
+        return named
+    }
+
+    /// `result` without the "Running now" line it opens with while a chain runs (Plan KD P2), for
+    /// the tests that read what follows it.
+    static func withoutRunningNow(_ result: String) -> String {
+        guard result.hasPrefix("Running now: "), let newline = result.firstIndex(of: "\n") else { return result }
+        return String(result[result.index(after: newline)...])
+    }
+
+    /// What `tool` says to `args`, as the tests before Plan KD P2 read it: the answer names the
+    /// pending step, and the "Running now" line is left off.
+    @MainActor static func run(_ tool: RuleChainTool, _ args: [String: Any],
+                               _ service: FieldSessionService) async throws -> String {
+        withoutRunningNow(try await tool.execute(args: answering(args, service)))
+    }
+}

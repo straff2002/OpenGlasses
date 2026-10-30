@@ -26,11 +26,14 @@ final class RuleChainTool: NativeTool {
     proposed with propose_chain once the technician says go, and chains kept on this phone; both are \
     unreviewed, so say so. Actions: 'list' (the chains by name: read the names out), 'start' (pass \
     'chain', its name; it replaces a chain already running; only when the technician asks for that \
-    chain, asks to run a chain, or says yes to the one you offered), 'answer' (pass 'value', the technician's reply to the current question, as said), \
+    chain, asks to run a chain, or says yes to the one you offered), 'answer' (pass 'step', the name \
+    of the question the chain is waiting for, and 'value', the technician's reply to it as said, from \
+    their turn after the question was put; one answer per turn), \
     'status', 'stop', 'keep' (keep the proposed chain that just ran to a result on this phone, when \
-    the technician asks), 'share' (the kept chains as a chains.md file, by the share sheet). The \
-    current question is in the system prompt: ask it in your own words. Never pass a value the \
-    technician did not say, and never work a step yourself. When it finishes, say the result and \
+    the technician asks), 'share' (the kept chains as a chains.md file, by the share sheet). Every \
+    result opens with the chain running now, which supersedes the system prompt. A question ends \
+    your turn: ask it in your own words and stop. Never pass a value the technician did not say in \
+    reply to that question, and never work a step yourself. When it finishes, say the result and \
     read back the steps with their pages; when it stops it has ended: say why, offer to show the page \
     and ask for no more of its values. Offer a chain by name when one answers the question; never \
     start one the technician did not ask for. \
@@ -46,6 +49,11 @@ final class RuleChainTool: NativeTool {
             "chain": [
                 "type": "string",
                 "description": "On 'start': the chain's name as 'list' gives it."
+            ],
+            "step": [
+                "type": "string",
+                "description": "On 'answer': the name of the question being answered, as the result or the "
+                    + "system prompt gives it (step \"ambient\"): only the one the chain is waiting for."
             ],
             "value": [
                 "type": "string",
@@ -66,18 +74,23 @@ final class RuleChainTool: NativeTool {
     /// only when those words ask for it (Plan KD P0).
     private let currentUtterance: @MainActor () -> String?
     private let previousReply: @MainActor () -> String?
+    /// Which turn is in flight, when it opened with the technician's words: a chain's answer comes
+    /// from a later turn than its question (Plan KD P2).
+    private let currentTurn: @MainActor () -> Int?
 
     init(documentStore: DocumentStore?, sessionService: FieldSessionService? = nil,
          settings: @escaping () -> DeliverySettings = { DeliverySettings.load() },
          exports: StagedExportCoordinator? = nil,
          currentUtterance: @escaping @MainActor () -> String? = { TechnicianWords.current() },
-         previousReply: @escaping @MainActor () -> String? = { TechnicianWords.previousReply() }) {
+         previousReply: @escaping @MainActor () -> String? = { TechnicianWords.previousReply() },
+         currentTurn: @escaping @MainActor () -> Int? = { TechnicianWords.currentTurn() }) {
         self.documentStore = documentStore
         self.injectedSession = sessionService
         self.settings = settings
         self.injectedExports = exports
         self.currentUtterance = currentUtterance
         self.previousReply = previousReply
+        self.currentTurn = currentTurn
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -92,20 +105,40 @@ final class RuleChainTool: NativeTool {
         guard session.activeSession != nil else {
             return FieldSessionService.ChainError.noSession.errorDescription ?? ""
         }
+        let before = session.activeChain
+        let result: String
         switch action {
-        case "list": return list(session)
-        case "start": return start(args: args, session: session)
-        case "answer": return answer(args: args, session: session)
-        case "status": return status(session)
+        case "list": result = list(session)
+        case "start": result = start(args: args, session: session)
+        case "answer": result = answer(args: args, session: session)
+        case "status": result = status(session)
         case "stop", "cancel":
-            guard let run = session.stopChain() else { return "No rule chain is running." }
-            return "Stopped the chain '\(run.chain.name)' at step \(run.state.position + 1). Nothing was recorded on the job."
-        case "keep", "save": return keep(session)
-        case "share": return share(session)
+            if let run = session.stopChain() {
+                result = "Stopped the chain '\(run.chain.name)' at step \(run.state.position + 1). Nothing was recorded on the job."
+            } else {
+                result = "No rule chain is running."
+            }
+        case "keep", "save": result = keep(session)
+        case "share": result = share(session)
         default:
-            return "Unknown action '\(action)'. Use \(actions)."
+            result = "Unknown action '\(action)'. Use \(actions)."
         }
+        guard let header = Self.runningNow(session.activeChain, wasRunning: before != nil) else { return result }
+        return header + "\n" + result
     }
+
+    /// What every result opens with while a chain runs (Plan KD P2): the chain and the step it is
+    /// on as of this call, which supersedes the system prompt's block — that is built once per
+    /// turn, and after a switch mid-turn it named the chain that had been replaced. A call that
+    /// ended the chain says none is running; with none running before or after, nothing. Pure.
+    static func runningNow(_ run: ActiveChainRun?, wasRunning: Bool) -> String? {
+        if let run {
+            return "Running now: \(run.chain.name), step \(run.state.position + 1) of \(run.chain.steps.count)."
+        }
+        return wasRunning ? noneRunningNow : nil
+    }
+
+    static let noneRunningNow = "Running now: no rule chain."
 
     // MARK: - Actions
 
@@ -130,9 +163,11 @@ final class RuleChainTool: NativeTool {
                     + vault.problems.prefix(3).map(\.description).joined(separator: "; ")
         }
         let tables = self.tables(session)
-        var lines = ["Rule chains in this vault, by name:"]
+        let running = session.activeChain?.chain.name
+        var names: [String] = []
         for entry in offered {
             var marks: [String] = []
+            if entry.chain.name == running { marks.append(Self.runningMark) }
             switch entry.origin {
             case .authored: break
             case .kept: marks.append(ChainOrigin.kept.marking ?? "")
@@ -142,8 +177,15 @@ final class RuleChainTool: NativeTool {
             if !unreadable.isEmpty {
                 marks.append("can't start: needs " + unreadable.map(\.label).joined(separator: ", "))
             }
-            lines.append("• " + entry.chain.name + (marks.isEmpty ? "" : " (" + marks.joined(separator: "; ") + ")"))
+            names.append("• " + entry.chain.name + (marks.isEmpty ? "" : " (" + marks.joined(separator: "; ") + ")"))
         }
+        // Asked for by the technician (Plan KD P2): the app says and shows the list itself, so no
+        // name is paraphrased or shortened — the model had read them as categories. A list the
+        // model fetched for its own use comes back to it as before.
+        if let said = currentUtterance(), TechnicianRequest.asksAboutChains(said) {
+            return ToolTurnEnd.saying(Self.spokenList(names, problems: vault.problems.count))
+        }
+        var lines = ["Rule chains in this vault, by name:"] + names
         lines.append("Read these names to the technician as they are: a chain is started by its name. "
                      + "What each one answers is in the system prompt.")
         if !vault.problems.isEmpty {
@@ -151,6 +193,20 @@ final class RuleChainTool: NativeTool {
         }
         return lines.joined(separator: "\n")
     }
+
+    /// The list as the technician hears and sees it: a heading, one chain a line as `start` takes
+    /// its name, and how to run one. Pure.
+    static func spokenList(_ names: [String], problems: Int) -> String {
+        var lines = [String(localized: "Rule chains in this vault:")] + names
+        if problems > 0 {
+            lines.append(String(localized: "Some of the vault's chains have problems and aren't offered."))
+        }
+        lines.append(String(localized: "Say a chain's name to run it."))
+        return lines.joined(separator: "\n")
+    }
+
+    /// The running chain's mark in the list.
+    static var runningMark: String { String(localized: "running now") }
 
     /// A table a chain reads that it cannot: not among the loaded manuals' tables at all, or
     /// found by its caption with a grid that could not be read.
@@ -192,7 +248,10 @@ final class RuleChainTool: NativeTool {
         if let running = session.activeChain, running.chain.name == chain.name {
             var lines = ["The chain '\(chain.name)' is already running, at step \(running.state.position + 1) of "
                          + "\(running.chain.steps.count). It was not restarted."]
-            if case .ask(let ask) = running.current { lines.append(Self.askLine(ask)) }
+            if case .ask(let ask) = running.current {
+                lines.append(Self.askLine(ask))
+                lines.append(ToolTurnEnd.afterReplyLine(asking: ask.question))
+            }
             return lines.joined(separator: "\n")
         }
         // Asked for, or not started (Plan KD P0) — a new chain and one that replaces a running
@@ -209,6 +268,14 @@ final class RuleChainTool: NativeTool {
             noteUnreadable(unreadable, session: session)
             return Self.refusal(chain, unreadable: unreadable)
         }
+        // The same for a column its headings cannot settle (Plan KD P2): the partner's chain named
+        // the conduit-fill table's column by a trade size printed under several groups, and stopped
+        // at that step after its questions had been asked.
+        let columns = Self.columnProblems(chain, tables: tables)
+        if !columns.isEmpty {
+            noteTables(columns.map(\.source), session: session)
+            return Self.refusal(chain, columns: columns)
+        }
         // The technician named a chain to start: one already running is stopped, exactly as 'stop'
         // stops it — nothing recorded — and the named one starts (Plan JW P0, owner decision).
         var lines: [String] = []
@@ -218,7 +285,7 @@ final class RuleChainTool: NativeTool {
         }
         do {
             let progress = try session.startChain(chain, tables: tables, origin: entry.origin,
-                                                  sources: entry.sources)
+                                                  sources: entry.sources, turn: currentTurn())
             note(progress, session: session)
             let marked = entry.origin.marking.map { " (\($0))" } ?? ""
             lines.append("Started the chain '\(chain.name)'\(marked).\n" + present(progress))
@@ -266,28 +333,180 @@ final class RuleChainTool: NativeTool {
     /// The pages of the tables a refused chain needed, for "show me the table": a caption found
     /// over a grid that could not be read still names its page.
     private func noteUnreadable(_ unreadable: [UnreadableTable], session: FieldSessionService) {
-        let citations = unreadable.compactMap(\.source).flatMap {
+        noteTables(unreadable.compactMap(\.source), session: session)
+    }
+
+    private func noteTables(_ sources: [TableLookup.Source], session: FieldSessionService) {
+        let citations = sources.flatMap {
             TableLookup.citations(documentName: $0.documentName, label: $0.table.label, pages: [$0.table.page])
         }
         guard !citations.isEmpty else { return }
         session.sourceCenter.noteTableLookup(rows: [], citations: citations, sessionId: session.activeSession?.id)
     }
 
+    // MARK: - Columns (Plan KD P2)
+
+    /// A lookup whose column the table's headings cannot settle to one.
+    struct ColumnProblem: Equatable {
+        /// The lookup's step, 0-based, and the name it sets.
+        let stepIndex: Int
+        let name: String
+        let source: TableLookup.Source
+        /// The column as the chain writes it.
+        let written: String
+        let kind: Kind
+
+        enum Kind: Equatable {
+            /// The written heading fits several columns: their full headings.
+            case ambiguous([String])
+            /// No column has the written heading: the table's columns.
+            case missing([String])
+            /// The column is a value alone (`{size}`), and a heading the value could be is printed
+            /// under several groups: that heading and its full forms.
+            case valueOnly(heading: String, candidates: [String])
+        }
+    }
+
+    /// Every lookup of `chain` whose column the extracted headings cannot settle, in step order,
+    /// resolved with `TableLookup`'s own column matching (Plan KD P2). A column written out is
+    /// resolved as written; one that is a value alone (`{size}`) is refused when any heading such a
+    /// value could be — a column's last heading — fits more than one column, since the technician
+    /// would answer with exactly that heading. A column that mixes heading words and values
+    /// ("Rating group {group} › {band}") is settled only when it runs, as before. Tables that
+    /// cannot be read are `unreadableTables`'s. Pure.
+    static func columnProblems(_ chain: ChainDefinition, tables: [TableLookup.Source]) -> [ColumnProblem] {
+        chain.steps.enumerated().compactMap { index, step -> ColumnProblem? in
+            guard case .lookup(let lookup) = step.kind,
+                  let written = lookup.column?.trimmingCharacters(in: .whitespaces), !written.isEmpty else { return nil }
+            let label = ChainDefinition.label(lookup.table)
+            guard case .success(let resolved) = TableLookup.resolveTable(.init(table: label, row: ""), in: tables) else {
+                return nil
+            }
+            let source = resolved.source
+            func column(_ asked: String) -> TableLookup.Outcome {
+                TableLookup.resolve(.init(table: label, row: "", column: asked), in: [source])
+            }
+            if !written.contains("{") {
+                switch column(written) {
+                case .ambiguous(.column, _, let candidates):
+                    return ColumnProblem(stepIndex: index, name: lookup.name, source: source, written: written,
+                                         kind: .ambiguous(candidates))
+                case .notFound(.column, _, let available):
+                    return ColumnProblem(stepIndex: index, name: lookup.name, source: source, written: written,
+                                         kind: .missing(available))
+                default:
+                    return nil
+                }
+            }
+            guard isValueOnly(written) else { return nil }
+            var seen: Set<String> = []
+            for heading in source.table.columns.compactMap(\.path.last) where seen.insert(heading.lowercased()).inserted {
+                if case .ambiguous(.column, _, let candidates) = column(heading) {
+                    return ColumnProblem(stepIndex: index, name: lookup.name, source: source, written: written,
+                                         kind: .valueOnly(heading: heading, candidates: candidates))
+                }
+            }
+            return nil
+        }
+    }
+
+    /// Whether a column template is one value and nothing else: "{size}".
+    static func isValueOnly(_ template: String) -> Bool {
+        let trimmed = template.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}") else { return false }
+        return !trimmed.dropFirst().dropLast().contains(where: { $0 == "{" || $0 == "}" })
+    }
+
+    /// Why a chain was not started for its columns, and what the chain's file needs. Pure.
+    static func refusal(_ chain: ChainDefinition, columns: [ColumnProblem]) -> String {
+        let reasons = columns.map { problem -> String in
+            let table = problem.source.table.displayName
+            let step = "step \(problem.stepIndex + 1) (\(problem.name))"
+            switch problem.kind {
+            case .ambiguous(let candidates):
+                return "\(step) names its column of \(table) as \"\(problem.written)\", which is printed under more than "
+                    + "one heading: " + candidates.joined(separator: "; ")
+            case .missing(let available):
+                return "\(step) names a column of \(table), \"\(problem.written)\", that it does not print (its columns: "
+                    + available.prefix(12).joined(separator: "; ") + ")"
+            case .valueOnly(let heading, let candidates):
+                return "\(step) names its column of \(table) only by the value \(problem.written), and a value such as "
+                    + "\"\(heading)\" is printed under more than one heading: " + candidates.joined(separator: "; ")
+            }
+        }
+        return "The chain '\(chain.name)' was not started: its " + reasons.joined(separator: "; and its ")
+            + ". It would have stopped at that step after asking its questions. Nothing was started or recorded. "
+            + "Tell the technician the chain's file has to name that column by its full heading, as printed "
+            + "(group › heading), and whoever keeps the vault's chains.md can fix it. Offer to look the cell up with "
+            + "table_lookup instead, naming the full heading, or to show the table's page (open it with show_source "
+            + "only if they ask)."
+    }
+
+    // MARK: - Answers (Plan KD P2)
+
     private func answer(args: [String: Any], session: FieldSessionService) -> String {
         let value: String
         if let text = args["value"] as? String { value = text } else if let number = args["value"] as? NSNumber {
             value = number.stringValue
         } else { value = "" }
+        guard let run = session.activeChain else {
+            return FieldSessionService.ChainError.notRunning.errorDescription ?? ""
+        }
+        guard case .ask(let pending) = run.current else {
+            return FieldSessionService.ChainError.notRunning.errorDescription ?? ""
+        }
+        let step = (args["step"] as? String) ?? (args["step"] as? NSNumber)?.stringValue
+        let turn = currentTurn()
+        if let refusal = Self.answerRefusal(step: step, pending: pending, run: run, turn: turn) {
+            return refusal
+        }
         guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "Pass 'value': what the technician said in reply to the chain's question."
         }
         do {
-            let progress = try session.answerChain(value, tables: tables(session))
+            let progress = try session.answerChain(value, tables: tables(session), turn: turn)
             note(progress, session: session)
             return present(progress)
         } catch {
             return error.localizedDescription
         }
+    }
+
+    /// Why an answer is not taken, or nil when it may be (Plan KD P2). The partner's retest had one
+    /// thing the technician said answer several steps in a row, and a restarted chain "reuse"
+    /// earlier answers copied from the conversation: `answer` took a value and nothing else. Now it
+    /// names the step — by the question's name, which the result and the prompt both give and which
+    /// a chain sets once; a step's number counts every step, lookups included, and a model counting
+    /// only the questions would land on another one — and it must be the step the chain is waiting
+    /// for. The answer comes from a later turn than the one the question was put in (or the chain
+    /// started in), so a turn takes at most one answer. A turn with no captured words (an agent
+    /// turn, a live session) cannot be told from another, so the turn rule does not apply there, as
+    /// P0's gates stay out of the way; the step rule always does. Pure.
+    static func answerRefusal(step: String?, pending: ChainAsk, run: ActiveChainRun, turn: Int?) -> String? {
+        let waiting = "The chain is waiting for step \"\(pending.name)\" (step \(pending.stepIndex + 1) of "
+            + "\(run.chain.steps.count)): \(pending.question)"
+        guard let step = step?.trimmingCharacters(in: .whitespacesAndNewlines), !step.isEmpty else {
+            return "Not taken: pass 'step', the name of the question the technician answered. " + waiting
+        }
+        if stepKey(step) != stepKey(pending.name) {
+            let answered = run.state.values.values.first { stepKey($0.name) == stepKey(step) }
+            if let answered {
+                let shown = answered.unit.map { "\(answered.text) \($0)" } ?? answered.text
+                return "Not taken: \"\(answered.name)\" was already answered (\(shown)), and is not asked again. " + waiting
+            }
+            return "Not taken: \"\(step)\" is not the step the chain is waiting for. " + waiting
+        }
+        if let turn, run.questionTurn == turn {
+            return "Not taken: \"\(pending.name)\" was asked in this turn, so its answer has to come from what the "
+                + "technician says next — never from earlier in the conversation, or from an answer to another step. "
+                + "Ask it and stop."
+        }
+        return nil
+    }
+
+    /// A step's name as compared: case, spaces, hyphens and underscores aside.
+    private static func stepKey(_ name: String) -> String {
+        name.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private func status(_ session: FieldSessionService) -> String {
@@ -363,6 +582,8 @@ final class RuleChainTool: NativeTool {
         switch progress.step {
         case .ask(let ask):
             lines.append(Self.askLine(ask))
+            // The question ends the turn (Plan KD P2): its answer is the technician's next turn.
+            lines.append(ToolTurnEnd.afterReplyLine(asking: ask.question))
         case .finished(let said):
             lines.append("Finished. Say the result: " + said.joined(separator: " "))
             if let marking = progress.origin.marking {
@@ -408,7 +629,8 @@ final class RuleChainTool: NativeTool {
         var line = ""
         if let again = ask.again { line += "That answer was not taken: \(again)\n" }
         line += "Next, ask the technician: \(ask.question) (it needs \(RuleChainWording.needs(ask))). "
-            + "Call 'answer' with what they say."
+            + "Their answer comes in their next turn: then call 'answer' with step \"\(ask.name)\" and only what "
+            + "they said in it."
         return line
     }
 
