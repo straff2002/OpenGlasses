@@ -242,6 +242,8 @@ enum PrivacyLog {
         case approvalNotBound
         /// A vault-only job sealed this tool (Plan KE).
         case vaultOnlySealed
+        /// A turn that asked for nobody tried to page an expert (Plan KE).
+        case expertNotRequested
     }
 
     @discardableResult

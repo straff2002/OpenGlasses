@@ -1,7 +1,8 @@
 # Plan KE — Symptom Diagnosis and Vault-Only Jobs (no web search in a sealed vault, the known model picks the manuals, citations that open the right page)
 
-**Status:** 📝 Drafted 2026-10-31 from a tester's report of 2026-10-30 (three simulated jobs on a
-refrigerator vault, build 581). Nothing built. Every cause below was traced on main at build 610:
+**Status:** 🚧 P0 and P1 built 2026-10-31, headless; P2 and P3 to do. Drafted 2026-10-31 from a
+tester's report of 2026-10-30 (three simulated jobs on a refrigerator vault, build 581). Every cause
+below was traced on main at build 610:
 the citation causes by running the parser on the report's exact lines, the page causes by running
 `DocumentChunker` over the vault's own PDFs, the title and unit causes by reading the code only.
 **Track:** Field Assist first (the tester's customer pilot is held on this), app-wide underneath:
@@ -173,6 +174,44 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   symptom or answer." The report does not carry the arguments. The replay made the same pair of
   calls, `field_session` `status` and `equipment_lookup` with `set_equipment` or a free-text query,
   but not the full loop, so the fixture uses those and the existing stop stays as the backstop.
+
+**P1 as built (2026-10-31).** Headless; nothing here has been run on the phone yet.
+
+- The shared recognition is `EquipmentRecognition.reading` and `.change`, moved out of the tool. Both
+  the tool and `recordModelSaid` use them, so a turn's words and `equipment_lookup` record the same
+  identity. The hook is the top of `FieldSessionService.promptContext`, the one place spoken and typed
+  turns both pass before anything is retrieved; the words come through `TechnicianWords`, so a turn with
+  none records nothing. `.spoken` already says "from the technician", so `Source` gained no case.
+- `match(text:)` keeps its first reading when two tokens name different models, so "the QX100 is fine,
+  the QX200 trips" counted as one match. `unitSaid` asks the stricter `namesOneModel`. A denial ("it's
+  not the QX100") records nothing, and neither does a paused job, or the same words a second time in a
+  job: a prompt rebuilt after a tool round must not bring back a unit the tool has just forgotten.
+- A `set_equipment` that repeats a unit the turn already recorded still logs a correction with the
+  same words on both sides. That is how a technician's "no, it really is the 48C" is logged, so it
+  stays; the job log may show more of these now.
+- The ledger has no number field, so a document's number is any word of its title with letters and
+  digits, beside the title's first word when that holds a digit. A photographed manual takes no
+  document penalty: it is the job's own and in no vault's list. A series member has no spellings to
+  score text by, so its scope carries only the union of its series' documents, and its text and team
+  learnings score as they did.
+- The context goes in a new `Request.jobContext`, searched like a procedure step's title and never a
+  boost token: the unit's number is on half the vault's pages, and a verbatim token clears the gate by
+  itself. The earlier turns are held in memory on the service, by job and unit, last four, two used.
+  Nothing is written for this; a crash loses only the follow-up's context.
+- The second search runs for any turn but job bookkeeping, on a job that is not paused, and not when
+  the turn names another known model. A page it adds is never staged: the turn's own outcome decides
+  what opens. On a turn that already answered it adds at most two, from assigned documents, after what
+  the turn found. It reads the words `manualPassagesContext` reads, so `manual_lookup` stays as it was.
+- The escalation gate is in the router, ahead of the policy, so no card goes up, and covers
+  `escalate_to_expert` `request` and `field_session` `escalate`. It errs towards a request: a wrong
+  pass shows the card, a wrong refusal stands between a technician and a person.
+- `ToolRepeatGuard` is new, in the tool loop. Status repeats until something else changed; a unit
+  lookup is settled once the text only restates the active unit, whatever its arguments; a fault code
+  beside the model, another model or a fuller spelling runs. A call refused this way counts towards
+  `identicalRepeats` only from the second telling, or the wrap-up would withhold tools from the very
+  round the model is told to search. Live sessions have no loop, so this is Direct mode only.
+- `oneCheckRule` sits beside the passages, on question, description and reading turns. It is in the
+  volatile tail, so the cached prefix does not move.
 
 ### P2 — every page where it is (headless, then the real manuals)
 

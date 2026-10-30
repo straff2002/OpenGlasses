@@ -11,8 +11,10 @@ import Foundation
 final class EscalateToExpertTool: NativeTool {
     let name = "escalate_to_expert"
     let description = """
-    Escalate the active Field Assist session to a human expert when the AI cannot safely resolve the \
-    issue or the technician asks for a person. Actions: 'request' (page an expert with a reason), \
+    Page a human expert for the active Field Assist session when the technician asks for a person, or \
+    says yes to your offer of one. A manual search that found nothing is not a reason to page: name \
+    what the manuals do not cover and offer an expert, and if something looks unsafe, say so and \
+    offer one. Actions: 'request' (page an expert with a reason), \
     'status' (current escalation state), 'resolve' (the issue is handled), 'cancel' (stand down). \
     If the organisation has set up a live-view relay, the technician's camera view is shared with the \
     expert; otherwise the escalation is logged and the expert pool is notified with the job record. \
@@ -36,6 +38,35 @@ final class EscalateToExpertTool: NativeTool {
         ],
         "required": ["action"]
     ]
+
+    // MARK: - Who asked (Plan KE P1)
+
+    /// What a turn that asked for nobody is told instead of a page. The model asked for an expert
+    /// on a retrieval miss in six replays of six, the technician cancelled the card, and the
+    /// diagnosis stopped there.
+    nonisolated static let notRequested = "Not requested: name what the manuals do not cover and offer an expert."
+
+    /// Whether this call pages a person: this tool's `request`, or `field_session` `escalate`, the
+    /// same coordinator by another door. The rest of this tool reports or stands down.
+    nonisolated static func pagesAnExpert(tool: String, args: [String: Any]) -> Bool {
+        let action = (args["action"] as? String)?.lowercased()
+        switch tool {
+        case "escalate_to_expert": return action == "request" || action == "escalate"
+        case "field_session": return action == "escalate"
+        default: return false
+        }
+    }
+
+    /// The refusal for a call that pages a person, or nil when it may go on: the words ask for one,
+    /// or are a short yes to an offer of one. A turn with no captured words (an agent-initiated turn
+    /// or a live session) is not gated, as `TechnicianWords` documents. Checked by the router before
+    /// the approval card, so a page nobody asked for puts no card in front of the technician. Pure.
+    nonisolated static func refusal(said: String?, previousReply: String?) -> String? {
+        guard let said else { return nil }
+        if TechnicianRequest.asksForExpert(said)
+            || TechnicianRequest.confirmsExpertOffer(said, previousReply: previousReply) { return nil }
+        return notRequested
+    }
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.fieldAssistActive else {

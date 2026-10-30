@@ -175,33 +175,29 @@ final class EquipmentLookupTool: NativeTool {
 
     /// Recognition with memory: a query or a nameplate read that names exactly one of the vault's
     /// models sets the session's active equipment. Several models is not an identification — the
-    /// technician is asked which, because guessing here poisons every answer that follows.
+    /// technician is asked which, because guessing here poisons every answer that follows. The
+    /// reading is shared with the turn's own words (`EquipmentRecognition.reading`, Plan KE P1).
     private func recogniseEquipment(in text: String, source: EquipmentIdentity.Source,
                                     nameplateText: String? = nil) -> (announcement: String?, ambiguity: String?) {
-        let index = session.modelIndex
-        guard !index.isEmpty else { return (nil, nil) }
-        let matches = index.match(text: text)
-        guard !matches.isEmpty else {
-            // A member of the vault's series that no listed size claims is still a machine these
-            // manuals are for, and recognising it is what keeps the turn from being refused.
-            guard let member = index.seriesMember(in: text) else { return (nil, nil) }
-            let identity = EquipmentRecognition.identity(
-                stated: member, resolution: EquipmentRecognition.resolve(stated: member, index: index),
-                source: source, nameplateText: nameplateText)
-            guard identity.isSeriesMember, session.activeEquipment?.unitKey != identity.unitKey else {
+        switch EquipmentRecognition.reading(of: text, source: source, index: session.modelIndex,
+                                            nameplateText: nameplateText) {
+        case .nothing:
+            return (nil, nil)
+        case .several(let matches):
+            return (nil, "That reads as more than one model: \(matches.map(\.name).joined(separator: ", ")). Which one is it?")
+        case .unit(let identity):
+            switch EquipmentRecognition.change(from: session.activeEquipment, to: identity) {
+            case .sameUnit:
                 return (nil, nil)
+            case .fullerSpelling:
+                // The same machine, said more fully: the job log, the Unit card and the title keep
+                // what was stated, and nothing changes scope, so nothing needs saying.
+                session.correctEquipment(identity)
+                return (nil, nil)
+            case .firstUnit, .anotherUnit:
+                return record(identity)
             }
-            return record(identity)
         }
-        guard matches.count == 1 else {
-            let names = matches.map(\.name).joined(separator: ", ")
-            return (nil, "That reads as more than one model: \(names). Which one is it?")
-        }
-        let model = matches[0]
-        let identity = Self.identity(for: model, in: text, source: source, index: index,
-                                     nameplateText: nameplateText)
-        if session.activeEquipment?.heading == model.heading { return (nil, nil) }
-        return record(identity)
     }
 
     /// Make a recognised machine the session's active equipment — or, on a job already on another
@@ -246,26 +242,6 @@ final class EquipmentLookupTool: NativeTool {
             return "No site system in the \(session.activeVault?.manifest.name ?? "active") vault is matched to this job. Answer for the unit in front of the technician."
         }
         return lines.joined(separator: "\n")
-    }
-
-    /// The identity to record for a model the text named (Plan GB P2). A spoken model keeps what
-    /// was said beside the section it matched and how; a nameplate, a work order and a tap on the
-    /// phone's list are the vault's own spelling, recorded as before.
-    static func identity(for model: VaultModelIndex.Model, in text: String,
-                         source: EquipmentIdentity.Source, index: VaultModelIndex,
-                         nameplateText: String? = nil) -> EquipmentIdentity {
-        guard source == .spoken,
-              let stated = VaultModelIndex.modelLikeTokens(in: text)
-                .filter({ index.resolve(token: $0).contains(model) })
-                .max(by: { $0.count < $1.count }) else {
-            return EquipmentIdentity(model: model, token: model.name, source: source,
-                                     nameplateText: nameplateText)
-        }
-        let resolution = EquipmentRecognition.resolve(stated: stated, index: index)
-        let kind = resolution.model == model ? (resolution.kind ?? .partial) : .partial
-        return EquipmentIdentity(model: model, token: model.name, source: source,
-                                 nameplateText: nameplateText, statedModel: stated,
-                                 vaultMatch: .init(heading: model.heading, section: model.name, kind: kind))
     }
 
     /// What the tool says once it has recorded a unit. A near match is recorded as said and put to

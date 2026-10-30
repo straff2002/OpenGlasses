@@ -32,12 +32,18 @@ struct VaultRetriever {
         /// Title of the active procedure step, when one is running.
         var procedureStep: String?
         var limit: Int = 4
+        /// What the job is about, for a follow-up that does not say (`JobSearchContext`, Plan KE
+        /// P1). Searched and compared like the step's title, and deliberately never a boost token:
+        /// the model's own number is on half the vault's pages and would vouch for all of them.
+        var jobContext: String?
 
-        init(turn: String? = nil, ocrText: String? = nil, procedureStep: String? = nil, limit: Int = 4) {
+        init(turn: String? = nil, ocrText: String? = nil, procedureStep: String? = nil, limit: Int = 4,
+             jobContext: String? = nil) {
             self.turn = turn
             self.ocrText = ocrText
             self.procedureStep = procedureStep
             self.limit = limit
+            self.jobContext = jobContext
         }
     }
 
@@ -194,11 +200,17 @@ struct VaultRetriever {
         /// Every spelling of every *other* model the vault names, uppercased.
         var otherTokens: Set<String>
         var penalty: Float = 0.5
+        /// The documents the vault's section for the active model names (Plan KE P1). A generic
+        /// page of another family's manual names no model, so `penalty(for:)` cannot see it; the
+        /// vault's own list can. Empty means the section names none, and nothing is scored by it.
+        var assignedDocumentIds: Set<String> = []
 
-        init(activeTokens: Set<String>, otherTokens: Set<String>, penalty: Float = 0.5) {
+        init(activeTokens: Set<String>, otherTokens: Set<String>, penalty: Float = 0.5,
+             assignedDocumentIds: Set<String> = []) {
             self.activeTokens = activeTokens
             self.otherTokens = otherTokens.subtracting(activeTokens)
             self.penalty = penalty
+            self.assignedDocumentIds = assignedDocumentIds
         }
 
         /// The penalty for one passage: it names another model and does not name this one.
@@ -206,6 +218,15 @@ struct VaultRetriever {
             guard !activeTokens.isEmpty, !otherTokens.isEmpty else { return 0 }
             guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
             return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
+        }
+
+        /// The penalty for a page of a vault manual: the one `penalty(for:)` gives, else the same
+        /// amount for a document the active model is not assigned. Ranks down, never out, as Plan EL
+        /// chose, and never twice.
+        func penalty(for text: String, documentId: String) -> Float {
+            let named = penalty(for: text)
+            guard named == 0, !assignedDocumentIds.isEmpty, !assignedDocumentIds.contains(documentId) else { return named }
+            return penalty
         }
 
         /// The penalty for a team learning, by **identity** (contract §7.2): its `modelToken`,
@@ -259,7 +280,7 @@ struct VaultRetriever {
     }
 
     func retrieve(_ request: Request) -> RetrievalOutcome {
-        let parts = [request.turn, request.ocrText, request.procedureStep]
+        let parts = [request.turn, request.ocrText, request.procedureStep, request.jobContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !parts.isEmpty else { return .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence) }
@@ -529,11 +550,16 @@ struct VaultRetriever {
 
     private func scored(_ raw: DocumentStore.Passage, matched: [String]) -> Passage {
         let boost = min(policy.maxBoost, policy.tokenBoost * Float(matched.count))
-        // A manual page is scoped by the models its text names; a team learning by the model its
-        // entry is filed against, never by its prose (Plan FP §5, contract §7.2).
-        let penalty = raw.source == .teamLearning
-            ? modelScope?.penalty(forSubjectToken: raw.subjectModelToken) ?? 0
-            : modelScope?.penalty(for: raw.text) ?? 0
+        // A manual page is scoped by the models its text names and the documents the vault assigns
+        // the model (Plan KE P1); a photographed manual is the job's own, in no vault's list; a team
+        // learning by the model its entry is filed against, never by its prose (Plan FP §5,
+        // contract §7.2).
+        let penalty: Float
+        switch raw.source {
+        case .teamLearning: penalty = modelScope?.penalty(forSubjectToken: raw.subjectModelToken) ?? 0
+        case .manual: penalty = modelScope?.penalty(for: raw.text, documentId: raw.documentId) ?? 0
+        case .capturedManual: penalty = modelScope?.penalty(for: raw.text) ?? 0
+        }
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
                        similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,

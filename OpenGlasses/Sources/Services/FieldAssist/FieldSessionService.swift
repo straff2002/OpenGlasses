@@ -661,13 +661,75 @@ final class FieldSessionService: ObservableObject {
                                   asserted: assertedUnitKeys)
     }
 
-    /// The retriever's view of the active machine: every spelling of it, and every spelling of
-    /// every other model the vault names. Nil when nothing is active or the vault names no models.
+    /// The retriever's view of the active machine: every spelling of it, every spelling of every
+    /// other model the vault names, and the documents the vault assigns it. A series member has no
+    /// section, so it has no spellings to score text by, only its series' documents. Nil when
+    /// nothing is active, the vault names no models, or a series member has no documents named.
     var retrievalModelScope: VaultRetriever.ModelScope? {
         guard let active = activeEquipment, !modelIndex.isEmpty else { return nil }
-        guard let model = modelIndex.models.first(where: { $0.heading == active.heading }) else { return nil }
-        return VaultRetriever.ModelScope(activeTokens: Set(model.tokens),
-                                         otherTokens: modelIndex.knownModelTokens)
+        let assigned = Set(assignedDocuments.map(\.id))
+        guard let model = modelIndex.models.first(where: { $0.heading == active.heading }) else {
+            guard active.isSeriesMember, !assigned.isEmpty else { return nil }
+            return VaultRetriever.ModelScope(activeTokens: [], otherTokens: [], assignedDocumentIds: assigned)
+        }
+        return VaultRetriever.ModelScope(activeTokens: Set(model.tokens), otherTokens: modelIndex.knownModelTokens,
+                                         assignedDocumentIds: assigned)
+    }
+
+    /// The vault's manuals the active unit's section names, by title so the prompt reads the same
+    /// each turn (Plan KE P1): empty for a vault whose sections name none, and with no unit.
+    var assignedDocuments: [(id: String, title: String)] {
+        guard let active = activeEquipment, let store = activeVault, let documentStore else { return [] }
+        let sections = active.isSeriesMember ? modelIndex.seriesModels
+            : modelIndex.models.filter { $0.heading == active.heading }
+        guard sections.contains(where: { !$0.body.isEmpty }) else { return [] }
+        let documents = documentStore.list(namespace: DocumentStore.vaultNamespace(store.manifest.id))
+            .map { (id: $0.id, title: $0.name) }
+        let assigned = sections.reduce(into: Set<String>()) { $0.formUnion($1.assignedDocumentIds(among: documents)) }
+        return documents.filter { assigned.contains($0.id) }.sorted { $0.title < $1.title }
+    }
+
+    /// The sentence naming the assigned documents, or nil when there is no set. Short: it goes out
+    /// on every turn of the job.
+    func assignedDocumentsNote() -> String? {
+        let titles = assignedDocuments.map(\.title)
+        guard let stated = activeEquipment?.stated, !titles.isEmpty else { return nil }
+        let named = titles.prefix(Self.assignedTitlesNamed).joined(separator: "; ")
+            + (titles.count > Self.assignedTitlesNamed ? " and \(titles.count - Self.assignedTitlesNamed) more" : "")
+        return "DOCUMENTS FOR \(stated): \(named). Passages from any other document are not assigned to this model; say so if you use one."
+    }
+
+    private static let assignedTitlesNamed = 6
+
+    /// Whether `text` names the active unit and nothing that could change it (`ToolRepeatGuard`).
+    func namesOnlyActiveUnit(_ text: String) -> Bool {
+        activeEquipment.map { EquipmentRecognition.restates($0, in: text) } ?? false
+    }
+
+    /// What the technician said to open the turn in flight, as `TechnicianWords` documents it: nil
+    /// for a turn with no captured words, so an agent's or a live session's turn records nothing and
+    /// adds nothing. A seam so a test states the words.
+    var technicianWords: @MainActor () -> String? = { TechnicianWords.current() }
+
+    /// The last words read for a model, per job: `promptContext` runs again after every tool round
+    /// on some routes, and a turn that said "forget the QX100" must not bring it back after the
+    /// tool forgot it.
+    private var modelReadFrom: (session: String, words: String)?
+
+    /// A turn naming one of the vault's models records it, before anything is retrieved for that
+    /// turn (Plan KE P1): when there is no unit yet, or when it spells the active one more fully.
+    /// The same identity `equipment_lookup` records, so the job log, the Unit card and the title
+    /// follow. Says nothing: the model reads the unit in the turn's own prompt.
+    private func recordModelSaid() {
+        guard let session = activeSession, session.pausedAt == nil, let said = technicianWords(),
+              modelReadFrom?.session != session.id || modelReadFrom?.words != said else { return }
+        modelReadFrom = (session.id, said)
+        guard let unit = EquipmentRecognition.unitSaid(in: said, active: activeEquipment, index: modelIndex) else { return }
+        switch unit.change {
+        case .firstUnit: setEquipment(unit.identity)
+        case .fullerSpelling: correctEquipment(unit.identity)
+        case .sameUnit, .anotherUnit: break
+        }
     }
 
     // MARK: - Work record: tasks, parts, identity (Plan EM)
@@ -1830,6 +1892,8 @@ final class FieldSessionService: ObservableObject {
         // What this turn is, for the page rules below and for `manual_figure` later in the turn.
         // Set on every turn, so a kind never outlives the turn it was read from (Plan GB P1).
         lastTurnKind = turn.map(ManualTurnClassifier.classify)
+        // Everything below reads the unit, so the turn that first names it is already scoped to it.
+        recordModelSaid()
         // Plan GB P5: the vault core is bounded on every provider, not just ChatGPT — an
         // unbounded core rode along on every API request and every tool round-trip. The bound is
         // the validator's budget wherever the request context allows it (Decision 6).
@@ -1906,8 +1970,23 @@ final class FieldSessionService: ObservableObject {
         let retriever = manualRetriever(store: store, editionRequest: editionRequest)
         // Manuals in more than one language are searched once per language and merged by rank
         // (Plan JY P2); a library in one language is searched exactly as before.
-        let outcome = retrieveByLanguage(.init(turn: searchTurn, procedureStep: runner?.currentStep?.title),
-                                         with: retriever, store: store, editionRequest: editionRequest).outcome
+        let ownOutcome = retrieveByLanguage(.init(turn: searchTurn, procedureStep: runner?.currentStep?.title),
+                                            with: retriever, store: store, editionRequest: editionRequest).outcome
+        // A follow-up rarely says what it follows (Plan KE P1). A second search, with the job's
+        // subject beside the turn, can only add to what the turn found.
+        let kind = ManualTurnClassifier.classify(turn)
+        var outcome = ownOutcome
+        let assigned = Set(assignedDocuments.map(\.id))
+        if scopeNote == nil, kind != .jobBookkeeping, activeSession?.pausedAt == nil,
+           JobSearchContext.searchesAgain(after: ownOutcome, assigned: assigned), let said = technicianWords(),
+           let context = JobSearchContext.context(unit: activeEquipment?.stated, earlierTurns: heldJobTurns,
+                                                  current: said, otherModels: otherModelTokens) {
+            let widened = retrieveByLanguage(.init(turn: searchTurn, procedureStep: runner?.currentStep?.title,
+                                                   jobContext: context),
+                                             with: retriever, store: store, editionRequest: editionRequest).outcome
+            outcome = JobSearchContext.merged(own: ownOutcome, context: widened, assigned: assigned)
+        }
+        noteJobTurn()
         // Support trace: which pages went to the model, by citation — or that the gate refused.
         TurnRecorder.noteManualPassages(outcome.passages.map(\.citation), refused: !outcome.answers)
         let disclosure = noteRetrieval(outcome)
@@ -1918,8 +1997,9 @@ final class FieldSessionService: ObservableObject {
         // model only, or is not staged at all is `FigureAutoOpenPolicy`'s call (Plan GB P1): a
         // reading, a correction or job bookkeeping asked for no page, and a table opens only when
         // asked for. Ranking is untouched — the passages below go to the model whatever is staged.
-        let kind = ManualTurnClassifier.classify(turn)
-        let candidate = Self.bestFigure(in: outcome.passages)
+        // Read from what the turn found itself: a page added for the job's subject asked for
+        // nothing to open.
+        let candidate = Self.bestFigure(in: ownOutcome.passages)
         let passageKind = candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) }
         var decision = FigureAutoOpenPolicy.decide(
             turnKind: kind,
@@ -1959,7 +2039,37 @@ final class FieldSessionService: ObservableObject {
             block += "\n\n" + hint
         }
         if let note = editionNote(for: editionRequest, store: store) { block += "\n\n" + note }
+        if let documents = assignedDocumentsNote() { block += "\n\n" + documents }
+        if kind == .question || kind == .statement || kind == .reading { block += "\n\n" + Self.oneCheckRule }
         return scopeNote.map { block + "\n\n" + $0 } ?? block
+    }
+
+    /// How a diagnostic turn is answered (Plan KE P1). Beside the passages it speaks of, on the turns
+    /// that can be diagnostic, so a job turn or a page request does not pay for it.
+    static let oneCheckRule = """
+        DIAGNOSING: give one check the passages support and say what to observe, then use the answer \
+        to pick the next. A check needs a passage behind it; with none, name the specific gap. Never \
+        call a check the manufacturer's first step unless a passage says so.
+        """
+
+    /// Every other model's spellings, which an earlier turn must not carry into this one's search.
+    private var otherModelTokens: Set<String> {
+        let active = modelIndex.models.first { $0.heading == activeEquipment?.heading }
+        return modelIndex.knownModelTokens.subtracting(active?.tokens ?? [])
+    }
+
+    /// The technician's recent turns on the unit the job is on, for `JobSearchContext`. Held here
+    /// and nowhere else: nothing about a turn is stored for this, and a crash loses only the
+    /// follow-up's context. Keyed so another job, or the next unit, starts clean.
+    private var jobTurns = (key: "", turns: [String]())
+
+    private var jobTurnsKey: String { activeSession.map { $0.id + "/" + $0.continuityScope } ?? "" }
+
+    private var heldJobTurns: [String] { jobTurns.key == jobTurnsKey ? jobTurns.turns : [] }
+
+    private func noteJobTurn() {
+        guard activeSession != nil, let said = technicianWords() else { return }
+        jobTurns = (jobTurnsKey, JobSearchContext.keeping(said, after: heldJobTurns))
     }
 
     /// The per-turn retriever for the active vault: the shared factory with its default namespaces,

@@ -110,6 +110,10 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// Whether the job open right now is sealed to its vault (`VaultOnlyPolicy`, Plan KE). A seam so
     /// the gate is testable without a session on a sealed vault.
     var vaultOnlySealed: @MainActor () -> Bool = { VaultOnlyPolicy.jobIsSealed }
+    /// What the technician said this turn and what the assistant said before it, for the gate on
+    /// paging an expert (Plan KE P1). Seams so the gate is testable without a turn in flight.
+    var technicianWords: @MainActor () -> String? = { TechnicianWords.current() }
+    var previousReply: @MainActor () -> String? = { TechnicianWords.previousReply() }
 
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
@@ -248,6 +252,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // in any mode, Siri, a skill pack and a composed child are all refused the same way, with
         // the same words the tool's own inline check gives. The inline checks stay as a second line.
         if let refusal = featureGateRefusal(call) { return refusal }
+        // A page nobody asked for stops here, ahead of the policy, so no approval card goes up.
+        if let refusal = expertRequestRefusal(call) { return refusal }
 
         let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
         // Resolved before the policy runs, because both the effect-class floor and the binding an
@@ -495,6 +501,16 @@ final class NativeToolRouter: ToolExecutionAuthority {
         guard let feature = AIFeatureGate.disabledFeature(forTool: call.name) else { return nil }
         authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
         return .rejected(reason: AIFeatureGate.disabledMessage(feature))
+    }
+
+    /// The refusal for paging an expert on a turn that did not ask for one (Plan KE P1), or nil.
+    private func expertRequestRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
+        guard EscalateToExpertTool.pagesAnExpert(tool: call.name, args: call.arguments.rawValues),
+              let refusal = EscalateToExpertTool.refusal(said: technicianWords(), previousReply: previousReply())
+        else { return nil }
+        authorizationEvents.record(call: call, verdict: ToolRefusalReason.expertNotRequested.rawValue)
+        PrivacyLog.toolGate(.expertNotRequested, tool: call.name)
+        return .rejected(reason: refusal)
     }
 
     // MARK: - At-most-once dispatch
