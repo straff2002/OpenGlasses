@@ -1,6 +1,13 @@
 # Plan KB — The OpenAI Voice After 6 January 2027 (OpenAI removes every speech-endpoint model)
 
-**Status:** 📝 Drafted 2026-10-29 — nothing built. Six owner decisions below, each with a default.
+**Status:** 🚧 P0 built 2026-10-30 (headless) — a voice model a vendor has withdrawn now gets its own
+reason (`CloudVoiceRejection.modelUnavailable`), latches that voice off for the session and is said
+once, and a 403 naming a gone model no longer says "check the key"; `OpenAIVoiceRetirement` holds the
+date and the Settings footer names it. Owner took the defaults for decisions 1–5 on 2026-10-30.
+Decision 6 is settled: Plan KC has fixed the Realtime mode (the beta header and the `gpt-realtime` date)
+and the OpenAI transcription move. Next: the decision 5 re-check on 2026-12-01, P1 (build it before that
+check, merge by early December), P2 device pass.
+Drafted 2026-10-29.
 **Origin:** the provider-docs survey for Plan KA (model kinds across providers, PR 888) found OpenAI's 2026-10-01 deprecation of its text-to-speech models. KA records it
 as owner decision 3, which says it needs a plan of its own before the end of 2026. This is that plan.
 **Deadline:** the models stop answering on **2027-01-06**. Whatever this plan ships has to be in a
@@ -304,6 +311,11 @@ check shows the realtime model reads text verbatim.** The reasoning:
    list of body markers: `model_not_found`, plus OpenAI's "does not exist" and "has been
    deprecated" phrasings. It covers any vendor whose body names them, so the planned Gemini voice
    and xAI benefit too. A 404 or 400 without a marker stays `nil`, as today.
+   - As built, the two phrasings count only after the words "the model": a bad voice id can say
+     "does not exist" too, and that is the wearer's to fix, so it must not latch the voice off.
+   - As built, the latch is its own set (`modelUnavailable`), not `quotaExhausted`, so the log stays
+     true and P1 can read that OpenAI said the model is gone. Both clear when the key or voice
+     changes.
    - Like `.outOfCredit`, it latches that voice off for the session, so later replies don't pay the
      round trip.
    - It is announced once per episode with the existing announcer, using its own token

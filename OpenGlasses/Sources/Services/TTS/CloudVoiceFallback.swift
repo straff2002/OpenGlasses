@@ -3,8 +3,8 @@ import Foundation
 /// Why a cloud voice turned a request away, when the wearer is the only one who can fix it.
 ///
 /// A network blip or a server error falls through to the next engine and is nobody's business.
-/// These two are different: they repeat on every reply until the wearer tops up or corrects the
-/// key, and until now the only sign was a worse voice with no explanation (support report,
+/// These are different: they repeat on every reply until the wearer tops up, corrects the key or
+/// picks another voice, and until now the only sign was a worse voice with no explanation (support report,
 /// 2026-10-05 — the wearer went looking for a voice setting to undo a change they never made).
 enum CloudVoiceRejection: String, Equatable, CaseIterable {
     /// The account has no credit left. ElevenLabs sends this as a 401 whose body names
@@ -13,6 +13,9 @@ enum CloudVoiceRejection: String, Equatable, CaseIterable {
     case outOfCredit
     /// The key, or the voice chosen for it, was refused.
     case refused
+    /// The vendor has withdrawn the voice model the app asks for. No key or top-up brings it back,
+    /// so a wearer who was told "check the key" would be sent the wrong way (Plan KB).
+    case modelUnavailable
 
     /// What an out-of-credit body says, lower-cased, for each cloud voice. A short list on
     /// purpose: a phrase that also turns up in an ordinary error would latch the voice off.
@@ -29,9 +32,30 @@ enum CloudVoiceRejection: String, Equatable, CaseIterable {
         "api_key_invalid"              // Gemini
     ]
 
+    /// What a withdrawn model's body says, lower-cased, whatever the status: OpenAI answers a
+    /// removed model with a 404, sometimes a 400, and a 403 for a project without access.
+    static let modelUnavailableMarkers = [
+        "model_not_found"              // OpenAI
+    ]
+
+    /// OpenAI's wording when the body has no code. Each counts only after "the model", because a
+    /// bad voice id says "does not exist" too and that one the wearer can fix.
+    static let modelUnavailablePhrases = [
+        "does not exist",
+        "has been deprecated"
+    ]
+
+    private static func namesAWithdrawnModel(_ lowered: String) -> Bool {
+        if modelUnavailableMarkers.contains(where: { lowered.contains($0) }) { return true }
+        guard let model = lowered.range(of: "the model") else { return false }
+        let rest = lowered[model.upperBound...]
+        return modelUnavailablePhrases.contains(where: { rest.contains($0) })
+    }
+
     static func classify(statusCode: Int, body: String) -> CloudVoiceRejection? {
         let lowered = body.lowercased()
         if outOfCreditMarkers.contains(where: { lowered.contains($0) }) { return .outOfCredit }
+        if namesAWithdrawnModel(lowered) { return .modelUnavailable }
         if refusedMarkers.contains(where: { lowered.contains($0) }) { return .refused }
         switch statusCode {
         case 401, 402, 403: return .refused
@@ -62,6 +86,8 @@ struct CloudVoiceNotice: Equatable {
                 return String(localized: "By the way, your \(vendor) credit has run out, so I'm using another voice. You can change voices in the app's Settings, under Connections, then Services and Integrations.")
             case .refused:
                 return String(localized: "By the way, \(vendor) refused the voice request, so I'm using another voice. Check the key and voice in the app's Settings, under Connections, then Services and Integrations.")
+            case .modelUnavailable:
+                return String(localized: "By the way, \(vendor) no longer offers the voice model I was using, so I'm using another voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations.")
             }
         }
         switch (engine, rejection) {
@@ -73,6 +99,8 @@ struct CloudVoiceNotice: Equatable {
             return String(localized: "By the way, your \(vendor) credit has run out, so I'm using the built-in voice. You can change voices in the app's Settings, under Connections, then Services and Integrations.")
         case (_, .refused):
             return String(localized: "By the way, \(vendor) refused the voice request, so I'm using the built-in voice. Check the key and voice in the app's Settings, under Connections, then Services and Integrations.")
+        case (_, .modelUnavailable):
+            return String(localized: "By the way, \(vendor) no longer offers the voice model I was using, so I'm using the built-in voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations.")
         }
     }
 
@@ -84,6 +112,8 @@ struct CloudVoiceNotice: Equatable {
                 return String(localized: "\(vendor) is out of credit, so replies use another voice. Change voices in Settings › Connections › Services & Integrations.")
             case .refused:
                 return String(localized: "\(vendor) refused the voice request, so replies use another voice. Check the key and voice in Settings › Connections › Services & Integrations.")
+            case .modelUnavailable:
+                return String(localized: "\(vendor) no longer offers the voice model in use, so replies use another voice. Choose another voice in Settings › Connections › Services & Integrations.")
             }
         }
         switch (engine, rejection) {
@@ -95,6 +125,8 @@ struct CloudVoiceNotice: Equatable {
             return String(localized: "\(vendor) is out of credit, so replies use the built-in voice. Change voices in Settings › Connections › Services & Integrations.")
         case (_, .refused):
             return String(localized: "\(vendor) refused the voice request, so replies use the built-in voice. Check the key and voice in Settings › Connections › Services & Integrations.")
+        case (_, .modelUnavailable):
+            return String(localized: "\(vendor) no longer offers the voice model in use, so replies use the built-in voice. Choose another voice in Settings › Connections › Services & Integrations.")
         }
     }
 
