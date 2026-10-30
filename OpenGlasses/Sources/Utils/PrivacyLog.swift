@@ -348,6 +348,8 @@ enum PrivacyLog {
         /// Plan HY P1: the idle warning was given; the session ended for want of the wearer.
         /// `count` on `idleEnded` is the configured limit in minutes.
         case idleWarned, idleEnded
+        /// The goodbye finished; the session is stopping because the wearer said so.
+        case saidGoodbye
     }
 
     enum UtteranceDirection: String { case input, output }
@@ -1574,6 +1576,8 @@ enum PrivacyLog {
         // The chain started on the model that answered the last turn, not the lead it hopped
         // away from (`ModelCascadeMemory`): the configuration it started on, fingerprinted.
         case cascadeLeadDeferred
+        // A request had no answer in time: sent a second time, or given up on so the chain moves.
+        case firstReplyHedged, firstReplyGaveUp
         case apiError, streamError, streamRetry, requestFailed
         case toolCallsParsed, toolCallDropped, toolsPayloadRejected, yieldedToHuman
         case emptyCompletion, imageSkipped, reasoningProduced, reasoningResolved, reasoningRetried

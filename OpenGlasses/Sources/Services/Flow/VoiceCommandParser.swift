@@ -18,11 +18,21 @@ struct VoiceCommandParser {
     static let `default` = VoiceCommandParser(
         stopPhrases: ["stop", "nevermind", "never mind", "cancel", "shut up", "be quiet", "quiet"],
         goodbyePhrases: ["goodbye", "good bye", "bye", "that's all", "thats all",
-                         "thanks claude", "thank you claude", "i'm done", "im done",
-                         "end conversation", "go to sleep"],
+                         "i'm done", "im done", "end conversation", "go to sleep",
+                         "got to go", "gotta go", "i have to go", "talk to you later",
+                         "talk later"],
         photoPhrases: ["take a picture", "take a photo", "take photo", "take picture",
                        "capture photo", "snap a photo", "snap a picture", "take a snap"]
     )
+
+    /// The same parser, also taking "thanks" and "thank you" followed by the assistant's name,
+    /// which the wearer can change.
+    func named(_ assistantName: String) -> VoiceCommandParser {
+        let name = assistantName.lowercased()
+        return VoiceCommandParser(stopPhrases: stopPhrases,
+                                  goodbyePhrases: goodbyePhrases + ["thanks \(name)", "thank you \(name)"],
+                                  photoPhrases: photoPhrases)
+    }
 
     // MARK: - The disambiguation rule
 

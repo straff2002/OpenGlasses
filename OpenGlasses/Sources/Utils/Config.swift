@@ -543,6 +543,12 @@ struct Config {
 
     static func setModelCascadeEnabled(_ enabled: Bool) { modelCascadeEnabled = enabled }
 
+    /// Ask a stuck Gemini request again, and move to the next model rather than wait it out
+    /// (`FirstReplyPolicy`). Off until real turns show the limits suit.
+    @UserDefaultsBacked("firstReplyRaceEnabled", default: false) static var firstReplyRaceEnabled: Bool
+
+    static func setFirstReplyRaceEnabled(_ enabled: Bool) { firstReplyRaceEnabled = enabled }
+
     /// Whether the app speaks a one-line notice when it switches models (BK P2c) — a fallback hop
     /// or an auto-routing switch. Keeps the user informed that the model (and its cost/latency)
     /// changed under them. Default on, matching the "tell the user what it's doing" preference.

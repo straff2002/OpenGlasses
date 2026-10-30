@@ -166,6 +166,8 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
             return SafeErrorSummary(category: .modelDeclined, detail: PrivacyToken("refusal"))
         case .outputTruncated:
             return SafeErrorSummary(category: .outputTruncated, detail: PrivacyToken("max_tokens"))
+        case .slowResponse:
+            return SafeErrorSummary(category: .timedOut, detail: PrivacyToken("firstReplyLimit"))
         case .contextOverflow(_, let toolsRan):
             return SafeErrorSummary(category: .contextOverflow,
                                     detail: PrivacyToken(toolsRan ? "afterTools" : "beforeTools"))

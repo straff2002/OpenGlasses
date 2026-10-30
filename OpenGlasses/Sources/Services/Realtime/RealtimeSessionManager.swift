@@ -98,6 +98,15 @@ class RealtimeSessionManager: ObservableObject {
     /// fallback for every wearer who has not selected the Blind Assistant preset, and two voices
     /// saying the same thing is the failure the return value exists to prevent.
     var onLifecycle: ((AudibleLifecycleCoordinator.Signal) -> Bool)?
+
+    /// The goodbye has been said and heard. AppState stops the session the way the wearer's other
+    /// controls do; with nobody listening, the session stops itself.
+    var onSaidGoodbye: (() -> Void)?
+    private var voiceEnd = LiveVoiceEndTracker()
+    /// Whether the model has said anything in the turn under way.
+    private var turnHadReply = false
+    /// The idle warning is being spoken by the model, so its audio answers nobody.
+    private var idleWarningInTurn = false
     /// Plan GE P3: the conversation carried on on the phone while the signal was gone; the next
     /// start opens with this handover block (``LiveContextHandover``) so the session picks up where
     /// the phone left off. Consumed by that start.
@@ -291,7 +300,7 @@ class RealtimeSessionManager: ObservableObject {
             Task { @MainActor in
                 guard let self, self.isActive, self.sessionIdentity == identity else { return }
                 // Plan HY P1: the local VAD heard the wearer start speaking over the model.
-                self.idleClock.noteActivity()
+                self.idleClock.noteSpeechHeard()
                 self.providerSession.cancelResponse()
             }
         }
@@ -305,11 +314,12 @@ class RealtimeSessionManager: ObservableObject {
         // any transcript of it exists.
         providerSession.onUserSpeechStarted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
-            self.idleClock.noteActivity()
+            self.idleClock.noteSpeechHeard()
         }
         // Wire provider audio → playback
         providerSession.onAudioReceived = { [weak self] data in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
+            self.noteModelReply()
             self.audioManager.playAudio(data: data)
         }
 
@@ -333,6 +343,7 @@ class RealtimeSessionManager: ObservableObject {
                 // recorded their complete input transcript when that event arrived.
                 let wearer = self.userTranscript
                 self.userTranscript = ""
+                self.finishTurnForVoiceEnd(wearer: wearer)
                 if self.providerSession.inputTranscriptionIsDelta {
                     await self.jobBridge.handleTranscript(wearer, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
                 }
@@ -348,8 +359,8 @@ class RealtimeSessionManager: ObservableObject {
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
-                // Plan HY P1: the wearer speaking is the activity that matters most.
-                self.idleClock.noteActivity()
+                // Plan HY P1: not activity yet. It counts once the model answers it.
+                self.idleClock.noteSpeechHeard()
                 self.userTranscript = self.providerSession.inputTranscriptionIsDelta
                     ? ScriptAwareJoiner.join(self.userTranscript, text) : text
                 if !self.providerSession.inputTranscriptionIsDelta {
@@ -372,6 +383,7 @@ class RealtimeSessionManager: ObservableObject {
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
+                self.noteModelReply()
                 self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
                 self.conversationRecorder.setAssistantTurn(self.aiTranscript)
             }
@@ -441,6 +453,10 @@ class RealtimeSessionManager: ObservableObject {
             toolCallRouter = ToolCallRouter(bridge: bridge)
             toolCallRouter?.supportsNonBlockingResponses = model.profile == .geminiLiveV1
             toolCallRouter?.nativeToolRouter = nativeToolRouter
+            toolCallRouter?.onEndLiveSession = { [weak self] in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return }
+                self.voiceEnd.request(now: Date())
+            }
 
             // Pause/resume camera streaming during tool execution to prevent instability
             // (VisionClaw issue #11: tool-call stability during Gemini Live)
@@ -490,6 +506,13 @@ class RealtimeSessionManager: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 guard !Task.isCancelled, self.isActive, self.sessionIdentity == identity else { break }
+                if self.voiceEnd.isPending,
+                   self.voiceEnd.shouldStop(
+                    now: Date(), toolRunning: self.toolCallRouter?.hasInFlightCalls ?? false,
+                    playbackPending: self.providerSession.isModelSpeaking || self.audioManager.hasPendingPlayback) {
+                    self.finishVoiceEnd()
+                    break
+                }
                 // Assign only on change — an unconditional write fires objectWillChange at 10 Hz for
                 // the whole session, re-evaluating every observing SwiftUI view (Plan: perf bucket A).
                 if self.connectionState != self.providerSession.connectionState {
@@ -671,7 +694,10 @@ class RealtimeSessionManager: ObservableObject {
         submittedFrameCount = 0
         droppedNotActive = 0
         droppedNotReady = 0
-        endReason = reason
+        endReason = voiceEnd.isPending ? .saidGoodbye : reason
+        voiceEnd = LiveVoiceEndTracker()
+        turnHadReply = false
+        idleWarningInTurn = false
 
         // Plan EW: give the camera claim back last, after `isActive` is false. The release asks
         // whether anything else is still consuming the stream, and an active live session is one
@@ -689,6 +715,12 @@ class RealtimeSessionManager: ObservableObject {
     func noteWearerActivity() {
         guard isActive else { return }
         idleClock.noteActivity()
+    }
+
+    /// The model produced speech or a transcript of it.
+    private func noteModelReply() {
+        turnHadReply = true
+        if !idleWarningInTurn { idleClock.noteModelReplied() }
     }
 
     private func startIdleClock(identity: Int) {
@@ -717,13 +749,42 @@ class RealtimeSessionManager: ObservableObject {
     private func speakIdleWarning(_ line: String) {
         if let idleWarningSpeaker { idleWarningSpeaker(line); return }
         if canInject, supportsSuppliedSpeech {
+            idleWarningInTurn = true
             providerSession.speakText(line)
         } else if canInject, supportsTextInjection {
+            idleWarningInTurn = true
             // Plan HY P3: an announcement — the warning must not start a tool call.
             providerSession.sendText(LiveIdlePolicy.warningInstruction, completeTurn: true,
                                      toolsAllowed: false)
         } else {
             speakLocalCue(line)
+        }
+    }
+
+    // MARK: - Ending by voice
+
+    /// Turn boundary: either the turn a goodbye was waiting on, or a goodbye the model did not act
+    /// on. The backstop reads a turn that has already ended, so nothing is left to wait for.
+    private func finishTurnForVoiceEnd(wearer: String) {
+        let replied = turnHadReply
+        turnHadReply = false
+        idleWarningInTurn = false
+        voiceEnd.noteTurnComplete()
+        guard !voiceEnd.isPending else { return }
+        let parser = VoiceCommandParser.default.named(Config.assistantName)
+        if LiveVoiceEndPolicy.backstopApplies(
+            transcript: wearer, modelReplied: replied,
+            jobActive: FieldSessionService.shared.activeSession != nil, parser: parser) {
+            voiceEnd.request(now: Date(), turnAlreadyEnded: true)
+        }
+    }
+
+    private func finishVoiceEnd() {
+        PrivacyLog.realtimeSession(logProvider, .saidGoodbye)
+        if let onSaidGoodbye {
+            onSaidGoodbye()
+        } else {
+            stopSession(reason: .saidGoodbye)
         }
     }
 
@@ -783,10 +844,20 @@ class RealtimeSessionManager: ObservableObject {
     }
 
     private func sessionToolDeclarations(includeOpenClaw: Bool) -> [[String: Any]] {
+        var declarations: [[String: Any]]
         if sessionModel?.profile?.isOpenAIShape == true {
-            return ToolDeclarations.declarations(registry: nativeToolRouter?.registry, names: LiveJobContract.jobToolNames)
+            declarations = ToolDeclarations.declarations(registry: nativeToolRouter?.registry, names: LiveJobContract.jobToolNames)
+        } else {
+            declarations = ToolDeclarations.allDeclarations(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
         }
-        return ToolDeclarations.allDeclarations(registry: nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw)
+        if canHandleToolCalls { declarations.append(LiveVoiceEndPolicy.declaration) }
+        return declarations
+    }
+
+    /// Whether a tool call from the model has anywhere to go: the condition `onToolCall` is wired
+    /// on, read before that wiring has run.
+    private var canHandleToolCalls: Bool {
+        nativeToolRouter != nil || (Config.isOpenClawAgentActive && openClawBridge != nil)
     }
 
     // MARK: - System Instruction
@@ -809,6 +880,9 @@ class RealtimeSessionManager: ObservableObject {
             modeID: mode.id)
 
         prompt += "\n\n" + SpeechPronunciation.liveVoiceInstruction
+
+        let addressing = LiveAddressingInstruction.block(modeID: mode.id, canEndSession: canHandleToolCalls)
+        if !addressing.isEmpty { prompt += "\n\n" + addressing }
 
         // Vision prompt depends on whether camera frames are actually flowing.
         // When streaming: full vision instructions.

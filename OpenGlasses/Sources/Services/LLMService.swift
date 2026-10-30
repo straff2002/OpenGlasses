@@ -340,6 +340,9 @@ class LLMService: ObservableObject {
     /// Set for the span of a cascading turn with more than one candidate: a provider's own
     /// transient retry is skipped in favour of the hop (`geminiRetryDelay`).
     private(set) var cascadeHasAlternative = false
+    /// Whether the cascade has a candidate after the one being attempted: `cascadeHasAlternative`
+    /// stays true on the last one, where giving up on a slow request would leave no answer at all.
+    private(set) var cascadeHasNextCandidate = false
 
     #if canImport(FoundationModels)
     /// The Apple `Tool` adapters for the tool names last offered, rebuilt when the names change
@@ -1451,7 +1454,12 @@ class LLMService: ObservableObject {
                 if isCloud { onCloudAttempt?(nil) }
                 return response
             } catch {
-                if isCloud { onCloudAttempt?(error) }
+                // A request given up on says nothing about the network, either way.
+                if LLMError.isSlowResponse(error) {
+                    PrivacyLog.model(.firstReplyGaveUp, error: SafeErrorSummary(error))
+                } else if isCloud {
+                    onCloudAttempt?(error)
+                }
                 throw error
             }
         }
@@ -1508,7 +1516,10 @@ class LLMService: ObservableObject {
         // With another model to hop to, a provider's own retry is a wait before the hop, so the
         // hop is the retry (`geminiRetryDelay`).
         cascadeHasAlternative = candidates.count > 1
-        defer { cascadeHasAlternative = false }
+        defer {
+            cascadeHasAlternative = false
+            cascadeHasNextCandidate = false
+        }
         if routeEvaluated {
             onDeviceJobRouteSettled = true
             pendingJobRouteNotice = routedNotice
@@ -1548,6 +1559,7 @@ class LLMService: ObservableObject {
             attempt: { [weak self] candidate in
                 guard let self else { throw LLMError.invalidConfiguration("LLM service released") }
                 attempting = candidate.id
+                self.cascadeHasNextCandidate = candidate.id != candidates.last?.id
                 // Start each attempt from the clean pre-turn history so a failed hop doesn't leave a
                 // dangling/duplicated turn, and point the active model at this candidate.
                 self.conversationHistory = historySnapshot
@@ -4132,6 +4144,7 @@ class LLMService: ObservableObject {
 
         // Raised for the wrap-up request only, which then offers the model no tool to call.
         let withholding = ToolWithholding()
+        var requestsSent = 0
         let adapter = ProviderLoopAdapter(
             label: "Gemini",
             dispatcher: makeToolDispatcher(),
@@ -4202,6 +4215,12 @@ class LLMService: ObservableObject {
 
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+                let limits = FirstReplyPolicy.limits(
+                    enabled: Config.firstReplyRaceEnabled, bodyBytes: request.httpBody?.count ?? 0,
+                    thinksAtLength: FirstReplyPolicy.thinksAtLength(reasoning.wire),
+                    hasNextCandidate: self.cascadeHasNextCandidate, toolsAlreadyRan: requestsSent > 0)
+                requestsSent += 1
+
                 // One bounded retry when the service says it is busy (503 UNAVAILABLE, 429, 5xx),
                 // and on Vertex one forced refresh of the Google token on a 401 (Plan FG P1a).
                 let googleAccount = self.googleAccount
@@ -4209,7 +4228,10 @@ class LLMService: ObservableObject {
                     request, credential: account, provider: "google",
                     refresh: { await googleAccount.accessToken(afterRejecting: $0) },
                     sign: { token, request in VertexAI.apply(accessToken: token, to: &request) }
-                ) { request in try await self.withGeminiTransientRetry { () async throws -> Data in
+                ) { request in try await FirstResponseRace.run(
+                    limits: limits, provider: "Gemini",
+                    onHedge: { PrivacyLog.model(.firstReplyHedged, provider: PrivacyToken("gemini")) }
+                ) { @MainActor [self] _ in try await self.withGeminiTransientRetry { () async throws -> Data in
                     let (payload, response) = try await self.dataSession.data(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse,
@@ -4229,7 +4251,7 @@ class LLMService: ObservableObject {
                                                 message: nil, rejection: rejection)
                     }
                     return payload
-                } }
+                } } }
 
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let candidates = json["candidates"] as? [[String: Any]],
@@ -5580,6 +5602,14 @@ enum LLMError: LocalizedError {
     /// max-tokens stop: the answer never had room to start. `toolsRan` says whether a tool had
     /// already run, which decides whether another model may take the turn from the start.
     case contextOverflow(provider: String, toolsRan: Bool)
+    /// Nothing came back within `FirstReplyPolicy`'s limit. Not a network failure: the offline
+    /// handoff must not count it (`isSlowResponse`).
+    case slowResponse(provider: String)
+
+    static func isSlowResponse(_ error: Error) -> Bool {
+        if case LLMError.slowResponse = error { return true }
+        return false
+    }
 
     var errorDescription: String? {
         switch self {
@@ -5595,6 +5625,8 @@ enum LLMError: LocalizedError {
             return "\(provider) declined to answer"
         case .outputTruncated(let provider):
             return "\(provider) ran out of room before it answered"
+        case .slowResponse(let provider):
+            return "\(provider) took too long to answer"
         case .contextOverflow(let provider, _):
             return "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → AI & Personality → AI Models for requests like this"
         }

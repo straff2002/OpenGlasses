@@ -6,11 +6,12 @@ import Foundation
 /// the microphone open, the camera at its live interval and a billed socket up for as long as the
 /// phone had power. Plan W slows a session when the wearer is away; it never ends one.
 ///
-/// **What counts as activity** is the wearer, and only the wearer: their speech (an input
-/// transcription, or a voice-activity speech-start), a tool call or its result, a typed message,
-/// and a touch on the live controls. **Model speech does not count.** A session talking to an
-/// empty room is exactly the case this exists for, and the warning below is model speech too —
-/// counting it would have the warning keep the session alive.
+/// **What counts as activity** is the wearer: a tool call or its result, a typed message, a touch
+/// on the live controls, and speech **once the model has answered it**. Speech on its own proves
+/// nothing, because the microphone hears the room: a TV left on would hold a session open for ever
+/// while the model rightly stayed silent. **Model speech alone does not count.** A session talking
+/// to an empty room is exactly the case this exists for, and the warning below is model speech too
+/// — counting it would have the warning keep the session alive.
 ///
 /// The decision is pure: the clock that feeds it (``LiveIdleClock``) owns time, and neither knows
 /// anything about sockets.
@@ -20,6 +21,10 @@ struct LiveIdlePolicy: Equatable {
     var idleLimit: TimeInterval = 600
     /// How long before the end the one spoken warning is given.
     var warningLead: TimeInterval = 30
+    /// Speech this recent may be someone mid-sentence, so the end waits for the model's answer…
+    var speechRecency: TimeInterval = 6
+    /// …but no longer than this past the limit, or a TV would hold the session open after all.
+    var speechGrace: TimeInterval = 20
 
     enum Decision: Equatable { case none, warn, end }
 
@@ -29,9 +34,16 @@ struct LiveIdlePolicy: Equatable {
     /// The end wins at the limit even if the warning was never given — a clock that slept through
     /// the warning window (a suspended process, say) must not hold the session open a further
     /// thirty seconds to say a line about a limit already passed.
-    func decide(lastActivity: Date, warned: Bool, now: Date) -> Decision {
+    ///
+    /// - Parameter unansweredSpeech: when speech was last heard that the model has not answered.
+    func decide(lastActivity: Date, warned: Bool, now: Date,
+                unansweredSpeech: Date? = nil) -> Decision {
         let quiet = now.timeIntervalSince(lastActivity)
-        if quiet >= idleLimit { return .end }
+        if quiet >= idleLimit {
+            if let unansweredSpeech, now.timeIntervalSince(unansweredSpeech) < speechRecency,
+               quiet < idleLimit + speechGrace { return .none }
+            return .end
+        }
         if !warned, warningLead > 0, quiet >= idleLimit - warningLead { return .warn }
         return .none
     }
@@ -82,11 +94,13 @@ enum LiveSessionEndReason: Equatable {
     case stopped
     /// No wearer activity for the configured limit (Plan HY P1).
     case idleEnded(minutes: Int)
+    /// The wearer said goodbye to the session.
+    case saidGoodbye
 
     /// The line the status card shows while no session is running, or `nil` for none.
     var notice: String? {
         switch self {
-        case .stopped: return nil
+        case .stopped, .saidGoodbye: return nil
         case .idleEnded(let minutes): return LiveIdlePolicy.endedNotice(minutes: minutes)
         }
     }
@@ -125,6 +139,8 @@ final class LiveIdleClock {
     private(set) var policy: LiveIdlePolicy?
     private(set) var lastActivity: Date?
     private(set) var warned = false
+    /// When speech was last heard that the model has not answered; see ``noteSpeechHeard()``.
+    private(set) var unansweredSpeech: Date?
     private var loop: Task<Void, Never>?
 
     var isRunning: Bool { policy != nil }
@@ -152,6 +168,7 @@ final class LiveIdleClock {
         policy = nil
         lastActivity = nil
         warned = false
+        unansweredSpeech = nil
     }
 
     /// The wearer did something. Resets the quiet spell, and with it the warning.
@@ -159,13 +176,28 @@ final class LiveIdleClock {
         guard isRunning else { return }
         lastActivity = now()
         warned = false
+        unansweredSpeech = nil
+    }
+
+    /// Speech was heard. It may be the wearer or the room, so it resets nothing until the model
+    /// answers it.
+    func noteSpeechHeard() {
+        guard isRunning else { return }
+        unansweredSpeech = now()
+    }
+
+    /// The model is replying: speech heard since the last reply was the wearer after all.
+    func noteModelReplied() {
+        guard isRunning, unansweredSpeech != nil else { return }
+        noteActivity()
     }
 
     /// Consult the policy once. Internal so tests can tick deterministically.
     @discardableResult
     func tick() -> LiveIdlePolicy.Decision {
         guard let policy, let lastActivity else { return .none }
-        let decision = policy.decide(lastActivity: lastActivity, warned: warned, now: now())
+        let decision = policy.decide(lastActivity: lastActivity, warned: warned, now: now(),
+                                     unansweredSpeech: unansweredSpeech)
         switch decision {
         case .none:
             break

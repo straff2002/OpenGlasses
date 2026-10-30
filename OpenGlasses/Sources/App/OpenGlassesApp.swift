@@ -6713,6 +6713,14 @@ class AppState: ObservableObject, AppStateProtocol {
                self.handOffLostLiveSession(self.openAIRealtimeSession.sessionMode) { return true }
             return lifecycle.handle(signal)
         }
+        // A goodbye is the wearer stopping the session, so it latches as a stop does.
+        geminiLiveSession.onSaidGoodbye = { [weak self] in
+            self?.stopLiveSession(.geminiLive, source: .voice)
+        }
+        openAIRealtimeSession.onSaidGoodbye = { [weak self] in
+            guard let self else { return }
+            self.stopLiveSession(self.openAIRealtimeSession.sessionMode, source: .voice)
+        }
     }
 
     /// A capture the wearer asked for produced an image. Called from `look_closely` and from the
@@ -6879,7 +6887,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Pure recognizer for the pre-LLM voice commands (Plan BG P2 groundwork). AppState still owns
     /// the side effects; the phrase matching + persona-prefix stripping live in a tested unit.
-    private let voiceCommandParser = VoiceCommandParser.default
+    private var voiceCommandParser: VoiceCommandParser { .default.named(Config.assistantName) }
 
     private func isStopCommand(_ text: String) -> Bool { voiceCommandParser.isStop(text) }
     private func isGoodbyeCommand(_ text: String) -> Bool { authorises(.goodbye, text) }
