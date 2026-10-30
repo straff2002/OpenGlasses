@@ -42,9 +42,17 @@ enum MediaTriggerAction: Equatable {
 struct MediaTriggerConditions: Equatable {
     /// The user's temple-tap setting (off by default) AND the service is running.
     var triggerEnabled: Bool
+    /// The glasses are connected and not known to be off the wearer's face. Taps can only come
+    /// from glasses being worn, so with none there the lock-screen widget the claim brings is
+    /// pure clutter.
+    var glassesPresent: Bool = true
     /// External audio is audible — `isOtherAudioPlaying` / an interruption is active. The
     /// user's own music always wins; with it playing, their taps control their music.
     var userAudioPlaying: Bool
+    /// Another app's media has played since the glasses last arrived. Its player keeps Now
+    /// Playing — paused or not — until the glasses are next put on or reconnect, so a paused
+    /// podcast is never pushed off the lock screen by our silent claim.
+    var yieldedToMedia: Bool = false
     /// A realtime voice session (Gemini Live / OpenAI Realtime) is running.
     var realtimeSessionActive: Bool
     /// Current exclusive holder of the shared `AVAudioSession` (Plan AS coordinator).
@@ -74,8 +82,12 @@ struct MediaTriggerConditions: Equatable {
 enum MediaTriggerReleaseReason: String, Equatable {
     /// The setting is off, or the service is not running.
     case disabled
+    /// The glasses are not connected, or are off the wearer's face.
+    case glassesAbsent
     /// The user's own audio is playing; their taps control it.
     case userAudio
+    /// The user's own audio has played since the glasses arrived; their player keeps Now Playing.
+    case yieldedToMedia
     /// Another person is on the line (live translation, an expert call).
     case otherParty
     /// The app's own conversation holds the session and the calibration says taps don't reach it.
@@ -86,8 +98,10 @@ enum MediaTriggerReleaseReason: String, Equatable {
 ///
 /// Claiming Now Playing is how we receive the glasses' temple gestures — but it collides with the
 /// user's own audio, with `MusicControlTool` driving *their* player, and with anything that puts
-/// another person on the line. This table decides who wins: the user's audio and other-party audio
-/// always beat us. Pure and value-driven so the whole matrix is testable as data.
+/// another person on the line, and iOS shows whoever holds it on the lock screen. This table
+/// decides who wins: no claim without worn glasses, and the user's media (playing, or played and
+/// paused) and other-party audio always beat us. Pure and value-driven so the whole matrix is
+/// testable as data.
 enum MediaTriggerPolicy {
 
     /// Who holds the audio lease, from the temple taps' point of view.
@@ -132,7 +146,9 @@ enum MediaTriggerPolicy {
     /// order, so the log names the first condition that won.
     static func releaseReason(_ conditions: MediaTriggerConditions) -> MediaTriggerReleaseReason? {
         guard conditions.triggerEnabled else { return .disabled }
+        guard conditions.glassesPresent else { return .glassesAbsent }
         if conditions.userAudioPlaying { return .userAudio }
+        if conditions.yieldedToMedia { return .yieldedToMedia }
         if classify(conditions.leaseOwner) == .otherParty { return .otherParty }
         if ownConversation(conditions), !conditions.sessionControlEnabled {
             return .sessionControlUnavailable

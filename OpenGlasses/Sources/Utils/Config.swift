@@ -397,8 +397,9 @@ struct Config {
 
     /// Temple taps (Plans CH + GJ): claim Now Playing so the glasses' temple taps reach the app.
     /// Off by default — experimental until the tap-to-command mapping is confirmed on glasses, and
-    /// it holds the Now Playing session whenever the user's own audio isn't playing. The key is
-    /// the original single-gesture switch's, so a wearer who had it on still has it on.
+    /// holding Now Playing puts a widget on the Lock Screen (only while the glasses are connected
+    /// and worn, and not once the user's own media has played). The key is the original
+    /// single-gesture switch's, so a wearer who had it on still has it on.
     static var mediaTriggerEnabled: Bool {
         UserDefaults.standard.bool(forKey: "mediaTriggerEnabled")
     }

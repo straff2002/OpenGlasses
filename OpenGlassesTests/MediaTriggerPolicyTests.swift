@@ -8,7 +8,9 @@ final class MediaTriggerPolicyTests: XCTestCase {
 
     private func conditions(
         enabled: Bool = true,
+        glasses: Bool = true,
         userAudio: Bool = false,
+        yielded: Bool = false,
         realtime: Bool = false,
         owner: AudioSessionOwner? = nil,
         claimed: NowPlayingClaimMode? = nil,
@@ -18,7 +20,9 @@ final class MediaTriggerPolicyTests: XCTestCase {
     ) -> MediaTriggerConditions {
         MediaTriggerConditions(
             triggerEnabled: enabled,
+            glassesPresent: glasses,
             userAudioPlaying: userAudio,
+            yieldedToMedia: yielded,
             realtimeSessionActive: realtime,
             leaseOwner: owner,
             claimedMode: claimed,
@@ -61,7 +65,9 @@ final class MediaTriggerPolicyTests: XCTestCase {
 
     func testReleaseReasonNamesTheConditionThatWon() {
         XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(enabled: false)), .disabled)
+        XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(glasses: false)), .glassesAbsent)
         XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(userAudio: true)), .userAudio)
+        XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(yielded: true)), .yieldedToMedia)
         XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(owner: .expertCall)), .otherParty)
         XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(owner: .liveTranslation)), .otherParty)
         XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(realtime: true, sessionControl: false)),
@@ -78,20 +84,48 @@ final class MediaTriggerPolicyTests: XCTestCase {
     func testAReasonExactlyWhenNoModeIsWanted() {
         // The reason and the desired mode are one decision; they must never disagree.
         for enabled in [true, false] {
-            for userAudio in [true, false] {
-                for owner in [nil] + AudioSessionOwner.allCases.map(Optional.some) {
-                    for conversation in [true, false] {
-                        for sessionControl in [true, false] {
-                            let c = conditions(enabled: enabled, userAudio: userAudio, owner: owner,
-                                               conversation: conversation,
-                                               sessionControl: sessionControl)
-                            XCTAssertEqual(MediaTriggerPolicy.releaseReason(c) == nil,
-                                           MediaTriggerPolicy.desiredMode(c) != nil, "\(c)")
+            for glasses in [true, false] {
+                for userAudio in [true, false] {
+                    for yielded in [true, false] {
+                        for owner in [nil] + AudioSessionOwner.allCases.map(Optional.some) {
+                            for conversation in [true, false] {
+                                for sessionControl in [true, false] {
+                                    let c = conditions(enabled: enabled, glasses: glasses,
+                                                       userAudio: userAudio, yielded: yielded,
+                                                       owner: owner, conversation: conversation,
+                                                       sessionControl: sessionControl)
+                                    XCTAssertEqual(MediaTriggerPolicy.releaseReason(c) == nil,
+                                                   MediaTriggerPolicy.desiredMode(c) != nil, "\(c)")
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Lock-screen widget: glasses present, other media first
+
+    func testNoClaimWithoutGlasses() {
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(glasses: false)), .defer)
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(glasses: false, claimed: .standby)), .release)
+        // Not even session control: no taps can come from glasses that are not there.
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(glasses: false, owner: .geminiLive,
+                                                            claimed: .sessionControl)), .release)
+    }
+
+    func testYieldedMediaKeepsTheClaimOffEvenWhenSilent() {
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(yielded: true)), .defer)
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(yielded: true, claimed: .standby)), .release)
+        XCTAssertEqual(MediaTriggerPolicy.decide(conditions(yielded: true, conversation: true)), .defer)
+    }
+
+    func testGlassesAbsentOutranksMediaInTheReason() {
+        XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(glasses: false, userAudio: true,
+                                                                   yielded: true)), .glassesAbsent)
+        XCTAssertEqual(MediaTriggerPolicy.releaseReason(conditions(userAudio: true, yielded: true)),
+                       .userAudio)
     }
 
     // MARK: - Standby matrix (Plan CH, unchanged)

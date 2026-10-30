@@ -32,10 +32,10 @@ struct TempleTapSettingsView: View {
                             appState.mediaTrigger.refresh()
                         }
                     ),
-                    info: String(localized: "Tap the temple of your glasses to control Avenkin without a wake word or touching your phone — it works with the phone locked in a pocket. Avenkin holds the phone's Now Playing slot while nothing else is playing, so it steps aside whenever your own music or podcasts play; with music playing, your taps control the music.")
+                    info: String(localized: "Tap the temple of your glasses to control Avenkin without a wake word or touching your phone — it works with the phone locked in a pocket. To hear the taps, Avenkin holds the phone's Now Playing slot, which iOS shows on the Lock Screen — only while your glasses are connected and on. Once your own music or podcasts play, it leaves the slot to them until you next put your glasses on; until then your taps control the music.")
                 )
             } footer: {
-                Text("Pauses while your own music plays. The long press and capture button stay with your glasses.")
+                Text("Pauses once your own music or podcasts play, until you next put your glasses on. The long press and capture button stay with your glasses.")
             }
 
             Section {

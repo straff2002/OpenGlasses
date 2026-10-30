@@ -4619,6 +4619,12 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return false }
             return self.inConversation || self.isProcessing
         }
+        // Taps only come from glasses on a face, and holding Now Playing puts a widget on the
+        // lock screen, so the claim waits for connected glasses not known to be off.
+        mediaTrigger.glassesPresent = { [weak self] in
+            guard let self else { return false }
+            return self.isConnected && self.glassesService.isWorn != false
+        }
         mediaTrigger.onGesture = { [weak self] gesture, command in
             Task { @MainActor in
                 guard let self else { return }
@@ -4640,6 +4646,11 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(wakeWordService.$isListening.sink(receiveValue: reevaluateTempleClaim))
         cancellables.append(geminiLiveSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
         cancellables.append(openAIRealtimeSession.$isActive.sink(receiveValue: reevaluateTempleClaim))
+        let reevaluateTempleGlasses: (Any) -> Void = { [weak self] _ in
+            DispatchQueue.main.async { self?.mediaTrigger.evaluate(cause: .glassesChanged) }
+        }
+        cancellables.append($isConnected.removeDuplicates().sink(receiveValue: reevaluateTempleGlasses))
+        cancellables.append(glassesService.$isWorn.removeDuplicates().sink(receiveValue: reevaluateTempleGlasses))
         if Config.mediaTriggerEnabled { mediaTrigger.start() }
 
         wakeWordService.onStopCommand = { [weak self] in
