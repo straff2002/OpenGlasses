@@ -2248,6 +2248,25 @@ struct Config {
 
     static func setSpeechBargeInEnabled(_ enabled: Bool) { speechBargeInEnabled = enabled }
 
+    /// Plan KD P1 — one question per activation: after the answer the conversation ends and the
+    /// app waits for the wake phrase or Tap & Talk, instead of reopening the mic for a follow-up.
+    /// A turn that ends by asking the wearer something still gets its answer
+    /// (`FinishStagePolicy.answerOwed`).
+    ///
+    /// The default follows Field Assist until the wearer sets it: on while Field Assist is active,
+    /// off elsewhere (`SingleQuestionDefault`). Read live, not seeded, so turning Field Assist on
+    /// or off moves an untouched switch with it, and a choice the wearer made is never overwritten.
+    static let singleQuestionPerActivationKey = "singleQuestionPerActivation"
+
+    static var singleQuestionPerActivation: Bool {
+        get {
+            SingleQuestionDefault.resolve(
+                stored: UserDefaults.standard.object(forKey: singleQuestionPerActivationKey) as? Bool,
+                fieldAssistActive: fieldAssistActive)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: singleQuestionPerActivationKey) }
+    }
+
     // MARK: - Simple Mode
 
     /// Hide the owner-only configuration surface in Settings (models, personas, behavior, tools,

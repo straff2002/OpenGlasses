@@ -97,6 +97,28 @@ enum MicRoutePolicy {
         outputs.contains(.builtInSpeaker)
     }
 
+    /// Outputs the phone's own microphone does not hear its playback from: the earpiece, held
+    /// away from the bottom mic, and wired headphones, which are in or over the ears. Everything
+    /// else plays into the room the phone is in — and A2DP glasses play from open-ear speakers.
+    static let closeToEarOutputs: [AVAudioSession.Port] = [.builtInReceiver, .headphones]
+
+    /// Whether the microphone hears playback with nothing cancelling it — so a transcript heard
+    /// over the reply is no evidence of the wearer.
+    ///
+    /// Echo cancellation needs the mic and the speaker on one device: a hands-free (HFP) link
+    /// carries both and the glasses or headset cancel their own playback; a wired headset does the
+    /// same. The phone's built-in mic with playback on *another* device has none of that. Build 581
+    /// on the glasses: phone mic chosen, the reply on the glasses' A2DP speakers near full volume,
+    /// and the recogniser twice delivered the assistant's own words back as a question. So this is
+    /// the loudspeaker (`isOpenSpeaker`) **or** the built-in mic with any output that is not close
+    /// to the ear — Bluetooth A2DP or LE, AirPlay, CarPlay, USB, HDMI, line out. With no inputs
+    /// reported only the loudspeaker can be judged, as before.
+    static func hasNoEchoPath(inputs: [AVAudioSession.Port], outputs: [AVAudioSession.Port]) -> Bool {
+        if isOpenSpeaker(outputs) { return true }
+        guard inputs.contains(.builtInMic) else { return false }
+        return outputs.contains { !closeToEarOutputs.contains($0) }
+    }
+
     /// Category options per route. The phone route excludes the hands-free option
     /// (`.allowBluetoothHFP`) — with it present, iOS re-routes input to the glasses or AirPods on
     /// its own and the "phone mic" choice silently stops being true. It keeps

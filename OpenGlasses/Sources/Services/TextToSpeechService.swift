@@ -808,14 +808,29 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
     }
 
-    /// High tone — wake word heard, now listening
+    /// Rising pair — the mic is live, talk now (`ListeningCuePolicy.start`).
     func playAcknowledgmentTone() {
-        playTone(frequency: 880, duration: 0.15)
+        playEarcon(ListeningCuePolicy.start, label: "listenStart")
     }
 
-    /// Lower tone — finished listening, processing
+    /// Falling pair — your words are taken, the answer is coming (`ListeningCuePolicy.end`).
     func playEndListeningTone() {
-        playTone(frequency: 440, duration: 0.12)
+        playEarcon(ListeningCuePolicy.end, label: "listenEnd")
+    }
+
+    /// Play a short earcon as one sound. One buffer rather than a tone per note: `tonePlayer` holds
+    /// one player, so a second note started on a timer would release the first mid-note.
+    private func playEarcon(_ notes: [GlassesLinkCuePolicy.Note], label: String) {
+        do {
+            let toneData = try Self.generateEarconData(notes: notes, sampleRate: 44100)
+            let player = try AVAudioPlayer(data: toneData)
+            self.tonePlayer = player
+            player.volume = 0.7
+            Self.prepareAndPlayOffMain(player)
+        } catch {
+            PrivacyLog.tts(.toneFailed, detail: PrivacyToken(label), error: SafeErrorSummary(error))
+            if let first = notes.first { playTone(frequency: first.frequency, duration: first.duration) }
+        }
     }
 
     /// Short, crisp click that paces CPR compressions (First-Aid / Emergency Assist).
@@ -975,6 +990,59 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             data.append(contentsOf: withUnsafeBytes(of: sample.littleEndian) { Array($0) })
         }
 
+        return data
+    }
+
+    /// Render `notes` into one mono WAV: each note a sine with the same short fade in and out as
+    /// `generateToneData`, silence between them.
+    nonisolated static func generateEarconData(notes: [GlassesLinkCuePolicy.Note], sampleRate: Double,
+                                   peakVolume: Double = 0.8) throws -> Data {
+        let totalSeconds = notes.map(\.end).max() ?? 0
+        let totalSamples = Int(sampleRate * totalSeconds)
+        var buffer = [Double](repeating: 0, count: totalSamples)
+        let fadeIn = 0.008
+        for note in notes {
+            let first = Int(sampleRate * note.start)
+            let count = Int(sampleRate * note.duration)
+            let fadeOut = min(0.03, note.duration / 2)
+            for i in 0..<count where first + i < totalSamples {
+                let t = Double(i) / sampleRate
+                let envelope: Double
+                if t < fadeIn {
+                    envelope = t / fadeIn
+                } else if t > note.duration - fadeOut {
+                    envelope = max(0, (note.duration - t) / fadeOut)
+                } else {
+                    envelope = 1.0
+                }
+                buffer[first + i] += sin(2.0 * .pi * note.frequency * t) * envelope * peakVolume
+            }
+        }
+        let samples = buffer.map { Int16(max(-1, min(1, $0)) * Double(Int16.max)) }
+        return wavData(samples: samples, sampleRate: sampleRate)
+    }
+
+    /// A minimal 16-bit mono PCM WAV around `samples`.
+    nonisolated static func wavData(samples: [Int16], sampleRate: Double) -> Data {
+        var data = Data()
+        let dataSize = UInt32(samples.count * 2)
+        func append<T: FixedWidthInteger>(_ value: T) {
+            data.append(contentsOf: withUnsafeBytes(of: value.littleEndian) { Array($0) })
+        }
+        data.append(contentsOf: "RIFF".utf8)
+        append(UInt32(36) + dataSize)
+        data.append(contentsOf: "WAVE".utf8)
+        data.append(contentsOf: "fmt ".utf8)
+        append(UInt32(16))                       // chunk size
+        append(UInt16(1))                        // PCM
+        append(UInt16(1))                        // mono
+        append(UInt32(sampleRate))               // sample rate
+        append(UInt32(sampleRate * 2))           // byte rate
+        append(UInt16(2))                        // block align
+        append(UInt16(16))                       // bits per sample
+        data.append(contentsOf: "data".utf8)
+        append(dataSize)
+        for sample in samples { append(sample) }
         return data
     }
 

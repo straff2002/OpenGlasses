@@ -1,7 +1,8 @@
 # Plan KD — Vault Retest on 581 (jobs that end themselves, chains nobody asked for, 4/0, printed pages, the app hearing itself)
 
-**Status:** 🚧 P0 built 2026-10-30 (headless) — all eight P0 items; P1–P3 and the partner's re-run of P0
-on the phone are owed. See "P0 as built" below. Drafted from the partner's structured retest of
+**Status:** 🚧 P0 built 2026-10-30 (headless) — all eight P0 items. P1 built 2026-10-30 (headless) —
+all four P1 items; its check on the glasses is owed. P2, P3 and the partner's re-run of P0 on the
+phone are owed. See "P0 as built" and "P1 as built" below. Drafted from the partner's structured retest of
 the code-book vault on build 581 (2026-10-29: five jobs, table questions by number and in plain
 words, two rule chains, glasses then phone). Every cause below was traced to code on main at
 597; nothing merged between 581 and 597 touches `field_session`, `rule_chain`, `table_lookup`,
@@ -62,7 +63,7 @@ the guards that writing "don't use chains" in the instructions cannot give.
    picture and become the "last shown" figure.
 9. **The app heard its own voice** (12:52:40, 13:12:01). The phone's mic, the glasses' speakers on
    A2DP, no echo cancellation on that path. `MicRoutePolicy.isOpenSpeaker` counts only the phone's
-   loudspeaker, and `BargeInPolicy`'s overlap test misses numbers ("2024–21" heard as "2000 2420")
+   loudspeaker, and `BargeInPolicy`'s overlap test misses numbers ("2030–29" heard as "2000 3029")
    and two-edit near-homophones ("ampacity" as "capacity"). After every answer the app reopens
    the mic for a follow-up; there is no single-question mode.
 10. **The microphone stayed off after a background start was refused** (13:04, 13:14). The
@@ -131,6 +132,40 @@ pass through the tools. `TechnicianRequest` is the one pure reader of the turn's
   a page reply names both: "Opened PDF page 63 (printed page 57)".
 - `show_source` opens nothing unless the words ask to see a page, table or source; results say
   "offer to show the page (open it with show_source only if they ask)".
+
+**P1 as built (2026-10-30).** Headless; nothing here has been heard on the glasses yet.
+
+- `MicRoutePolicy.hasNoEchoPath(inputs:outputs:)` is the loudspeaker, or the phone's built-in mic
+  with any output but the earpiece and wired headphones (A2DP, LE, AirPlay, car, USB, HDMI, line
+  out). The speech context passes the route's inputs as well as its outputs, and on such a route
+  only "stop" and the wake phrase interrupt. HFP both ways, a wired headset and the earpiece keep
+  the overlap test. The "Interrupt When You Speak" note says the same for the phone's mic with
+  Bluetooth audio.
+- In the overlap test a heard number (digits in any script, with separators) is not evidence while
+  the reply has a number in it — in digits, or spelled in one of the app's languages (a word list,
+  never a locale read). Words of seven letters or more may be two edits from the reply's; shorter
+  words keep one. Both field transcripts read as echo; "wait what about copper instead" still
+  interrupts.
+- "One Question at a Time" (`Config.singleQuestionPerActivation`, next to "Interrupt When You
+  Speak"): after the answer the conversation ends and waits for the wake phrase or Tap & Talk. The
+  mic stays open for one more capture only when an answer is owed — the app's own job question was
+  just put, the last thing spoken ends with a question mark (Latin, full-width or Arabic; no
+  wording is read), or the teleprompter is running. A reply that ends "Anything else?" therefore
+  reopens it. Unset, it follows Field Assist: on while Field Assist is active, off elsewhere, read
+  live so a choice once made is kept (the owner's decision on that default is still owed).
+- The start cue is a rising pair (740 → 1109 Hz) and the end-of-capture cue a falling pair
+  (698 → 554 Hz), each under a fifth of a second, rendered as one sound
+  (`ListeningCuePolicy`); no pitch is shared with any other cue. The spoken "Listening" was not
+  built: the speech path pauses and then resumes other audio around every line and records it as
+  the last thing said, so it would undo the start sequence's pause and confuse the follow-up rule.
+- A refused listener start shows "Microphone stopped — tap Tap & Talk to try again" only while the
+  app is in front; in the background it is recorded and the foreground re-arm (Direct mode, through
+  `WakeAutoRestartPolicy`) fixes it — that re-arm now reports its own failure instead of dropping it.
+  The message, and only it, clears when any listener starts. While the listener is expected and
+  down the session card says "Not listening — tap Tap & Talk" instead of "Ready"
+  (`WakeListenerFailurePolicy`).
+- Owed: the check on the glasses (A2DP with the phone's mic; the cues; one question per
+  activation), new strings into the catalog.
 
 ### P1 — voice
 

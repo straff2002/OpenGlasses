@@ -56,6 +56,23 @@ import Foundation
 /// sample: at least two words (or a run of unspaced script) that are not in the reply, matched
 /// loosely enough that contractions and one-letter mishearings count as the reply.
 ///
+/// # The phone's mic under somebody else's speakers
+///
+/// Build 581 found the loudspeaker was not the only route with nothing cancelling the echo. With
+/// the phone's mic chosen and the reply on a pair of glasses' A2DP speakers — open-ear, near full
+/// volume — the recogniser heard "aluminum capacity of 42" over a reply about an ampacity of 47,
+/// and "in 2000 3029" over a vault named "2030–29", and answered both as questions. Echo
+/// cancellation needs the mic and the speaker on one device, so the caller now reports any such
+/// route as `openSpeaker` (`MicRoutePolicy.hasNoEchoPath`) and only stop and the wake phrase cut
+/// through it.
+///
+/// Both transcripts also show where the overlap test is weakest, on the routes that keep it. A
+/// number is the one thing a recogniser rewrites freely — "2030–29" is spoken as words and written
+/// back as whatever digits it heard — so while the reply has any number in it, a number heard over
+/// it is not evidence of anybody. And "ampacity" heard as "capacity" is two letters wrong: a word
+/// of at least `shortestTwoEditEchoWord` letters may be two edits from the reply's and still be it.
+/// Neither looks at the language: a number is any character Unicode calls numeric, in any script.
+///
 /// # Words that carry their grammar
 ///
 /// A Korean tester (2026-10-09) had every reply cut itself off on the glasses route, where the
@@ -81,8 +98,10 @@ enum BargeInPolicy {
         /// `nil` means the caller knows playback is live but cannot say what it is saying, and
         /// then there is nothing to distinguish the wearer from the echo.
         ///
-        /// `openSpeaker` is whether it is playing out of the phone's own loudspeaker, where the
-        /// microphone hears it at full volume along with everyone in the room.
+        /// `openSpeaker` is whether the microphone hears it with nothing cancelling the echo: the
+        /// phone's own loudspeaker, where it is at full volume along with everyone in the room, or
+        /// the phone's mic with the reply on another device's speakers
+        /// (`MicRoutePolicy.hasNoEchoPath`).
         case speaking(text: String?, openSpeaker: Bool = false)
     }
 
@@ -139,8 +158,9 @@ enum BargeInPolicy {
         guard generalBargeInEnabled else { return .ignore }
         guard clearsNoiseFloor(trimmed) else { return .ignore }
         if case .speaking(let spoken, let openSpeaker) = assistantSpeech {
-            // The loudspeaker is in the microphone's ear, and so is the room: no transcript heard
-            // over it is evidence of the wearer. Stop and the wake phrase above still cut through.
+            // The loudspeaker (or any speaker the mic hears uncancelled) is in the microphone's
+            // ear, and so is the room: no transcript heard over it is evidence of the wearer. Stop
+            // and the wake phrase above still cut through.
             guard !openSpeaker else { return .ignore }
             // No idea what is playing ⇒ no evidence this is the wearer ⇒ don't cut the answer.
             guard let spoken, readsAsWearer(trimmed, spoken: spoken) else { return .ignore }
@@ -162,7 +182,8 @@ enum BargeInPolicy {
         let said = spokenVocabulary(spoken)
         guard !heard.isEmpty else { return false }
         guard !said.isEmpty else { return true }
-        let novel = heard.filter { !isEcho($0, of: said) }
+        let numbersAreEcho = mentionsNumber(spoken)
+        let novel = heard.filter { !(numbersAreEcho && isNumberToken($0)) && !isEcho($0, of: said) }
         let overlap = Double(heard.count - novel.count) / Double(heard.count)
         guard overlap < echoOverlapThreshold else { return false }
         if novel.count >= minimumNovelTokens { return true }
@@ -209,14 +230,78 @@ enum BargeInPolicy {
         if heard.count == 1, heard[0].count >= minimumCharacters, echoesAsRun(heard[0], spoken: spoken) {
             return true
         }
-        let overlap = heard.filter { isEcho($0, of: said) }.count
+        let numbersAreEcho = mentionsNumber(spoken)
+        let overlap = heard.filter { (numbersAreEcho && isNumberToken($0)) || isEcho($0, of: said) }.count
         return Double(overlap) / Double(heard.count) >= echoOverlapThreshold
     }
+
+    // MARK: - Numbers
+
+    /// Separators a written number may carry ("3,029", "2030–29", "4/0"). `PhraseMatcher.tokenize`
+    /// already splits on them; they are accepted here so the test holds for a token from anywhere.
+    static let numberSeparators: Set<Character> = [".", ",", ":", "/", "-", "\u{2013}", "\u{2014}"]
+
+    /// Whether a heard token is a number: digits — in any script — optionally with separators.
+    static func isNumberToken(_ token: String) -> Bool {
+        guard token.contains(where: \.isNumber) else { return false }
+        return token.allSatisfy { $0.isNumber || numberSeparators.contains($0) }
+    }
+
+    /// Whether the reply says a number, in digits or in words. Either way the recogniser writes it
+    /// back as digits of its own choosing, so a number heard over such a reply proves nothing.
+    static func mentionsNumber(_ spoken: String) -> Bool {
+        if spoken.contains(where: \.isNumber) { return true }
+        return PhraseMatcher.tokenize(spoken).contains { spelledNumberWords.contains($0) }
+    }
+
+    /// Languages whose spelled-out numbers `spelledNumberWords` knows. Data, not a check: the reply
+    /// is never asked which language it is in, and a word from any of these counts in every reply.
+    /// Scripts whose number words are numeric characters (Chinese, Japanese) need no entry.
+    static let spelledNumberLanguages = [
+        "en", "fr", "de", "es", "it", "pt", "nl", "sv", "da", "nb", "fi", "pl", "cs", "sk", "hr",
+        "ro", "hu", "tr", "el", "ru", "id", "ms", "vi", "ko", "hi", "th", "ar", "ca",
+    ]
+
+    /// The words those languages spell 0–20, the tens, a hundred, a thousand and a million with —
+    /// enough to notice a reply that says "sixty-five" where another would write 65.
+    static let spelledNumberWords: Set<String> = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .spellOut
+        let samples = Array(0...20) + stride(from: 30, through: 90, by: 10) + [100, 1_000, 1_000_000]
+        var words = Set<String>()
+        for language in spelledNumberLanguages {
+            formatter.locale = Locale(identifier: language)
+            for sample in samples {
+                guard let spelled = formatter.string(from: NSNumber(value: sample)) else { continue }
+                // Two-letter Latin words ("on", "un", "um") are ordinary words in too many
+                // languages to mean a number; a short word in another script is kept.
+                words.formUnion(PhraseMatcher.tokenize(spelled).filter {
+                    $0.count >= 3 || !$0.allSatisfy(\.isASCII)
+                })
+            }
+        }
+        return words
+    }()
 
     /// Shortest word that may match the reply with one letter wrong. Below it a single edit turns
     /// most words into other common words ("bus" → "but"), and the wearer's own short words would
     /// start reading as echo.
     static let shortestFuzzyEchoWord = 4
+
+    /// Shortest word that may match the reply with two letters wrong ("ampacity" heard as
+    /// "capacity", build 581). At this length two edits still leave most of the word standing; at
+    /// five or six they turn ordinary words into each other.
+    static let shortestTwoEditEchoWord = 7
+
+    /// Letters a heard word may differ from a reply word of the same reach by: none below
+    /// `shortestFuzzyEchoWord`, one up to `shortestTwoEditEchoWord`, two from there — counted on
+    /// the shorter of the two, so a long reply word cannot lend a short heard word its allowance.
+    static func echoEditAllowance(heardUnits: Int, saidUnits: Int) -> Int {
+        let shorter = min(heardUnits, saidUnits)
+        if shorter >= shortestTwoEditEchoWord { return 2 }
+        if shorter >= shortestFuzzyEchoWord { return 1 }
+        return 0
+    }
 
     /// Every form of the reply's words the recogniser might write down: the words themselves, and
     /// for a contraction its stem and its expansion — "it's" is heard as "it's", "its" or "it is",
@@ -237,7 +322,7 @@ enum BargeInPolicy {
 
     /// Whether one heard word is the reply's: exactly, as a contraction form, as a spoken word
     /// with its grammar attached or removed, or — for a word long enough to survive it — with one
-    /// letter misheard.
+    /// letter misheard (two for a long word, `echoEditAllowance`).
     static func isEcho(_ word: String, of vocabulary: Set<String>) -> Bool {
         if vocabulary.contains(word) { return true }
         if contractionForms(word).contains(where: { vocabulary.contains($0) }) { return true }
@@ -246,9 +331,10 @@ enum BargeInPolicy {
         guard heard.count >= shortestFuzzyEchoWord else { return false }
         return vocabulary.contains { candidate in
             let said = WakePhraseMatcher.fuzzyUnits(candidate)
-            return said.count >= shortestFuzzyEchoWord
-                && abs(said.count - heard.count) <= 1
-                && WakePhraseMatcher.levenshteinDistance(candidate, word) <= 1
+            let allowance = echoEditAllowance(heardUnits: heard.count, saidUnits: said.count)
+            return allowance > 0
+                && abs(said.count - heard.count) <= allowance
+                && WakePhraseMatcher.editDistance(said, heard) <= allowance
         }
     }
 
