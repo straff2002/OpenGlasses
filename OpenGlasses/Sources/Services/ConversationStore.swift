@@ -58,6 +58,10 @@ struct ConversationThread: Codable, Identifiable, Sendable {
     var personaId: String?
     /// Stable manual identities chosen for this chat. Nil decodes legacy conversations unchanged.
     var manualIDs: [String]?
+    /// The title the app last gave this thread as a job's (Plan KE), so a later correction moves the
+    /// app's own title and leaves one the technician chose: they differ, whatever either says. Nil
+    /// on every other thread and on a thread saved before this existed.
+    var jobTitle: String?
 
     init(mode: String, title: String = "New Conversation", personaId: String? = nil) {
         self.id = UUID().uuidString
@@ -322,14 +326,29 @@ class ConversationStore: ObservableObject {
     /// placeholder, the auto-title this store would have generated itself, and whatever
     /// `isOwnTitle` recognises as its own earlier work.
     ///
-    /// - Parameter isOwnTitle: given the current title, whether the caller wrote it.
+    /// Once the thread records the title the app wrote (`ConversationThread.jobTitle`) that record
+    /// decides, not the caller: a corrected job number leaves a title that no longer looks like the
+    /// job's own, and a rename can look exactly like one (Plan KE).
+    ///
+    /// - Parameter isOwnTitle: given the current title, whether the caller wrote it. Read only for a
+    ///   thread saved before the record existed.
     func applyJobTitle(_ title: String, to threadId: String, isOwnTitle: (String) -> Bool) {
         guard let idx = threads.firstIndex(where: { $0.id == threadId }) else { return }
         let existing = threads[idx].title
-        guard existing != title else { return }
-        guard existing == "New Conversation" || isOwnTitle(existing) || isAutoTitle(existing, in: threads[idx])
+        guard existing != title else {
+            // Written before the record existed, or by the technician in the app's own words:
+            // either way it is the job's title now, so a correction may move it.
+            if threads[idx].jobTitle != title {
+                threads[idx].jobTitle = title
+                save()
+            }
+            return
+        }
+        let isOwn = threads[idx].jobTitle.map { $0 == existing } ?? isOwnTitle(existing)
+        guard existing == "New Conversation" || isOwn || isAutoTitle(existing, in: threads[idx])
         else { return }
         threads[idx].title = title
+        threads[idx].jobTitle = title
         save()
     }
 

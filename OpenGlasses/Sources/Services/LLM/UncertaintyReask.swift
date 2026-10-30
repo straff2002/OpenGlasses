@@ -14,6 +14,9 @@ import Foundation
 ///
 /// The transparency prefix means a re-grounded answer is never silently swapped in for the
 /// model's own — consistent with the project's no-silent-fallback stance.
+///
+/// It searches without going through the router, so `NativeToolRouter`'s gate never sees it. A job
+/// on a vault-only vault (Plan KE) is therefore a required argument: no caller can leave it out.
 enum UncertaintyReask {
 
     static let transparencyPrefix = "Checked the web for that — "
@@ -62,11 +65,15 @@ enum UncertaintyReask {
     static func answer(
         question: String,
         originalAnswer: String,
+        vaultOnly: Bool,
         history: [(role: String, content: String)] = [],
         search: (String) async throws -> String?,
         rewriteQuery: ((String) async throws -> String)? = nil,
         regenerate: (String) async throws -> String
     ) async -> String {
+        // A sealed job searches nothing, and the query is not even rewritten.
+        guard !vaultOnly else { return originalAnswer }
+
         // Contextualize the search query when the question leans on the conversation. Any
         // rewrite failure (throw, empty, rambling) falls back to the raw question — the gate
         // never gets worse than the old behaviour.

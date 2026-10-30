@@ -651,6 +651,113 @@ final class GuidedJobFlowTests: XCTestCase {
         XCTAssertEqual(store.threads[idx].title, "Roof plant — Tuesday")
     }
 
+    // MARK: - Titles that follow the job (Plan KE)
+
+    private func title() -> String? {
+        store.threads.first { $0.id == service.activeSession?.conversationThreadId }?.title
+    }
+
+    func testACorrectedJobNumberMovesTheAppsOwnTitle() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        XCTAssertEqual(title(), "Job 101")
+
+        flow.supplyJobReference("102")
+
+        XCTAssertEqual(service.activeSession?.jobReference, "102")
+        XCTAssertEqual(title(), "Job 102", "the guard asked about the old title with the new number")
+    }
+
+    func testACorrectedJobNumberKeepsTheUnitInTheTitle() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        service.setEquipment(equipment("QX100"))
+        XCTAssertEqual(title(), "Job 101 — QX100")
+
+        flow.supplyJobReference("102")
+        XCTAssertEqual(title(), "Job 102 — QX100")
+    }
+
+    func testANumberSetOnTheServiceDirectlyRetitlesToo() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        service.setJobReference("102")
+        XCTAssertEqual(title(), "Job 102")
+    }
+
+    func testACorrectedUnitMovesTheTitleAtOnceAndKeepsTheSuffix() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        service.setEquipment(equipment("QX100"))
+
+        let suffixed = EquipmentIdentity(modelToken: "QX100", heading: "QX100", file: "models.md", source: .spoken,
+                                         statedModel: "QX100-A2")
+        _ = service.correctEquipment(suffixed)
+
+        XCTAssertEqual(title(), "Job 101 — QX100-A2", "as stated, with no turn needed to move it")
+    }
+
+    func testTheNextUnitAndAClearedUnitRetitle() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        service.setEquipment(equipment("QX100"))
+        service.startNextUnit(equipment("QX200"))
+        XCTAssertEqual(title(), "Job 101 — QX200")
+        service.clearEquipment()
+        XCTAssertEqual(title(), "Job 101")
+    }
+
+    /// The rename that looks like the app's own is the one the old check gave away.
+    func testARenamedThreadStaysTheTechniciansWhateverItLooksLike() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        let threadId = try XCTUnwrap(service.activeSession?.conversationThreadId)
+        let idx = try XCTUnwrap(store.threads.firstIndex { $0.id == threadId })
+        store.threads[idx].title = "Job 101 — the roof one"
+
+        service.setEquipment(equipment("QX100"))
+        flow.supplyJobReference("102")
+
+        XCTAssertEqual(store.threads[idx].title, "Job 101 — the roof one")
+    }
+
+    /// A thread saved before the app kept its own title falls back to what the title looks like.
+    func testAThreadSavedBeforeTheRecordStillTakesTheUnit() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        let threadId = try XCTUnwrap(service.activeSession?.conversationThreadId)
+        let idx = try XCTUnwrap(store.threads.firstIndex { $0.id == threadId })
+        store.threads[idx].jobTitle = nil
+
+        service.setEquipment(equipment("QX100"))
+
+        XCTAssertEqual(store.threads[idx].title, "Job 101 — QX100")
+        XCTAssertEqual(store.threads[idx].jobTitle, "Job 101 — QX100")
+    }
+
+    func testAThreadSavedWithoutTheFieldDecodes() throws {
+        var thread = ConversationThread(mode: "direct")
+        let plain = try JSONEncoder().encode(thread)
+        XCTAssertFalse(try XCTUnwrap(String(data: plain, encoding: .utf8)).contains("jobTitle"))
+        XCTAssertNil(try JSONDecoder().decode(ConversationThread.self, from: plain).jobTitle)
+        thread.jobTitle = "Job 101"
+        XCTAssertEqual(try JSONDecoder().decode(ConversationThread.self, from: JSONEncoder().encode(thread)).jobTitle, "Job 101")
+    }
+
+    func testTheUnitLineShowsTheModelAsStated() async throws {
+        _ = try startJob(reference: "101")
+        await turn("first look")
+        service.setEquipment(equipment("QX100"))
+        _ = service.correctEquipment(EquipmentIdentity(modelToken: "QX100", heading: "QX100", file: "models.md",
+                                                       source: .spoken, statedModel: "QX100-A2",
+                                                       vaultMatch: .init(heading: "QX100", section: "QX100", kind: .partial)))
+        let session = try XCTUnwrap(service.activeSession)
+        let job = JobTranscriptExport.job(session: session, vaultName: "Refrigeration", thread: nil, events: [])
+        XCTAssertEqual(job.equipment, "QX100-A2")
+        XCTAssertEqual(session.equipment?.stated, "QX100-A2")
+        XCTAssertEqual(UnitLedger(session: session).units.first?.label, "QX100-A2 (vault section QX100)")
+    }
+
     // MARK: - A different machine
 
     func testADifferentUnitIsHeldAndAskedAbout() async throws {

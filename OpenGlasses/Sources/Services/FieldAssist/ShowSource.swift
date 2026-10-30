@@ -95,7 +95,7 @@ struct AnswerSourceMemory: Equatable {
     /// to; one that cites nothing leaves the previous answer's sources where they were.
     mutating func noteAnswer(_ citations: [Citation], text: String? = nil, sessionId: String?) {
         adopt(sessionId)
-        let manual = Self.unique(citations.filter { $0.kind == .manual && $0.page != nil })
+        let manual = Self.unique(citations.filter { $0.kind == .manual && ($0.page != nil || $0.printedPage != nil) })
         provisional = nil
         if !manual.isEmpty {
             confirmed = manual

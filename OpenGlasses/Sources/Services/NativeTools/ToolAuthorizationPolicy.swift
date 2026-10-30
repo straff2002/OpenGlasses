@@ -9,6 +9,9 @@ enum ToolRefusalReason: String, Sendable, Equatable {
     /// The tool belongs to an AI feature that is switched off (`AIFeatureGate`, Plan HR P2 item 6).
     /// Applied by the router before the policy runs, on every seam and every origin.
     case featureDisabled
+    /// A job on a vault-only vault seals this tool (`VaultOnlyPolicy`, Plan KE). Applied at the same
+    /// place, for the same reach.
+    case vaultOnlySealed
 }
 
 /// What the authority decided about one resolved call. Carrying the model-facing text here (rather

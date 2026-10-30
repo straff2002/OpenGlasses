@@ -834,7 +834,8 @@ class RealtimeSessionManager: ObservableObject {
 
         // Add tool instructions
         let hasNativeTools = nativeToolRouter != nil
-        let hasOpenClaw = Config.isOpenClawAgentActive   // BK P0: don't advertise the gateway with Agent Mode off
+        // BK P0: don't advertise the gateway with Agent Mode off. Plan KE: nor on a vault-only job.
+        let hasOpenClaw = Config.isOpenClawAgentActive && !VaultOnlyPolicy.jobIsSealed
         if hasNativeTools || hasOpenClaw {
             var toolSection = """
 
@@ -861,7 +862,7 @@ class RealtimeSessionManager: ObservableObject {
                 }
 
                 // Inject user-defined custom tool descriptions
-                let customTools = Config.customTools.filter { Config.isToolEnabled($0.name) }
+                let customTools = VaultOnlyPolicy.jobIsSealed ? [] : Config.customTools.filter { Config.isToolEnabled($0.name) }
                 for ct in customTools {
                     toolSection += "\n            - \(ct.name): \(ct.description)"
                 }

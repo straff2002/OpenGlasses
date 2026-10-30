@@ -56,6 +56,12 @@ struct VaultManifest: Codable, Equatable {
     /// Nil, and absent from the JSON, on every vault without them, so such a manifest encodes
     /// exactly as it did; an older build ignores the key and installs the rest unchanged.
     let sites: [String]?
+    /// Plan KE: `"vault_only": true` seals a job on this vault to the vault's own content
+    /// (`VaultOnlyPolicy`): no web search, no MCP server, no gateway. It is the vault's rule, so it
+    /// travels with the vault and survives an export. Nil, and absent from the JSON, on every vault
+    /// that does not set it, so such a manifest encodes exactly as it did. An older build ignores
+    /// the key, which is why a sealed vault states the build it needs.
+    let vaultOnly: Bool?
 
     struct Gating: Codable, Equatable {
         /// IAP product identifier required to unlock this vault. Nil = free.
@@ -85,7 +91,7 @@ struct VaultManifest: Codable, Equatable {
                       gating: gating, promptRules: promptRules,
                       sourceAttributionFormat: sourceAttributionFormat,
                       sourceAttributionRequired: sourceAttributionRequired, trades: trades,
-                      sites: sites)
+                      sites: sites, vaultOnly: vaultOnly)
     }
 
     /// Location of a document relative to the vault root.
@@ -112,6 +118,7 @@ struct VaultManifest: Codable, Equatable {
         case sourceAttributionRequired = "source_attribution_required"
         case trades
         case sites
+        case vaultOnly = "vault_only"
     }
 
     init(
@@ -128,7 +135,8 @@ struct VaultManifest: Codable, Equatable {
         sourceAttributionFormat: String? = "Source: {files}",
         sourceAttributionRequired: Bool = true,
         trades: [String]? = nil,
-        sites: [String]? = nil
+        sites: [String]? = nil,
+        vaultOnly: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -144,6 +152,7 @@ struct VaultManifest: Codable, Equatable {
         self.sourceAttributionRequired = sourceAttributionRequired
         self.trades = trades
         self.sites = sites
+        self.vaultOnly = vaultOnly
     }
 
     /// Hand-written so every manifest authored before the reference tier existed — and every
@@ -167,10 +176,16 @@ struct VaultManifest: Codable, Equatable {
         trades = (try? c.decodeIfPresent([String].self, forKey: .trades)) ?? nil
         // Unlike `trades`, a malformed `sites` refuses the manifest: it names files to install.
         sites = try c.decodeIfPresent([String].self, forKey: .sites)
+        // A malformed `vault_only` refuses the manifest too: read as false, a seal the author asked
+        // for would silently not be there.
+        vaultOnly = try c.decodeIfPresent(Bool.self, forKey: .vaultOnly)
     }
 
     /// The site documents this vault lists; empty for every vault without them.
     var siteFiles: [String] { sites ?? [] }
+
+    /// Whether a job on this vault is sealed to it (Plan KE). Absent and false read the same.
+    var isVaultOnly: Bool { vaultOnly == true }
 
     var isPersonalLibrary: Bool { gating.iap == "my_manuals" || id == "my-manuals" }
 

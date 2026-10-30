@@ -70,7 +70,7 @@ struct EquipmentSectionModel {
                    isActive: $0.heading == active?.heading)
         }
         guard let active else { return .unset(choices: choices) }
-        return .identified(Detail(model: active.modelToken, heading: active.heading,
+        return .identified(Detail(model: active.stated, heading: active.heading,
                                   source: active.source, recognisedAt: active.recognisedAt),
                            choices: choices)
     }

@@ -87,36 +87,38 @@ final class ShowSourceTool: NativeTool {
         var pages: [FieldSessionService.StagedFigure] = []
         var checked: [Checked] = []
         var retrievedRowsOf: [String] = []
-        var unavailable: [String] = []
+        var removed: [String] = []
+        var notPages: [String] = []
         for source in sources {
-            guard case .figure(var staged) = session.resolveCitation(source.citation) else {
-                unavailable.append(source.citation.label)
-                continue
+            var resolved: FieldSessionService.StagedFigure
+            switch session.resolveCitation(source.citation) {
+            case .figure(let staged): resolved = staged
+            case .removed: removed.append(source.citation.label); continue
+            case .unknown: notPages.append(source.citation.label); continue
             }
             // Asked for by the technician: that is the only reason this tool runs.
-            staged.origin = .requested
-            staged.presentOnPhone = true
-            staged.citedPassages = center.citedPassages(for: source.citation, documentId: staged.documentId,
-                                                        store: documentStore, number: source.number)
-            staged.pictureAreas = center.pictureAreas(for: source.citation)
+            resolved.origin = .requested
+            resolved.presentOnPhone = true
+            resolved.citedPassages = center.citedPassages(for: source.citation, documentId: resolved.documentId,
+                                                          store: documentStore, number: source.number)
+            resolved.pictureAreas = center.pictureAreas(for: source.citation)
             // Plan JW P1a: rows of a table the answer read without a lookup — say so, and how to
             // mark one row.
             if center.memory.marking(source.citation).basis == .retrievedTableRows, let label = source.citation.figure,
-               !staged.citedPassages.isEmpty, !retrievedRowsOf.contains(label) {
+               !resolved.citedPassages.isEmpty, !retrievedRowsOf.contains(label) {
                 retrievedRowsOf.append(label)
             }
-            let check = markState(of: staged, session: session)
+            let check = markState(of: resolved, session: session)
             // A passage that cannot be found on the page is not staged beside one that can: the sheet
             // would say "2 of the passages couldn't be marked" over a page whose marks are the
             // answer's. The reply still names what was not marked.
-            staged.citedPassages = check.kept
+            resolved.citedPassages = check.kept
             session.logCitationOpened(source.citation, origin: .voice)
-            pages.append(staged)
+            pages.append(resolved)
             checked.append(check)
         }
         guard let first = pages.first else {
-            return "The cited manual is no longer in this vault (" + unavailable.joined(separator: "; ")
-                + "), so there is no page to show. Nothing was opened."
+            return Self.nothingOpened(removed: removed, notPages: notPages)
         }
 
         let rows = checked.reduce(into: RowMarks()) { $0.marked += $1.rows.marked; $0.unmarked += $1.rows.unmarked }
@@ -124,7 +126,8 @@ final class ShowSourceTool: NativeTool {
         // Put on the phone (or waiting for it to unlock): "show that again" reopens it (Plan KD P3).
         session.noteShownOnPhone(first)
         return Self.reply(pages: pages, marks: checked.map(\.state), rows: rows, onScreen: onScreen,
-                          unavailable: unavailable, unmarkedPassages: checked.reduce(0) { $0 + $1.unmarkedText },
+                          removed: removed, notPages: notPages,
+                          unmarkedPassages: checked.reduce(0) { $0 + $1.unmarkedText },
                           retrievedRowsOf: retrievedRowsOf)
     }
 
@@ -209,9 +212,33 @@ final class ShowSourceTool: NativeTool {
         return rows
     }
 
+    /// A citation that is not a page of a manual in this vault: the model's own wording of a source,
+    /// or a core file. Nothing says a manual left the vault, and the model has to be told so: a
+    /// tester was told a manual had been removed that was still loaded, and the turn stopped there
+    /// (Plan KE).
+    static func notAManualPage(_ labels: [String]) -> String {
+        (labels.count == 1 ? "That source (\(labels[0])) is not a manual page"
+            : "Those sources (\(labels.joined(separator: "; "))) are not manual pages")
+            + " this vault can open. To find the page, search with manual_lookup."
+    }
+
+    /// The cited manual really has been taken out of the vault.
+    static func removedFromVault(_ labels: [String]) -> String {
+        "The cited manual is no longer in this vault (" + labels.joined(separator: "; ") + ")."
+    }
+
+    /// What the model is told when no cited source opened. Pure.
+    static func nothingOpened(removed: [String], notPages: [String]) -> String {
+        var lines: [String] = []
+        if !removed.isEmpty { lines.append(removedFromVault(removed)) }
+        if !notPages.isEmpty { lines.append(notAManualPage(notPages)) }
+        lines.append("Nothing was opened.")
+        return lines.joined(separator: " ")
+    }
+
     /// What the model is told. Pure.
     static func reply(pages: [FieldSessionService.StagedFigure], marks: [MarkState], rows: RowMarks = RowMarks(),
-                      onScreen: Bool, unavailable: [String], unmarkedPassages: Int = 0,
+                      onScreen: Bool, removed: [String], notPages: [String] = [], unmarkedPassages: Int = 0,
                       retrievedRowsOf: [String] = []) -> String {
         var lines: [String] = []
         let labels = pages.map(\.citation)
@@ -261,9 +288,10 @@ final class ShowSourceTool: NativeTool {
             lines.append("The table on that page was read from a picture, so the region it was read from is outlined "
                 + "instead of a highlighted row: ask the technician to check the value against the page.")
         }
-        if !unavailable.isEmpty {
-            lines.append("Not opened, because the manual is no longer in this vault: " + unavailable.joined(separator: "; ") + ".")
+        if !removed.isEmpty {
+            lines.append("Not opened, because the manual is no longer in this vault: " + removed.joined(separator: "; ") + ".")
         }
+        if !notPages.isEmpty { lines.append("Not opened: " + notAManualPage(notPages)) }
         return lines.joined(separator: " ")
     }
 }

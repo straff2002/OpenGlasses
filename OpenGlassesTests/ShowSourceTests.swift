@@ -272,6 +272,71 @@ final class ShowSourceTests: XCTestCase {
         XCTAssertEqual(service.sourceCenter.presented?.pages.first?.documentTitle, Self.bookB)
     }
 
+    // MARK: - A miss says what it is (Plan KE)
+
+    /// The tester's job: a title the parser had built from a whole line read as a removed manual.
+    func testASourceThatIsNotAManualPageIsNotCalledRemoved() async throws {
+        let store = makeStore()
+        let (service, _) = try await startSession(store: store)
+        service.recordAssistantReply("Check the fan.\nSource: Acme Manual That Was Never Loaded, page 3", sourceID: "turn-1")
+
+        let reply = try await ShowSourceTool(documentStore: store, sessionService: service).execute(args: ["which": "first"])
+
+        XCTAssertFalse(reply.contains("no longer in this vault"), reply)
+        XCTAssertTrue(reply.contains("not a manual page"), reply)
+        XCTAssertTrue(reply.contains("manual_lookup"), reply)
+        XCTAssertTrue(reply.contains("Nothing was opened."), reply)
+        XCTAssertNil(service.sourceCenter.presented)
+    }
+
+    /// A core file never joins what "show me" can open, so it stops earlier, with its own sentence.
+    func testACoreFileIsNotCalledRemoved() async throws {
+        let store = makeStore()
+        let (service, _) = try await startSession(store: store)
+        service.recordAssistantReply("Isolate first.\nSource: safety.md", sourceID: "turn-1")
+
+        let reply = try await ShowSourceTool(documentStore: store, sessionService: service).execute(args: ["which": "first"])
+
+        XCTAssertFalse(reply.contains("no longer in this vault"), reply)
+        XCTAssertTrue(reply.contains("manual_lookup"), reply)
+        guard case .unknown = service.resolveCitation(Citation(kind: .coreFile, title: "safety.md")) else {
+            return XCTFail("a core file is not a manual page, and not a removed one")
+        }
+    }
+
+    func testACitationWithOnlyAPrintedPageCanStillBeOpened() {
+        var memory = AnswerSourceMemory()
+        memory.noteAnswer(CitationLineParser.parse("Source: Acme Manual, printed page 2-6"), sessionId: "s")
+        XCTAssertEqual(memory.citations.map(\.printedPage), ["2-6"])
+    }
+
+    func testOnlyARemovedManualIsCalledRemoved() {
+        XCTAssertEqual(ShowSourceTool.nothingOpened(removed: ["Acme Manual, page 3"], notPages: []),
+                       "The cited manual is no longer in this vault (Acme Manual, page 3). Nothing was opened.")
+        let notPage = ShowSourceTool.nothingOpened(removed: [], notPages: ["Acme Manual, page 3"])
+        XCTAssertFalse(notPage.contains("no longer"), notPage)
+        let two = ShowSourceTool.nothingOpened(removed: [], notPages: ["a.md", "b.md"])
+        XCTAssertTrue(two.contains("Those sources (a.md; b.md) are not manual pages"), two)
+    }
+
+    func testAReplyThatOpenedSomethingSaysEachMissForWhatItIs() {
+        let staged = FieldSessionService.StagedFigure(documentId: "d", documentTitle: "Acme Manual", page: 3)
+        let reply = ShowSourceTool.reply(pages: [staged], marks: [.noPassage], onScreen: true,
+                                         removed: ["Acme Old Manual, page 2"], notPages: ["safety.md"])
+        XCTAssertTrue(reply.contains("Not opened, because the manual is no longer in this vault: Acme Old Manual, page 2."), reply)
+        XCTAssertTrue(reply.contains("Not opened: That source (safety.md) is not a manual page"), reply)
+        XCTAssertFalse(reply.contains("no longer in this vault: safety.md"), reply)
+    }
+
+    /// A tapped citation that wrote "PDF page" opens that page, not page 1.
+    func testAPDFPageCitationOpensThatPage() async throws {
+        let store = makeStore()
+        let (service, _) = try await startSession(store: store)
+        let cited = try XCTUnwrap(CitationLineParser.parse("Source: \(Self.bookB), PDF page 2 (printed page 1-2), Step 4").first)
+        guard case .figure(let staged) = service.resolveCitation(cited) else { return XCTFail("the manual is loaded") }
+        XCTAssertEqual(staged.page, 2)
+    }
+
     func testNothingCitedYetOpensNothing() async throws {
         let store = makeStore()
         let (service, _) = try await startSession(store: store)
@@ -353,12 +418,12 @@ final class ShowSourceTests: XCTestCase {
 
         let staged = FieldSessionService.StagedFigure(documentId: "d", documentTitle: Self.bookA, page: 4,
                                                       figure: "Table 99")
-        let reply = ShowSourceTool.reply(pages: [staged], marks: [.marked], onScreen: true, unavailable: [],
+        let reply = ShowSourceTool.reply(pages: [staged], marks: [.marked], onScreen: true, removed: [],
                                          unmarkedPassages: 1)
         XCTAssertTrue(reply.contains("1 other passage the answer drew on couldn't be marked"), reply)
         let rows = ShowSourceTool.RowMarks(marked: ["QX", "QZ"], unmarked: [])
         let fallback = ShowSourceTool.reply(pages: [staged], marks: [.marked], rows: rows, onScreen: true,
-                                            unavailable: [], retrievedRowsOf: ["Table 99"])
+                                            removed: [], retrievedRowsOf: ["Table 99"])
         XCTAssertTrue(fallback.contains("rows of Table 99 retrieved for the answer"), fallback)
         XCTAssertTrue(fallback.contains("table_lookup (table, row, column)"), fallback)
     }

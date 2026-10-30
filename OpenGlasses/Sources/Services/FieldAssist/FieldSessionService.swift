@@ -40,6 +40,10 @@ final class FieldSessionService: ObservableObject {
     private var accessExpiryTask: Task<Void, Never>?
     /// App teardown and delivery after an access loss has durably closed the job.
     var onAccessClosed: ((FieldSession) -> Void)?
+    /// The open job's number or unit just changed, by whichever route: the Job tab, `field_session`,
+    /// the intake, `equipment_lookup`, a tap on the phone's model list. What the job's conversation
+    /// is called follows it (Plan KE).
+    var onJobIdentityChanged: (() -> Void)?
     private var lockedSessionIDs: Set<String> = {
         guard let departure = OrgDepartureService.loadStored(), departure.reason != .lapsed else { return [] }
         return Set(departure.sessionIds)
@@ -180,6 +184,7 @@ final class FieldSessionService: ObservableObject {
         session.reportedBy = Config.reportIdentity
         session.jobReference = intake.recordedReference
         session.jobIntake = intake.state
+        session.vaultOnly = manifest.isVaultOnly ? true : nil
 
         activeSession = session
         activeVault = store
@@ -497,6 +502,7 @@ final class FieldSessionService: ObservableObject {
         logger?.append(.init(timestamp: Date(), kind: .equipmentRecognised,
                              text: identity.heading, payload: payload))
         refreshSiteSystem()
+        onJobIdentityChanged?()
     }
 
     /// The technician restated the model of the unit they are on (Plan GB P2) — "no, the model is
@@ -529,6 +535,7 @@ final class FieldSessionService: ObservableObject {
                                        "heading": AnyCodable(corrected.heading),
                                        "vault_match": AnyCodable(corrected.vaultMatch?.kind.rawValue ?? "none")]))
         refreshSiteSystem()
+        onJobIdentityChanged?()
         return corrected
     }
 
@@ -554,6 +561,7 @@ final class FieldSessionService: ObservableObject {
                                        "stated_model": AnyCodable(identity?.stated ?? ""),
                                        "vault_match": AnyCodable(identity?.vaultMatch?.kind.rawValue ?? "none")]))
         if identity != nil { refreshSiteSystem() }
+        onJobIdentityChanged?()
     }
 
     /// Whether the job's first identification landed on work already recorded (Plan GD2) — what
@@ -641,6 +649,7 @@ final class FieldSessionService: ObservableObject {
         logger?.append(.init(timestamp: Date(), kind: .equipmentCleared, text: previous?.heading,
                              payload: previous.map { ["model": AnyCodable($0.modelToken),
                                                       "heading": AnyCodable($0.heading)] }))
+        onJobIdentityChanged?()
     }
 
     /// Is this turn about a machine these manuals are for? Runs before retrieval everywhere, so a
@@ -717,6 +726,7 @@ final class FieldSessionService: ObservableObject {
             return ()
         }
         logger?.append(.init(timestamp: Date(), kind: .jobReferenceSet, text: trimmed, payload: nil))
+        onJobIdentityChanged?()
     }
 
     /// Name or rename the open job (Plan KD P0), in place: the job stays open with everything on
@@ -2412,6 +2422,15 @@ final class FieldSessionService: ObservableObject {
     }
 
     /// Whether the active vault has manuals available to search.
+    /// Whether a job is open on a vault that seals it (`VaultOnlyPolicy`, Plan KE). A paused job is
+    /// still the job. Read from the vault as well as the job, so a job carried over a restart,
+    /// before the vault is reloaded, is sealed all the same.
+    var vaultOnlyJobOpen: Bool {
+        let manifest = activeSession.flatMap { activeVault?.manifest ?? VaultRegistry.shared.manifest(id: $0.vaultId) }
+        return VaultOnlyPolicy.isSealed(jobOpen: activeSession != nil, recordedOnJob: activeSession?.vaultOnly,
+                                        vaultSays: manifest?.vaultOnly)
+    }
+
     var activeVaultHasManuals: Bool {
         guard let store = activeVault, let documentStore,
               retrievableCorpus(store: store, documentStore: documentStore).manuals else { return false }
@@ -2776,8 +2795,11 @@ final class FieldSessionService: ObservableObject {
         if entry.capturedManual != nil,!capturedManuals.reviewedDocumentAllowed(entry.documentId,vaultID:store.manifest.id) {
             return .unknown(title:citation.title)
         }
+        // Only a printed label to go on: through the manual's page labels, never as a PDF page of
+        // the same number (Plan KE).
+        let printed = citation.printedPage.flatMap { documentStore?.pageLabels(documentId: entry.documentId).physical(forPrinted: $0) }
         return .figure(StagedFigure(documentId: entry.documentId, documentTitle: entry.title,
-                                    page: max(citation.page ?? 1, 1), figure: citation.figure,
+                                    page: max(citation.page ?? printed ?? 1, 1), figure: citation.figure,
                                     sourceFile: entry.file))
     }
 

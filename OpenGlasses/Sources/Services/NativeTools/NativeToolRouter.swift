@@ -107,6 +107,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
     /// The Field Assist trades in force, for the trade gate. A seam so a test states them.
     var activeTrades: @MainActor () -> [FieldTrade] = { FieldTradeGate.currentActiveTrades }
+    /// Whether the job open right now is sealed to its vault (`VaultOnlyPolicy`, Plan KE). A seam so
+    /// the gate is testable without a session on a sealed vault.
+    var vaultOnlySealed: @MainActor () -> Bool = { VaultOnlyPolicy.jobIsSealed }
 
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
@@ -470,6 +473,14 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// exactly what the tool's own inline check returns, so the model hears one sentence whichever
     /// gate caught the call. Recorded as a content-free security event like every other refusal.
     private func featureGateRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
+        // A vault-only job (Plan KE). First, because no other answer here may lead round the seal.
+        // A name the registry does not answer for is shut as well: it would fall through to MCP or
+        // the gateway, which a sealed job does not reach, whichever name it arrived under.
+        if vaultOnlySealed(), VaultOnlyPolicy.isSealed(tool: call.name) || registry.tool(named: call.name) == nil {
+            authorizationEvents.record(call: call, verdict: ToolRefusalReason.vaultOnlySealed.rawValue)
+            PrivacyLog.toolGate(.vaultOnlySealed, tool: call.name)
+            return .rejected(reason: VaultOnlyPolicy.refusal(tool: call.name))
+        }
         // A tool of a trade the technician has not turned on is not declared (`FieldTradeGate`);
         // a call that reaches it anyway — a remembered name, a skill pack — gets the redirect,
         // never silence and never a guess.

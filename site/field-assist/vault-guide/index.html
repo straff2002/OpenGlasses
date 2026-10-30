@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: 1b3f3a95524eda1b55e5e046f8c0a5dc17924679b1db9d4dee865eb494337b52 -->
+     source-sha256: 98543e289b619b4fd06c9a222b9332edbb4e7a0961d2b8b7fd89af87c675d507 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -47,6 +47,7 @@
   <li><a href="#step-4-procedures-optional">Step 4 · Procedures (optional)</a></li>
   <li><a href="#tables-and-chains-optional">Tables and chains (optional)</a></li>
   <li><a href="#describing-a-site-system-optional">Describing a site system (optional)</a></li>
+  <li><a href="#sealing-a-vault-to-its-own-content-optional">Sealing a vault to its own content (optional)</a></li>
   <li><a href="#step-5-import-on-the-iphone">Step 5 · Import on the iPhone</a></li>
   <li><a href="#step-6-test-the-loop">Step 6 · Test the loop</a></li>
   <li><a href="#step-7-send-the-job-report">Step 7 · Send the job report</a></li>
@@ -323,6 +324,10 @@ is the honest answer.</p>
 <tr>
 <td><code>sites</code></td>
 <td>Optional. The site documents, one JSON file per site under <code>sites/</code> — see <strong>Describing a site system</strong> below. Omit it if you have none; a vault without it imports exactly as before.</td>
+</tr>
+<tr>
+<td><code>vault_only</code></td>
+<td>Optional. <code>true</code> seals a job on this vault to the vault's own content: no web search and no other outside source — see <strong>Sealing a vault to its own content</strong> below. Omit it to leave things as they are; a vault without it imports exactly as before.</td>
 </tr>
 <tr>
 <td><code>trades</code></td>
@@ -748,6 +753,21 @@ Read from: band from Example Book, page 6, §QR-12; factor from Example Book, pa
 <p><strong>What not to write:</strong> specifications (they belong to the model's section), customer contact details, passwords, links, or a diagnosis nobody has seen.</p>
 <p><strong>The importer checks it.</strong> Every text is plain — no markup, no line breaks, no links — and within its length. It refuses a unit whose model the vault has no section for (unless it says <code>"covered": false</code>), a unit that names another vault (a site document names only units in its own vault or on the job), repeated unit ids, a serial given to two units in the vault, a location or a unit identifier given to two sites, a connection, control, setting or fault that names a unit nobody declared, an unknown kind or mode, a member it does not know, a file over 8 KB or more than a hundred sites. A site whose description is longer than the assistant's site block (1,600 characters) still imports, with a warning naming what the block will leave out; the assistant can still ask for the whole document.</p>
 <p><strong>Packs and exports.</strong> A pack describes products, not customers' sites, so a pack that carries <code>sites</code> is refused. A vault you export from the phone carries its site documents, which can identify a customer's premises — keep that in mind before you send one on. Office-built vaults carry site documents only once the office's vault check accepts them.</p>
+<h2 id="sealing-a-vault-to-its-own-content-optional">Sealing a vault to its own content (optional)</h2>
+<p>Some content must not be mixed with anything else: a licence forbids it, or a customer wants answers from their documents and nowhere else. A rule in <code>prompt_rules</code> asks the assistant not to look elsewhere. <code>vault_only</code> makes the app stop it. It goes in the manifest:</p>
+<pre><code class="language-json">&quot;vault_only&quot;: true
+</code></pre>
+<p><strong>What it shuts, while a job on this vault is open:</strong></p>
+<ul>
+<li>web search, news and loading a page from a link or a QR code. They are not offered to the assistant, not listed in its instructions, and refused if anything asks for them: a name it remembers, a goal step, a skill pack;</li>
+<li>every tool on a connected MCP server, and the OpenClaw gateway;</li>
+<li>the assistant's automatic web re-check of an answer it was unsure of;</li>
+<li>custom tools and skill-pack tools, and any tool not on the app's list of what a job may keep.</li>
+</ul>
+<p><strong>What a job keeps:</strong> the job's own tools (manuals, tables, procedures, readings, photos, the record, an expert) and the phone's own that do not answer a technical question (timers, weather, directions, calls, notes).</p>
+<p><strong>What it does not do.</strong> It stops outside <em>sources</em>, not the model provider. Every turn still goes to the cloud model the phone has chosen, with the passages it was given, as it does on any other job. To keep turns on the phone, choose an on-device model. And it cannot unteach a model what it already knows, so keep your rules about citing and about saying "the manuals do not cover this".</p>
+<p><strong>It needs a recent build.</strong> The app reads <code>vault_only</code> from build 611. An older build ignores the key and imports the rest of the vault, so the job runs unsealed and nothing says so. A sealed vault must state its minimum build, wherever you hand the vault over, and you should check the build on each phone before relying on it. It travels with the vault: an export keeps it, and so does removing a manual on the phone. Set it to something other than <code>true</code> or <code>false</code> and the importer refuses the manifest, because a seal the author asked for must not quietly be missing.</p>
+<p><strong>Check it.</strong> The job's support report says <code>Vault-only: on</code> on the line under the job's heading. A sealed job has no web search in its trace; if something did reach for a shut tool, the trace shows that tool as <code>(refused)</code> and nothing ran.</p>
 <h2 id="step-5-import-on-the-iphone">Step 5 · Import on the iPhone</h2>
 <ol>
 <li>Copy the whole folder into iCloud Drive (or AirDrop it to the phone and save it in Files). Do not zip it; the importer takes a folder.</li>
@@ -1087,6 +1107,7 @@ product.</p>
 <li>[ ] <code>safety.md</code> says what you want spoken, in your words.</li>
 <li>[ ] Core files total well under 32 KB.</li>
 <li>[ ] Any site document has no contact details, passwords or links, and its serials are the customer's.</li>
+<li>[ ] If the vault is sealed with <code>vault_only</code>, its minimum build is stated, and a test job's support report says <code>Vault-only: on</code>.</li>
 <li>[ ] Import shows a section count for every manual.</li>
 <li>[ ] Saying each serviceable model settles the session on it without asking which one.</li>
 <li>[ ] A known fault code answers with a page citation.</li>

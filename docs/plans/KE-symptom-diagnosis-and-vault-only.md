@@ -117,6 +117,31 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   or unit retitles (Job tab, `field_session`, intake), and the unit line and job heading show the
   model as stated, suffix included.
 
+**P0 as built (2026-10-31).** Headless; nothing here has been run on the phone yet.
+
+- `VaultOnlyPolicy` keeps an allowlist, so anything not kept is sealed: a tool nobody decided, a custom
+  HTTP tool, a skill pack's tools, MCP's qualified names, the gateway's `execute`. The guard test walks
+  `FieldToolProfile.names`, the core set and the on-device set. The seal holds with the field profile
+  switched off in the Developer panel, and the job records it (`FieldSession.vaultOnly`) for its report.
+- The sweep added routes the plan did not list. `qr_context` takes any URL and hands the page to the
+  model, and it was on the field profile: sealed. `discover_capabilities` would list sealed tools back:
+  sealed. The Apple on-device and MLX paths pick from the registry, not `declarableNames`: filtered
+  there. Custom tools are listed by the prompt outside the profile: dropped. The acknowledgement
+  examples named `web_search` to every turn: now only when it is offered. A kept name whose native tool
+  is off would have fallen through to MCP or the gateway: refused at the same gate.
+- `UncertaintyReask.answer` takes `vaultOnly` as a required argument, so a new caller cannot forget it,
+  and a test fails if anything but the registry and the re-ask builds a search tool.
+- `vault_only` is read strictly: a value that is not a boolean refuses the manifest.
+- `Citation.printedPage` is kept only when a citation names no PDF page, and opens through the manual's
+  page labels. `CitationLineParser.closingSentence` treats a full stop after a page, step or caption as
+  the end unless another place follows; a full stop in a title ends it only after a non-abbreviation
+  with a capital next, and not when a page follows the next piece.
+- `FieldSessionService.onJobIdentityChanged` is the one hook every number and unit route ends in, so
+  the title moves at once rather than at the next turn. `ConversationThread.jobTitle` decides what is
+  the app's own, and `isGenerated` is read only for a thread saved before the record existed.
+- The title, the report's heading, the session card, the past-job and list rows and the watch show the
+  model as stated.
+
 ### P1 — the model and the symptom reach the search (headless)
 
 - **The model said aloud counts.** Before retrieval, a turn naming exactly one of the vault's

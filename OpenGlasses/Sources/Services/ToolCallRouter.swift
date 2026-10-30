@@ -82,10 +82,10 @@ class ToolCallRouter {
                 // resolves to the operation that already ran rather than running it twice.
                 outcome = await router.executeRoot(name: callName, args: call.args,
                                                    origin: .model, invocationID: callId)
-            } else if Config.isOpenClawAgentActive {
+            } else if Config.isOpenClawAgentActive, !VaultOnlyPolicy.jobIsSealed {
                 // Fallback: direct OpenClaw delegation (legacy path). BK P0: only as an active
                 // agentic capability — delegateTask itself now fails closed otherwise, but don't
-                // route here at all with Agent Mode off.
+                // route here at all with Agent Mode off. Plan KE: nor on a vault-only job.
                 let taskDesc = call.args["task"] as? String ?? String(describing: call.args)
                 outcome = ToolExecutionOutcome(
                     await bridge.delegateTask(task: taskDesc, toolName: callName))
