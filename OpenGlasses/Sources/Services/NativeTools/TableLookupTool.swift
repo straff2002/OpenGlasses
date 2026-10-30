@@ -172,6 +172,12 @@ final class TableLookupTool: NativeTool {
     private func noteForShowing(_ outcome: TableLookup.Outcome, session: FieldSessionService,
                                 documentStore: DocumentStore) {
         let sessionId = session.activeSession?.id
+        // The table read is the one a retrieved page may go to the model under (Plan KD P3).
+        switch outcome {
+        case .found(let found): session.noteLookedUpTable(found.source.table.label)
+        case .notExtracted(let source), .unclear(let source, _, _): session.noteLookedUpTable(source.table.label)
+        case .ambiguous, .notFound, .noTables: break
+        }
         switch outcome {
         case .found(let found):
             let table = found.source.table

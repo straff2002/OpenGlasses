@@ -1218,7 +1218,7 @@ class LLMService: ObservableObject {
         // Plan IU: the provider loops and the tool dispatcher read this turn's exposure from here.
         let promptForTurn = fullPrompt
         let tailForTurn = volatileTail
-        let rawResponse: String = try await ToolExposureScope.$turn.withValue(exposureTurn) {
+        let providerResponse: String = try await ToolExposureScope.$turn.withValue(exposureTurn) {
             switch provider {
             case .anthropic:
                 return try await sendAnthropic(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
@@ -1235,6 +1235,9 @@ class LLMService: ObservableObject {
                 return try await sendOpenAICompatible(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
             }
         }
+        // Plan KD P3: one chokepoint for every provider, before the reply is spoken, logged or
+        // shown — a reply that repeats its own last part is said and kept once.
+        let rawResponse = collapsingRepeatedReply(providerResponse)
 
         // Local reasoning models (LFM2.5) are stripped at the generate layer —
         // LocalLLMService owns the template-opened <think> handling and every local
@@ -1378,6 +1381,17 @@ class LLMService: ObservableObject {
         case .local, .appleOnDevice, .chatgpt: return .free
         default: return ModelPricing.rate(for: config.model) == nil ? .unpriced : .priced
         }
+    }
+
+    /// The provider's reply with a repeated end said once (Plan KD P3), and the history entry the
+    /// provider path appended for it made to match, so the next turn's model sees what was said.
+    private func collapsingRepeatedReply(_ reply: String) -> String {
+        let collapsed = RepeatedReplyCollapse.collapse(reply)
+        guard collapsed != reply else { return reply }
+        conversationHistory = RepeatedReplyCollapse.replacingLastAssistantReply(
+            in: conversationHistory, original: reply, with: collapsed)
+        PrivacyLog.model(.replyRepeatCollapsed, characters: reply.count - collapsed.count)
+        return collapsed
     }
 
     /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a

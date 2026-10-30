@@ -121,6 +121,8 @@ final class ShowSourceTool: NativeTool {
 
         let rows = checked.reduce(into: RowMarks()) { $0.marked += $1.rows.marked; $0.unmarked += $1.rows.unmarked }
         let onScreen = center.present(pages, notice: ShowSourceCenter.noticeText(for: first.asCitation))
+        // Put on the phone (or waiting for it to unlock): "show that again" reopens it (Plan KD P3).
+        session.noteShownOnPhone(first)
         return Self.reply(pages: pages, marks: checked.map(\.state), rows: rows, onScreen: onScreen,
                           unavailable: unavailable, unmarkedPassages: checked.reduce(0) { $0 + $1.unmarkedText },
                           retrievedRowsOf: retrievedRowsOf)

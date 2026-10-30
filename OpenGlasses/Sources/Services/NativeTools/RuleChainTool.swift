@@ -196,17 +196,22 @@ final class RuleChainTool: NativeTool {
 
     /// The list as the technician hears and sees it: a heading, one chain a line as `start` takes
     /// its name, and how to run one. Pure.
+    ///
+    /// English, not looked up in the catalog (Plan KD P3): the one string is spoken, shown and
+    /// kept in the model's history as the turn's reply, the chain names in it are the vault's
+    /// own, and `runningMark` is also in the list the model reads. The turn-ending path has no
+    /// way yet to show one text and keep another, which a localized heading would need.
     static func spokenList(_ names: [String], problems: Int) -> String {
-        var lines = [String(localized: "Rule chains in this vault:")] + names
+        var lines = ["Rule chains in this vault:"] + names
         if problems > 0 {
-            lines.append(String(localized: "Some of the vault's chains have problems and aren't offered."))
+            lines.append("Some of the vault's chains have problems and aren't offered.")
         }
-        lines.append(String(localized: "Say a chain's name to run it."))
+        lines.append("Say a chain's name to run it.")
         return lines.joined(separator: "\n")
     }
 
-    /// The running chain's mark in the list.
-    static var runningMark: String { String(localized: "running now") }
+    /// The running chain's mark in the list, read by the technician and by the model alike.
+    static let runningMark = "running now"
 
     /// A table a chain reads that it cannot: not among the loaded manuals' tables at all, or
     /// found by its caption with a grid that could not be read.
