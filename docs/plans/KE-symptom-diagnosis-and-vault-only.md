@@ -46,7 +46,8 @@ sealed vault or a citation must do is enforced by the app.
 5. **Cancel ended the diagnosis** (11:15). After four lookups the model asked for an expert on a
    retrieval miss. `declineMessage` says "do not retry, tell the user it was cancelled" for every
    tool, and the reply stopped guiding. The vault's own rule ("state the gap and escalate") points
-   the model the same way.
+   the model the same way. A replay of that job's turn on the same model (below, under Evidence)
+   asked for an expert in six trials of six when the search came back empty.
 6. **A false "no longer in this vault"** (11:12). `sourceBody` reads from the first `Source:` to
    the end of the line. The previous reply had two markers on one line, and the scan note said
    "recognized", which `stripProvenanceNote` does not match. The parser built a 140-character title,
@@ -59,8 +60,11 @@ sealed vault or a citation must do is enforced by the app.
 8. **Cited pages are wrong when a passage crosses a page break** (three cases in the report).
    Packed chunks hold one page. Replaying the old rule gives the report's three pages exactly.
    With the post-581 majority rule (Plan JY P5a), which migrates by itself, one case is fixed, one
-   is unchanged and one moves to the other wrong side. The rule also only moves a page within one
-   section, and a table row read as a heading likely splits that section.
+   is unchanged and one moves to the other wrong side. The unchanged case has its majority on the
+   right page, but the rule only moves a page within one section and table rows read as headings
+   split it: with those rows rejected, the same manual cites the true page. The other case is a
+   chunk over three pages whose true page holds only a third of it, so no choice of one page can
+   be right, but its sentence does carry the true page. Hence both fixes in P2.
 9. **A second page replaces the first** (11:19). Each `manual_figure` call stages one page;
    `show_source` already has a multi-page sheet.
 10. **Equipment and status called in a loop** (11:53). `toolRepeatsStopped` worked as built, after
@@ -141,8 +145,9 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   says so.
 - **The loop.** A repeat, within one turn, of an `equipment_lookup` or `field_session status` whose
   answer cannot have changed is not run; it is answered "you have this; search the manual for the
-  symptom or answer." A fixture built from the report's sequence proves the arguments first, since
-  the report does not carry them. The existing stop stays as the backstop.
+  symptom or answer." The report does not carry the arguments. The replay made the same pair of
+  calls, `field_session` `status` and `equipment_lookup` with `set_equipment` or a free-text query,
+  but not the full loop, so the fixture uses those and the existing stop stays as the backstop.
 
 ### P2 — every page where it is (headless, then the real manuals)
 
@@ -153,8 +158,10 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   ("[page 12 (printed 3-4)]"), so a step at the top of a page is cited at that page rather than at
   the chunk's. The citation line gives the range (`pages 11–12`), which `Citation.throughPage`
   already reads. Stored text and vectors do not change.
-- **A table row is not a heading.** `structuredHeading` stops taking a row of a table for a section
-  title, so the section rule stops holding pages back and citations stop naming a row as their section.
+- **A table row is not a heading.** `detectHeading` stops taking a row of a table for a section
+  title, so the section rule stops holding pages back and citations stop naming a row as their
+  section. A numbered line repeating a word was enough in the test; the rule still needs checking
+  against the manuals' real headings.
 - **Open what is cited.** Command and tap go through one resolution: a range opens the sheet at the
   page holding the cited passage (`PassageLocator`), and the technician can move to the others. If
   the passage is on no page of the range, the sheet says the mark could not be placed.
@@ -176,6 +183,23 @@ Run on the phone on the build this ships in:
 Headless: every finding above has a test on invented manuals and models. Against the real vault,
 kept on the machine: the page harness gives the true page for all three cases, and recall on the
 vault's acceptance questions does not fall (aggregate numbers only in this plan).
+
+## Evidence
+
+Live replay, 2026-10-31: the report's own transcript as history on the same model at the same
+effort, the app's descriptions for the main tools, the vault's rules and core files, stubbed tool
+results. The rest of the app's prompt and most of its tools were absent, so these are indications,
+with small samples, not a measure.
+
+| Condition | Trials | Tried to escalate | Gave a check |
+|---|---|---|---|
+| Search returns nothing (today) | 6 | 6 | 0 |
+| Real passages, escalation refused (P1) | 3 | 2 | 1 |
+| The same, with the vault's rule reworded and its suffix listed | 3 | 0 | 3 |
+
+The app's fixes alone do not reliably pass the re-run; the vault's side is needed too. Even then the
+answers still hedged on the suffix, because the job's earlier refusals stay in its history. P3 runs
+in a fresh job for that reason, and the checks offered must be read against the page.
 
 ## Decisions
 
