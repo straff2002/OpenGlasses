@@ -1,3 +1,4 @@
+import MediaPlayer
 import XCTest
 @testable import OpenGlasses
 
@@ -32,7 +33,7 @@ final class MediaTriggerServiceTests: XCTestCase {
     }
 
     /// Stands in for the service's delays: each sleep waits until the test wakes it, so the
-    /// settle, poll and stand-down re-checks run exactly when a test says.
+    /// settle re-check runs exactly when a test says.
     @MainActor
     private final class ManualSleeper {
         private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -61,6 +62,7 @@ final class MediaTriggerServiceTests: XCTestCase {
     /// Mutable world the injected closures read — one place to flip conditions mid-test.
     private final class World {
         var enabled = true
+        var glasses = true
         var otherAudio = false
         var realtime = false
         var owner: AudioSessionOwner?
@@ -98,6 +100,7 @@ final class MediaTriggerServiceTests: XCTestCase {
             sleep: { [sleeper] _ in await sleeper.sleep() })
         service.realtimeSessionActive = { [world] in world.realtime }
         service.conversationActive = { [world] in world.conversation }
+        service.glassesPresent = { [world] in world.glasses }
         return service
     }
 
@@ -136,11 +139,82 @@ final class MediaTriggerServiceTests: XCTestCase {
         service.evaluate()
         XCTAssertFalse(service.isClaimed)
         XCTAssertEqual(claimer.releaseCount, 1)
-        // Music stops → the next evaluation reclaims.
+        // Music stops (or pauses): their player keeps Now Playing and its lock-screen widget.
         world.otherAudio = false
         service.evaluate()
+        XCTAssertFalse(service.isClaimed)
+        XCTAssertTrue(service.yieldedToMedia)
+        XCTAssertEqual(claimer.claimCount, 1)
+        service.stop()
+    }
+
+    // MARK: - Glasses present (the lock-screen widget only while they could tap)
+
+    func testNoClaimWithoutGlasses() {
+        world.glasses = false
+        let service = makeService()
+        service.start()
+        XCTAssertTrue(service.isRunning)
+        XCTAssertFalse(service.isClaimed)
+        XCTAssertEqual(claimer.claimCount, 0)
+        world.glasses = true
+        service.evaluate(cause: .glassesChanged)
         XCTAssertTrue(service.isClaimed)
-        XCTAssertEqual(claimer.claimCount, 2)
+        service.stop()
+    }
+
+    func testGlassesLeavingReleasesTheClaim() {
+        let service = makeService()
+        service.start()
+        XCTAssertTrue(service.isClaimed)
+        world.glasses = false
+        service.evaluate(cause: .glassesChanged)
+        XCTAssertFalse(service.isClaimed)
+        XCTAssertEqual(claimer.releaseCount, 1)
+        service.stop()
+    }
+
+    func testGlassesArrivingAfterMediaTakesTheClaimBack() {
+        let service = makeService()
+        service.start()
+        world.otherAudio = true
+        service.evaluate()
+        world.otherAudio = false
+        service.evaluate()
+        XCTAssertFalse(service.isClaimed)
+        // Taken off (or disconnected) and put back on: a fresh start for the taps.
+        world.glasses = false
+        service.evaluate(cause: .glassesChanged)
+        XCTAssertTrue(service.yieldedToMedia)
+        world.glasses = true
+        service.evaluate(cause: .glassesChanged)
+        XCTAssertFalse(service.yieldedToMedia)
+        XCTAssertTrue(service.isClaimed)
+        service.stop()
+    }
+
+    func testSwitchingTheSettingBackOnForgetsTheYield() {
+        let service = makeService()
+        service.start()
+        service.standDownForUserPlayback()
+        XCTAssertTrue(service.yieldedToMedia)
+        service.refresh()
+        XCTAssertFalse(service.yieldedToMedia)
+        XCTAssertTrue(service.isClaimed)
+        service.stop()
+    }
+
+    func testGlassesArrivingWhileMediaPlaysStillYields() {
+        world.glasses = false
+        let service = makeService()
+        service.start()
+        world.glasses = true
+        world.otherAudio = true
+        service.evaluate(cause: .glassesChanged)
+        XCTAssertFalse(service.isClaimed)
+        world.otherAudio = false
+        service.evaluate()
+        XCTAssertFalse(service.isClaimed)
         service.stop()
     }
 
@@ -477,75 +551,30 @@ final class MediaTriggerServiceTests: XCTestCase {
 
     // MARK: - The user's audio ending
 
-    func testClaimReturnsWhenTheUsersAudioStops() async {
+    func testNothingWatchesForTheUsersAudioToStop() async {
         world.otherAudio = true
         let service = makeService()
         service.start()
         XCTAssertFalse(service.isClaimed)
-        await settle { sleeper.pending == 1 }
-        XCTAssertEqual(sleeper.pending, 1)          // nothing is posted when their audio stops
-        world.otherAudio = false
-        sleeper.wakeAll()
-        await settle { service.isClaimed }
-        XCTAssertTrue(service.isClaimed)
         await settle()
-        XCTAssertEqual(sleeper.pending, 0)          // claimed: the poll ends
+        XCTAssertEqual(sleeper.pending, 0)          // no poll: their player keeps Now Playing
         service.stop()
     }
 
-    func testPollKeepsLookingWhileTheUsersAudioPlays() async {
-        let service = makeService()
-        service.start()
-        world.otherAudio = true
-        service.evaluate()
-        XCTAssertFalse(service.isClaimed)
-        await settle { sleeper.pending == 1 }
-        XCTAssertEqual(sleeper.pending, 1)
-        sleeper.wakeAll()
-        await settle { sleeper.pending == 1 }
-        XCTAssertFalse(service.isClaimed)           // their music still wins
-        XCTAssertEqual(sleeper.pending, 1)          // and the next look is booked
-        // Repeated evaluations never stack a second poll.
-        service.evaluate()
-        service.evaluate()
-        await settle()
-        XCTAssertEqual(sleeper.pending, 1)
-        service.stop()
-    }
-
-    func testOtherReleaseReasonsDoNotPoll() async {
-        let service = makeService()
-        service.start()
-        world.owner = .expertCall
-        service.evaluate()
-        XCTAssertFalse(service.isClaimed)
-        await settle()
-        XCTAssertEqual(sleeper.pending, 0)
-        service.stop()
-    }
-
-    func testStoppedServiceIgnoresAPollThatWakes() async {
-        world.otherAudio = true
-        let service = makeService()
-        service.start()
-        await settle { sleeper.pending == 1 }
-        service.stop()
-        world.otherAudio = false
-        sleeper.wakeAll()
-        await settle()
-        XCTAssertFalse(service.isClaimed)
-        XCTAssertEqual(claimer.claimCount, 0)
-    }
-
-    func testStandDownComesBackAfterItsDelay() async {
+    func testStandDownStaysDownUntilTheGlassesArrive() async {
         let service = makeService()
         service.start()
         service.standDownForUserPlayback()
         XCTAssertFalse(service.isClaimed)
-        await settle { sleeper.pending == 1 }
-        sleeper.wakeAll()
-        await settle { service.isClaimed }
-        XCTAssertTrue(service.isClaimed)            // their playback never started
+        await settle()
+        XCTAssertEqual(sleeper.pending, 0)
+        service.evaluate()
+        XCTAssertFalse(service.isClaimed)           // even if their playback never started
+        world.glasses = false
+        service.evaluate(cause: .glassesChanged)
+        world.glasses = true
+        service.evaluate(cause: .glassesChanged)
+        XCTAssertTrue(service.isClaimed)
         service.stop()
     }
 
@@ -582,7 +611,11 @@ final class MediaTriggerServiceTests: XCTestCase {
         let service = makeService()
         service.start()
         service.standDownForUserPlayback()
-        service.evaluate()
+        // The glasses come off and back on, which takes the claim back so the stop has one to drop.
+        world.glasses = false
+        service.evaluate(cause: .glassesChanged)
+        world.glasses = true
+        service.evaluate(cause: .glassesChanged)
         service.stop()
         let released = sink.lines.filter { $0.contains("event=released") }
         XCTAssertTrue(released.contains { $0.contains("state=userPlaybackRequested") }, "\(released)")
@@ -599,6 +632,16 @@ final class MediaTriggerServiceTests: XCTestCase {
                        "playback-exclusive")
         XCTAssertEqual(SilentNowPlayingClaimer.shapeToken(category: .soloAmbient, options: []),
                        "soloAmbient-exclusive")
+    }
+
+    // MARK: - Now Playing info
+
+    func testClaimInfoCarriesNoTitleAndReadsAsOurOwn() {
+        let info = SilentNowPlayingClaimer.claimInfo
+        XCTAssertNil(info[MPMediaItemPropertyTitle])
+        XCTAssertTrue(SilentNowPlayingClaimer.isOwnInfo(info))
+        XCTAssertFalse(SilentNowPlayingClaimer.isOwnInfo([MPMediaItemPropertyTitle: "Hardcore History"]))
+        XCTAssertFalse(SilentNowPlayingClaimer.isOwnInfo([MPMediaItemPropertyArtist: "Dan Carlin"]))
     }
 
     // MARK: - Silent asset

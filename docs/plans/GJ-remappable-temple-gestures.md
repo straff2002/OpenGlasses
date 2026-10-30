@@ -8,6 +8,15 @@ reaching the app during its own Direct, Gemini Live or OpenAI Realtime conversat
 unverified. Also owed on device: single-tap latency, locked-phone behaviour, taps with music
 playing, glasses-camera capture from a locked phone, and how each live provider treats a muted
 (silent) mic. "Experimental" stays on the setting until P2 confirms at least one model.
+**2026-10-30 — the lock-screen widget.** Holding Now Playing puts iOS's widget on the Lock Screen,
+and it was showing with the glasses in their case and taking over from a paused podcast. The policy
+now also needs `glassesPresent` (connected, and `isWorn` not `false`) and yields to the user's media:
+once other audio has played, or `music_control`/`podcast` stood the claim down, their player keeps
+Now Playing — playing or paused — until the glasses next arrive (connect, or go back on the face).
+The 10 s other-audio poll that took it back is gone, and the claim publishes only a playback rate
+(no "Avenkin Temple Trigger" title). Trade-off: after music or a call, taps are dead until the
+glasses are put back on. Device check owed: the widget's look with no title, and that commands
+still arrive without one.
 **2026-10-27 — first P2 findings, from a tester's Ray-Ban Meta Gen 2 support report (build 564).**
 The table is confirmed on that model: test mode heard one tap as `pause`, two as `nextTrack`, three
 as `previousTrack` (`TempleCalibration.deviceConfirmed` is now true; session control still

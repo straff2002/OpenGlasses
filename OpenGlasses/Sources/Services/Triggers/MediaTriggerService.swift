@@ -36,9 +36,8 @@ enum ClaimRecheckCause: String {
     /// A conversation's hand-back was deferred because a rider is on the session, so the session
     /// was reconfigured in place under the claim's player.
     case handBackDeferred
-    /// The poll while the user's audio plays. iOS posts nothing when another app's audio stops,
-    /// so the claim would otherwise not come back until some unrelated notification.
-    case otherAudioPoll
+    /// The glasses connected, disconnected, or went on or off the wearer's face.
+    case glassesChanged
 }
 
 /// Temple taps (Plans CH + GJ): claims Now Playing so the glasses' temple gestures (standard AVRCP
@@ -47,7 +46,10 @@ enum ClaimRecheckCause: String {
 ///
 /// The claim is governed entirely by the pure `MediaTriggerPolicy`: a silent-player standby claim
 /// when nothing else is going on, handlers-only session control while our own conversation holds
-/// the audio session, and nothing while the user's audio plays or another person is on the line.
+/// the audio session, and nothing while the glasses are away or off the face, while the user's
+/// audio plays or another person is on the line. iOS shows whoever holds Now Playing on the lock
+/// screen, so once the user's media has played the claim stays with their player — paused or
+/// not — until the glasses are next put on or reconnect.
 /// What a tap *does* is not decided here — `TempleActionResolver` does that with the conversation
 /// state in hand, which is why there is no suppression flag any more: "already listening" is an
 /// answer the resolver gives, not a reason to drop the tap.
@@ -55,9 +57,8 @@ enum ClaimRecheckCause: String {
 /// A standby claim is only as good as its silent player, and iOS stops that player without telling
 /// us — a tester's Gen 2 heard the first tap after launch and nothing after the wake word
 /// reconfigured the session for it. So the policy reads the player's health, a dead standby claim
-/// is taken afresh, the claim is looked at again after every tap's action and every deferred
-/// hand-back, and while the user's audio holds it off it is polled for, since nothing is posted
-/// when their audio stops. Every release says which condition won and every unheard command why.
+/// is taken afresh, and the claim is looked at again after every tap's action and every deferred
+/// hand-back. Every release says which condition won and every unheard command why.
 ///
 /// All inputs are injected closures and the claimer is a protocol, so every state transition is
 /// drivable headlessly; only `SilentNowPlayingClaimer` needs a device (GJ P2).
@@ -72,6 +73,10 @@ final class MediaTriggerService {
 
     /// Whether a Direct-mode conversation is under way.
     var conversationActive: () -> Bool = { false }
+
+    /// Whether the glasses are connected and not known to be off the wearer's face. The app calls
+    /// `evaluate(cause: .glassesChanged)` when either reading changes.
+    var glassesPresent: () -> Bool = { false }
 
     /// Posted (by `MusicControlTool`) just before a command is issued to the *user's* player,
     /// so we stand down pre-emptively instead of racing their playback for Now Playing.
@@ -90,26 +95,26 @@ final class MediaTriggerService {
     var isClaimed: Bool { claimedMode != nil }
     private(set) var isRunning = false
     private var observers: [NSObjectProtocol] = []
-    private var standDownReevaluation: Task<Void, Never>?
     private var settleRecheck: Task<Void, Never>?
-    private var otherAudioWatch: Task<Void, Never>?
     private let sleep: (TimeInterval) async -> Void
     private let settleDelay: TimeInterval
-    private let otherAudioPollInterval: TimeInterval
     private let reclaimCooldown: TimeInterval
     private var lastClaimAt: TimeInterval?
+    /// The user's media has played since the glasses last arrived, so their player keeps Now
+    /// Playing. Cleared when the glasses arrive (connect, or go back on the face).
+    private(set) var yieldedToMedia = false
+    /// The glasses reading at the last evaluation, so an arrival can be told from a steady state.
+    private var lastGlassesPresent = false
 
     /// - Parameters:
     ///   - debounceInterval: a second tap inside this window of the last one that fired is
     ///     dropped — a fumble while adjusting the glasses, not a new instruction.
     ///   - settleDelay: how long after a tap's action (or a deferred hand-back) the claim is
     ///     looked at a second time, once the session reshaping it set off has run.
-    ///   - otherAudioPollInterval: how often the claim is reconsidered while the user's audio
-    ///     plays, so it comes back when their audio stops.
     ///   - reclaimCooldown: a standby claim found dead within this long of being taken is not
     ///     taken again yet, so a player that will not stay up is not restarted on every
     ///     notification.
-    ///   - sleep: the delay behind the settle, poll and stand-down re-checks (a test drives it).
+    ///   - sleep: the delay behind the settle re-check (a test drives it).
     init(claimer: NowPlayingClaiming? = nil,
          isEnabled: @escaping () -> Bool = { Config.mediaTriggerEnabled },
          isOtherAudioPlaying: @escaping () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying },
@@ -118,7 +123,6 @@ final class MediaTriggerService {
          clock: @escaping () -> TimeInterval = { Date().timeIntervalSinceReferenceDate },
          debounceInterval: TimeInterval = 1.0,
          settleDelay: TimeInterval = 2.0,
-         otherAudioPollInterval: TimeInterval = 10.0,
          reclaimCooldown: TimeInterval = 2.0,
          sleep: @escaping (TimeInterval) async -> Void = { seconds in
              try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -132,7 +136,6 @@ final class MediaTriggerService {
         self.gate = TriggerGate(debounceInterval: debounceInterval, minimumConfidence: 1.0)
         self.decoder = TempleGestureDecoder(calibration: calibration())
         self.settleDelay = settleDelay
-        self.otherAudioPollInterval = otherAudioPollInterval
         self.reclaimCooldown = reclaimCooldown
         self.sleep = sleep
     }
@@ -142,9 +145,16 @@ final class MediaTriggerService {
     /// Re-run the claim/release policy against the live inputs and apply the decision. A standby
     /// claim whose silent player has stopped counts as no claim, so it is taken afresh.
     func evaluate(cause: ClaimRecheckCause = .inputsChanged) {
+        let glassesHere = glassesPresent()
+        if glassesHere && !lastGlassesPresent { yieldedToMedia = false }
+        lastGlassesPresent = glassesHere
+        let userAudio = isOtherAudioPlaying()
+        if userAudio { yieldedToMedia = true }
         let conditions = MediaTriggerConditions(
             triggerEnabled: isRunning && isEnabled(),
-            userAudioPlaying: isOtherAudioPlaying(),
+            glassesPresent: glassesHere,
+            userAudioPlaying: userAudio,
+            yieldedToMedia: yieldedToMedia,
             realtimeSessionActive: realtimeSessionActive(),
             leaseOwner: leaseOwner(),
             claimedMode: claimedMode,
@@ -172,9 +182,6 @@ final class MediaTriggerService {
             releaseClaim(reason: MediaTriggerPolicy.releaseReason(conditions)?.rawValue ?? "lapsed")
         case .defer:
             break
-        }
-        if MediaTriggerPolicy.releaseReason(conditions) == .userAudio {
-            watchForOtherAudioEnd()
         }
     }
 
@@ -218,17 +225,11 @@ final class MediaTriggerService {
     }
 
     /// Stand down *before* the user's playback starts (a `MusicControlTool` command is on its
-    /// way to their player): release now so we never race them for Now Playing, then re-evaluate
-    /// shortly after — if their playback didn't materialise, the trigger resumes.
+    /// way to their player): release now so we never race them for Now Playing, and leave it with
+    /// their player — as with any media of theirs — until the glasses next arrive.
     func standDownForUserPlayback() {
+        yieldedToMedia = true
         releaseClaim(reason: "userPlaybackRequested")
-        standDownReevaluation?.cancel()
-        let sleep = self.sleep
-        standDownReevaluation = Task { [weak self] in
-            await sleep(5)
-            guard !Task.isCancelled else { return }
-            self?.evaluate()
-        }
     }
 
     // MARK: - Lifecycle
@@ -271,17 +272,16 @@ final class MediaTriggerService {
         isRunning = false
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers = []
-        standDownReevaluation?.cancel()
         settleRecheck?.cancel()
         settleRecheck = nil
-        otherAudioWatch?.cancel()
-        otherAudioWatch = nil
         releaseClaim(reason: "stopped")
     }
 
-    /// Re-apply the setting (call when the user toggles it in Settings).
+    /// Re-apply the setting (call when the user toggles it in Settings). Switching it on is a
+    /// fresh start, so a yield to the user's media is forgotten.
     func refresh() {
         stop()
+        yieldedToMedia = false
         gate.reset()
         decoder = TempleGestureDecoder(calibration: calibration())
         start()
@@ -318,20 +318,6 @@ final class MediaTriggerService {
         }
     }
 
-    /// While the user's audio holds the claim off, look again every `otherAudioPollInterval`
-    /// until it no longer does. One pending look at a time; each look schedules the next.
-    private func watchForOtherAudioEnd() {
-        guard otherAudioWatch == nil, isRunning else { return }
-        let sleep = self.sleep, interval = otherAudioPollInterval
-        otherAudioWatch = Task { [weak self] in
-            await sleep(interval)
-            guard !Task.isCancelled, let self else { return }
-            self.otherAudioWatch = nil
-            guard self.isRunning else { return }
-            self.evaluate(cause: .otherAudioPoll)
-        }
-    }
-
     private func drop(_ command: MediaRemoteCommand, _ reason: String) -> TempleGesture? {
         PrivacyLog.device(.nowPlaying, .commandDropped, state: PrivacyToken(reason),
                           command: PrivacyToken(command.rawValue))
@@ -358,13 +344,14 @@ final class MediaTriggerService {
 @MainActor
 final class SilentNowPlayingClaimer: NowPlayingClaiming {
 
-    /// Title we publish while holding the claim — recognisable so `NowPlayingSnapshot` (the
-    /// "what's playing?" reader) can filter *us* out instead of reporting our own silence.
-    nonisolated static let sentinelTitle = "Avenkin Temple Trigger"
+    /// What we publish while holding the claim: a playback rate and nothing to read. iOS still
+    /// draws its Now Playing widget for the claim, but with no title of ours on the lock screen.
+    nonisolated static let claimInfo: [String: Any] = [MPNowPlayingInfoPropertyPlaybackRate: 1.0]
 
-    /// Whether a Now Playing info dictionary is our own claim rather than real user media.
+    /// Whether a Now Playing info dictionary is our own claim rather than real user media: it has
+    /// no title and no artist. `NowPlayingSnapshot` (the "what's playing?" reader) skips it.
     nonisolated static func isOwnInfo(_ info: [String: Any]) -> Bool {
-        info[MPMediaItemPropertyTitle] as? String == sentinelTitle
+        info[MPMediaItemPropertyTitle] == nil && info[MPMediaItemPropertyArtist] == nil
     }
 
     private var player: AVAudioPlayer?
@@ -419,10 +406,7 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
         register(center.nextTrackCommand, as: .nextTrack)
         register(center.previousTrackCommand, as: .previousTrack)
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = [
-            MPMediaItemPropertyTitle: Self.sentinelTitle,
-            MPNowPlayingInfoPropertyPlaybackRate: 1.0,
-        ]
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = Self.claimInfo
 
         guard mode == .standby else { return }
         coexistToken = AudioSessionCoordinator.shared.beginCoexisting(.mediaTrigger)
