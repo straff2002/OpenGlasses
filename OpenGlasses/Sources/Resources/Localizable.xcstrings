@@ -5110,6 +5110,170 @@
         }
       }
     },
+    "%@ no longer offers the voice model in use, so replies use another voice. Choose another voice in Settings › Connections › Services & Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يعد %@ يوفر نموذج الصوت المستخدم، لذا تستخدم الردود صوتًا آخر. غيّر الأصوات في الإعدادات › الاتصالات › الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ya no ofrece el modelo de voz en uso, así que las respuestas usan otra voz. Cambia de voz en Configuración › Conexiones › Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n’offre plus le modèle de voix utilisé, donc les réponses utilisent une autre voix. Changez de voix dans Réglages › Connexions › Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %@ már nem kínálja a használt hangmodellt, ezért a válaszok másik hangot használnak. A hangokat itt módosíthatja: Beállítások › Kapcsolatok › Szolgáltatások és integrációk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non offre più il modello vocale in uso, quindi per le risposte viene utilizzata un’altra voce. Cambia le voci in Impostazioni › Connessioni › Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@が使用中の音声モデルの提供を終了したため、返信は別の音声を使用します。音声は設定 › 接続 › サービスと連携で変更できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 사용 중인 음성 모델을 더 이상 제공하지 않아 답변에 다른 음성이 사용됩니다. 음성은 설정 › 연결 › 서비스 및 연동에서 변경할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ biedt het gebruikte stemmodel niet meer aan, dus antwoorden gebruiken een andere stem. Wijzig stemmen in Instellingen › Verbindingen › Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não oferece mais o modelo de voz em uso, então as respostas usam outra voz. Altere as vozes em Configurações › Conexões › Serviços e integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ больше не предлагает используемую голосовую модель, поэтому ответы звучат другим голосом. Сменить голос можно в разделе «Настройки › Подключения › Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ اب زیرِ استعمال صوتی ماڈل پیش نہیں کرتا، اس لیے جوابات کسی دوسری آواز میں ہیں۔ آوازیں ترتیبات › کنکشنز › سروسز اور انٹیگریشنز میں تبدیل کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再提供当前使用的语音模型，因此回复使用其他语音。可在设置 › 连接 › 服务与集成中更改语音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再提供目前使用的語音模型，因此回覆會使用其他語音。在 設定 › 連線 › 服務與整合 中更改語音。"
+          }
+        }
+      }
+    },
+    "%@ no longer offers the voice model in use, so replies use the built-in voice. Choose another voice in Settings › Connections › Services & Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يعد %@ يوفر نموذج الصوت المستخدم، لذا تستخدم الردود الصوت المدمج. غيّر الأصوات في الإعدادات › الاتصالات › الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ya no ofrece el modelo de voz en uso, así que las respuestas usan la voz integrada. Cambia de voz en Configuración › Conexiones › Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n’offre plus le modèle de voix utilisé, donc les réponses utilisent la voix intégrée. Changez de voix dans Réglages › Connexions › Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %@ már nem kínálja a használt hangmodellt, ezért a válaszok a beépített hangot használják. A hangokat itt módosíthatja: Beállítások › Kapcsolatok › Szolgáltatások és integrációk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non offre più il modello vocale in uso, quindi per le risposte viene utilizzata la voce integrata. Cambia le voci in Impostazioni › Connessioni › Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@が使用中の音声モデルの提供を終了したため、返信は組み込みの音声を使用します。音声は設定 › 接続 › サービスと連携で変更できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 사용 중인 음성 모델을 더 이상 제공하지 않아 답변에 내장 음성이 사용됩니다. 음성은 설정 › 연결 › 서비스 및 연동에서 변경할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ biedt het gebruikte stemmodel niet meer aan, dus antwoorden gebruiken de ingebouwde stem. Wijzig stemmen in Instellingen › Verbindingen › Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não oferece mais o modelo de voz em uso, então as respostas usam a voz integrada. Altere as vozes em Configurações › Conexões › Serviços e integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ больше не предлагает используемую голосовую модель, поэтому ответы звучат встроенным голосом. Сменить голос можно в разделе «Настройки › Подключения › Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ اب زیرِ استعمال صوتی ماڈل پیش نہیں کرتا، اس لیے جوابات بلٹ اِن آواز میں ہیں۔ آوازیں ترتیبات › کنکشنز › سروسز اور انٹیگریشنز میں تبدیل کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再提供当前使用的语音模型，因此回复使用内置语音。可在设置 › 连接 › 服务与集成中更改语音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再提供目前使用的語音模型，因此回覆會使用內建語音。在 設定 › 連線 › 服務與整合 中更改語音。"
+          }
+        }
+      }
+    },
     "%@ of %@" : {
       "localizations" : {
         "ar" : {
@@ -62340,6 +62504,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由 %1$@"
+          }
+        }
+      }
+    },
+    "By the way, %@ no longer offers the voice model I was using, so I'm using another voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يعد %@ يوفر نموذج الصوت الذي كنت أستخدمه، لذلك أستخدم صوتًا آخر. يمكنك تغيير الأصوات في إعدادات التطبيق، ضمن الاتصالات، ثم الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, %@ ya no ofrece el modelo de voz que estaba usando, así que estoy usando otra voz. Puedes cambiar de voz en la Configuración de la app, en Conexiones y luego en Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, %@ n’offre plus le modèle de voix que j’utilisais, donc j’utilise une autre voix. Vous pouvez changer de voix dans les Réglages de l’application, sous Connexions, puis Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként a(z) %@ már nem kínálja azt a hangmodellt, amelyet használtam, így másik hangot használok. A hangokat az alkalmazás beállításai között módosíthatja, a Kapcsolatok, majd a Szolgáltatások és integrációk alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, %@ non offre più il modello vocale che stavo usando, quindi sto usando un’altra voce. Puoi cambiare le voci nelle Impostazioni dell’app, in Connessioni, quindi Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、%@が使用中の音声モデルの提供を終了したため、別の音声を使用しています。音声はアプリの設定で変更できます。設定では「接続」→「サービスと連携」と進んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 %@에서 사용 중이던 음성 모델을 더 이상 제공하지 않아 다른 음성을 사용하고 있습니다. 앱 설정의 연결, 서비스 및 연동에서 음성을 변경할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, %@ biedt het stemmodel dat ik gebruikte niet meer aan, dus ik gebruik een andere stem. Je kunt stemmen wijzigen in de instellingen van de app, onder Verbindingen en vervolgens Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, %@ não oferece mais o modelo de voz que eu estava usando, então estou usando outra voz. Você pode alterar as vozes nas Configurações do aplicativo, em Conexões, depois em Serviços e Integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, %@ больше не предлагает использовавшуюся голосовую модель, поэтому я использую другой голос. Сменить голос можно в Настройках приложения: «Подключения», затем «Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، %@ اب وہ صوتی ماڈل پیش نہیں کرتا جو میں استعمال کر رہا تھا، اس لیے میں کوئی اور آواز استعمال کر رہا ہوں۔ آپ ایپ کی ترتیبات میں کنکشنز، پھر سروسز اور انٹیگریشنز کے تحت آوازیں بدل سکتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便提一下，%@ 不再提供我一直在用的语音模型，所以我正在使用其他语音。你可以在 App 的设置中更改语音，路径为“连接”，然后是“服务与集成”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，%@ 不再提供我一直在用的語音模型，所以我正在使用其他語音。你可以在 App 的設定中更改語音，路徑為「連線」>「服務與整合」。"
+          }
+        }
+      }
+    },
+    "By the way, %@ no longer offers the voice model I was using, so I'm using the built-in voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يعد %@ يوفر نموذج الصوت الذي كنت أستخدمه، لذلك أستخدم الصوت المدمج. يمكنك تغيير الأصوات في إعدادات التطبيق، ضمن الاتصالات، ثم الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, %@ ya no ofrece el modelo de voz que estaba usando, así que estoy usando la voz integrada. Puedes cambiar de voz en la Configuración de la app, en Conexiones y luego en Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, %@ n’offre plus le modèle de voix que j’utilisais, donc j’utilise la voix intégrée. Vous pouvez changer de voix dans les Réglages de l’application, sous Connexions, puis Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként a(z) %@ már nem kínálja azt a hangmodellt, amelyet használtam, így a beépített hangot használom. A hangokat az alkalmazás beállításai között módosíthatja, a Kapcsolatok, majd a Szolgáltatások és integrációk alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, %@ non offre più il modello vocale che stavo usando, quindi sto usando la voce integrata. Puoi cambiare le voci nelle Impostazioni dell’app, in Connessioni, quindi Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、%@が使用中の音声モデルの提供を終了したため、内蔵音声を使用しています。音声はアプリの設定で変更できます。設定では「接続」→「サービスと連携」と進んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 %@에서 사용 중이던 음성 모델을 더 이상 제공하지 않아 내장 음성을 사용하고 있습니다. 앱 설정의 연결, 서비스 및 연동에서 음성을 변경할 수 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, %@ biedt het stemmodel dat ik gebruikte niet meer aan, dus ik gebruik de ingebouwde stem. Je kunt stemmen wijzigen in de instellingen van de app, onder Verbindingen en vervolgens Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, %@ não oferece mais o modelo de voz que eu estava usando, então estou usando a voz integrada. Você pode alterar as vozes nas Configurações do aplicativo, em Conexões, depois em Serviços e Integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, %@ больше не предлагает использовавшуюся голосовую модель, поэтому я использую встроенный голос. Сменить голос можно в Настройках приложения: «Подключения», затем «Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، %@ اب وہ صوتی ماڈل پیش نہیں کرتا جو میں استعمال کر رہا تھا، اس لیے میں بلٹ اِن آواز استعمال کر رہا ہوں۔ آپ ایپ کی ترتیبات میں کنکشنز، پھر سروسز اور انٹیگریشنز کے تحت آوازیں بدل سکتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便提一下，%@ 不再提供我一直在用的语音模型，所以我正在使用内置语音。你可以在 App 的设置中更改语音，路径为“连接”，然后是“服务与集成”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，%@ 不再提供我一直在用的語音模型，所以我正在使用內建語音。你可以在 App 的設定中更改語音，路徑為「連線」>「服務與整合」。"
           }
         }
       }
@@ -226816,6 +227144,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenAI 正在停用較舊的即時模型，因此您儲存的 OpenAI 即時模型現在使用較新的模型：%@。"
+          }
+        }
+      }
+    },
+    "OpenAI is retiring this voice on %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ستوقف OpenAI هذا الصوت في %@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI retirará esta voz el %@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI retirera cette voix le %@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az OpenAI ekkor megszünteti ezt a hangot: %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI ritirerà questa voce il %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAIはこの音声を%@に終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI는 %@에 이 음성을 종료합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI stopt op %@ met deze stem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A OpenAI vai desativar esta voz em %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI прекратит поддержку этого голоса %@."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI یہ آواز %@ کو ختم کر رہا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI 将于 %@ 停用此语音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI 將於 %@ 停用此語音。"
           }
         }
       }
