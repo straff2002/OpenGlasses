@@ -198,6 +198,14 @@ enum TechnicianWords {
         return words.isEmpty ? nil : words
     }
 
+    /// Which turn the words in `current()` opened (Plan KD P2): a number that changes with every
+    /// spoken or typed turn, the same words said again included. Nil exactly when `current()` is,
+    /// so a turn with no captured words is never told apart from another.
+    @MainActor static func currentTurn() -> Int? {
+        guard current() != nil, let app = AppStateProvider.shared else { return nil }
+        return app.turnSerial
+    }
+
     /// What the assistant said last, before the turn in flight: what a bare "yes" answers (Plan
     /// KD P0 — "shall I close the job?", "want me to run the sizing chain?"). Nil outside a turn,
     /// as `current()` is.

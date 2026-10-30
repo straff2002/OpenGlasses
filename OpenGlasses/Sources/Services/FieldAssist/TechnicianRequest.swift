@@ -54,6 +54,16 @@ enum TechnicianRequest {
         return words.contains(where: runVerbs.contains)
     }
 
+    /// Whether the words ask what chains there are — "what chains can I use?", "list the rule
+    /// chains" — rather than to run one (Plan KD P2): the list is then said as `rule_chain` wrote
+    /// it. "Chain" said with a verb that runs one is a request to run it, not to hear the list, and
+    /// a question about one chain ("what does the sizing chain do?") is the model's to answer.
+    static func asksAboutChains(_ said: String) -> Bool {
+        let words = self.words(said)
+        guard words.contains("chains") || (words.contains("list") && words.contains("chain")) else { return false }
+        return !asksToRunChain(said)
+    }
+
     private static let chainQuestionOpeners: Set<String> = [
         "what", "whats", "which", "how", "is", "are", "does", "do", "list", "tell",
     ]

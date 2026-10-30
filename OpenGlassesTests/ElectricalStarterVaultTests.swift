@@ -202,7 +202,7 @@ final class ElectricalStarterVaultTests: XCTestCase {
         _ = try await tool.execute(args: ["action": "start", "chain": "Example: size a conductor for a load"])
         var reply = ""
         for answer in ["32", "14", "5", "2"] {
-            reply = try await tool.execute(args: ["action": "answer", "value": answer])
+            reply = try await RuleChainFixtures.run(tool, ["action": "answer", "value": answer], service)
         }
         XCTAssertTrue(reply.contains("Use QMX90 › two conductors: rated 45 A in rating group 2"), reply)
         XCTAssertTrue(reply.contains("Rule QR-17"), reply)

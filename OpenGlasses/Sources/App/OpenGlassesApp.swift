@@ -1205,7 +1205,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The words that opened the turn in flight. Unlike `currentTranscription`, a spoken "yes" to a
     /// confirmation card does not replace it, so a tool later in the same turn still reads what the
     /// technician asked for (`TechnicianWords`).
-    private(set) var turnUtterance: String = ""
+    private(set) var turnUtterance: String = "" {
+        didSet { turnSerial &+= 1 }
+    }
+    /// Which spoken or typed turn is in flight: one more for every turn that opens with the
+    /// technician's words, the same words said twice included. A rule chain takes at most one
+    /// answer per turn, and never in the turn its question was put (Plan KD P2,
+    /// `TechnicianWords.currentTurn()`).
+    private(set) var turnSerial = 0
     @Published var lastResponse: String = ""
     /// In-flight assistant reply for the Chat tab, streamed token-by-token where the provider
     /// supports it (on-device models today). The Chat thread renders this as a live bubble, then

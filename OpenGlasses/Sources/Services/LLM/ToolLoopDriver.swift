@@ -227,6 +227,9 @@ func runToolLoop(
     // Everything this turn answered, in order, for the words the turn ends in when the model has
     // none of its own (`ToolLoopBudget.spoken(from:)`).
     var turnOutcomes: [ToolDispatchOutcome] = []
+    // The question a tool result ended the turn on (`ToolTurnEnd.afterReply`): the model puts it
+    // into words with every tool withheld, and it is what is said if the model says nothing.
+    var endedOnQuestion: String?
 
     rounds: for _ in 0..<maxIterations {
         try Task.checkCancellation()
@@ -289,6 +292,28 @@ func runToolLoop(
                 completedResults[signature] = text
             }
             outcomes.append(outcome)
+            // A result that ends the turn (Plan KD P2): nothing after it in this round runs, and
+            // no further round is offered.
+            if case .completed(let text) = outcome.outcome,
+               ToolTurnEnd.mayEndTurn(outcome.invocation.name), let end = ToolTurnEnd.parse(text) {
+                for unrun in turn.toolCalls.dropFirst(index + 1) {
+                    outcomes.append(ToolDispatchOutcome(
+                        invocation: unrun,
+                        outcome: .failedBeforeExecution(reason: ToolTurnEnd.notRun(unrun.name)),
+                        yieldReason: nil))
+                }
+                adapter.appendToolResults(outcomes)
+                turnOutcomes += outcomes
+                switch end {
+                case .saying(let words):
+                    // Said and shown as the tool wrote them; the model is not asked to repeat them.
+                    setStatus(.idle)
+                    return try adapter.finalize(AssistantTurn(text: words))
+                case .afterReply(let question):
+                    endedOnQuestion = question
+                    break rounds
+                }
+            }
             if let reason = outcome.yieldReason {
                 // The turn ends here, but the assistant message already in history names every
                 // call it made. Each one needs an answer or the next request is malformed: only
@@ -348,17 +373,82 @@ func runToolLoop(
         return try adapter.finalize(wrapUp)
     }
     if !wrapUp.toolCalls.isEmpty {
-        PrivacyLog.model(.toolBudgetSpent, count: wrapUp.toolCalls.count,
-                         detail: PrivacyToken(adapter.label))
+        if endedOnQuestion == nil {
+            PrivacyLog.model(.toolBudgetSpent, count: wrapUp.toolCalls.count,
+                             detail: PrivacyToken(adapter.label))
+        }
         adapter.appendAssistantToolCall(wrapUp)
         adapter.appendToolResults(wrapUp.toolCalls.map {
             ToolDispatchOutcome(invocation: $0,
-                                outcome: .failedBeforeExecution(reason: ToolLoopBudget.notRun($0.name)),
+                                outcome: .failedBeforeExecution(reason: endedOnQuestion == nil
+                                    ? ToolLoopBudget.notRun($0.name) : ToolTurnEnd.notRun($0.name)),
                                 yieldReason: nil)
         })
     }
-    return try adapter.finalize(AssistantTurn(
-        text: said.isEmpty ? ToolLoopBudget.spoken(from: turnOutcomes) : said))
+    let fallback = endedOnQuestion ?? ToolLoopBudget.spoken(from: turnOutcomes)
+    return try adapter.finalize(AssistantTurn(text: said.isEmpty ? fallback : said))
+}
+
+/// A tool result that ends the turn (Plan KD P2).
+///
+/// The partner's retest had a rule chain answered several steps at once: every question result
+/// invited the next call, and the model filled it with the last thing the technician had said. A
+/// question put to the technician has its answer in their next turn, so the result that puts it
+/// ends this one — and a list the technician asked for is theirs to hear as the tool wrote it,
+/// not paraphrased. The result carries its own marker line, worded as an instruction, so a live
+/// session (which has no loop to stop) is told the same thing in words. Pure.
+enum ToolTurnEnd: Equatable {
+    /// The model puts the result into words with every tool withheld, and the turn ends there.
+    /// `question` is what is said when the model says nothing.
+    case afterReply(question: String)
+    /// The turn ends on these words, said and shown exactly as the tool wrote them; the model is
+    /// not asked again.
+    case saying(String)
+
+    /// The only tools whose results may end the turn. A marker line in anything else — a web page,
+    /// a document, a gateway or MCP result — is text like any other: honouring it would let that
+    /// content end the turn and have its own words said aloud without the model reading them.
+    static let tools: Set<String> = ["rule_chain"]
+
+    static func mayEndTurn(_ tool: String) -> Bool { tools.contains(tool) }
+
+    /// Opens the line that ends the turn on a question; the question follows it.
+    static let afterReplyPrefix = "End of turn — ask the technician this and stop; their answer comes in "
+        + "their next turn, and no tool runs until then: "
+
+    /// The line before words that are said word for word.
+    static let sayingLine = "Say this to the technician word for word, and nothing else; the turn ends with it:"
+
+    /// The line a result ends with to end the turn on `question`.
+    static func afterReplyLine(asking question: String) -> String {
+        afterReplyPrefix + question
+    }
+
+    /// A result that is `words`, said word for word and ending the turn. Whatever comes before the
+    /// marker line in a result is for the model only.
+    static func saying(_ words: String) -> String {
+        sayingLine + "\n" + words
+    }
+
+    /// What `result` asks of the turn, or nil for a result that leaves it open.
+    static func parse(_ result: String) -> ToolTurnEnd? {
+        let lines = result.components(separatedBy: "\n")
+        if let marker = lines.firstIndex(of: sayingLine) {
+            let words = lines[(marker + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            return words.isEmpty ? nil : .saying(words)
+        }
+        for line in lines where line.hasPrefix(afterReplyPrefix) {
+            let question = String(line.dropFirst(afterReplyPrefix.count)).trimmingCharacters(in: .whitespaces)
+            return question.isEmpty ? nil : .afterReply(question: question)
+        }
+        return nil
+    }
+
+    /// The model's answer to a call made after a result ended the turn. Nothing ran.
+    static func notRun(_ name: String) -> String {
+        "'\(name)' was not run: an earlier result ended this turn. Nothing happened. Call it again "
+            + "in a later turn if it is still needed."
+    }
 }
 
 /// What a turn says when it has used every tool round, or stopped repeating itself.
