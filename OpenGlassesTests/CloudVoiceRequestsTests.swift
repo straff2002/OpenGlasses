@@ -220,6 +220,27 @@ final class CloudVoiceRequestsTests: XCTestCase {
         XCTAssertTrue(service.quotaExhausted.isEmpty)
     }
 
+    func testAWithdrawnModelLatchesThatVoiceOnlyAndIsNotCalledOutOfCredit() async {
+        CloudVoiceStubURLProtocol.begin(
+            status: 404, body: Data(#"{"error":{"message":"The model `gpt-4o-mini-tts` does not exist or you do not have access to it.","code":"model_not_found"}}"#.utf8))
+        let service = TextToSpeechService()
+        do {
+            _ = try await service.fetchOpenAIAudio(text: "Hi.", apiKey: Self.openAIKey)
+            XCTFail("a 404 returned audio")
+        } catch let rejected as TextToSpeechService.CloudVoiceRequestRejected {
+            XCTAssertEqual(rejected.rejection, .modelUnavailable)
+        } catch {
+            XCTFail("expected a classified rejection, got \(error)")
+        }
+        XCTAssertEqual(service.modelUnavailable, [.openAI])
+        XCTAssertTrue(service.quotaExhausted.isEmpty)
+
+        service.resetElevenLabsQuota()
+        XCTAssertEqual(service.modelUnavailable, [.openAI], "resetting ElevenLabs leaves OpenAI's latch")
+        service.resetCloudVoiceQuota(.openAI)
+        XCTAssertTrue(service.modelUnavailable.isEmpty)
+    }
+
     func testAPaymentRequiredFromXAIIsARefusalAndSpentCreditLatches() async {
         let service = TextToSpeechService()
         CloudVoiceStubURLProtocol.begin(status: 402, body: Data())

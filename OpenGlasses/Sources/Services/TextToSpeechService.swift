@@ -147,6 +147,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// about another.
     private(set) var quotaExhausted: Set<TTSEngine> = []
 
+    /// The cloud voices whose vendor said the voice model is gone this session (Plan KB), skipped
+    /// the same way. Kept apart from `quotaExhausted` because nothing the wearer tops up clears it.
+    private(set) var modelUnavailable: Set<TTSEngine> = []
+
     /// Why a cloud voice turned down the request in flight, when it is something only the wearer
     /// can fix. Set where the response is read, consumed where the chain falls through.
     private var pendingCloudVoiceRejection: CloudVoiceNotice?
@@ -337,6 +341,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// changes or credit is added): the next rejection from it is news again.
     func resetCloudVoiceQuota(_ engine: TTSEngine) {
         quotaExhausted.remove(engine)
+        modelUnavailable.remove(engine)
         cloudVoiceAnnouncer.episodeEnded(for: engine)
         cloudVoiceRejectionsShown = cloudVoiceRejectionsShown.filter {
             CloudVoiceNotice.engine(ofToken: $0) != engine
@@ -629,7 +634,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let savedModels = Config.savedModels
         func ready(_ engine: TTSEngine, hasCredential: Bool) -> Bool {
             TTSEngineSelector.cloudVoiceReady(engine, hasCredential: hasCredential,
-                                              quotaExhausted: quotaExhausted.contains(engine),
+                                              quotaExhausted: quotaExhausted.contains(engine)
+                                                  || modelUnavailable.contains(engine),
                                               onDeviceOnly: onDeviceOnly, online: online,
                                               medicalMode: medicalMode)
         }
@@ -1150,7 +1156,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     }
 
     /// Read a cloud voice's answer: audio on a 200; otherwise classify the refusal, latch the voice
-    /// off for the session when its account is out of credit, and throw. The audio is returned
+    /// off for the session when its account is out of credit or its model is gone, and throw. The audio is returned
     /// untouched, and the reply text is never logged — only its engine, size and status.
     private func cloudVoiceAudio(engine: TTSEngine, data: Data, response: URLResponse,
                                  startedAt startTime: Date) throws -> Data {
@@ -1167,10 +1173,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             PrivacyLog.tts(.engineFailed, engine: PrivacyToken(engine.rawValue), status: statusCode)
             let rejection = CloudVoiceRejection.classify(
                 statusCode: statusCode, body: String(data: data, encoding: .utf8) ?? "")
-            // Cache quota exhaustion so we skip this voice for the rest of this session
-            if rejection == .outOfCredit {
+            // Skip this voice for the rest of this session when asking again can only fail.
+            switch rejection {
+            case .outOfCredit:
                 PrivacyLog.tts(.quotaExhausted, engine: PrivacyToken(engine.rawValue))
                 quotaExhausted.insert(engine)
+            case .modelUnavailable:
+                PrivacyLog.tts(.modelUnavailable, engine: PrivacyToken(engine.rawValue))
+                modelUnavailable.insert(engine)
+            case .refused, nil:
+                break
             }
             throw CloudVoiceRequestRejected(engine: engine, statusCode: statusCode, rejection: rejection)
         }

@@ -53,6 +53,77 @@ final class CloudVoiceFallbackTests: XCTestCase {
         XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: body), .outOfCredit)
     }
 
+    // MARK: - A withdrawn model
+
+    private let modelGoneBodies = [
+        #"{"error":{"message":"The model `gpt-4o-mini-tts` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}"#,
+        #"{"error":{"message":"The model `gpt-4o-mini-tts` does not exist or you do not have access to it."}}"#,
+        #"{"error":{"message":"The model `tts-1` has been deprecated, learn more here: https://platform.openai.com/docs/deprecations","code":null}}"#,
+        #"{"error":{"code":"model_not_found"}}"#
+    ]
+
+    func testAWithdrawnModelIsReadFromTheBodyAtAnyStatus() {
+        for body in modelGoneBodies {
+            for status in [400, 403, 404] {
+                XCTAssertEqual(CloudVoiceRejection.classify(statusCode: status, body: body),
+                               .modelUnavailable, "\(status) \(body)")
+            }
+        }
+    }
+
+    /// "Check the key" would be untrue: the key is fine and the model is gone.
+    func testA403NamingAWithdrawnModelIsNotAnsweredWithCheckTheKey() {
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: modelGoneBodies[0]),
+                       .modelUnavailable)
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: ""), .refused)
+    }
+
+    func testA404OrA400WithoutAMarkerStaysUnclassified() {
+        for status in [400, 404] {
+            XCTAssertNil(CloudVoiceRejection.classify(statusCode: status, body: ""), "\(status)")
+            XCTAssertNil(CloudVoiceRejection.classify(
+                statusCode: status, body: #"{"error":{"message":"Not found"}}"#), "\(status)")
+        }
+    }
+
+    /// A bad voice is the wearer's to fix, so it must not latch the whole voice off as a gone model.
+    func testAMissingVoiceIsNotAWithdrawnModel() {
+        let body = #"{"detail":{"status":"voice_not_found","message":"A voice with that id does not exist."}}"#
+        XCTAssertNil(CloudVoiceRejection.classify(statusCode: 404, body: body))
+    }
+
+    func testAnEmptyAccountStillWinsOverAModelMarker() {
+        let body = #"{"error":{"code":"insufficient_quota","message":"The model does not exist."}}"#
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 404, body: body), .outOfCredit)
+    }
+
+    func testAWithdrawnModelIsSaidOncePerEpisodeAndPerCloudVoice() {
+        var announcer = CloudVoiceFallbackAnnouncer(defaults: defaults)
+        let openAI = notice(.modelUnavailable, from: .openAI)
+        XCTAssertEqual(openAI.announcementToken, "openAI.modelUnavailable")
+        XCTAssertEqual(announcer.lineToSpeak(for: openAI, plainReply: true), openAI.spokenLine)
+        XCTAssertNil(announcer.lineToSpeak(for: openAI, plainReply: true))
+        XCTAssertNotNil(announcer.lineToSpeak(for: notice(.modelUnavailable, from: .xai), plainReply: true))
+    }
+
+    /// What an earlier build stored for this voice still decodes, and the new reason is news.
+    func testAnOlderStoredTokenStillDecodes() {
+        defaults.set(["openAI.refused"], forKey: CloudVoiceFallbackAnnouncer.defaultsKey)
+        var announcer = CloudVoiceFallbackAnnouncer(defaults: defaults)
+        XCTAssertNil(announcer.lineToSpeak(for: notice(.refused, from: .openAI), plainReply: true))
+        XCTAssertNotNil(announcer.lineToSpeak(for: notice(.modelUnavailable, from: .openAI), plainReply: true))
+    }
+
+    func testTheWithdrawnModelLineNeverSaysToCheckTheKey() {
+        for nextIsCloud in [false, true] {
+            var told = notice(.modelUnavailable, from: .openAI)
+            told.nextIsCloud = nextIsCloud
+            XCTAssertTrue(told.spokenLine.contains("no longer offers"), "\(nextIsCloud)")
+            XCTAssertFalse(told.spokenLine.contains("key"), "\(nextIsCloud)")
+            XCTAssertFalse(told.banner.contains("key"), "\(nextIsCloud)")
+        }
+    }
+
     // MARK: - Said once
 
     private func notice(_ rejection: CloudVoiceRejection,

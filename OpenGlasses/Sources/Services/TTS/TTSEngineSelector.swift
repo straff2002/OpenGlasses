@@ -81,11 +81,15 @@ enum TTSEnginePreference: String, CaseIterable, Identifiable, Codable {
     }
 
     /// One-line description for the Settings picker footer.
-    var detail: String {
+    var detail: String { detail(now: Date()) }
+
+    func detail(now: Date) -> String {
         switch self {
         case .auto: return String(localized: "Use the best voice available: a cloud voice if one is set up (ElevenLabs, then OpenAI, then xAI, then Gemini), then on-device Kokoro, then the iOS voice.")
         case .elevenLabs: return String(localized: "Prefer ElevenLabs cloud voices. Falls back to on-device or the iOS voice when unavailable.")
-        case .openAI: return String(localized: "Prefer the OpenAI cloud voice, paid from your OpenAI API credit. Falls back to on-device or the iOS voice when unavailable — never another paid cloud.")
+        case .openAI:
+            let detail = String(localized: "Prefer the OpenAI cloud voice, paid from your OpenAI API credit. Falls back to on-device or the iOS voice when unavailable — never another paid cloud.")
+            return OpenAIVoiceRetirement.pickerNote(now: now).map { "\(detail) \($0)" } ?? detail
         case .xai: return String(localized: "Prefer the xAI cloud voice, using your xAI key or sign-in. Falls back to on-device or the iOS voice when unavailable — never another paid cloud.")
         case .gemini: return String(localized: "Prefer the Gemini cloud voice, using the API key saved with your Gemini model. Spoken replies use that key's quota, separately from chat. Falls back to on-device or the iOS voice when unavailable — never another paid cloud.")
         case .kokoro: return String(localized: "Prefer the offline, free on-device neural voice. Falls back to the iOS voice — never the paid cloud.")
@@ -151,8 +155,8 @@ enum TTSEngineSelector {
         }
     }
 
-    /// Whether a cloud voice may be tried for one utterance: a credential on file, not latched out
-    /// of credit, online, not an utterance the app promised to keep on the phone, and a route the
+    /// Whether a cloud voice may be tried for one utterance: a credential on file, not latched off
+    /// (`quotaExhausted` covers out of credit and a withdrawn model), online, not an utterance the app promised to keep on the phone, and a route the
     /// medical local-only rule lets out. One rule for every cloud voice, so they cannot drift.
     static func cloudVoiceReady(_ engine: TTSEngine, hasCredential: Bool, quotaExhausted: Bool,
                                 onDeviceOnly: Bool, online: Bool,

@@ -1435,7 +1435,7 @@ enum PrivacyLog {
         case speaking, finished, cancelled, suppressed, staleGeneration, discarded
         case engineFailed, engineFallback
         case requested, received, playing, playbackFinished, decodeFailed
-        case voiceSelected, quotaExhausted, quotaCacheReset, toneFailed, voicesRequestFailed
+        case voiceSelected, quotaExhausted, modelUnavailable, quotaCacheReset, toneFailed, voicesRequestFailed
         // Plan FE P4 — the terminal delivery outcome handed back to the caller, as a fixed token
         // (`completed`, `interrupted-bargeIn`, `suppressed-noRoute`, `failed`). Never the words.
         case playbackReported
