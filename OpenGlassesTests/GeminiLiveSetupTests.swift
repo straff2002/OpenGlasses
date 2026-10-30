@@ -81,6 +81,19 @@ final class GeminiLiveSetupTests: XCTestCase {
             GeminiLiveThinkingConfig.forModel("gemini-3.1-flash-live-preview")?["thinkingLevel"] as? String, "minimal")
     }
 
+    /// Gemini 3.8 Live takes no thinking level ("`thinkingLevel` is not supported and must be
+    /// omitted in setup", Live guide, read 2026-10-30), and its extended-thinking variant takes
+    /// `low`…`high`, not `minimal`. Sending the 3.x default would refuse the whole setup.
+    func testGemini38LiveSendsNoThinkingLevel() {
+        XCTAssertNil(GeminiLiveThinkingConfig.forModel("gemini-3.8-live"))
+        XCTAssertNil(GeminiLiveThinkingConfig.forModel("models/gemini-3.8-live"))
+        XCTAssertEqual(
+            GeminiLiveThinkingConfig.forModel("gemini-3.8-live-extended-thinking")?["thinkingLevel"] as? String, "low")
+        let setup = GeminiLiveSetup.body(model: "models/gemini-3.8-live", responseModalities: ["AUDIO"],
+                                         systemInstruction: "hi", tools: [], sessionResumption: [:])
+        XCTAssertNil((setup["generationConfig"] as? [String: Any])?["thinkingConfig"])
+    }
+
     /// An unknown family sends nothing at all. This endpoint refuses a whole setup over one
     /// unrecognised field — the 1007 that made every session fail identically — so the server's
     /// default beats a guessed shape.

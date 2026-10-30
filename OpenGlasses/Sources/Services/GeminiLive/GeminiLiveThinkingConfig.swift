@@ -17,6 +17,12 @@ enum GeminiLiveThinkingConfig {
     /// Config for a model id, or nil to omit the field entirely.
     static func forModel(_ model: String) -> [String: Any]? {
         let id = GeminiLiveModelPolicy.bareId(model)
+        if id.contains("3.8") {
+            // Gemini 3.8 Live takes no thinking level — "`thinkingLevel` is not supported and must
+            // be omitted in setup" (Live guide, read 2026-10-30). Its extended-thinking variant
+            // takes `low`, `medium` or `high`, not `minimal`.
+            return id.contains("extended-thinking") ? ["thinkingLevel": "low"] : nil
+        }
         if id.contains("2.5") {
             // Lowest latency: no thinking tokens before the reply. A voice assistant that pauses to
             // think reads as a hang, and the turn budget is shared with the answer.

@@ -359,6 +359,102 @@ final class ModelRoleTests: XCTestCase {
         XCTAssertNil(ModelRoleCatalog.liveModel(providerID: "nope", model: "m", apiKey: "k"))
     }
 
+    // MARK: - Plan KA P2: usable models, shutdown days, new defaults
+
+    private let p2Today = ModelShutdown(year: 2026, month: 10, day: 30).date
+
+    func testTheRealOpenAIListOffersEveryRoleTheAppCanReach() throws {
+        let listed = try OpenAIModelListFixture.models()
+        XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: openAI, listed: listed, today: p2Today),
+                       [.assistant, .vision, .voice, .live, .dictation])
+    }
+
+    /// A list whose only live and transcription models need connections the app lacks offers
+    /// neither role, though their kinds are there.
+    func testAListWithOnlyUnreachableModelsDoesntOfferTheirRoles() {
+        let unreachable = listed([("gpt-5.4-mini", .chat), ("gpt-live-1", .realtime),
+                                  ("gpt-live-transcribe", .transcription), ("gpt-realtime-whisper", .transcription)])
+        XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: openAI, listed: unreachable, today: p2Today),
+                       [.assistant, .vision])
+        let suggestions = ModelRoleCatalog.suggestions(for: openAI, listed: unreachable,
+                                                       inputs: .init(savedModels: [openAI], today: p2Today),
+                                                       state: .init(assistantId: "oai"))
+        XCTAssertTrue(suggestions.isEmpty, "\(suggestions.map(\.role))")
+    }
+
+    /// A list whose only live model has passed its shutdown day offers no Live.
+    func testARetiredListModelDoesntOfferItsRole() {
+        let retired = [ModelFetcher.RemoteModel(id: "gpt-realtime", name: "gpt-realtime", kind: .realtime,
+                                                shutdown: ModelShutdown("2027-01-20"))]
+        let after = ModelShutdown(year: 2027, month: 2, day: 1).date
+        XCTAssertFalse(ModelRoleCatalog.roles(offeredBy: openAI, listed: retired, today: after).contains(.live))
+        XCTAssertTrue(ModelRoleCatalog.roles(offeredBy: openAI, listed: retired, today: p2Today).contains(.live))
+    }
+
+    func testTheNewVisionDefaultsAreTheDocumentedImageModels() {
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .deepseek), "deepseek-flash")
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .zai), "glm-5.3-flash")
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .qwen), "qwen3.7-plus")
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .minimax), "MiniMax-M3.1-Flash")
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .openrouter), "anthropic/claude-haiku-5.5")
+        XCTAssertNil(ModelRoleDefaults.model(for: .vision, provider: .groq), "Groq's only image model is a preview")
+        for provider in [LLMProvider.deepseek, .zai, .qwen, .minimax, .openrouter] {
+            XCTAssertTrue(ModelRoleCatalog.roles(offeredBy: model("v", provider, model: "text-only-x")).contains(.vision),
+                          provider.rawValue)
+        }
+    }
+
+    func testGeminiLiveDefaultsToTheLiveGuidesModel() {
+        XCTAssertEqual(ModelRoleDefaults.model(for: .live, provider: .gemini), "gemini-3.8-live")
+        XCTAssertEqual(RealtimeProviderCatalog.template("gemini")?.model, "gemini-3.8-live")
+    }
+
+    /// A saved model past its shutdown day is shown in the assistant and Vision pickers, dimmed;
+    /// one retiring soon stays choosable and says when.
+    func testRolePickersDimARetiredSavedModelAndNoteARetiringOne() {
+        let retired = model("old", .openai, model: "o4-mini")
+        let retiring = model("soon", .openai, model: "gpt-4o")
+        let inputs = ModelRoleInputs(savedModels: [retired, retiring, claude], today: p2Today)
+        let assistant = ModelRoleCatalog.options(for: .assistant, inputs: inputs)
+        XCTAssertEqual(assistant.first { $0.choice == .model(configId: "old") }?.unavailableLabel, "Retired")
+        XCTAssertTrue(assistant.first { $0.choice == .model(configId: "soon") }?.isChoosable ?? false)
+        XCTAssertTrue(assistant.first { $0.choice == .model(configId: "soon") }?.note?.hasPrefix("Retires") ?? false)
+        XCTAssertNil(assistant.first { $0.choice == .model(configId: "claude") }?.note)
+        let vision = ModelRoleCatalog.options(for: .vision, inputs: inputs)
+        XCTAssertFalse(vision.first { $0.choice == .model(configId: "old") }?.isChoosable ?? true)
+    }
+
+    /// A speech model saved as a chat model can't be chosen as the assistant from the role picker.
+    func testTheAssistantPickerDimsASavedNonChatModel() {
+        let speech = model("tts", .gemini, model: "gemini-3.8-flash-tts")
+        let options = ModelRoleCatalog.options(for: .assistant, inputs: .init(savedModels: [speech], today: p2Today))
+        XCTAssertEqual(options.first?.unavailableLabel, ModelKind.speech.label)
+    }
+
+    func testASavedOpenAILiveModelTheSocketRefusesIsDimmed() throws {
+        let refused = try XCTUnwrap(ModelRoleCatalog.liveModel(providerID: "openai", model: "gpt-live-1",
+                                                               apiKey: "k", id: "live1"))
+        let fine = try XCTUnwrap(ModelRoleCatalog.liveModel(providerID: "openai", model: "gpt-realtime-2.1-mini",
+                                                            apiKey: "k", id: "live2"))
+        let gemini = try XCTUnwrap(ModelRoleCatalog.liveModel(providerID: "gemini", model: "anything-the-account-lists",
+                                                              apiKey: "k", id: "live3"))
+        let options = ModelRoleCatalog.options(for: .live, inputs: .init(savedModels: [],
+                                                                         realtimeModels: [refused, fine, gemini],
+                                                                         today: p2Today))
+        XCTAssertEqual(options.map(\.unavailableLabel), ["Needs a connection the app doesn't have yet", nil, nil])
+    }
+
+    /// The OpenAI voice row says when its speech model goes, once that is within 90 days.
+    func testTheOpenAIVoiceSaysWhenItsModelRetires() {
+        let inputs = ModelRoleInputs(savedModels: [openAI], voiceCredentials: [.openAI], today: p2Today)
+        let row = ModelRoleCatalog.options(for: .voice, inputs: inputs).first { $0.choice == .voice(.openAI) }
+        XCTAssertTrue(row?.note?.hasPrefix("Retires") ?? false)
+        XCTAssertTrue(row?.isChoosable ?? false)
+        let earlier = ModelRoleInputs(savedModels: [openAI], voiceCredentials: [.openAI],
+                                      today: ModelShutdown(year: 2026, month: 9, day: 1).date)
+        XCTAssertNil(ModelRoleCatalog.options(for: .voice, inputs: earlier).first { $0.choice == .voice(.openAI) }?.note)
+    }
+
     // MARK: - The Gemini speech-model picker reads `.speech`
 
     func testTheGeminiSpeechPickerTakesTheClassifiersSpeechModels() throws {

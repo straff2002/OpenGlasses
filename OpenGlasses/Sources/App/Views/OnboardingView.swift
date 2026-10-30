@@ -805,16 +805,26 @@ struct OnboardingView: View {
     /// selection list, the same shape the Settings model editor offers.
     @ViewBuilder
     private var modelSection: some View {
+        let provider = selectedProvider ?? .custom
         Section {
-            ForEach(availableModels.filter(\.kind.isChat)) { model in
+            ForEach(availableModels.filter { $0.assistantStatus(provider: provider).isChoosable }) { model in
+                let note = model.assistantStatus(provider: provider).note
                 Button {
                     selectedModelId = model.id
                 } label: {
                     HStack(spacing: OGMetrics.rowSpacing) {
-                        Text(model.name)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.name)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            if let note {
+                                Text(note)
+                                    .font(.footnote)
+                                    .foregroundStyle(OGTheme.warnLabel)
+                                    .lineLimit(2)
+                            }
+                        }
                         Spacer(minLength: 8)
                         OGSelectionCheck(selectedModelId == model.id)
                     }
@@ -822,7 +832,7 @@ struct OnboardingView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(model.name)
+                .accessibilityLabel([model.name, note].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityAddTraits(
                     selectedModelId == model.id ? [.isButton, .isSelected] : .isButton
                 )
@@ -830,7 +840,9 @@ struct OnboardingView: View {
         } header: {
             Text("Select Model")
         }
-        NotAnAssistantModelsSection(models: availableModels.filter { !$0.kind.isChat })
+        NotAnAssistantModelsSection(
+            models: availableModels.filter { !$0.assistantStatus(provider: provider).isChoosable },
+            provider: provider)
     }
 
     // MARK: - Account sign-in sections (shared OnboardingAccountSignInSection, BW P4)

@@ -79,12 +79,16 @@ struct ModelListMetadata: Equatable, Sendable {
     var outputModalities: Set<String>?
     /// Gemini's `supportedGenerationMethods`.
     var generationMethods: Set<String>?
+    /// The day the provider shuts the model down, where the list says: OpenAI's `shutdown_date`
+    /// (`YYYY-MM-DD`, or null). Read from any list that sends the field; only OpenAI's is known to.
+    var shutdown: ModelShutdown?
 
     init(capabilities: Set<String>? = nil, outputModalities: Set<String>? = nil,
-         generationMethods: Set<String>? = nil) {
+         generationMethods: Set<String>? = nil, shutdown: ModelShutdown? = nil) {
         self.capabilities = capabilities
         self.outputModalities = outputModalities
         self.generationMethods = generationMethods
+        self.shutdown = shutdown
     }
 
     /// Read from one row of a provider's list. Fields that are absent stay nil.
@@ -100,6 +104,9 @@ struct ModelListMetadata: Equatable, Sendable {
         }
         if let methods = row["supportedGenerationMethods"] as? [String] {
             generationMethods = Set(methods)
+        }
+        if let day = row["shutdown_date"] as? String {
+            shutdown = ModelShutdown(day)
         }
     }
 
@@ -122,10 +129,15 @@ enum ModelKindClassifier {
             // are chosen from the app's own list.
             return .chat
         }
-        if let decided = fromMetadata(metadata) { return decided }
         let words = Self.words(in: id)
-        if let decided = fromProviderRows(provider, words: words) { return decided }
-        if let decided = fromSharedWords(words) { return decided }
+        if let decided = fromMetadata(metadata, words: words) { return decided }
+        if let decided = fromProviderFamilies(provider, words: words) { return decided }
+        // A word that names a kind beats the words that only say how a model is reached
+        // (`realtime`, `live`, `voice`): `gpt-live-transcribe` and `gpt-realtime-whisper` are
+        // transcription models, `grok-voice-transcribe-2.0` too.
+        if let decided = fromKindWords(words) { return decided }
+        if let decided = fromProviderModifiers(provider, words: words) { return decided }
+        if let decided = fromModifierWords(words) { return decided }
         // A Gemini entry that serves no chat method is not a chat model, whatever its name.
         if let methods = metadata.generationMethods, !methods.contains("generateContent") {
             return .other
@@ -154,13 +166,15 @@ enum ModelKindClassifier {
     /// A kind when the list's own field settles it — chat included, so a model the list says
     /// answers in text is never relabelled by a word in its id (OpenRouter serves
     /// `gpt-4o-audio-preview` as chat). Nil when the field is absent or says nothing either way.
-    private static func fromMetadata(_ metadata: ModelListMetadata) -> ModelKind? {
+    private static func fromMetadata(_ metadata: ModelListMetadata, words: [String]) -> ModelKind? {
         if let flags = metadata.capabilities {
             if flags.contains("completion_chat") { return .chat }
             if flags.contains("audio_speech") { return .speech }
-            if flags.contains("audio_transcription") { return .transcription }
+            if flags.contains("audio_transcription") || flags.contains("audio_transcription_realtime") {
+                return .transcription
+            }
             if flags.contains("ocr") { return .ocr }
-            if flags.contains("moderation") { return .moderation }
+            if flags.contains("moderation") || flags.contains("classification") { return .moderation }
         }
         if let outputs = metadata.outputModalities, !outputs.isEmpty {
             if outputs.contains("text") { return .chat }
@@ -173,7 +187,9 @@ enum ModelKindClassifier {
             return .other
         }
         if let methods = metadata.generationMethods, !methods.contains("generateContent") {
-            if methods.contains("bidiGenerateContent") { return .realtime }
+            // Live-only, unless the id names what the live model is for: Gemini's
+            // `gemini-3.5-transcribe-live` is a transcription model reached over the Live socket.
+            if methods.contains("bidiGenerateContent") { return fromKindWords(words) ?? .realtime }
             if methods.contains("embedContent") || methods.contains("batchEmbedContents") { return .embedding }
             // `predict` serves Imagen and Veo; their ids name which.
             return nil
@@ -183,56 +199,95 @@ enum ModelKindClassifier {
 
     // MARK: - Words in the id
 
-    /// Single words that name a kind wherever they appear as a whole word.
-    private static let sharedWords: [String: ModelKind] = [
-        "tts": .speech, "orpheus": .speech,
+    /// Single words that name a kind wherever they appear as a whole word. Product names that are
+    /// one kind and only one (`cosyvoice`, `cogvideox`, `happyhorse`, `shieldstral`) are here
+    /// rather than in a provider's rows, so a proxy that serves them under its own name reads them
+    /// the same way.
+    private static let kindWords: [String: ModelKind] = [
+        "tts": .speech, "orpheus": .speech, "cosyvoice": .speech,
         "whisper": .transcription, "transcribe": .transcription, "asr": .transcription,
-        "realtime": .realtime, "live": .realtime,
         "image": .image, "imagen": .image, "dall": .image, "cogview": .image, "imagine": .image,
-        "video": .video, "veo": .video, "sora": .video, "hailuo": .video,
+        "video": .video, "veo": .video, "sora": .video, "hailuo": .video, "cogvideox": .video,
+        "happyhorse": .video, "t2v": .video, "i2v": .video, "r2v": .video,
         "lyria": .music, "music": .music,
         "embed": .embedding, "embedding": .embedding, "embeddings": .embedding,
         "rerank": .rerank, "reranker": .rerank,
-        "moderation": .moderation, "guard": .moderation, "safeguard": .moderation,
+        "moderation": .moderation, "guard": .moderation, "safeguard": .moderation, "shieldstral": .moderation,
         "ocr": .ocr,
         "aqa": .other,
     ]
 
-    /// Two words in a row that name a kind together.
-    private static let sharedPairs: [(String, String, ModelKind)] = [
-        ("native", "audio", .realtime),
-        ("audio", "preview", .realtime),
+    /// Two words in a row that name a kind together. Checked before single words, so xAI's
+    /// `grok-imagine-video` is a video model rather than an image one.
+    private static let kindPairs: [(String, String, ModelKind)] = [
+        ("imagine", "video", .video),
+        ("nano", "banana", .image),
         ("computer", "use", .other),
     ]
 
-    private static func fromSharedWords(_ words: [String]) -> ModelKind? {
-        for (first, second, kind) in sharedPairs {
-            if zip(words, words.dropFirst()).contains(where: { $0 == first && $1 == second }) { return kind }
-        }
+    /// Words that say a model is reached live, and so name its kind only when nothing else does.
+    private static let modifierWords: [String: ModelKind] = [
+        "realtime": .realtime, "live": .realtime,
+    ]
+
+    private static let modifierPairs: [(String, String, ModelKind)] = [
+        ("native", "audio", .realtime),
+        ("audio", "preview", .realtime),
+    ]
+
+    private static func fromKindWords(_ words: [String]) -> ModelKind? {
+        if let kind = firstPair(kindPairs, in: words) { return kind }
         for word in words {
-            if let kind = sharedWords[word] { return kind }
+            if let kind = kindWords[word] { return kind }
+        }
+        return nil
+    }
+
+    private static func fromModifierWords(_ words: [String]) -> ModelKind? {
+        if let kind = firstPair(modifierPairs, in: words) { return kind }
+        for word in words {
+            if let kind = modifierWords[word] { return kind }
+        }
+        return nil
+    }
+
+    private static func firstPair(_ pairs: [(String, String, ModelKind)], in words: [String]) -> ModelKind? {
+        for (first, second, kind) in pairs {
+            if zip(words, words.dropFirst()).contains(where: { $0 == first && $1 == second }) { return kind }
         }
         return nil
     }
 
     // MARK: - Per-provider rows
 
-    /// Families the shared words miss, where only one provider names them that way.
-    private static func fromProviderRows(_ provider: LLMProvider, words: [String]) -> ModelKind? {
+    /// Families the shared words miss, where only one provider names them that way. These run
+    /// before the shared words, so each row checks that the id doesn't name another kind itself.
+    private static func fromProviderFamilies(_ provider: LLMProvider, words: [String]) -> ModelKind? {
         switch provider {
         case .xai:
-            // xAI's `/v1/models` mixes voice agents and build models in with chat.
-            if words.contains("voice") || words.contains("audio") { return .realtime }
             if words.contains("build") { return .other }
         case .gemini, .geminiVertex:
             if words.contains("robotics") { return .other }
+            // Gemini Omni is Google's video model (models page, Video, read 2026-10-30); Qwen's
+            // `omni` models are chat, so the word is Gemini's alone.
+            if words.contains("omni") { return .video }
         case .minimax:
             if words.first == "speech" { return .speech }
         case .qwen:
-            if words.first.map({ $0.hasPrefix("wan") }) == true { return .video }
+            // Wan is Alibaba's video family, except its image models (`wan2.7-image-pro`).
+            if words.first.map({ $0.hasPrefix("wan") }) == true, !words.contains("image") { return .video }
+            if words.contains("happyoyster") { return .other }
+            if words.contains("paraformer") { return .transcription }
         default:
             break
         }
+        return nil
+    }
+
+    /// Provider words that, like `realtime`, say how a model is reached, read after the kind words.
+    private static func fromProviderModifiers(_ provider: LLMProvider, words: [String]) -> ModelKind? {
+        // xAI's `/v1/models` mixes voice agents in with chat.
+        if provider == .xai, words.contains("voice") || words.contains("audio") { return .realtime }
         return nil
     }
 }

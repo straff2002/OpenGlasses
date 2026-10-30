@@ -383,8 +383,8 @@ struct AIPersonalitySettingsScreen: View {
                             googleConnected: GoogleOAuthService.shared.isConnected,
                             xaiConnected: XAIOAuthService.shared.isConnected),
                         vision: model.visionEnabled,
-                        kindWarning: ModelKindClassifier.kind(provider: model.llmProvider,
-                                                              typedID: model.model)?.savedModelWarning
+                        kindWarning: Self.savedModelWarnings(model).isEmpty
+                            ? nil : Self.savedModelWarnings(model).joined(separator: ", ")
                     ))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityHint("Double-tap to edit")
@@ -657,9 +657,9 @@ struct AIPersonalitySettingsScreen: View {
                     xaiConnected: XAIOAuthService.shared.isConnected)
                 OGStatusLabel(badge.label, kind: badge.isReady ? .ok : .warn)
                 // A model saved before the pickers labelled non-chat models — a speech model,
-                // say — fails every turn; say so where the wearer looks for it.
-                if let warning = ModelKindClassifier.kind(provider: model.llmProvider,
-                                                          typedID: model.model)?.savedModelWarning {
+                // say — fails every turn, and so does one its provider has retired; say so where
+                // the wearer looks for it, and say ahead of time when a retirement is close.
+                ForEach(Self.savedModelWarnings(model), id: \.self) { warning in
                     OGStatusLabel(warning, kind: .warn)
                 }
             }
@@ -719,6 +719,14 @@ struct AIPersonalitySettingsScreen: View {
     }
 
     /// Pure, so the spoken wording is covered headlessly.
+    /// What a saved model's row warns about: a kind that can't answer, then a shutdown day that
+    /// has passed or is within `ModelShutdownCalendar.warningDays`.
+    static func savedModelWarnings(_ model: ModelConfig, today: Date = Date()) -> [String] {
+        [ModelKindClassifier.kind(provider: model.llmProvider, typedID: model.model)?.savedModelWarning,
+         ModelShutdownCalendar.savedModelWarning(provider: model.llmProvider, id: model.model, today: today)]
+            .compactMap { $0 }
+    }
+
     static func spokenModelRow(name: String, provider: String, badge: ModelAuthBadge,
                                vision: Bool, kindWarning: String? = nil) -> String {
         var parts = [name, provider]

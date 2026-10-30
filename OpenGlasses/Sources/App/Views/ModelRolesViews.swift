@@ -91,18 +91,22 @@ struct ModelRolePickerScreen: View {
         .onAppear(perform: reload)
     }
 
+    @ViewBuilder
     private var optionsSection: some View {
         let selected = ModelRoleCatalog.effectiveSelection(role, state: state, inputs: inputs)
-        let options = ModelRoleCatalog.options(for: role, inputs: inputs)
-        return Section {
+        let all = ModelRoleCatalog.options(for: role, inputs: inputs)
+        let options = all.filter(\.isChoosable)
+        let unavailable = all.filter { !$0.isChoosable }
+        Section {
             if options.isEmpty {
                 Text(emptyText)
                     .foregroundStyle(.secondary)
             }
             ForEach(options) { option in
-                OGSelectionRow(title: option.title, subtitle: option.subtitle,
+                let subtitle = [option.subtitle, option.note].compactMap { $0 }.joined(separator: " · ")
+                OGSelectionRow(title: option.title, subtitle: subtitle.isEmpty ? nil : subtitle,
                                isSelected: option.choice == selected,
-                               accessibilityText: [option.title, option.subtitle].compactMap { $0 }.joined(separator: ", ")) {
+                               accessibilityText: [option.title, option.subtitle, option.note].compactMap { $0 }.joined(separator: ", ")) {
                     choose(option)
                 }
             }
@@ -117,6 +121,19 @@ struct ModelRolePickerScreen: View {
                 } else if role == .dictation, inputs.restrictions.hipaa {
                     Text("HIPAA mode is on, so dictation stays on this phone.")
                 }
+            }
+        }
+        // Saved models this job can't use: retired by their provider, or reached only by a
+        // connection the app doesn't have. Dimmed and labelled, not offered.
+        if !unavailable.isEmpty {
+            Section {
+                ForEach(unavailable) { option in
+                    let label = option.unavailableLabel ?? ""
+                    UnavailableModelRow(title: option.title, detail: option.subtitle, label: label,
+                                        spokenText: String(localized: "\(option.title), \(label), can't be chosen"))
+                }
+            } header: {
+                Text("Can't be chosen")
             }
         }
     }

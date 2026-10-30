@@ -11,14 +11,19 @@ enum ModelFetcher {
         /// What the model is for (`ModelKindClassifier`). Pickers offer only `.chat` as the
         /// assistant and show the rest labelled, where they can't be chosen.
         let kind: ModelKind
+        /// The day the provider shuts it down, where the list says (OpenAI's `shutdown_date`).
+        /// A model past its day can't be chosen; one within `ModelShutdownCalendar.warningDays`
+        /// says when it goes.
+        let shutdown: ModelShutdown?
 
         init(id: String, name: String, isDefault: Bool = false, inputModalities: Set<String> = [],
-             kind: ModelKind = .chat) {
+             kind: ModelKind = .chat, shutdown: ModelShutdown? = nil) {
             self.id = id
             self.name = name
             self.isDefault = isDefault
             self.inputModalities = inputModalities
             self.kind = kind
+            self.shutdown = shutdown
         }
     }
 
@@ -73,13 +78,15 @@ enum ModelFetcher {
     }
 
     /// The model a picker starts on after a list loads: the list's own default, then the first of
-    /// `preferred` the list offers, then the first — chat models only, so a list that leads with a
-    /// speech or embedding model never starts the wearer on it. Pure.
-    static func initialChoice(in models: [RemoteModel], preferring preferred: [String]) -> String? {
-        let chat = models.filter(\.kind.isChat)
+    /// `preferred` the list offers, then the first with no shutdown day, then the first — chat
+    /// models still answering only, so a list that leads with a speech, embedding or retired model
+    /// never starts the wearer on it. Pure.
+    static func initialChoice(in models: [RemoteModel], preferring preferred: [String],
+                              today: Date = Date()) -> String? {
+        let chat = models.filter { $0.kind.isChat && !($0.shutdown?.hasPassed(on: today) ?? false) }
         if let listDefault = chat.first(where: \.isDefault) { return listDefault.id }
         for id in preferred where chat.contains(where: { $0.id == id }) { return id }
-        return chat.first?.id
+        return (chat.first { $0.shutdown == nil } ?? chat.first)?.id
     }
 
     /// Fetch models for a provider. Returns an empty array on failure.
@@ -280,8 +287,10 @@ enum ModelFetcher {
     static func openAICompatibleModels(_ rows: [[String: Any]], provider: LLMProvider) -> [RemoteModel] {
         rows.compactMap { dict -> RemoteModel? in
             guard let id = dict["id"] as? String else { return nil }
-            return RemoteModel(id: id, name: id, kind: ModelKindClassifier.kind(
-                provider: provider, id: id, metadata: ModelListMetadata(row: dict)))
+            let metadata = ModelListMetadata(row: dict)
+            return RemoteModel(id: id, name: id,
+                               kind: ModelKindClassifier.kind(provider: provider, id: id, metadata: metadata),
+                               shutdown: metadata.shutdown)
         }
         .sorted { $0.id < $1.id }
     }
@@ -350,13 +359,22 @@ enum ModelFetcher {
 
     // MARK: - MiniMax
 
+    /// The models a key is tried against when MiniMax's documented `GET /v1/models` answers with
+    /// nothing: its current chat models (models page, read 2026-10-30), then `MiniMax-M2.7`, which
+    /// the list endpoint's example still shows, for plans that kept it.
+    static let miniMaxProbeModels: [(String, String)] = [
+        ("MiniMax-M3", "MiniMax-M3"),
+        ("MiniMax-M3.1-Flash", "MiniMax-M3.1 Flash"),
+        ("MiniMax-M2.7", "MiniMax-M2.7 (reasoning)"),
+    ]
+
     private static func fetchMiniMax(apiKey: String, baseURL: String) async -> [RemoteModel] {
-        // First try the standard OpenAI-compatible /models endpoint
+        // MiniMax documents an OpenAI-shaped `GET /v1/models` (API reference, read 2026-10-30).
         let openAIResult = await fetchOpenAICompatible(provider: .minimax, apiKey: apiKey, baseURL: baseURL)
         if !openAIResult.isEmpty { return openAIResult }
 
-        // MiniMax Coding Plan may not expose /models — validate the key with a
-        // minimal chat request and return known models if the key works.
+        // An endpoint that answers it with nothing (a custom base URL, a plan without it) —
+        // validate the key with a minimal chat request and return known models if the key works.
         let chatURL: String
         if baseURL.contains("/chat/completions") || baseURL.contains("/chatcompletion") {
             chatURL = baseURL
@@ -372,11 +390,7 @@ enum ModelFetcher {
         request.timeoutInterval = 30
 
         // Test each known model to find which ones the plan supports
-        let knownModels = [
-            ("MiniMax-M2.7", "MiniMax-M2.7 (reasoning)"),
-            ("MiniMax-M1", "MiniMax-M1 (reasoning)"),
-            ("MiniMax-Text-01", "MiniMax-Text-01"),
-        ]
+        let knownModels = miniMaxProbeModels
 
         var available: [RemoteModel] = []
         for (modelId, displayName) in knownModels {

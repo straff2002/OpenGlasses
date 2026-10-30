@@ -17,14 +17,19 @@ import Foundation
 /// to what remains a genuine decision: which of the offered models to prefer.
 enum GeminiLiveModelPolicy {
 
-    /// Used only when the model list cannot be fetched (offline, or the call failed). A stable
-    /// alias rather than a dated preview: aliases survive the renames that retire the previews.
-    static let offlineFallbackModel = "gemini-2.5-flash-native-audio-latest"
+    /// Used only when the model list cannot be fetched (offline, or the call failed), and as the
+    /// model a new Gemini live model is saved with. A stable id rather than a dated preview: stable
+    /// ids survive the renames that retire the previews. `gemini-3.8-live` is the Live guide's
+    /// default ("the default option for most low-latency voice agent experiences", read
+    /// 2026-10-30); the 2.5 native-audio preview behind the old `…-native-audio-latest` alias
+    /// shuts down 2026-11-17 (deprecations page).
+    static let offlineFallbackModel = "gemini-3.8-live"
 
-    /// Task-specialised live models. They speak `bidiGenerateContent`, but a translation or
-    /// robotics model is not a general assistant, and silently defaulting a wearer into one would
-    /// be a stranger failure than no session at all. Chosen only if nothing else is offered.
-    static let specialisedMarkers = ["translate", "robotics"]
+    /// Task-specialised live models. They speak `bidiGenerateContent`, but a translation,
+    /// transcription or robotics model is not a general assistant, and silently defaulting a
+    /// wearer into one would be a stranger failure than no session at all. Chosen only if nothing
+    /// else is offered.
+    static let specialisedMarkers = ["translate", "transcribe", "robotics"]
 
     /// Families documented to support **asynchronous** function calling — the model keeps talking
     /// while a tool runs (`behavior: NON_BLOCKING`).
@@ -37,7 +42,11 @@ enum GeminiLiveModelPolicy {
     /// So capability outranks recency here. Picking the newest model would quietly downgrade the
     /// tool loop, and it would present as the assistant going mute mid-sentence rather than as a
     /// model choice.
-    static let asyncToolFamilyMarkers = ["2.5"]
+    ///
+    /// `3.8`: the Gemini 3.8 Live model page (read 2026-10-30) says "Async execution
+    /// (`behavior: NON_BLOCKING`) is now the default function calling mode", with `SILENT`,
+    /// `WHEN_IDLE` and `INTERRUPTED` scheduling supported. 3.1 Live stays sequential-only.
+    static let asyncToolFamilyMarkers = ["2.5", "3.8"]
 
     struct Resolution: Equatable {
         /// Bare model id (no `models/` prefix) to send in the setup message.
@@ -69,7 +78,8 @@ enum GeminiLiveModelPolicy {
     ///    shape entirely;
     /// 2. **async function calling over sequential** — this app's tool loop depends on it, and the
     ///    downgrade is invisible until the assistant stalls mid-sentence on a tool call;
-    /// 3. stable aliases (`-latest`) over dated previews — a dated preview is exactly the kind of
+    /// 3. stable ids (a `-latest` alias, or a name with no preview, experimental or dated part,
+    ///    such as `gemini-3.8-live`) over dated previews — a dated preview is exactly the kind of
     ///    id that gets retired, which is the bug this whole type exists because of;
     /// 4. otherwise the highest version number.
     ///
@@ -88,12 +98,26 @@ enum GeminiLiveModelPolicy {
         return pool.sorted { lhs, rhs in
             let lhsAsync = supportsAsyncFunctionCalling(lhs), rhsAsync = supportsAsyncFunctionCalling(rhs)
             if lhsAsync != rhsAsync { return lhsAsync }
-            let lhsAlias = lhs.hasSuffix("-latest"), rhsAlias = rhs.hasSuffix("-latest")
-            if lhsAlias != rhsAlias { return lhsAlias }
+            let lhsStable = isStable(lhs), rhsStable = isStable(rhs)
+            if lhsStable != rhsStable { return lhsStable }
             let lhsVersion = version(of: lhs), rhsVersion = version(of: rhs)
             if lhsVersion != rhsVersion { return lhsVersion > rhsVersion }
             return lhs < rhs   // stable, so the choice does not wander between launches
         }.first
+    }
+
+    /// A `-latest` alias, or an id with no `preview`/`exp` word and no date-like number in it
+    /// (`-09-2025`, `-001`): the ids a provider keeps serving across renames.
+    static func isStable(_ id: String) -> Bool {
+        let lower = id.lowercased()
+        if lower.hasSuffix("-latest") { return true }
+        let words = lower.split(whereSeparator: { "-._/: ".contains($0) })
+        if words.contains(where: { $0 == "preview" || $0 == "exp" || $0 == "experimental" }) { return false }
+        // A dated or numbered snapshot: a two-digit month or a three-digit build number.
+        let dashed = lower.split(separator: "-")
+        return !dashed.dropFirst().contains { part in
+            part.allSatisfy(\.isNumber) && (part.count == 2 || part.count == 3 || part.count == 4 || part.count == 8)
+        }
     }
 
     /// Leading `<major>.<minor>` version in an id, as a comparable number. Unversioned ids sort

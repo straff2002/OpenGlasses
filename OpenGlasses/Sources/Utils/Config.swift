@@ -432,8 +432,8 @@ struct Config {
         UserDefaults.standard.set(provider.rawValue, forKey: "llmProvider")
     }
 
-    /// Claude model to use
-    static let claudeModel = "claude-sonnet-5"
+    /// Claude model a migrated legacy Anthropic key is saved with: the provider's default.
+    static let claudeModel = LLMProvider.anthropic.defaultModel
 
     /// Max tokens for LLM response
     static let maxTokens = 500
