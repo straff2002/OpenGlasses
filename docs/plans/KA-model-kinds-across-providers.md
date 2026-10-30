@@ -1,6 +1,27 @@
 # Plan KA — Model Kinds and Roles Across Providers (what a listed model is for, and which job uses it)
 
-**Status:** 🚧 P1 built 2026-10-30 — roles. `ModelRoleCatalog` (pure, tested headless) decides which
+**Status:** 🚧 P2 built 2026-10-30 — provider lists, a usable-model check and current defaults.
+The classifier reads a word that names a kind before the words that only say how a model is reached
+(`gpt-live-transcribe`, `gpt-realtime-whisper` and `grok-voice-transcribe-2.0` are transcription),
+and labels the families that fell through to chat (Gemini Nano Banana and Omni, Qwen Wan image,
+HappyHorse, HappyOyster, CosyVoice and Paraformer, Z.ai CogVideoX, Mistral Shieldstral, MiniMax and
+Qwen `t2v`, xAI's Imagine video). A separate, pure `ModelTransport` check says whether the app has a
+connection that can use a model for a job: OpenAI Live takes only the realtime socket's
+`gpt-realtime…` models (not `gpt-live-1` or `gpt-realtime-translate`), OpenAI Dictation only upload
+models (not the streaming-session ones or the diarizing one), OpenAI Voice only `/v1/audio/speech`
+models, and streaming-only speech or transcription models (Mistral's `…-tts-realtime-…`, Gemini's
+`…-transcribe-live`) none. OpenAI's `shutdown_date` is read into `ModelListMetadata`, and the dates
+its list returned on 2026-10-30 are kept for saved models (`ModelShutdownCalendar`): a retired model
+can't be chosen anywhere and shows "Retired" in the dimmed section; one retiring within 90 days
+stays choosable and says when; a saved one gets the warning in Settings beside the kind warning.
+Role pickers, the "this key can also…" card and the defaults use both checks, and an unreachable
+model shows "Needs a connection the app doesn't have yet". Defaults moved: see the provider table.
+Gemini Live's fallback is `gemini-3.8-live`, its family counts as async-tool-capable, a stable id
+with no date beats an old alias, and 3.8 Live is sent no thinking level (the docs say it must be
+omitted). No new host or path is called. Owed: the device checklist below; a catalog sync for the
+new strings; live list checks for the providers other than OpenAI and Anthropic (docs-based, by
+owner decision); the open questions below; Images later (Design 12).
+**P1:** 🚧 built 2026-10-30 — roles. `ModelRoleCatalog` (pure, tested headless) decides which
 roles a saved key offers (its provider's transports, less any its loaded list shows it can't do),
 each role's candidates across every saved key plus the on-phone options (Kokoro and the iOS voice,
 the on-device and Apple recognisers), each provider's default per role (the cheaper OpenAI live
@@ -59,24 +80,35 @@ key's list carries speech (`tts-1`, `gpt-4o-mini-tts`), transcription (`whisper-
 models. Any of them can be picked as the assistant, and every turn then fails the way the report's
 did. Two hand-kept name lists also drift: each was written for one provider's naming.
 
-## What the providers give us (docs checked 2026-10-29)
+## What the providers give us (checked 2026-10-30)
 
-| Provider | Kind in the list itself | Non-chat kinds that appear | Speech (TTS) |
-|---|---|---|---|
-| OpenAI | none (`id`, `owned_by`, `shutdown_date`) | speech, transcription, realtime/audio, image, embedding, moderation | `/v1/audio/speech`; **`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` removed 2027-01-06**, replacement `gpt-realtime-2.1-mini` |
-| Anthropic | feature flags only; chat-only list | none | none |
-| Gemini | `supportedGenerationMethods` | speech (`*-tts`), live/native-audio, embedding, image, video, music | `generateContent` / interactions (Plan JZ) |
-| Groq | none | transcription (`whisper-*`), speech (`canopylabs/orpheus-*`), guard models | OpenAI-shaped `/audio/speech`; English and Saudi Arabic only, wav, 200-character input |
-| DeepSeek | `input_modalities` / `output_modalities` | none | none |
-| Mistral | `capabilities` flags (`completion_chat`, `audio_speech`, `audio_transcription`, `ocr`, `moderation`, …) | transcription, speech, OCR, embedding, moderation | `/v1/audio/speech` (Voxtral), voices from `/v1/audio/voices`, base64 in JSON |
-| Z.ai | list shape undocumented | transcription, OCR, image, video documented; presence in the list unconfirmed | none documented |
-| Qwen | list shape undocumented | speech, transcription, realtime/omni, embedding, rerank, image, video | DashScope's own API, not OpenAI-shaped |
-| MiniMax | list shape undocumented | speech (`speech-*`), music, image, video | `/v1/t2a_v2`, not OpenAI-shaped |
-| xAI | modalities on `/v1/language-models`; `/v1/models` mixes in image/video | image, video, voice | `/v1/tts` (shipped) |
-| OpenRouter | `architecture.output_modalities` (text, image, audio, speech, transcription, embeddings, rerank, video) | every kind, but the list defaults to text output | OpenAI-shaped `/api/v1/audio/speech`; speech models via `?output_modalities=speech` |
+OpenAI's row was **live-checked on 2026-10-30 with an owner-supplied key**: its `/v1/models` list
+(140 models, kept as a test fixture), and which ids its speech, transcription and realtime endpoints
+accept. Every other row is **docs-based, checked 2026-10-30** against the provider's own reference
+pages; by owner decision those providers are not live-checked in this round.
 
-Four lists say what a model is for: Mistral, DeepSeek, OpenRouter, and xAI's language-model list.
-Gemini's methods come close. For the rest, the id is all there is.
+| Provider | List and its kind field | Non-chat kinds in it | Roles the app can serve | Defaults (assistant / vision / voice / live / dictation) |
+|---|---|---|---|---|
+| OpenAI *(live-checked)* | `GET /v1/models`: `id`, `owned_by`, **`shutdown_date`** (null or `YYYY-MM-DD`); no kind field | speech, transcription, realtime, audio-chat, image, video (retired), embedding, moderation | Vision; Voice (`/v1/audio/speech`: `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`, all removed 2027-01-06); Live (realtime socket: `gpt-realtime-2.1`, `-2.1-mini`, `-2`, `-1.5`; `gpt-realtime` and `-mini` until 2027-01-20); Dictation (upload: `gpt-transcribe`, `whisper-1`, `gpt-4o-*-transcribe`). Not reachable: `gpt-live-1` (sessions API, refused on the socket), `gpt-realtime-translate`, `gpt-live-transcribe` and `gpt-realtime-whisper` (streaming sessions only), `gpt-audio-1.5` as a voice | **`gpt-5.4-mini`** (was `gpt-4o`, shuts down 2027-01-14) / `gpt-5.4-mini` / `gpt-4o-mini-tts` (kept: no replacement on that endpoint, Plan KB) / `gpt-realtime-2.1` (`-mini` from a suggestion) / `gpt-transcribe` |
+| Anthropic | `GET /v1/models`: chat only; `capabilities.image_input`, `lifecycle`, `retires_at` (not read yet) | none | Vision | **`claude-sonnet-5-5`** (was `claude-sonnet-5`, now legacy) / `claude-haiku-5-5` |
+| Gemini | `supportedGenerationMethods` (the full value list is not enumerated in the reference) | speech, live, transcription (`gemini-3.5-transcribe`, `…-transcribe-live`), image (incl. Nano Banana), video (Omni), music, embedding, agents | Vision, Voice, Live | `gemini-3.5-flash-lite` / same / `gemini-3.8-flash-lite-tts` / **`gemini-3.8-live`** (was `gemini-2.5-flash-native-audio-latest`; the preview behind it shuts down 2026-11-17) |
+| xAI | `/v1/models` has no modalities; `/v1/language-models` adds `input_modalities`/`output_modalities` | image, video, voice agent, transcription | Vision, Voice (no model id) | `grok-4.7` / same |
+| Groq | `GET /openai/v1/models`; no kind field | transcription, speech (preview), guard | — (vision model is a preview only) | `openai/gpt-oss-120b` / none |
+| DeepSeek | `input_modalities` / `output_modalities` | none | Vision | `deepseek-flash` / **`deepseek-flash`** (new) |
+| Mistral | `capabilities` flags (now also `audio_transcription_realtime`, `classification`) | transcription, speech, OCR, embedding, moderation, Shieldstral | Vision | `mistral-medium-latest` / `mistral-small-latest` |
+| Z.ai | **still undocumented**: no list endpoint in the API reference | transcription, OCR, image, video (CogVideoX) | Vision | **`glm-5.3`** (was `glm-4.5`, no longer in the chat model list) / **`glm-5.3-flash`** (new) |
+| Qwen | **native list documented** (`/api/v1/models`, capability codes `TG`, `VU`, `IG`, `VG`, `ASR`, `TTS`, `TR`, `ME`, `Realtime-*`, …); the OpenAI-compatible and Coding Plan lists are not | speech (incl. CosyVoice), transcription, live/omni, image (incl. Wan image), video (Wan, HappyHorse), embedding, rerank | Vision; Live through a Model Studio workspace key | `qwen3.7-plus` / **`qwen3.7-plus`** (new) |
+| MiniMax | **documented**: OpenAI-shaped `GET /v1/models` (`id`, `object`, `created`, `owned_by`) — the app already asks it first | speech, music, image, video (`T2V-01`, Hailuo) | Vision | **`MiniMax-M3`** (was `MiniMax-M2.7`, no longer on the models page) / **`MiniMax-M3.1-Flash`** (new) |
+| OpenRouter | `architecture.output_modalities`; the list defaults to text output, `?output_modalities=` returns the rest | every kind, when asked | Vision | `anthropic/claude-sonnet-5` / **`anthropic/claude-haiku-5.5`** (new) |
+
+Sources (all read 2026-10-30): OpenAI models list and deprecations reference, the `gpt-realtime-2.1`,
+`-2.1-mini`, `gpt-live-1`, `gpt-realtime-translate`, `gpt-transcribe`, `gpt-live-transcribe`,
+`gpt-realtime-whisper` and `gpt-5.4-mini` model pages; Anthropic's models list and models overview;
+Gemini's models page, Live guide, deprecations page and `gemini-3.8-live` model page; xAI's models
+reference; Groq's models, vision and deprecations pages; Mistral's models overview and audio pages;
+DeepSeek's list-models and pricing pages; Z.ai's API index, pricing and GLM-5.3 Flash guide; Alibaba
+Model Studio's list-models and models pages; MiniMax's list-models and models pages; OpenRouter's
+models API reference.
 
 ## Design
 
@@ -197,10 +229,60 @@ one key should be able to serve several jobs without the wearer hunting through 
   The core is deterministic and tested headless: which roles a key offers, each role's candidate
   list, the default per provider, and the photo-turn order with and without a Vision model. Full
   unit suite and Release build.
-- **P2 — live lists.** Fetch the real list with a key for every provider, above all Z.ai, Qwen and
-  MiniMax, whose list shapes are undocumented. Correct the rows, and record each provider's shape
-  in this plan. On the device, check each role's default model per provider and one photo turn
-  through a chosen Vision model.
+- **P2 — provider lists, usable models and defaults (one PR, after P1).** 🚧 Built 2026-10-30.
+  OpenAI's list was fetched with the owner's key and its endpoints tried by hand; every other
+  provider was checked against its docs (owner decision: no live check for them this round). Covers:
+  - the classifier fixes: kind words before `realtime`/`live`/`voice`; the families that fell
+    through to chat; Qwen's Wan image models; Mistral's realtime-transcription and classification
+    flags; a Gemini Live-only model whose id names transcription;
+  - `ModelTransport`, a pure "can the app reach this model for this job" check, separate from kind,
+    read by the role pickers, the key's card, the defaults and the chat picker's dimmed section;
+  - shutdown days: OpenAI's `shutdown_date` parsed generically, the 2026-10-30 dates kept for saved
+    models, retired models unchoosable, retiring ones (90 days) noted, a saved one warned in
+    Settings; the date is injected for tests;
+  - the defaults in the table above; no default (assistant or role) names a dated model except
+    OpenAI's voice, which has no replacement on its endpoint (Plan KB);
+  - MiniMax's probe list after its documented `GET /v1/models` moved to its current models.
+  Saved models keep their ids (Plan KC P1 moves OpenAI live models off retiring ids). Full unit suite
+  and Release build.
+
+  **Device checklist (owner: ChatGPT, the Claude API and, this round, an OpenAI API key):**
+  1. ChatGPT as the assistant with Claude Haiku as Vision: one photo turn on the glasses is answered
+     by Haiku, and the next text turn goes back to ChatGPT.
+  2. Add an OpenAI key in Settings: the "this key can also…" card offers Voice, Live and Dictation;
+     tap each, and check the OpenAI voice speaks a reply, Live mode starts on `gpt-realtime-2.1-mini`
+     and dictation transcribes a question.
+  3. Open the OpenAI key's model list in the model editor: `gpt-live-1` and `gpt-live-transcribe`
+     sit in the dimmed section with "Needs a connection the app doesn't have yet", retired models
+     (`o4-mini`, `sora-2`) with "Retired", and `gpt-4o` is choosable with "Retires 14 January 2027".
+  4. A saved `gpt-4o` (or `o3-mini`) model shows the retiring (or retired) warning in AI & Personality
+     beside its other labels, and the Voice row for OpenAI says when its model retires.
+
+  **Open questions (P2), each kept at today's behaviour until answered:**
+  1. Gemini: do `gemini-nano-banana-2.1`, `gemini-omni-*`, `deep-research-*`, `antigravity-*` and
+     `gemini-3.5-transcribe-live` list `generateContent` or `bidiGenerateContent`? The id now decides
+     for the first two and the last; the agents are still read as chat.
+  2. xAI: does `/v1/models` carry `grok-voice-*`, `grok-voice-transcribe-2.0` and the Imagine ids, and
+     which chat models take images (`/v1/language-models`)? `grok-build-*` stays "other" until then.
+     The voice agent is documented as OpenAI-Realtime-compatible; a Live role for xAI waits on a
+     check.
+  3. Z.ai: is there a model list at all, and does the Coding Plan pass images to `glm-5.3-flash`?
+  4. MiniMax: does `/v1/models` include speech, music and video ids, and is `MiniMax-M2.7` still
+     served (it stays last in the probe list)?
+  5. Qwen: the authenticated shape of `/compatible-mode/v1/models` and the Coding Plan list (a keyless
+     call returned six ids where the app's fallback has ten). The native list's capability codes are
+     recorded above; reading them needs a Model Studio key, so it waits.
+  6. Mistral: are the capability flags set as documented on the Voxtral 3 and OCR 4.1 models?
+  7. OpenRouter: `?output_modalities=speech` / `transcription` would fill its dimmed section, but the
+     app has no OpenRouter voice or dictation connection, so the fetch is unchanged.
+  8. OpenAI: `gpt-6-luna` is cheaper than `gpt-5.4-mini` for photos, but whether the photo turn needs
+     tools (its function calling on Chat Completions needs reasoning `none`) is unconfirmed; the
+     vision default stays `gpt-5.4-mini`. Plan KC's table dates `gpt-realtime-mini-2025-10-06` to
+     2027-01-20; OpenAI's deprecations page says it went on 2026-07-23 (left to Plan KC).
+  9. Anthropic's list carries `retires_at` and `capabilities.image_input`; neither is read yet.
+  10. Groq's only image model (`qwen/qwen3.8-27b`) is a preview, so Groq has no Vision default.
+  11. The custom provider's default stays `gpt-4o` (its default address is OpenAI's): a custom
+      server's names are its own, so its default is left for its own change.
 - **Later — Images.** A cloud image tool, as its own plan, then the Images role (Design 12).
 
 ## Decisions
@@ -223,7 +305,9 @@ Open:
    names a realtime model as the replacement. That is a different transport (a session, not a POST
    per sentence). *Options:* move the OpenAI voice to the realtime model; or retire it, saying so
    to anyone who chose it, and offer OpenRouter's or another provider's voice instead. Planned in
-   Plan [KB](KB-openai-voice-after-speech-models.md) (PR 889).
+   Plan [KB](KB-openai-voice-after-speech-models.md) (PR 889). P2 keeps `gpt-4o-mini-tts` as the
+   OpenAI voice's model (the owner's key confirmed `gpt-realtime-2.1-mini` and `gpt-audio-1.5` are
+   refused on `/v1/audio/speech`), and the OpenAI row in the Voice picker says when it retires.
 3. **More voices.** Mistral (Voxtral, multilingual, a voice list), MiniMax, Qwen and OpenRouter (one
    key for several vendors' voices) all have speech. Groq's is English and Saudi Arabic only.
    *Default: none scheduled;* each would be its own plan in the shape of Plan JZ. Once roles exist,
