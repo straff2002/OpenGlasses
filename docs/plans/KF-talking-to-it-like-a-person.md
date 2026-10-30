@@ -1,8 +1,9 @@
 # Plan KF — Talking to It Like a Person (say bye to end Live, it ignores the room, a stuck request doesn't stall the turn, a spoken two-way interpreter)
 
-**Status:** 📝 Drafted 2026-10-31 — nothing built. Every "today" below was read on main after build
-610; none of it has been run on a device for this plan. The thresholds in P1 are placeholders until
-P1's first step measures real turns, and P3 only happens if P2's device spike passes.
+**Status:** 🚧 P0 and P1 built 2026-10-31 (headless; nothing run on a device or against a live
+model). P0 is on by default. P1 is behind `firstReplyRaceEnabled`, default off, and its limits are
+placeholders because the support reports hold too little to set them. P2's device spike has not
+started, and P3 only happens if it passes. P4's device pass is owed.
 **Track:** app-wide; Personal and Field Assist both use Live and Direct.
 **Related:** Plan [HY](HY-live-session-hygiene.md) (the Live idle clock), Plan
 [BK](BK-adversarial-review-remediation.md) P2b (the model cascade), Plan
@@ -89,15 +90,19 @@ Four places where the app makes the wearer work around it.
 - The instruction says when to call it: only when the wearer is saying goodbye to the assistant,
   never to someone else in the room. Any language.
 - The backstop: at `onTurnComplete`, a wearer transcript where `isGoodbye` holds and the turn is
-  short counts as a goodbye if the model didn't call the tool.
+  short (6 words or fewer) counts as a goodbye if the model replied but didn't call the tool. A
+  model that stayed silent decided it wasn't being spoken to, so a "bye" on the TV ends nothing.
 - **The backstop is off during a Field Assist job.** A technician saying "bye" to a customer must not
   drop the session; the tool, with the model's judgement, still works there.
-- The pure `LiveVoiceEndPolicy` decides from: tool called, transcript, job active, a tool still
-  running. When it says end, the session finishes speaking the goodbye first (bounded at 8 s), then
-  stops through `stopLiveSession(_, source: .voice)` with a new `LiveSessionEndReason.saidGoodbye`.
-  A tool still running holds the end until it returns.
-- `VoiceCommandParser` gains "i've got to go", "i have to go", "gotta go", "talk to you later" and
-  "talk later". "Thanks claude" becomes "thanks" plus the assistant's own name. The non-final rule
+- The pure `LiveVoiceEndPolicy` decides from the transcript, whether the model replied and whether
+  a job is active; `LiveVoiceEndTracker` decides when. The session finishes speaking the goodbye
+  (bounded at 8 s, and never less than 1.5 s, because a turn can complete before the reply to the
+  tool has started), then stops through `stopLiveSession(_, source: .voice)` with a new
+  `LiveSessionEndReason.saidGoodbye`. A tool still running holds the end until it returns, and the
+  8 s restart from then, so its result can be spoken.
+- `VoiceCommandParser` gains "got to go" (so "I've got to go" with or without the apostrophe),
+  "gotta go", "i have to go", "talk to you later" and "talk later". "Thanks claude" becomes "thanks"
+  plus the assistant's own name. The non-final rule
   already protects "I have to go to the store". These also apply to Direct.
 
 **The room**
@@ -106,8 +111,11 @@ Four places where the app makes the wearer work around it.
   the translator preset and for the interpreter (P3), which must hear everyone. Blind assistance
   keeps its own precedence: the block comes after `BlindAssistanceContract`, and a question that
   could be for the assistant gets an answer.
-- The idle clock counts a wearer transcript as activity only once the model replies or a tool runs,
-  so a silent turn no longer holds a session open.
+- The idle clock counts wearer speech (a transcript, a speech-start or the local voice detector)
+  as activity only once the model replies or a tool runs, so a silent turn no longer holds a
+  session open. At the limit, speech under 6 s old may be someone mid-sentence, so the end waits for
+  the model's answer, for at most 20 s, or a TV would hold the session open after all. The idle
+  warning's own audio answers nobody.
 
 Tests: the goodbye matrix (phrase, question, job active, tool running, tool plus backstop firing
 once), the prompt block by mode, idle timing with a silent turn, parser additions and the existing
@@ -115,22 +123,29 @@ demotion cases.
 
 ### P1 — a stuck request doesn't stall the turn (headless)
 
-**First, measure.** Read turn timelines from recent support reports for how long healthy Gemini
-replies take by kind (text, tools, photo, reasoning level). Gemini is buffered, so a long healthy
-answer looks exactly like a slow one, and limits set too low would fire on normal turns. The
-numbers below get replaced by what this finds.
+**Measured 2026-10-31: too thin to set limits.** Gemini is buffered, so a long healthy answer looks
+exactly like a slow one, and limits set too low would fire on normal turns. The two support reports
+on file hold one duration for a healthy Gemini request, about 6.4 s; in one report every turn
+failed, and the other records order and causes more than timings. From failing turns there is a
+stuck request that hung the full 30 s, and another provider answering in 4–11 s after the hop. One
+reading says nothing about a distribution, but it does say the 6 s hedge below would fire on a
+normal turn. **So every number below is a placeholder**, which is why the switch stays off. P4's
+readings replace them.
 
-- **`FirstReplyPolicy` (pure):** from turn kind, reasoning level, body size and whether the chain
-  has an alternative, it returns two times or none.
+- **`FirstReplyPolicy` (pure):** from reasoning level, body size, whether a next candidate exists
+  and whether tools already ran this turn, it returns two times or none. A turn that thinks at
+  length (medium or above) or carries a large body gets double, because it is slower when nothing
+  is wrong.
 - **Hedge (placeholder 6 s):** with nothing back, send the same request again and take the first
   good response, inside `performTurn`. Same model, same body, same key. The loser is cancelled. At most one extra request; never for a body over 256 KB, so a
   photo isn't uploaded twice on a weak link.
-- **Deadline (placeholder 12 s):** with an alternative in the chain, stop waiting and hop. A new
+- **Deadline (placeholder 12 s):** with a candidate left after this one, stop waiting and hop. A new
   `LLMError.slowResponse` classifies as `.retryOtherModel`, starts the `ModelCascadeMemory` hold, and
-  is excluded from `onCloudAttempt`, so it can't trigger the offline handoff. With no alternative,
-  30 s stands: there's nowhere better to go.
-- A pure, generic `raceFirstResponse` helper does the racing, so its timing is tested with an
-  injected clock and no network.
+  is excluded from `onCloudAttempt`, so it counts neither for nor against the offline handoff. On
+  the last candidate 30 s stands: there's nowhere better to go. Only the first request of a turn has
+  a deadline: a hop restarts the turn, so after tools have run it would run them again.
+- A pure, generic `FirstResponseRace.run` does the racing, so its timing is tested with an injected
+  clock and no network.
 - Tool calls run only after a winner is chosen, so a duplicate can't run a tool twice.
 - Gemini only in this plan. `Config.firstReplyRaceEnabled`, default off until P4.
 - The Settings info text says a slow reply may be asked for twice on the wearer's key.
@@ -202,7 +217,7 @@ disclosure once per session, every gate.
 - If P2 goes: the wearer hears the other person in their ear, the other person hears the wearer from
   the phone, in their own language, and a wrong guess at the route never plays a private line aloud.
 
-## Decisions (recommended, for the owner to confirm)
+## Decisions (accepted by the owner, 2026-10-31)
 
 1. **Backstop off during a job**, tool only. A dropped session mid-job costs more than saying bye
    twice.
