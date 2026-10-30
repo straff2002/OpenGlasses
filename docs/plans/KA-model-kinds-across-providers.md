@@ -18,9 +18,9 @@ Role pickers, the "this key can also…" card and the defaults use both checks, 
 model shows "Needs a connection the app doesn't have yet". Defaults moved: see the provider table.
 Gemini Live's fallback is `gemini-3.8-live`, its family counts as async-tool-capable, a stable id
 with no date beats an old alias, and 3.8 Live is sent no thinking level (the docs say it must be
-omitted). No new host or path is called. Owed: the device checklist below; a catalog sync for the
-new strings; live list checks for the providers other than OpenAI and Anthropic (docs-based, by
-owner decision); the open questions below; Images later (Design 12).
+omitted). No new host or path is called. Owed: the device checklist below; live list checks for the providers other than OpenAI and Anthropic (docs-based, by
+owner decision); the open questions below; Images later (Design 12). The strings from P0–P2 were
+synced into the catalog in 13 languages on 2026-10-30.
 **P1:** 🚧 built 2026-10-30 — roles. `ModelRoleCatalog` (pure, tested headless) decides which
 roles a saved key offers (its provider's transports, less any its loaded list shows it can't do),
 each role's candidates across every saved key plus the on-phone options (Kokoro and the iOS voice,
