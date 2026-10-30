@@ -1,6 +1,6 @@
 # Plan KB — The OpenAI Voice After 6 January 2027 (OpenAI removes every speech-endpoint model)
 
-**Status:** 🚧 P0 built 2026-10-30 (headless) — a voice model a vendor has withdrawn now gets its own
+**Status:** 🚧 P0 built 2026-10-30 (headless, PR 908, build 609) — a voice model a vendor has withdrawn now gets its own
 reason (`CloudVoiceRejection.modelUnavailable`), latches that voice off for the session and is said
 once, and a 403 naming a gone model no longer says "check the key"; `OpenAIVoiceRetirement` holds the
 date and the Settings footer names it. Owner took the defaults for decisions 1–5 on 2026-10-30.
