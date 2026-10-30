@@ -184,6 +184,14 @@ final class StreamSpeechGate {
             letters.append(char)
         }
         guard let start = firstMatch(of: spokenChars, in: letters) else {
+            // Plan KD P3: the reply's repeated end was collapsed (`RepeatedReplyCollapse`) after
+            // the stream had already said some of the repeat. What was said is the reply's own
+            // sentences with one said twice, not a preamble: the reply carries on after the
+            // furthest of them, rather than being said again in full.
+            if let end = endOfRepeatedSentences(spoken, in: letters) {
+                let after = trimmedText(String(replyChars[(positions[end - 1] + 1)...]))
+                return Reconciliation(remainder: after, spokenIsPartOfReply: true)
+            }
             return Reconciliation(remainder: trimmedText(reply), spokenIsPartOfReply: false)
         }
         let matchStart = positions[start]
@@ -192,6 +200,19 @@ final class StreamSpeechGate {
         let after = trimmedText(String(replyChars[matchEnd...]))
         let remainder = [before, after].filter { !$0.isEmpty }.joined(separator: " ")
         return Reconciliation(remainder: remainder, spokenIsPartOfReply: true)
+    }
+
+    /// When every spoken sentence is in the reply and at least one was spoken twice, the end (in
+    /// the reply's non-whitespace characters) of the furthest of them; else nil.
+    private static func endOfRepeatedSentences(_ spoken: [String], in letters: [Character]) -> Int? {
+        let sentences = spoken.map { Array($0.filter { !$0.isWhitespace }) }.filter { !$0.isEmpty }
+        guard Set(sentences.map { String($0) }).count < sentences.count else { return nil }
+        var end = 0
+        for sentence in sentences {
+            guard let start = firstMatch(of: sentence, in: letters) else { return nil }
+            end = max(end, start + sentence.count)
+        }
+        return end > 0 ? end : nil
     }
 
     private static func firstMatch(of needle: [Character], in haystack: [Character]) -> Int? {

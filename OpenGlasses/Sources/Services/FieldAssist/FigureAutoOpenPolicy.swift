@@ -180,6 +180,12 @@ enum FigureAutoOpenPolicy {
         case reading = "reading"
         case nothingFound = "nothing_found"
         case otherPageNamed = "other_page_named"
+        /// The turn named a table or figure, and this page carries another label (Plan KD P3).
+        case otherLabelNamed = "other_label_named"
+        /// A table handed to the model whose label the turn named or `table_lookup` read.
+        case labelAsked = "label_asked"
+        /// A table that would have gone to the model alone, its label neither named nor looked up.
+        case labelNotAsked = "label_not_asked"
     }
 
     /// Decide for one turn. `tokenHits` are the exact tokens that matched the passage — a hit made
@@ -219,5 +225,82 @@ enum FigureAutoOpenPolicy {
         case (_, .diagram): return .attachToModelOnly(reason: .notAQuestion)
         default: return .none(reason: .notAQuestion)
         }
+    }
+}
+
+/// A table or other captioned page the turn's retrieval found goes to the model as its picture
+/// only when its label is one the technician named this turn, or the one `table_lookup` last read
+/// (Plan KD P3).
+///
+/// On the partner's retest an unrelated table retrieved on the turn was attached to the model as
+/// its picture: `FigureAutoOpenPolicy` hands any captioned page to the model for a question, and a
+/// code book's pages are full of tables. A drawing, and prose that names a figure, keep their
+/// rules (EK §4: a wiring question reaches the model with its drawing). The gate only ever
+/// narrows a decision, never widens one:
+/// - a turn that names a table or figure ("Table 98", "figure 3") opens or attaches no page with
+///   another label, the way a named page excludes every other page;
+/// - a table (`isTable`) handed to the model alone needs its label among the labels the turn
+///   named or the one looked up.
+///
+/// Labels are read the way the rest of the app reads them: tables through `TableReference`
+/// (number, letters, spoken numbers, or one table's title), figures as "Figure N" (the label
+/// `ManualFigureTool` asks the index for), and compared without case or spacing
+/// (`TableChecks.sameLabel`). Pure.
+enum RetrievedFigureLabelGate {
+
+    /// The decision for a retrieved page, narrowed by the labels the turn named and looked up.
+    static func apply(_ decision: FigureAutoOpenPolicy.Decision,
+                      passageKind: FigureAutoOpenPolicy.PassageKind?,
+                      passageLabel: String?,
+                      namedLabels: [String],
+                      lookedUpLabels: [String] = []) -> FigureAutoOpenPolicy.Decision {
+        guard decision.stagesFigure else { return decision }
+        if !namedLabels.isEmpty, !matches(passageLabel, any: namedLabels) {
+            return .none(reason: .otherLabelNamed)
+        }
+        guard case .attachToModelOnly = decision, isTable(passageKind: passageKind, label: passageLabel) else {
+            return decision
+        }
+        return matches(passageLabel, any: namedLabels + lookedUpLabels)
+            ? .attachToModelOnly(reason: .labelAsked)
+            : .none(reason: .labelNotAsked)
+    }
+
+    /// The tables and figures the technician's words name, as labels ("Table 98", "Figure 3").
+    /// `catalogue` lets a table be named by its title, and a lettered label be read as printed.
+    static func namedLabels(in said: String, catalogue: [TableReference.Entry] = []) -> [String] {
+        var labels = TableReference.references(in: said, catalogue: catalogue)
+        for figure in figureLabels(in: said)
+        where !labels.contains(where: { TableChecks.sameLabel($0, figure) }) {
+            labels.append(figure)
+        }
+        return labels
+    }
+
+    /// "figure 3", "Fig. 12A" → "Figure 3", "Figure 12A".
+    static func figureLabels(in said: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: #"(?i)\bfig(?:ure|\.)?\s*(\d+)([A-Za-z])?\b"#) else { return [] }
+        var labels: [String] = []
+        for match in regex.matches(in: said, range: NSRange(said.startIndex..., in: said)) {
+            guard let number = Range(match.range(at: 1), in: said) else { continue }
+            let letter = Range(match.range(at: 2), in: said).map { String(said[$0]).uppercased() } ?? ""
+            let label = "Figure \(said[number])\(letter)"
+            if !labels.contains(label) { labels.append(label) }
+        }
+        return labels
+    }
+
+    /// Whether a retrieved passage is a table's: one of its rows, or a captioned passage whose
+    /// label is a table's ("Table 98" — captions in every language are written so, `CaptionWords`).
+    static func isTable(passageKind: FigureAutoOpenPolicy.PassageKind?, label: String?) -> Bool {
+        if passageKind == .tableRow { return true }
+        guard passageKind == .captioned, let label else { return false }
+        return label.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("table")
+    }
+
+    /// Whether `label` is one of `labels`, compared without case or spacing.
+    static func matches(_ label: String?, any labels: [String]) -> Bool {
+        guard let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty else { return false }
+        return labels.contains { TableChecks.sameLabel($0, label) }
     }
 }

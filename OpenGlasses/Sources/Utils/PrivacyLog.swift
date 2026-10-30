@@ -1622,6 +1622,9 @@ enum PrivacyLog {
         // An on-device session rebuilt after a full window asked for a tool it had already run;
         // the first result was replayed instead. Tool name only.
         case toolResultReplayed
+        // Plan KD P3 — a reply that repeated its own last part was said and kept once. The number
+        // of characters removed only.
+        case replyRepeatCollapsed
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form

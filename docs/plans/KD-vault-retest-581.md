@@ -2,8 +2,9 @@
 
 **Status:** 🚧 P0 built 2026-10-30 (headless) — all eight P0 items. P1 built 2026-10-30 (headless) —
 all four P1 items; its check on the glasses is owed. P2 built 2026-10-30 (headless) — all four P2
-items. P3 and the partner's re-run of P0 on the phone are owed. See "P0 as built", "P1 as built"
-and "P2 as built" below. Drafted from the partner's structured retest of
+items. P3 built 2026-10-30 (headless) — all three P3 items; its live model check is owed. The
+partner's re-run of P0 on the phone is owed. See "P0 as built", "P1 as built", "P2 as built" and
+"P3 as built" below. Drafted from the partner's structured retest of
 the code-book vault on build 581 (2026-10-29: five jobs, table questions by number and in plain
 words, two rule chains, glasses then phone). Every cause below was traced to code on main at
 597; nothing merged between 581 and 597 touches `field_session`, `rule_chain`, `table_lookup`,
@@ -239,9 +240,58 @@ turn, and nothing here has been run against a live model yet.
 - A retrieved table is attached to the model only when its label is the one asked or looked up;
   only a figure shown on the phone becomes the last shown.
 
+**P3 as built (2026-10-30).** Headless; nothing here has been run against a live model yet.
+
+- `RepeatedReplyCollapse` (pure) says a reply's repeated end once: the last part of the reply,
+  when it repeats the part just before it with only spacing and punctuation between, case,
+  spacing and punctuation aside (a separator between two digits is kept, so "4/0" is not "40").
+  Both copies start a sentence; the repeat is at least 40 letters and digits and six words (a
+  script without spaces, by length alone); a single list line is never collapsed; up to three
+  copies become one. Something else said between the two ("A. B. A.", "To recap: A.") is left
+  alone. `LLMService.sendMessage` applies it once, to every provider's reply, before the think
+  tags, the team-learning lead-in, the job log, speech and the transcript; the history entry the
+  provider path appended is replaced with the collapsed text, and `replyRepeatCollapsed` logs the
+  characters removed. With sentence streaming on, part of the repeat may already have been said:
+  `StreamSpeechGate.reconcile` takes spoken sentences that are all the reply's own, one of them
+  twice, as said, and goes on after the furthest, rather than saying the reply again in full.
+- The route for the gpt-6-luna family's tool turns is unchanged. Automatic with tools stays on Chat
+  Completions at `none` (Plan GC rule 9) for every family; moving one family to Responses at
+  Automatic is a change to GC's owner decision on cost and speed, and that Responses separates the
+  preamble on the API route (the `commentary` phase `ResponsesTranslator` withholds is documented
+  for the subscription backend) has not been seen on a live API key. The collapse fixes what is
+  said either way. A technician who sets an explicit level already gets Responses (rule 7).
+- `RetrievedFigureLabelGate` (pure) narrows `FigureAutoOpenPolicy`'s decision for the page a turn's
+  retrieval found, and never widens it. A turn that names a table or figure ("Table 98", "figure
+  3", a table by its title through `TableReference`) opens or attaches no page under another
+  label, as a named page already excludes the others. A table (a table row, or a captioned
+  passage labelled "Table N", as captions in every language are written) that would have gone to
+  the model alone goes only when its label is one the turn named or the one `table_lookup` last
+  read (`FieldSessionService.lookedUpTableLabel`, kept for the session and replaced by the next
+  lookup); otherwise it is not staged. Labels compare as `TableChecks.sameLabel` does. A drawing,
+  and prose that names a figure, keep their rules (EK §4: a wiring question still reaches the
+  model with its drawing). The passages still go to the model as text whatever is staged.
+- `stageFigure` makes a figure the last shown only when the phone presents it (`presentOnPhone`),
+  so a page handed to the model alone is never what "show that again" reopens; `show_source`'s
+  pages, which it presents itself, are noted as shown (`noteShownOnPhone`). P0's `show_source`
+  turn gate is unchanged.
+- Catalog: "One Question at a Time", its footnote, the reworded "Interrupt When You Speak"
+  footnote, "Microphone stopped — tap Tap & Talk to try again" and "Not listening — tap Tap &
+  Talk" in the 13 complete languages; "Tap Test Microphone to restart" and the old footnote
+  removed (no source uses either). Tap & Talk, "stop" and Bluetooth stay as the catalog has them.
+  P2's chain-list strings are not catalog entries: the list is spoken, shown and kept in the
+  model's history as one string, and its running mark is also in the list the model reads, so
+  they are plain English (the English-twin rule) rather than `String(localized:)` with no twin.
+- Owed: a live check of the collapse on the gpt-6-luna family's tool turns (and, if the route is
+  to move, a live API-key check that Responses keeps the preamble apart); a localized display of
+  the chain list, which needs the turn-ending path to show one text and keep another.
+
 ## Owed
 
 - The partner's re-run of P0 on the phone (job naming, 4/0 by voice, printed page, no chain or
   page unasked).
 - The partner's chain file names the conduit-fill table's column by full heading (with P2's check).
 - Decision: single-question mode on by default for Field Assist.
+- Decision: whether the gpt-6-luna family's Automatic tool turns move to Responses (P3 left the
+  route alone).
+- Decision: whether a drawing or a figure-captioned passage handed to the model alone also needs
+  its label asked (P3 gates tables only, as the plan says, and keeps EK §4's rule for the rest).

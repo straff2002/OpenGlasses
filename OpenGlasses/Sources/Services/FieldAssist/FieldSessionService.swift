@@ -94,9 +94,14 @@ final class FieldSessionService: ObservableObject {
     /// The last answer's sources and the "show me" pages (Plan IN P2). Injectable for tests.
     var sourceCenter: ShowSourceCenter = .shared
 
-    /// The last figure this session staged. Kept after `stagedFigure` clears so "show me that
-    /// figure again" has something to reopen.
+    /// The last figure this session put on the phone. Kept after `stagedFigure` clears so "show me
+    /// that figure again" has something to reopen. A page staged for the model only was never
+    /// shown, so it never becomes this (Plan KD P3).
     private(set) var lastShownFigure: StagedFigure?
+
+    /// The label of the table `table_lookup` last read this session ("Table 98"): a retrieved
+    /// table under this label may go to the model as the turn's picture (Plan KD P3).
+    private(set) var lookedUpTableLabel: String?
 
     /// The machine the session believes is in front of the technician (Plan EL). Published so the
     /// phone and the lens can say which model the answers are for.
@@ -410,6 +415,7 @@ final class FieldSessionService: ObservableObject {
         partsIndex = VaultPartsIndex(files: [])
         stagedFigure = nil
         lastShownFigure = nil
+        lookedUpTableLabel = nil
         stagedDelivery = nil
         taskCue = nil
         deliveryLogger = logger
@@ -1904,12 +1910,23 @@ final class FieldSessionService: ObservableObject {
         // asked for. Ranking is untouched — the passages below go to the model whatever is staged.
         let kind = ManualTurnClassifier.classify(turn)
         let candidate = Self.bestFigure(in: outcome.passages)
-        let decision = FigureAutoOpenPolicy.decide(
+        let passageKind = candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) }
+        var decision = FigureAutoOpenPolicy.decide(
             turnKind: kind,
-            passageKind: candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) },
+            passageKind: passageKind,
             tokenHits: candidate?.matchedTokens ?? [],
             namedPages: PageReference.pages(in: searchTurn),
             passagePage: candidate?.page)
+        // A table goes to the model as the turn's picture only under the label the technician
+        // named or table_lookup read, and no page under another label opens (Plan KD P3). The
+        // catalogue (for a table named by its title) is read only when a page would be staged.
+        if decision.stagesFigure {
+            decision = RetrievedFigureLabelGate.apply(
+                decision, passageKind: passageKind, passageLabel: candidate?.figure,
+                namedLabels: RetrievedFigureLabelGate.namedLabels(in: searchTurn,
+                                                                  catalogue: retriever.tableCatalogue?() ?? []),
+                lookedUpLabels: lookedUpTableLabel.map { [$0] } ?? [])
+        }
         var staged = decision.stagesFigure ? makeStagedFigure(for: candidate, vaultId: store.manifest.id) : nil
         staged?.origin = kind == .showMe ? .requested : .automatic
 
@@ -2558,11 +2575,27 @@ final class FieldSessionService: ObservableObject {
             ?? passages.first { $0.figure?.isEmpty == false && $0.page != nil }
     }
 
-    /// Stage a figure for this turn, or clear the staging when there is none. Whatever is staged
-    /// stays reachable as `lastShownFigure` for the rest of the session.
+    /// Stage a figure for this turn, or clear the staging when there is none. A figure the phone
+    /// puts up stays reachable as `lastShownFigure` for the rest of the session; one staged for
+    /// the model only does not (Plan KD P3: an unrelated table the model was handed became what
+    /// "show that again" reopened, though the technician had never seen it).
     func stageFigure(_ figure: StagedFigure?) {
         stagedFigure = figure
-        if let figure { lastShownFigure = figure }
+        if let figure, figure.presentOnPhone { lastShownFigure = figure }
+    }
+
+    /// A page `show_source` put on the phone, which it presents itself rather than through the
+    /// staging: it is what "show that again" reopens (Plan KD P3).
+    func noteShownOnPhone(_ figure: StagedFigure) {
+        lastShownFigure = figure
+    }
+
+    /// The table `table_lookup` read (Plan KD P3). A later lookup replaces it; the session's end
+    /// clears it.
+    func noteLookedUpTable(_ label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        lookedUpTableLabel = trimmed
     }
 
     /// Put the session's last figure back on the turn ("show me that figure again").

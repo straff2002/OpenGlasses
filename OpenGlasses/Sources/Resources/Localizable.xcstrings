@@ -190949,6 +190949,88 @@
         }
       }
     },
+    "Microphone stopped — tap Tap & Talk to try again" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توقف الميكروفون — اضغط Tap & Talk للمحاولة مرة أخرى"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El micrófono se detuvo: toca Tap & Talk para intentarlo de nuevo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le microphone s’est arrêté — touchez Tap & Talk pour réessayer"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mikrofon leállt – koppintson a Tap & Talk gombra az újrapróbálkozáshoz"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il microfono si è fermato — tocca Tap & Talk per riprovare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクが停止しました — Tap & Talk をタップしてもう一度お試しください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크가 중지됨 — 다시 시도하려면 Tap & Talk을 탭하세요"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microfoon gestopt — tik op Tap & Talk om het opnieuw te proberen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O microfone parou — toque em Tap & Talk para tentar de novo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Микрофон остановлен — нажмите Tap & Talk, чтобы попробовать снова"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مائیکروفون رک گیا — دوبارہ کوشش کے لیے Tap & Talk پر ٹیپ کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风已停止 — 点击 Tap & Talk 重试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風已停止 — 點擊 Tap & Talk 重試"
+          }
+        }
+      }
+    },
     "Minimal" : {
       "localizations" : {
         "ar" : {
@@ -211774,6 +211856,88 @@
         }
       }
     },
+    "Not listening — tap Tap & Talk" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يستمع — اضغط Tap & Talk"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No está escuchando: toca Tap & Talk"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "N’écoute pas — touchez Tap & Talk"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem figyel – koppintson a Tap & Talk gombra"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non in ascolto — tocca Tap & Talk"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "聞いていません — Tap & Talk をタップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "듣고 있지 않음 — Tap & Talk을 탭하세요"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Luistert niet — tik op Tap & Talk"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não está ouvindo — toque em Tap & Talk"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не слушаю — нажмите Tap & Talk"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نہیں سن رہا — Tap & Talk پر ٹیپ کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在聆听 — 点击 Tap & Talk"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未在聆聽 — 點擊 Tap & Talk"
+          }
+        }
+      }
+    },
     "Not now" : {
       "comment" : "The label of a button that cancels a task.",
       "isCommentAutoGenerated" : true,
@@ -221523,84 +221687,166 @@
         }
       }
     },
-    "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. While it is speaking through the iPhone's own loudspeaker, only \"stop\" or the wake phrase interrupt it — the phone's microphone hears the answer, and the room, too loudly to tell you apart. Saying \"stop\", or the wake phrase, interrupts it either way." : {
+    "On, each answer ends the conversation: say the wake phrase or tap Tap & Talk to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "عند التفعيل، يتوقف المساعد عن الكلام لحظة سماعك، فيمكنك المقاطعة دون انتظاره حتى ينتهي. أوقفه إذا كان يُقاطَع باستمرار بسبب أشخاص يتحدثون قربك أو لعودة صوته عبر الميكروفون. أثناء كلامه عبر مكبر صوت iPhone نفسه، لا يقاطعه إلا «stop» أو عبارة التنبيه — إذ يسمع ميكروفون الهاتف الإجابة والغرفة بصوت عالٍ جدًا فلا يميّزك. قول «stop» أو عبارة التنبيه يقاطعه في الحالتين."
+            "value" : "عند التفعيل، تُنهي كل إجابة المحادثة: قل عبارة التنبيه أو اضغط Tap & Talk لتسأل عن الأمر التالي. وإذا سألتك الإجابة شيئًا، يبقى الميكروفون مفتوحًا لردّك. عند الإيقاف، يُفتح الميكروفون مجددًا بعد كل إجابة لتواصل الحديث. مفعّل افتراضيًا مع Field Assist."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Activado, el asistente deja de hablar en cuanto te oye, para que puedas interrumpirlo sin esperar a que termine. Desactívalo si lo interrumpen constantemente personas que hablan cerca o su propia voz que regresa por el micrófono. Mientras habla por el altavoz del propio iPhone, solo \"stop\" o la frase de activación lo interrumpen: el micrófono del celular oye la respuesta, y también la habitación, con demasiado volumen para distinguirte. Decir \"stop\" o la frase de activación lo interrumpe en cualquier caso."
+            "value" : "Activado, cada respuesta termina la conversación: di la frase de activación o toca Tap & Talk para preguntar lo siguiente. Cuando la respuesta te pregunta algo, el micrófono sigue abierto para que contestes. Desactivado, el micrófono se vuelve a abrir después de cada respuesta para que puedas seguir hablando. Activado de forma predeterminada con Field Assist."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lorsque c’est activé, l’assistant cesse de parler dès qu’il vous entend, ce qui vous permet de l’interrompre sans attendre qu’il termine. Désactivez-le s’il est sans cesse interrompu par des personnes qui parlent à proximité ou par sa propre voix qui revient par le microphone. Lorsqu’il parle par le haut-parleur de l’iPhone, seuls « stop » ou la phrase d’activation l’interrompent — le microphone du téléphone capte la réponse et la pièce trop fort pour vous distinguer. Dire « stop » ou la phrase d’activation l’interrompt dans les deux cas."
+            "value" : "Lorsque c’est activé, chaque réponse met fin à la conversation : dites la phrase d’activation ou touchez Tap & Talk pour demander la chose suivante. Lorsque la réponse vous pose une question, le microphone reste ouvert pour votre réponse. Lorsque c’est désactivé, le microphone se rouvre après chaque réponse pour que vous puissiez continuer à parler. Activé par défaut avec Field Assist."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bekapcsolva az asszisztens abban a pillanatban abbahagyja a beszédet, amint hall Önt, így közbeszólhat anélkül, hogy megvárná a végét. Kapcsolja ki, ha folyton megzavarják a közelben beszélők vagy a saját hangja, amely visszajut a mikrofonba. Amíg az iPhone saját hangszóróján szól, csak a „stop” vagy az ébresztőkifejezés szakítja meg — a telefon mikrofonja túl hangosan hallja a választ és a szobát ahhoz, hogy megkülönböztessen Önt. A „stop” vagy az ébresztőkifejezés kimondása mindkét esetben megszakítja."
+            "value" : "Bekapcsolva minden válasz befejezi a beszélgetést: a következő kérdéshez mondja ki az ébresztőkifejezést, vagy koppintson a Tap & Talk gombra. Ha a válasz visszakérdez, a mikrofon nyitva marad, hogy válaszolhasson. Kikapcsolva a mikrofon minden válasz után újra megnyílik, így folytathatja a beszélgetést. A Field Assist használatakor alapértelmezés szerint be van kapcsolva."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando è attivo, l'assistente smette di parlare nel momento in cui ti sente, così puoi intervenire senza aspettare che finisca. Disattivalo se viene interrotto di continuo da persone che parlano vicino o dalla sua stessa voce che rientra dal microfono. Mentre parla dall'altoparlante dell'iPhone, solo «stop» o la frase di attivazione lo interrompono: il microfono del telefono sente la risposta e l'ambiente troppo forte per distinguerti. Dire «stop» o la frase di attivazione lo interrompe in entrambi i casi."
+            "value" : "Quando è attivo, ogni risposta chiude la conversazione: di' la frase di attivazione o tocca Tap & Talk per chiedere la cosa successiva. Quando la risposta ti fa una domanda, il microfono resta aperto per la tua risposta. Quando è disattivato, il microfono si riapre dopo ogni risposta, così puoi continuare a parlare. Attivo per impostazione predefinita con Field Assist."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オンにすると、アシスタントはあなたの声を聞いた瞬間に話すのをやめるため、終わるのを待たずに割り込めます。近くの人の話し声や、自分の声がマイクに戻ってきて何度も中断される場合はオフにしてください。iPhone本体のスピーカーで話している間は、「stop」またはウェイクフレーズだけが割り込みとして働きます。iPhoneのマイクには、返答と周囲の音が大きすぎて、あなたの声と区別できないためです。どちらの設定でも、「stop」またはウェイクフレーズで割り込めます。"
+            "value" : "オンにすると、答えるたびに会話が終わります。次のことを聞くには、ウェイクフレーズを言うか Tap & Talk をタップしてください。答えがあなたに質問を返したときは、返事ができるようにマイクが開いたままになります。オフにすると、答えるたびにマイクがもう一度開くので、そのまま話し続けられます。Field Assist ではデフォルトでオンです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "켜면 어시스턴트가 사용자의 목소리를 듣는 즉시 말을 멈추므로, 끝날 때까지 기다리지 않고 끼어들 수 있습니다. 주변 사람들의 말소리나 마이크로 되돌아오는 어시스턴트 자신의 목소리 때문에 계속 중단된다면 끄세요. iPhone 자체 스피커로 말하는 동안에는 \"stop\" 또는 깨우기 문구만 어시스턴트를 중단시킵니다. iPhone 마이크가 답변과 주변 소리를 너무 크게 들어 사용자의 목소리를 구분하지 못하기 때문입니다. \"stop\" 또는 깨우기 문구를 말하면 어느 경우든 중단됩니다."
+            "value" : "켜면 답변할 때마다 대화가 끝납니다. 다음 질문을 하려면 깨우기 문구를 말하거나 Tap & Talk을 탭하세요. 답변이 사용자에게 되묻는 경우에는 대답할 수 있도록 마이크가 열린 상태로 유지됩니다. 끄면 답변할 때마다 마이크가 다시 열려 계속 대화할 수 있습니다. Field Assist에서는 기본적으로 켜져 있습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Als het aan staat, stopt de assistent met praten zodra hij u hoort, zodat u kunt onderbreken zonder te wachten tot hij klaar is. Zet het uit als hij steeds wordt onderbroken door mensen in de buurt of door zijn eigen stem die via de microfoon terugkomt. Zolang hij via de eigen luidspreker van de iPhone praat, onderbreken alleen “stop” of de activeringszin hem — de microfoon van de telefoon hoort het antwoord en de ruimte te luid om u van elkaar te onderscheiden. Door “stop” of de activeringszin te zeggen, onderbreekt u hem in beide gevallen."
+            "value" : "Als het aan staat, beëindigt elk antwoord het gesprek: zeg de activeringszin of tik op Tap & Talk om het volgende te vragen. Als het antwoord u iets terugvraagt, blijft de microfoon open voor uw reactie. Als het uit staat, gaat de microfoon na elk antwoord weer open, zodat u kunt doorpraten. Standaard aan bij Field Assist."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ligado, o assistente para de falar no instante em que ouve você, e você pode interromper sem esperar que ele termine. Desligue se ele continuar sendo interrompido por pessoas falando por perto ou pela própria voz voltando pelo microfone. Enquanto ele fala pelo alto-falante do próprio iPhone, só \"stop\" ou a frase de ativação o interrompem — o microfone do telefone ouve a resposta e o ambiente alto demais para distinguir você. Dizer \"stop\" ou a frase de ativação o interrompe de qualquer forma."
+            "value" : "Ligado, cada resposta encerra a conversa: diga a frase de ativação ou toque em Tap & Talk para perguntar a próxima coisa. Quando a resposta pergunta algo a você, o microfone fica aberto para você responder. Desligado, o microfone abre de novo depois de cada resposta para você continuar falando. Ligado por padrão com o Field Assist."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Когда включено, ассистент замолкает, как только слышит вас, и вы можете вмешаться, не дожидаясь, пока он закончит. Выключите, если его постоянно прерывают люди рядом или его же голос, возвращающийся через микрофон. Пока он говорит через собственный динамик iPhone, прервать его могут только «stop» или слово активации — микрофон телефона слышит ответ и комнату слишком громко, чтобы вас различить. Если сказать «stop» или слово активации, он прервётся в любом случае."
+            "value" : "Когда включено, каждый ответ завершает разговор: чтобы спросить о следующем, скажите слово активации или нажмите Tap & Talk. Если ответ задаёт вам встречный вопрос, микрофон остаётся открытым для вашего ответа. Когда выключено, микрофон снова открывается после каждого ответа, чтобы вы могли продолжать разговор. По умолчанию включено вместе с Field Assist."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "آن ہونے پر، اسسٹنٹ آپ کی آواز سنتے ہی بولنا روک دیتا ہے، تاکہ آپ اس کے ختم ہونے کا انتظار کیے بغیر بیچ میں بول سکیں۔ اگر آس پاس بات کرنے والوں یا مائیکروفون کے ذریعے واپس آنے والی اس کی اپنی آواز سے بار بار مداخلت ہو تو اسے آف کر دیں۔ جب وہ iPhone کے اپنے لاؤڈ اسپیکر سے بول رہا ہو تو صرف “stop” یا ویک فریز اسے روکتے ہیں — فون کا مائیکروفون جواب اور کمرے کو اتنی زور سے سنتا ہے کہ آپ کی آواز الگ پہچان نہیں پاتا۔ “stop” کہنا، یا ویک فریز، دونوں صورتوں میں اسے روک دیتا ہے۔"
+            "value" : "آن ہونے پر، ہر جواب گفتگو ختم کر دیتا ہے: اگلی بات پوچھنے کے لیے ویک فریز کہیں یا Tap & Talk پر ٹیپ کریں۔ جب جواب آپ سے کچھ پوچھے تو آپ کے جواب کے لیے مائیکروفون کھلا رہتا ہے۔ آف ہونے پر، ہر جواب کے بعد مائیکروفون دوبارہ کھل جاتا ہے تاکہ آپ بات جاری رکھ سکیں۔ Field Assist کے ساتھ پہلے سے آن ہوتا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开启后，助手一听到你说话就会停止讲话，这样你无需等它说完就能插话。如果它总是被附近的谈话声，或通过麦克风传回的自身声音打断，请将其关闭。当它通过 iPhone 自带的扬声器发声时，只有“stop”或唤醒短语能打断它 — 手机的麦克风听到的回答和房间里的声音都太响，无法区分你的声音。无论如何，说“stop”或唤醒短语都能打断它。"
+            "value" : "开启后，每次回答都会结束对话：要问下一件事，请说唤醒短语或点击 Tap & Talk。如果回答反过来问你问题，麦克风会保持打开，等你回复。关闭后，每次回答后麦克风都会重新打开，你可以继续说话。使用 Field Assist 时默认开启。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開啟時，助理一聽到你開口就會停止說話，讓你不必等它說完就能插話。若它一直被附近的人聲或自己從麥克風回傳的聲音打斷，請將它關閉。當它透過 iPhone 本身的揚聲器說話時，只有「stop」或喚醒短語能打斷它 — 手機的麥克風會把答案和周遭環境收得太大聲，無法分辨出你的聲音。無論哪種情況，說出「stop」或喚醒短語都能打斷它。"
+            "value" : "開啟時，每次回答都會結束對話：若要問下一件事，請說出喚醒短語或點擊 Tap & Talk。如果回答反過來問你問題，麥克風會保持開啟，等你回覆。關閉時，每次回答後麥克風都會重新開啟，讓你可以繼續說話。使用 Field Assist 時預設為開啟。"
+          }
+        }
+      }
+    },
+    "On, the assistant stops talking the moment it hears you, so you can cut in without waiting for it to finish. Turn it off if it keeps being interrupted by people talking nearby or by its own voice coming back through the microphone. While it is speaking through the iPhone's own loudspeaker — or through anything on Bluetooth while you talk into the iPhone's microphone — only \"stop\" or the wake phrase interrupt it: the phone's microphone hears the answer, and the room, too clearly to tell you apart. Saying \"stop\", or the wake phrase, interrupts it either way." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عند التفعيل، يتوقف المساعد عن الكلام لحظة سماعك، فيمكنك المقاطعة دون انتظاره حتى ينتهي. أوقفه إذا كان يُقاطَع باستمرار بسبب أشخاص يتحدثون قربك أو لعودة صوته عبر الميكروفون. أثناء كلامه عبر مكبر صوت iPhone نفسه — أو عبر أي جهاز Bluetooth بينما تتحدث في ميكروفون iPhone — لا يقاطعه إلا «stop» أو عبارة التنبيه: إذ يسمع ميكروفون الهاتف الإجابة والغرفة بوضوح شديد فلا يميّزك. قول «stop» أو عبارة التنبيه يقاطعه في الحالتين."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activado, el asistente deja de hablar en cuanto te oye, para que puedas interrumpirlo sin esperar a que termine. Desactívalo si lo interrumpen constantemente personas que hablan cerca o su propia voz que regresa por el micrófono. Mientras habla por el altavoz del propio iPhone —o por cualquier dispositivo Bluetooth mientras tú hablas al micrófono del iPhone—, solo \"stop\" o la frase de activación lo interrumpen: el micrófono del celular oye la respuesta, y también la habitación, con demasiada claridad para distinguirte. Decir \"stop\" o la frase de activación lo interrumpe en cualquier caso."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lorsque c’est activé, l’assistant cesse de parler dès qu’il vous entend, ce qui vous permet de l’interrompre sans attendre qu’il termine. Désactivez-le s’il est sans cesse interrompu par des personnes qui parlent à proximité ou par sa propre voix qui revient par le microphone. Lorsqu’il parle par le haut-parleur de l’iPhone — ou par n’importe quel appareil Bluetooth pendant que vous parlez dans le microphone de l’iPhone —, seuls « stop » ou la phrase d’activation l’interrompent : le microphone du téléphone capte la réponse et la pièce trop clairement pour vous distinguer. Dire « stop » ou la phrase d’activation l’interrompt dans les deux cas."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekapcsolva az asszisztens abban a pillanatban abbahagyja a beszédet, amint hall Önt, így közbeszólhat anélkül, hogy megvárná a végét. Kapcsolja ki, ha folyton megzavarják a közelben beszélők vagy a saját hangja, amely visszajut a mikrofonba. Amíg az iPhone saját hangszóróján szól — vagy bármilyen Bluetooth-eszközön, miközben Ön az iPhone mikrofonjába beszél —, csak a „stop” vagy az ébresztőkifejezés szakítja meg: a telefon mikrofonja túl tisztán hallja a választ és a szobát ahhoz, hogy megkülönböztesse Önt. A „stop” vagy az ébresztőkifejezés kimondása mindkét esetben megszakítja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando è attivo, l'assistente smette di parlare nel momento in cui ti sente, così puoi intervenire senza aspettare che finisca. Disattivalo se viene interrotto di continuo da persone che parlano vicino o dalla sua stessa voce che rientra dal microfono. Mentre parla dall'altoparlante dell'iPhone — o da qualsiasi dispositivo Bluetooth mentre parli nel microfono dell'iPhone — solo «stop» o la frase di attivazione lo interrompono: il microfono del telefono sente la risposta e l'ambiente troppo chiaramente per distinguerti. Dire «stop» o la frase di attivazione lo interrompe in entrambi i casi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにすると、アシスタントはあなたの声を聞いた瞬間に話すのをやめるため、終わるのを待たずに割り込めます。近くの人の話し声や、自分の声がマイクに戻ってきて何度も中断される場合はオフにしてください。iPhone本体のスピーカーで話している間、またはiPhoneのマイクに向かって話していてBluetooth機器から音が出ている間は、「stop」またはウェイクフレーズだけが割り込みとして働きます。iPhoneのマイクには返答と周囲の音がはっきり聞こえすぎて、あなたの声と区別できないためです。どちらの設定でも、「stop」またはウェイクフレーズで割り込めます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜면 어시스턴트가 사용자의 목소리를 듣는 즉시 말을 멈추므로, 끝날 때까지 기다리지 않고 끼어들 수 있습니다. 주변 사람들의 말소리나 마이크로 되돌아오는 어시스턴트 자신의 목소리 때문에 계속 중단된다면 끄세요. iPhone 자체 스피커로 말하는 동안, 또는 iPhone 마이크에 대고 말하면서 Bluetooth 기기로 들을 때는 \"stop\" 또는 깨우기 문구만 어시스턴트를 중단시킵니다. iPhone 마이크가 답변과 주변 소리를 너무 또렷하게 들어 사용자의 목소리를 구분하지 못하기 때문입니다. \"stop\" 또는 깨우기 문구를 말하면 어느 경우든 중단됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als het aan staat, stopt de assistent met praten zodra hij u hoort, zodat u kunt onderbreken zonder te wachten tot hij klaar is. Zet het uit als hij steeds wordt onderbroken door mensen in de buurt of door zijn eigen stem die via de microfoon terugkomt. Zolang hij via de eigen luidspreker van de iPhone praat — of via iets met Bluetooth terwijl u in de microfoon van de iPhone praat — onderbreken alleen “stop” of de activeringszin hem: de microfoon van de telefoon hoort het antwoord en de ruimte te duidelijk om u te onderscheiden. Door “stop” of de activeringszin te zeggen, onderbreekt u hem in beide gevallen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligado, o assistente para de falar no instante em que ouve você, e você pode interromper sem esperar que ele termine. Desligue se ele continuar sendo interrompido por pessoas falando por perto ou pela própria voz voltando pelo microfone. Enquanto ele fala pelo alto-falante do próprio iPhone — ou por qualquer dispositivo Bluetooth enquanto você fala no microfone do iPhone — só \"stop\" ou a frase de ativação o interrompem: o microfone do telefone ouve a resposta e o ambiente com clareza demais para distinguir você. Dizer \"stop\" ou a frase de ativação o interrompe de qualquer forma."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда включено, ассистент замолкает, как только слышит вас, и вы можете вмешаться, не дожидаясь, пока он закончит. Выключите, если его постоянно прерывают люди рядом или его же голос, возвращающийся через микрофон. Пока он говорит через собственный динамик iPhone — или через любое устройство Bluetooth, когда вы говорите в микрофон iPhone, — прервать его могут только «stop» или слово активации: микрофон телефона слышит ответ и комнату слишком отчётливо, чтобы вас различить. Если сказать «stop» или слово активации, он прервётся в любом случае."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آن ہونے پر، اسسٹنٹ آپ کی آواز سنتے ہی بولنا روک دیتا ہے، تاکہ آپ اس کے ختم ہونے کا انتظار کیے بغیر بیچ میں بول سکیں۔ اگر آس پاس بات کرنے والوں یا مائیکروفون کے ذریعے واپس آنے والی اس کی اپنی آواز سے بار بار مداخلت ہو تو اسے آف کر دیں۔ جب وہ iPhone کے اپنے لاؤڈ اسپیکر سے بول رہا ہو — یا Bluetooth پر کسی بھی چیز سے، جبکہ آپ iPhone کے مائیکروفون میں بول رہے ہوں — تو صرف “stop” یا ویک فریز اسے روکتے ہیں: فون کا مائیکروفون جواب اور کمرے کو اتنا صاف سنتا ہے کہ آپ کی آواز الگ پہچان نہیں پاتا۔ “stop” کہنا، یا ویک فریز، دونوں صورتوں میں اسے روک دیتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启后，助手一听到你说话就会停止讲话，这样你无需等它说完就能插话。如果它总是被附近的谈话声，或通过麦克风传回的自身声音打断，请将其关闭。当它通过 iPhone 自带的扬声器发声时，或你对着 iPhone 的麦克风说话、而它通过任何 Bluetooth 设备发声时，只有“stop”或唤醒短语能打断它：手机的麦克风把回答和房间里的声音听得太清楚，无法区分你的声音。无论如何，说“stop”或唤醒短语都能打断它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟時，助理一聽到你開口就會停止說話，讓你不必等它說完就能插話。若它一直被附近的人聲或自己從麥克風回傳的聲音打斷，請將它關閉。當它透過 iPhone 本身的揚聲器說話時，或你對著 iPhone 的麥克風說話、而它透過任何 Bluetooth 裝置說話時，只有「stop」或喚醒短語能打斷它：手機的麥克風把答案和周遭環境收得太清楚，無法分辨出你的聲音。無論哪種情況，說出「stop」或喚醒短語都能打斷它。"
           }
         }
       }
@@ -222506,6 +222752,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一頁顯示相機畫面，你說的話、答案、聽到的聲音以及在其他機器上運行的任何工具——每個都有你的設定送出的目的地。它將混合設置命名為混合，並列出在應用程式離線運作前仍需下載的任何內容。它描述了預期的路由；「網絡活動」在「進階」下，是應用程式實際觀察到的請求的獨立記錄。"
+          }
+        }
+      }
+    },
+    "One Question at a Time" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سؤال واحد في كل مرة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una pregunta a la vez"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une question à la fois"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyszerre egy kérdés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una domanda alla volta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一度に1つの質問"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 번에 한 질문"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eén vraag tegelijk"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma pergunta por vez"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По одному вопросу"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ایک وقت میں ایک سوال"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次一个问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一次一個問題"
           }
         }
       }
@@ -335020,113 +335348,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "確認無誤後點一下傳送"
-          }
-        }
-      }
-    },
-    "Tap Test Microphone to restart" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "انقر على اختبار الميكروفون لإعادة التشغيل"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tippen Sie auf Mikrofon testen zum Neustart"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toca Probar Micrófono para reiniciar"
-          }
-        },
-        "es-MX" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toca Probar micrófono para reiniciar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Touchez Tester le micro pour redémarrer"
-          }
-        },
-        "fr-CA" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Touchez Tester le microphone pour redémarrer"
-          }
-        },
-        "hu" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Érints meg a Mikrofon tesztelése gombot a újraindításhoz"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tocca Testa microfono per riavviare"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "テストマイクをタップして再起動"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "테스트 마이크를 탭하여 다시 시작"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tik op Test microfoon om opnieuw te starten"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dotknij Testuj mikrofon, aby uruchomić ponownie"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toque em Testar Microfone para reiniciar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нажмите «Проверить микрофон», чтобы перезапустить"
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "دوبارہ شروع کرنے کے لیے مائیکروفون ٹیسٹ کریں پر ٹیپ کریں"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点击测试麦克风以重启"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "點擊測試麥克風以重啟"
           }
         }
       }
