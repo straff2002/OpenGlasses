@@ -144,13 +144,10 @@ struct ServicesSettingsView: View {
         !adminGate.presentation(.key(.cloudDictationEnabled)).isEditable
     }
 
-    /// The picker's selection. A cloud choice the organisation has pinned off reads as Auto, which
+    /// The recogniser shown. A cloud choice the organisation has pinned off reads as Auto, which
     /// is what the turn actually runs; the wearer's stored choice is left alone.
-    private var recognizerSelection: Binding<ASREnginePreference> {
-        Binding(
-            get: { isCloudDictationLocked && asrEnginePreference.isCloud ? .auto : asrEnginePreference },
-            set: { asrEnginePreference = $0 }
-        )
+    private var recognizerShown: ASREnginePreference {
+        isCloudDictationLocked && asrEnginePreference.isCloud ? .auto : asrEnginePreference
     }
 
     private func refreshDictationKeys() {
@@ -161,14 +158,15 @@ struct ServicesSettingsView: View {
     var body: some View {
         Form {
             // MARK: Voice Engine
+            // Plan KA P1: the voice engine is the Voice role; its picker is the role's, here
+            // and under AI & Personality › Roles, so there is one control and one stored value.
             Section {
-                Picker("Voice Engine", selection: $ttsEnginePreference) {
-                    ForEach(TTSEnginePreference.allCases) { preference in
-                        Text(preference.displayName).tag(preference)
+                NavigationLink {
+                    ModelRolePickerScreen(appState: appState, role: .voice) {
+                        ttsEnginePreference = Config.ttsEnginePreference
                     }
-                }
-                .onChange(of: ttsEnginePreference) { _, newValue in
-                    Config.setTTSEnginePreference(newValue)
+                } label: {
+                    LabeledContent("Voice Engine", value: ttsEnginePreference.displayName)
                 }
             } header: {
                 Text("Voice Engine")
@@ -186,7 +184,10 @@ struct ServicesSettingsView: View {
                     }
                 }
             }
-            .onAppear(perform: refreshCloudVoiceCredentials)
+            .onAppear {
+                refreshCloudVoiceCredentials()
+                ttsEnginePreference = Config.ttsEnginePreference
+            }
 
             // MARK: Text-to-Speech
             Section {
@@ -441,15 +442,15 @@ struct ServicesSettingsView: View {
 
             // MARK: Speech Recognition (Additional Capabilities #8)
             Section {
-                Picker("Recognizer", selection: recognizerSelection) {
-                    ForEach(ASREnginePreference.allCases.filter { !$0.isCloud || !isCloudDictationLocked }) { preference in
-                        Text(preference.displayName).tag(preference)
+                // Plan KA P1: the recogniser is the Dictation role; its picker is the role's
+                // (`Config.chooseRecognizer` writes the cloud switch with it).
+                NavigationLink {
+                    ModelRolePickerScreen(appState: appState, role: .dictation) {
+                        asrEnginePreference = Config.asrEnginePreference
+                        refreshDictationKeys()
                     }
-                }
-                .onChange(of: asrEnginePreference) { _, newValue in
-                    Config.setASREnginePreference(newValue)
-                    // The cloud switch is the choice itself: on for a cloud recognizer, off otherwise.
-                    Config.cloudDictationEnabled = newValue.isCloud
+                } label: {
+                    LabeledContent("Recognizer", value: recognizerShown.displayName)
                 }
 
                 if isCloudDictationLocked {
@@ -528,6 +529,7 @@ struct ServicesSettingsView: View {
             .onAppear {
                 asrDownloader.refreshState()
                 refreshDictationKeys()
+                asrEnginePreference = Config.asrEnginePreference
             }
 
             // MARK: Diarization

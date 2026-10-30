@@ -56,6 +56,10 @@ struct OnboardingView: View {
     @ObservedObject private var claudeOAuth = ClaudeOAuthService.shared
     @ObservedObject private var chatgptOAuth = ChatGPTOAuthService.shared
 
+    /// Plan KA P1: what the key just saved can also do, shown once at the top of the next page.
+    @State private var keyCard: ModelRoleKeyCard?
+    @State private var keyCardOffered = false
+
     // Optional service keys
     @State private var elevenLabsKey = ""
     @State private var perplexityKey = ""
@@ -1101,6 +1105,14 @@ struct OnboardingView: View {
             )
 
             List {
+                if let keyCard {
+                    ModelRoleSuggestionCard(title: keyCard.title, suggestions: keyCard.suggestions,
+                                            onUse: { chosen in
+                                                self.keyCard = keyCard.applying(chosen, appState: appState).card
+                                            },
+                                            onDismiss: { self.keyCard = nil })
+                }
+
                 Section {
                     SecretInputField(placeholder: String(localized: "ElevenLabs API Key"), text: $elevenLabsKey)
                         .frame(minHeight: rowMinHeight)
@@ -2007,6 +2019,13 @@ struct OnboardingView: View {
 
         // Update the LLM service so the UI reflects the chosen model immediately
         appState.llmService.refreshActiveModel()
+
+        // What else the key can do, offered once, after the key step (Plan KA P1). Nothing is
+        // switched on until the card is tapped.
+        if !keyCardOffered {
+            keyCardOffered = true
+            keyCard = ModelRoleKeyCard.forAdded(model, listed: availableModels)
+        }
 
         // Ensure the default persona uses this model (so wake-word doesn't revert to a stale model)
         let personas = Config.savedPersonas

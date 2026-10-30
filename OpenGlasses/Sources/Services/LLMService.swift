@@ -1465,9 +1465,13 @@ class LLMService: ObservableObject {
             }
         }
 
+        // Plan KA P1: a photo turn tries the chosen Vision model first; the rest of the
+        // conversation stays on the assistant.
+        let visionModelId = imageData != nil ? Config.visionRoleModelId : nil
         let chain = ModelFallbackChain.candidates(
             activeId: leadId, saved: Config.savedModels,
-            fallbackOrder: Config.modelFallbackOrder, requiresVision: imageData != nil)
+            fallbackOrder: Config.modelFallbackOrder, requiresVision: imageData != nil,
+            visionModelId: visionModelId)
         // A photo needs a capable model even when the text-request fallback switch is off.
         guard (Config.modelCascadeEnabled || imageData != nil), !chain.isEmpty else {
             return try await send()
@@ -1475,7 +1479,9 @@ class LLMService: ObservableObject {
         // A lead the last turn hopped away from stays second for a while: the model that
         // answered starts, so the wearer does not wait out the same failure every turn.
         let now = Date()
-        let candidates = cascadeMemory.ordered(chain, lead: leadId, now: now)
+        // The memory's hold is about the assistant's lead; a chosen Vision model keeps the front.
+        let candidates = visionModelId != nil && chain.first?.id == visionModelId
+            ? chain : cascadeMemory.ordered(chain, lead: leadId, now: now)
         if let first = candidates.first, first.id != chain.first?.id {
             PrivacyLog.model(.cascadeLeadDeferred, configuration: PrivateIdentifier(first.id))
         }

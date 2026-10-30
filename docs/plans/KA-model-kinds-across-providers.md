@@ -1,6 +1,31 @@
 # Plan KA — Model Kinds and Roles Across Providers (what a listed model is for, and which job uses it)
 
-**Status:** 🚧 P0 built 2026-10-29 — `ModelKindClassifier` labels every provider's list, each chat
+**Status:** 🚧 P1 built 2026-10-30 — roles. `ModelRoleCatalog` (pure, tested headless) decides which
+roles a saved key offers (its provider's transports, less any its loaded list shows it can't do),
+each role's candidates across every saved key plus the on-phone options (Kokoro and the iOS voice,
+the on-device and Apple recognisers), each provider's default per role (the cheaper OpenAI live
+model from a suggestion, decision 6), and the limits: under Medical local-only nothing that leaves
+the phone is listed and a role left with nothing is off (Live always; Vision without an on-phone
+model that sees); HIPAA keeps dictation on the phone; an organisation's cloud-dictation pin removes
+the cloud recognisers, and a whole-role pin is read-only. Settings › AI & Personality has a Roles
+section under AI Models with the Assistant, Vision, Voice, Live and Dictation pickers. The roles are
+the existing settings (active model, `ttsEnginePreference`, `activeRealtimeModelID`,
+`asrEnginePreference` with the cloud-dictation switch); the one new value is
+`Config.visionRoleModelId` (the dead `localTextModelId`/`localVisionModelId` keys are gone). The
+Voice & Triggers screen's voice-engine and recogniser pickers now open the role pickers. A photo
+turn tries the Vision model first, then today's order; with none set the order is exactly today's;
+the Vision picker lists only models that take images, and the ChatGPT subscription never does. The
+Vision model answers the photo turn itself (decision 5 default). The "this key can also…" card shows
+when a key is added in Settings and once in onboarding, after the key step: one tap per role and
+"Use all", each naming where the data goes and whose quota it spends (decision 4 default); nothing
+is switched on until tapped, and a role already set isn't offered. Plan JZ's Gemini speech-model
+picker reads the classifier's `.speech` (its URL-safety check stays). Roles reuse routes already
+registered and disclosed, so no privacy copy changed. Owed: P2 (live lists with real keys, and on
+the device each role's default per provider and one photo turn through a chosen Vision model); a
+catalog sync for the new strings; Images later (Design 12). Under Auto, a saved Gemini key already
+turns the Gemini voice on (Plan JZ's order) — the card offers Voice only when it isn't chosen
+explicitly; whether Auto should stop doing that is an owner call.
+**P0:** 🚧 built 2026-10-29 — `ModelKindClassifier` labels every provider's list, each chat
 picker shows a "Can't be your assistant" section, a typed non-chat id gets a warning (not a
 refusal: the classifier can't know every server's names), and a saved one is flagged in Settings.
 The xAI and Gemini name lists are the classifier's rows, and PR 887's no-thinking ids
