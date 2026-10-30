@@ -110,7 +110,7 @@ struct ListenComplicationView: View {
                     Text(label)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(tint)
-                    Text(entry.state.isListening ? "Tap to stop" : "OG glasses")
+                    Text(entry.state.isListening ? "Tap to stop" : "Avenkin")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
