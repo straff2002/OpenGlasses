@@ -168,7 +168,7 @@ final class EquipmentLookupTool: NativeTool {
             return sentence + " If this is the unit the technician is working on, record it with "
                 + "set_equipment so the job keeps the model as they said it."
         }
-        return "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail, or recommend escalation rather than guessing."
+        return "No vault entry found for '\(query!)' in the \(store.manifest.name). Ask the technician for more detail. If it stays unanswered, name what the vault does not cover and offer an expert if one would help; do not guess."
     }
 
     // MARK: - Equipment identity (Plan EL)

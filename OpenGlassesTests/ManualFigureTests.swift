@@ -322,6 +322,43 @@ final class ManualFigureTests: XCTestCase {
                      "an empty call asks for a figure rather than repeating the last one")
     }
 
+    /// Plan KE P2: "show me page 1 and page 2" is two calls. The second joins the first in one sheet
+    /// that opens on it, and the next turn starts again.
+    func testASecondPageInATurnJoinsTheFirst() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        let center = ShowSourceCenter()
+        center.isAppActive = { true }
+        service.sourceCenter = center
+        let tool = ManualFigureTool(documentStore: store, sessionService: service, currentUtterance: { nil })
+        service.turnSourceID = "turn-1"
+
+        _ = try await tool.execute(args: ["page": 1])
+        XCTAssertNil(center.presented, "a first page goes up the way it always did")
+        XCTAssertEqual(service.stagedFigure?.page, 1)
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+
+        let second = try await tool.execute(args: ["page": 2])
+        XCTAssertTrue(second.contains("page 2"), second)
+        XCTAssertEqual(center.presented?.pages.map(\.page), [1, 2])
+        XCTAssertEqual(center.presented?.opening, 1, "the newest is the one on screen")
+        XCTAssertEqual(service.stagedFigure?.page, 2, "and the one the model is handed next")
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, false, "the single-page sheet stays down")
+
+        // "Show that again" reopens the newest (Plan KD P3).
+        XCTAssertEqual(service.restageLastFigure()?.page, 2)
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+
+        // The same page again is not a second stop.
+        _ = try await tool.execute(args: ["page": 1])
+        XCTAssertEqual(center.presented?.pages.map(\.page), [2, 1])
+
+        service.turnSourceID = "turn-2"
+        _ = try await tool.execute(args: ["page": 2])
+        XCTAssertEqual(center.presented?.pages.map(\.page), [2, 1], "a new turn adds to nothing")
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+    }
+
     /// Plan KD P0: "printed page 57" opened PDF page 57. A printed page goes through the
     /// manual's printed page numbers, an unknown one is refused, and the reply names both pages.
     func testAPrintedPageOpensThePageThatPrintsItAndSaysWhichOpened() async throws {

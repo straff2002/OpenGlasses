@@ -201,11 +201,11 @@ final class PersonalManualLibrary: ObservableObject {
     }
 
     private func tagged(_ rows: [DocumentStore.Passage], manual: Manual) -> [DocumentStore.Passage] {
-        rows.map { row in
+        (documents?.withPrintedLabels(rows) ?? rows).map { row in
             DocumentStore.Passage(documentId: row.documentId, documentName: manual.label, chunkIndex: row.chunkIndex,
                 text: row.text, similarity: row.similarity, page: row.page, section: row.section,
                 kind: row.kind, figure: row.figure, source: .manual, termRule: row.termRule,
-                vectorPending: row.vectorPending)
+                vectorPending: row.vectorPending, pageBreaks: row.pageBreaks, printedLabels: row.printedLabels)
         }
     }
 
@@ -368,10 +368,11 @@ final class PersonalManualLibrary: ObservableObject {
         case .sources(let values): sources = values
         }
         let pages = sources.compactMap { source -> FieldSessionService.StagedFigure? in
-            guard var staged = resolve(source.citation) else { return nil }
-            staged.citedPassages = center.citedPassages(for: source.citation, documentId: staged.documentId, store: documentStore ?? documents, number: source.number)
-            staged.pictureAreas = center.pictureAreas(for: source.citation)
-            return staged
+            guard let staged = resolve(source.citation) else { return nil }
+            let pageText = source.citation.throughPage == nil ? { _ in nil }
+                : FieldSessionService.shared.pageTextReader(for: staged, store: documentStore ?? documents)
+            return center.placing(staged, for: source.citation, store: documentStore ?? documents,
+                                  number: source.number, pageText: pageText)
         }
         guard let first = pages.first else { return "The cited manual is no longer available. Nothing was opened." }
         lastFigure = first

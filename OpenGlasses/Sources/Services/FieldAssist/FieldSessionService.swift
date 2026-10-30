@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import PDFKit
 import UIKit
 
 /// Coordinates the active Field Assist session for the app.
@@ -716,6 +717,17 @@ final class FieldSessionService: ObservableObject {
     /// tool forgot it.
     private var modelReadFrom: (session: String, words: String)?
 
+    /// What recording a unit from the turn's own words owes the model, for as long as those words
+    /// are the turn (Plan KE P1 skipped the tool's reply, which is where `equipment_lookup` says
+    /// earlier work was attached and that the unit is part of a site's system, Plans GD2 and HV).
+    private var unitSaidNote: (session: String, words: String, note: String)?
+
+    /// The note the turn in hand owes, once it has been read for a unit.
+    private var unitSaidPromptNote: String? {
+        guard let note = unitSaidNote, note.session == activeSession?.id, note.words == technicianWords() else { return nil }
+        return note.note
+    }
+
     /// A turn naming one of the vault's models records it, before anything is retrieved for that
     /// turn (Plan KE P1): when there is no unit yet, or when it spells the active one more fully.
     /// The same identity `equipment_lookup` records, so the job log, the Unit card and the title
@@ -725,11 +737,15 @@ final class FieldSessionService: ObservableObject {
               modelReadFrom?.session != session.id || modelReadFrom?.words != said else { return }
         modelReadFrom = (session.id, said)
         guard let unit = EquipmentRecognition.unitSaid(in: said, active: activeEquipment, index: modelIndex) else { return }
+        let markerBefore = session.earlierWorkAttachedAt
         switch unit.change {
         case .firstUnit: setEquipment(unit.identity)
         case .fullerSpelling: correctEquipment(unit.identity)
-        case .sameUnit, .anotherUnit: break
+        case .sameUnit, .anotherUnit: return
         }
+        let notes = [markerBefore == nil && earlierWorkAttached ? FieldSessionTool.earlierWorkSentence : nil,
+                     siteSystemAnnouncement()].compactMap { $0 }
+        if !notes.isEmpty { unitSaidNote = (session.id, said, notes.joined(separator: " ")) }
     }
 
     // MARK: - Work record: tasks, parts, identity (Plan EM)
@@ -1907,6 +1923,9 @@ final class FieldSessionService: ObservableObject {
         if let equipment = activeEquipment {
             context = (context.map { $0 + "\n\n" } ?? "") + equipment.promptBlock
         }
+        if let note = unitSaidPromptNote {
+            context = (context.map { $0 + "\n\n" } ?? "") + note
+        }
         if let runner {
             let procedureContext = runner.promptContext()
             if !procedureContext.isEmpty {
@@ -2383,10 +2402,11 @@ final class FieldSessionService: ObservableObject {
         // table_lookup, which applies the checks.
         let withheldRows = withheldRowPassages(vaultId: vaultId, documentStore: documentStore)
         func tagged(_ passages: [DocumentStore.Passage], _ space: RetrievalNamespace) -> [DocumentStore.Passage] {
-            passages.filter { raw in
+            let kept = passages.filter { raw in
                 raw.kind != .tableRow || (space.source != .manual && space.source != .capturedManual) || withheldRows.isEmpty
                     || !withheldRows.contains(VaultTableChecks.withheldKey(documentId: raw.documentId, label: raw.figure ?? ""))
-            }.map { raw in
+            }
+            return (documentStore?.withPrintedLabels(kept) ?? kept).map { raw in
                 var passage = raw
                 passage.source = space.source
                 if space.source == .capturedManual, let page = raw.page {
@@ -2628,7 +2648,8 @@ final class FieldSessionService: ObservableObject {
         /// renderer opens. Plan EK P1 measured the printed and physical page in agreement on
         /// every page of the example pair; a document where they disagree renders the wrong page,
         /// which is why the extractor warns on a mismatch at import.
-        let page: Int
+        /// Moved only to the page of a cited range that holds the passage (`placing`).
+        var page: Int
         /// "Figure 58" / "Table 16", when the page printed a caption.
         let figure: String?
         /// The vault file the document was ingested from ("SLP99UHVK-Install.pdf"), when the
@@ -2680,6 +2701,14 @@ final class FieldSessionService: ObservableObject {
             Citation(kind: .manual, title: documentTitle, page: page, figure: figure)
         }
 
+        /// The citation to record as opened: the page that opened, for a citation that named a
+        /// range of them (Plan KE P2).
+        func opened(from citation: Citation) -> Citation {
+            guard citation.throughPage != nil else { return citation }
+            return Citation(kind: citation.kind, title: citation.title, page: page, figure: citation.figure,
+                            section: citation.section, isDiagram: citation.isDiagram)
+        }
+
         /// What the page marks, as part of what identifies the page on screen (Plan JW P0): the
         /// cited passages by document and chunk, and the outlined regions. Empty for a plain page.
         /// The sheet used to be identified by its citation alone, so a second "show me" on the same
@@ -2711,6 +2740,27 @@ final class FieldSessionService: ObservableObject {
     func stageFigure(_ figure: StagedFigure?) {
         stagedFigure = figure
         if let figure, figure.presentOnPhone { lastShownFigure = figure }
+    }
+
+    /// The pages `manual_figure` has put up this turn (Plan KE P2).
+    private var turnPages = TurnPageStack()
+
+    /// A page `manual_figure` asked for. The turn's first is staged like any other; the next join
+    /// it in one sheet that opens on the newest, which is also what the model is handed next and
+    /// what "show that again" reopens. Keyed like a learning answer: the Direct turn's id, else the
+    /// minute (live modes).
+    func stageTurnPage(_ figure: StagedFigure, now: Date = Date()) {
+        let pages = turnPages.adding(figure, turn: turnSourceID ?? "live:\(Int(now.timeIntervalSince1970 / 60))")
+        guard pages.count > 1 else {
+            stageFigure(figure)
+            return
+        }
+        // Staged for the model alone: the single-page sheet must not open over the joined one.
+        var attached = figure
+        attached.presentOnPhone = false
+        stagedFigure = attached
+        noteShownOnPhone(figure)
+        sourceCenter.present(pages, notice: ShowSourceCenter.noticeText(for: figure.asCitation), opening: pages.count - 1)
     }
 
     /// A page `show_source` put on the phone, which it presents itself rather than through the
@@ -2911,6 +2961,26 @@ final class FieldSessionService: ObservableObject {
         return .figure(StagedFigure(documentId: entry.documentId, documentTitle: entry.title,
                                     page: max(citation.page ?? printed ?? 1, 1), figure: citation.figure,
                                     sourceFile: entry.file))
+    }
+
+    /// What a citation opens, for a command and a tap alike (Plan KE P2): `resolveCitation`'s page,
+    /// with the passages it marks and, for a range, on the page of it that holds them. `number` is
+    /// the citation's place in the answer, when the caller knows it.
+    func resolveCitedPage(_ citation: Citation, number: Int? = nil, store: DocumentStore?) -> CitationResolution {
+        let resolved = resolveCitation(citation)
+        guard case .figure(let staged) = resolved else { return resolved }
+        let pageText = citation.throughPage == nil ? { _ in nil } : pageTextReader(for: staged, store: store)
+        return .figure(sourceCenter.placing(staged, for: citation, store: store, number: number, pageText: pageText))
+    }
+
+    /// Reads the pages of a staged figure's document as the sheet will show them: the PDF's own
+    /// text layer, else the store's text.
+    func pageTextReader(for figure: StagedFigure, store: DocumentStore?) -> (Int) -> String? {
+        if let url = sourcePDFURL(for: figure), let document = PDFDocument(url: url) {
+            return { page in page >= 1 && page <= document.pageCount ? document.page(at: page - 1)?.string : nil }
+        }
+        let pages = store?.pageTexts(documentId: figure.documentId) ?? []
+        return { page in pages.first { $0.page == page }?.text }
     }
 
     /// The page a citation names, or nil when it no longer names one. `resolveCitation` says which

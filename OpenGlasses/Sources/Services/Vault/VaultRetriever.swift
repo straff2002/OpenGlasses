@@ -92,6 +92,12 @@ struct VaultRetriever {
         /// The passage has no vector because its document's script model is not on the phone
         /// yet (Plan JY P1): the gate judges it by its words, under the stricter rule.
         var vectorPending = false
+        /// The pages a chunk packed across a page break sits on (Plan KE P2). `text` carries no
+        /// mark of them, so the gate, token matching and the highlight read what the page printed;
+        /// `markedText` is what the model reads.
+        var pageBreaks: [DocumentChunker.PageBreak] = []
+        /// What is printed on those pages, by physical page, where the manual's labels say.
+        var printedLabels: [Int: String] = [:]
 
         typealias Source = RetrievalSource
 
@@ -111,9 +117,16 @@ struct VaultRetriever {
         /// figure. A drawing with no caption still says it is one, because "page 44" of a wiring
         /// diagram and "page 44" of a procedure are read very differently. A table's row passage
         /// (Plan JJ P0) names its table: the row is in it, by construction.
+        ///
+        /// A passage across a page break gives the range (Plan KE P2): one number would be wrong for
+        /// some of its words, and the marks in `markedText` say which.
         var citation: String {
             var parts = [documentName]
-            if let page { parts.append("page \(page)" + (printedPage.map { " (printed \($0))" } ?? "")) }
+            if let span = pageSpan {
+                parts.append("pages \(span.first)\u{2013}\(span.last)")
+            } else if let page {
+                parts.append("page \(page)" + (printedPage.map { " (printed \($0))" } ?? ""))
+            }
             if kind == .tableRow, let figure, !figure.isEmpty {
                 parts.append(figure)
             } else if kind == .diagram {
@@ -125,6 +138,33 @@ struct VaultRetriever {
                 parts.append("§\(section)")
             }
             return parts.joined(separator: ", ")
+        }
+
+        /// The first and last page of a passage across a page break, nil on one page.
+        var pageSpan: (first: Int, last: Int)? {
+            let pages = pageBreaks.map(\.page)
+            guard let first = pages.min(), let last = pages.max(), first != last else { return nil }
+            return (first, last)
+        }
+
+        /// How one page reads in a mark: "[page 12 (printed 3-4)]".
+        func pageMark(_ page: Int) -> String {
+            "[page \(page)" + (printedLabels[page].map { " (printed \($0))" } ?? "") + "]"
+        }
+
+        /// The text the model reads: a mark where each page starts (Plan KE P2), so a step at the
+        /// head of a page is cited at that page rather than at the chunk's. A chunk on one page
+        /// reads as it always did.
+        var markedText: String {
+            guard !pageBreaks.isEmpty else { return text }
+            let characters = Array(text)
+            var marked = ""
+            var from = 0
+            for pageBreak in pageBreaks where pageBreak.offset >= from && pageBreak.offset <= characters.count {
+                marked += String(characters[from..<pageBreak.offset]) + pageMark(pageBreak.page) + " "
+                from = pageBreak.offset
+            }
+            return marked + String(characters[from...])
         }
 
         /// The key the ranked list is sorted by: the passage's own score, less any model-mismatch
@@ -566,7 +606,8 @@ struct VaultRetriever {
                        modelPenalty: penalty,
                        recognisedFromScan: raw.source.isReference && (provenance?(raw.documentId) ?? false),
                        kind: raw.kind, figure: raw.figure, source: raw.source, printedPage:raw.printedPage,
-                       editionLabel: raw.editionLabel, termRule: raw.termRule, vectorPending: raw.vectorPending)
+                       editionLabel: raw.editionLabel, termRule: raw.termRule, vectorPending: raw.vectorPending,
+                       pageBreaks: raw.pageBreaks, printedLabels: raw.printedLabels)
     }
 
     // MARK: - Rendering
@@ -622,7 +663,7 @@ struct VaultRetriever {
             : (p.source == .capturedManual ? "PHOTOGRAPHED MANUAL (unreviewed; original job/date in citation) " : "")
                 + (p.kindLabel.map { $0 + " " } ?? "")
                 + (p.editionLabel.map { "(edition: \($0)) " } ?? "")
-        return "[\(index + 1)] \(label)\(p.text)\nSource: \(p.citation)"
+        return "[\(index + 1)] \(label)\(p.markedText)\nSource: \(p.citation)"
             + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
     }
 
@@ -637,9 +678,16 @@ struct VaultRetriever {
     static let tableRowRule = "Passages marked (table row …) are sentences the app wrote from a table's rows: "
         + "before you say a value from a table, read it with table_lookup (table, row, column) — never quote it from these."
 
+    /// The standing instruction beside any passage that crosses a page (Plan KE P2). The citation
+    /// rule itself is the block's; this says which page of the range a claim belongs to.
+    static let pageMarkRule = "A mark such as [page 12] or [page 12 (printed 3-4)] inside a passage says the words after it, "
+        + "up to the next mark, are on that page. For a claim from those words, cite that page, not the range on the "
+        + "passage's Source line: repeat the line with \"page 12\" in place of its pages."
+
     /// The rules a set of passages calls for, each on its own paragraph after them.
     private static func rules(for passages: [Passage]) -> String {
         var rules: [String] = []
+        if passages.contains(where: { !$0.pageBreaks.isEmpty }) { rules.append(pageMarkRule) }
         if passages.contains(where: { $0.source == .teamLearning }) { rules.append(teamLearningRule) }
         if passages.contains(where: { $0.kind == .tableRow }) { rules.append(tableRowRule) }
         return rules.map { "\n\n" + $0 }.joined()
@@ -788,7 +836,8 @@ struct RetrievalEvidencePolicy: Equatable {
     static let insufficientSentence =
         "No passage in the loaded manuals answers this closely enough to rely on. Say you couldn't find it "
         + "in the manuals — not that they don't cover it — and ask the technician for the model number or "
-        + "different words, or recommend escalation rather than guessing."
+        + "different words. If it stays unanswered, name what is missing and offer an expert if one would help; "
+        + "do not guess."
 
     init(similarityFloor: Float = 0.30, margin: Float = .infinity, minSharedTerms: Int = 0,
          sharedFraction: Double = 0, tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {

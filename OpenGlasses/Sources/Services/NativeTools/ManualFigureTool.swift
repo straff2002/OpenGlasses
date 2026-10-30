@@ -108,7 +108,7 @@ final class ManualFigureTool: NativeTool {
                 var staged = FieldSessionService.StagedFigure(documentId:m.documentID,
                     documentTitle:CapturedManualCatalog.citationName(m),page:page,sourceFile:"pages.pdf")
                 staged.origin = session.turnAskedForPage ? .requested : .automatic
-                session.stageFigure(staged)
+                session.stageTurnPage(staged)
                 return show(staged,session:session,opening:"Photographed manual:")
             }
             // A name that is no photograph may still be an imported manual's title.
@@ -200,7 +200,7 @@ final class ManualFigureTool: NativeTool {
         // initiative, so the turn decides: a turn that asked for a page makes it the technician's;
         // anything else is the app putting a page up (Plan GB P1).
         staged.origin = session.turnAskedForPage ? .requested : .automatic
-        session.stageFigure(staged)
+        session.stageTurnPage(staged)
         // A page asked for by number says which page opened, both ways (Plan KD P0): the retest's
         // reply never said, so the model claimed the printed page it had asked for.
         let opened = requestedPrinted != nil || (requestedFigure?.isEmpty != false && requestedPage != nil)
@@ -306,7 +306,8 @@ final class ManualFigureTool: NativeTool {
         VaultRetriever.Passage(documentId: p.documentId, documentName: p.documentName,
                                chunkIndex: p.chunkIndex, text: p.text, page: p.page, section: p.section,
                                similarity: p.similarity, score: p.similarity, matchedTokens: [],
-                               kind: p.kind, figure: p.figure, termRule: p.termRule, vectorPending: p.vectorPending)
+                               kind: p.kind, figure: p.figure, termRule: p.termRule, vectorPending: p.vectorPending,
+                               pageBreaks: p.pageBreaks, printedLabels: p.printedLabels)
     }
 }
 

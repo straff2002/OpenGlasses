@@ -95,6 +95,26 @@ final class SymptomDiagnosisSessionTests: XCTestCase {
 
     // MARK: - The model said aloud counts
 
+    func testASpokenIdentificationTellsTheModelEarlierWorkWasAttached() async throws {
+        let (service, _) = try await start()
+        let tasks = TaskTool(sessionService: service)
+        _ = try await tasks.execute(args: ["verb": "add", "title": "Checked the filter"])
+        _ = try await tasks.execute(args: ["verb": "done"])
+
+        let prompt = turn("the QX100 has no heat", on: service)
+        XCTAssertTrue(service.earlierWorkAttached)
+        XCTAssertTrue(prompt.contains(FieldSessionTool.earlierWorkSentence), prompt)
+
+        // A prompt rebuilt after a tool round keeps it; the next turn does not.
+        XCTAssertTrue((service.promptContext(turn: "the QX100 has no heat") ?? "").contains(FieldSessionTool.earlierWorkSentence))
+        XCTAssertFalse(turn("what should I check next", on: service).contains(FieldSessionTool.earlierWorkSentence))
+    }
+
+    func testASpokenIdentificationWithNoEarlierWorkSaysNothing() async throws {
+        let (service, _) = try await start()
+        XCTAssertFalse(turn("the QX100 has no heat", on: service).contains(FieldSessionTool.earlierWorkSentence))
+    }
+
     func testTheTurnThatNamesTheModelIsAlreadyScopedToIt() async throws {
         let (service, _) = try await start()
         var identityChanges = 0

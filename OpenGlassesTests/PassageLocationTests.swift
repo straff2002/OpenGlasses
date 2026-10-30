@@ -302,6 +302,58 @@ final class PassageLocationTests: XCTestCase {
         XCTAssertTrue(store.pageLabels(documentId: ref.id).isEmpty, "a forgotten document leaves no labels behind")
     }
 
+    // MARK: - Migrating a store indexed before Plan KE P2
+
+    /// A phone's index at location version 9: rows, vectors and places, and no page breaks.
+    private func makeVersionNine(_ directory: URL) {
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(directory.appendingPathComponent("documents.sqlite").path, &db), SQLITE_OK)
+        sqlite3_exec(db, "UPDATE doc_chunks SET page_breaks = NULL, location_version = 9", nil, nil, nil)
+        sqlite3_close(db)
+    }
+
+    func testVersionNineGainsItsPageBreaksWithoutAReimport() async throws {
+        let (store, dir) = makeStore()
+        let text = "Service Tests\nOpen the service panel first.\u{0C}Then isolate the supply at the board."
+        let url = tempRoot.appendingPathComponent("notes.txt")
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        let ref = try await XCTUnwrapAsync(await store.ingest(name: "Acme Notes", text: text, sourceType: "vault_document",
+                                                              namespace: "vault:x"))
+        XCTAssertFalse(try XCTUnwrap(store.anchor(documentId: ref.id, chunkIndex: 0)).pageBreaks.isEmpty, "an import has them")
+
+        makeVersionNine(dir)
+        XCTAssertTrue(try XCTUnwrap(store.anchor(documentId: ref.id, chunkIndex: 0)).pageBreaks.isEmpty, "the old row reads as one page")
+        XCTAssertTrue(store.needsLocation(documentId: ref.id))
+        XCTAssertLessThan(try XCTUnwrap(store.textLocationVersion(documentId: ref.id)), DocumentStore.textReadVersion,
+                          "breaks need the text read again, not only the tables")
+        let before = rows(dir)
+
+        let entry = VaultDocumentLedger.Entry(file: "notes.txt", title: ref.name, documentId: ref.id,
+                                              contentHash: "h", chunkCount: ref.chunkCount)
+        let outcome = await PassageLocationMigration.migrate(entry: entry, fileURL: url, store: store)
+
+        XCTAssertEqual(outcome, .located, "the text chunks as stored, so nothing is re-embedded")
+        let after = rows(dir)
+        XCTAssertEqual(after.map(\.text), before.map(\.text))
+        XCTAssertEqual(after.map(\.embedding), before.map(\.embedding))
+        let anchor = try XCTUnwrap(store.anchor(documentId: ref.id, chunkIndex: 0))
+        XCTAssertEqual(anchor.pageBreaks.map(\.page), [1, 2])
+        XCTAssertFalse(store.needsLocation(documentId: ref.id))
+        let found = try XCTUnwrap(store.query("isolate the supply", namespace: "vault:x").first)
+        XCTAssertEqual(found.pageBreaks, anchor.pageBreaks, "retrieval reads them too")
+    }
+
+    func testAPassageCarriesWhatIsPrintedOnItsPages() async throws {
+        let (store, _) = makeStore()
+        let text = "Open the service panel first.\u{0C}Then isolate the supply at the board."
+        let ref = try await XCTUnwrapAsync(await store.ingest(name: "Acme Notes", text: text, namespace: "vault:x",
+                                                              pageLabels: [PageLabel(page: 2, label: "3-4", source: .printed)]))
+        let passages = store.passages(containingToken: "isolate", documentIds: [ref.id])
+        let labelled = try XCTUnwrap(store.withPrintedLabels(passages).first)
+        XCTAssertEqual(labelled.printedLabels, [2: "3-4"])
+        XCTAssertEqual(labelled.text, text.replacingOccurrences(of: "first.\u{0C}", with: "first. "), "the stored words are as they were")
+    }
+
     // MARK: - Migrating a store indexed before P0
 
     /// Clear the location columns, as a row stored before they existed reads.

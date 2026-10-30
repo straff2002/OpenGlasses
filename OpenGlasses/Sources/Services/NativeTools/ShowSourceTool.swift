@@ -91,7 +91,7 @@ final class ShowSourceTool: NativeTool {
         var notPages: [String] = []
         for source in sources {
             var resolved: FieldSessionService.StagedFigure
-            switch session.resolveCitation(source.citation) {
+            switch session.resolveCitedPage(source.citation, number: source.number, store: documentStore) {
             case .figure(let staged): resolved = staged
             case .removed: removed.append(source.citation.label); continue
             case .unknown: notPages.append(source.citation.label); continue
@@ -99,9 +99,6 @@ final class ShowSourceTool: NativeTool {
             // Asked for by the technician: that is the only reason this tool runs.
             resolved.origin = .requested
             resolved.presentOnPhone = true
-            resolved.citedPassages = center.citedPassages(for: source.citation, documentId: resolved.documentId,
-                                                          store: documentStore, number: source.number)
-            resolved.pictureAreas = center.pictureAreas(for: source.citation)
             // Plan JW P1a: rows of a table the answer read without a lookup — say so, and how to
             // mark one row.
             if center.memory.marking(source.citation).basis == .retrievedTableRows, let label = source.citation.figure,
@@ -113,7 +110,7 @@ final class ShowSourceTool: NativeTool {
             // would say "2 of the passages couldn't be marked" over a page whose marks are the
             // answer's. The reply still names what was not marked.
             resolved.citedPassages = check.kept
-            session.logCitationOpened(source.citation, origin: .voice)
+            session.logCitationOpened(resolved.opened(from: source.citation), origin: .voice)
             pages.append(resolved)
             checked.append(check)
         }
@@ -187,8 +184,8 @@ final class ShowSourceTool: NativeTool {
         var kept: [CitedPassage] = []
         var unmarkedText = 0
         for passage in passages {
-            guard passage.anchor.page == page,
-                  PassageLocator.locate(passage.anchor, onPageText: pageText).ranges.isEmpty else {
+            guard passage.anchor.covers(page),
+                  PassageLocator.locate(passage.anchor, onPage: page, pageText: pageText).ranges.isEmpty else {
                 kept.append(passage)
                 continue
             }
@@ -201,9 +198,9 @@ final class ShowSourceTool: NativeTool {
     /// not a table's rows are left to the generic line. Pure.
     static func rowMarks(_ passages: [CitedPassage], page: Int, pageText: String?) -> RowMarks {
         var rows = RowMarks()
-        for passage in passages where passage.anchor.page == page {
+        for passage in passages where passage.anchor.covers(page) {
             guard let name = TableRowPassage.rowName(ofSentence: passage.anchor.text) else { continue }
-            if PassageLocator.locate(passage.anchor, onPageText: pageText).ranges.isEmpty {
+            if PassageLocator.locate(passage.anchor, onPage: page, pageText: pageText).ranges.isEmpty {
                 if !rows.unmarked.contains(name) { rows.unmarked.append(name) }
             } else if !rows.marked.contains(name) {
                 rows.marked.append(name)

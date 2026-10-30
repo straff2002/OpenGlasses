@@ -1,6 +1,6 @@
 # Plan KE — Symptom Diagnosis and Vault-Only Jobs (no web search in a sealed vault, the known model picks the manuals, citations that open the right page)
 
-**Status:** 🚧 P0 and P1 built 2026-10-31, headless; P2 and P3 to do. Drafted 2026-10-31 from a
+**Status:** 🚧 P0 and P1 built 2026-10-31, headless; P2 written, its simulator tests owed; P3 to do. Drafted 2026-10-31 from a
 tester's report of 2026-10-30 (three simulated jobs on a refrigerator vault, build 581). Every cause
 below was traced on main at build 610:
 the citation causes by running the parser on the report's exact lines, the page causes by running
@@ -231,6 +231,69 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   the passage is on no page of the range, the sheet says the mark could not be placed.
 - **Pages add up.** A second `manual_figure` in a turn joins the first in the sheet through
   `ShowSourceCenter.present`, up to `ShowSourceResolver.maximumPages`, opening on the newest.
+
+**P2 as built (2026-10-31).** Written and checked against the real manuals on the Mac. Not yet compiled for
+the app or run on the simulator, and nothing here has been run on the phone.
+
+- `Sentence.page` is only where a sentence starts. A form feed does not end a sentence for the tokenizer,
+  so a run of table lines reads straight over the page: over a third of the service manuals' chunks hold a
+  form feed inside a sentence. `taggedSentences` reads the pages that open inside one (`turns`), and
+  `Chunk.pageBreaks` is built from both. A page with no words of the chunk on it is not a break, and a
+  chunk on one page has none. The first break is at offset 0, because `page` may be a later page of the
+  chunk (the majority rule). A hard-split piece takes the page it really starts on.
+- `page_breaks` is its own column, "0:11,412:12", beside `sentences`. Version 10 moves `textReadVersion`
+  too: breaks can only come from the packed sentences, so the text is read again. The heading rule moves
+  sections and no word, so the rows, ids and vectors stay and an installed index gets all of it on its
+  next migration, without a re-import. A recognised manual imported before its pages were kept is left as
+  it is and reads as one page, as is a document in the library outside vaults, which is only stamped.
+- Marks are `Passage.markedText`, rendered by `passageLine`, so the prompt, `manual_lookup` and the
+  personal library all have them, and `text` stays what the gate, tokens and highlight read. The opening
+  page gets a mark too, since the chunk's `page` may not be it. `Passage.printedPage` is only set for a
+  photographed manual, so a mark's label comes from the document's own map (`withPrintedLabels`). The
+  citation of a vault manual still names no printed page: only the marks do. The marks sit inside the
+  256 characters `boundedOutcome` already allows each passage.
+- `pageMarkRule` sits beside the passages, in the rules a passage calls for, only when one crosses a page.
+- A heading rule over one line cannot tell "3 Fixed Shelf" from "12 Wiring", so there are two. On the line:
+  a number followed by `=`, a word printed three times, the line's number printed again, a figure and its
+  unit alone or running into a sentence, two digits in a row; and for capitals, a note in brackets, an
+  open bracket, a sentence, spaced-out letters, a word printed twice. On the page (`tableLines`, one pass
+  before the scan): whole numbers that do not go up, and past five titles in capitals everything but one
+  at the head of the page. The second goes beyond table rows: drawing labels were what a section fell back
+  on once the rows went, and the mis-cited case then read "§" of a label. A number that is a value ("24
+  VAC Supply") takes no part in the count, and neither does a running header or footer.
+- Only the lexical path changes. A document with one `## ` line has none of it, which is what the app's
+  extractor produces for one of the three service manuals; `ManualStructure`'s own rules are untouched.
+- `resolveCitedPage` is the one resolution; `show_source` and a tap both use it, and the personal library
+  calls the same `placing`. Only a citation with a range reads pages, at most twelve. A passage is looked
+  for on every page of a range, because a model can write a range of its own and an old row knows one page.
+  An anchor is read a page at a time (`sentences(onPage:)`), so a chunk over a break is found on each side
+  of it, and moving to the other page in the sheet marks that page's part. `marking` now finds a chunk by
+  any page it covers: the model is told to cite page 12, and the chunk may say 11. The audit records the
+  page that opened. The sheet's existing "couldn't be marked" line is the words for a passage on no page.
+- `TurnPageStack` keys on the turn id, else the minute, as `manual_lookup`'s misses do. The second page is
+  staged for the model only, so the single-page sheet stays down. A page already up is not logged again
+  (`SourcePagesRequest.opening`). `manual_figure` in the personal library still shows one page.
+- Follow-ups from P1: both sentences that nudged an escalation now name the gap and offer an expert. A title
+  word is a document's id only as its first word holding a digit, or at six characters of which four are
+  digits, hyphens aside, so a refrigerant in a title and a section's prose assigns nothing; a designation
+  with four digits would still pass. The turn that records a unit by itself now carries the earlier-work
+  sentence and the site line, for as long as those words are the turn. The vault guide says what naming a
+  document does.
+
+Against the real manuals, aggregates only (the app's chunker over each page's text, majority rule on):
+
+| Measure | Before | After |
+|---|---|---|
+| The three mis-cited pages, as the model reads them | 1 right | 3 right |
+| Lines of the three service manuals read at their own page (2,907 unique lines) | not readable | all |
+| Distinct headings across the three | 270 | 41 |
+| Chunks crossing a page | not recorded | 133 of 361 |
+
+Of the 229 headings removed, 113 were numbered and none of those was a title. Of the rest, one is the second
+line of a page title whose first line stays, and the others are labels on drawings, table headers, and the
+lines over phone numbers on the contact pages. Of the 41 left, about ten are still no title (two header rows,
+a cell, some wrapped lines). Recall on the acceptance questions was not re-measured: the text and vectors are
+unchanged, so only a section's words could move it.
 
 ### P3 — the tester's re-run (owed, device)
 

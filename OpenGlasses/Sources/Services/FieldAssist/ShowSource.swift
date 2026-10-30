@@ -36,6 +36,14 @@ struct AnswerSourceMemory: Equatable {
         var figure: String? = nil
         /// A row passage the app wrote from a table (`DocumentChunker.Kind.tableRow`).
         var isTableRow = false
+        /// The pages a chunk packed across a page break sits on (Plan KE P2).
+        var pageBreaks: [DocumentChunker.PageBreak] = []
+
+        /// Whether any of the passage is on a page of `pages`. A passage cited at the page marked
+        /// inside it is held by another page number than the chunk's.
+        func isOn(_ pages: ClosedRange<Int>) -> Bool {
+            pageBreaks.isEmpty ? (page.map(pages.contains) ?? false) : pageBreaks.contains { pages.contains($0.page) }
+        }
     }
 
     /// Why the passages behind a citation were chosen (Plan JW P1a), so `show_source` says what it
@@ -149,9 +157,7 @@ struct AnswerSourceMemory: Equatable {
         guard let page = citation.page else { return ([], .page) }
         let last = citation.throughPage ?? page
         let title = citation.title.lowercased()
-        let onPages = retrieved.filter {
-            $0.documentName.lowercased() == title && ($0.page.map { (page...last).contains($0) } ?? false)
-        }
+        let onPages = retrieved.filter { $0.documentName.lowercased() == title && $0.isOn(page...last) }
         .sorted { ($0.page ?? 0, $0.chunkIndex) < ($1.page ?? 0, $1.chunkIndex) }
         guard let label = citation.figure, label.lowercased().hasPrefix("table") else { return (onPages, .page) }
         let named = onPages.filter { ($0.figure ?? "").caseInsensitiveCompare(label) == .orderedSame }
@@ -188,7 +194,11 @@ struct AnswerSourceMemory: Equatable {
 
     static func citations(from passages: [Retrieved]) -> [Citation] {
         unique(passages.compactMap { passage in
-            passage.page.map { Citation(kind: .manual, title: passage.documentName, page: $0, section: passage.section) }
+            let pages = passage.pageBreaks.map(\.page)
+            return passage.page.map {
+                Citation(kind: .manual, title: passage.documentName, page: pages.min() ?? $0, throughPage: pages.max(),
+                         section: passage.section)
+            }
         })
     }
 
@@ -323,6 +333,30 @@ enum ShowSourceResolver {
 struct SourcePagesRequest: Equatable, Identifiable {
     let id = UUID()
     let pages: [FieldSessionService.StagedFigure]
+    /// Which page the sheet opens on. Those before it are already on the phone (`TurnPageStack`).
+    var opening = 0
+}
+
+/// The pages `manual_figure` put up in one turn (Plan KE P2). "Show me page 12 and the wiring
+/// diagram" is two calls, and each staged one page, so the second took the place of the first. They
+/// add up instead, oldest first, up to what one sheet holds; the newest is the one that opens. A
+/// page asked for again moves to the end rather than stopping twice, and a new turn starts fresh.
+/// Pure.
+struct TurnPageStack: Equatable {
+    private(set) var turn: String?
+    private(set) var pages: [FieldSessionService.StagedFigure] = []
+
+    /// Add a page for `turn`, and return the sheet's pages.
+    mutating func adding(_ page: FieldSessionService.StagedFigure, turn: String) -> [FieldSessionService.StagedFigure] {
+        if turn != self.turn {
+            self.turn = turn
+            pages = []
+        }
+        pages.removeAll { $0.documentId == page.documentId && $0.page == page.page }
+        pages.append(page)
+        pages = Array(pages.suffix(ShowSourceResolver.maximumPages))
+        return pages
+    }
 }
 
 /// Holds the answer's sources for the session and puts the pages `show_source` resolved in front of
@@ -384,6 +418,22 @@ final class ShowSourceCenter: ObservableObject {
         memory.pictureAreas(for: citation)
     }
 
+    /// A cited page made ready to open: its passages to mark and, for a citation that names a range,
+    /// the page of it holding them (Plan KE P2). A command and a tap both come through here, so
+    /// neither can open what the other would not. `pageText` is asked only for a range.
+    func placing(_ staged: FieldSessionService.StagedFigure, for citation: Citation, store: DocumentStore?,
+                 number: Int? = nil, pageText: (Int) -> String?) -> FieldSessionService.StagedFigure {
+        var placed = staged
+        placed.citedPassages = citedPassages(for: citation, documentId: staged.documentId, store: store, number: number)
+        placed.pictureAreas = pictureAreas(for: citation)
+        if let first = citation.page, let last = citation.throughPage, !placed.citedPassages.isEmpty {
+            let place = CitedPagePlacement.place(placed.citedPassages, among: first...last, pageText: pageText)
+            placed.page = place.page
+            placed.citedPassages = place.passages
+        }
+        return placed
+    }
+
     /// The cited passages to mark for a citation opened in `documentId`, numbered as the answer
     /// numbered the citation (or 1 when it is not in the last answer — a chip on an older answer).
     func citedPassages(for citation: Citation, documentId: String, store: DocumentStore?,
@@ -403,9 +453,9 @@ final class ShowSourceCenter: ObservableObject {
     /// Put `pages` on the phone. Returns true when they are on screen now; false when they are
     /// waiting for the app to come to the front, in which case `notice` has been announced.
     @discardableResult
-    func present(_ pages: [FieldSessionService.StagedFigure], notice: String) -> Bool {
+    func present(_ pages: [FieldSessionService.StagedFigure], notice: String, opening: Int = 0) -> Bool {
         guard !pages.isEmpty else { return false }
-        let request = SourcePagesRequest(pages: pages)
+        let request = SourcePagesRequest(pages: pages, opening: opening)
         if isAppActive() {
             waiting = nil
             presented = request
@@ -429,7 +479,8 @@ final class ShowSourceCenter: ObservableObject {
         guard passage.source == .manual || passage.source == .capturedManual else { return nil }
         return .init(documentId: passage.documentId, documentName: passage.documentName,
                      chunkIndex: passage.chunkIndex, page: passage.page, section: passage.section,
-                     text: passage.text, figure: passage.figure, isTableRow: passage.kind == .tableRow)
+                     text: passage.text, figure: passage.figure, isTableRow: passage.kind == .tableRow,
+                     pageBreaks: passage.pageBreaks)
     }
 
     /// "AS/NZS 3000, page 112, §3.9.4.2 — tap to open". The citation is the vault's own label; no

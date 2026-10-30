@@ -216,15 +216,23 @@ struct VaultModelIndex: Equatable {
             .filter { $0.count >= 3 && $0.contains(where: \.isNumber) }
     }
 
-    /// What a document goes by (keyed as `key`): its title's first word, and its number, which is
-    /// any other word of the title holding both letters and digits ("Acme Service Manual A123").
-    /// Vault titles carry the number; the ledger has no field for it.
+    /// What a document goes by (keyed as `key`): its title's first word when that holds a digit
+    /// ("A02 Service Manual"), and any word of the title that looks like a document number
+    /// (`isDocumentNumber`, "Acme Service Manual AB12345"). Vault titles carry the number; the
+    /// ledger has no field for it. Any other word is not an identifier: a section's prose can name
+    /// a refrigerant or a size that a title happens to hold, and that assigned the document alone.
     static func documentIdentifiers(title: String) -> Set<String> {
-        let words = documentWords(in: title)
-        let numbers = words.filter { $0.contains(where: \.isLetter) }
+        let numbers = documentWords(in: title).filter(isDocumentNumber)
         let first = title.split(whereSeparator: \.isWhitespace).first.map(String.init)
             .flatMap { documentWords(in: $0).first }
         return Set((numbers + [first].compactMap { $0 }).map(key))
+    }
+
+    /// At least six characters, hyphens aside, four of them digits. A designation or a size is
+    /// shorter ("Q-99X", "400V"); a part or document number is not.
+    static func isDocumentNumber(_ word: String) -> Bool {
+        let keyed = key(word)
+        return keyed.count >= 6 && keyed.filter(\.isNumber).count >= 4
     }
 
     /// The sections of the vault's series (`seriesStem`): what a member no listed size claims has

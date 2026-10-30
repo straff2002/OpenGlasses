@@ -4287,7 +4287,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let sourcePagesToken = ShowSourceCenter.shared.$presented
             .compactMap { $0 }
             .sink { [weak self] request in
-                self?.presentSourcePages(request.pages)
+                self?.presentSourcePages(request.pages, opening: request.opening)
             }
         cancellables.append(sourcePagesToken)
 
@@ -5259,6 +5259,8 @@ class AppState: ObservableObject, AppStateProtocol {
         /// Further cited pages, after the first, when "show me the relevant pages" asked for all
         /// of them (Plan IN P2). Paged in the answer's order, each in its own document.
         var others: [Stop] = []
+        /// Which of `stops` the sheet opens on.
+        var opening = 0
 
         struct Stop: Equatable {
             let presenter: ManualFigurePresenter
@@ -5664,14 +5666,10 @@ class AppState: ObservableObject, AppStateProtocol {
             // A citation outlives the manual it names. Tapping one whose manual has been removed
             // has to say so — silence reads as a broken chip, and opening a page that is no longer
             // part of the vault is the thing removal promised would not happen.
-            switch session.resolveCitation(citation) {
-            case .figure(var staged):
-                session.logCitationOpened(citation, origin: origin)
-                // The chip opens on its passage, marked, when the answer's passage is still known.
-                staged.citedPassages = ShowSourceCenter.shared.citedPassages(for: citation,
-                                                                             documentId: staged.documentId,
-                                                                             store: documentStore)
-                staged.pictureAreas = ShowSourceCenter.shared.pictureAreas(for: citation)
+            // The chip opens on its passage, marked, when the answer's passage is still known.
+            switch session.resolveCitedPage(citation, store: documentStore) {
+            case .figure(let staged):
+                session.logCitationOpened(staged.opened(from: citation), origin: origin)
                 presentManualFigure(staged)
             case .removed(let title):
                 errorMessage = VaultManualRemovalPresentation.removedCitationNotice(manual: title)
@@ -5710,16 +5708,19 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Put several cited pages in front of the technician at once — "show me the relevant pages"
     /// (Plan IN P2). The first is presented the way a single page is; the rest page after it.
-    func presentSourcePages(_ pages: [FieldSessionService.StagedFigure]) {
-        guard let first = pages.first else { return }
+    func presentSourcePages(_ pages: [FieldSessionService.StagedFigure], opening: Int = 0) {
+        guard pages.indices.contains(opening) else { return }
         let session = FieldSessionService.shared
-        let stops = pages.map { staged in
-            AppState.ManualFigureRequest.Stop(presenter: ManualFigurePresenter.present(staged, session: session),
-                                              sheet: session.manualPageSheet(for: staged))
+        // A page before the opening one is on the phone already, and was logged going up.
+        let stops = pages.enumerated().map { index, staged in
+            AppState.ManualFigureRequest.Stop(
+                presenter: index < opening ? ManualFigurePresenter(figure: staged, sourceURL: session.sourcePDFURL(for: staged))
+                    : ManualFigurePresenter.present(staged, session: session),
+                sheet: session.manualPageSheet(for: staged))
         }
         manualFigureRequest = ManualFigureRequest(presenter: stops[0].presenter, sheet: stops[0].sheet,
-                                                  others: Array(stops.dropFirst()))
-        ManualFigureCue.show(first, on: glassesDisplay)
+                                                  others: Array(stops.dropFirst()), opening: opening)
+        ManualFigureCue.show(pages[opening], on: glassesDisplay)
     }
 
     /// A manual has just been removed from an installed vault (Plan FN).

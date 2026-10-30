@@ -108,6 +108,17 @@ final class EquipmentLookupSiteAnnouncementTests: XCTestCase {
         XCTAssertTrue(answer.contains("NOTES:"))
     }
 
+    /// Plan KE P2: a unit recorded from the turn's own words has no tool reply to carry the line.
+    func testAUnitSaidInTheTurnPutsTheSiteLineInItsPrompt() throws {
+        let service = try startSession()
+        service.applyJobAhead(job(equipment: [KnownEquipment(model: "NV80F060", serial: "AF80-2201")]))
+        let said = "the NV80F060 has no heat"
+        service.technicianWords = { said }
+        let prompt = service.promptContext(turn: said) ?? ""
+        XCTAssertTrue(prompt.contains("Part of the Hillside house system with 2 other units."), prompt)
+        XCTAssertEqual(try events(service).filter { $0.kind == .siteSystemAnnounced }.count, 1)
+    }
+
     func testRecordingAUnitTheSiteListsSaysSoOncePerUnit() async throws {
         let service = try startSession()
         service.applyJobAhead(job(equipment: [KnownEquipment(model: "NV80F060", serial: "AF80-2201")]))

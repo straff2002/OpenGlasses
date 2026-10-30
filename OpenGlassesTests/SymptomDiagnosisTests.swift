@@ -218,8 +218,38 @@ final class AssignedDocumentsTests: XCTestCase {
     }
 
     func testTheNumberNeedNotOpenTheTitle() {
-        let section = VaultModelIndex(vaultName: "V", files: [("m.md", "## QX100\nManual A123 applies\n")]).models[0]
-        XCTAssertEqual(section.assignedDocumentIds(among: [("x", "Acme Service Manual A123"), ("y", "Acme Service Manual A124")]), ["x"])
+        let section = VaultModelIndex(vaultName: "V", files: [("m.md", "## QX100\nManual AB12345 applies\n")]).models[0]
+        XCTAssertEqual(section.assignedDocumentIds(among: [("x", "Acme Service Manual AB12345"), ("y", "Acme Service Manual AB12346")]), ["x"])
+    }
+
+    func testAMissNamesTheGapAndNeverAsksToEscalate() {
+        let sentence = RetrievalEvidencePolicy.insufficientSentence
+        XCTAssertFalse(sentence.contains("escalation"), sentence)
+        XCTAssertTrue(sentence.contains("name what is missing"), sentence)
+        XCTAssertTrue(sentence.contains("offer an expert"), sentence)
+    }
+
+    func testAWordOfATitleMustLookLikeADocumentNumber() {
+        XCTAssertTrue(VaultModelIndex.isDocumentNumber("AB12345"))
+        XCTAssertTrue(VaultModelIndex.isDocumentNumber("SM-7001"))
+        XCTAssertFalse(VaultModelIndex.isDocumentNumber("A123"), "too short")
+        XCTAssertFalse(VaultModelIndex.isDocumentNumber("ABCD-123"), "too few digits")
+        XCTAssertEqual(VaultModelIndex.documentIdentifiers(title: "Acme Q-99X Guide"), [],
+                       "a designation inside a title is not a document's id")
+        XCTAssertEqual(VaultModelIndex.documentIdentifiers(title: "A02 Q-99X Guide"), ["A02"], "the first word still is")
+    }
+
+    func testARefrigerantInATitleAndInASectionAssignsNothing() {
+        let body = "## QX100\nCharged with Q-99X. Service: A02\n"
+        let section = VaultModelIndex(vaultName: "V", files: [("m.md", body)]).models[0]
+        let documents = [("a02", "A02 Acme Service Manual"), ("guide", "Acme Q-99X Charging Guide"), ("other", "Acme Field Notes")]
+        XCTAssertEqual(section.assignedDocumentIds(among: documents), ["a02"], "the guide is not ranked as this model's own")
+    }
+
+    func testARefrigerantAloneLeavesTheVaultUnassigned() {
+        let section = VaultModelIndex(vaultName: "V", files: [("m.md", "## QX100\nCharged with Q-99X.\n")]).models[0]
+        XCTAssertTrue(section.assignedDocumentIds(among: [("guide", "Acme Q-99X Charging Guide"), ("a03", "A03 Manual")]).isEmpty,
+                      "or every other document would rank down behind it")
     }
 
     func testCaseAndHyphensAside() {

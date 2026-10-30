@@ -251,6 +251,52 @@ final class ShowSourceTests: XCTestCase {
         XCTAssertEqual(StandardDocumentOpenPolicy.documentKind(of: bId, in: manifest), "standard")
     }
 
+    /// Plan KE P2: a command and a tap go through one resolution. A range opens at the page holding
+    /// the passage.
+    func testARangeOpensAtThePageHoldingThePassage() async throws {
+        let store = makeStore()
+        let (service, _) = try await startSession(store: store)
+        try retrieve(Self.bookB, page: 3, store: store, service: service)
+        let citation = Citation(kind: .manual, title: Self.bookB, page: 2, throughPage: 3)
+        service.recordAssistantReply("It is on the next page.\nSource: \(citation.label)", sourceID: "turn-1")
+
+        guard case .figure(let tapped) = service.resolveCitedPage(citation, store: store) else {
+            return XCTFail("the tap resolves")
+        }
+        XCTAssertEqual(tapped.page, 3)
+        XCTAssertFalse(tapped.citedPassages.isEmpty)
+
+        let reply = try await ShowSourceTool(documentStore: store, sessionService: service).execute(args: ["which": "the page"])
+        let shown = try XCTUnwrap(service.sourceCenter.presented?.pages.first)
+        XCTAssertEqual(shown.page, tapped.page, "the command opens what the tap opens")
+        XCTAssertEqual(shown.citedPassages, tapped.citedPassages)
+        XCTAssertTrue(reply.contains("\(Self.bookB), page 3"), reply)
+        XCTAssertFalse(try marks(of: shown, service: service).located.isEmpty)
+    }
+
+    func testARangeWithThePassageOnNoPageOpensItsFirstAndSaysSo() async throws {
+        let store = makeStore()
+        let (service, _) = try await startSession(store: store)
+        try retrieve(Self.bookB, page: 3, store: store, service: service)
+        let citation = Citation(kind: .manual, title: Self.bookB, page: 1, throughPage: 2)
+        // The passage is on page 3, outside what the model wrote.
+        let anchors = try XCTUnwrap(store.documents.first { $0.name == Self.bookB })
+        guard case .figure(var staged) = service.resolveCitedPage(citation, store: store) else {
+            return XCTFail("the tap resolves")
+        }
+        XCTAssertEqual(staged.page, 1)
+        XCTAssertTrue(staged.citedPassages.isEmpty, "nothing was retrieved on those pages, so nothing is claimed")
+        // With a passage to place and none of the range holding it, the sheet has a line to show.
+        let anchor = try XCTUnwrap(store.anchor(documentId: anchors.id, chunkIndex: 0))
+        let unplaced = PassageAnchor(documentId: anchor.documentId, chunkIndex: 0, text: "No page of this book prints this sentence at all.", page: 9)
+        let place = CitedPagePlacement.place([CitedPassage(number: 1, anchor: unplaced)], among: 1...2,
+                                             pageText: service.pageTextReader(for: staged, store: store))
+        staged.page = place.page
+        staged.citedPassages = place.passages
+        XCTAssertEqual(staged.page, 1)
+        XCTAssertEqual(try marks(of: staged, service: service).unmarkedLine, "The passage couldn't be marked on this page.")
+    }
+
     func testALockedPhoneKeepsThePageAndSaysItIsOnThePhone() async throws {
         let store = makeStore()
         let (service, _) = try await startSession(store: store)
