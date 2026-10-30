@@ -96,24 +96,30 @@ enum LLMProvider: String, CaseIterable {
 
     /// Default model for the provider.
     ///
-    /// Each id was read against its provider's model list and retirement notices on 2026-10-10.
+    /// Each id was read against its provider's model list and retirement notices on 2026-10-10,
+    /// and again on 2026-10-30 (Plan KA P2): Anthropic's current Sonnet, OpenAI's `gpt-5.4-mini`
+    /// (`gpt-4o` shuts down 2027-01-14; `gpt-5.4-mini` has no shutdown date, takes images, and its
+    /// tool turns already go out at reasoning `none`), Z.ai's flagship (`glm-4.5` is no longer in
+    /// its chat model list) and MiniMax's (`MiniMax-M2.7` is no longer on its models page).
     /// A pinned id goes stale without anything in the app changing: when the provider retires it,
     /// a new user's first turn fails as though the key were wrong (`GeminiLiveModelPolicy` records
     /// the same failure on the live socket). Re-read this table when a provider announces a
-    /// retirement, and prefer an id with no shutdown date over the newest one.
+    /// retirement, and prefer an id with no shutdown date over the newest one. `.custom` keeps
+    /// `gpt-4o`: it stands for whatever OpenAI-compatible server the wearer names, whose model
+    /// names are its own, so it is left for its own change.
     var defaultModel: String {
         switch self {
-        case .anthropic: return "claude-sonnet-5"
-        case .openai: return "gpt-4o"
+        case .anthropic: return "claude-sonnet-5-5"
+        case .openai: return "gpt-5.4-mini"
         case .chatgpt: return ChatGPTOAuth.defaultModel
         case .gemini: return "gemini-3.5-flash-lite"
         case .geminiVertex: return "gemini-3.5-flash-lite"
         case .groq: return "openai/gpt-oss-120b"
         case .deepseek: return "deepseek-flash"
         case .mistral: return "mistral-medium-latest"
-        case .zai: return "glm-4.5"
+        case .zai: return "glm-5.3"
         case .qwen: return "qwen3.7-plus"
-        case .minimax: return "MiniMax-M2.7"
+        case .minimax: return "MiniMax-M3"
         case .xai: return "grok-4.7"
         case .openrouter: return "anthropic/claude-sonnet-5"
         case .custom: return "gpt-4o"

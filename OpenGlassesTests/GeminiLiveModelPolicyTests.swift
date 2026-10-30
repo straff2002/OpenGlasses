@@ -151,4 +151,46 @@ final class GeminiLiveModelPolicyTests: XCTestCase {
         XCTAssertNotNil(chosen)
         XCTAssertTrue(GeminiLiveModelPolicy.supportsAsyncFunctionCalling(chosen!))
     }
+
+    // MARK: - Gemini 3.8 Live (Plan KA P2, docs read 2026-10-30)
+
+    /// The Live guide's default; the 2.5 native-audio preview shuts down 2026-11-17.
+    func testTheFallbackIsTheLiveGuidesDefault() {
+        XCTAssertEqual(GeminiLiveModelPolicy.offlineFallbackModel, "gemini-3.8-live")
+        XCTAssertTrue(GeminiLiveModelPolicy.supportsAsyncFunctionCalling("gemini-3.8-live"),
+                      "the 3.8 Live page makes NON_BLOCKING the default function calling mode")
+        XCTAssertFalse(GeminiLiveModelPolicy.supportsAsyncFunctionCalling("gemini-3.1-flash-live-preview"))
+    }
+
+    /// Two async-capable stable ids: the newer wins, so an account that lists both moves to 3.8
+    /// before the 2.5 preview behind the alias shuts down.
+    func testGemini38LiveBeatsTheTwoFiveAlias() {
+        let chosen = GeminiLiveModelPolicy.choose(from: [
+            "models/gemini-2.5-flash-native-audio-latest",
+            "models/gemini-2.5-flash-native-audio-preview-12-2025",
+            "models/gemini-3.1-flash-live-preview",
+            "models/gemini-3.8-live",
+            "models/gemini-3.8-live-extended-thinking",
+            "models/gemini-3.5-transcribe-live",
+            "models/gemini-3.5-live-translate-preview"
+        ])
+        XCTAssertEqual(chosen, "gemini-3.8-live")
+    }
+
+    /// A transcription model reached over the Live socket is not an assistant.
+    func testATranscriptionLiveModelIsSpecialised() {
+        XCTAssertEqual(GeminiLiveModelPolicy.choose(from: ["models/gemini-3.5-transcribe-live",
+                                                           "models/gemini-3.1-flash-live-preview"]),
+                       "gemini-3.1-flash-live-preview")
+    }
+
+    func testStableIdsAreAliasesOrUndatedNames() {
+        for id in ["gemini-3.8-live", "gemini-2.5-flash-native-audio-latest", "gemini-3.8-live-extended-thinking"] {
+            XCTAssertTrue(GeminiLiveModelPolicy.isStable(id), id)
+        }
+        for id in ["gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.0-flash-live-001",
+                   "gemini-live-experimental", "gemini-3.1-flash-live-preview", "lyria-realtime-exp"] {
+            XCTAssertFalse(GeminiLiveModelPolicy.isStable(id), id)
+        }
+    }
 }

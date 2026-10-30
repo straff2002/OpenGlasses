@@ -87,6 +87,107 @@ final class ModelKindClassifierTests: XCTestCase {
         XCTAssertEqual(kind(.chatgpt, "gpt-5.5-tts-imaginary"), .chat)
     }
 
+    // MARK: - Plan KA P2: kind words beat how a model is reached
+
+    /// A word that names a kind beats `realtime`, `live` and xAI's `voice`, which only say how the
+    /// model is reached (provider docs, read 2026-10-30).
+    func testKindWordsBeatTheWordsForHowAModelIsReached() {
+        XCTAssertEqual(kind(.openai, "gpt-live-transcribe"), .transcription)
+        XCTAssertEqual(kind(.openai, "gpt-realtime-whisper"), .transcription)
+        XCTAssertEqual(kind(.xai, "grok-voice-transcribe-2.0"), .transcription)
+        XCTAssertEqual(kind(.qwen, "paraformer-realtime-v2"), .transcription)
+        XCTAssertEqual(kind(.mistral, "voxtral-mini-tts-realtime-3-0"), .speech)
+        XCTAssertEqual(kind(.mistral, "voxtral-mini-transcribe-realtime-3-0"), .transcription)
+        XCTAssertEqual(kind(.gemini, "gemini-3.5-transcribe-live"), .transcription)
+        XCTAssertEqual(kind(.gemini, "lyria-realtime-exp"), .music)
+    }
+
+    /// …and a model whose only kind word is the modifier stays a live model.
+    func testLiveModelsWithNoKindWordStayLive() {
+        for id in ["gpt-realtime-2.1-mini", "gpt-realtime-2.1", "gpt-realtime-2", "gpt-realtime-1.5",
+                   "gpt-live-1", "gpt-realtime-translate"] {
+            XCTAssertEqual(kind(.openai, id), .realtime, id)
+        }
+        XCTAssertEqual(kind(.gemini, "gemini-3.8-live"), .realtime)
+        XCTAssertEqual(kind(.gemini, "gemini-3.8-live-extended-thinking"), .realtime)
+        XCTAssertEqual(kind(.qwen, "qwen3.8-omni-flash-realtime"), .realtime)
+        XCTAssertEqual(kind(.xai, "grok-voice-latest"), .realtime)
+    }
+
+    /// Families that fell through to chat (provider model pages, read 2026-10-30).
+    func testFamiliesWithNoKindWordAreLabelled() {
+        XCTAssertEqual(kind(.gemini, "gemini-nano-banana-2.1"), .image)
+        XCTAssertEqual(kind(.gemini, "gemini-omni-1.1-flash"), .video)
+        XCTAssertEqual(kind(.gemini, "gemini-omni-1.1-flash",
+                            ModelListMetadata(row: ["supportedGenerationMethods": ["generateContent"]])), .video,
+                       "Omni is Google's video model even where it lists the chat method")
+        XCTAssertEqual(kind(.qwen, "happyhorse-1.1-t2v"), .video)
+        XCTAssertEqual(kind(.qwen, "happyhorse-1.1-r2v"), .video)
+        XCTAssertEqual(kind(.qwen, "happyhorse-1.0-video-edit"), .video)
+        XCTAssertEqual(kind(.qwen, "happyoyster-1.0-adventure"), .other)
+        XCTAssertEqual(kind(.qwen, "cosyvoice-v3.5-plus"), .speech)
+        XCTAssertEqual(kind(.zai, "cogvideox-3"), .video)
+        XCTAssertEqual(kind(.mistral, "shieldstral-1-0"), .moderation)
+        XCTAssertEqual(kind(.minimax, "T2V-01-Director"), .video)
+        XCTAssertEqual(kind(.xai, "grok-imagine-video-1.5"), .video, "a video model, not an image one")
+        XCTAssertEqual(kind(.xai, "grok-imagine-image-2.0"), .image)
+    }
+
+    /// Qwen's Wan family is video, except its image models.
+    func testWanImageModelsAreImages() {
+        XCTAssertEqual(kind(.qwen, "wan2.7-image-pro"), .image)
+        XCTAssertEqual(kind(.qwen, "wan3.0-video"), .video)
+        XCTAssertEqual(kind(.qwen, "wan2.2-t2v-plus"), .video)
+    }
+
+    /// `omni` is Gemini's video word alone: Qwen's omni models and OpenAI's moderation model keep
+    /// their kinds.
+    func testOmniIsVideoOnlyForGemini() {
+        XCTAssertEqual(kind(.qwen, "qwen3.8-omni-flash"), .chat)
+        XCTAssertEqual(kind(.openai, "omni-moderation-latest"), .moderation)
+        XCTAssertEqual(kind(.custom, "omni-chat-7b"), .chat)
+    }
+
+    func testMistralsRealtimeTranscriptionAndClassificationFlags() {
+        let live = ModelListMetadata(row: ["capabilities": ["completion_chat": false, "audio_transcription_realtime": true]])
+        XCTAssertEqual(kind(.mistral, "voxtral-imaginary-3-0", live), .transcription)
+        let classify = ModelListMetadata(row: ["capabilities": ["completion_chat": false, "classification": true]])
+        XCTAssertEqual(kind(.mistral, "imaginary-classifier", classify), .moderation)
+    }
+
+    /// A Gemini Live-only model is live unless its id names another kind.
+    func testAGeminiLiveOnlyTranscriptionModelIsTranscription() {
+        let bidi = ModelListMetadata(row: ["supportedGenerationMethods": ["bidiGenerateContent"]])
+        XCTAssertEqual(kind(.gemini, "gemini-3.5-transcribe-live", bidi), .transcription)
+        XCTAssertEqual(kind(.gemini, "gemini-3.8-live", bidi), .realtime)
+    }
+
+    /// The new words are whole words too, and unknown ids still stay chat.
+    func testNewWordsDontCatchUnknownIds() {
+        for id in ["banana-bread-13b", "nano-llama-2", "omnibus-7b", "happy-model", "t2-vision-lm", "cosy-chat"] {
+            XCTAssertEqual(kind(.custom, id), .chat, id)
+        }
+    }
+
+    /// OpenAI's real list, fetched with a key on 2026-10-30 (140 entries): every family lands in
+    /// its kind, and the chat models stay chat.
+    func testTheRealOpenAIListIsLabelled() throws {
+        let models = try OpenAIModelListFixture.models()
+        XCTAssertEqual(models.count, 140)
+        let byID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0.kind) })
+        let expected: [String: ModelKind] = [
+            "gpt-5.4-mini": .chat, "gpt-6-luna": .chat, "gpt-audio-1.5": .chat, "chat-latest": .chat,
+            "gpt-4o-mini-search-preview": .chat, "o3": .chat,
+            "tts-1": .speech, "tts-1-hd-1106": .speech, "gpt-4o-mini-tts-2025-12-15": .speech,
+            "whisper-1": .transcription, "gpt-transcribe": .transcription, "gpt-live-transcribe": .transcription,
+            "gpt-realtime-whisper": .transcription, "gpt-4o-transcribe-diarize": .transcription,
+            "gpt-realtime-2.1": .realtime, "gpt-realtime-mini-2025-12-15": .realtime, "gpt-live-1": .realtime,
+            "gpt-image-2.5-flare": .image, "chatgpt-image-latest": .image, "sora-2-pro": .video,
+            "text-embedding-3-large": .embedding, "omni-moderation-2024-09-26": .moderation,
+        ]
+        for (id, kind) in expected { XCTAssertEqual(byID[id], kind, id) }
+    }
+
     // MARK: - The list's own field
 
     func testMistralCapabilitiesDecide() {
@@ -195,5 +296,20 @@ final class ModelKindClassifierTests: XCTestCase {
 private enum ModelClassifierTyped {
     static func kind(_ provider: LLMProvider, _ id: String, _ listed: [ModelFetcher.RemoteModel]) -> ModelKind? {
         ModelKindClassifier.kind(provider: provider, typedID: id, listed: listed)
+    }
+}
+
+/// OpenAI's `/v1/models` as one key received it on 2026-10-30: 140 public model ids, each with
+/// `owned_by` and `shutdown_date` (null or `YYYY-MM-DD`). No key or account detail is in it.
+enum OpenAIModelListFixture {
+    static func rows() throws -> [[String: Any]] {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("Fixtures/ModelLists/openai-models-2026-10-30.json"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try XCTUnwrap(json["data"] as? [[String: Any]])
+    }
+
+    static func models() throws -> [ModelFetcher.RemoteModel] {
+        ModelFetcher.openAICompatibleModels(try rows(), provider: .openai)
     }
 }

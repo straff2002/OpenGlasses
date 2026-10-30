@@ -106,6 +106,9 @@ struct ModelRoleInputs: Equatable {
     /// Cloud recognisers whose key is saved.
     var dictationCredentials: Set<CloudDictationProvider> = []
     var restrictions: ModelRoleRestrictions = .none
+    /// The day the decisions are made on, so a model past its shutdown day can't be chosen and one
+    /// close to it says so (Plan KA P2). Injected by tests.
+    var today: Date = Date()
 }
 
 /// Each role's current value, read from the settings the roles are.
@@ -155,8 +158,22 @@ struct ModelRoleOption: Identifiable, Equatable {
     let subtitle: String?
     /// Whether choosing it sends the wearer's data off the phone.
     let leavesPhone: Bool
+    /// Why it can't be chosen ("Retired", "Needs a connection the app doesn't have yet"); nil when
+    /// it can. A row with one is shown dimmed, not as a choice.
+    var unavailableLabel: String? = nil
+    /// A line a choosable row adds, such as when its provider retires it.
+    var note: String? = nil
 
     var id: String { choice.id }
+    var isChoosable: Bool { unavailableLabel == nil }
+
+    /// The option with a model status's label or note applied.
+    func applying(_ status: ModelChoiceStatus) -> ModelRoleOption {
+        var option = self
+        option.unavailableLabel = status.unavailableLabel
+        option.note = status.note
+        return option
+    }
 }
 
 /// Whether a role's picker can be used.
@@ -197,16 +214,25 @@ enum ModelRoleDefaults {
             return provider.defaultModel
         case .vision:
             // A cheap, fast model that takes images; a provider's own default where that is one.
+            // Each was read against its provider's docs on 2026-10-30 (Plan KA P2) and takes
+            // image input there. Groq's only image model is a preview, so Groq has none.
             switch provider {
             case .anthropic: return "claude-haiku-5-5"
             case .openai: return "gpt-5.4-mini"
             case .gemini, .geminiVertex: return provider.defaultModel
             case .xai: return provider.defaultModel
             case .mistral: return "mistral-small-latest"
+            case .deepseek: return "deepseek-flash"
+            case .zai: return "glm-5.3-flash"
+            case .qwen: return "qwen3.7-plus"
+            case .minimax: return "MiniMax-M3.1-Flash"
+            case .openrouter: return "anthropic/claude-haiku-5.5"
             default: return nil
             }
         case .voice:
             switch provider {
+            // OpenAI retires every model its speech endpoint takes on 2027-01-06, this one
+            // included, and names no replacement on that endpoint; Plan KB decides what follows.
             case .openai: return CloudVoiceRequests.openAISpeechModel
             case .gemini: return CloudVoiceRequests.defaultGeminiSpeechModel
             default: return nil
@@ -270,13 +296,19 @@ enum ModelRoleCatalog {
         }
     }
 
-    /// The roles a key offers: the provider's roles, less any its loaded list shows it can't do.
-    /// Images is never offered (Design 12).
-    static func roles(offeredBy config: ModelConfig, listed: [ModelFetcher.RemoteModel]? = nil) -> Set<ModelRole> {
+    /// The roles a key offers: the provider's roles, less any its loaded list shows it can't do —
+    /// no model of the role's kind that the app can reach and that is still answering (an OpenAI
+    /// list whose only live model is `gpt-live-1` offers no Live). Images is never offered
+    /// (Design 12).
+    static func roles(offeredBy config: ModelConfig, listed: [ModelFetcher.RemoteModel]? = nil,
+                      today: Date = Date()) -> Set<ModelRole> {
         var roles = providerRoles(config)
         guard let listed, !listed.isEmpty else { return roles }
-        let kinds = Set(listed.map(\.kind))
-        for role in listConfirms(config.llmProvider) where !kinds.contains(role.kind) {
+        let provider = config.llmProvider
+        for role in listConfirms(provider) where !listed.contains(where: { model in
+            ModelChoiceStatus.of(provider: provider, id: model.id, kind: model.kind, shutdown: model.shutdown,
+                                 for: role, today: today).isChoosable
+        }) {
             roles.remove(role)
         }
         return roles
@@ -304,6 +336,7 @@ enum ModelRoleCatalog {
                 ModelRoleOption(choice: .model(configId: config.id), title: config.name,
                                 subtitle: "\(config.providerDisplayName) · \(config.model)",
                                 leavesPhone: !isOnDevice(config.llmProvider))
+                    .applying(savedModelStatus(config, role: .assistant, today: inputs.today))
             }
         case .vision:
             var options = [ModelRoleOption(
@@ -316,6 +349,7 @@ enum ModelRoleCatalog {
                     ModelRoleOption(choice: .model(configId: config.id), title: config.name,
                                     subtitle: "\(config.providerDisplayName) · \(config.model)",
                                     leavesPhone: !isOnDevice(config.llmProvider))
+                        .applying(savedModelStatus(config, role: .vision, today: inputs.today))
                 }
             return options
         case .voice:
@@ -324,13 +358,15 @@ enum ModelRoleCatalog {
                 return ModelRoleOption(choice: .voice(preference), title: preference.displayName,
                                        subtitle: voiceSubtitle(preference),
                                        leavesPhone: preference == .auto ? !inputs.voiceCredentials.isEmpty
-                                                                         : preference.cloudEngine != nil)
+                                                                         : preference.cloudEngine != nil,
+                                       note: voiceNote(preference, today: inputs.today))
             }
         case .live:
             var options = inputs.realtimeModels.map { model in
                 ModelRoleOption(choice: .liveModel(id: model.id), title: model.name,
                                 subtitle: model.profile?.title ?? String(localized: "Unsupported protocol version"),
                                 leavesPhone: true)
+                    .applying(liveModelStatus(model, today: inputs.today))
             }
             // A saved chat key whose provider has a live model, and no live model saved for that
             // provider yet: offered, made on the tap that chooses it (Design 11).
@@ -338,7 +374,10 @@ enum ModelRoleCatalog {
             for config in inputs.savedModels where providerRoles(config).contains(.live) {
                 guard let providerID = liveProviderID(config.llmProvider),
                       !offeredProviders.contains(providerID),
-                      let model = ModelRoleDefaults.model(for: .live, provider: config.llmProvider) else { continue }
+                      let model = ModelRoleDefaults.model(for: .live, provider: config.llmProvider),
+                      ModelChoiceStatus.of(provider: config.llmProvider, id: model,
+                                           kind: ModelKindClassifier.kind(provider: config.llmProvider, id: model),
+                                           for: .live, today: inputs.today).isChoosable else { continue }
                 offeredProviders.insert(providerID)
                 options.append(ModelRoleOption(
                     choice: .newLiveModel(providerID: providerID, model: model, sourceConfigId: config.id),
@@ -448,7 +487,7 @@ enum ModelRoleCatalog {
         let restrictions = inputs.restrictions
         // Every suggestion leaves the phone.
         guard !restrictions.localOnly else { return [] }
-        let offered = roles(offeredBy: added, listed: listed)
+        let offered = roles(offeredBy: added, listed: listed, today: inputs.today)
         let vendor = vendorName(added.llmProvider)
         var suggestions: [ModelRoleSuggestion] = []
         for role in [ModelRole.vision, .voice, .live, .dictation] where offered.contains(role) {
@@ -458,7 +497,8 @@ enum ModelRoleCatalog {
             switch role {
             case .vision:
                 let choice: ModelRoleOption.Choice
-                if ModelFallbackChain.candidate(from: added).supportsVision {
+                if ModelFallbackChain.candidate(from: added).supportsVision,
+                   savedModelStatus(added, role: .vision, today: inputs.today).isChoosable {
                     choice = .model(configId: added.id)
                 } else if let model = ModelRoleDefaults.model(for: .vision, provider: added.llmProvider) {
                     choice = .newVisionModel(sourceConfigId: added.id, model: model)
@@ -473,7 +513,10 @@ enum ModelRoleCatalog {
                     destination: String(localized: "The text of each spoken reply goes to \(vendor), on this key's quota.")))
             case .live:
                 guard let providerID = liveProviderID(added.llmProvider),
-                      let model = ModelRoleDefaults.model(for: .live, provider: added.llmProvider, fromSuggestion: true)
+                      let model = ModelRoleDefaults.model(for: .live, provider: added.llmProvider, fromSuggestion: true),
+                      ModelChoiceStatus.of(provider: added.llmProvider, id: model,
+                                           kind: ModelKindClassifier.kind(provider: added.llmProvider, id: model),
+                                           for: .live, today: inputs.today).isChoosable
                 else { continue }
                 suggestions.append(.init(
                     role: role, choice: .newLiveModel(providerID: providerID, model: model, sourceConfigId: added.id),
@@ -524,6 +567,44 @@ enum ModelRoleCatalog {
         config.supportsVision = nil
         config.reasoningEffort = nil
         return config
+    }
+
+    // MARK: What a saved model can still do
+
+    /// A saved model's status for the assistant or Vision: its kind (a speech model saved as a
+    /// chat model can't answer), and its provider's shutdown day.
+    static func savedModelStatus(_ config: ModelConfig, role: ModelRole, today: Date) -> ModelChoiceStatus {
+        let provider = config.llmProvider
+        let kind = ModelKindClassifier.kind(provider: provider, typedID: config.model) ?? .chat
+        return ModelChoiceStatus.of(provider: provider, id: config.model, kind: kind, for: role, today: today)
+    }
+
+    /// A saved live model's status. Only OpenAI's ids are read: its realtime socket takes the
+    /// `gpt-realtime…` models and not `gpt-live-1`, and its shutdown days are known. Gemini Live
+    /// picks the model it connects with from the account's own list, and a compatible server's
+    /// names are its own, so both stay choosable.
+    static func liveModelStatus(_ model: RealtimeModelConfig, today: Date) -> ModelChoiceStatus {
+        guard model.providerID == "openai" else { return .choosable(retiring: nil) }
+        let id = model.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let day = ModelShutdownCalendar.shutdown(provider: .openai, id: id)
+        if let day, day.hasPassed(on: today) { return .retired(day) }
+        let kind = ModelKindClassifier.kind(provider: .openai, id: id)
+        if kind == .realtime, !ModelTransport.canUse(provider: .openai, id: id, kind: kind, for: .live) {
+            return .needsConnection
+        }
+        if let day, day.isWithin(days: ModelShutdownCalendar.warningDays, of: today) {
+            return .choosable(retiring: day)
+        }
+        return .choosable(retiring: nil)
+    }
+
+    /// The OpenAI voice's model retires within the warning window: say when on its row.
+    private static func voiceNote(_ preference: TTSEnginePreference, today: Date) -> String? {
+        guard preference == .openAI,
+              let day = ModelShutdownCalendar.shutdown(provider: .openai, id: CloudVoiceRequests.openAISpeechModel),
+              !day.hasPassed(on: today), day.isWithin(days: ModelShutdownCalendar.warningDays, of: today)
+        else { return nil }
+        return ModelChoiceStatus.retiresLabel(day)
     }
 
     // MARK: Helpers

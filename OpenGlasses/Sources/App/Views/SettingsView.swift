@@ -565,12 +565,14 @@ private struct TierProviderSection: View {
                     modelRow(id: model.model, name: model.model, configId: model.id)
                 }
             } else {
-                ForEach(availableModels.filter(\.kind.isChat)) { remote in
-                    modelRow(id: remote.id, name: remote.name, configId: nil)
+                ForEach(availableModels.filter { $0.assistantStatus(provider: provider).isChoosable }) { remote in
+                    modelRow(id: remote.id, name: remote.name, configId: nil,
+                             note: remote.assistantStatus(provider: provider).note)
                 }
-                // Labelled, not offered: a speech or embedding model can't answer a turn.
-                ForEach(availableModels.filter { !$0.kind.isChat }) { remote in
-                    NotAnAssistantModelRow(model: remote)
+                // Labelled, not offered: a speech or embedding model, or a retired one, can't
+                // answer a turn.
+                ForEach(availableModels.filter { !$0.assistantStatus(provider: provider).isChoosable }) { remote in
+                    NotAnAssistantModelRow(model: remote, provider: provider)
                 }
             }
         } header: {
@@ -601,7 +603,7 @@ private struct TierProviderSection: View {
         return false
     }
 
-    private func modelRow(id: String, name: String, configId: String?) -> some View {
+    private func modelRow(id: String, name: String, configId: String?, note: String? = nil) -> some View {
         Button {
             // Prefer selecting via saved ModelConfig if one exists with this model ID
             if let existing = allModels.first(where: { $0.provider == provider.rawValue && $0.model == id }) {
@@ -620,6 +622,12 @@ private struct TierProviderSection: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    }
+                    if let note {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(OGTheme.warnLabel)
+                            .lineLimit(2)
                     }
                 }
                 Spacer()

@@ -226,10 +226,10 @@ struct ModelFormView: View {
             // selection list, the same shape the credentials step offers.
             if !availableModels.isEmpty {
                 Section {
-                    ForEach(availableModels.filter(\.kind.isChat)) { candidate in
+                    ForEach(availableModels.filter { $0.assistantStatus(provider: selectedProvider).isChoosable }) { candidate in
                         OGSelectionRow(
                             title: candidate.name,
-                            subtitle: candidate.id == candidate.name ? nil : candidate.id,
+                            subtitle: modelRowSubtitle(candidate),
                             isSelected: model == candidate.id,
                             accessibilityText: modelRowLabel(candidate)
                         ) {
@@ -239,7 +239,9 @@ struct ModelFormView: View {
                 } header: {
                     Text("Select Model")
                 }
-                NotAnAssistantModelsSection(models: availableModels.filter { !$0.kind.isChat })
+                NotAnAssistantModelsSection(
+                    models: availableModels.filter { !$0.assistantStatus(provider: selectedProvider).isChoosable },
+                    provider: selectedProvider)
             }
 
             Section {
@@ -251,6 +253,11 @@ struct ModelFormView: View {
                 // is for. A warning, not a refusal — the classifier can't know every server's names.
                 if let warning = ModelKindClassifier.kind(provider: selectedProvider, typedID: model,
                                                           listed: availableModels)?.assistantWarning {
+                    OGStatusLabel(warning, kind: .warn)
+                }
+                // A model its provider has retired, or retires soon (the list's own date, else
+                // the provider's published one).
+                if let warning = shutdownWarning {
                     OGStatusLabel(warning, kind: .warn)
                 }
 
@@ -440,7 +447,25 @@ struct ModelFormView: View {
     /// What VoiceOver reads for a fetched-model row. The id is only worth
     /// speaking when it differs from the display name.
     private func modelRowLabel(_ candidate: ModelFetcher.RemoteModel) -> String {
-        candidate.id == candidate.name ? candidate.name : "\(candidate.name), \(candidate.id)"
+        [candidate.name, candidate.id == candidate.name ? nil : candidate.id,
+         candidate.assistantStatus(provider: selectedProvider).note]
+            .compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private func modelRowSubtitle(_ candidate: ModelFetcher.RemoteModel) -> String? {
+        let parts = [candidate.id == candidate.name ? nil : candidate.id,
+                     candidate.assistantStatus(provider: selectedProvider).note].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The typed or chosen id's shutdown warning, where its provider has dated it: the loaded
+    /// list's own date, else the one the provider published.
+    private var shutdownWarning: String? {
+        let id = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return nil }
+        let listed = availableModels.first(where: { $0.id == id })?.shutdown
+        return ModelShutdownCalendar.warning(
+            for: ModelShutdownCalendar.shutdown(provider: selectedProvider, id: id, listed: listed))
     }
 
     // MARK: - Private

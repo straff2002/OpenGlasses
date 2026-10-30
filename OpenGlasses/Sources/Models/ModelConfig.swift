@@ -117,6 +117,16 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             let lowerModel = model.lowercased()
             let lowerBaseURL = baseURL.lowercased()
 
+            // Z.ai's GLM-5.3 Flash models take images natively (vision guide, read 2026-10-30), and
+            // MiniMax's M3 models accept `image_url` (models page and OpenAI-compatible API page,
+            // read 2026-10-30). Exact names: the same families' other models are text-only.
+            if provider == .zai, zaiVisionModels.contains(lowerModel.trimmingCharacters(in: .whitespaces)) {
+                return true
+            }
+            if provider == .minimax, miniMaxVisionModels.contains(lowerModel.trimmingCharacters(in: .whitespaces)) {
+                return true
+            }
+
             let knownVisionHints = [
                 "vision", "gpt-4", "gpt-4.1", "gpt-4o", "o1", "o3",
                 "claude-3", "claude-4", "sonnet", "opus",
@@ -155,6 +165,13 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         "ministral-8b-2512", "ministral-8b-latest",
         "ministral-14b-2512", "ministral-14b-latest",
     ]
+
+    /// Z.ai model IDs its docs mark as taking image input (`glm-5.3-flashx` is not yet on the
+    /// Coding Plan, the app's default endpoint, but takes images where it is served).
+    static let zaiVisionModels: Set<String> = ["glm-5.3-flash", "glm-5.3-flashx"]
+
+    /// MiniMax model IDs its docs mark as taking image input.
+    static let miniMaxVisionModels: Set<String> = ["minimax-m3", "minimax-m3.1-flash"]
 
     /// The Qwen Coding Plan models that take image input: the four its help page marks as vision
     /// (Alibaba Cloud Model Studio, last updated 2026-09-28, read 2026-10-10). The page says
