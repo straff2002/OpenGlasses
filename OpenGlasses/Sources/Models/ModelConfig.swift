@@ -83,7 +83,9 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             // front of a model that cannot use it, so the honest answer is no until a photo turn
             // is confirmed working against that backend. `ChatGPTVisionGate` is the backstop.
             return false
-        case .groq, .local, .appleOnDevice:
+        case .groq:
+            return groqVisionModels.contains(model.lowercased().trimmingCharacters(in: .whitespaces))
+        case .local, .appleOnDevice:
             return false
         case .deepseek:
             // V4.1-Flash (`deepseek-flash`) accepts images, and the legacy `deepseek-v4-flash` /
@@ -128,7 +130,7 @@ struct ModelConfig: Codable, Identifiable, Equatable {
             }
 
             let knownVisionHints = [
-                "vision", "gpt-4", "gpt-4.1", "gpt-4o", "o1", "o3",
+                "vision", "gpt-4", "gpt-4.1", "gpt-4o", "gpt-5", "o1", "o3",
                 "claude-3", "claude-4", "sonnet", "opus",
                 "gemini", "vl", "qwen-vl", "qwen2.5-vl", "qvq",
                 "pixtral", "llava", "minicpm-v", "glm-4.1v",
@@ -169,6 +171,12 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     /// Z.ai model IDs its docs mark as taking image input (`glm-5.3-flashx` is not yet on the
     /// Coding Plan, the app's default endpoint, but takes images where it is served).
     static let zaiVisionModels: Set<String> = ["glm-5.3-flash", "glm-5.3-flashx"]
+
+    /// Groq model IDs its vision guide lists for image input (read 2026-10-30): `qwen/qwen3.8-27b`,
+    /// up to three images a request. It is a preview model; the owner chose it as Groq's Vision
+    /// default anyway (2026-10-30). The guide's other entry is a limited preview not open to every
+    /// key, so it is left out.
+    static let groqVisionModels: Set<String> = ["qwen/qwen3.8-27b"]
 
     /// MiniMax model IDs its docs mark as taking image input.
     static let miniMaxVisionModels: Set<String> = ["minimax-m3", "minimax-m3.1-flash"]

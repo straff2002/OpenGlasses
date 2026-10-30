@@ -273,16 +273,18 @@ one key should be able to serve several jobs without the wearer hunting through 
      call returned six ids where the app's fallback has ten). The native list's capability codes are
      recorded above; reading them needs a Model Studio key, so it waits.
   6. Mistral: are the capability flags set as documented on the Voxtral 3 and OCR 4.1 models?
-  7. OpenRouter: `?output_modalities=speech` / `transcription` would fill its dimmed section, but the
-     app has no OpenRouter voice or dictation connection, so the fetch is unchanged.
+  7. ~~OpenRouter: should `?output_modalities=speech` / `transcription` be fetched?~~ Decided
+     (owner, 2026-10-30): no, it waits until the app has an OpenRouter voice or dictation connection.
   8. OpenAI: `gpt-6-luna` is cheaper than `gpt-5.4-mini` for photos, but whether the photo turn needs
      tools (its function calling on Chat Completions needs reasoning `none`) is unconfirmed; the
      vision default stays `gpt-5.4-mini`. Plan KC's table dates `gpt-realtime-mini-2025-10-06` to
      2027-01-20; OpenAI's deprecations page says it went on 2026-07-23 (left to Plan KC).
   9. Anthropic's list carries `retires_at` and `capabilities.image_input`; neither is read yet.
-  10. Groq's only image model (`qwen/qwen3.8-27b`) is a preview, so Groq has no Vision default.
-  11. The custom provider's default stays `gpt-4o` (its default address is OpenAI's): a custom
-      server's names are its own, so its default is left for its own change.
+  10. ~~Groq's only image model (`qwen/qwen3.8-27b`) is a preview.~~ Decided (owner, 2026-10-30):
+      it is Groq's Vision default, and the app now sends it photos.
+  11. ~~The custom provider's default `gpt-4o`.~~ Decided (owner, 2026-10-30): it follows OpenAI's
+      default (`gpt-5.4-mini`), since its default address is OpenAI's. The same change moves the
+      OpenRouter assistant default to `anthropic/claude-sonnet-5.5`, in step with Anthropic's.
 - **Later — Images.** A cloud image tool, as its own plan, then the Images role (Design 12).
 
 ## Decisions
@@ -295,6 +297,10 @@ Taken (owner, 2026-10-29):
 - Roles: Assistant, Vision, Voice, Live and Dictation, with Images later. They are offered when a
   key is added, in onboarding and in Settings, and never switched on silently. Vision is a chosen
   model for a text-only assistant's photo turns.
+
+Taken (owner, 2026-10-30, after P2): Groq's preview image model is its Vision default; the custom
+provider follows OpenAI's default; OpenRouter's speech and transcription lists wait for a connection
+that can use them; the OpenAI voice after 2027-01-06 is Plan KB's to settle (decision 2 below).
 
 Open:
 

@@ -59,10 +59,12 @@ final class ModelRoleTests: XCTestCase {
         XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: xai), [.assistant, .vision, .voice])
     }
 
-    func testAnAnthropicOrGroqKeyIsChatAndPerhapsVisionOnly() {
+    func testAnAnthropicOrGroqKeyIsChatAndVisionOnly() {
         XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: claude), [.assistant, .vision])
-        XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: model("g", .groq)), [.assistant],
-                       "Groq takes no images and the app has no Groq voice, live or dictation")
+        XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: model("g", .groq)), [.assistant, .vision],
+                       "Groq's preview image model; the app has no Groq voice, live or dictation")
+        XCTAssertEqual(ModelRoleCatalog.roles(offeredBy: model("g", .groq, key: "")), [.assistant],
+                       "a text Groq model with no key offers nothing more")
     }
 
     func testTheChatGPTSubscriptionOffersNoVisionRole() {
@@ -231,7 +233,9 @@ final class ModelRoleTests: XCTestCase {
         let groq = model("groq", .groq)
         XCTAssertEqual(ModelRoleCatalog.visionModelId(stored: "claude", saved: [claude]), "claude")
         XCTAssertNil(ModelRoleCatalog.visionModelId(stored: "gone", saved: [claude]), "deleted")
-        XCTAssertNil(ModelRoleCatalog.visionModelId(stored: "groq", saved: [groq]), "text-only")
+        XCTAssertNil(ModelRoleCatalog.visionModelId(stored: "groq", saved: [groq]), "a text-only Groq model")
+        let groqVision = model("groqv", .groq, model: "qwen/qwen3.8-27b")
+        XCTAssertEqual(ModelRoleCatalog.visionModelId(stored: "groqv", saved: [groqVision]), "groqv")
         XCTAssertNil(ModelRoleCatalog.visionModelId(stored: "cgpt", saved: [chatGPT]), "ChatGPT is text-only for photos")
         XCTAssertNil(ModelRoleCatalog.visionModelId(stored: "", saved: [claude]))
     }
@@ -397,8 +401,8 @@ final class ModelRoleTests: XCTestCase {
         XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .qwen), "qwen3.7-plus")
         XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .minimax), "MiniMax-M3.1-Flash")
         XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .openrouter), "anthropic/claude-haiku-5.5")
-        XCTAssertNil(ModelRoleDefaults.model(for: .vision, provider: .groq), "Groq's only image model is a preview")
-        for provider in [LLMProvider.deepseek, .zai, .qwen, .minimax, .openrouter] {
+        XCTAssertEqual(ModelRoleDefaults.model(for: .vision, provider: .groq), "qwen/qwen3.8-27b")
+        for provider in [LLMProvider.deepseek, .zai, .qwen, .minimax, .openrouter, .groq] {
             XCTAssertTrue(ModelRoleCatalog.roles(offeredBy: model("v", provider, model: "text-only-x")).contains(.vision),
                           provider.rawValue)
         }

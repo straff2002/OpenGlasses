@@ -464,12 +464,13 @@ struct Config {
         UserDefaults.standard.set(url, forKey: "openAIBaseURL")
     }
 
-    /// OpenAI-compatible model name
+    /// OpenAI-compatible model name. The fallback follows `LLMProvider.openai.defaultModel`, since
+    /// `gpt-4o` shuts down 2027-01-14.
     static var openAIModel: String {
         if let model = UserDefaults.standard.string(forKey: "openAIModel"), !model.isEmpty {
             return model
         }
-        return "gpt-4o"
+        return LLMProvider.openai.defaultModel
     }
 
     static func setOpenAIModel(_ model: String) {

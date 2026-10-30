@@ -104,9 +104,9 @@ enum LLMProvider: String, CaseIterable {
     /// A pinned id goes stale without anything in the app changing: when the provider retires it,
     /// a new user's first turn fails as though the key were wrong (`GeminiLiveModelPolicy` records
     /// the same failure on the live socket). Re-read this table when a provider announces a
-    /// retirement, and prefer an id with no shutdown date over the newest one. `.custom` keeps
-    /// `gpt-4o`: it stands for whatever OpenAI-compatible server the wearer names, whose model
-    /// names are its own, so it is left for its own change.
+    /// retirement, and prefer an id with no shutdown date over the newest one. `.custom` follows
+    /// OpenAI's default, since its default address is OpenAI's; a server with its own model names
+    /// replaces it in the form. OpenRouter follows Anthropic's current Sonnet (owner, 2026-10-30).
     var defaultModel: String {
         switch self {
         case .anthropic: return "claude-sonnet-5-5"
@@ -121,8 +121,8 @@ enum LLMProvider: String, CaseIterable {
         case .qwen: return "qwen3.7-plus"
         case .minimax: return "MiniMax-M3"
         case .xai: return "grok-4.7"
-        case .openrouter: return "anthropic/claude-sonnet-5"
-        case .custom: return "gpt-4o"
+        case .openrouter: return "anthropic/claude-sonnet-5.5"
+        case .custom: return "gpt-5.4-mini"
         case .local: return "mlx-community/gemma-4-e2b-it-4bit"
         case .appleOnDevice: return "apple-foundation-model"
         }
