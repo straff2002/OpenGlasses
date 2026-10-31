@@ -76,7 +76,7 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
 
     func testEverySuppressionReasonRoundTrips() {
         for reason in [SpeechDeliveryOutcome.SuppressionReason.muted, .noRoute, .silentMode,
-                       .backgrounded] {
+                       .backgrounded, .routeHeld] {
             XCTAssertEqual(SpeechDeliveryLedger.outcome(for: .withheld(reason), teardownCause: nil),
                            .suppressed(reason: reason))
         }
@@ -225,12 +225,20 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
 
     func testEverySuppressionReasonIsReportedAsItself() async {
         for reason in [SpeechDeliveryOutcome.SuppressionReason.muted, .noRoute, .silentMode,
-                       .backgrounded] {
+                       .backgrounded, .routeHeld] {
             let service = TextToSpeechService()
             service.suppressionCheck = { reason }
             let outcome = await service.speakReporting("result")
             XCTAssertEqual(outcome, .suppressed(reason: reason))
         }
+    }
+
+    func testASessionHoldingTheRouteWithholdsSpeech() async {
+        let service = TextToSpeechService()
+        service.routeHeld = { true }
+        let outcome = await service.speakReporting("result")
+        XCTAssertEqual(outcome, .suppressed(reason: .routeHeld))
+        XCTAssertTrue(outcome.owesReplay)
     }
 
     func testAnEmptyUtteranceIsAFailureNotACompletion() async {

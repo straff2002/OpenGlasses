@@ -116,6 +116,9 @@ class RealtimeSessionManager: ObservableObject {
     /// from someone who never chose the app.
     private(set) var interpreterPair: InterpreterPair?
     private var interpreterRouter: InterpreterTurnRouter?
+    /// The interpreter is connected and has the audio route. Nothing else may speak until it ends:
+    /// the speaker flips line by line, so a message read out now could go to the room.
+    private(set) var interpreterIsOpen = false
     /// An interpreter session ended, for any reason. AppState puts back the mode it came from.
     var onInterpreterEnded: (() -> Void)?
     /// Plan GE P3: the conversation carried on on the phone while the signal was gone; the next
@@ -671,6 +674,7 @@ class RealtimeSessionManager: ObservableObject {
 
         if interpreterPair != nil {
             PrivacyLog.realtimeSession(logProvider, .interpreterStarted)
+            interpreterIsOpen = true
             announceInterpreterToOtherPerson()
         }
 
@@ -769,6 +773,7 @@ class RealtimeSessionManager: ObservableObject {
         if wasInterpreting { localCueSynth.stopSpeaking(at: .immediate) }
         interpreterPair = nil
         interpreterRouter = nil
+        interpreterIsOpen = false
 
         // Plan EW: give the camera claim back last, after `isActive` is false. The release asks
         // whether anything else is still consuming the stream, and an active live session is one

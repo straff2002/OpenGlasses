@@ -31,9 +31,11 @@ enum LiveModeHandoffPlanner {
     ///   - handoffEnabled: the setting's effective value.
     ///   - route: where the handoff says the conversation is.
     ///   - pathSatisfied: whether the network path claims to be up.
+    ///   - interpreting: the session was the spoken interpreter. There's nothing to carry on, and
+    ///     resuming would open an ordinary assistant session with someone else still talking.
     static func decideOnLoss(mode: AppMode, handoffEnabled: Bool, route: HandoffRoute,
-                             pathSatisfied: Bool) -> LossDecision {
-        guard mode.isRealtime, handoffEnabled else { return .endSession }
+                             pathSatisfied: Bool, interpreting: Bool = false) -> LossDecision {
+        guard mode.isRealtime, handoffEnabled, !interpreting else { return .endSession }
         // Only a loss the network explains is handed to the phone. A session that died with the
         // path up and the cloud reachable is a provider problem, and the phone would not fix it.
         guard route == .phone || !pathSatisfied else { return .endSession }

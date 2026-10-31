@@ -238,13 +238,19 @@ What the code changed:
   hears, so a reply proves nothing. A TV is one language, so it never changes direction, and the idle
   limit ends the session. A long one-way talk gets the warning too, and a touch answers it. The
   warning is the local voice, because the model would translate it.
-- **A language that can't be read stays private.** Same-script pairs need 10 letters and 75%
-  confidence, so "Sí" goes to the ear. How often the 1.2 s ceiling beats the transcript on a real
+- **A language that can't be read stays private.** Same-script pairs need 10 letters, with 75%
+  confidence for the ear and 90% for the speaker, so "Sí" goes to the ear. How often the 1.2 s ceiling beats the transcript on a real
   session is the main thing P4 has to find out.
 - **Nothing reaches the recorder or the job.** `LiveConversationRecorder` and `LiveJobBridge` are
   skipped, so there's no handover and nothing for a mode switch to carry. `canInject` is false, so
   notifications and job updates can't be handed to a model that would translate them. Nothing is
   written to disk but the two preferences, so `DataStoreRegistry` gets no new store.
+- **Nothing else speaks while it's open.** A message read out could land on the speaker, and on a
+  phone-only route `speakReporting` sets the speaker itself, where the engine wouldn't know to clear
+  it. So the speech service withholds everything (`routeHeld`), and the notification queue holds
+  messages until the session ends. Alerts that speak directly are withheld and not said again.
+- **A lost session ends.** The offline handoff would bring it back as an ordinary assistant session
+  with someone else still talking.
 - **A request starts its own session.** `live_translate` with `mode: "conversation"` lets the
   asking turn finish, runs Gemini Live with a one-session `interpreterRequest`, and puts back the
   mode it came from. The preset can also be selected from a Shortcut, using the Settings languages.
@@ -290,8 +296,8 @@ What the code changed:
 - Which Live models handle a spoken two-way prompt well is unknown until P4.
 - Whether `AVSpeechSynthesizer` follows the speaker override on a device. If not, the other person's
   line needs another way out.
-- Another voice in the app, such as a notification read aloud, can land on the speaker during a
-  speaker line. It would be rare and short; decide after P4 whether to hold such speech.
+- With no glasses connected, the wearer's lines come from the earpiece while the phone is held
+  between two people. There's no glasses gate; decide after P4 whether it needs one.
 - An app killed during an interpreter session comes back in Gemini Live mode, since the mode it came
   from isn't persisted.
 - The on-device Offline Live Session (Plan BU) doesn't go through `RealtimeSessionManager`. Check

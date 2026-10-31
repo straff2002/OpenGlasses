@@ -141,6 +141,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// *which* gate it was, and so those branches are exercised in tests rather than described.
     var suppressionCheck: (() -> SpeechDeliveryOutcome.SuppressionReason?)?
 
+    /// Whether a session holds the audio route, so nothing else may speak. Asked before this
+    /// service does anything else: on a phone-only route it sets the speaker itself.
+    var routeHeld: (() -> Bool)?
+
     /// The cloud voices that said their account is out of credit this session (ElevenLabs's
     /// quota_exceeded, OpenAI's insufficient_quota), so we skip further calls to them and go
     /// straight to the next engine. One latch per voice: one account running dry says nothing
@@ -504,6 +508,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// The route/policy reason to withhold speech right now, or `nil` to go ahead.
     private func currentSuppression() -> SpeechDeliveryOutcome.SuppressionReason? {
         if let suppressionCheck { return suppressionCheck() }
+        if routeHeld?() == true { return .routeHeld }
         return Config.glassesOnlyAudio && !glassesConnected ? .noRoute : nil
     }
 

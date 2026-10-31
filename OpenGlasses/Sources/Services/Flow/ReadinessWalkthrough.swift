@@ -534,6 +534,8 @@ enum ReadinessWalkthrough {
             return "Silent Mode is on, so the test line wasn't played."
         case .backgrounded:
             return "The app wasn't in the foreground, so the test line wasn't played."
+        case .routeHeld:
+            return "The spoken interpreter is running, so the test line wasn't played."
         }
     }
 
@@ -543,6 +545,7 @@ enum ReadinessWalkthrough {
         case .noRoute: return "Put the glasses on, or check the audio output, then try again."
         case .silentMode: return "Turn Silent Mode off, then try again."
         case .backgrounded: return "Keep Avenkin open while the check runs, then try again."
+        case .routeHeld: return "Say 'stop translating', then try again."
         }
     }
 

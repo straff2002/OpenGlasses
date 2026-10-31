@@ -49,6 +49,8 @@ enum SpeechDeliveryOutcome: Equatable {
         case silentMode
         /// The app is not in the foreground and this caller does not speak from the background.
         case backgrounded
+        /// A session has the phone's speaker, where anything said would be heard by the room.
+        case routeHeld
     }
 
     /// Whether the utterance was played to its end. The only state an acknowledgement may be sent

@@ -6731,8 +6731,13 @@ class AppState: ObservableObject, AppStateProtocol {
             self.stopLiveSession(self.openAIRealtimeSession.sessionMode, source: .voice)
         }
         geminiLiveSession.onInterpreterEnded = { [weak self] in
-            Task { @MainActor in await self?.returnFromInterpreter() }
+            Task { @MainActor in
+                await self?.returnFromInterpreter()
+                // What was held back for the session can be said now.
+                self?.agentNotificationQueue.onGlassesReconnected()
+            }
         }
+        speechService.routeHeld = { [weak self] in self?.geminiLiveSession.interpreterIsOpen == true }
     }
 
     /// A capture the wearer asked for produced an image. Called from `look_closely` and from the

@@ -107,6 +107,8 @@ enum InterpreterLanguageReader {
     /// Characters of a shared logographic script needed before the recogniser is asked.
     static let minimumLogographicLetters = 4
     static let minimumConfidence = 0.75
+    /// Going aloud needs more than staying private: a wrong guess this way can't be taken back.
+    static let minimumSpeakerConfidence = 0.9
 
     private enum Script: Hashable {
         case latin, han, kana, hangul, devanagari, thai, cyrillic, arabic, hebrew, greek
@@ -206,7 +208,7 @@ enum InterpreterLanguageReader {
         let wearer = wearerLanguages.reduce(0) { $0 + (hypotheses[$1] ?? 0) }
         let other = otherLanguages.reduce(0) { $0 + (hypotheses[$1] ?? 0) }
         if wearer >= minimumConfidence, wearer > other { return .ear }
-        if other >= minimumConfidence, other > wearer { return .speaker }
+        if other >= minimumSpeakerConfidence, other > wearer { return .speaker }
         return nil
     }
 }

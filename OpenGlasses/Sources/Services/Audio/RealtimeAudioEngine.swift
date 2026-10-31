@@ -217,6 +217,9 @@ final class RealtimeAudioEngine {
             try? session.setPreferredIOBufferDuration(0.064)
         }
         if route == .interpreter {
+            // App speech on a phone-only route sets the speaker itself, and nothing here would
+            // know to clear it.
+            try? session.overrideOutputAudioPort(.none)
             preferBuiltInMic(session)
         } else {
             applyRoutePolicy(session, useIPhoneMode: useIPhoneMode)
