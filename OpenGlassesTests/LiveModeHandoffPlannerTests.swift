@@ -21,6 +21,12 @@ final class LiveModeHandoffPlannerTests: XCTestCase {
                        .endSession, "a provider failure is not fixed by the phone")
     }
 
+    func testALostInterpreterEndsRatherThanComingBackAsAnAssistant() {
+        XCTAssertEqual(LiveModeHandoffPlanner.decideOnLoss(mode: .geminiLive, handoffEnabled: true,
+                                                           route: .phone, pathSatisfied: false,
+                                                           interpreting: true), .endSession)
+    }
+
     func testOffOrDirectModeEndsAsBefore() {
         XCTAssertEqual(LiveModeHandoffPlanner.decideOnLoss(mode: .geminiLive, handoffEnabled: false,
                                                            route: .phone, pathSatisfied: false), .endSession)

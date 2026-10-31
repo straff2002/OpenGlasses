@@ -26,6 +26,10 @@ class ToolCallRouter {
 
     /// `LiveVoiceEndPolicy.toolName` was called. Not a tool the registry knows: the session owns it.
     var onEndLiveSession: (() -> Void)?
+    /// The only tools this session may run, when it is restricted. The declarations alone don't
+    /// hold that: the model is listening to someone who isn't the wearer, and a name it invents
+    /// still arrives here.
+    var allowedToolNames: Set<String>?
     var hasInFlightCalls: Bool { !inFlightTasks.isEmpty }
 
     /// Callback to pause/resume camera streaming during tool execution (prevents instability).
@@ -57,6 +61,13 @@ class ToolCallRouter {
             sendResponse(Self.toolResponse(callId: callId, name: callName,
                                            payload: ["result": LiveVoiceEndPolicy.toolResult],
                                            phase: .direct))
+            return
+        }
+
+        if let allowedToolNames, !allowedToolNames.contains(callName) {
+            PrivacyLog.toolCallRefused(name: callName, invocation: callId)
+            sendResponse(buildToolResponse(callId: callId, name: callName,
+                                           result: .failure("That tool isn't available in this session.")))
             return
         }
 

@@ -55,10 +55,12 @@ class AgentNotificationQueue: ObservableObject {
 
     /// Whether a message enqueued now would be said straight away: glasses connected, worn and
     /// idle. The goal check-ins (Plan IW P2) ask before they decide to speak, so a check-in that
-    /// would only be queued goes to the digest once rather than twice.
+    /// would only be queued goes to the digest once rather than twice. An open interpreter holds
+    /// everything: what the wearer is told isn't for the person in front of them.
     var canDeliverImmediately: Bool {
         guard let appState else { return false }
         return appState.isConnected && !appState.glassesIdle && !appState.isProcessing && !appState.isListening
+            && !appState.geminiLiveSession.interpreterIsOpen
     }
 
     /// Add a notification to the queue. If glasses are connected, deliver immediately.
@@ -101,6 +103,7 @@ class AgentNotificationQueue: ObservableObject {
     func onGlassesReconnected() {
         guard !queue.isEmpty else { return }
         guard appState?.glassesIdle != true else { return }
+        guard appState?.geminiLiveSession.interpreterIsOpen != true else { return }
 
         // Remove stale notifications
         let before = queue.count

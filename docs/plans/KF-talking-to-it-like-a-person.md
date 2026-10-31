@@ -2,8 +2,9 @@
 
 **Status:** 🚧 P0 and P1 built 2026-10-31 (headless; nothing run on a device or against a live
 model). P0 is on by default. P1 is behind `firstReplyRaceEnabled`, default off, and its limits are
-placeholders because the support reports hold too little to set them. P2's device spike has not
-started, and P3 only happens if it passes. P4's device pass is owed.
+placeholders because the support reports hold too little to set them. P2 is a go: the owner passed
+the route on 2026-10-31. P3 built 2026-10-31 (headless; the same applies), off by default behind
+`interpreterEnabled`. P4's device pass is owed.
 **Track:** app-wide; Personal and Field Assist both use Live and Direct.
 **Related:** Plan [HY](HY-live-session-hygiene.md) (the Live idle clock), Plan
 [BK](BK-adversarial-review-remediation.md) P2b (the model cascade), Plan
@@ -177,6 +178,9 @@ phone mic picks up both people at conversational distance in a café-level room.
 No-go: the interpreter stops here. The glasses HFP route is not a fallback, because the override
 takes its mic away. Two-Way Conversation captions stay as the answer, and P3 is dropped.
 
+**Outcome: go.** The owner gave the go on 2026-10-31 and P3 went ahead on this route. No readings
+were recorded, so the 300 ms start and the ten flips aren't in this plan as numbers.
+
 ### P3 — the spoken interpreter (headless core, after a P2 go)
 
 - **`LiveAIMode` entry `interpreter`**, cloud Live, no camera, no tools except `end_live_session`.
@@ -204,6 +208,56 @@ takes its mic away. Two-Way Conversation captions stay as the answer, and P3 is 
 Tests: routing by language pair including same-script pairs, the ceiling, interruption, hold order,
 disclosure once per session, every gate.
 
+What the code changed:
+
+- **The instruction replaces the whole prompt.** `TranslationPromptBuilder.spokenInstruction` is all
+  the model gets, with the injection policy. The wearer's prompt, location, jobs and tool list stay
+  out, and so does a recovery's handover. The speech it hears comes from someone who isn't the
+  wearer, so what it doesn't have can't be drawn out of it.
+- **Tools are refused at the router as well.** `ToolCallRouter.allowedToolNames` turns down anything
+  but `end_live_session`, because a name the model invents still arrives there. Declarations come
+  from one branch, so setup and recovery can't differ, and the `execute` gateway is never offered.
+- **The transcript backstop is off.** A translated "bye" has a model reply, so it would have ended
+  the session on two people saying goodbye. Only the tool ends it.
+- **`announceTranslationStarted(spokenAloud: true)` can't make this disclosure.** It goes wherever
+  the app's voice is routed, which with glasses on is the wearer's ear, and only once a launch. So
+  the wearer's line goes through it with `spokenAloud: false`, and the other person's is spoken by
+  the session on the speaker, in their language, once per session, with the mic closed. That line is
+  English when the catalog has no translation for their language. The wearer's cloud notice is
+  remembered in `interpreterCloudNoticeGiven`.
+- **The audio session isn't `.voiceChat` or `.videoChat`.** Both imply HFP, so the route uses
+  `.default`. It also leaves out `.defaultToSpeaker`, so losing the glasses falls to the earpiece
+  rather than the room.
+- **Going to the speaker waits for playback to finish**, or the end of a private line would come out
+  aloud. Going to the ear happens at once. After a speaker line the mic stays closed for 0.25 s, and
+  15 s bounds any wait on playback that never reports finishing. These are placeholders.
+- **`hasPendingPlayback` was wrong after a turn ended.** It read a mirror that a response boundary
+  retires while the tail is still draining, so P0's goodbye wait could cut a goodbye off too.
+  `PlaybackDrainTracker` counts buffers until they report played.
+- **The idle clock counts the conversation changing direction.** An interpreter answers anything it
+  hears, so a reply proves nothing. A TV is one language, so it never changes direction, and the idle
+  limit ends the session. A long one-way talk gets the warning too, and a touch answers it. The
+  warning is the local voice, because the model would translate it.
+- **A language that can't be read stays private.** Same-script pairs need 10 letters, with 75%
+  confidence for the ear and 90% for the speaker, so "Sí" goes to the ear. How often the 1.2 s ceiling beats the transcript on a real
+  session is the main thing P4 has to find out.
+- **Nothing reaches the recorder or the job.** `LiveConversationRecorder` and `LiveJobBridge` are
+  skipped, so there's no handover and nothing for a mode switch to carry. `canInject` is false, so
+  notifications and job updates can't be handed to a model that would translate them. Nothing is
+  written to disk but the two preferences, so `DataStoreRegistry` gets no new store.
+- **Nothing else speaks while it's open.** A message read out could land on the speaker, and on a
+  phone-only route `speakReporting` sets the speaker itself, where the engine wouldn't know to clear
+  it. So the speech service withholds everything (`routeHeld`), and the notification queue holds
+  messages until the session ends. Alerts that speak directly are withheld and not said again.
+- **A lost session ends.** The offline handoff would bring it back as an ordinary assistant session
+  with someone else still talking.
+- **A request starts its own session.** `live_translate` with `mode: "conversation"` lets the
+  asking turn finish, runs Gemini Live with a one-session `interpreterRequest`, and puts back the
+  mode it came from. The preset can also be selected from a Shortcut, using the Settings languages.
+  The gate runs at the tool and again at the session start, so both are covered.
+- **`interpreterEnabled` is an off-ceiling** in organisation profiles (`SettingKey`), shown as off
+  rather than hidden.
+
 ### P4 — device pass (owed)
 
 - Say goodbye in Gemini Live and OpenAI Realtime, in English and one other language; the session
@@ -212,7 +266,9 @@ disclosure once per session, every gate.
   limit fires.
 - Run a week with `firstReplyRaceEnabled` on, reading how often each limit fires, then set the
   default.
-- A real two-language conversation, if P3 was built.
+- A real two-language conversation: how often a line reaches the right place, how often the 1.2 s
+  ceiling sends a line to the ear, the speaker's start time, and the other person's disclosure on
+  the speaker. Glasses disconnecting mid-line, and a phone call arriving on a speaker line.
 
 ## Acceptance
 
@@ -237,7 +293,13 @@ disclosure once per session, every gate.
 
 - Should P1's hedge cover Anthropic and OpenAI? Their streaming paths could use first token as the
   signal, but only a streaming caller has them today. Decide once Plan HZ's default is settled.
-- Which Live models handle a spoken two-way prompt well is unknown until P3.
+- Which Live models handle a spoken two-way prompt well is unknown until P4.
+- Whether `AVSpeechSynthesizer` follows the speaker override on a device. If not, the other person's
+  line needs another way out.
+- With no glasses connected, the wearer's lines come from the earpiece while the phone is held
+  between two people. There's no glasses gate; decide after P4 whether it needs one.
+- An app killed during an interpreter session comes back in Gemini Live mode, since the mode it came
+  from isn't persisted.
 - The on-device Offline Live Session (Plan BU) doesn't go through `RealtimeSessionManager`. Check
   whether it needs the same goodbye when P0 is built.
 - A silent turn still reaches `LiveConversationRecorder.completeTurn`, so room speech can end up in

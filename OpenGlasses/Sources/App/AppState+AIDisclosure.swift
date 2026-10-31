@@ -41,11 +41,24 @@ extension AppState {
                                   mirrorToHUD: false)
     }
 
+    /// An interpreter session is about to connect. The wearer is told the first time ever that this
+    /// one goes to the cloud, then hears the same line as any translation. The other person's line
+    /// comes from the session, on the speaker, once it is up.
+    func speakInterpreterNoticesIfDue() async {
+        guard let pair = geminiLiveSession.interpreterPair else { return }
+        if !Config.interpreterCloudNoticeGiven {
+            Config.interpreterCloudNoticeGiven = true
+            await speechService.speak(String(localized: "The interpreter sends what you and the other person say to Google to translate it. It isn't saved here."))
+        }
+        await announceTranslationStarted(target: pair.other, spokenAloud: false)
+    }
+
     /// Point every surface that can start a conversation or a translation at the lines above.
     /// Called once from setup.
     func wireAIDisclosures() {
         geminiLiveSession.onWillConnect = { [weak self] in
             await self?.speakConversationCueIfDue()
+            await self?.speakInterpreterNoticesIfDue()
         }
         openAIRealtimeSession.onWillConnect = { [weak self] in
             await self?.speakConversationCueIfDue()

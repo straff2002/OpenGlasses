@@ -7,7 +7,7 @@ final class OrgPolicyEnvelopeTests: XCTestCase {
 
     private let touchedKeys = ["privacyFilterEnabled", "remoteInvokeCaptureEnabled", "agentModeEnabled",
                                "organizationDisplayName", "organizationAllowsUnsignedVaults",
-                               "faceRecognitionEnabled", "cloudDictationEnabled"]
+                               "faceRecognitionEnabled", "cloudDictationEnabled", "interpreterEnabled"]
     private var saved: [String: Any] = [:]
 
     override func setUp() {
@@ -116,6 +116,25 @@ final class OrgPolicyEnvelopeTests: XCTestCase {
 
         PolicyEnvelope.clear()
         XCTAssertTrue(Config.faceRecognitionEnabled, "removing the profile restores the wearer's choice")
+    }
+
+    /// The spoken interpreter defaults off, and an organisation's off-ceiling reaches its gate.
+    func testTheInterpreterDefaultsOffAndAnOrganisationCanPinItOff() {
+        UserDefaults.standard.removeObject(forKey: "interpreterEnabled")
+        XCTAssertFalse(Config.interpreterEnabled, "a fresh install's default is off")
+
+        UserDefaults.standard.set(true, forKey: "interpreterEnabled")
+        XCTAssertTrue(Config.interpreterEnabled)
+
+        install(["interpreterEnabled": RawSetting(.bool(false), .ceiling)])
+        XCTAssertFalse(Config.interpreterEnabled)
+        let inputs = Config.interpreterGateInputs(pair: InterpreterPair(wearer: "en", other: "es"),
+                                                  usesGeminiLive: true)
+        XCTAssertEqual(InterpreterGate.refusal(inputs), .pinnedOff)
+
+        Config.interpreterEnabled = true   // a locked switch refuses the write
+        XCTAssertFalse(Config.interpreterEnabled)
+        PolicyEnvelope.clear()
     }
 
     /// Plan JM P2: cloud dictation defaults off, and an organisation's off-ceiling wins on read —

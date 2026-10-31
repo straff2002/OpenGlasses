@@ -100,7 +100,8 @@ extension AppState {
             mode: mode,
             handoffEnabled: connectivityHandoff.isEnabled,
             route: connectivityHandoff.route,
-            pathSatisfied: reachability.isOnline)
+            pathSatisfied: reachability.isOnline,
+            interpreting: geminiLiveSession.interpreterPair != nil)
         guard case .continueOnPhone(let resume) = decision else { return false }
         PrivacyLog.model(.offlineHandoff, detail: PrivacyToken("liveToPhone"))
         Task { @MainActor [weak self] in

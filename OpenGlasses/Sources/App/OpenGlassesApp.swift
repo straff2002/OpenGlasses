@@ -1255,6 +1255,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let localLLMService = LocalLLMService()
     let mcpClient = MCPClient()
     let liveTranslation = LiveTranslationService()
+    /// The mode to put back when an interpreter session ends, when it took over from another.
+    var interpreterReturnMode: AppMode?
+    /// Going back to it: nothing the interpreter did touched the camera, so neither does the way out.
+    var isLeavingInterpreter = false
     let speechService = TextToSpeechService()
     let cameraService = CameraService()
     /// Plan GV: the phone camera a camera tool waits on when no glasses are connected. The root
@@ -3022,6 +3026,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Register live translation tool with its service reference
         var translationTool = LiveTranslationTool()
         translationTool.translationService = liveTranslation
+        translationTool.startConversation = { [weak self] language in
+            self?.startInterpreter(otherLanguage: language) ?? "The interpreter isn't available."
+        }
         nativeToolRegistry.register(translationTool)
 
         // Teleprompter tool (Phase 2): registered after the lazy service is available. The
@@ -3709,7 +3716,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     isListening = false
                 case .geminiLive:
                     geminiLiveSession.stopSession()
-                    await cameraService.tearDown()
+                    if !isLeavingInterpreter { await cameraService.tearDown() }
                 case .openaiRealtime, .openaiCompatibleRealtime:
                     openAIRealtimeSession.stopSession()
                     await cameraService.tearDown()
@@ -3732,7 +3739,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // session is up, which is what keeps capture and playback alive off-screen.
                     // Start visual input only when the selected live protocol can accept it.
                     guard Config.realtimeModel(for: target)?.capabilities?.vision != false,
-                          !Config.audioOnlyMode else { break }
+                          !Config.audioOnlyMode,
+                          geminiLiveSession.interpreterRequest == nil else { break }
                     do {
                         try await cameraService.startStreaming()
                     } catch {
@@ -6722,6 +6730,14 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return }
             self.stopLiveSession(self.openAIRealtimeSession.sessionMode, source: .voice)
         }
+        geminiLiveSession.onInterpreterEnded = { [weak self] in
+            Task { @MainActor in
+                await self?.returnFromInterpreter()
+                // What was held back for the session can be said now.
+                self?.agentNotificationQueue.onGlassesReconnected()
+            }
+        }
+        speechService.routeHeld = { [weak self] in self?.geminiLiveSession.interpreterIsOpen == true }
     }
 
     /// A capture the wearer asked for produced an image. Called from `look_closely` and from the

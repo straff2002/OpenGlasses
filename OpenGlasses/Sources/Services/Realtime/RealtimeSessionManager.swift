@@ -56,7 +56,7 @@ class RealtimeSessionManager: ObservableObject {
     private(set) var sessionMode: AppMode = .geminiLive
     private(set) var sessionModel: RealtimeModelConfig?
     init(legacyMode: AppMode? = nil) { self.legacyMode = legacyMode }
-    var supportsVision: Bool { sessionModel?.capabilities?.vision ?? true }
+    var supportsVision: Bool { interpreterPair == nil && (sessionModel?.capabilities?.vision ?? true) }
     var supportsTextInjection: Bool { sessionModel?.capabilities?.textInjection ?? true }
     var supportsContextUpdates: Bool { sessionModel?.capabilities?.contextUpdate ?? true }
     var supportsSuppliedSpeech: Bool { sessionModel?.capabilities?.suppliedSpeech ?? false }
@@ -107,6 +107,20 @@ class RealtimeSessionManager: ObservableObject {
     private var turnHadReply = false
     /// The idle warning is being spoken by the model, so its audio answers nobody.
     private var idleWarningInTurn = false
+
+    /// Set before a start to make that session the spoken interpreter. Consumed by the start.
+    var interpreterRequest: InterpreterPair?
+    /// The languages this session is interpreting between, or `nil` for any other session. It takes
+    /// nothing from the wearer's context and leaves nothing behind: no camera, no tools but the
+    /// ending, none of the app's prompt, and no record of what was said, because half of it comes
+    /// from someone who never chose the app.
+    private(set) var interpreterPair: InterpreterPair?
+    private var interpreterRouter: InterpreterTurnRouter?
+    /// The interpreter is connected and has the audio route. Nothing else may speak until it ends:
+    /// the speaker flips line by line, so a message read out now could go to the room.
+    private(set) var interpreterIsOpen = false
+    /// An interpreter session ended, for any reason. AppState puts back the mode it came from.
+    var onInterpreterEnded: (() -> Void)?
     /// Plan GE P3: the conversation carried on on the phone while the signal was gone; the next
     /// start opens with this handover block (``LiveContextHandover``) so the session picks up where
     /// the phone left off. Consumed by that start.
@@ -215,10 +229,22 @@ class RealtimeSessionManager: ObservableObject {
         }
         do { _ = try model.request(); try MedicalEgressGuard.check(model.route) }
         catch { errorMessage = error.localizedDescription; return }
+        let interpreter = interpreterRequest ?? selectedInterpreterPair
+        interpreterRequest = nil
+        if let interpreter, let refusal = InterpreterGate.refusal(
+            Config.interpreterGateInputs(pair: interpreter, usesGeminiLive: model.profile == .geminiLiveV1)) {
+            PrivacyLog.realtimeSession(logProvider, .interpreterRefused, detail: PrivacyToken(refusal.rawValue))
+            errorMessage = refusal.spokenReason
+            speakLocalCue(refusal.spokenReason)
+            return
+        }
         sessionMode = mode
         sessionModel = model
         providerSession = RealtimeProviderSession(model: model)
         audioManager = RealtimeAudioEngine(config: model.profile!.audioConfiguration)
+        audioManager.route = interpreter == nil ? .standard : .interpreter
+        interpreterPair = interpreter
+        interpreterRouter = interpreter.map(InterpreterTurnRouter.init)
 
         isActive = true
         micMuted = false
@@ -283,11 +309,20 @@ class RealtimeSessionManager: ObservableObject {
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
-                let forward = EchoSuppressionPolicy.shouldForwardCapturedBuffer(
-                    wearerMuted: self.micMuted,
-                    capability: self.audioManager.duplexCapability,
-                    iPhoneMode: self.useIPhoneAudioMode,
-                    modelSpeaking: self.providerSession.isModelSpeaking)
+                let forward: Bool
+                if let router = self.interpreterRouter {
+                    // The half-duplex tier, with the speaker in the model's place: the model
+                    // talking in the wearer's ear doesn't stop the other person being heard.
+                    forward = EchoSuppressionPolicy.shouldForwardCapturedBuffer(
+                        wearerMuted: self.micMuted, capability: .halfDuplex, iPhoneMode: true,
+                        modelSpeaking: !router.micOpen)
+                } else {
+                    forward = EchoSuppressionPolicy.shouldForwardCapturedBuffer(
+                        wearerMuted: self.micMuted,
+                        capability: self.audioManager.duplexCapability,
+                        iPhoneMode: self.useIPhoneAudioMode,
+                        modelSpeaking: self.providerSession.isModelSpeaking)
+                }
                 self.providerSession.setMuted(!forward)
                 guard forward else { return }
                 self.providerSession.sendAudio(data: data)
@@ -324,13 +359,18 @@ class RealtimeSessionManager: ObservableObject {
         providerSession.onAudioReceived = { [weak self] data in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.noteModelReply()
-            self.audioManager.playAudio(data: data)
+            if self.interpreterRouter != nil {
+                self.applyInterpreter(self.interpreterRouter?.audio(data, now: Date()))
+            } else {
+                self.audioManager.playAudio(data: data)
+            }
         }
 
         // Wire interruption → stop playback
         providerSession.onInterrupted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.audioManager.stopPlayback()
+            self.applyInterpreter(self.interpreterRouter?.interrupted())
             // FF P1/PR5: an answer the wearer spoke over is committed marked. What they heard of it
             // is unknown, and a handover must never present it as delivered.
             self.conversationRecorder.noteInterruption()
@@ -346,12 +386,15 @@ class RealtimeSessionManager: ObservableObject {
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 self.audioManager.resetPlaybackProgress()
-                self.conversationRecorder.completeTurn()
+                let interpreting = self.interpreterRouter != nil
+                if !interpreting { self.conversationRecorder.completeTurn() }
+                self.applyInterpreter(self.interpreterRouter?.turnComplete(now: Date()))
                 // Delta-based transcripts finish at the turn boundary. JSON adapters already
                 // recorded their complete input transcript when that event arrived.
                 let wearer = self.userTranscript
                 self.userTranscript = ""
                 self.finishTurnForVoiceEnd(wearer: wearer)
+                guard !interpreting else { return }
                 if self.providerSession.inputTranscriptionIsDelta {
                     await self.jobBridge.handleTranscript(wearer, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
                 }
@@ -371,13 +414,16 @@ class RealtimeSessionManager: ObservableObject {
                 self.idleClock.noteSpeechHeard()
                 self.userTranscript = self.providerSession.inputTranscriptionIsDelta
                     ? ScriptAwareJoiner.join(self.userTranscript, text) : text
-                if !self.providerSession.inputTranscriptionIsDelta {
+                // The interpreter's words stop at the screen. They are the other person's as often
+                // as the wearer's, so neither a job nor a handover gets them.
+                let interpreting = self.interpreterRouter != nil
+                if !interpreting, !self.providerSession.inputTranscriptionIsDelta {
                     await self.jobBridge.handleTranscript(text, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
                 }
                 self.aiTranscript = ""
                 // FF P1/PR5: the phone's own record. Passed the whole accumulated string so it
                 // shares this joiner rather than re-implementing it.
-                self.conversationRecorder.setWearerTurn(self.userTranscript)
+                if !interpreting { self.conversationRecorder.setWearerTurn(self.userTranscript) }
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
                 // The wearer is asking about what is in front of them *now*. With the content gate
@@ -393,7 +439,12 @@ class RealtimeSessionManager: ObservableObject {
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 self.noteModelReply()
                 self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
-                self.conversationRecorder.setAssistantTurn(self.aiTranscript)
+                if self.interpreterRouter != nil {
+                    self.applyInterpreter(self.interpreterRouter?.transcript(text, now: Date()))
+                    self.advanceInterpreter()
+                } else {
+                    self.conversationRecorder.setAssistantTurn(self.aiTranscript)
+                }
             }
         }
 
@@ -461,6 +512,7 @@ class RealtimeSessionManager: ObservableObject {
             toolCallRouter = ToolCallRouter(bridge: bridge)
             toolCallRouter?.supportsNonBlockingResponses = model.profile == .geminiLiveV1
             toolCallRouter?.nativeToolRouter = nativeToolRouter
+            toolCallRouter?.allowedToolNames = interpreterPair == nil ? nil : [LiveVoiceEndPolicy.toolName]
             toolCallRouter?.onEndLiveSession = { [weak self] in
                 guard let self, self.isActive, self.sessionIdentity == identity else { return }
                 self.voiceEnd.request(now: Date())
@@ -514,10 +566,12 @@ class RealtimeSessionManager: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000)
                 guard !Task.isCancelled, self.isActive, self.sessionIdentity == identity else { break }
+                self.advanceInterpreter()
                 if self.voiceEnd.isPending,
                    self.voiceEnd.shouldStop(
                     now: Date(), toolRunning: self.toolCallRouter?.hasInFlightCalls ?? false,
-                    playbackPending: self.providerSession.isModelSpeaking || self.audioManager.hasPendingPlayback) {
+                    playbackPending: self.providerSession.isModelSpeaking || self.audioManager.hasPendingPlayback
+                        || self.interpreterRouter?.holdsAudio == true) {
                     self.finishVoiceEnd()
                     break
                 }
@@ -535,7 +589,10 @@ class RealtimeSessionManager: ObservableObject {
                     // The retry ladder starting is the moment the wearer lost the assistant; the
                     // terminal `onDisconnected` path above cannot fire for this drop, because it
                     // guards on exactly this flag.
-                    if self.reconnecting { _ = self.onLifecycle?(.connectionLost) }
+                    if self.reconnecting {
+                        _ = self.onLifecycle?(.connectionLost)
+                        self.applyInterpreter(self.interpreterRouter?.interrupted())
+                    }
                 }
                 if let bridge = self.openClawBridge {
                     if self.toolCallStatus != bridge.lastToolCallStatus {
@@ -563,7 +620,7 @@ class RealtimeSessionManager: ObservableObject {
 
         // Audio setup — use iPhone mode when camera NOT streaming (no glasses connected),
         // use glasses/videoChat mode when camera IS streaming (mic is on remote device)
-        useIPhoneAudioMode = !isCameraStreaming
+        useIPhoneAudioMode = !isCameraStreaming && interpreterPair == nil
         PrivacyLog.realtimeSession(self.logProvider, .audioModeSelected,
                                    detail: PrivacyToken(useIPhoneAudioMode ? "iPhone" : "glasses"))
         do {
@@ -613,6 +670,12 @@ class RealtimeSessionManager: ObservableObject {
             stopSession()   // Plan EW — the same teardown a finished session gets
             errorMessage = message
             return
+        }
+
+        if interpreterPair != nil {
+            PrivacyLog.realtimeSession(logProvider, .interpreterStarted)
+            interpreterIsOpen = true
+            announceInterpreterToOtherPerson()
         }
 
         // Late camera retry: if camera failed initially (SDK wasn't ready),
@@ -706,6 +769,11 @@ class RealtimeSessionManager: ObservableObject {
         voiceEnd = LiveVoiceEndTracker()
         turnHadReply = false
         idleWarningInTurn = false
+        let wasInterpreting = interpreterPair != nil
+        if wasInterpreting { localCueSynth.stopSpeaking(at: .immediate) }
+        interpreterPair = nil
+        interpreterRouter = nil
+        interpreterIsOpen = false
 
         // Plan EW: give the camera claim back last, after `isActive` is false. The release asks
         // whether anything else is still consuming the stream, and an active live session is one
@@ -714,6 +782,7 @@ class RealtimeSessionManager: ObservableObject {
         if hadCameraClaim, let stopCamera = onRequestStopCamera {
             Task { await stopCamera() }
         }
+        if wasInterpreting { onInterpreterEnded?() }
     }
 
     // MARK: - Idle end (Plan HY P1)
@@ -728,7 +797,9 @@ class RealtimeSessionManager: ObservableObject {
     /// The model produced speech or a transcript of it.
     private func noteModelReply() {
         turnHadReply = true
-        if !idleWarningInTurn { idleClock.noteModelReplied() }
+        // An interpreter replies to anything it hears, a TV included, so a reply proves nothing.
+        // There the conversation changing direction is the activity (`InterpreterTurnRouter`).
+        if !idleWarningInTurn, interpreterRouter == nil { idleClock.noteModelReplied() }
     }
 
     private func startIdleClock(identity: Int) {
@@ -756,6 +827,8 @@ class RealtimeSessionManager: ObservableObject {
     /// ElevenLabs — this is the session talking, not the app.
     private func speakIdleWarning(_ line: String) {
         if let idleWarningSpeaker { idleWarningSpeaker(line); return }
+        // Given to the model, the warning would be translated and could come out of the speaker.
+        if interpreterRouter != nil { speakLocalCue(line); return }
         if canInject, supportsSuppliedSpeech {
             idleWarningInTurn = true
             providerSession.speakText(line)
@@ -782,7 +855,8 @@ class RealtimeSessionManager: ObservableObject {
         let parser = VoiceCommandParser.default.named(Config.assistantName)
         if LiveVoiceEndPolicy.backstopApplies(
             transcript: wearer, modelReplied: replied,
-            jobActive: FieldSessionService.shared.activeSession != nil, parser: parser) {
+            jobActive: FieldSessionService.shared.activeSession != nil,
+            interpreting: interpreterRouter != nil, parser: parser) {
             voiceEnd.request(now: Date(), turnAlreadyEnded: true)
         }
     }
@@ -794,6 +868,44 @@ class RealtimeSessionManager: ObservableObject {
         } else {
             stopSession(reason: .saidGoodbye)
         }
+    }
+
+    // MARK: - Interpreter
+
+    /// The Interpreter preset, selected from a Shortcut rather than asked for by voice.
+    private var selectedInterpreterPair: InterpreterPair? {
+        guard Config.activeLiveAIModeId == LiveAIMode.interpreterID else { return nil }
+        return InterpreterPair(wearer: Config.translationLanguageA, other: Config.translationLanguageB)
+    }
+
+    private func applyInterpreter(_ effects: [InterpreterTurnRouter.Effect]?) {
+        for effect in effects ?? [] {
+            switch effect {
+            case .setOutput(let output): audioManager.setOutput(output)
+            case .play(let data): audioManager.playAudio(data: data)
+            case .exchanged: idleClock.noteActivity()
+            }
+        }
+    }
+
+    private func advanceInterpreter() {
+        guard interpreterRouter != nil else { return }
+        let pending = audioManager.hasPendingPlayback || localCueSynth.isSpeaking
+        applyInterpreter(interpreterRouter?.tick(now: Date(), playbackPending: pending))
+    }
+
+    /// Tell the other person what this is, from the speaker, in their language, as the session
+    /// opens. Not `announceTranslationStarted(spokenAloud:)`: that goes wherever the app's voice is
+    /// routed, which with glasses on is the wearer's ear, and only once a launch. The person this
+    /// is for is in a new conversation every session.
+    private func announceInterpreterToOtherPerson() {
+        guard let pair = interpreterPair,
+              let effects = interpreterRouter?.disclose(now: Date()), !effects.isEmpty else { return }
+        applyInterpreter(effects)
+        let utterance = AVSpeechUtterance(string: TranslationDisclosureLanguage.listenerLine(forTarget: pair.other))
+        utterance.voice = AVSpeechSynthesisVoice(language: TranslationDisclosureLanguage.localization(
+            forTarget: pair.other, available: Bundle.main.localizations))
+        localCueSynth.speak(utterance)
     }
 
     // MARK: - Recovery (Plan FF P1/PR5)
@@ -852,6 +964,9 @@ class RealtimeSessionManager: ObservableObject {
     }
 
     private func sessionToolDeclarations(includeOpenClaw: Bool) -> [[String: Any]] {
+        if interpreterPair != nil {
+            return canHandleToolCalls ? [LiveVoiceEndPolicy.declaration] : []
+        }
         var declarations: [[String: Any]]
         if sessionModel?.profile?.isOpenAIShape == true {
             declarations = ToolDeclarations.declarations(registry: nativeToolRouter?.registry, names: LiveJobContract.jobToolNames)
@@ -877,6 +992,14 @@ class RealtimeSessionManager: ObservableObject {
     ///   could not resume the conversation server-side. Composed with the other injected contexts,
     ///   after the preset prefix and the precedence note, so PR1's composition order is unchanged.
     private func buildSystemInstruction(recoveredContext: String? = nil) -> String {
+        // The whole prompt: the wearer's prompt, location, jobs and tools are no business of someone
+        // who only wants a sentence translated, and a model hearing them can be talked into using
+        // them. A recovery's handover is left out too; the recorder holds nothing for one.
+        if let interpreterPair {
+            return TranslationPromptBuilder.spokenInstruction(pair: interpreterPair, canEndSession: canHandleToolCalls)
+                + PromptInjectionPolicy.systemPromptPolicy
+        }
+
         // Apply the LiveAI mode prefix (e.g. museum guide, Blind Assistant, translator) through
         // the shared seam, so this backend and the OpenAI Realtime one compose the preset in the
         // same order — prefix, then the configured prompt, then the blind-assistance precedence
@@ -1075,7 +1198,8 @@ class RealtimeSessionManager: ObservableObject {
 // MARK: - Live injection (Plan CB)
 
 extension RealtimeSessionManager: LiveSessionInjecting {
-    var canInject: Bool { isActive && connectionState == .ready }
+    /// Never into an interpreter: it would translate whatever it was handed, possibly aloud.
+    var canInject: Bool { isActive && connectionState == .ready && interpreterPair == nil }
 
     var liveSessionIdentity: Int { sessionIdentity }
 

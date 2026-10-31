@@ -67,6 +67,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// Face recognition (Plan HP P1 item 2): an organisation may switch it off on its phones, never
     /// on — enrolling a bystander's face is the wearer's choice, not an employer's.
     case faceRecognitionEnabled
+    /// The spoken interpreter: a bystander's voice goes to the cloud. An organisation may switch it
+    /// off on its phones, never on.
+    case interpreterEnabled
     /// The "Connecting to Avenkin AI" line at voice startup (Plan HP P2 item 10): an organisation
     /// may make sure it is always said, never silence it — it is the disclosure that the person is
     /// talking to an AI.
@@ -138,7 +141,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled, .teamLearningReviewerDevice,
-             .cloudDictationEnabled:
+             .cloudDictationEnabled, .interpreterEnabled:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:
             return .startingValue(.strings)

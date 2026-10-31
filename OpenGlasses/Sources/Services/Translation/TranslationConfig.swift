@@ -29,6 +29,39 @@ extension Config {
         translationCaptionsEnabled && isGeminiLiveConfigured && !hipaaMode
     }
 
+    // MARK: Spoken interpreter
+
+    /// The spoken two-way interpreter. Off by default like the cloud captions above, for the same
+    /// reason: the voice of someone who never chose the app goes to Google. An organisation may
+    /// pin it off (`SettingKey.interpreterEnabled`), never on.
+    static var interpreterEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.interpreterEnabled,
+                                stored: UserDefaults.standard.object(forKey: "interpreterEnabled") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.interpreterEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "interpreterEnabled")
+        }
+    }
+
+    /// Whether the wearer has been told, ever, that the interpreter goes to the cloud. A done-marker
+    /// rather than a setting, so there is nothing to switch off.
+    static var interpreterCloudNoticeGiven: Bool {
+        get { UserDefaults.standard.bool(forKey: "interpreterCloudNoticeGiven") }
+        set { UserDefaults.standard.set(newValue, forKey: "interpreterCloudNoticeGiven") }
+    }
+
+    static func interpreterGateInputs(pair: InterpreterPair, usesGeminiLive: Bool) -> InterpreterGate.Inputs {
+        InterpreterGate.Inputs(optedIn: interpreterEnabled,
+                               orgPinnedOff: PolicyEnvelope.isLocked(.interpreterEnabled),
+                               hipaaMode: hipaaMode,
+                               localOnly: hipaaLocalOnly,
+                               geminiConfigured: isGeminiLiveConfigured,
+                               usesGeminiLive: usesGeminiLive,
+                               pairIsUsable: pair.isUsable)
+    }
+
     // MARK: Two-way conversation mode (BY P3)
 
     /// Two-way conversation mode: each side's speech renders in the other's language.

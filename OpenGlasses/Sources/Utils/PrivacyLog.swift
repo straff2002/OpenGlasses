@@ -354,6 +354,8 @@ enum PrivacyLog {
         case idleWarned, idleEnded
         /// The goodbye finished; the session is stopping because the wearer said so.
         case saidGoodbye
+        /// A spoken interpreter session started, or was refused; `detail` on the refusal is why.
+        case interpreterStarted, interpreterRefused
     }
 
     enum UtteranceDirection: String { case input, output }
@@ -1505,6 +1507,8 @@ enum PrivacyLog {
         case interruptionBegan, interruptionEnded, interruptionEndedNotResuming
         case resumed, resumeFailed, resetSucceeded, resetFailed
         case engineStarted, engineStopped, engineReused, engineRebuilt, engineRestarted
+        /// The interpreter moved the output between the ear and the speaker, or could not.
+        case outputRouted, outputRouteFailed
         case engineRestartFailed, engineRestartedDeaf, engineStartFailed
         case emptyCaptureDiscarded
         case formatInvalid, formatNegotiated, conversionFailed

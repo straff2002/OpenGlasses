@@ -105,7 +105,7 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
                        "bystander blurring, pinned on, is shown read-only to the technician")
         XCTAssertEqual(Policy.alwaysShown, [.key(.privacyFilterEnabled), .area(.requestRouting),
                                             .key(.faceRecognitionEnabled), .key(.aiConnectionCueEnabled),
-                                            .key(.cloudDictationEnabled)])
+                                            .key(.cloudDictationEnabled), .key(.interpreterEnabled)])
         // Plan HP P2: face recognition pinned off and the AI cue pinned on are both drawn read-only
         // for the technician — one protects bystanders, the other is a disclosure.
         let hpContext = technician(lockEverything, keys: [.faceRecognitionEnabled, .aiConnectionCueEnabled])

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// Plan CC — duplex live audio: echo cancellation that degrades instead of failing.
@@ -60,6 +61,62 @@ enum VoiceProcessingProbe {
 
 /// The mute gate as a pure truth table (Plan CC P1) — previously an inline condition duplicated in
 /// both session managers, which is how the two paths drift.
+/// What a realtime session's audio is set up for.
+///
+/// `.interpreter` is the route the spoken interpreter needs: output on the glasses over A2DP and
+/// input on the phone's mic, with the speaker borrowed one line at a time. Overriding output to the
+/// speaker takes input to the built-in mic anyway, so the phone's mic is the only one that survives
+/// a flip, and leaving HFP out keeps the glasses from pulling input back.
+enum RealtimeAudioRoute: Equatable {
+    case standard
+    case interpreter
+
+    func sessionOptions() -> AVAudioSession.CategoryOptions {
+        switch self {
+        case .standard: return [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+        // No `.defaultToSpeaker`: with the glasses gone, output falls to the earpiece. A wearer who
+        // loses the glasses mid-sentence must not have their private line play to the room.
+        case .interpreter: return [.allowBluetoothA2DP]
+        }
+    }
+
+    /// `.voiceChat` and `.videoChat` both imply Bluetooth HFP, which is why this isn't either.
+    func sessionMode(useIPhoneMode: Bool) -> AVAudioSession.Mode {
+        switch self {
+        case .standard: return useIPhoneMode ? .voiceChat : .videoChat
+        case .interpreter: return .default
+        }
+    }
+}
+
+/// Whether audio handed to the player has yet to play.
+///
+/// `PendingPlaybackMirror` can't answer that: a response boundary retires it while the tail is still
+/// draining, and a realtime server sends audio ahead of real time, so a turn can complete with
+/// seconds left to play. This counts buffers until they report played. A stop or a rebuild starts a
+/// new epoch, so a callback from a buffer that was discarded can't count against the new ones.
+struct PlaybackDrainTracker: Equatable {
+    private(set) var epoch: UInt64 = 0
+    private var outstanding = 0
+
+    var isPending: Bool { outstanding > 0 }
+
+    mutating func scheduled() -> UInt64 {
+        outstanding += 1
+        return epoch
+    }
+
+    mutating func played(epoch: UInt64) {
+        guard epoch == self.epoch, outstanding > 0 else { return }
+        outstanding -= 1
+    }
+
+    mutating func reset() {
+        epoch &+= 1
+        outstanding = 0
+    }
+}
+
 enum EchoSuppressionPolicy {
 
     /// Whether a captured mic buffer must be dropped instead of sent.
