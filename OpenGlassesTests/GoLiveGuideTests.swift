@@ -196,14 +196,6 @@ final class GoLiveGuideTests: XCTestCase {
                        .toggle(startSource: nil))
     }
 
-    // MARK: - The way in
-
-    func testThePreviewIsReachableWithGlassesOrWithStreamingSetUp() {
-        XCTAssertTrue(HomeGridTilePresence.livePreviewReachable(glassesConnected: true, broadcastConfigured: false))
-        XCTAssertTrue(HomeGridTilePresence.livePreviewReachable(glassesConnected: false, broadcastConfigured: true))
-        XCTAssertFalse(HomeGridTilePresence.livePreviewReachable(glassesConnected: false, broadcastConfigured: false))
-    }
-
     // MARK: - Things to Try
 
     func testTheLinkNeedsStreamingSetUp() {

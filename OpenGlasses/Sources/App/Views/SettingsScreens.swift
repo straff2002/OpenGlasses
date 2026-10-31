@@ -772,6 +772,7 @@ struct ToolsActionsSettingsScreen: View {
             Section {
                 NavigationLink {
                     QuickActionsSettingsView()
+                        .environmentObject(appState)
                 } label: {
                     Label("Quick Actions", systemImage: "dial.high")
                 }

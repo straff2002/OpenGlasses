@@ -28,6 +28,10 @@ struct DockLayoutEditPage: View {
     @AppStorage(FieldTradeSetting.key) private var tradesBeacon: String?
 
     @Environment(\.appAccent) private var accent
+    /// Plan KH: read for why a tile is not on the grid right now. The rows themselves stay the
+    /// arrangement's, whatever the moment allows.
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var adminGate = AdminGate.shared
 
     /// My Day's two facts — on at all, and placed on the home screen (`MyDayHomePlacement`). The
     /// same keys Settings and the card's own "Remove from Home" write.
@@ -203,10 +207,19 @@ struct DockLayoutEditPage: View {
                         .frame(width: 22)
                         .accessibilityHidden(true)
 
-                    Text(slot.editorLabel)
-                        .font(.footnote)
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(slot.editorLabel)
+                            .font(.footnote)
+                            .foregroundStyle(Color(.label))
+                            .lineLimit(1)
+                        if let reason = reasonNotShown(slot) {
+                            Text(verbatim: reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
                 .frame(minHeight: OGMetrics.minTouchTarget)
                 .contentShape(Rectangle())
@@ -214,6 +227,7 @@ struct DockLayoutEditPage: View {
             .buttonStyle(.plain)
             .disabled(editableAction(slot) == nil)
             .accessibilityLabel(slot.editorLabel)
+            .accessibilityValue(reasonNotShown(slot) ?? "")
             .accessibilityHint(editableAction(slot) != nil
                                ? "Double-tap to edit or delete this action."
                                : "Built in. It can be moved or taken off the bar, but not changed.")
@@ -248,6 +262,11 @@ struct DockLayoutEditPage: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(OGTheme.card)
         )
+    }
+
+    /// Why this tile is not on the grid right now, or `nil` when it is.
+    private func reasonNotShown(_ slot: DockSlot) -> String? {
+        appState.homeGridTilePresence.reasonNotShown(for: slot, restricted: adminGate.isRestricted)
     }
 
     /// The speed-dial action behind a slot, when this editor is allowed to rewrite it. Controls

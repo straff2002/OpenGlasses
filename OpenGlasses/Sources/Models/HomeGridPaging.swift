@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// The home grid's pages, as arithmetic.
 ///
@@ -227,9 +228,8 @@ enum HomeGridTile: Identifiable, Equatable {
 /// every tile it is handed. Gating changes WHEN a slot appears, never where: the arranged order is
 /// kept, and nothing is added twice.
 struct HomeGridTilePresence: Equatable {
-    /// The live preview is reachable (`livePreviewReachable`).
-    var previewAvailable = false
-    /// The surface can open a typed message.
+    /// A typed message can open from here: the surface has the typed bar, and the mode draws it.
+    /// A realtime mode has no typed bar, so a Type tile there would answer a tap with nothing.
     var canType = true
     /// Assistive mode is turned on in Settings.
     var assistiveAvailable = false
@@ -237,20 +237,45 @@ struct HomeGridTilePresence: Equatable {
     var connected = false
     /// The active model runs on the device, so its load/unload key rides in front of Model.
     var localModelActive = false
-
-    /// Go Live sits in the preview, so a phone with streaming set up needs the preview with or
-    /// without glasses. With neither, there is nothing to show in it.
-    static func livePreviewReachable(glassesConnected: Bool, broadcastConfigured: Bool) -> Bool {
-        glassesConnected || broadcastConfigured
-    }
+    /// The mode runs ordinary turns, which are what an action tile submits. The grid applies this
+    /// when it composes the slots (`DockGridCatalog.slots(showsActions:)`). It is here so the
+    /// editors can say why an arranged action is not drawn.
+    var actionsShown = true
 
     func isPresent(_ item: DockItem) -> Bool {
         switch item {
         case .model, .camera, .micMode: return true
-        case .preview: return previewAvailable
+        // Plan KH: not gated. The preview is the phone camera with no glasses connected, and Go
+        // Live sits in it, so a phone-only wearer needs it whether or not streaming is set up.
+        case .preview: return true
         case .type: return canType
         case .assistive: return assistiveAvailable
         case .disconnect: return connected
+        }
+    }
+
+    /// Plan KH: why an arranged control draws no tile right now, or `nil` when it does. The editors
+    /// show the arrangement whatever the gates say, so a gated tile can be moved to the top and
+    /// still not appear; this is the line that stops that looking like a fault.
+    func reasonNotShown(for item: DockItem) -> String? {
+        guard !isPresent(item) else { return nil }
+        switch item {
+        case .model, .camera, .preview, .micMode: return nil
+        case .type: return String(localized: "Shows in Direct Mode")
+        case .assistive: return String(localized: "Shows when Assistive mode is on")
+        case .disconnect: return String(localized: "Shows when glasses are connected")
+        }
+    }
+
+    /// The same for any slot, with the two gates the grid applies to a slot rather than to a control:
+    /// the mode's rule for action tiles, and what an edition hides from a technician.
+    func reasonNotShown(for slot: DockSlot, restricted: Bool) -> String? {
+        if EditionPresentation.hidesDockSlot(slot, restricted: restricted) {
+            return String(localized: "Set by your organisation")
+        }
+        switch slot {
+        case .control(let item): return reasonNotShown(for: item)
+        case .action: return actionsShown ? nil : String(localized: "Shows in Direct Mode")
         }
     }
 

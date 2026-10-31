@@ -327,13 +327,11 @@ final class HomeGridPagingTests: XCTestCase {
 
     func testGatedControlsDrawNoTileAndTheOrderIsKept() {
         let all = slots()
-        let presence = HomeGridTilePresence(previewAvailable: false, canType: true,
-                                            assistiveAvailable: false, connected: false,
+        let presence = HomeGridTilePresence(canType: true, assistiveAvailable: false, connected: false,
                                             localModelActive: false)
         let tiles = presence.tiles(for: all)
         let tileIDs = tiles.map(\.id)
 
-        XCTAssertFalse(tileIDs.contains("control:preview"))
         XCTAssertFalse(tileIDs.contains("control:assistive"))
         XCTAssertFalse(tileIDs.contains("control:disconnect"))
         XCTAssertTrue(tileIDs.contains("control:model"))
@@ -348,10 +346,59 @@ final class HomeGridPagingTests: XCTestCase {
 
     func testEveryGateOpenDrawsEverySlot() {
         let all = slots()
-        let presence = HomeGridTilePresence(previewAvailable: true, canType: true,
-                                            assistiveAvailable: true, connected: true,
+        let presence = HomeGridTilePresence(canType: true, assistiveAvailable: true, connected: true,
                                             localModelActive: false)
         XCTAssertEqual(presence.tiles(for: all).map(\.id), all.map(\.id))
+    }
+
+    /// Plan KH: the wearer's report. The tile stands with no glasses and no streaming set up,
+    /// because the preview is the phone camera then.
+    func testThePreviewTileNeedsNeitherGlassesNorStreaming() {
+        let presence = HomeGridTilePresence(connected: false)
+        XCTAssertTrue(presence.isPresent(.preview))
+        XCTAssertTrue(presence.tiles(for: slots()).map(\.id).contains("control:preview"))
+        XCTAssertNil(presence.reasonNotShown(for: .preview))
+    }
+
+    // MARK: - Why a tile is not drawn (Plan KH)
+
+    func testEveryGatedControlHasAReason() {
+        let closed = HomeGridTilePresence(canType: false, assistiveAvailable: false, connected: false)
+        let gated = DockItem.allCases.filter { !closed.isPresent($0) }
+        XCTAssertEqual(Set(gated), [.type, .assistive, .disconnect])
+        for item in gated {
+            XCTAssertFalse(closed.reasonNotShown(for: item)?.isEmpty ?? true, "\(item) has no reason")
+        }
+        XCTAssertEqual(closed.reasonNotShown(for: .disconnect), "Shows when glasses are connected")
+        XCTAssertEqual(closed.reasonNotShown(for: .assistive), "Shows when Assistive mode is on")
+        XCTAssertEqual(closed.reasonNotShown(for: .type), "Shows in Direct Mode")
+    }
+
+    func testNoReasonForAControlThatDraws() {
+        let closed = HomeGridTilePresence(canType: false, assistiveAvailable: false, connected: false)
+        for item in DockItem.allCases where closed.isPresent(item) {
+            XCTAssertNil(closed.reasonNotShown(for: item), "\(item) draws, so it needs no reason")
+        }
+        let open = HomeGridTilePresence(canType: true, assistiveAvailable: true, connected: true)
+        for item in DockItem.allCases {
+            XCTAssertNil(open.reasonNotShown(for: item), "\(item) draws, so it needs no reason")
+        }
+    }
+
+    func testAnActionTileExplainsAModeThatDoesNotDrawIt() {
+        let action = DockSlot.action(.builtIn(.weather))
+        var presence = HomeGridTilePresence()
+        XCTAssertNil(presence.reasonNotShown(for: action, restricted: false))
+        presence.actionsShown = false
+        XCTAssertEqual(presence.reasonNotShown(for: action, restricted: false), "Shows in Direct Mode")
+    }
+
+    func testATileAnEditionHidesSaysSo() {
+        let model = DockSlot.control(.model)
+        let presence = HomeGridTilePresence()
+        XCTAssertNil(presence.reasonNotShown(for: model, restricted: false))
+        XCTAssertEqual(presence.reasonNotShown(for: model, restricted: true), "Set by your organisation")
+        XCTAssertNil(presence.reasonNotShown(for: .control(.preview), restricted: true))
     }
 
     func testTheOnDeviceModelKeyRidesJustInFrontOfModel() {
