@@ -366,6 +366,14 @@ final class SymptomDiagnosisSessionTests: XCTestCase {
         }
     }
 
+    func testTheSessionsRetrieverKnowsTheVaultsModelsWithNoUnitOnTheJob() async throws {
+        let (service, store) = try await start()
+        XCTAssertNil(service.retrievalModelScope, "nothing is on the job")
+        let retriever = service.makeRetriever(store: try XCTUnwrap(service.activeVault), documentStore: store)
+        XCTAssertEqual(retriever.modelNames?("QX200"), true)
+        XCTAssertEqual(retriever.modelNames?("ZX9"), false)
+    }
+
     func testTheRuleSaysWhatThePlanSays() {
         let rule = FieldSessionService.oneCheckRule
         for words in ["one check", "what to observe", "pick the next", "specific gap", "manufacturer's first step"] {

@@ -27,6 +27,17 @@ final class ManualStructureTests: XCTestCase {
         super.tearDown()
     }
 
+    /// A picture on a page does not make it a drawing, on either side: the phone reads the page's type
+    /// alone, and the Mac tagged every page with an object in it, which hid the prose beside a
+    /// photograph from the search and made a Mac measurement differ from the phone (Plan KG P1).
+    func testTheMacExtractorTagsADrawingByItsTypeAlone() throws {
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Scripts/extract-manual-text.swift")
+        let source = try String(contentsOf: script, encoding: .utf8)
+        XCTAssertTrue(source.contains("let diagram = isDiagramPage(page, bodySize: bodySize)"))
+        XCTAssertFalse(source.contains("text = diagramMarker"), "the tag is written once, by the rule")
+    }
+
     // MARK: - Fixture
 
     /// A line of a fixture page: the words, their point size, and whether they are bold.

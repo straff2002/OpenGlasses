@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: a927f35edc90fb2ded07dca8bc7554a505433d29c7e1943e15cc34ddddbc3db3 -->
+     source-sha256: fbc80bdbe754a2c8ca3afc61d0dfbc9129129f47d50fa05dd151ed208832b693 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -213,6 +213,31 @@ Owner: D04. No service manual loaded.
 <li><strong>Mind the budget.</strong> One short section per model is about 40 bytes; three hundred models is roughly 12 KB of the 32 KB core.</li>
 <li><strong>Sibling brands.</strong> One service manual often covers several of a manufacturer's brands. Decide deliberately whether those models belong in the vault: a model with no section is refused as out of scope, even when a loaded manual covers it.</li>
 </ul>
+<h3 id="symptoms-in-the-manuals-words">Symptoms, in the manual's words</h3>
+<p>A technician says what the machine is doing. A service manual is arranged by part: it has a test for the condenser fan, and no page headed <em>not cooling</em>. So a symptom often misses the page that would help, however good the search, and even a page that is found says how to test a part, not which part to test first. Where the manuals give no order, a person who knows the machines can give one in a core file.</p>
+<p>Add a <code>symptoms.md</code> core file, list it in the manifest's <code>files</code>, and write one section per symptom:</p>
+<pre><code class="language-markdown"># Symptoms
+
+## Not cooling, compressor running
+Said as: not cooling, warm cabinet, runs all the time, won't pull down.
+Applies to: the RTU-500 family. Not the RTU-550A, which has no service manual loaded.
+The manual's words: condenser fan, condenser coil, suction pressure.
+Checks, in this order:
+1. Condenser fan turns with the compressor. Fan test. D01 page 41 (printed 3-7).
+2. Condenser coil clean. Coil cleaning. D01 page 58 (printed 4-12).
+3. Suction pressure against the chart. Charging chart. D01 page 63 (printed 4-17).
+Reviewed: 12 November, against D01 Rev B.
+</code></pre>
+<ul>
+<li><strong>Symptom words.</strong> Write what your technicians actually say, several ways. These are what the assistant recognises the symptom by.</li>
+<li><strong>The families it applies to.</strong> A check for one family is wrong on another. Name the families in the section's text, not its heading: a model number in a heading reads as a model (see above). Say which models it does not cover and why.</li>
+<li><strong>The manual's words.</strong> Copy the part's name as the manual prints it, spelling and all, so the assistant can search for it. Technicians say <em>fan</em>, and the manual may say <em>condenser fan motor</em>.</li>
+<li><strong>Ordered checks, each with a document and a page.</strong> Give the PDF page, and the printed page when it differs. A check with no page is not a check: leave it out. Use the document IDs from your model map.</li>
+<li><strong>A person must check it against the pages.</strong> Open every page cited and read it. The order is yours, not the manufacturer's, unless a page says otherwise: a wrong first check costs a call-out, and an unchecked one looks just as sure as a checked one. Record who reviewed it and against which revision, and review it again when a manual is replaced.</li>
+<li><strong>Add a rule that says what the file is</strong>, for example: <em>"For a symptom in symptoms.md that applies to the unit, give its checks one at a time, in that order, each with its document and page. Say the order is this vault's, not the manufacturer's. Read the cited page before relying on it."</em></li>
+<li><strong>Mind the budget.</strong> A core file goes to the model on every turn, so a section should stay short. Start with the five symptoms your crew hears most.</li>
+</ul>
+<p>A symptom the file does not list changes nothing: the assistant searches the manuals as before.</p>
 <h3 id="parts-so-a-number-the-assistant-says-can-be-checked">Parts, so a number the assistant says can be checked</h3>
 <p>A part number is the one thing on a job report that somebody else acts on: base orders against it.
 So the app never writes a number down without looking it up first, and a number it cannot find is
@@ -1106,6 +1131,7 @@ product.</p>
 <li>[ ] Fault codes sit under a heading per controller or family, with the models named in the section's first line, one code per row.</li>
 <li>[ ] No model number or manual number appears in a heading outside <code>models.md</code>, and each model's spellings sit in its own heading, in brackets.</li>
 <li>[ ] For a vault spanning several families, <code>models.md</code> lists the documents that apply to each model, confirmed from the manual or the manufacturer's catalogue.</li>
+<li>[ ] Every check in a <code>symptoms.md</code> has a document and page, and a person has read each page against it.</li>
 <li>[ ] <code>safety.md</code> says what you want spoken, in your words.</li>
 <li>[ ] Core files total well under 32 KB.</li>
 <li>[ ] Any site document has no contact details, passwords or links, and its serials are the customer's.</li>

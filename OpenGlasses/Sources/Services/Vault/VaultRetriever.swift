@@ -60,6 +60,14 @@ struct VaultRetriever {
         let score: Float
         /// Code-like tokens — and clause numbers — from the request found verbatim in this passage.
         var matchedTokens: [String]
+        /// Those of `matchedTokens` that only name a model of the vault (Plan KG P0). They rank and
+        /// propose the passage as any token does, but no longer carry it past the gate: the page
+        /// listing the model prints the number whatever was asked. Empty for a turn that asks for
+        /// nothing but the model.
+        var matchedModels: [String] = []
+        /// A code the turn named is in the passage: a fault code, a part number, a clause or a table.
+        /// A model number is not one of these.
+        var hasEvidenceToken: Bool { matchedTokens.contains { !matchedModels.contains($0) } }
         /// Subtracted from `score` when this passage names a model the session is not working on
         /// (Plan EL §4). Kept beside `score` rather than folded into it so a passage's own strength
         /// stays readable in a log or a test while the ranking reflects the machine in the room.
@@ -226,6 +234,9 @@ struct VaultRetriever {
     /// is precisely the guarantee removal exists to make. Nil means every candidate is available,
     /// which is the behaviour of every caller that has nothing to withhold.
     typealias Availability = (_ documentId: String) -> Bool
+    /// Whether a token spells one of the vault's models (`VaultModelIndex.namesModel`, Plan KG P0).
+    /// Beside `ModelScope` because the rule holds with no unit on the job.
+    typealias ModelNames = (_ token: String) -> Bool
 
     /// The machine the session is working on, and the other machines the vault covers (Plan EL).
     ///
@@ -298,6 +309,7 @@ struct VaultRetriever {
     var availability: Availability?
     var policy = RetrievalEvidencePolicy()
     var modelScope: ModelScope?
+    var modelNames: ModelNames?
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
          clauseSearch: ClauseSearch? = nil, termSearch: TermSearch? = nil,
@@ -305,7 +317,7 @@ struct VaultRetriever {
          termStatistics: TermStatisticsSource? = nil,
          provenance: Provenance? = nil, availability: Availability? = nil,
          policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy(),
-         modelScope: ModelScope? = nil) {
+         modelScope: ModelScope? = nil, modelNames: ModelNames? = nil) {
         self.query = query
         self.tokenSearch = tokenSearch
         self.clauseSearch = clauseSearch
@@ -317,6 +329,16 @@ struct VaultRetriever {
         self.availability = availability
         self.policy = policy
         self.modelScope = modelScope
+        self.modelNames = modelNames
+    }
+
+    /// Whether `token` is a model: the vault's list, else a spelling the scope carries.
+    private func namesModel(_ token: String) -> Bool {
+        if modelNames?(token) == true { return true }
+        guard let modelScope else { return false }
+        let key = ModelMention.key(token)
+        return modelScope.activeTokens.contains { ModelMention.key($0) == key }
+            || modelScope.otherTokens.contains { ModelMention.key($0) == key }
     }
 
     func retrieve(_ request: Request) -> RetrievalOutcome {
@@ -390,6 +412,29 @@ struct VaultRetriever {
             return !CodeTokenizer.isNumber(token) || tokenHits[token] != nil
         }
 
+        // A model number is not evidence (Plan KG P0). It still ranks and proposes passages, but the
+        // page listing the model prints it whatever was asked, so the gate does not take it for an
+        // answer and does not count it among the question's words: only that page can supply it.
+        // `question` stays as it was for ranking, so BM25F scores what was asked and moves nothing.
+        // A nameplate's model counts like a spoken one; a job's context is searched, never a token,
+        // so its model only comes out of the words. Asked for alone, the page is the answer.
+        let knowsModels = modelNames != nil || modelScope != nil
+        let isModel: ModelNames = { namesModel($0) }
+        let namedModels = knowsModels
+            ? [request.turn, request.ocrText].compactMap { $0 }.reduce(into: Set<String>()) {
+                $0.formUnion(ModelMention.words(in: $1, names: isModel))
+            } : []
+        let modelTokens = Set(boostTokens.filter { namedModels.contains($0.uppercased()) })
+        let asksForTheModelAlone: Bool = {
+            guard !modelTokens.isEmpty, clauses.isEmpty, tables.isEmpty else { return false }
+            let rest = ModelMention.removing(from: spokenTurn, names: isModel)
+            return LexicalSupport.contentTerms(rest).isEmpty && CodeTokenizer.codeTokens(from: rest).isEmpty
+        }()
+        let notEvidence = asksForTheModelAlone ? [] : modelTokens
+        let gateQuestion = knowsModels
+            ? LexicalSupport.QueryTerms(parts.map { ModelMention.removing(from: $0, names: isModel) }.joined(separator: " "))
+            : question
+
         // Query each part; the OCR part is queried as its tokens joined so a whole nameplate
         // dump does not drown the embedding in boilerplate.
         var queries = parts
@@ -429,11 +474,13 @@ struct VaultRetriever {
             var candidate = scored(raw, matched: matched)
             candidate.clauseMatch = clauseMatch
             candidate.tableMatch = tableMatch
+            candidate.matchedModels = matched.filter(notEvidence.contains)
             if let existing = merged[key] {
                 // Two routes reached the same chunk: keep the better score, and everything either
                 // route knew about why it matched.
                 var kept = existing.rankScore >= candidate.rankScore ? existing : candidate
                 kept.matchedTokens = Array(Set(existing.matchedTokens + candidate.matchedTokens)).sorted()
+                kept.matchedModels = Array(Set(existing.matchedModels + candidate.matchedModels)).sorted()
                 kept.clauseMatch = [existing.clauseMatch, candidate.clauseMatch].compactMap { $0 }.max()
                 kept.tableMatch = existing.tableMatch || candidate.tableMatch
                 // The chunk's own state, whichever route reported it.
@@ -544,7 +591,11 @@ struct VaultRetriever {
             let words = (lexical[Self.key(a)] ?? 0, lexical[Self.key(b)] ?? 0)
             return words.0 != words.1 ? words.0 > words.1 : precedes(a, b)
         }
-        return policy.decide(ranked, limit: request.limit, question: question)
+        let outcome = policy.decide(ranked, limit: request.limit, question: gateQuestion)
+        if case .insufficient = outcome, ranked.contains(where: { !$0.matchedModels.isEmpty && $0.source.isReference }) {
+            return .insufficient(reason: RetrievalEvidencePolicy.modelPageOnlySentence)
+        }
+        return outcome
     }
 
     private static func key(_ p: Passage) -> String { "\(p.documentId)#\(p.chunkIndex)" }
@@ -776,6 +827,51 @@ enum RetrievalOutcome: Equatable {
     var teamLearningPassages: [VaultRetriever.Passage] { passages.filter { $0.source == .teamLearning } }
 }
 
+/// How a piece of text names models, for the gate (Plan KG P0). A spelling the vault prints with
+/// hyphens reaches the tokenizer in pieces, and each piece is as much the model as the whole. Pure.
+enum ModelMention {
+
+    /// A spelling as compared: uppercased, without its hyphens (`VaultModelIndex.key`).
+    static func key(_ spelling: String) -> String {
+        spelling.uppercased().replacingOccurrences(of: "-", with: "")
+    }
+
+    private static let run = try! NSRegularExpression(pattern: #"[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*"#)
+
+    private static func runs(in text: String) -> [NSRange] {
+        run.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).map(\.range)
+    }
+
+    private static func isModel(_ word: String, names: (String) -> Bool) -> Bool {
+        names(word) || (word.contains("-") && word.split(separator: "-").contains { names(String($0)) })
+    }
+
+    /// The words of `text` that are a model, uppercased: each spelling, and the pieces of a
+    /// hyphenated one.
+    static func words(in text: String, names: (String) -> Bool) -> Set<String> {
+        let text = CodeTokenizer.foldedForms(text)
+        let ns = text as NSString
+        var found = Set<String>()
+        for range in runs(in: text) {
+            let word = ns.substring(with: range)
+            guard isModel(word, names: names) else { continue }
+            found.insert(word.uppercased())
+            found.formUnion(word.split(separator: "-").map { $0.uppercased() })
+        }
+        return found
+    }
+
+    /// `text` with its models taken out.
+    static func removing(from text: String, names: (String) -> Bool) -> String {
+        let text = CodeTokenizer.foldedForms(text)
+        let out = NSMutableString(string: text)
+        for range in runs(in: text).reversed() where isModel(out.substring(with: range), names: names) {
+            out.replaceCharacters(in: range, with: " ")
+        }
+        return out as String
+    }
+}
+
 /// The evidence gate. A passage counts as evidence when it contains a code-like token from the
 /// request verbatim — an exact fault-code hit is strong evidence even at a low cosine — or when it
 /// clears every similarity-side criterion below. Nothing counts → the fixed insufficient sentence,
@@ -838,6 +934,15 @@ struct RetrievalEvidencePolicy: Equatable {
         + "in the manuals — not that they don't cover it — and ask the technician for the model number or "
         + "different words. If it stays unanswered, name what is missing and offer an expert if one would help; "
         + "do not guess."
+
+    /// What a turn is told when the only thing found prints the model it named (Plan KG P0): the
+    /// manuals know the machine, and nothing on what was asked. A machine the vault covers is not
+    /// refused, and as with `insufficientSentence`, a miss is not a reason to escalate.
+    static let modelPageOnlySentence =
+        "The manuals list this model, but no passage answers what was asked. Say you found the model's page and "
+        + "nothing on this question, not that the manuals don't cover it, and ask the technician for different "
+        + "words or the name of the part. If it stays unanswered, name what is missing and offer an expert if one "
+        + "would help; do not guess."
 
     init(similarityFloor: Float = 0.30, margin: Float = .infinity, minSharedTerms: Int = 0,
          sharedFraction: Double = 0, tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {
@@ -978,14 +1083,16 @@ struct RetrievalEvidencePolicy: Equatable {
     func isEvidence(_ passage: VaultRetriever.Passage,
                     bestSimilarity: Float? = nil,
                     queryTerms: Set<String>? = nil) -> Bool {
-        if !passage.matchedTokens.isEmpty { return true }
+        if passage.hasEvidenceToken { return true }
         // No vector yet (Plan JY P1): its words decide, under the stricter count.
         if passage.vectorPending, minSharedTerms > 0, let queryTerms {
             let required = requiredSharedTermsWithoutVector(queryTermCount: queryTerms.count, rule: .english)
             return LexicalSupport.sharedTermCount(text: passage.text, queryTerms: queryTerms) >= required
         }
-        guard passage.similarity >= similarityFloor else { return false }
-        if let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
+        // Reached by a model's number alone, it may never have been compared (Plan KG P0): its words decide.
+        let byItsWords = !passage.matchedModels.isEmpty && minSharedTerms > 0
+        guard byItsWords || passage.similarity >= similarityFloor else { return false }
+        if !byItsWords, let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
         if minSharedTerms > 0, let queryTerms {
             let required = requiredSharedTerms(queryTermCount: queryTerms.count)
             guard LexicalSupport.sharedTermCount(text: passage.text, queryTerms: queryTerms) >= required else {
@@ -1002,7 +1109,7 @@ struct RetrievalEvidencePolicy: Equatable {
     /// English terms.
     func isEvidence(_ passage: VaultRetriever.Passage, bestSimilarity: Float? = nil,
                     question: LexicalSupport.QueryTerms) -> Bool {
-        if !passage.matchedTokens.isEmpty { return true }
+        if passage.hasEvidenceToken { return true }
         // A passage whose script model is pending has no similarity to clear the floor or the
         // margin with (Plan JY P1, decision 6): its words decide, under the stricter count.
         if passage.vectorPending, minSharedTerms > 0 {
@@ -1010,8 +1117,9 @@ struct RetrievalEvidencePolicy: Equatable {
             let required = requiredSharedTermsWithoutVector(queryTermCount: terms.count, rule: passage.termRule)
             return LexicalSupport.sharedTermCount(text: passage.text, queryTerms: terms, rule: passage.termRule) >= required
         }
-        guard passage.similarity >= similarityFloor else { return false }
-        if let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
+        let byItsWords = !passage.matchedModels.isEmpty && minSharedTerms > 0
+        guard byItsWords || passage.similarity >= similarityFloor else { return false }
+        if !byItsWords, let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
         if minSharedTerms > 0 {
             let terms = question.terms(for: passage.termRule)
             let required = requiredSharedTerms(queryTermCount: terms.count, rule: passage.termRule)

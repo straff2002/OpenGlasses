@@ -2479,7 +2479,8 @@ final class FieldSessionService: ObservableObject {
                 documentStore?.list(namespace: namespace).contains { $0.id == documentId } ?? false
             }) { return true }
             return manualAvailable(documentId)
-        }, policy: policy ?? retrievalPolicy(forVault: vaultId), modelScope: retrievalModelScope)
+        }, policy: policy ?? retrievalPolicy(forVault: vaultId), modelScope: retrievalModelScope,
+           modelNames: { [modelIndex] in modelIndex.namesModel($0) })
     }
 
     // MARK: - Team learnings at answer time (Plan FP P2)

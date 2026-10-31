@@ -370,6 +370,13 @@ struct VaultModelIndex: Equatable {
         return models.filter { $0.heading.uppercased().contains(needle) }
     }
 
+    /// Whether the token spells one of the vault's models (Plan KG P0): whole, in part as a nameplate
+    /// splits it, or as a member of the vault's series. A fault code or a size is not model-like, and
+    /// a part number or an accessory the core only mentions is not in a model's heading.
+    func namesModel(_ token: String) -> Bool {
+        Self.isModelLike(token) && (!resolve(token: token).isEmpty || series(of: token) != nil)
+    }
+
     /// Whether the vault knows this token at all — as a model spelling, as part of one, or as
     /// anything else its core prints.
     func isKnown(token: String) -> Bool {

@@ -1029,10 +1029,10 @@ for index in 0..<document.pageCount {
         supplementedPages.append(index + 1)
         reviewPageNumbers.append(index + 1)
     }
-    if diagram || hasObject {
-        diagramPageNumbers.append(index + 1)
-        if !text.contains(diagramMarker) { text = diagramMarker + "\n" + text }
-    }
+    // A page holding a picture is reported for review, and only `isDiagramPage`, which wrote its tag
+    // above, makes it a drawing. Tagging every such page took the prose beside a photograph out of
+    // the search, which the phone's extractor never did (Plan KG P1).
+    if diagram || hasObject { diagramPageNumbers.append(index + 1) }
     // The page's own running header, when it disagrees with where the page actually sits. The text
     // is left exactly as it is — only the reader is told.
     if let printed = numberingMismatch(pageText: text, physicalPage: index + 1) {
