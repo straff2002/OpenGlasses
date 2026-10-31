@@ -1760,27 +1760,14 @@ struct OnboardingView: View {
     }
 
     /// Whether this first run gets the choice. A managed or Field Assist phone does not.
-    private var readyOffersChoice: Bool {
-        ScenarioFirstRun.showsPicker(isManaged: OrgProfileManager.shared.isManaged,
-                                     fieldAssistSetUp: LicenseService.shared.activeLicense != nil
-                                         || Config.fieldAssistActive)
-    }
+    private var readyOffersChoice: Bool { ScenarioEnvironment.offersIntentChoice }
 
     private var readyIntent: ScenarioIntent { readyOffersChoice ? firstIntent : .field }
 
     @ViewBuilder
     private var readyChoice: some View {
         if readyOffersChoice {
-            OGSection(header: "What do you want it for first?") {
-                ForEach(Array(ScenarioIntent.offeredOnReadyPage.enumerated()), id: \.element) { index, intent in
-                    if index > 0 { OGDivider() }
-                    OGSelectionRow(title: intent.title, subtitle: intent.subtitle,
-                                   isSelected: firstIntent == intent) {
-                        firstIntent = intent
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
+            ScenarioIntentChoice(selection: firstIntent) { firstIntent = $0 }
         } else {
             let entries = ScenarioReadiness.visible(ScenarioCatalog.all,
                                                     in: ScenarioEnvironment.firstRunContext())

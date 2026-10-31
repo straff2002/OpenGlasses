@@ -20,7 +20,8 @@ struct ScenarioShelfView<Fallback: View>: View {
         } else {
             VStack(spacing: 6) {
                 ForEach(cards) { entry in
-                    card(entry)
+                    ScenarioCardRow(entry: entry, isDisabled: runningID != nil,
+                                    open: { open(entry) }, dismiss: { store.dismiss(entry.id) })
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .leading)))
                 }
             }
@@ -29,75 +30,100 @@ struct ScenarioShelfView<Fallback: View>: View {
         }
     }
 
-    private func card(_ entry: ScenarioEntry) -> some View {
+    private func open(_ entry: ScenarioEntry) {
+        guard runningID == nil else { return }
+        // Busy, a turn sent now is dropped without a word. The card stays and nothing is marked.
+        switch store.begin(entry, acceptsTurn: appState.acceptsTypedTurn) {
+        case .openSettings(let destination):
+            appState.openSettings(destination)
+        case .nothing:
+            return
+        case .run:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            runningID = entry.id
+            Task {
+                await HomeGridDispatcher.run(.builtIn(entry.scenario.action), on: appState)
+                runningID = nil
+            }
+        }
+    }
+}
+
+/// One card: the thing to open, and an X that takes it away. The shelf draws these, and so do the
+/// Voice tab's "Things to try" card and its sheet, so all three behave alike.
+struct ScenarioCardRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+    let hint: String
+    let dismissLabel: Text
+    var isDisabled = false
+    let open: () -> Void
+    let dismiss: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         HStack(spacing: 8) {
-            Button { open(entry) } label: {
+            Button(action: open) {
                 HStack(spacing: 10) {
-                    Image(systemName: entry.scenario.icon)
+                    Image(systemName: icon)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 24)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: entry.scenario.title)
+                        Text(verbatim: title)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(verbatim: entry.detail)
+                        Text(verbatim: detail)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                 }
-                .frame(minHeight: 44)
+                .frame(minHeight: OGMetrics.minTouchTarget)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(runningID != nil)
+            .disabled(isDisabled)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(hint(for: entry))
+            .accessibilityHint(hint)
 
             Button {
-                let change = { store.dismiss(entry.id) }
-                if reduceMotion { change() } else { withAnimation(.easeInOut(duration: 0.2), change) }
+                if reduceMotion { dismiss() } else { withAnimation(.easeInOut(duration: 0.2), dismiss) }
             } label: {
                 Image(systemName: "xmark")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: OGMetrics.minTouchTarget, minHeight: OGMetrics.minTouchTarget)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text("Dismiss \(entry.scenario.title)"))
+            .accessibilityLabel(dismissLabel)
         }
         .padding(.leading, 12)
         .padding(.vertical, 4)
     }
+}
 
-    private func hint(for entry: ScenarioEntry) -> String {
+extension ScenarioCardRow {
+    /// A scenario's own card.
+    init(entry: ScenarioEntry, isDisabled: Bool, open: @escaping () -> Void, dismiss: @escaping () -> Void) {
+        self.init(icon: entry.scenario.icon, title: entry.scenario.title, detail: entry.detail,
+                  hint: Self.hint(for: entry), dismissLabel: Text("Dismiss \(entry.scenario.title)"),
+                  isDisabled: isDisabled, open: open, dismiss: dismiss)
+    }
+
+    private static func hint(for entry: ScenarioEntry) -> String {
         switch entry.readiness {
         case .needsSetup: return String(localized: "Opens Settings.")
         case .ready, .hidden:
             return entry.scenario.kind == .photoPrompt
                 ? String(localized: "Takes a photo, then asks about it.")
                 : String(localized: "Double-tap to ask.")
-        }
-    }
-
-    private func open(_ entry: ScenarioEntry) {
-        if case .needsSetup(let step) = entry.readiness {
-            if let destination = step.destination { appState.openSettings(destination) }
-            return
-        }
-        // Busy, a turn sent now is dropped without a word. The card stays and nothing is marked.
-        guard runningID == nil, appState.acceptsTypedTurn else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        runningID = entry.id
-        store.markTried(entry.id)
-        Task {
-            await HomeGridDispatcher.run(.builtIn(entry.scenario.action), on: appState)
-            runningID = nil
         }
     }
 }

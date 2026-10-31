@@ -44,6 +44,9 @@ struct VoiceTab: View {
     /// is out of the way — a composer or another tab cannot be presented from under a cover.
     @State private var showingJobDay = false
     @State private var jobDayLeavingTo: JobDayDestination?
+    /// The "Things to try" sheet, and where it asked to go once it is out of the way (Plan KH).
+    @State private var showingScenarioIntro = false
+    @State private var scenarioIntroExit: ScenarioSheetExit?
 
     /// What the surface above the dock actually drew — the recording badge, the status card, My Day
     /// in whatever state the wearer left it, and the captions and notices held down against the
@@ -214,6 +217,13 @@ struct VoiceTab: View {
             }
             .environmentObject(appState)
         }
+        .sheet(isPresented: $showingScenarioIntro, onDismiss: leaveScenarioIntro) {
+            ScenarioIntroSheet { exit in
+                scenarioIntroExit = exit
+                showingScenarioIntro = false
+            }
+            .environmentObject(appState)
+        }
         .sheet(isPresented: $showModelPicker) {
             ModelPickerSheet(appState: appState)
         }
@@ -231,6 +241,25 @@ struct VoiceTab: View {
         guard previewLeavingToSetup else { return }
         previewLeavingToSetup = false
         appState.openSettings(.capture)
+    }
+
+    /// Plan KH: where the "Things to try" sheet asked to go. Run from here rather than from the
+    /// sheet: a photo scenario presents the camera, which cannot come up from under a sheet. So the
+    /// turn is accepted, and marked tried, now that it can really start.
+    private func leaveScenarioIntro() {
+        guard let exit = scenarioIntroExit else { return }
+        scenarioIntroExit = nil
+        switch exit {
+        case .close:
+            return
+        case .settings(let destination):
+            appState.openSettings(destination)
+        case .livePreview:
+            showPreview = true
+        case .run(let entry):
+            guard scenarios.begin(entry, acceptsTurn: appState.acceptsTypedTurn) == .run else { return }
+            Task { await HomeGridDispatcher.run(.builtIn(entry.scenario.action), on: appState) }
+        }
     }
 
     // MARK: - First turn
@@ -390,6 +419,15 @@ struct VoiceTab: View {
                     TypeInsteadChip { showChatInput = true }
                         .transition(.opacity)
                 }
+            }
+
+            // Plan KH: things to try for anyone who has a conversation on the page. Outside the
+            // spaced stack for the same reason as the notice below.
+            ScenarioIntroSlot(conversations: appState.conversationStore,
+                              surfaceFree: HomeSurfaceVisibility.showsMyDay(state: voiceState,
+                                                                            captionsActive: captionsActive)
+                                  && appState.pendingTranscript == nil) {
+                showingScenarioIntro = true
             }
 
             // The transcript moved into the dock's conversation page. The error card did not: the

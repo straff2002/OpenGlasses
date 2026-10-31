@@ -6,6 +6,10 @@ struct ThingsToTryView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var store = ScenarioProgressStore.shared
+    /// Set when this page is pushed inside the Voice tab's sheet. Everything that goes somewhere
+    /// else leaves through it, because nothing can open from under a sheet and `dismiss` here would
+    /// only pop back to it.
+    var leaveSheet: ((ScenarioSheetExit) -> Void)? = nil
 
     private var entries: [ScenarioEntry] {
         ScenarioReadiness.visible(ScenarioCatalog.all, in: appState.scenarioContext)
@@ -48,7 +52,9 @@ struct ThingsToTryView: View {
             }
             if showsStreamLive {
                 OGCard {
-                    Button { appState.openLivePreview() } label: {
+                    Button {
+                        if let leaveSheet { leaveSheet(.livePreview) } else { appState.openLivePreview() }
+                    } label: {
                         OGRow("Stream live", icon: "dot.radiowaves.left.and.right",
                               subtitle: "Open the preview and go live.")
                     }
@@ -90,6 +96,10 @@ struct ThingsToTryView: View {
     private func open(_ entry: ScenarioEntry) {
         if case .needsSetup(let step) = entry.readiness {
             guard let destination = step.destination else { return }
+            if let leaveSheet {
+                leaveSheet(.settings(destination))
+                return
+            }
             // Back to the hub first: the request lands there, and pushing a category on top of
             // this page would leave two ways back to the same place.
             dismiss()
@@ -98,8 +108,19 @@ struct ThingsToTryView: View {
         }
         // Busy, a turn sent now is dropped without a word, and must not count as tried.
         guard canRunHere, appState.acceptsTypedTurn else { return }
+        if let leaveSheet {
+            leaveSheet(.run(entry))
+            return
+        }
         store.markTried(entry.id)
         appState.requestedTab = .voice
         Task { await HomeGridDispatcher.run(.builtIn(entry.scenario.action), on: appState) }
+    }
+}
+
+/// The row that leads to Things to Try, in the Settings hub and the Voice tab's sheet.
+struct ThingsToTryRow: View {
+    var body: some View {
+        OGRow("Things to Try", icon: "sparkles", subtitle: "Ideas for what to do with it")
     }
 }
