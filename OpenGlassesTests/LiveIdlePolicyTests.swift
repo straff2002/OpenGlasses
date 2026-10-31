@@ -153,10 +153,91 @@ final class LiveIdlePolicyTests: XCTestCase {
         XCTAssertNil(clock.lastActivity)
     }
 
+    // MARK: - Speech counts once it is answered
+
+    @MainActor
+    func testSpeechAloneDoesNotHoldTheSessionOpen() {
+        var now = start
+        let clock = makeClock { now }
+        clock.start(policy: policy)
+        for second in stride(from: 60.0, through: 590, by: 60) {
+            now = at(second)
+            clock.noteSpeechHeard()
+        }
+        XCTAssertEqual(clock.lastActivity, start, "a TV on in the room is not the wearer")
+        now = at(620)
+        XCTAssertEqual(clock.tick(), .end)
+    }
+
+    @MainActor
+    func testAnsweredSpeechCounts() {
+        var now = start
+        let clock = makeClock { now }
+        clock.start(policy: policy)
+        now = at(500)
+        clock.noteSpeechHeard()
+        now = at(502)
+        clock.noteModelReplied()
+        XCTAssertEqual(clock.lastActivity, at(502))
+        XCTAssertNil(clock.unansweredSpeech)
+    }
+
+    @MainActor
+    func testModelSpeechWithNothingToAnswerCountsForNothing() {
+        var now = start
+        let clock = makeClock { now }
+        clock.start(policy: policy)
+        now = at(500)
+        clock.noteModelReplied()
+        XCTAssertEqual(clock.lastActivity, start)
+    }
+
+    @MainActor
+    func testAToolCallAnswersTheSpeechBeforeIt() {
+        var now = start
+        let clock = makeClock { now }
+        clock.start(policy: policy)
+        now = at(500)
+        clock.noteSpeechHeard()
+        now = at(501)
+        clock.noteActivity()
+        XCTAssertNil(clock.unansweredSpeech)
+        XCTAssertEqual(clock.lastActivity, at(501))
+    }
+
+    func testTheLimitWaitsForSomeoneMidSentence() {
+        XCTAssertEqual(policy.decide(lastActivity: start, warned: true, now: at(600),
+                                     unansweredSpeech: at(597)), .none)
+    }
+
+    func testThatWaitIsBoundedSoATVCannotHoldItOpen() {
+        XCTAssertEqual(policy.decide(lastActivity: start, warned: true, now: at(615),
+                                     unansweredSpeech: at(614)), .none)
+        XCTAssertEqual(policy.decide(lastActivity: start, warned: true, now: at(620),
+                                     unansweredSpeech: at(619)), .end)
+    }
+
+    func testOldSpeechDoesNotDelayTheEnd() {
+        XCTAssertEqual(policy.decide(lastActivity: start, warned: true, now: at(600),
+                                     unansweredSpeech: at(500)), .end)
+    }
+
+    @MainActor
+    func testAStopForgetsUnansweredSpeech() {
+        var now = start
+        let clock = makeClock { now }
+        clock.start(policy: policy)
+        now = at(10)
+        clock.noteSpeechHeard()
+        clock.stop()
+        XCTAssertNil(clock.unansweredSpeech)
+    }
+
     // MARK: - Model speech is not activity (the wiring)
 
-    /// The manager feeds the clock from the wearer's events only. The model's own transcript and
-    /// audio handlers must never touch it — read from the source, because that is the claim.
+    /// The model's own transcript and audio handlers go through `noteModelReply`, which only
+    /// resolves speech already heard, and never touch the clock themselves — read from the source,
+    /// because that is the claim.
     func testTheManagerNeverCountsModelSpeech() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -170,10 +251,10 @@ final class LiveIdlePolicyTests: XCTestCase {
                 ?? rest.range(of: "\n        //")?.lowerBound ?? rest.endIndex
             XCTAssertFalse(rest[..<end].contains("idleClock"), "\(handler) must not count as activity")
         }
-        for wearer in ["self.idleClock.noteActivity()"] {
-            XCTAssertGreaterThanOrEqual(text.components(separatedBy: wearer).count - 1, 4,
-                                        "speech, speech-start, VAD barge-in, tool call and result")
-        }
+        XCTAssertGreaterThanOrEqual(text.components(separatedBy: "self.idleClock.noteActivity()").count - 1, 2,
+                                    "tool call and result")
+        XCTAssertGreaterThanOrEqual(text.components(separatedBy: "self.idleClock.noteSpeechHeard()").count - 1, 3,
+                                    "speech, speech-start, VAD barge-in")
     }
 
     // MARK: - The setting

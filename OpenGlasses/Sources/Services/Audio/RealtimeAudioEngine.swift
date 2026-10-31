@@ -595,6 +595,11 @@ final class RealtimeAudioEngine {
 
     /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
     /// completion callbacks, never wall-clock. Read this *before* `stopPlayback()` on barge-in.
+    /// Whether audio handed to the player has yet to finish playing.
+    var hasPendingPlayback: Bool {
+        syncOnAudioLifecycleQueue { !pendingPlayback.isEmpty }
+    }
+
     var confirmedPlayedMilliseconds: Int {
         syncOnAudioLifecycleQueue {
             playbackLedger.playedMilliseconds(sampleRate: config.outputSampleRate)

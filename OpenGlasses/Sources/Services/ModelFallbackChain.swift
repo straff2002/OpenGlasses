@@ -96,6 +96,9 @@ enum ModelFallbackChain {
                 // This model will not answer this (Plan IE P3). Asking it again changes nothing,
                 // so the candidate is finished — but the turn is not: another model may answer.
                 return .terminalForCandidate
+            case .slowResponse:
+                // Nothing came back in time. Thrown only with a candidate left to hop to.
+                return .retryOtherModel
             case .outputTruncated:
                 // The allowance went on thinking. A model that thinks less, or not at all, may
                 // well fit the same answer.

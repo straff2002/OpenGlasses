@@ -24,6 +24,10 @@ class ToolCallRouter {
     private var breaker = ToolCallBreaker()
     var suspendedToolNames: Set<String> { breaker.suspendedTools }
 
+    /// `LiveVoiceEndPolicy.toolName` was called. Not a tool the registry knows: the session owns it.
+    var onEndLiveSession: (() -> Void)?
+    var hasInFlightCalls: Bool { !inFlightTasks.isEmpty }
+
     /// Callback to pause/resume camera streaming during tool execution (prevents instability).
     var onToolExecutionStarted: (() -> Void)?
     var onToolExecutionFinished: (() -> Void)?
@@ -47,6 +51,14 @@ class ToolCallRouter {
         // Metadata only: which tool, correlated by a fingerprint of the call id. The arguments are
         // the actual message being sent / note being saved / address being navigated to.
         PrivacyLog.toolCallReceived(name: callName, invocation: callId)
+
+        if callName == LiveVoiceEndPolicy.toolName, let onEndLiveSession {
+            onEndLiveSession()
+            sendResponse(Self.toolResponse(callId: callId, name: callName,
+                                           payload: ["result": LiveVoiceEndPolicy.toolResult],
+                                           phase: .direct))
+            return
+        }
 
         // Plan BR P1: refuse suspended/runaway calls without executing — the message rides
         // back as the tool error so the model learns in-band and informs the user.

@@ -704,6 +704,14 @@ struct SmartRoutingView: View {
                     info: "If a model can't handle a request — the prompt is too long, it's rate-limited, or it returns nothing — the assistant automatically tries the next model instead of failing. Photos always require a vision-capable model: your selected model gets the first attempt when it supports images, then cloud vision models are preferred before local fallbacks."
                 )
                 InfoToggle(
+                    title: "Don't Wait on a Stuck Reply",
+                    isOn: Binding(
+                        get: { Config.firstReplyRaceEnabled },
+                        set: { Config.setFirstReplyRaceEnabled($0) }
+                    ),
+                    info: "If Gemini takes too long to answer, the assistant asks again, then moves to your next model. A slow reply may be asked for twice on your key, which can cost a little more or use more of your quota."
+                )
+                InfoToggle(
                     title: "Narrate Model Switches",
                     isOn: Binding(
                         get: { Config.narrateModelSwitchesEnabled },
