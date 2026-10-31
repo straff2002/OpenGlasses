@@ -105,6 +105,23 @@ final class ScopedSearchRouteTests: XCTestCase {
         XCTAssertEqual(asked, 1, "read once, by a route that takes no candidates")
     }
 
+    func testATextReadOnceAgreesWithAskingTheLongWay() {
+        let cases: [(String, [String])] = [
+            ("code E5 means low charge", ["E5", "e5", "E50", "code", "ode"]),
+            ("the QZ-4417 board and QZV-4417-60B", ["QZ4417", "QZ-4417", "QZV441760B", "QZ44", "4417", "60B", "board"]),
+            ("型号ABC123的 ABC123модель", ["ABC123", "abc123", "型号", "модель", "BC123"]),
+            ("ＡＢＣ１２３ on the plate", ["ABC123", "abc123", "plate"]),
+            ("0.28 mm and 1,5 and 7-9", ["28", "0.28", "1,5", "7-9", "79", "mm"]),
+            ("", ["QX100"]),
+        ]
+        for (text, tokens) in cases {
+            let index = CodeTokenizer.TokenIndex(text)
+            for token in tokens {
+                XCTAssertEqual(index.contains(token), CodeTokenizer.contains(text, token: token), "\(token) in \(text)")
+            }
+        }
+    }
+
     // MARK: - The best and the best within
 
     func testTheBestAndTheBestWithinAreInRankOrderEachOnce() {

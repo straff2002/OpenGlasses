@@ -273,8 +273,9 @@ struct VaultRetriever {
         /// The penalty for one passage: it names another model and does not name this one.
         func penalty(for text: String) -> Float {
             guard !activeTokens.isEmpty, !otherTokens.isEmpty else { return 0 }
-            guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
-            return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
+            let index = CodeTokenizer.TokenIndex(text)
+            guard !activeTokens.contains(where: index.contains) else { return 0 }
+            return otherTokens.contains(where: index.contains) ? penalty : 0
         }
 
         /// The penalty for a page of a vault manual: the one `penalty(for:)` gives, else the same
