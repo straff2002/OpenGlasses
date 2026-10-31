@@ -228,11 +228,11 @@ struct VaultModelIndex: Equatable {
         return Set((numbers + [first].compactMap { $0 }).map(key))
     }
 
-    /// At least six characters, hyphens aside, four of them digits. A designation or a size is
-    /// shorter ("Q-99X", "400V"); a part or document number is not.
+    /// At least six characters, hyphens aside, five of them digits. A designation or a size is
+    /// shorter or carries fewer ("Q-99X", "400V", "R-1234YF"); a part or document number does not.
     static func isDocumentNumber(_ word: String) -> Bool {
         let keyed = key(word)
-        return keyed.count >= 6 && keyed.filter(\.isNumber).count >= 4
+        return keyed.count >= 6 && keyed.filter(\.isNumber).count >= 5
     }
 
     /// The sections of the vault's series (`seriesStem`): what a member no listed size claims has

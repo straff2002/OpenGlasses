@@ -18,7 +18,7 @@ private enum Fixture {
     ## QX100 (QX100-A; rooftop)
     S:A02; U:A11; O:A21,A41; A02 suffix:00,01
     ### Notes
-    Uses the Acme harness SM-7001.
+    Uses the Acme harness SM-70012.
 
     ## QX200 (rooftop)
     S:A03; U:A12
@@ -192,7 +192,7 @@ final class AssignedDocumentsTests: XCTestCase {
 
     private let library: [(id: String, title: String)] = [
         ("a02", "A02 Acme Service Manual"), ("a11", "A11 Acme User Manual"), ("a21", "A21 Acme Options Guide"),
-        ("a03", "A03 Acme Service Manual"), ("sm7", "Acme Harness Guide SM-7001"), ("plain", "Acme Field Notes"),
+        ("a03", "A03 Acme Service Manual"), ("sm7", "Acme Harness Guide SM-70012"), ("plain", "Acme Field Notes"),
     ]
 
     func testASectionKeepsItsOwnText() {
@@ -231,9 +231,11 @@ final class AssignedDocumentsTests: XCTestCase {
 
     func testAWordOfATitleMustLookLikeADocumentNumber() {
         XCTAssertTrue(VaultModelIndex.isDocumentNumber("AB12345"))
-        XCTAssertTrue(VaultModelIndex.isDocumentNumber("SM-7001"))
+        XCTAssertTrue(VaultModelIndex.isDocumentNumber("SM-70012"))
         XCTAssertFalse(VaultModelIndex.isDocumentNumber("A123"), "too short")
         XCTAssertFalse(VaultModelIndex.isDocumentNumber("ABCD-123"), "too few digits")
+        XCTAssertFalse(VaultModelIndex.isDocumentNumber("R-1234YF"), "a designation with four digits is not a number")
+        XCTAssertFalse(VaultModelIndex.isDocumentNumber("SM-7001"), "four digits is one short")
         XCTAssertEqual(VaultModelIndex.documentIdentifiers(title: "Acme Q-99X Guide"), [],
                        "a designation inside a title is not a document's id")
         XCTAssertEqual(VaultModelIndex.documentIdentifiers(title: "A02 Q-99X Guide"), ["A02"], "the first word still is")
