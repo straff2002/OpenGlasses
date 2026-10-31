@@ -7761,13 +7761,14 @@ class AppState: ObservableObject, AppStateProtocol {
         _ = nativeToolRouter.takeTurnToolNames()  // a cancelled or failed prior turn's tools are not this turn's
         var originalModelId: String?
         var useLocalAgent = false
-        let agentIsCloud = Config.savedModels.contains(where: { $0.id == Config.agentModelId })
+        let cloudAgentId = Config.savedModels
+            .first { $0.id == Config.agentModelId && !LLMService.isOnDeviceProvider($0.llmProvider) }?.id
         let tierModel = Config.modelForTier(classification.modelTier)
         switch ModelRoutingPolicy.decide(
             isFastTier: classification.modelTier == .fast,
             agentModeEnabled: Config.agentModeEnabled,
             agentModelDownloaded: Config.agentModelDownloaded,
-            agentIsCloud: agentIsCloud,
+            cloudAgentId: cloudAgentId,
             localAgentEnabled: Config.localAgentEnabled,
             isPhoto: hasImage,
             autoRoutingEnabled: Config.autoModelRoutingEnabled,
@@ -7785,8 +7786,15 @@ class AppState: ObservableObject, AppStateProtocol {
             PrivacyLog.model(.offlineTurn, detail: PrivacyToken("phoneModel"))
         case .localAgent:
             useLocalAgent = true
-            PrivacyLog.model(.agentSelected,
-                             detail: PrivacyToken(agentIsCloud ? "cloud" : "onDevice"))
+            PrivacyLog.model(.agentSelected, detail: PrivacyToken("onDevice"))
+        case .cloudAgent(let id):
+            // Not narrated like a tier switch: this runs on every fast turn, by the wearer's choice.
+            if id != Config.activeModelId {
+                originalModelId = Config.activeModelId
+                Config.setActiveModelId(id)
+                llmService.refreshActiveModel()
+            }
+            PrivacyLog.model(.agentSelected, model: PrivacyToken(id), detail: PrivacyToken("cloud"))
         case .switchModel(let id):
             originalModelId = Config.activeModelId
             Config.setActiveModelId(id)

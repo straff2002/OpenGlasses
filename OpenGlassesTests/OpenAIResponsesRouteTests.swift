@@ -250,21 +250,6 @@ final class OpenAIResponsesRouteTests: XCTestCase {
         XCTAssertEqual(RecordingQueueProtocol.requests[0].url, "https://api.openai.com/v1/responses")
     }
 
-    // MARK: - 5. The cloud agent's entry takes the same route
-
-    func testCloudAgentEntryUsesResponses() async throws {
-        RecordingQueueProtocol.queue = [(200, answerTurn("Done."))]
-        let (svc, _) = service()
-
-        let reply = try await svc.sendCloudForTesting("run the check", config: config())
-
-        XCTAssertEqual(reply, "Done.")
-        XCTAssertEqual(RecordingQueueProtocol.requests.count, 1)
-        XCTAssertEqual(RecordingQueueProtocol.requests[0].url, "https://api.openai.com/v1/responses")
-        XCTAssertEqual((RecordingQueueProtocol.requests[0].json?["reasoning"] as? [String: Any])?["effort"] as? String,
-                       "medium")
-    }
-
     // MARK: - 6. Output cap reached before any text → named, then the empty-completion path
 
     func testMaxOutputIncompleteIsLoggedNotSilent() async throws {

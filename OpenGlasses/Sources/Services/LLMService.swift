@@ -2255,36 +2255,6 @@ class LLMService: ObservableObject {
 
     // MARK: - Anthropic Claude
 
-    /// Route a request to the appropriate cloud provider for a given config.
-    /// Used when a cloud model is selected as the agentic fast-tier model.
-    private func sendCloud(_ text: String, systemPrompt: String, config: ModelConfig, includeTools: Bool) async throws -> String {
-        let localOnly = MedicalLLMRoutingPolicy.isEnforced(
-            hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
-        let config = try medicalInferenceModel(requested: config)
-        switch config.llmProvider {
-        case .anthropic:
-            return try await sendAnthropic(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        case .chatgpt:
-            return try await sendChatGPT(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        case .gemini, .geminiVertex:
-            return try await sendGemini(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        case .local:
-            guard localOnly else {
-                throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
-            }
-            return try await sendLocal(text, systemPrompt: systemPrompt, config: config,
-                                       includeTools: includeTools, imageData: nil)
-        case .appleOnDevice:
-            guard localOnly else {
-                throw LLMError.missingAPIKey("Local providers cannot be used as cloud agent")
-            }
-            return try await sendAppleOnDevice(text, systemPrompt: systemPrompt,
-                                               includeTools: includeTools, carryHistory: true)
-        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            return try await sendOpenAICompatible(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools, imageData: nil)
-        }
-    }
-
     /// Capture the token usage block from a provider's response JSON and hand it to
     /// the cost tracker (Plan AU). Parsing is pure/synchronous here; only the resulting
     /// integer counts cross to the main actor (the non-Sendable JSON does not). A
@@ -5137,9 +5107,9 @@ class LLMService: ObservableObject {
         let hasNativeTools = nativeToolRouter != nil
         let device = Self.deviceInUse()   // Plan FY F3: read once for whichever prompt is built
 
-        // The fast-tier setting can name a cloud configuration independently of the active chat
-        // model. Resolve it before building a cloud prompt so Medical Local LLM Only cannot escape
-        // through the agent path or receive a prompt too large for the replacement local model.
+        // Medical Local LLM Only resolves the model first, so the agent path cannot escape it or
+        // hand the replacement local model a prompt too large for it. A cloud agent never reaches
+        // this function: it is an ordinary turn on that model (`ModelTurnRoute.cloudAgent`).
         if MedicalLLMRoutingPolicy.isEnforced(
             hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly) {
             let requested = Config.savedModels.first(where: { $0.id == agentModelId })
@@ -5166,29 +5136,6 @@ class LLMService: ObservableObject {
                 // `medicalInferenceModel` cannot return a remote model while this policy is active.
                 throw LLMError.invalidConfiguration(MedicalLLMRoutingPolicy.unavailableMessage)
             }
-        }
-
-        // Cloud agent: build the full tool-laden system prompt — cloud models handle a large
-        // context and tool-call natively.
-        if let cloudConfig = Config.savedModels.first(where: { $0.id == agentModelId }) {
-            // Plan GD3: the same list the declarations carry.
-            let nativeToolNames = FieldToolProfile.current(nativeToolRouter?.registry.toolNames ?? [])
-            let nativeToolDescriptions = nativeToolRouter?.registry.toolDescriptions(for: nativeToolNames) ?? []
-            let fullPrompt = await Self.buildSystemPrompt(
-                locationContext: locationContext,
-                includeTools: hasNativeTools,
-                includeOpenClaw: false,
-                hasImage: false,
-                nativeToolNames: nativeToolNames,
-                nativeToolDescriptions: nativeToolDescriptions,
-                memoryContext: memoryContext,
-                turn: text,
-                device: device
-            ).combined
-            PrivacyLog.model(.agentSelected, model: PrivacyToken(cloudConfig.model),
-                             configuration: PrivateIdentifier(cloudConfig.name),
-                             detail: PrivacyToken("cloud"))
-            return try await sendCloud(text, systemPrompt: fullPrompt, config: cloudConfig, includeTools: hasNativeTools)
         }
 
         // On-device agent: build a LEAN prompt (shared with the active-model path) — omits the
@@ -5345,12 +5292,6 @@ class LLMService: ObservableObject {
         try await sendOpenAICompatible(text, systemPrompt: systemPrompt, volatileTail: volatileTail,
                                        config: config, includeTools: includeTools, imageData: imageData,
                                        onToken: onToken, onStreamReset: onStreamReset)
-    }
-
-    /// The agentic fast tier's cloud entry (`sendCloud`), for Plan GC's coverage test. Test-only.
-    func sendCloudForTesting(_ text: String, systemPrompt: String = "You are a test.",
-                             config: ModelConfig, includeTools: Bool = true) async throws -> String {
-        try await sendCloud(text, systemPrompt: systemPrompt, config: config, includeTools: includeTools)
     }
 
     /// The raw history dictionaries, for asserting on keys a (role, text) view cannot show — the

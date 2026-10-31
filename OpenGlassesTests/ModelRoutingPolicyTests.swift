@@ -11,7 +11,7 @@ final class ModelRoutingPolicyTests: XCTestCase {
         isFastTier: Bool = true,
         agentModeEnabled: Bool = true,
         agentModelDownloaded: Bool = true,
-        agentIsCloud: Bool = true,
+        cloudAgentId: String? = "cloud-agent",
         localAgentEnabled: Bool = false,
         isPhoto: Bool = false,
         autoRoutingEnabled: Bool = true,
@@ -20,22 +20,29 @@ final class ModelRoutingPolicyTests: XCTestCase {
     ) -> ModelTurnRoute {
         ModelRoutingPolicy.decide(
             isFastTier: isFastTier, agentModeEnabled: agentModeEnabled,
-            agentModelDownloaded: agentModelDownloaded, agentIsCloud: agentIsCloud,
+            agentModelDownloaded: agentModelDownloaded, cloudAgentId: cloudAgentId,
             localAgentEnabled: localAgentEnabled, isPhoto: isPhoto,
             autoRoutingEnabled: autoRoutingEnabled, tierModelId: tierModelId, activeModelId: activeModelId)
     }
 
     // MARK: - Local agent
 
-    func testFastCloudAgentRoutesToLocalAgent() {
-        XCTAssertEqual(decide(), .localAgent)
+    func testFastCloudAgentIsAnOrdinaryTurnOnThatModel() {
+        // Not `.localAgent`: that path has no tool exposure, so a ChatGPT turn carried every
+        // tool's schema and full description and left no room for the conversation.
+        XCTAssertEqual(decide(), .cloudAgent(toId: "cloud-agent"))
+        XCTAssertEqual(decide(activeModelId: "cloud-agent"), .cloudAgent(toId: "cloud-agent"))
+    }
+
+    func testCloudAgentWinsOverTheOnDeviceOptIn() {
+        XCTAssertEqual(decide(localAgentEnabled: true), .cloudAgent(toId: "cloud-agent"))
     }
 
     func testOnDeviceAgentUsedOnlyWhenOptedIn() {
         // On-device (not cloud), opt-in off → falls through to auto-routing, not the agent.
-        XCTAssertEqual(decide(agentIsCloud: false, localAgentEnabled: false), .switchModel(toId: "tier-model"))
+        XCTAssertEqual(decide(cloudAgentId: nil, localAgentEnabled: false), .switchModel(toId: "tier-model"))
         // On-device with opt-in on → agent.
-        XCTAssertEqual(decide(agentIsCloud: false, localAgentEnabled: true), .localAgent)
+        XCTAssertEqual(decide(cloudAgentId: nil, localAgentEnabled: true), .localAgent)
     }
 
     func testPhotoTurnNeverUsesAgent() {
@@ -45,7 +52,7 @@ final class ModelRoutingPolicyTests: XCTestCase {
     func testPhotoTurnKeepsSelectedModelDuringOfflineHandoff() {
         XCTAssertEqual(ModelRoutingPolicy.decide(
             isFastTier: true, agentModeEnabled: true, agentModelDownloaded: true,
-            agentIsCloud: false, localAgentEnabled: true, isPhoto: true,
+            cloudAgentId: nil, localAgentEnabled: true, isPhoto: true,
             autoRoutingEnabled: true, tierModelId: "tier", activeModelId: "selected",
             phoneModelId: "local"), .keepCurrent)
     }
