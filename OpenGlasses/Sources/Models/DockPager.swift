@@ -103,6 +103,15 @@ enum DockPagerPolicy {
         return result
     }
 
+    /// The panel coming up on the conversation because things to try are waiting there (Plan KH P1).
+    /// Not a move the wearer made, so it grants them nothing and takes nothing: their next swipe
+    /// stands as any other, and the remembered grid page is kept. `DockPage.home` does not change.
+    static func openedForShelf(_ state: DockPagerState) -> DockPagerState {
+        var result = state
+        result.page = .conversation
+        return result
+    }
+
     /// The user swiped, or took one of the pager's named accessibility actions. Their choice stands
     /// for the rest of the turn. Moving to a page kind keeps the remembered grid page.
     static func userMoved(_ state: DockPagerState, to page: DockPage) -> DockPagerState {

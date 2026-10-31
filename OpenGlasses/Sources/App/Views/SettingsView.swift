@@ -98,6 +98,17 @@ struct SettingsView: View {
                 simpleModeSection
             }
 
+            // Plan KH P1: a row beside About, not a category. Scenarios are not settings, and a
+            // category id is a profile's to name.
+            OGSection {
+                NavigationLink {
+                    ThingsToTryView()
+                } label: {
+                    OGRow("Things to Try", icon: "sparkles", subtitle: "Ideas for what to do with it")
+                }
+                .buttonStyle(.plain)
+            }
+
             OGSection(
                 header: "About",
                 // The tagline and the device line, in the owner's words (Plan FY P2.1).

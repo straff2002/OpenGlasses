@@ -15,11 +15,16 @@ import UIKit
 /// The agent uses this to propose new automations to the operator.
 struct DiscoverCapabilitiesTool: NativeTool {
     let name = "discover_capabilities"
+    // Plan KH P1: the first sentence is the part the on-demand tool list keeps (`SystemPromptBuilder
+    // .summary`), so it carries the question.
     let description = """
-        Discover what the device can do — installed apps, available Siri Shortcuts, \
-        connected services, and existing scheduled tasks. Use this to find new ways \
-        to be useful. After discovering capabilities, reason about what combinations \
-        would be valuable and suggest new scheduled tasks or quick actions to the operator.
+        Answers "what can you do for me?" with category 'scenarios'. Use that category whenever \
+        someone asks what you can do, what you're for, or what to try: it returns things that will \
+        work on this phone right now, in plain words. The other categories discover what the device \
+        can do — installed apps, available Siri Shortcuts, connected services, and existing \
+        scheduled tasks. Use those to find new ways to be useful. After discovering capabilities, \
+        reason about what combinations would be valuable and suggest new scheduled tasks or quick \
+        actions to the operator.
         """
 
     let parametersSchema: [String: Any] = [
@@ -27,8 +32,8 @@ struct DiscoverCapabilitiesTool: NativeTool {
         "properties": [
             "category": [
                 "type": "string",
-                "description": "What to discover: 'all', 'shortcuts', 'apps', 'tools', 'tasks', 'suggest'",
-                "enum": ["all", "shortcuts", "apps", "tools", "tasks", "suggest"]
+                "description": "What to discover: 'scenarios' for 'what can you do for me?', or 'all', 'shortcuts', 'apps', 'tools', 'tasks', 'suggest'",
+                "enum": ["scenarios", "all", "shortcuts", "apps", "tools", "tasks", "suggest"]
             ]
         ]
     ]
@@ -40,6 +45,11 @@ struct DiscoverCapabilitiesTool: NativeTool {
 
         var sections: [String] = []
 
+        // Plan KH P1. Part of 'all' too, so a call that leaves the category out still answers the
+        // question people ask, and first, because it is the part they asked about.
+        if category == "all" || category == "scenarios" {
+            sections.append(await discoverScenarios())
+        }
         if category == "all" || category == "shortcuts" {
             sections.append(await discoverShortcuts())
         }
@@ -60,6 +70,16 @@ struct DiscoverCapabilitiesTool: NativeTool {
     }
 
     // MARK: - Discovery
+
+    private func discoverScenarios() async -> String {
+        await MainActor.run {
+            guard let appState = AppStateProvider.shared else {
+                return ScenarioSpokenAnswer.text(from: [])
+            }
+            return ScenarioSpokenAnswer.text(
+                from: ScenarioReadiness.visible(ScenarioCatalog.all, in: appState.scenarioContext))
+        }
+    }
 
     private func discoverShortcuts() async -> String {
         var lines = ["## Available Siri Shortcuts"]

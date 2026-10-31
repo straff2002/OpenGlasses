@@ -128,6 +128,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | safetyAssessments | `SafetyAssessmentStore` | operationalAudit | none | platformDefault | no | none | none — assessment history is the site record | n/a — no subject linkage |
 | savedLocations | `SaveLocationTool` | locationData | wearer | platformDefault | no | none | none — the wearer's own places, removed individually | n/a — no subject linkage |
 | savedNotes | `NotesStorage` | personalMemory | wearer | platformDefault | no | cap 50 | none — the wearer's own notes; the cap is what expires them | none — free-text notes are not indexed by person |
+| scenarioProgress | `ScenarioProgressStore` | preference | wearer | platformDefault | no | none | `ScenarioProgressStore.deleteAll()` | n/a — no subject linkage |
 | semanticMemory | `SemanticMemoryStore` | personalMemory | wearer | completeUntilFirstUserAuthentication | yes | expires_at purge, wearer history retention days, budget eviction | `SemanticMemoryStore.clearAll()` | `SemanticMemoryStore.forget(_:)` |
 | skillPacks | `SkillPackStore` | skillDefinition | none | platformDefault | no | none | none — packs are uninstalled individually | n/a — no subject linkage |
 | socialContext | `SocialContextStore` | socialProfile | thirdPartySubject | platformDefault | no | none | none — people are forgotten one at a time | `SocialContextStore.clearFacts(for:)` |
