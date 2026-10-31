@@ -309,9 +309,11 @@ and a multi-door model active, top four passages, document scoping off then on (
 
 Nothing from an assigned document left the top four, and one question gained its expected page. The scoping
 moves little on a symptom question. In the multi-door case the one assigned manual put only the page listing the
-model into the top four on most of them, on or off, and the rest stayed with other documents, since a penalty
-ranks them down and nothing better cleared the gate. A model number said in the turn takes the first slot for
-that page either way. The extractor here is the Mac's rather than the phone's.
+model into the top four on most of them, on or off, and the rest stayed with other documents. A model number
+said in the turn takes the first slot for that page either way. The extractor here is the Mac's rather than
+the phone's. Plan [KG](KG-symptoms-in-the-manuals-words.md) measured why: a search limited to the assigned
+documents found more right pages, and the shared-terms check stopped them, because the manuals are worded by
+part and the question by symptom.
 
 ### P3 — the tester's re-run (owed, device)
 
@@ -357,6 +359,7 @@ in a fresh job for that reason, and the checks offered must be read against the 
 ## Open
 
 - Whether an organisation profile should also be able to require the seal on any vault.
-- Whether `vault_only` should also lift the assigned-document rule from a penalty to a hard filter.
+- ~~Whether `vault_only` should also lift the assigned-document rule from a penalty to a hard filter.~~ No: a
+  filter after the search removes passages and adds none (Plan [KG](KG-symptoms-in-the-manuals-words.md)).
 - Vault side, the author's: reword the escalation rule, add suffix lists where coverage is verified,
   add `vault_only`, and decide whether a reviewed symptom-to-check file belongs in the core.
