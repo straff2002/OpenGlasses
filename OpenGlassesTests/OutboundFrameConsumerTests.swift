@@ -482,7 +482,7 @@ final class OutboundFrameConsumerTests: XCTestCase {
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.hasPrefix("//") }
-            if code.contains(where: { $0.contains(".claimStream(") }) { takers.append(url.lastPathComponent) }
+            if code.contains(where: { $0.contains(".claimFrames(") }) { takers.append(url.lastPathComponent) }
         }
         XCTAssertEqual(takers, ["BroadcastService.swift"])
     }

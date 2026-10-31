@@ -548,13 +548,13 @@ class BroadcastService: ObservableObject {
         let phoneWanted = activeSource.isPhone || (dualCaptureMirror && activeSource == .glasses)
         if phoneWanted {
             let position = activeSource.phonePosition ?? .back
-            phoneVideoSource.claimStream(position: position) { [weak self] image in
+            phoneVideoSource.claimFrames(position: position) { [weak self] image in
                 guard let self else { return }
                 let kind: BroadcastVideoSource = position == .front ? .phoneFront : .phoneBack
                 self.handleFrame(image, from: kind)
             }
         } else {
-            phoneVideoSource.releaseStream()
+            phoneVideoSource.releaseFrames()
         }
     }
 
@@ -581,7 +581,7 @@ class BroadcastService: ObservableObject {
         frameSubscription?.cancel()
         frameSubscription = nil
         audioProvider?.removeAudioBufferConsumer(id: Self.audioConsumerId)
-        phoneVideoSource.releaseStream()
+        phoneVideoSource.releaseFrames()
         latestSecondaryFrame = nil
         durationTimer?.invalidate()
         durationTimer = nil

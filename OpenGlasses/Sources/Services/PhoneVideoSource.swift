@@ -130,7 +130,7 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
     }
 
     /// A stream wants frames from `position`. Claiming again moves it to another camera.
-    func claimStream(position: AVCaptureDevice.Position,
+    func claimFrames(position: AVCaptureDevice.Position,
                      onFrame: @escaping @Sendable (UIImage) -> Void) {
         sessionQueue.async { [weak self] in
             guard let self else { return }
@@ -140,7 +140,7 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
         }
     }
 
-    func releaseStream() {
+    func releaseFrames() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.frameHandler = nil
