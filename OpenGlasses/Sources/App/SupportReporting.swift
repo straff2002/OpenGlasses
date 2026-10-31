@@ -229,6 +229,9 @@ extension AppState {
         // Plan IW P2: how many goals are on the go and how long the trail is — counts only.
         phone.append(GoalActivityReportLine.line(goals: GoalStore.shared.goals,
                                                  entries: ActivityStore.shared.entries, now: Date()))
+        // Plan KH P1: how many of the scenarios were tried. A count, from the catalogue; no content.
+        phone.append(ScenarioReportLine.line(progress: ScenarioProgressStore.shared.progress,
+                                             catalogIDs: ScenarioCatalog.all.map(\.id)))
         if let job = FieldSessionService.shared.activeSession, job.endedAt == nil {
             phone.append("Job open: \(job.jobReference.map { "Job \($0)" } ?? JobTabModel.noJobNumber)")
         }

@@ -34,6 +34,10 @@ struct VoiceTab: View {
     @ObservedObject private var store = StoreKitService.shared
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var manualLibrary = PersonalManualLibrary.shared
+    /// Observed for the pending first turn the Ready page leaves (Plan KH P1).
+    @ObservedObject private var scenarios = ScenarioProgressStore.shared
+    /// Observed so the opening below is looked at again when the overlay above this tab finishes.
+    @AppStorage("hasCompletedOnboarding") private var onboardingDone = false
     /// The full-screen day behind the job-day card, and where one of its rows asked to go once it
     /// is out of the way — a composer or another tab cannot be presented from under a cover.
     @State private var showingJobDay = false
@@ -157,12 +161,35 @@ struct VoiceTab: View {
             }
             }
         }
+        // Plan KH P1: the dock opens on the grid, so with cards waiting it starts on them instead.
+        .onChange(of: opensOnShelf(voiceState), initial: true) { _, opens in
+            guard opens else { return }
+            scenarios.settleShelfOpening()
+            dockPager = DockPagerPolicy.openedForShelf(dockPager)
+        }
+        .onChange(of: voiceState) { _, state in
+            if DockPagerPolicy.isTurnActive(state) { scenarios.settleShelfOpening() }
+            runPendingFirstScenario()
+        }
         }
         // Animated at the source: captions arriving or leaving changes the zone's height, and the
         // panel tracks that measurement rather than animating separately. Settling it here is what
         // makes the caption block and the panel one exchange instead of two.
         .onReceive(appState.ambientCaptions.$isActive) { active in
             withAnimation(DockGridMetrics.heightSettle) { captionsActive = active }
+        }
+        // The first turn the Ready page chose. `initial` covers the tab being built after the choice;
+        // the record is cleared before the turn runs, so a re-appear or a relaunch finds nothing.
+        .onChange(of: scenarios.progress.pendingFirstTurn, initial: true) { _, _ in
+            runPendingFirstScenario()
+        }
+        // A first turn that found the app busy is still waiting.
+        .onChange(of: appState.isProcessing) { _, _ in
+            runPendingFirstScenario()
+        }
+        // The wearer's own move ends the chance to open on the cards, for this launch.
+        .onChange(of: dockPager.userMovedThisTurn) { _, moved in
+            if moved { scenarios.settleShelfOpening() }
         }
         .fullScreenCover(isPresented: $showPreview) {
             LivePreviewView()
@@ -185,6 +212,41 @@ struct VoiceTab: View {
         .sheet(item: Binding(get: { showPreview ? nil : appState.pendingShareItem },
                              set: { appState.pendingShareItem = $0 })) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
+        }
+    }
+
+    // MARK: - First turn
+
+    /// Whether the panel should start on the cards now (`ScenarioShelfPolicy.opensOnConversation`).
+    private func opensOnShelf(_ voiceState: VoiceVisualState) -> Bool {
+        ScenarioShelfPolicy.opensOnConversation(
+            pager: dockPager, voiceState: voiceState,
+            directMode: HomeSurfaceVisibility.showsActionTiles(mode: appState.currentMode),
+            onboardingDone: onboardingDone, alreadySettled: scenarios.shelfOpeningSettled,
+            conversationIsEmpty: ConversationContinuity.pageContent(
+                store: appState.conversationStore, isRealtimeSession: false,
+                liveUserText: appState.currentTranscription, liveAssistantText: appState.lastResponse) == .empty,
+            hasCards: !appState.scenarioShelfCards(progress: scenarios.progress).isEmpty)
+    }
+
+    /// Plan KH P1: takes the Ready page's first turn, once, through the grid's own seam.
+    private func runPendingFirstScenario() {
+        let pending = scenarios.progress.pendingFirstTurn
+        guard pending != nil else { return }
+        let consumption = ScenarioFirstRun.consumption(
+            of: pending, pastOnboarding: Config.hasCompletedOnboarding,
+            directMode: HomeSurfaceVisibility.showsActionTiles(mode: appState.currentMode),
+            busy: !appState.acceptsTypedTurn,
+            context: appState.scenarioContext, scenarios: ScenarioCatalog.all)
+        switch consumption {
+        case .wait:
+            return
+        case .discard:
+            _ = scenarios.takePendingFirstTurn()
+        case .run(let scenario):
+            guard scenarios.takePendingFirstTurn() != nil else { return }
+            scenarios.markTried(scenario.id)
+            Task { await HomeGridDispatcher.run(.builtIn(scenario.action), on: appState) }
         }
     }
 

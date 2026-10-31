@@ -132,6 +132,7 @@ enum SensitiveStore: String, CaseIterable {
 
     // Preferences and licence
     case preferences
+    case scenarioProgress
     case licence
 
     // Keychain, by item family
@@ -1152,6 +1153,19 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/Diagnostics/PilotReports.swift",
                                        "OpenGlasses/Sources/App/Views/PilotReportViews.swift"],
                           location: "UserDefaults pilotReportsEnabled, pilotReportRecipients, pilotReportSentDays, pilotReportLastPromptDay")
+
+        case .scenarioProgress:
+            // Which of the app's own scenarios the wearer tried or dismissed, what they said they
+            // wanted it for, and a pending first turn (Plan KH P1). Ids from the catalogue and one
+            // intent token: nothing they said and nobody else. Backed up like other preferences,
+            // because the cards should not come back on a new phone.
+            return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("ScenarioProgressStore.deleteAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ScenarioProgressStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Scenarios/ScenarioProgress.swift"],
+                          location: "UserDefaults key scenarioProgress")
 
         case .preferences:
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,

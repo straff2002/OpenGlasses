@@ -99,8 +99,7 @@ struct BottomControlBar: View {
 
     private var photoDisabledForLocalModel: Bool {
         if isRealtime { return !appState.realtimeSupportsVision }
-        guard let model = Config.activeModel, model.llmProvider == .local else { return false }
-        return !model.visionEnabled
+        return HomeGridPhotoPolicy.blocksPhoto(activeModel: Config.activeModel)
     }
 
     private var slots: [DockSlot] {

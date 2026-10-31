@@ -592,6 +592,15 @@ enum HomeGridStore {
 
 // MARK: - Running an entry
 
+/// Whether the active model can take a photo turn in Direct mode. The grid's tiles use this and so
+/// do the scenarios (Plan KH P1), so a photo card can never be offered where a photo tile is dimmed.
+enum HomeGridPhotoPolicy {
+    static func blocksPhoto(activeModel: ModelConfig?) -> Bool {
+        guard let activeModel, activeModel.llmProvider == .local else { return false }
+        return !activeModel.visionEnabled
+    }
+}
+
 /// What the home grid needs from the session to run a tile.
 ///
 /// `AppState` is the shipped conformance and every method is an existing seam — the grid adds no

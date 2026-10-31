@@ -1,6 +1,6 @@
 # Plan KH — From Capabilities to Use (what to try first, settings by what you want done, showing what it has learned)
 
-**Status:** 📝 Drafted 2026-10-31. Nothing built.
+**Status:** 🚧 P1 built 2026-10-31: the scenario catalogue (59 scenarios, with data-only topics), readiness, the shelf policy, first-turn choice, on-device progress store, Ready page, Voice tab cards (the tab starts on them at most once per launch while there are cards to show), Things to Try, the `scenarios` category of `discover_capabilities`, and the support report count. Headless tests cover the catalogue, readiness, shelf, first turn, store, tool and report; the Ready page and Voice tab cards have not been seen running, because the simulator cannot get past onboarding. Owed: P0, which was not run first; the device pass (a first turn from the Ready page, cards with VoiceOver, a managed phone, one right-to-left language); and the string catalog sync for the new copy. P2, P3 and P4 not built.
 **Track:** App-wide. Field Assist keeps its own guided flows and gets its own scenarios.
 **Related:** Plan [HA](HA-settings-hub-and-org-lockdown.md) (the fixed hub, and the shelf it removed),
 Plan [DE](DE-settings-capability-journey.md) (the journey HA retired), Plan

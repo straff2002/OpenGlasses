@@ -42,6 +42,12 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
         _ = shared
     }
 
+    /// How many Apple Home homes the shared manager has seen, without creating it or asking for
+    /// access: zero until `prepareShared` has run. Plan KH P1: a scenario reads this to know whether
+    /// there is a home to control, and must not be what raises HomeKit's permission prompt.
+    @MainActor
+    static var knownHomeCount: Int { _shared?.homeManager?.homes.count ?? 0 }
+
     init() {}
 
     func execute(args: [String: Any]) async throws -> String {

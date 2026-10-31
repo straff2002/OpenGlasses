@@ -221,6 +221,8 @@ enum ToolExposureCore {
         "new_topic", "yield_to_human",
         // Named by the prompt's mandatory routing rule (`SystemPromptBuilder.routingRules`).
         "health_check",
+        // "What can you do for me?" (Plan KH P1): the first thing a new person asks, on any model.
+        "discover_capabilities",
     ]
 
     /// The sight tools accessibility mode registers (`NativeToolRegistry`).

@@ -72,13 +72,16 @@ struct TranscriptOverlay: View {
             }
 
             if aiText.isEmpty && userText.isEmpty && !appState.openClawBridge.sessionCompacted {
-                // The page exists before anything has been said, so it says so rather than
-                // presenting as a panel that failed to load.
-                Text("Nothing said yet.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
+                // Plan KH P1: things to try, only here, so they never compete with a conversation.
+                ScenarioShelfView {
+                    // The page exists before anything has been said, so it says so rather than
+                    // presenting as a panel that failed to load.
+                    Text("Nothing said yet.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 12)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.3), value: userText)
