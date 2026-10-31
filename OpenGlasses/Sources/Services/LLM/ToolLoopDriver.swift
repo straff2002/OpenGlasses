@@ -156,7 +156,9 @@ struct ProviderLoopAdapter {
     /// Append the results of this iteration's tool calls to history. Anthropic/OpenAI append one
     /// message per result; Gemini batches them into a single `function` message.
     let appendToolResults: ([ToolDispatchOutcome]) -> Void
-    /// Append the final assistant text to history and return it; throw if empty.
+    /// Append the final assistant text to history and return it. Throwing on an empty reply is how
+    /// a provider sends the turn to the next model in the cascade; one that does not throw keeps the
+    /// empty reply, and `asksAgainWhenSilent` is for those.
     let finalize: (AssistantTurn) throws -> String
     /// Append a note from the app as a user message, for the one re-ask the loop makes when the
     /// model stalls after a tool has answered (`StallReplyPolicy`). Nil means the loop cannot
@@ -166,6 +168,11 @@ struct ProviderLoopAdapter {
     /// or the provider's equivalent), so the model can only answer in words. Nil means the
     /// provider cannot withhold them, and the wrap-up is an ordinary `performTurn`.
     var performWrapUp: (() async throws -> AssistantTurn)? = nil
+    /// Ask once more when a reply has no words in it, instead of finalizing it (`StallReplyPolicy`).
+    /// Only for a provider whose `finalize` keeps an empty reply, where it would reach the speech
+    /// layer as silence. Off where `finalize` throws: that throw hops to the next model at once, and
+    /// on a degraded provider an extra request first is a wait the technician hears.
+    var asksAgainWhenSilent = false
 }
 
 /// Whether the request being built is the loop's wrap-up, which offers the model no tool.
@@ -218,7 +225,8 @@ func runToolLoop(
     // Whether any tool has answered in this turn: only then can a reply that promises to look
     // something up be a stall rather than an honest opener.
     var toolsHaveAnswered = false
-    var stallReasked = false
+    // One re-ask per turn, whether the reply stalled or said nothing.
+    var reasked = false
     // Every completed call this turn, by signature, with what it answered. A model doing its
     // bookkeeping can call the same thing four or five times and be told the same thing each
     // time, spending the whole budget on it and leaving nothing to say what was done.
@@ -243,13 +251,30 @@ func runToolLoop(
             // them ("Vou pesquisar… um momento"). Once, ask again with them still there; the
             // stalled reply itself is not kept, so nothing speaks it. A second stall is the
             // answer, as before.
-            if toolsHaveAnswered, !stallReasked, let appendUserNote = adapter.appendUserNote,
+            if toolsHaveAnswered, !reasked, let appendUserNote = adapter.appendUserNote,
                StallReplyPolicy.isStall(turn.text) {
-                stallReasked = true
+                reasked = true
                 PrivacyLog.model(.stallReplyReasked, characters: turn.text.count,
                                  detail: PrivacyToken(adapter.label))
                 appendUserNote(StallReplyPolicy.nudge)
                 continue
+            }
+            // No words at all, on a provider that would keep that as the answer. Asked once, like a
+            // stall, and the empty reply is not kept. After that, what the tools answered is said,
+            // if any did; a turn with nothing to say from ends as it did.
+            if adapter.asksAgainWhenSilent,
+               StallReplyPolicy.isSilent(turn.text, toolsRun: turnOutcomes.map(\.invocation.name)) {
+                if !reasked, let appendUserNote = adapter.appendUserNote {
+                    reasked = true
+                    PrivacyLog.model(.silentReplyReasked, characters: turn.text.count,
+                                     detail: PrivacyToken(adapter.label))
+                    appendUserNote(StallReplyPolicy.silenceNudge)
+                    continue
+                }
+                if toolsHaveAnswered {
+                    setStatus(.idle)
+                    return try adapter.finalize(AssistantTurn(text: ToolLoopBudget.spoken(from: turnOutcomes)))
+                }
             }
             let text = try adapter.finalize(turn)
             setStatus(.idle)

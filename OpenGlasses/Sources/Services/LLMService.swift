@@ -3211,7 +3211,7 @@ class LLMService: ObservableObject {
             }
         )
 
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter).withholdingTools(withholding),
+        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
 
@@ -3388,7 +3388,7 @@ class LLMService: ObservableObject {
                 return turn.text
             }
         )
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter).withholdingTools(withholding),
+        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
 
@@ -3524,7 +3524,7 @@ class LLMService: ObservableObject {
                 return turn.text
             }
         )
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter).withholdingTools(withholding),
+        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
                                      setStatus: { [weak self] in self?.toolCallStatus = $0 })
     }
 
@@ -4325,9 +4325,11 @@ class LLMService: ObservableObject {
     /// The adapter with the loop's one re-ask wired in: a note from the app goes into history as a
     /// user turn. Every cloud path here keeps a plain user turn as `["role": "user", "content":
     /// text]` — the Gemini and Responses senders translate that shape on the wire — so one
-    /// closure serves all five.
-    private func notingStalls(_ adapter: ProviderLoopAdapter) -> ProviderLoopAdapter {
+    /// closure serves all five. `asksAgainWhenSilent` is for the three paths whose `finalize` keeps
+    /// an empty reply; Anthropic and Gemini throw on one, which is how the cascade hops.
+    private func notingStalls(_ adapter: ProviderLoopAdapter, asksAgainWhenSilent: Bool = false) -> ProviderLoopAdapter {
         var noting = adapter
+        noting.asksAgainWhenSilent = asksAgainWhenSilent
         noting.appendUserNote = { [weak self] text in
             self?.conversationHistory.append(["role": "user", "content": text])
         }

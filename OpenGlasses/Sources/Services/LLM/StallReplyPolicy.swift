@@ -13,6 +13,9 @@ import Foundation
 /// languages the app ships in. The bar is deliberately narrow — one extra request on a false
 /// positive costs a second or two; a false negative costs a wasted turn — so a reply that carries
 /// a number, or runs longer than a sentence or two, is never second-guessed.
+///
+/// A reply with no words at all is the same mistake with nothing to speak (`isSilent`): a provider
+/// path that keeps an empty reply would end the turn in silence, so the loop asks once there too.
 enum StallReplyPolicy {
 
     /// Replies longer than this are answers, whatever they open with.
@@ -59,4 +62,23 @@ enum StallReplyPolicy {
         "The tool results above are already in. Do not say you will look it up or ask the user to "
         + "wait: answer now, in the user's language, with what the results contain, or say plainly "
         + "that they do not contain it."
+
+    /// Tools whose result tells the model to say nothing, because the app speaks for itself: a blank
+    /// reply after one of these is the reply it was asked for. `new_topic` is confirmed aloud once
+    /// the context has been cleared.
+    static let toolsThatEndInSilence: Set<String> = ["new_topic"]
+
+    /// Whether `text` would end the turn with nothing said, after `toolsRun` answered this turn.
+    /// False once a tool has asked for that silence.
+    static func isSilent(_ text: String, toolsRun: [String] = []) -> Bool {
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return !toolsRun.contains(where: toolsThatEndInSilence.contains)
+    }
+
+    /// What the model is told when its reply had no words in it. Unlike `nudge` it claims no tool
+    /// results, because no tool may have run. On the Responses route a reply can be a note to itself
+    /// and nothing else, which is why it asks for the answer and not just for a reply.
+    static let silenceNudge =
+        "Your last reply had no answer in it, so the user heard nothing. Give them your answer now, "
+        + "in the user's language, or say plainly that you cannot answer."
 }
