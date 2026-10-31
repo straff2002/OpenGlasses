@@ -1857,19 +1857,7 @@ class LLMService: ObservableObject {
 
         guard !transcript.isEmpty else { return nil }
 
-        let summarizationPrompt = """
-        Summarize the following conversation excerpt concisely. Preserve:
-        - All user-stated facts, names, and preferences
-        - Decisions made and commitments given
-        - Tool calls and their key results
-        - Memory commands ([REMEMBER], [FORGET])
-        - Any unresolved questions or action items
-
-        Keep it under 300 words. Use plain text, no formatting.
-
-        CONVERSATION:
-        \(transcript)
-        """
+        let summarizationPrompt = ConversationSummaryPrompt.make(transcript: transcript)
 
         let provider = modelConfig.llmProvider
 
