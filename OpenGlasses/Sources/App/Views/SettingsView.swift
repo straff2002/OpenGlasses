@@ -745,7 +745,6 @@ struct SmartRoutingView: View {
 struct HardwarePrivacyView: View {
     @ObservedObject var appState: AppState
     @Binding var micRoute: MicRoute
-    @Binding var privacyFilterEnabled: Bool
     @Binding var conversationEncryptionEnabled: Bool
     /// W03.3 — how long the wearer's own conversations and memories are kept. Zero means forever
     /// and is the default; see `Config.historyRetentionDays`.
@@ -934,16 +933,7 @@ struct HardwarePrivacyView: View {
             }
 
             Section {
-                InfoToggle(
-                    title: "Blur Bystander Faces",
-                    isOn: $privacyFilterEnabled,
-                    info: "Uses Apple's on-device Vision framework to detect faces in the camera feed and applies a Gaussian blur before a frame leaves your device — AI providers, video recordings, live broadcasts, browser streaming, and expert calls. Detection and blurring happen entirely on-device. On video, faces are found several times a second and the blur follows them in between, so someone stepping into shot can be briefly visible before the next detection catches them. Faces you have enrolled for recognition are matched on the unblurred frame, so recognition keeps working."
-                )
-                // Plan HA C4: pinned on, this is drawn read-only rather than hidden, even for the
-                // technician — a bystander protection somebody on the phone must be able to see is
-                // on (`SettingsVisibilityPolicy.alwaysShown`).
-                .disabled(PolicyEnvelope.isLocked(.privacyFilterEnabled))
-                ManagedSettingNote(key: .privacyFilterEnabled)
+                BystanderBlurSwitch(appState: appState)
                 // Apple Health: what is read, whether the AI may see it (the share toggle lives
                 // there now), and the summary kept for locked-phone answers.
                 NavigationLink {

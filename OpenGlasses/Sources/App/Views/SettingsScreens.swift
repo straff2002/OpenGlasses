@@ -994,8 +994,6 @@ struct GlassesPrivacySettingsScreen: View {
     @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("hipaaMode") private var hipaaMode = false
 
-    // Privacy filter
-    @State private var privacyFilterEnabled = Config.privacyFilterEnabled
     @State private var micRoute = Config.micRoute
 
     // Security
@@ -1046,7 +1044,6 @@ struct GlassesPrivacySettingsScreen: View {
                         HardwarePrivacyView(
                             appState: appState,
                             micRoute: $micRoute,
-                            privacyFilterEnabled: $privacyFilterEnabled,
                             conversationEncryptionEnabled: $conversationEncryptionEnabled,
                             isTogglingEncryption: $isTogglingEncryption
                         )
@@ -1108,10 +1105,6 @@ struct GlassesPrivacySettingsScreen: View {
     // MARK: - Save Settings
 
     private func saveSettings() {
-        Config.setPrivacyFilterEnabled(privacyFilterEnabled)
-        // Read back rather than trusting the switch: an organisation profile may pin the filter on
-        // (Plan CT), and then the setter above was refused.
-        appState.privacyFilter.isEnabled = Config.privacyFilterEnabled
         Config.setMicRoute(micRoute)
 
         appState.restartWakeWordIfDirect()

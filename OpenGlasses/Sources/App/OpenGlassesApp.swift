@@ -6410,6 +6410,17 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Something is on air to people watching now. Blur Bystander Faces asks before going off then.
+    var isStreamingLive: Bool { broadcastService.isBroadcasting || webRTCStreaming.isStreaming }
+
+    /// Blur Bystander Faces, from wherever it is changed (`BystanderBlurControl`).
+    func setBystanderBlur(_ enabled: Bool) {
+        Config.setPrivacyFilterEnabled(enabled)
+        // Read back rather than trusting the switch: an organisation profile may pin the filter on
+        // (Plan CT), and then the setter above was refused.
+        privacyFilter.isEnabled = Config.privacyFilterEnabled
+    }
+
     /// Toggle live broadcast on/off.
     ///
     /// - Parameter startSource: the camera to start on, chosen by the live preview

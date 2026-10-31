@@ -11,6 +11,7 @@ struct LivePreviewView: View {
     @ObservedObject private var broadcastService: BroadcastService
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var adminGate = AdminGate.shared
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.
@@ -26,6 +27,10 @@ struct LivePreviewView: View {
     @State private var goLiveNotice: GoLiveNotice?
     @State private var isChangingBroadcast = false
     @State private var isPreviewVisible = false
+
+    // `AppState` doesn't forward a nested object's changes, so these are received rather than read.
+    @State private var blurOn = false
+    @State private var confirmingBlurOff = false
 
     /// The camera permission as last read: it can change while the app is away in Settings.
     @State private var phoneAccess = AVCaptureDevice.authorizationStatus(for: .video)
@@ -176,8 +181,14 @@ struct LivePreviewView: View {
                 if case .phone = picture, phoneViewfinderPhase == .live {
                     mediaCaption(LivePreviewPicture.phoneCaption(
                         isBroadcasting: isBroadcasting,
-                        blurOn: appState.privacyFilter.isEnabled,
+                        blurOn: blurOn,
                         preferredSource: preferredBroadcastSource))
+                        .padding(.bottom, 12)
+                }
+
+                // The state of the switch is on show whoever set it, and who set it goes with it.
+                if !canChangeBlur, let organization = PolicyEnvelope.organizationName {
+                    mediaCaption(String(localized: "Set by \(organization)"))
                         .padding(.bottom, 12)
                 }
 
@@ -273,6 +284,10 @@ struct LivePreviewView: View {
             if case .setUp = notice {
                 Button("Open Setup", action: onOpenSetup)
                 Button("Not Now", role: .cancel) {}
+            } else if case .phoneCameraNotBlurred(let refusal) = notice, refusal.offersTurningOff {
+                // Turning it off is all this does. Going live is a second, separate tap.
+                Button("Turn Off Blur", role: .destructive) { appState.setBystanderBlur(false) }
+                Button("Not Now", role: .cancel) {}
             } else {
                 if case .failed = notice, setupReachable {
                     Button("Open Setup", action: onOpenSetup)
@@ -288,6 +303,8 @@ struct LivePreviewView: View {
                 goLiveNotice = .failed(message)
             }
         }
+        .onReceive(appState.privacyFilter.$isEnabled) { blurOn = $0 }
+        .bystanderBlurOffConfirmation(isPresented: $confirmingBlurOff, appState: appState)
         .onReceive(phoneCamera.statusPublisher.receive(on: DispatchQueue.main)) { phoneCapture = $0 }
         // Plan KH: the session follows the picture, and starts here rather than in `onAppear` so
         // that closing the preview while iOS is asking cannot leave the camera on behind it.
@@ -482,6 +499,7 @@ struct LivePreviewView: View {
                 photoButton
                 recordButton
                 goLiveButton
+                blurButton
                 sourceMenu
             }
             VStack(spacing: 12) {
@@ -490,7 +508,10 @@ struct LivePreviewView: View {
                     recordButton
                     goLiveButton
                 }
-                sourceMenu
+                HStack(spacing: 16) {
+                    blurButton
+                    sourceMenu
+                }
             }
         }
     }
@@ -575,6 +596,43 @@ struct LivePreviewView: View {
         .accessibilityLabel(isBroadcasting ? "Stop Broadcasting" : "Go Live")
     }
 
+    private var canChangeBlur: Bool { BystanderBlurControl.isChangeable(in: adminGate.settingsContext) }
+
+    /// Blur Bystander Faces, a tap away from the button it decides. Says on or off in words, and
+    /// stays readable when it can't be changed (`SettingsVisibilityPolicy.alwaysShown`).
+    private var blurButton: some View {
+        Button {
+            switch BystanderBlurControl.request(!blurOn, isOn: blurOn, changeable: canChangeBlur,
+                                                isLive: appState.isStreamingLive) {
+            case .none: break
+            case .set(let enabled): appState.setBystanderBlur(enabled)
+            case .confirmTurningOff: confirmingBlurOff = true
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: blurOn ? "face.dashed.fill" : "face.dashed")
+                    .font(.title3)
+                    .accessibilityHidden(true)
+                Text(blurOn ? "Blur On" : "Blur Off")
+                    .font(.subheadline.weight(.semibold))
+                if !canChangeBlur {
+                    Image(systemName: "lock.fill")
+                        .font(.caption)
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(OGTheme.onMedia)
+            .fixedSize()
+            .padding(.horizontal, 14)
+            .frame(minHeight: controlCircle)
+            .glassEffect(in: .capsule)
+        }
+        .disabled(!canChangeBlur)
+        .accessibilityLabel("Blur Bystander Faces")
+        .accessibilityValue(blurOn ? "On" : "Off")
+        .accessibilityHint(canChangeBlur ? "Double-tap to change." : "Can't be changed on this phone.")
+    }
+
     /// BS P3: mid-stream source switch — no RTMP teardown, just re-routes which camera feeds the
     /// encoder (debounced in the service).
     @ViewBuilder
@@ -628,7 +686,8 @@ struct LivePreviewView: View {
         case .needsSetup(let canOpenSettings):
             goLiveNotice = canOpenSettings ? .setUp : .notSetUp
         case .phoneCameraNotBlurred:
-            goLiveNotice = .phoneCameraNotBlurred
+            goLiveNotice = .phoneCameraNotBlurred(BystanderBlurControl.refusal(
+                changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
         case .phoneCameraDenied:
             goLiveNotice = .phoneCameraDenied
         }
@@ -686,7 +745,7 @@ struct LivePreviewView: View {
 private enum GoLiveNotice {
     case setUp
     case notSetUp
-    case phoneCameraNotBlurred
+    case phoneCameraNotBlurred(BystanderBlurControl.Refusal)
     case phoneCameraDenied
     case failed(String)
 
@@ -705,8 +764,8 @@ private enum GoLiveNotice {
             return String(localized: "In Settings, open Camera, Recording & Streaming to find Live Streaming. Add a valid RTMP URL and your platform's stream key, then come back to go live.")
         case .notSetUp:
             return String(localized: "A valid RTMP URL and stream key are needed to go live. Live Streaming settings aren't available on this phone.")
-        case .phoneCameraNotBlurred:
-            return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone.")
+        case .phoneCameraNotBlurred(let refusal):
+            return refusal.message
         case .phoneCameraDenied:
             return String(localized: "Allow camera access for Avenkin in iOS Settings to stream from the phone.")
         case .failed(let message):

@@ -837,6 +837,9 @@ struct ServicesSettingsView: View {
                     }
                 }
 
+                // Plan KH: the same switch as Hardware & Privacy, where the guide names it.
+                BystanderBlurSwitch(appState: appState)
+
                 Picker("Orientation", selection: $broadcastOrientation) {
                     Text("Portrait").tag("portrait")
                     Text("Landscape").tag("landscape")
