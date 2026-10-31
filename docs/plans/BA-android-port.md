@@ -166,6 +166,47 @@ Phase 0/1/8, transliterate rather than vendor (attribute if any snippet is copie
 Everything above is **bridge/plumbing** reuse. The product surface (multi-LLM core, 36+ tools, vision
 verticals, HUD launcher) has no counterpart there and is ours to port from the iOS spec.
 
+### Second worked example: DAT-Android 1.0.1 in the field (added 2026-10-31)
+
+A second MIT-licensed app, read 2026-10-31: `android-app/.../glasses/GlassesCamera.kt` in
+[raunakpatil/smart-glasses-ai-agent](https://github.com/raunakpatil/smart-glasses-ai-agent) at
+commit `bd64610`. It builds against **`com.meta.wearable:mwdat-core` / `mwdat-camera` 1.0.1**.
+The v0.3.0 shape above is therefore out of date, and Phase 0 re-verifies it against 1.0.x. What
+that code shows, all unverified by us:
+
+- **The 1.0 shape matches iOS 0.9+/1.0.** `Wearables.createSession(SpecificDeviceSelector(id))` →
+  `session.start()`, then wait for `DeviceSessionState.STARTED`, or `STOPPED` with the last
+  `DeviceSessionError` from `session.errors`. Then `session.addCamera()` → `Camera`, and
+  `camera.photo` → `Photo` with `state` (`PhotoState.STARTED`), `photoStream`, `errors` and
+  `capturePhoto(PhotoResolution, PhotoQuality)`. Calls return `Result`-style values
+  (`getOrNull()` / `errorOrNull()`). Device state is
+  `Wearables.devicesMetadata[id].value.linkState` (`LinkState.CONNECTED`), plus `DonState` and
+  `HingeState` types. Re-port `.claude/rules/dat-conventions.md`'s "connected means
+  `linkState == .connected`" rule, not the v0.3.0 notes.
+- **Check `camera.photo` against Meta's [Experimental] list before using it.** On iOS 1.0.0,
+  standalone `Camera.photo` capture is Experimental, and an app that uses it can't be published (see
+  the conventions file). The Android app uses it with no opt-in annotation, which says nothing
+  about its status. If it is Experimental on Android too, Phase 4 captures from the stream, as iOS
+  does.
+- **`BLUETOOTH_SCAN` (with `neverForLocation`) is needed in practice**, not only `BLUETOOTH` and
+  `BLUETOOTH_CONNECT`. Without it, the first session can work and every later one fails with "the
+  glasses aren't connected" while the link stays DISCONNECTED. Add it to the Phase 0 bootstrap
+  permission list above.
+- **Pin the device; don't use `AutoDeviceSelector`.** Its "active device" needs a don-sensor
+  signal, and it returns NO_ELIGIBLE_DEVICE until that arrives. This matches the iOS rule (bind to
+  `GlassesConnectionSnapshot.connectedDeviceId`): pick the device whose `linkState` is CONNECTED.
+- **The camera handshake fights the HFP/SCO call link.** Both share the glasses' Bluetooth
+  connection, so that app drops SCO, waits a moment for Android to tear it down, opens the camera,
+  then brings SCO back. Phase 1/8 audio routing and Phase 4 camera need one owner for this
+  hand-off, the Android face of iOS's audio-session lease coordinator.
+- **The glasses take about 10 s to accept a new session after the previous one closes.** That app
+  keeps a standalone photo's session open briefly for follow-up shots, and waits for `STOPPED`
+  (with a timeout) before opening the next one. That is the iOS "the camera capability frees only at
+  `.stopped`" rule, seen from Android.
+- **Photos arrive sideways.** The glasses send the sensor image with the rotation in EXIF, and
+  `BitmapFactory` ignores the tag. Rotate before scaling, or the vision model sees portrait shots
+  landscape.
+
 ## Phased roadmap
 
 Each phase is a shippable milestone. Earlier phases gate later ones; within a phase, build the pure core

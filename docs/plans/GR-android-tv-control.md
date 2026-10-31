@@ -1,6 +1,9 @@
 # Plan GR — Android TV / Google TV Control over the Local Network
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built. **Amended 2026-10-31** with
+field notes from a second working client (exact volume, stale sessions, power state, the app on
+screen; see *Field notes from a working client*) and a later, unscheduled P4 (*show it on the screen
+I'm facing*).
 **Continues:** Plan [AF](siri-and-local-server.md) item #6 (the app's only Bonjour/Local Network use)
 and the trust-on-first-use idea AF's review left unshipped.
 **Related:** Plan [DO](DO-local-network-transport-hardening.md) (local-network transport rules),
@@ -81,6 +84,45 @@ Anything marked **(unverified)** needs a device check in P3.
   ("network standby"/quick start) **(unverified per model)**; Wake-on-LAN is out of scope (it needs
   the restricted multicast entitlement).
 
+### Field notes from a working client (added 2026-10-31)
+
+A second, independent client of the same protocol, read 2026-10-31: `TvRemote.kt` in
+[raunakpatil/smart-glasses-ai-agent](https://github.com/raunakpatil/smart-glasses-ai-agent) (MIT,
+Kotlin, Android phone as the remote), commit `bd64610`. It agrees with everything above (pairing on
+6467, remote on 6466, `service_name` "atvremote", hex encoding with 6 symbols, feature mask 622) and
+adds what its author learnt from a real TV. We take the facts, not the code; anything ported keeps
+the MIT notice. Each item still needs our P3 device check.
+
+- **The TV reports its own volume.** The TV sends `remote_set_volume_level` (50) when the session
+  opens and again on every change. Field **6 is the maximum** and field **7 the current level**. This
+  makes "volume to 15", "half" and "30 percent" exact: read the level, press VOLUME_UP or VOLUME_DOWN
+  `|target − level|` times, then check the level the TV reports next. Before the TV has sent one,
+  say so ("The TV hasn't told me its volume yet") rather than guess.
+  `remote_adjust_volume_level` (51) is not used by that client and stays unverified.
+- **A silent session is dead even when writes succeed.** The TV pings about every 5 s. After the
+  TV sleeps or drops Wi-Fi, writes to the old socket still "succeed", so keys were lost while the
+  client said "done". It treats a session the TV hasn't spoken on for **15 s** as dead, reconnects
+  before sending, and retries a failed burst once on a fresh session. That is our linger rule as
+  well: reuse a connection only if something arrived from the TV in the last 15 s.
+- **Keys sent right after `remote_set_active` are ignored.** It waits **~800 ms** after the session
+  is ready before the first key, and up to 8 s for the handshake itself.
+- **Power state arrives as `remote_start` (40).** Field 1 is non-zero when the screen is on. KEY
+  SLEEP (223) is ignored by some sets, so "turn the TV off" sends POWER (26) only when the screen is
+  on, and nothing when it is already off. That makes `power_on`/`power_off` idempotent instead of
+  toggles that can do the opposite of what was asked. Before the TV has sent `remote_start`, power
+  is unknown, and `power_off` says so instead of toggling blind.
+- **The app on screen.** `remote_ime_key_inject` (20) carries app info in field 1, and inside that,
+  field 12 is the package name of the foreground app. `status` can answer "what's on the TV?" with
+  an app name via a package → name map, never the raw package id.
+- **App home links that worked on a real set:** YouTube `https://www.youtube.com`, Netflix
+  `https://www.netflix.com/browse`, Prime Video `https://app.primevideo.com`, Spotify
+  `https://open.spotify.com`, YouTube Music `https://music.youtube.com`. These are additions to
+  HA's list for `TVAppCatalog`.
+- **Not taken:** its TLS trust manager accepts any server certificate on both ports, while our
+  design pins each TV's certificate after pairing. HDMI input switching ("wake the PS5") in that
+  project goes through ADB over Wi-Fi, which needs developer mode on the TV. That stays out of scope
+  (see *Out of scope*).
+
 ## Design
 
 **Pure core (no sockets):**
@@ -100,8 +142,18 @@ Anything marked **(unverified)** needs a device check in P3.
   DPAD_UP/DOWN/LEFT/RIGHT/CENTER 19–23, VOLUME_UP/DOWN 24/25, VOLUME_MUTE 164, MEDIA_PLAY_PAUSE 85.
   Android `KeyEvent` values the proto mirrors, to confirm against the proto file in P0: MEDIA_NEXT 87,
   MEDIA_PREVIOUS 88, CHANNEL_UP/DOWN 166/167, MENU 82, SEARCH 84, digits 7–16, SETTINGS 176.
-- `TVAppCatalog` — app names/synonyms → app links (the HA-documented ones first); unknown apps try
-  `https://` search links only if the wearer confirms.
+- `TVAppCatalog` — app names/synonyms → app links (the HA-documented ones first, then the field
+  notes' additions); unknown apps try `https://` search links only if the wearer confirms. It also
+  maps foreground package names back to app names for `status`.
+- `TVVolumeTarget` — a spoken volume ("15", "half", "30 percent", "max", "zero") plus the TV's
+  maximum gives a level from 0 to the maximum, or nil. A number above the maximum is clamped. Locale
+  words come from the string catalog, not hard-coded English.
+- `TVVolumePlan` — (current level, maximum, target) gives a key and a count, capped at the maximum
+  so a bad reading can't press 200 times. "Already at 15" means no keys.
+- `TVSessionFreshness` — whether an open session may be reused, given when the TV last spoke
+  (15 s, from the field notes). This is pure, so the stale-socket rule is tested without a socket.
+- `TVPowerIntent` — (requested on/off, last `remote_start` state or unknown) gives POWER, nothing,
+  or "unknown, say so".
 
 **Edge (sockets, Keychain):**
 - `AndroidTVDiscovery` (`NWBrowser` for `_androidtvremote2._tcp`), results cached as
@@ -120,10 +172,11 @@ Anything marked **(unverified)** needs a device check in P3.
   `NSLocalNetworkUsageDescription` to cover TVs. No new background mode.
 
 **`tv_control` tool contract** (one tool, `description` written for the model):
-`action` ∈ `power_on | power_off | power_toggle | key | volume_up | volume_down | mute |
-play_pause | next | previous | open_app | type_text | status | list_tvs`; optional `tv` (name; the
-default TV otherwise), `key` (a `TVKeyMap` name), `repeat` (1–10, for "down three"), `app`
-(name or link), `text`. Returns one short sentence ("Done.", "YouTube is opening on the Living Room
+`action` ∈ `power_on | power_off | power_toggle | key | volume_up | volume_down | set_volume |
+mute | play_pause | next | previous | open_app | type_text | status | list_tvs`; optional `tv`
+(name; the default TV otherwise), `key` (a `TVKeyMap` name), `repeat` (1–10, for "down three"),
+`level` (for `set_volume`: a number, "half", a percentage, "max" or "min"), `app` (name or link),
+`text`. `status` reports power, the app on screen and the volume when the TV has said them. Returns one short sentence ("Done.", "YouTube is opening on the Living Room
 TV.", "The TV didn't answer — is it on and on this Wi-Fi?"). Effect class `.write`; not a
 `HighImpactToolPolicy` action. Pairing is not a voice action: `pair` opens the phone sheet.
 
@@ -156,7 +209,11 @@ certificate and committed as fixtures (bytes of each encoded message, the secret
 `VarintFrameCodecTests` (1-byte/2-byte/5-byte lengths, split reads, oversize), `PoloMessagesTests`,
 `RemoteMessagesTests`, `PairingSecretTests` (fixture digest, checksum rejects a typo, leading-zero
 modulus), `SelfSignedCertificateBuilderTests` (DER parses with `SecCertificateCreateWithData`),
-`TVSessionStateMachineTests`, `TVKeyMapTests`, `TVAppCatalogTests`.
+`TVSessionStateMachineTests`, `TVKeyMapTests`, `TVAppCatalogTests`, `TVVolumeTargetTests` ("half"
+of an odd maximum, a percentage, clamping, nonsense → nil), `TVVolumePlanTests` (up, down, already
+there, a reading above the maximum), `TVSessionFreshnessTests`, `TVPowerIntentTests` (off when
+already off sends nothing, unknown state never toggles), and decoding fixtures for messages 20, 40
+and 50 (volume max in field 6 and level in field 7, the package name nested in field 1 → 12).
 
 **P1 — Identity, discovery, clients, tool.** `TVRemoteIdentityStore`, discovery, pairing/remote
 clients, pinning, `tv_control`, route + Info.plist keys, phone pairing sheet. Tests:
@@ -168,7 +225,25 @@ backend choice per TV. Tests: `HomeAssistantTVBackendTests` (request bodies), HA
 
 **P3 — Device pass (owed).** Pair with a Google TV and an Android TV set; every action; power-on from
 standby; typing into YouTube search; phone locked in a pocket; TV IP change after router reboot;
-re-pair after the TV forgets remotes.
+re-pair after the TV forgets remotes. From the field notes: "volume to 15" lands on 15 on each set,
+and the TV's maximum is read rather than assumed; a command after the TV slept for a minute
+reconnects instead of reporting a lost "done"; the first key after connecting isn't dropped; "turn
+the TV off" when it is already off leaves it off; "what's on the TV?" names the app.
+
+**P4 — Show it on the screen I'm facing (later, not scheduled).** It needs a second target first:
+the desk bridge (Plan [IC](IC-desk-coding-agent-bridge.md)) or Avenkin Office. Idea taken from the same project, which
+takes a glasses photo when the wearer calls it at home, asks whether a laptop or a TV is in front of
+them, and sends "show me" output there. Our version:
+- The glance is classified **on the phone** (a small Vision/Core ML classifier, or the on-device
+  model), never sent to a cloud model. Per Plan [CP](CP-outbound-frame-privacy.md), a frame doesn't
+  leave for routing.
+- It runs only when the request is a show-me request ("put it on the screen", "play it there"), not
+  on every wake.
+- The frame isn't kept, and with no confident answer it falls back to the default target, then asks.
+
+A `ScreenTargetResolver` (pure) takes the classifier's label and confidence, which targets are
+reachable now, and the default target, and returns one target or "ask". It is drafted here so the
+TV client's API leaves room for it. It is its own plan when IC lands.
 
 ## Risks
 
@@ -191,4 +266,6 @@ re-pair after the TV forgets remotes.
 ## Out of scope
 
 Wake-on-LAN, voice-search streaming to the TV (`remote_voice_*`), casting media, Fire TV, HomeKit
-Television services, and TV control from the watch.
+Television services, and TV control from the watch. HDMI input switching through ADB (it needs
+developer mode and ADB debugging on the TV); input switching through the remote protocol's
+KEYCODE_TV_INPUT (178) is a P3 experiment at most.
