@@ -2461,6 +2461,10 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self, self.isProcessing else { return }
             self.speechService.startThinkingSound()
         })
+    /// Whether `sendTextMessage` would take a turn now. It returns silently otherwise, so anything
+    /// that records a turn as having happened must ask this first (Plan KH P1).
+    var acceptsTypedTurn: Bool { !isProcessing && !spokenTurnGate.isReserved }
+
     @Published private(set) var isProcessing: Bool = false {
         didSet {
             // CO Item 3: stamped here rather than at the ten-odd assignment sites, so a new one
@@ -8036,7 +8040,7 @@ class AppState: ObservableObject, AppStateProtocol {
     ///   the offline handoff's replay of a held question on return (Plan GE).
     func sendTextMessage(_ text: String, imageData: Data? = nil, speakResponse: Bool = true,
                          recordUserTurn: Bool = true) async {
-        guard !isProcessing, !spokenTurnGate.isReserved else { return }
+        guard acceptsTypedTurn else { return }
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
         noteTypeInstead(.typedTurn)   // Plan JM P1: a typed turn clears the "Type instead" chip

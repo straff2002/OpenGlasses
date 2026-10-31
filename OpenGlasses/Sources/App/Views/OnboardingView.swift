@@ -109,6 +109,10 @@ struct OnboardingView: View {
     @ObservedObject private var license = LicenseService.shared
     @State private var isRegistering = false
 
+    // Plan KH P1: what they want it for first, on the Ready page. Starts on Everyday so "Try it
+    // now" is a real choice from the first frame. Nothing is stored until they act on it.
+    @State private var firstIntent: ScenarioIntent = .everyday
+
     // Metrics that sit beside type and have to scale with it.
     @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var iconTile: CGFloat = OGMetrics.iconTile
@@ -1722,20 +1726,7 @@ struct OnboardingView: View {
                         .padding(.horizontal, 20)
                 }
 
-                // What you can do
-                OGCard {
-                    OGRow("Voice-first — talk naturally, get spoken answers",
-                          icon: "mic.fill", showsChevron: false)
-                    OGDivider()
-                    OGRow("Show things to the camera for visual AI",
-                          icon: "camera.fill", showsChevron: false)
-                    OGDivider()
-                    OGRow("Switch personas for different AI personalities",
-                          icon: "person.2.fill", showsChevron: false)
-                    OGDivider()
-                    OGRow("Add more models or tweak settings anytime",
-                          icon: "gearshape", showsChevron: false)
-                }
+                readyChoice
 
                 // AI disclosure reminder
                 Text("AI responses may contain errors. Verify important information independently.")
@@ -1746,11 +1737,77 @@ struct OnboardingView: View {
             }
 
             pageFooter {
-                primaryButton("Start Using Avenkin") {
-                    completeOnboarding()
+                let intent = readyIntent
+                let firstTurn = ScenarioFirstRun.firstTurn(
+                    for: intent, in: ScenarioEnvironment.firstRunContext(), scenarios: ScenarioCatalog.all)
+                if firstTurn == nil {
+                    // Nothing can run as a first turn here, so nothing claims to. The choice is
+                    // still kept, and the cards lead with it.
+                    primaryButton("Start Using Avenkin") {
+                        finishReadyPage(intent: intent, firstTurn: nil)
+                    }
+                } else {
+                    primaryButton("Try it now") {
+                        finishReadyPage(intent: intent, firstTurn: firstTurn)
+                    }
+                    Button("Skip for now") {
+                        completeOnboarding()
+                    }
+                    .buttonStyle(.ogQuiet)
                 }
             }
         }
+    }
+
+    /// Whether this first run gets the choice. A managed or Field Assist phone does not.
+    private var readyOffersChoice: Bool {
+        ScenarioFirstRun.showsPicker(isManaged: OrgProfileManager.shared.isManaged,
+                                     fieldAssistSetUp: LicenseService.shared.activeLicense != nil
+                                         || Config.fieldAssistActive)
+    }
+
+    private var readyIntent: ScenarioIntent { readyOffersChoice ? firstIntent : .field }
+
+    @ViewBuilder
+    private var readyChoice: some View {
+        if readyOffersChoice {
+            OGSection(header: "What do you want it for first?") {
+                ForEach(Array(ScenarioIntent.offeredOnReadyPage.enumerated()), id: \.element) { index, intent in
+                    if index > 0 { OGDivider() }
+                    OGSelectionRow(title: intent.title, subtitle: intent.subtitle,
+                                   isSelected: firstIntent == intent) {
+                        firstIntent = intent
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        } else {
+            let entries = ScenarioReadiness.visible(ScenarioCatalog.all,
+                                                    in: ScenarioEnvironment.firstRunContext())
+                .filter { $0.scenario.intent == .field }
+                .prefix(ScenarioShelfPolicy.maximumCards)
+            if !entries.isEmpty {
+                OGCard {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 { OGDivider() }
+                        OGRow(entry.scenario.title, icon: entry.scenario.icon,
+                              subtitle: entry.detail, showsChevron: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Records the choice and hands the first turn to the Voice tab. `AppState` is not safely
+    /// usable until onboarding completes, so the turn is stored here and run there, once.
+    ///
+    /// In this order on purpose: the Voice tab is alive under this overlay and watches the record,
+    /// so the turn is only stored once onboarding has finished and can never be seen before it.
+    private func finishReadyPage(intent: ScenarioIntent, firstTurn: Scenario?) {
+        let progress = ScenarioProgressStore.shared
+        progress.choose(intent)
+        completeOnboarding()
+        progress.setPendingFirstTurn(firstTurn?.id)
     }
 
     // MARK: - Components
