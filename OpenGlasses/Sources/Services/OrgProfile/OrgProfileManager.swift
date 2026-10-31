@@ -932,6 +932,7 @@ extension SettingKey {
         case .aiConnectionCueEnabled: return "Voice startup always says it is connecting to Avenkin AI"
         case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
         case .cloudDictationEnabled: return "Cloud dictation is off"
+        case .interpreterEnabled: return "The spoken interpreter is off"
         default: return rawValue
         }
     }

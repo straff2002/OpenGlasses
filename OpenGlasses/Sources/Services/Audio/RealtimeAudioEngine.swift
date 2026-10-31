@@ -142,6 +142,11 @@ final class RealtimeAudioEngine {
     /// asynchronous middle of `attemptAudioResetOnQueue`.
     private var carriedPlayback: [PendingPlaybackMirror.Entry] = []
     private var useIPhoneMode = false
+    /// Whether the speaker override is on. Confined to `audioLifecycleQueue`.
+    private var speakerOverrideOn = false
+    /// What the player still owes, counted across response boundaries. Confined to
+    /// `audioLifecycleQueue`, like all playback state.
+    private var playbackDrain = PlaybackDrainTracker()
     /// The input format the current tap and resampling converter were built for (Plan CW P1).
     /// Recovery compares the live format against this: an unchanged format means a stopped engine
     /// only needs `start()`, a changed one means the tap is producing garbage and must be rebuilt.
@@ -162,6 +167,10 @@ final class RealtimeAudioEngine {
     private var consecutiveHighFrames = 0
 
     private var observers: [NSObjectProtocol] = []
+
+    /// What this session's audio is set up for. Set before `setupAudioSession`, and kept for a
+    /// recovery's re-setup.
+    var route: RealtimeAudioRoute = .standard
 
     init(config: RealtimeAudioEngineConfig) {
         self.config = config
@@ -191,7 +200,7 @@ final class RealtimeAudioEngine {
         guard AVAudioApplication.shared.recordPermission != .denied else {
             throw AudioSessionError.microphonePermissionDenied
         }
-        let mode: AVAudioSession.Mode = useIPhoneMode ? .voiceChat : .videoChat
+        let mode = route.sessionMode(useIPhoneMode: useIPhoneMode)
         // BO: acquire OFF-MAIN through the coordinator (was the synchronous `acquire`, which
         // activated on the main thread — the last realtime TPC hang-risk). `acquireOffMain` awaits
         // the activation on the coordinator's `sessionIOQueue`, so the session is active on return
@@ -201,16 +210,65 @@ final class RealtimeAudioEngine {
             config.owner,
             category: .playAndRecord,
             mode: mode,
-            options: [.defaultToSpeaker, .allowBluetoothHFP, .allowBluetoothA2DP]
+            options: route.sessionOptions()
         ) { [config] session in
             // Preferred rate/buffer are hints — a rejected hint must not abort activation.
             try? session.setPreferredSampleRate(config.preferredSampleRate)
             try? session.setPreferredIOBufferDuration(0.064)
         }
-        applyRoutePolicy(session, useIPhoneMode: useIPhoneMode)
+        if route == .interpreter {
+            preferBuiltInMic(session)
+        } else {
+            applyRoutePolicy(session, useIPhoneMode: useIPhoneMode)
+        }
         installSessionObservers()
         PrivacyLog.audio(.realtime, .modeSelected, owner: PrivacyToken(config.owner.rawValue),
-                         detail: PrivacyToken(useIPhoneMode ? "voiceChat-iPhone" : "videoChat-glasses"))
+                         detail: PrivacyToken(route == .interpreter ? "interpreter"
+                                              : useIPhoneMode ? "voiceChat-iPhone" : "videoChat-glasses"))
+    }
+
+    /// Where the audio after this call plays. On the same queue as `playAudio`, so a line released
+    /// straight after a flip can't overtake it. Only the interpreter's route has a speaker to flip
+    /// to.
+    func setOutput(_ output: InterpreterOutput) {
+        audioLifecycleQueue.async { [weak self] in
+            self?.applyOutputOnQueue(output)
+        }
+    }
+
+    private func applyOutputOnQueue(_ output: InterpreterOutput) {
+        guard route == .interpreter, isCapturing else { return }
+        let wanted = output == .speaker
+        guard wanted != speakerOverrideOn else { return }
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(wanted ? .speaker : .none)
+            speakerOverrideOn = wanted
+            PrivacyLog.audio(.realtime, .outputRouted, owner: PrivacyToken(config.owner.rawValue),
+                             detail: PrivacyToken(wanted ? "speaker" : "ear"))
+        } catch {
+            PrivacyLog.audio(.realtime, .outputRouteFailed, owner: PrivacyToken(config.owner.rawValue),
+                             error: SafeErrorSummary(error))
+        }
+        // An override can stop the engine under a graph that is otherwise fine.
+        if isCapturing, !audioEngine.isRunning { recoverGraphOnQueue(trigger: .schedulingDiscovery) }
+    }
+
+    /// Back to the private route. Every way out of playing goes through here, because an override
+    /// left on would play the next private line to the room.
+    private func clearSpeakerOverrideOnQueue() {
+        guard speakerOverrideOn else { return }
+        speakerOverrideOn = false
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
+    }
+
+    private func preferBuiltInMic(_ session: AVAudioSession) {
+        guard let mic = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return }
+        do {
+            try session.setPreferredInput(mic)
+        } catch {
+            PrivacyLog.audio(.realtime, .preferredInputFailed, owner: PrivacyToken(config.owner.rawValue),
+                             error: SafeErrorSummary(error))
+        }
     }
 
     /// Start capturing microphone audio and sending chunks via `onAudioCaptured`.
@@ -536,11 +594,13 @@ final class RealtimeAudioEngine {
             }
         }
 
+        let drainEpoch = playbackDrain.scheduled()
         playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             self?.audioLifecycleQueue.async {
                 guard let self else { return }
                 self.playbackLedger.played(frames: frames, generation: generation)
                 self.pendingPlayback.retire(generation: generation)
+                self.playbackDrain.played(epoch: drainEpoch)
             }
         }
         if !playerNode.isPlaying {
@@ -593,13 +653,13 @@ final class RealtimeAudioEngine {
         onPlaybackDiscarded?(ms)
     }
 
-    /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
-    /// completion callbacks, never wall-clock. Read this *before* `stopPlayback()` on barge-in.
     /// Whether audio handed to the player has yet to finish playing.
     var hasPendingPlayback: Bool {
-        syncOnAudioLifecycleQueue { !pendingPlayback.isEmpty }
+        syncOnAudioLifecycleQueue { playbackDrain.isPending }
     }
 
+    /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
+    /// completion callbacks, never wall-clock. Read this *before* `stopPlayback()` on barge-in.
     var confirmedPlayedMilliseconds: Int {
         syncOnAudioLifecycleQueue {
             playbackLedger.playedMilliseconds(sampleRate: config.outputSampleRate)
@@ -633,6 +693,7 @@ final class RealtimeAudioEngine {
         // Barge-in already reports its own truncation point from the ledger, so the discarded
         // frames here need clearing but not announcing — announcing them would double-report.
         pendingPlayback.discardAll()
+        playbackDrain.reset()
         playerNode.stop()
         if isCapturing, audioEngine.isRunning {
             playerNode.play()
@@ -690,6 +751,8 @@ final class RealtimeAudioEngine {
             guard let self else { return }
             switch AudioInterruptionPolicy.action(for: type, shouldResume: shouldResume, isCapturing: self.isCapturing) {
             case .pause:
+                // A call takes the audio, and whatever comes back must not start on the speaker.
+                self.clearSpeakerOverrideOnQueue()
                 // Keep `isCapturing` true through the pause so the matching `.ended` resumes.
                 self.audioEngine.pause()
                 PrivacyLog.audio(.realtime, .interruptionBegan, owner: PrivacyToken(self.config.owner.rawValue))
@@ -872,6 +935,9 @@ final class RealtimeAudioEngine {
         // already drained or reported the mirror, so this only clears a deliberate stop's tail —
         // silently, because a stop the wearer asked for is not a loss to announce.
         pendingPlayback.discardAll()
+        playbackDrain.reset()
+        // A stop, or a rebuild after the route moved. A rebuild's carried audio plays in the ear.
+        clearSpeakerOverrideOnQueue()
 
         audioEngine.stop()
 

@@ -7,6 +7,10 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
     var icon: String
     var promptPrefix: String
 
+    /// The spoken interpreter. Its instruction depends on the language pair, so it has no prefix:
+    /// `TranslationPromptBuilder.spokenInstruction` replaces the whole prompt.
+    static let interpreterID = "interpreter"
+
     static let builtIn: [LiveAIMode] = [
         LiveAIMode(id: "standard", name: "Standard", icon: "bubble.left", promptPrefix: ""),
         LiveAIMode(id: "museum", name: "Museum Guide", icon: "building.columns", promptPrefix: "You are acting as a museum docent and art expert. When the user shows you artwork, sculptures, or exhibits, identify them and provide engaging context: the artist, period, technique, and cultural significance. Be enthusiastic and educational.\n\n"),
@@ -17,6 +21,7 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
         LiveAIMode(id: "accessibility", name: "Blind Assistant", icon: "figure.walk", promptPrefix: BlindAssistanceContract.presetPrefix),
         LiveAIMode(id: "reading", name: "Reading Assistant", icon: "text.viewfinder", promptPrefix: "You are a reading assistant. Focus on any visible text — signs, menus, documents, labels, screens. Read text aloud clearly and completely. For foreign languages, first read the original, then translate. Offer to summarize long text.\n\n"),
         LiveAIMode(id: "translator", name: "Live Translator", icon: "globe", promptPrefix: "You are a real-time translator. When you see text or hear speech in a foreign language, translate it naturally. Provide the original text first, then the translation. For signs and menus, translate everything visible.\n\n"),
+        LiveAIMode(id: interpreterID, name: "Interpreter", icon: "person.2.wave.2", promptPrefix: ""),
         LiveAIMode(id: "tutor", name: "Language Tutor", icon: "graduationcap", promptPrefix: "You are a language tutor. Help the user practice the language of the text/signs they show you. Pronounce words clearly, explain grammar, suggest phrases for the situation. Be encouraging and patient.\n\n"),
         LiveAIMode(id: "golf", name: "Golf Caddy", icon: "figure.golf", promptPrefix: "You are a golf caddy on smart glasses. Help with club selection, read greens, track shots, and provide course strategy. Be confident and decisive. Keep advice brief during play — 1-2 sentences per decision. Celebrate good shots, stay positive on bad ones.\n\n"),
     ]

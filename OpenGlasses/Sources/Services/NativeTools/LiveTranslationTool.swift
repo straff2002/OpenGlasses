@@ -4,9 +4,12 @@ import Foundation
 /// Listens to foreign speech, detects the language, translates, and speaks the translation.
 struct LiveTranslationTool: NativeTool {
     let name = "live_translate"
-    let description = "Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: 'start' (begin translating), 'stop' (end session), 'status' (check if active), 'set_language' (set source/target languages)."
+    let description = "Start/stop continuous live translation. Listens to spoken foreign language and translates in real-time. Actions: 'start' (begin translating), 'stop' (end session), 'status' (check if active), 'set_language' (set source/target languages). For a spoken two-way conversation with someone, where each hears the other in their own language, use action 'start' with mode 'conversation' and other_language."
 
     weak var translationService: LiveTranslationService?
+    /// Starts the spoken interpreter for the named language, and says how that went. Takes the
+    /// cloud path, so it is reached only by asking for `mode: "conversation"`.
+    var startConversation: (@MainActor (String?) -> String)?
 
     var parametersSchema: [String: Any] {
         [
@@ -24,17 +27,32 @@ struct LiveTranslationTool: NativeTool {
                     "type": "string",
                     "description": "Target language code to translate into (e.g. 'en' for English). Default: en.",
                 ],
+                "mode": [
+                    "type": "string",
+                    "description": "'conversation' for the spoken two-way interpreter, which uses the cloud. Leave out for on-device translation.",
+                ],
+                "other_language": [
+                    "type": "string",
+                    "description": "With mode 'conversation': the other person's language. Default: the one set in Settings.",
+                ],
             ],
             "required": ["action"],
         ]
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        let action = (args["action"] as? String ?? "status").lowercased()
+
+        if action == "start", (args["mode"] as? String)?.lowercased() == "conversation" {
+            guard let startConversation else { return "The interpreter isn't available." }
+            let other = args["other_language"] as? String ?? args["target_language"] as? String
+            return await startConversation(other)
+        }
+
         guard let service = translationService else {
             return "Live translation service not available."
         }
 
-        let action = (args["action"] as? String ?? "status").lowercased()
         let source = args["source_language"] as? String ?? "auto"
         let target = args["target_language"] as? String ?? "en"
 

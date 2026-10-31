@@ -9,6 +9,7 @@ struct TranslationSettingsView: View {
     @State private var twoWay = Config.translationTwoWayEnabled
     @State private var languageA = Config.translationLanguageA
     @State private var languageB = Config.translationLanguageB
+    @State private var interpreter = Config.interpreterEnabled
 
     /// A live caption session must re-pick its backend when these settings change.
     var onBackendChange: () -> Void = {
@@ -63,7 +64,7 @@ struct TranslationSettingsView: View {
                         Config.translationTwoWayEnabled = newValue
                         onBackendChange()
                     }
-                if twoWay {
+                if twoWay || interpreter {
                     Picker("Your Language", selection: $languageA) {
                         ForEach(TranslationLanguages.curated, id: \.code) { language in
                             Text(language.name).tag(language.code)
@@ -87,6 +88,18 @@ struct TranslationSettingsView: View {
                 Text("Conversation Mode")
             } footer: {
                 Text("For a bilingual exchange: the screen splits, each side's speech renders in the other's language, and the glasses display shows only the line addressed to you.")
+            }
+
+            Section {
+                Toggle("Spoken Interpreter", isOn: $interpreter)
+                    .disabled(Config.hipaaMode || PolicyEnvelope.isLocked(.interpreterEnabled))
+                    .onChange(of: interpreter) { _, newValue in
+                        Config.interpreterEnabled = newValue
+                        interpreter = Config.interpreterEnabled
+                    }
+                ManagedSettingNote(key: .interpreterEnabled)
+            } footer: {
+                Text("Ask for a two-way translation and each of you hears the other in your own language: you in the glasses, them from the phone, held between you. It uses your Gemini API key and sends what you both say to Google. The other person hears that it's AI translation when it starts. Nothing either of you says is saved here.")
             }
 
             Section {

@@ -50,9 +50,11 @@ enum LiveVoiceEndPolicy {
     ///   nothing.
     /// - During a job the tool alone decides. A technician saying "bye" to a customer must not
     ///   drop the session; saying it twice costs less.
+    /// - An interpreter translates every line, so a reply proves nothing, and a goodbye between the
+    ///   two people is what it is there to say.
     static func backstopApplies(transcript: String, modelReplied: Bool, jobActive: Bool,
-                                parser: VoiceCommandParser) -> Bool {
-        guard modelReplied, !jobActive else { return false }
+                                interpreting: Bool = false, parser: VoiceCommandParser) -> Bool {
+        guard modelReplied, !jobActive, !interpreting else { return false }
         guard PhraseMatcher.tokenize(transcript).count <= maxBackstopWords else { return false }
         return parser.isGoodbye(transcript)
     }
@@ -101,7 +103,7 @@ struct LiveVoiceEndTracker: Equatable {
 enum LiveAddressingInstruction {
 
     /// Presets that exist to hear everyone in the room.
-    private static let hearsTheRoom: Set<String> = ["translator"]
+    private static let hearsTheRoom: Set<String> = ["translator", LiveAIMode.interpreterID]
 
     static func block(modeID: String, canEndSession: Bool) -> String {
         var sections: [String] = []
