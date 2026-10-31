@@ -169,6 +169,49 @@ enum CodeTokenizer {
         return containsWhole(joiningHyphenatedWords(lowerHay), token: key)
     }
 
+    /// A text read once, for asking about many tokens: `contains(_:token:)` with the text's words in
+    /// a set, so a vault's hundreds of model spellings cost one reading of a passage rather than one
+    /// each (Plan KG P4). That scan was 18 ms a passage on a Mac. A token of more than one word, a
+    /// hyphenated spelling, is asked the long way.
+    struct TokenIndex {
+        private let haystack: String
+        private let words: Set<String>
+        private let joined: Set<String>?
+
+        init(_ haystack: String) {
+            self.haystack = haystack
+            let lower = CodeTokenizer.foldedForms(haystack).lowercased()
+            words = CodeTokenizer.wholeWords(of: lower)
+            joined = lower.contains("-") ? CodeTokenizer.wholeWords(of: CodeTokenizer.joiningHyphenatedWords(lower)) : nil
+        }
+
+        func contains(_ token: String) -> Bool {
+            guard !token.isEmpty else { return false }
+            let lower = CodeTokenizer.foldedForms(token).lowercased()
+            guard CodeTokenizer.wholeWords(of: lower) == [lower] else { return CodeTokenizer.contains(haystack, token: token) }
+            if words.contains(lower) { return true }
+            return CodeTokenizer.isHyphenFoldable(lower) && joined?.contains(lower) == true
+        }
+    }
+
+    /// The runs of `text` that `containsWhole` would call a whole token, by the same boundary.
+    private static func wholeWords(of text: String) -> Set<String> {
+        var words = Set<String>()
+        var word = ""
+        var previous: Character?
+        for character in text {
+            if let last = previous, isWordChar(character, beside: last) {
+                word.append(character)
+            } else {
+                if !word.isEmpty { words.insert(word) }
+                word = character.isLetter || character.isNumber ? String(character) : ""
+            }
+            previous = word.isEmpty ? nil : character
+        }
+        if !word.isEmpty { words.insert(word) }
+        return words
+    }
+
     /// A code whose hyphens are a matter of spelling: four or more letters and digits, at least
     /// one letter and two digits — "QZ4417", "R454B". Shorter codes ("E5", "R22") and numbers
     /// (a range, a rule number) are matched only as written.

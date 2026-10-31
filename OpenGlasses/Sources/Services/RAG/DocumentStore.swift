@@ -185,8 +185,10 @@ final class DocumentStore: ObservableObject {
     ///
     /// A table's row passages are searched beside the prose (Plan JJ P0): each is one sentence
     /// naming the table, the row and its values, which is what a question about a cell reads like.
+    /// `alsoWithin` adds the best of those documents to the result (`bestAndBestWithin`, Plan KG P4).
     func query(_ text: String, limit: Int = 4, namespace: String? = nil, documentIds: [String]? = nil,
-               kinds: Set<DocumentChunker.Kind> = DocumentStore.searchedKinds) -> [Passage] {
+               kinds: Set<DocumentChunker.Kind> = DocumentStore.searchedKinds,
+               alsoWithin: Set<String> = []) -> [Passage] {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
@@ -265,7 +267,23 @@ final class DocumentStore: ObservableObject {
                            termRule: row.termRule, pageBreaks: row.pageBreaks)
         }
         vaultQuery.logTimings()
-        return Array(scored.sorted { $0.similarity > $1.similarity }.prefix(limit))
+        return Self.bestAndBestWithin(scored.sorted { $0.similarity > $1.similarity }, limit: limit,
+                                      within: alsoWithin, documentId: \.documentId)
+    }
+
+    /// The first `limit` of `ranked`, and the first `limit` of those from `within` wherever they
+    /// rank, in rank order, each once (Plan KG P4). A vault of many families fills the first `limit`
+    /// with near-identical pages for other machines, so the unit's own manuals have to be asked for.
+    /// Every row has been scored by now, so this costs a filter: no second read, no second embedding.
+    nonisolated static func bestAndBestWithin<Item>(_ ranked: [Item], limit: Int, within: Set<String>,
+                                                    documentId: (Item) -> String) -> [Item] {
+        guard !within.isEmpty else { return Array(ranked.prefix(limit)) }
+        var inside = 0
+        return ranked.enumerated().filter { index, item in
+            let counts = within.contains(documentId(item))
+            if counts { inside += 1 }
+            return index < limit || (counts && inside <= limit)
+        }.map(\.element)
     }
 
     /// Passages containing `token` as a whole word (case-insensitive), optionally scoped. No
@@ -297,7 +315,8 @@ final class DocumentStore: ObservableObject {
     /// heals), so the evidence gate judges it exactly as it judges a semantic hit.
     func passages(sharingTermsWith text: String, limit: Int = 8, namespace: String? = nil,
                   documentIds: [String]? = nil,
-                  kinds: Set<DocumentChunker.Kind> = DocumentStore.searchedKinds) -> [Passage] {
+                  kinds: Set<DocumentChunker.Kind> = DocumentStore.searchedKinds,
+                  alsoWithin: Set<String> = []) -> [Passage] {
         // The question's terms under every rule, each row compared under its own document's (Plan
         // JY P0): a Chinese manual's passage with the question cut into bigrams, an English one's
         // with today's terms.
@@ -328,7 +347,7 @@ final class DocumentStore: ObservableObject {
                 return (row, shared, similarity)
             }
             .sorted { $0.shared != $1.shared ? $0.shared > $1.shared : $0.similarity > $1.similarity }
-        return scored.prefix(max(limit, 1)).map {
+        return Self.bestAndBestWithin(scored, limit: max(limit, 1), within: alsoWithin, documentId: \.row.documentId).map {
             Passage(documentId: $0.row.documentId, documentName: $0.row.documentName,
                     chunkIndex: $0.row.chunkIndex, text: $0.row.text, similarity: $0.similarity,
                     page: $0.row.page, section: $0.row.section, kind: $0.row.kind, figure: $0.row.figure,

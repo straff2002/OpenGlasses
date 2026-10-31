@@ -237,6 +237,12 @@ struct VaultRetriever {
     /// Whether a token spells one of the vault's models (`VaultModelIndex.namesModel`, Plan KG P0).
     /// Beside `ModelScope` because the rule holds with no unit on the job.
     typealias ModelNames = (_ token: String) -> Bool
+    /// The search by meaning and the search by words, each giving its usual best and the best of
+    /// the unit's assigned documents from the one pass (Plan KG P4, `DocumentStore.bestAndBestWithin`).
+    struct AssignedSearch {
+        var query: (_ query: String, _ limit: Int, _ within: Set<String>) -> [DocumentStore.Passage]
+        var terms: (_ query: String, _ limit: Int, _ within: Set<String>) -> [DocumentStore.Passage]
+    }
 
     /// The machine the session is working on, and the other machines the vault covers (Plan EL).
     ///
@@ -267,8 +273,9 @@ struct VaultRetriever {
         /// The penalty for one passage: it names another model and does not name this one.
         func penalty(for text: String) -> Float {
             guard !activeTokens.isEmpty, !otherTokens.isEmpty else { return 0 }
-            guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
-            return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
+            let index = CodeTokenizer.TokenIndex(text)
+            guard !activeTokens.contains(where: index.contains) else { return 0 }
+            return otherTokens.contains(where: index.contains) ? penalty : 0
         }
 
         /// The penalty for a page of a vault manual: the one `penalty(for:)` gives, else the same
@@ -310,6 +317,7 @@ struct VaultRetriever {
     var policy = RetrievalEvidencePolicy()
     var modelScope: ModelScope?
     var modelNames: ModelNames?
+    var assignedSearch: AssignedSearch?
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
          clauseSearch: ClauseSearch? = nil, termSearch: TermSearch? = nil,
@@ -317,7 +325,7 @@ struct VaultRetriever {
          termStatistics: TermStatisticsSource? = nil,
          provenance: Provenance? = nil, availability: Availability? = nil,
          policy: RetrievalEvidencePolicy = RetrievalEvidencePolicy(),
-         modelScope: ModelScope? = nil, modelNames: ModelNames? = nil) {
+         modelScope: ModelScope? = nil, modelNames: ModelNames? = nil, assignedSearch: AssignedSearch? = nil) {
         self.query = query
         self.tokenSearch = tokenSearch
         self.clauseSearch = clauseSearch
@@ -330,6 +338,7 @@ struct VaultRetriever {
         self.policy = policy
         self.modelScope = modelScope
         self.modelNames = modelNames
+        self.assignedSearch = assignedSearch
     }
 
     /// Whether `token` is a model: the vault's list, else a spelling the scope carries.
@@ -435,6 +444,27 @@ struct VaultRetriever {
             ? LexicalSupport.QueryTerms(parts.map { ModelMention.removing(from: $0, names: isModel) }.joined(separator: " "))
             : question
 
+        // The unit's assigned documents are searched too (Plan KG P4): in a vault of many families
+        // other machines' near-identical pages fill the search's depth, and the document rule below
+        // can only reorder what was found. Candidates only: the gate and the ranking judge them as
+        // anything else, and other documents stay. Not for a turn naming another model, which is
+        // asking about that machine and not the unit's.
+        let namesAnotherModel = modelScope.map { scope in
+            namedModels.contains { word in
+                let key = ModelMention.key(word)
+                return scope.otherTokens.contains { ModelMention.key($0) == key }
+            }
+        } ?? false
+        let assigned = namesAnotherModel ? [] : modelScope?.assignedDocumentIds ?? []
+        func searchByMeaning(_ text: String) -> [DocumentStore.Passage] {
+            guard let assignedSearch, !assigned.isEmpty else { return query(text, searchLimit) }
+            return assignedSearch.query(text, searchLimit, assigned)
+        }
+        func searchByWords(_ text: String, _ words: TermSearch) -> [DocumentStore.Passage] {
+            guard let assignedSearch, !assigned.isEmpty else { return words(text, searchLimit) }
+            return assignedSearch.terms(text, searchLimit, assigned)
+        }
+
         // Query each part; the OCR part is queried as its tokens joined so a whole nameplate
         // dump does not drown the embedding in boilerplate.
         var queries = parts
@@ -491,7 +521,7 @@ struct VaultRetriever {
             merged[key] = candidate
         }
         for q in queries {
-            query(q, searchLimit).forEach { consider($0) }
+            searchByMeaning(q).forEach { consider($0) }
         }
         for token in boostTokens {
             tokenHits[token]?.prefix(searchLimit).forEach { consider($0) }
@@ -518,7 +548,7 @@ struct VaultRetriever {
         // unreachable unless something else proposes it; the question's own words do.
         if let termSearch, !question.isEmpty {
             for q in queries {
-                termSearch(q, searchLimit).forEach { consider($0) }
+                searchByWords(q, termSearch).forEach { consider($0) }
             }
         }
 
