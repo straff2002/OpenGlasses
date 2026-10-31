@@ -36,6 +36,11 @@ import PDFKit
 /// label is whole. A manual read by recognition is read from the pages its import kept, and the
 /// Documents library outside vaults gets the version-8 re-read from its own chunks
 /// (`migrateLibrary`).
+///
+/// **Pages inside a chunk (Plan KE P2, location version 10).** Read again once more, for the page
+/// breaks of a chunk packed across a page and for sections no longer opened by a table's rows. No
+/// word moves, so the rows and vectors stay. The library outside vaults has no file to read and is only
+/// stamped.
 @MainActor
 enum PassageLocationMigration {
 

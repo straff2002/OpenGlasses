@@ -297,6 +297,42 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertFalse(plain.body.contains("https://example.com/fixture"))
     }
 
+    // MARK: - The seal, in the report (Plan KE)
+
+    func testASealedJobsHeadingSaysSoAndARefusedCallShowsAsRefused() {
+        var session = Self.session("s1", startedAt: Self.date(26, 9, 12))
+        session.vaultOnly = true
+        let job = JobTranscriptExport.job(session: session, vaultName: "Acme Fridges", thread: nil, events: [])
+        var trace = Self.trace(at: Self.date(26, 9, 13), session: "s1")
+        trace.toolCalls = [.init(name: "web_search", outcome: "refused")]
+        let body = JobTranscriptExport.document(
+            scope: .job(sessionId: "s1"), jobs: [job], exportedAt: Self.date(26, 14, 0),
+            timeZone: Self.utc, details: .init(traces: [trace])).body
+        XCTAssertTrue(body.components(separatedBy: "\n").contains("Vault: Acme Fridges · Vault-only: on"), body)
+        XCTAssertTrue(body.contains("tools: web_search (refused)"), body)
+        XCTAssertFalse(body.contains("web search (tool call"), body)
+    }
+
+    func testAJobWithoutTheSealKeepsTheLineItHad() {
+        let session = Self.session("s1", startedAt: Self.date(26, 9, 12))
+        let job = JobTranscriptExport.job(session: session, vaultName: "Acme Fridges", thread: nil, events: [])
+        XCTAssertFalse(job.vaultOnly)
+        let body = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
+                                                exportedAt: Self.date(26, 14, 0), timeZone: Self.utc).body
+        XCTAssertTrue(body.components(separatedBy: "\n").contains("Vault: Acme Fridges"), body)
+        XCTAssertFalse(body.contains("Vault-only"), body)
+    }
+
+    func testTheHeadingShowsTheModelAsStated() {
+        var session = Self.session("s1", startedAt: Self.date(26, 9, 12))
+        session.equipment = EquipmentIdentity(modelToken: "QX100", heading: "QX100", file: "models.md", source: .spoken,
+                                              statedModel: "QX100-A2")
+        let job = JobTranscriptExport.job(session: session, vaultName: "Acme Fridges", thread: nil, events: [])
+        let body = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
+                                                exportedAt: Self.date(26, 14, 0), timeZone: Self.utc).body
+        XCTAssertTrue(body.components(separatedBy: "\n").contains("Job 1005 · QX100-A2 · Resolved"), body)
+    }
+
     func testAPlainTranscriptCarriesNoTroubleshootingLayer() {
         let job = JobTranscriptExport.job(
             session: Self.session("s1", startedAt: Self.date(26, 9, 12)), vaultName: "Refrigeration",

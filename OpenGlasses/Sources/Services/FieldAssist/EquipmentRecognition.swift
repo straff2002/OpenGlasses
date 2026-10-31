@@ -149,3 +149,110 @@ enum EquipmentRecognition {
                                  vaultMatch: .init(heading: model.heading, section: model.name, kind: kind))
     }
 }
+
+// MARK: - Reading a unit out of words (Plan KE P1)
+
+extension EquipmentRecognition {
+
+    /// What a piece of text says about the machine: nothing, more than one of the vault's models,
+    /// or one unit, ready to record. The one reading `equipment_lookup` and a turn's own words share.
+    enum Reading: Equatable {
+        case nothing
+        case several([VaultModelIndex.Model])
+        case unit(EquipmentIdentity)
+    }
+
+    static func reading(of text: String, source: EquipmentIdentity.Source, index: VaultModelIndex,
+                        nameplateText: String? = nil) -> Reading {
+        guard !index.isEmpty else { return .nothing }
+        let matches = index.match(text: text)
+        guard !matches.isEmpty else {
+            // A member of the vault's series that no listed size claims is still a machine these
+            // manuals are for, and recognising it is what keeps the turn from being refused.
+            guard let member = index.seriesMember(in: text) else { return .nothing }
+            let identity = identity(stated: member, resolution: resolve(stated: member, index: index),
+                                    source: source, nameplateText: nameplateText)
+            return identity.isSeriesMember ? .unit(identity) : .nothing
+        }
+        guard matches.count == 1 else { return .several(matches) }
+        return .unit(identity(for: matches[0], in: text, source: source, index: index,
+                              nameplateText: nameplateText))
+    }
+
+    /// The identity to record for a model the text named (Plan GB P2). A spoken model keeps what
+    /// was said beside the section it matched and how; a nameplate, a work order and a tap on the
+    /// phone's list are the vault's own spelling, recorded as before.
+    static func identity(for model: VaultModelIndex.Model, in text: String,
+                         source: EquipmentIdentity.Source, index: VaultModelIndex,
+                         nameplateText: String? = nil) -> EquipmentIdentity {
+        guard source == .spoken,
+              let stated = VaultModelIndex.modelLikeTokens(in: text)
+                .filter({ index.resolve(token: $0).contains(model) })
+                .max(by: { $0.count < $1.count }) else {
+            return EquipmentIdentity(model: model, token: model.name, source: source,
+                                     nameplateText: nameplateText)
+        }
+        let resolution = resolve(stated: stated, index: index)
+        let kind = resolution.model == model ? (resolution.kind ?? .partial) : .partial
+        return EquipmentIdentity(model: model, token: model.name, source: source,
+                                 nameplateText: nameplateText, statedModel: stated,
+                                 vaultMatch: .init(heading: model.heading, section: model.name, kind: kind))
+    }
+
+    /// How a recognised unit stands against the one the job is on.
+    enum Change: Equatable {
+        /// No unit yet.
+        case firstUnit
+        /// The unit already active, said no more fully than it was.
+        case sameUnit
+        /// The unit already active, said more fully: a suffix the first statement left off.
+        case fullerSpelling
+        /// Another machine, which is the technician's question to answer, not this type's.
+        case anotherUnit
+    }
+
+    static func change(from active: EquipmentIdentity?, to identity: EquipmentIdentity) -> Change {
+        guard let active else { return .firstUnit }
+        guard active.heading == identity.heading else { return .anotherUnit }
+        let (before, after) = (active.unitKey, identity.unitKey)
+        if after.count > before.count, after.hasPrefix(before) { return .fullerSpelling }
+        // Two members of a series share a heading and are still two machines.
+        return active.isSeriesMember && after != before ? .anotherUnit : .sameUnit
+    }
+
+    /// The unit a technician's own words record, or nil when they record none.
+    ///
+    /// One test job ran fourteen minutes with no model scope because equipment was only ever set by
+    /// the model choosing to call `equipment_lookup`. A turn naming exactly one of the vault's models
+    /// counts by itself in two cases: there is no unit yet, or it is a fuller spelling of the active
+    /// one. Another model stays with `equipment_lookup` and its job-change question, so a machine
+    /// mentioned in passing moves nothing. Several models, a denial ("it's not the QX100") and job
+    /// bookkeeping record nothing either. Pure.
+    static func unitSaid(in turn: String, active: EquipmentIdentity?,
+                         index: VaultModelIndex) -> (identity: EquipmentIdentity, change: Change)? {
+        guard ManualTurnClassifier.classify(turn) != .jobBookkeeping else { return nil }
+        let text = ManualTurnScope.removingJobReferences(from: turn)
+        guard case .unit(let identity) = reading(of: text, source: .spoken, index: index),
+              identity.isSeriesMember || index.namesOneModel(in: text),
+              !denies(identity.stated, in: text) else { return nil }
+        let change = change(from: active, to: identity)
+        return change == .firstUnit || change == .fullerSpelling ? (identity, change) : nil
+    }
+
+    private static func denies(_ stated: String, in text: String) -> Bool {
+        guard let said = text.range(of: stated, options: .caseInsensitive) else { return false }
+        return TechnicianRequest.words(String(text[..<said.lowerBound])).suffix(3).contains(where: denials.contains)
+    }
+
+    private static let denials: Set<String> = ["not", "isnt", "wasnt", "arent", "never"]
+
+    /// Whether `text` names the active unit and no other thing with a number in it, so recording it
+    /// again could change nothing: every such word is part of what was stated. A fuller spelling, a
+    /// fault code beside the model and another model are not. Reads the text's runs whole, hyphens
+    /// kept: `QX100-A2` is not `QX100`.
+    static func restates(_ active: EquipmentIdentity, in text: String) -> Bool {
+        let separators = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-")).inverted
+        let runs = text.components(separatedBy: separators).filter { $0.contains(where: \.isNumber) }
+        return !runs.isEmpty && runs.allSatisfy { active.unitKey.contains(normalised($0)) }
+    }
+}

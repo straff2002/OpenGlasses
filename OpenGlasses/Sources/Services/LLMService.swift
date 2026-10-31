@@ -601,7 +601,8 @@ class LLMService: ObservableObject {
                 }
 
                 // Inject user-defined custom tool descriptions
-                let customTools = Config.customTools.filter { Config.isToolEnabled($0.name) }
+                // A vault-only job lists none: a custom tool is an HTTP call the app never reviewed.
+                let customTools = VaultOnlyPolicy.jobIsSealed ? [] : Config.customTools.filter { Config.isToolEnabled($0.name) }
                 for ct in customTools {
                     toolSection += "\n            - \(ct.name): \(ct.description)"
                 }
@@ -640,15 +641,20 @@ class LLMService: ObservableObject {
             """
             }
 
+            // Examples name only what the turn offers: told to call `web_search`, a vault-only job's
+            // model would, and the trace of a sealed job would carry the refusal (Plan KE).
+            let searchExamples = nativeToolNames.contains("web_search") ? """
+
+               - "Got it, searching for that now." then call web_search.
+               - "One moment, looking that up." then call web_search.
+            """ : ""
             toolSection += """
 
             TOOL USAGE RULES:
             CRITICAL: NEVER tell the user a tool is "not configured" or "not set up" — ALWAYS call the tool and let it handle errors. The tools check configuration internally and return helpful messages. Your job is to call them, not to guess their state.
             1. ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool. This prevents awkward \
             silence while the tool executes. Examples:
-               - "Sure, let me check the weather." then call get_weather.
-               - "Got it, searching for that now." then call web_search.
-               - "One moment, looking that up." then call web_search.
+               - "Sure, let me check the weather." then call get_weather.\(searchExamples)
             2. CONTACTS: phone_call and send_message both accept contact NAMES directly (e.g. "Mom", "John"). \
             They automatically resolve names to phone numbers from the user's contacts. You do NOT need to call \
             lookup_contact first — just pass the name. If multiple matches exist, the tool returns options for the user to choose. \
@@ -804,7 +810,8 @@ class LLMService: ObservableObject {
         let window = ModelContextWindow.resolve(provider: provider, model: config.model,
                                                 baseURL: config.baseURL, chatGPTCatalogContext: catalogContext)
         let core = ToolExposureCore.names(fieldJobActive: FieldToolProfile.fieldJobActive,
-                                          accessibilityMode: Config.accessibilityModeEnabled)
+                                          accessibilityMode: Config.accessibilityModeEnabled,
+                                          vaultOnly: VaultOnlyPolicy.jobIsSealed)
         let decision = ToolExposurePolicy.decide(mode: Config.toolDefinitionsMode, available: available.names,
                                                  fullSetBytes: available.bytes, contextWindow: window?.tokens,
                                                  core: core, remembered: toolExposureMemory)
@@ -826,7 +833,8 @@ class LLMService: ObservableObject {
     private func onDemandToolGuide(for decision: ToolExposureDecision, nativeToolNames: [String]) -> String? {
         guard decision.exposure == .core, let registry = nativeToolRouter?.registry else { return nil }
         let core = ToolExposureCore.names(fieldJobActive: FieldToolProfile.fieldJobActive,
-                                          accessibilityMode: Config.accessibilityModeEnabled)
+                                          accessibilityMode: Config.accessibilityModeEnabled,
+                                          vaultOnly: VaultOnlyPolicy.jobIsSealed)
         let native = registry.toolDescriptions(for: nativeToolNames.filter { decision.available.contains($0) && !core.contains($0) })
         let nativeSet = Set(nativeToolNames)
         let mcpNames = decision.available.subtracting(nativeSet).sorted()
@@ -886,7 +894,8 @@ class LLMService: ObservableObject {
                     // call then resolves to the operation that already ran instead of running again.
                     outcome = await router.executeRoot(name: name, args: args, origin: .model,
                                                        invocationID: callID ?? UUID().uuidString)
-                } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive {
+                } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive,
+                          !VaultOnlyPolicy.jobIsSealed {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
                     outcome = ToolExecutionOutcome(
                         await bridge.delegateTask(task: taskDesc, toolName: name))
@@ -1056,7 +1065,8 @@ class LLMService: ObservableObject {
 
         let isOnDevice = (provider == .local || provider == .appleOnDevice)
         let hasNativeTools = nativeToolRouter != nil
-        let includeOpenClaw = Config.isOpenClawAgentActive && openClawBridge != nil
+        // A vault-only job does not reach the gateway (Plan KE), so the prompt does not offer it.
+        let includeOpenClaw = Config.isOpenClawAgentActive && openClawBridge != nil && !VaultOnlyPolicy.jobIsSealed
         let includeTools = hasNativeTools || includeOpenClaw
         // Plan GD3: the field-mode profile narrows the prompt's list exactly as it narrows the
         // declared schemas, so a tool is listed only when it is declared. Used by the agent-plan
@@ -4445,6 +4455,7 @@ class LLMService: ObservableObject {
             answer = await UncertaintyReask.answer(
                 question: text,
                 originalAnswer: answer,
+                vaultOnly: VaultOnlyPolicy.jobIsSealed,
                 history: recent,
                 search: { query in try await WebSearchTool().execute(args: ["query": query]) },
                 rewriteQuery: { q in
@@ -4512,8 +4523,9 @@ class LLMService: ObservableObject {
     private func appleTools() -> [any Tool] {
         guard let router = nativeToolRouter else { return [] }
         let registry = router.registry
+        // This path picks from the registry itself, so the seal is applied here (Plan KE).
         let names = AppleOnDeviceToolSet.priorityNames(
-            registered: registry.toolNames,
+            registered: VaultOnlyPolicy.jobIsSealed ? VaultOnlyPolicy.unsealed(registry.toolNames) : registry.toolNames,
             fieldAssistActive: Config.fieldAssistActive,
             offlineHandoff: offlineHandoffTurn,
             libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
@@ -4786,7 +4798,7 @@ class LLMService: ObservableObject {
         // Build tool instructions — use minimal set for local models
         var fullPrompt = systemPrompt
         if includeTools, let router = nativeToolRouter {
-            let toolNames = Self.localToolNames(registered: router.registry.toolNames,
+            let toolNames = Self.localToolNames(registered: VaultOnlyPolicy.jobIsSealed ? VaultOnlyPolicy.unsealed(router.registry.toolNames) : router.registry.toolNames,
                                                offlineHandoff: offlineHandoffTurn,
                                                libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
             fullPrompt += Self.localToolInstructions(toolNames: toolNames)
@@ -5071,6 +5083,7 @@ class LLMService: ObservableObject {
             finalAnswer = await UncertaintyReask.answer(
                 question: text,
                 originalAnswer: cleanResponse,
+                vaultOnly: VaultOnlyPolicy.jobIsSealed,
                 history: history,
                 search: { query in try await WebSearchTool().execute(args: ["query": query]) },
                 rewriteQuery: { q in

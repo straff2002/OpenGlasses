@@ -9,9 +9,10 @@ import Foundation
 ///
 /// It only ever answers with what the model could be declared right now — the very filter the
 /// declarations themselves use (enabled, not HIPAA-disabled, inside the Field Assist profile during
-/// a job; MCP tools only when offered) — so a disabled tool's schema can never leak through it. It
-/// is infrastructure, not a feature: `NativeToolRegistry.toolNames` and `ToolDeclarations` leave it
-/// out of the full list, and the Tools screen does not offer a switch for it.
+/// a job; MCP tools only when offered, and nothing a vault-only job seals) — so a disabled tool's
+/// schema can never leak through it. It is infrastructure, not a feature:
+/// `NativeToolRegistry.toolNames` and `ToolDeclarations` leave it out of the full list, and the Tools
+/// screen does not offer a switch for it.
 struct ToolLookupTool: NativeTool {
     nonisolated static let toolName = "lookup_tools"
     /// How many definitions one call may return, so a "look up everything" call cannot rebuild
@@ -46,10 +47,18 @@ struct ToolLookupTool: NativeTool {
         }
         let declarations: [[String: Any]] = await MainActor.run {
             guard let registry = toolRegistry else { return [] }
-            return ToolDeclarations.nativeToolDeclarations(registry: registry)
-                + ToolDeclarations.mcpToolDeclarations(mcpClient: registry.mcpClientSource?())
+            return Self.declarable(ToolDeclarations.nativeToolDeclarations(registry: registry)
+                + ToolDeclarations.mcpToolDeclarations(mcpClient: registry.mcpClientSource?()),
+                vaultOnly: VaultOnlyPolicy.jobIsSealed)
         }
         return Self.render(requested: requested, declarable: declarations)
+    }
+
+    /// What may be looked up: on a vault-only job, nothing the seal shuts, so a sealed tool cannot be
+    /// looked up back in (Plan KE). Pure.
+    static func declarable(_ declarations: [[String: Any]], vaultOnly: Bool) -> [[String: Any]] {
+        guard vaultOnly else { return declarations }
+        return declarations.filter { ($0["name"] as? String).map { !VaultOnlyPolicy.isSealed(tool: $0) } ?? false }
     }
 
     /// The reply for `requested` names over the declarations that may be given right now. Pure:

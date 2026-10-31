@@ -1,7 +1,8 @@
 # Plan KE — Symptom Diagnosis and Vault-Only Jobs (no web search in a sealed vault, the known model picks the manuals, citations that open the right page)
 
-**Status:** 📝 Drafted 2026-10-31 from a tester's report of 2026-10-30 (three simulated jobs on a
-refrigerator vault, build 581). Nothing built. Every cause below was traced on main at build 610:
+**Status:** 🚧 P0, P1 and P2 built 2026-10-31, headless; P3 to do. Drafted 2026-10-31 from a
+tester's report of 2026-10-30 (three simulated jobs on a refrigerator vault, build 581). Every cause
+below was traced on main at build 610:
 the citation causes by running the parser on the report's exact lines, the page causes by running
 `DocumentChunker` over the vault's own PDFs, the title and unit causes by reading the code only.
 **Track:** Field Assist first (the tester's customer pilot is held on this), app-wide underneath:
@@ -117,6 +118,31 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   or unit retitles (Job tab, `field_session`, intake), and the unit line and job heading show the
   model as stated, suffix included.
 
+**P0 as built (2026-10-31).** Headless; nothing here has been run on the phone yet.
+
+- `VaultOnlyPolicy` keeps an allowlist, so anything not kept is sealed: a tool nobody decided, a custom
+  HTTP tool, a skill pack's tools, MCP's qualified names, the gateway's `execute`. The guard test walks
+  `FieldToolProfile.names`, the core set and the on-device set. The seal holds with the field profile
+  switched off in the Developer panel, and the job records it (`FieldSession.vaultOnly`) for its report.
+- The sweep added routes the plan did not list. `qr_context` takes any URL and hands the page to the
+  model, and it was on the field profile: sealed. `discover_capabilities` would list sealed tools back:
+  sealed. The Apple on-device and MLX paths pick from the registry, not `declarableNames`: filtered
+  there. Custom tools are listed by the prompt outside the profile: dropped. The acknowledgement
+  examples named `web_search` to every turn: now only when it is offered. A kept name whose native tool
+  is off would have fallen through to MCP or the gateway: refused at the same gate.
+- `UncertaintyReask.answer` takes `vaultOnly` as a required argument, so a new caller cannot forget it,
+  and a test fails if anything but the registry and the re-ask builds a search tool.
+- `vault_only` is read strictly: a value that is not a boolean refuses the manifest.
+- `Citation.printedPage` is kept only when a citation names no PDF page, and opens through the manual's
+  page labels. `CitationLineParser.closingSentence` treats a full stop after a page, step or caption as
+  the end unless another place follows; a full stop in a title ends it only after a non-abbreviation
+  with a capital next, and not when a page follows the next piece.
+- `FieldSessionService.onJobIdentityChanged` is the one hook every number and unit route ends in, so
+  the title moves at once rather than at the next turn. `ConversationThread.jobTitle` decides what is
+  the app's own, and `isGenerated` is read only for a thread saved before the record existed.
+- The title, the report's heading, the session card, the past-job and list rows and the watch show the
+  model as stated.
+
 ### P1 — the model and the symptom reach the search (headless)
 
 - **The model said aloud counts.** Before retrieval, a turn naming exactly one of the vault's
@@ -149,6 +175,44 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   calls, `field_session` `status` and `equipment_lookup` with `set_equipment` or a free-text query,
   but not the full loop, so the fixture uses those and the existing stop stays as the backstop.
 
+**P1 as built (2026-10-31).** Headless; nothing here has been run on the phone yet.
+
+- The shared recognition is `EquipmentRecognition.reading` and `.change`, moved out of the tool. Both
+  the tool and `recordModelSaid` use them, so a turn's words and `equipment_lookup` record the same
+  identity. The hook is the top of `FieldSessionService.promptContext`, the one place spoken and typed
+  turns both pass before anything is retrieved; the words come through `TechnicianWords`, so a turn with
+  none records nothing. `.spoken` already says "from the technician", so `Source` gained no case.
+- `match(text:)` keeps its first reading when two tokens name different models, so "the QX100 is fine,
+  the QX200 trips" counted as one match. `unitSaid` asks the stricter `namesOneModel`. A denial ("it's
+  not the QX100") records nothing, and neither does a paused job, or the same words a second time in a
+  job: a prompt rebuilt after a tool round must not bring back a unit the tool has just forgotten.
+- A `set_equipment` that repeats a unit the turn already recorded still logs a correction with the
+  same words on both sides. That is how a technician's "no, it really is the 48C" is logged, so it
+  stays; the job log may show more of these now.
+- The ledger has no number field, so a document's number is any word of its title with letters and
+  digits, beside the title's first word when that holds a digit. A photographed manual takes no
+  document penalty: it is the job's own and in no vault's list. A series member has no spellings to
+  score text by, so its scope carries only the union of its series' documents, and its text and team
+  learnings score as they did.
+- The context goes in a new `Request.jobContext`, searched like a procedure step's title and never a
+  boost token: the unit's number is on half the vault's pages, and a verbatim token clears the gate by
+  itself. The earlier turns are held in memory on the service, by job and unit, last four, two used.
+  Nothing is written for this; a crash loses only the follow-up's context.
+- The second search runs for any turn but job bookkeeping, on a job that is not paused, and not when
+  the turn names another known model. A page it adds is never staged: the turn's own outcome decides
+  what opens. On a turn that already answered it adds at most two, from assigned documents, after what
+  the turn found. It reads the words `manualPassagesContext` reads, so `manual_lookup` stays as it was.
+- The escalation gate is in the router, ahead of the policy, so no card goes up, and covers
+  `escalate_to_expert` `request` and `field_session` `escalate`. It errs towards a request: a wrong
+  pass shows the card, a wrong refusal stands between a technician and a person.
+- `ToolRepeatGuard` is new, in the tool loop. Status repeats until something else changed; a unit
+  lookup is settled once the text only restates the active unit, whatever its arguments; a fault code
+  beside the model, another model or a fuller spelling runs. A call refused this way counts towards
+  `identicalRepeats` only from the second telling, or the wrap-up would withhold tools from the very
+  round the model is told to search. Live sessions have no loop, so this is Direct mode only.
+- `oneCheckRule` sits beside the passages, on question, description and reading turns. It is in the
+  volatile tail, so the cached prefix does not move.
+
 ### P2 — every page where it is (headless, then the real manuals)
 
 - **A chunk knows its pages.** `Chunk` keeps its page breaks (offset and page), stored beside
@@ -167,6 +231,87 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
   the passage is on no page of the range, the sheet says the mark could not be placed.
 - **Pages add up.** A second `manual_figure` in a turn joins the first in the sheet through
   `ShowSourceCenter.present`, up to `ShowSourceResolver.maximumPages`, opening on the newest.
+
+**P2 as built (2026-10-31).** Headless. Compiled for the app, its classes and the P0, P1, retrieval and
+security-regression classes run on the simulator, and checked against the real manuals on the Mac. Nothing
+here has been run on the phone, and the tests that read the example vault's manuals skipped: they are not on
+this machine, so the heading rule has only been read against the vault's service manuals.
+
+- `Sentence.page` is only where a sentence starts. A form feed does not end a sentence for the tokenizer,
+  so a run of table lines reads straight over the page: over a third of the service manuals' chunks hold a
+  form feed inside a sentence. `taggedSentences` reads the pages that open inside one (`turns`), and
+  `Chunk.pageBreaks` is built from both. A page with no words of the chunk on it is not a break, and a
+  chunk on one page has none. The first break is at offset 0, because `page` may be a later page of the
+  chunk (the majority rule). A hard-split piece takes the page it really starts on.
+- `page_breaks` is its own column, "0:11,412:12", beside `sentences`. Version 10 moves `textReadVersion`
+  too: breaks can only come from the packed sentences, so the text is read again. The heading rule moves
+  sections and no word, so the rows, ids and vectors stay and an installed index gets all of it on its
+  next migration, without a re-import. A recognised manual imported before its pages were kept is left as
+  it is and reads as one page, as is a document in the library outside vaults, which is only stamped.
+- Marks are `Passage.markedText`, rendered by `passageLine`, so the prompt, `manual_lookup` and the
+  personal library all have them, and `text` stays what the gate, tokens and highlight read. The opening
+  page gets a mark too, since the chunk's `page` may not be it. `Passage.printedPage` is only set for a
+  photographed manual, so a mark's label comes from the document's own map (`withPrintedLabels`). The
+  citation of a vault manual still names no printed page: only the marks do. The marks sit inside the
+  256 characters `boundedOutcome` already allows each passage.
+- `pageMarkRule` sits beside the passages, in the rules a passage calls for, only when one crosses a page.
+- A heading rule over one line cannot tell "3 Fixed Shelf" from "12 Wiring", so there are two. On the line:
+  a number followed by `=`, a word printed three times, the line's number printed again, a figure and its
+  unit alone or running into a sentence, two digits in a row; and for capitals, a note in brackets, an
+  open bracket, a sentence, spaced-out letters, a word printed twice. On the page (`tableLines`, one pass
+  before the scan): whole numbers that do not go up, and past five titles in capitals everything but one
+  at the head of the page. The second goes beyond table rows: drawing labels were what a section fell back
+  on once the rows went, and the mis-cited case then read "§" of a label. A number that is a value ("24
+  VAC Supply") takes no part in the count, and neither does a running header or footer.
+- Only the lexical path changes. A document with one `## ` line has none of it, which is what the app's
+  extractor produces for one of the three service manuals; `ManualStructure`'s own rules are untouched.
+- `resolveCitedPage` is the one resolution; `show_source` and a tap both use it, and the personal library
+  calls the same `placing`. Only a citation with a range reads pages, at most twelve. A passage is looked
+  for on every page of a range, because a model can write a range of its own and an old row knows one page.
+  An anchor is read a page at a time (`sentences(onPage:)`), so a chunk over a break is found on each side
+  of it, and moving to the other page in the sheet marks that page's part. `marking` now finds a chunk by
+  any page it covers: the model is told to cite page 12, and the chunk may say 11. The audit records the
+  page that opened. The sheet's existing "couldn't be marked" line is the words for a passage on no page.
+- `TurnPageStack` keys on the turn id, else the minute, as `manual_lookup`'s misses do. The second page is
+  staged for the model only, so the single-page sheet stays down. A page already up is not logged again
+  (`SourcePagesRequest.opening`). `manual_figure` in the personal library still shows one page.
+- Follow-ups from P1: both sentences that nudged an escalation now name the gap and offer an expert. A title
+  word is a document's id only as its first word holding a digit, or at six characters of which five are
+  digits, hyphens aside, so a refrigerant in a title and a section's prose assigns nothing. The turn that records a unit by itself now carries the earlier-work
+  sentence and the site line, for as long as those words are the turn. The vault guide says what naming a
+  document does.
+- A chunk across a break is on both pages, so "show me clause N" opened the next page too once the answer
+  cited it. The clause is taken from the page the chunk is cited at, and the next page only when nothing else
+  cited holds it, since the model may have cited the mark inside the chunk.
+
+Against the real manuals, aggregates only (the app's chunker over each page's text, majority rule on):
+
+| Measure | Before | After |
+|---|---|---|
+| The three mis-cited pages, as the model reads them | 1 right | 3 right |
+| Lines of the three service manuals read at their own page (2,907 unique lines) | not readable | all |
+| Distinct headings across the three | 270 | 41 |
+| Chunks crossing a page | not recorded | 133 of 361 |
+
+Of the 229 headings removed, 113 were numbered and none of those was a title. Of the rest, one is the second
+line of a page title whose first line stays, and the others are labels on drawings, table headers, and the
+lines over phone numbers on the contact pages. Of the 41 left, about ten are still no title (two header rows,
+a cell, some wrapped lines). Recall on the acceptance questions was not re-measured: the text and vectors are
+unchanged, so only a section's words could move it.
+
+The documents by model (P1) measured on the same vault, on the Mac with the contextual embedder, a side-by-side
+and a multi-door model active, top four passages, document scoping off then on (aggregates only):
+
+| Questions | Passages | From assigned documents | Refused | Expected page in the top four |
+|---|---|---|---|---|
+| 12 symptom and follow-up | 47 | 19 → 25 | 0 → 0 | not labelled |
+| 15 acceptance | 35 with a unit that has documents | 15 → 19 | 0 → 0 | 2 → 3 of 5 |
+
+Nothing from an assigned document left the top four, and one question gained its expected page. The scoping
+moves little on a symptom question. In the multi-door case the one assigned manual put only the page listing the
+model into the top four on most of them, on or off, and the rest stayed with other documents, since a penalty
+ranks them down and nothing better cleared the gate. A model number said in the turn takes the first slot for
+that page either way. The extractor here is the Mac's rather than the phone's.
 
 ### P3 — the tester's re-run (owed, device)
 

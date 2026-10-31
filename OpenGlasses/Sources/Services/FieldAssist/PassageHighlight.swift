@@ -17,6 +17,37 @@ struct CitedPassage: Equatable, Hashable {
     let anchor: PassageAnchor
 }
 
+/// Where a citation that names a range opens, and what its passages mark there (Plan KE P2). Pure.
+enum CitedPagePlacement {
+
+    /// The page of `pages` holding most of the passages, or the first page when they are on none.
+    /// A passage found on a page it does not say it covers is put on that page, and one on no page
+    /// of the range is put on the page that opens if it covers none, so the sheet says it could not
+    /// be marked instead of saying nothing.
+    static func place(_ passages: [CitedPassage], among pages: ClosedRange<Int>,
+                      pageText: (Int) -> String?) -> (page: Int, passages: [CitedPassage]) {
+        var texts: [Int: String] = [:]
+        for page in pages.prefix(PassageLocator.maximumRangePages) {
+            if let text = pageText(page) { texts[page] = text }
+        }
+        let opening = PassageLocator.page(holding: passages.map(\.anchor), among: pages, pageText: { texts[$0] })
+            ?? pages.lowerBound
+        let placed = passages.map { passage -> CitedPassage in
+            let anchor = passage.anchor
+            if pages.contains(where: { anchor.covers($0) && !PassageLocator.locate(anchor, onPage: $0, pageText: texts[$0]).ranges.isEmpty }) {
+                return passage
+            }
+            let found = pages.prefix(PassageLocator.maximumRangePages).first {
+                !PassageLocator.locate(anchor, onPageText: texts[$0]).ranges.isEmpty
+            }
+            if let found { return CitedPassage(number: passage.number, anchor: anchor.placed(on: found)) }
+            return pages.contains(where: anchor.covers) ? passage
+                : CitedPassage(number: passage.number, anchor: anchor.placed(on: opening))
+        }
+        return (opening, placed)
+    }
+}
+
 /// What marking one page came to, decided without a screen.
 struct PassageMarks: Equatable {
 
@@ -29,8 +60,8 @@ struct PassageMarks: Equatable {
 
     /// Locate every cited passage on `page` (physical) in that page's text.
     init(passages: [CitedPassage], page: Int, pageText: String?) {
-        marks = passages.filter { $0.anchor.page == page }.map {
-            Mark(number: $0.number, location: PassageLocator.locate($0.anchor, onPageText: pageText))
+        marks = passages.filter { $0.anchor.covers(page) }.map {
+            Mark(number: $0.number, location: PassageLocator.locate($0.anchor, onPage: page, pageText: pageText))
         }
     }
 

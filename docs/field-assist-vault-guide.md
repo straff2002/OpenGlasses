@@ -157,6 +157,8 @@ Owner: D04. No service manual loaded.
 - **Confirm applicability from evidence:** the model list on the manual's cover or inside it, or the manufacturer's own catalogue entry for the model. A model number that merely starts the same way is not evidence. When a manual lists engineering versions (suffixes), record exactly the ones it lists.
 - **Say the difference between kinds of document.** An owner guide or quick-start sheet does not make a model serviceable from the vault; the map should show which models have a service manual and which do not, so the assistant can say so.
 - **Add a rule that holds the assistant to the map**, for example: *"Identify the exact model first, then use only the documents listed for it in models.md. A passage written for another model is not evidence."*
+- **Naming a document assigns it.** When a model's section names a document, that document is assigned to the model. With the model on the job, passages from its assigned documents come first, every other document ranks down (it can still be found, so the assistant can say a figure belongs to another model), and the assistant is told which documents apply. Two things count as naming a document: its ID, which is the first word of its `title` when that word holds a digit (`D01`), and a word of its title that looks like a document number, at least six characters of which five are digits (`SM-50021`, not `SM-5002`). Nothing else does, so a refrigerant, a voltage or a size in a section's prose assigns nothing. List every document a model has: a section that names one document by accident ranks all the others down. A section that names none changes nothing.
+- **Write for one supported check.** On a symptom, the assistant gives one check the passages support, says what to observe, and uses the answer to pick the next. It does not call a check the manufacturer's first step unless a page says so, and with nothing supported it names the gap. A manual with no symptom section can only support a check, not an order of checks, so say so in your rules rather than asking for one. Do not write "state the gap and escalate": a gap is said to the technician, and an expert is offered, not called.
 - **Keep rules proportionate.** A rule demanding the serial range before every question slows down a filter-light question for no gain. Ask for the details only where a manual makes the answer depend on them.
 - **Mind the budget.** One short section per model is about 40 bytes; three hundred models is roughly 12 KB of the 32 KB core.
 - **Sibling brands.** One service manual often covers several of a manufacturer's brands. Decide deliberately whether those models belong in the vault: a model with no section is refused as out of scope, even when a loaded manual covers it.
@@ -240,6 +242,7 @@ This is the whole file for the folder above.
 | `prompt_rules` | The rules the assistant follows while this vault is active. |
 | `source_attribution_*` | Forces a source line on every factual claim drawn from the core files. |
 | `sites` | Optional. The site documents, one JSON file per site under `sites/` — see **Describing a site system** below. Omit it if you have none; a vault without it imports exactly as before. |
+| `vault_only` | Optional. `true` seals a job on this vault to the vault's own content: no web search and no other outside source — see **Sealing a vault to its own content** below. Omit it to leave things as they are; a vault without it imports exactly as before. |
 | `trades` | Optional. The trades this vault is for: `refrigeration_hvac`, `electrical`. Each trade adds its own tiles to the Field Assist grid on phones whose default vault is this one — `refrigeration_hvac` adds **Read Gauges** and **P-T Lookup**; `electrical` adds no tiles yet. A trade also decides which calculations the assistant offers: the refrigerant ones are refrigeration's and voltage drop is electrical's, so a phone set to one trade only does not offer the other's. The technician's own choice in Settings › Field Assist › Trade, then the organisation's, comes first; the vault's is used when neither has chosen. A value the app does not know is ignored, not refused, so you can list a trade a newer version will understand. Omit it to leave the choice to the technician. |
 
 > **The importer refuses a manifest whose rules do not mention fabrication and citation.** Your `prompt_rules` must include a rule containing the word *fabricate* and one containing *cite*. The rules above satisfy that; reword them freely as long as those two words survive.
@@ -614,6 +617,29 @@ This is the whole of `sites/hillside-house.json` for a three-unit dual-fuel syst
 
 **Packs and exports.** A pack describes products, not customers' sites, so a pack that carries `sites` is refused. A vault you export from the phone carries its site documents, which can identify a customer's premises — keep that in mind before you send one on. Office-built vaults carry site documents only once the office's vault check accepts them.
 
+## Sealing a vault to its own content (optional)
+
+Some content must not be mixed with anything else: a licence forbids it, or a customer wants answers from their documents and nowhere else. A rule in `prompt_rules` asks the assistant not to look elsewhere. `vault_only` makes the app stop it. It goes in the manifest:
+
+```json
+"vault_only": true
+```
+
+**What it shuts, while a job on this vault is open:**
+
+- web search, news and loading a page from a link or a QR code. They are not offered to the assistant, not listed in its instructions, and refused if anything asks for them: a name it remembers, a goal step, a skill pack;
+- every tool on a connected MCP server, and the OpenClaw gateway;
+- the assistant's automatic web re-check of an answer it was unsure of;
+- custom tools and skill-pack tools, and any tool not on the app's list of what a job may keep.
+
+**What a job keeps:** the job's own tools (manuals, tables, procedures, readings, photos, the record, an expert) and the phone's own that do not answer a technical question (timers, weather, directions, calls, notes).
+
+**What it does not do.** It stops outside *sources*, not the model provider. Every turn still goes to the cloud model the phone has chosen, with the passages it was given, as it does on any other job. To keep turns on the phone, choose an on-device model. And it cannot unteach a model what it already knows, so keep your rules about citing and about saying "the manuals do not cover this".
+
+**It needs a recent build.** The app reads `vault_only` from build 611. An older build ignores the key and imports the rest of the vault, so the job runs unsealed and nothing says so. A sealed vault must state its minimum build, wherever you hand the vault over, and you should check the build on each phone before relying on it. It travels with the vault: an export keeps it, and so does removing a manual on the phone. Set it to something other than `true` or `false` and the importer refuses the manifest, because a seal the author asked for must not quietly be missing.
+
+**Check it.** The job's support report says `Vault-only: on` on the line under the job's heading. A sealed job has no web search in its trace; if something did reach for a shut tool, the trace shows that tool as `(refused)` and nothing ran.
+
 ## Step 5 · Import on the iPhone
 
 1. Copy the whole folder into iCloud Drive (or AirDrop it to the phone and save it in Files). Do not zip it; the importer takes a folder.
@@ -912,6 +938,7 @@ Updating a published pack is the same folder with a higher `version`. Technician
 - [ ] `safety.md` says what you want spoken, in your words.
 - [ ] Core files total well under 32 KB.
 - [ ] Any site document has no contact details, passwords or links, and its serials are the customer's.
+- [ ] If the vault is sealed with `vault_only`, its minimum build is stated, and a test job's support report says `Vault-only: on`.
 - [ ] Import shows a section count for every manual.
 - [ ] Saying each serviceable model settles the session on it without asking which one.
 - [ ] A known fault code answers with a page citation.

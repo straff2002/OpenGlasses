@@ -10,7 +10,7 @@ final class UncertaintyReaskTests: XCTestCase {
         let regenerateCalls = Box<[String]>([])
         let result = await UncertaintyReask.answer(
             question: "What's the latest Swift version?",
-            originalAnswer: "I think it's 5.9 but I'm not sure.",
+            originalAnswer: "I think it's 5.9 but I'm not sure.", vaultOnly: false,
             search: { query in
                 XCTAssertEqual(query, "What's the latest Swift version?")
                 return "Swift 6.2 was released in June 2026."
@@ -32,7 +32,7 @@ final class UncertaintyReaskTests: XCTestCase {
     func testEmptySearchReturnsOriginalWithoutRegenerating() async {
         let regenerated = Box<[String]>([])
         let result = await UncertaintyReask.answer(
-            question: "q", originalAnswer: "original",
+            question: "q", originalAnswer: "original", vaultOnly: false,
             search: { _ in "   \n " },
             regenerate: { g in regenerated.value.append(g); return "should not happen" }
         )
@@ -42,7 +42,7 @@ final class UncertaintyReaskTests: XCTestCase {
 
     func testNilSearchReturnsOriginal() async {
         let result = await UncertaintyReask.answer(
-            question: "q", originalAnswer: "original",
+            question: "q", originalAnswer: "original", vaultOnly: false,
             search: { _ in nil },
             regenerate: { _ in "should not happen" }
         )
@@ -51,7 +51,7 @@ final class UncertaintyReaskTests: XCTestCase {
 
     func testSearchThrowReturnsOriginal() async {
         let result = await UncertaintyReask.answer(
-            question: "q", originalAnswer: "original",
+            question: "q", originalAnswer: "original", vaultOnly: false,
             search: { _ in throw TestError() },
             regenerate: { _ in "should not happen" }
         )
@@ -60,7 +60,7 @@ final class UncertaintyReaskTests: XCTestCase {
 
     func testRegenerateThrowReturnsOriginal() async {
         let result = await UncertaintyReask.answer(
-            question: "q", originalAnswer: "original",
+            question: "q", originalAnswer: "original", vaultOnly: false,
             search: { _ in "some results" },
             regenerate: { _ in throw TestError() }
         )
@@ -69,7 +69,7 @@ final class UncertaintyReaskTests: XCTestCase {
 
     func testEmptyRegenerationReturnsOriginal() async {
         let result = await UncertaintyReask.answer(
-            question: "q", originalAnswer: "original",
+            question: "q", originalAnswer: "original", vaultOnly: false,
             search: { _ in "some results" },
             regenerate: { _ in "  \n" }
         )
@@ -97,7 +97,7 @@ final class UncertaintyReaskTests: XCTestCase {
         let groundings = Box<[String]>([])
         let result = await UncertaintyReask.answer(
             question: "what about the other semi final?",
-            originalAnswer: "I'm not sure.",
+            originalAnswer: "I'm not sure.", vaultOnly: false,
             history: semiFinalHistory,
             search: { query in
                 searchedQuery.value.append(query)
@@ -120,7 +120,7 @@ final class UncertaintyReaskTests: XCTestCase {
         let searchedQuery = Box<[String]>([])
         _ = await UncertaintyReask.answer(
             question: "what about the other semi final?",
-            originalAnswer: "original",
+            originalAnswer: "original", vaultOnly: false,
             history: semiFinalHistory,
             search: { query in searchedQuery.value.append(query); return nil },
             rewriteQuery: { _ in throw TestError() },
@@ -134,7 +134,7 @@ final class UncertaintyReaskTests: XCTestCase {
         let rewriteCalls = Box<[String]>([])
         _ = await UncertaintyReask.answer(
             question: "who is playing in the world cup semi finals tomorrow",
-            originalAnswer: "original",
+            originalAnswer: "original", vaultOnly: false,
             history: semiFinalHistory,
             search: { _ in nil },
             rewriteQuery: { q in rewriteCalls.value.append(q); return "unused" },

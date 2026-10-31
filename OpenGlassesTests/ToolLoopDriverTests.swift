@@ -361,7 +361,8 @@ final class ToolLoopDriverTests: XCTestCase {
         var executed = 0
         var requests = 0
         let call = AssistantTurn(text: "", toolCalls: [
-            ToolInvocation(id: "x", name: "field_session", arguments: ["action": "status"])])
+            // Not `status`, which `ToolRepeatGuard` stops sooner (Plan KE P1).
+            ToolInvocation(id: "x", name: "field_session", arguments: ["action": "list"])])
         let adapter = ProviderLoopAdapter(
             label: "Test",
             dispatcher: ToolDispatcher(

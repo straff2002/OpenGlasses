@@ -328,10 +328,10 @@ final class PicturedValueTests: XCTestCase {
     func testShowSourceSaysTheRegionIsOutlined() {
         var staged = FieldSessionService.StagedFigure(documentId: "d1", documentTitle: book, page: 7, figure: "Table Q7")
         staged.pictureAreas = [.init(physical: 7, rect: CGRect(x: 0, y: 120, width: 612, height: 300))]
-        let reply = ShowSourceTool.reply(pages: [staged], marks: [.outlined], onScreen: true, unavailable: [])
+        let reply = ShowSourceTool.reply(pages: [staged], marks: [.outlined], onScreen: true, removed: [])
         XCTAssertTrue(reply.contains("read from a picture"), reply)
         XCTAssertTrue(reply.contains("outlined"), reply)
-        XCTAssertFalse(ShowSourceTool.reply(pages: [staged], marks: [.noPassage], onScreen: true, unavailable: [])
+        XCTAssertFalse(ShowSourceTool.reply(pages: [staged], marks: [.noPassage], onScreen: true, removed: [])
             .contains("outlined"))
     }
 

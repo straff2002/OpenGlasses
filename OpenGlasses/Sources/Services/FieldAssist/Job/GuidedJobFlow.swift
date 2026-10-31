@@ -95,6 +95,9 @@ final class GuidedJobFlow: ObservableObject {
         self.store = store
         self.seams = seams
         pendingUnitQuestion = Self.question(for: sessions.activeSession)
+        // Every route to a job's number or unit ends in the service; only some of them come
+        // through here (Plan KE).
+        sessions.onJobIdentityChanged = { [weak self] in self?.applyThreadTitle() }
     }
 
     /// Wire the app's services in after construction — `AppState` builds its services in an order
@@ -620,14 +623,15 @@ final class GuidedJobFlow: ObservableObject {
 
     // MARK: - Titling
 
-    /// Name the job's conversation after the job, once there is something to name it with.
+    /// Name the job's conversation after the job, once there is something to name it with, and
+    /// again whenever the number or the unit changes.
     private func applyThreadTitle() {
         guard let session = sessions.activeSession,
               let threadId = session.conversationThreadId,
               !session.conversationThreadDetached,
               let reference = session.jobReference,
               let title = JobThreadTitle.title(reference: reference,
-                                               equipment: session.equipment?.modelToken) else { return }
+                                               equipment: session.equipment?.stated) else { return }
         store.applyJobTitle(title, to: threadId) { existing in
             JobThreadTitle.isGenerated(existing, reference: reference)
         }

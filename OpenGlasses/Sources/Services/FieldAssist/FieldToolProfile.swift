@@ -34,10 +34,13 @@ enum FieldToolProfile {
 
     /// The names to declare and list. First the trade gate (`FieldTradeGate`): with a trade active,
     /// another trade's tools go, job or no job. Then, unless a job is open **and** the profile is
-    /// on, the rest unchanged; otherwise the sorted intersection with `names`. Pure.
+    /// on, the rest unchanged; otherwise the sorted intersection with `names`. A job on a vault-only
+    /// vault drops what `VaultOnlyPolicy` seals in either case: the seal holds with the profile off
+    /// in the Developer panel too. Pure.
     static func declaredNames(all: [String], fieldJobActive: Bool, enabled: Bool,
-                              activeTrades: [FieldTrade] = []) -> [String] {
-        let offered = FieldTradeGate.allowedToolNames(all, activeTrades: activeTrades)
+                              activeTrades: [FieldTrade] = [], vaultOnly: Bool = false) -> [String] {
+        let allowed = FieldTradeGate.allowedToolNames(all, activeTrades: activeTrades)
+        let offered = vaultOnly ? VaultOnlyPolicy.unsealed(allowed) : allowed
         guard fieldJobActive && enabled else { return offered }
         return offered.filter(names.contains).sorted()
     }
@@ -52,7 +55,8 @@ enum FieldToolProfile {
     static func current(_ all: [String]) -> [String] {
         let enabled = Config.fieldToolProfileEnabled
         return declaredNames(all: all, fieldJobActive: enabled && fieldJobActive, enabled: enabled,
-                             activeTrades: FieldTradeGate.currentActiveTrades)
+                             activeTrades: FieldTradeGate.currentActiveTrades,
+                             vaultOnly: VaultOnlyPolicy.jobIsSealed)
     }
 
     /// A short, stable digest of a declared list — what the log records instead of the names.

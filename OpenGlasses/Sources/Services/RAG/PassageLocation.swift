@@ -31,9 +31,13 @@ struct PassageAnchor: Equatable, Hashable {
     /// that appears exactly once on the page, and nothing when none does. Empty for any other
     /// chunk, which is located by its sentences.
     let printedRuns: [String]
+    /// The pages a chunk packed across a page break sits on (Plan KE P2). Empty for a chunk on one
+    /// page, and for a row the migration has not reached: `page` is then all there is.
+    let pageBreaks: [DocumentChunker.PageBreak]
 
     init(documentId: String, chunkIndex: Int, text: String, page: Int?, pageStart: Int? = nil,
-         pageEnd: Int? = nil, sentenceStarts: [Int] = [], printedRuns: [String] = []) {
+         pageEnd: Int? = nil, sentenceStarts: [Int] = [], printedRuns: [String] = [],
+         pageBreaks: [DocumentChunker.PageBreak] = []) {
         self.documentId = documentId
         self.chunkIndex = chunkIndex
         self.text = text
@@ -42,10 +46,41 @@ struct PassageAnchor: Equatable, Hashable {
         self.pageEnd = pageEnd
         self.sentenceStarts = sentenceStarts
         self.printedRuns = printedRuns
+        self.pageBreaks = pageBreaks
     }
 
     /// The chunk's sentences, from the stored starts when there are any.
     var sentences: [String] { PassageLocator.sentences(of: text, starts: sentenceStarts) }
+
+    /// Whether any of the passage is on `page`.
+    func covers(_ page: Int) -> Bool {
+        pageBreaks.isEmpty ? self.page == page : pageBreaks.contains { $0.page == page }
+    }
+
+    /// The passage's words on one page, a sentence at a time (Plan KE P2). A chunk across a page
+    /// break is found a page at a time: whole, it could never match either page's text, and a
+    /// sentence that runs over the break is cut at it, which leaves each side findable.
+    func sentences(onPage page: Int) -> [String] {
+        guard !pageBreaks.isEmpty else { return sentences }
+        let characters = Array(text)
+        var result: [String] = []
+        for (index, pageBreak) in pageBreaks.enumerated() where pageBreak.page == page {
+            let from = min(pageBreak.offset, characters.count)
+            let to = min(index + 1 < pageBreaks.count ? pageBreaks[index + 1].offset : characters.count, characters.count)
+            guard to > from else { continue }
+            let inside = sentenceStarts.filter { $0 > from && $0 < to }.map { $0 - from }
+            result += PassageLocator.sentences(of: String(characters[from..<to]), starts: [0] + inside)
+        }
+        return result
+    }
+
+    /// This passage, put on `page`: where a citation's range was found to hold it, or the page that
+    /// says it could not be found (Plan KE P2).
+    func placed(on page: Int) -> PassageAnchor {
+        PassageAnchor(documentId: documentId, chunkIndex: chunkIndex, text: text, page: page,
+                      pageStart: self.page == page ? pageStart : nil, pageEnd: self.page == page ? pageEnd : nil,
+                      sentenceStarts: sentenceStarts, printedRuns: printedRuns)
+    }
 
     /// The compact form `doc_chunks.sentences` stores: "0,112,240".
     static func encode(_ starts: [Int]) -> String { starts.map(String.init).joined(separator: ",") }
@@ -267,6 +302,39 @@ enum PassageLocator {
         guard anchor.printedRuns.isEmpty else { return locate(printedRuns: anchor.printedRuns, onPageText: pageText) }
         return locate(sentences: anchor.sentences, onPageText: pageText, hint: anchor.pageStart)
     }
+
+    /// The part of the passage on `page` (Plan KE P2). The stored span is for the page the chunk is
+    /// cited at, so it says nothing about any other.
+    static func locate(_ anchor: PassageAnchor, onPage page: Int, pageText: String?) -> PassageLocation {
+        guard anchor.printedRuns.isEmpty, !anchor.pageBreaks.isEmpty else { return locate(anchor, onPageText: pageText) }
+        return locate(sentences: anchor.sentences(onPage: page), onPageText: pageText,
+                      hint: page == anchor.page ? anchor.pageStart : nil)
+    }
+
+    /// Which page of a cited range opens (Plan KE P2): the one holding most of the cited passages,
+    /// the earliest on a tie. Nil when they are on none of them, and the caller says so. `pageText`
+    /// is asked once a page, nil for a page with no text.
+    ///
+    /// A passage is looked for on every page of the range, not only those it says it covers: a
+    /// model can write a range of its own, and a row stored before its breaks knows only one page.
+    static func page(holding passages: [PassageAnchor], among pages: ClosedRange<Int>,
+                     pageText: (Int) -> String?) -> Int? {
+        var best: (page: Int, length: Int)?
+        for page in pages.prefix(maximumRangePages) {
+            guard let text = pageText(page) else { continue }
+            let length = passages.reduce(0) { total, anchor in
+                let found = anchor.covers(page) ? locate(anchor, onPage: page, pageText: text)
+                    : locate(anchor, onPageText: text)
+                return total + found.ranges.reduce(0) { $0 + $1.length }
+            }
+            if length > (best?.length ?? 0) { best = (page, length) }
+        }
+        return best?.page
+    }
+
+    /// How many pages of a range are read: a range is a passage or two's pages, and a model's own
+    /// "pages 1–500" must not have the whole book opened to look.
+    static let maximumRangePages = 12
 
     /// A table row as printed (Plan JJ P1): the first of `runs` found exactly once on the page,
     /// whole. A run found twice — two rows printing the same words and values — is never chosen

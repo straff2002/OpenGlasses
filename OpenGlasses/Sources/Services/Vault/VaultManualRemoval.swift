@@ -411,7 +411,7 @@ enum VaultManualRemoval {
     // MARK: - Helpers
 
     /// The manifest with one document taken out, everything else — id, version, core files,
-    /// procedures, gating, prompt rules, trades — untouched.
+    /// procedures, gating, prompt rules, trades, the vault-only seal — untouched.
     static func reducedManifest(_ manifest: VaultManifest, removing file: String) -> VaultManifest {
         VaultManifest(id: manifest.id, name: manifest.name, version: manifest.version,
                       files: manifest.files, proceduresDir: manifest.proceduresDir,
@@ -421,7 +421,8 @@ enum VaultManualRemoval {
                       gating: manifest.gating, promptRules: manifest.promptRules,
                       sourceAttributionFormat: manifest.sourceAttributionFormat,
                       sourceAttributionRequired: manifest.sourceAttributionRequired,
-                      trades: manifest.trades, sites: manifest.sites)
+                      trades: manifest.trades, sites: manifest.sites,
+                      vaultOnly: manifest.vaultOnly)
     }
 
     private static func saveInstalledManifest(_ manifest: VaultManifest) throws {

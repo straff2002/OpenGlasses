@@ -44,7 +44,7 @@ enum JobWatchPayload {
             jobNumber: clip(session.jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" }
                             ?? JobTabModel.noJobNumber),
             state: session.pausedAt == nil ? "Running" : "Paused",
-            unit: clip(session.equipment?.modelToken ?? ""),
+            unit: clip(session.equipment?.stated ?? ""),
             nextAction: clip(nextAction(for: session)))
     }
 

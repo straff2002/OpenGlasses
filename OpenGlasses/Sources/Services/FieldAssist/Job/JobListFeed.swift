@@ -136,7 +136,7 @@ final class JobListFeed: ObservableObject {
                 openPartsRequests: session.partsRequests.filter { $0.status != .answered }.count,
             unsentPartsRequests: PartsOrder.waiting(session.partsRequests).count),
             vaultName: vaultName(session.vaultId),
-            equipment: session.equipment?.modelToken,
+            equipment: session.equipment?.stated,
             officeJobID: session.jobFile?.identity?.jobID,
             outcomeLabel: session.outcome.displayName,
             billingLine: WorkRecord.billingSummary(seconds: session.billableSeconds,
