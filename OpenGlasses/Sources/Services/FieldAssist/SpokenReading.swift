@@ -93,10 +93,21 @@ struct SpokenReading: Codable, Equatable, Identifiable {
                       refrigerant: refrigerant, refrigerantSource: refrigerantSource, pictureMarks: pictureMarks)
     }
 
-    /// "140 °F", "0.28 inWC", "140".
+    /// "140 °F", "0.28 inWC", "140". A value that already ends in its unit prints as it is (Plan KJ
+    /// P3): a model can pass the unit in both fields, and a job log held a reading with it twice.
+    /// Checked here rather than when recording, so readings already stored print once too.
     var valueWithUnit: String {
         guard let unit, !unit.isEmpty else { return value }
-        return "\(value) \(unit)"
+        return Self.value(value, endsInUnit: unit) ? value : "\(value) \(unit)"
+    }
+
+    /// Whether `value` ends in `unit`, whatever the case, with the unit not starting mid-word: "5 am"
+    /// does not end in the unit "m".
+    private static func value(_ value: String, endsInUnit unit: String) -> Bool {
+        guard let match = value.range(of: unit, options: [.caseInsensitive, .backwards, .anchored]) else {
+            return false
+        }
+        return value[..<match.lowerBound].last?.isLetter != true
     }
 
     /// Spoken unit names to the symbol the record prints. Anything unrecognised is kept as said.
