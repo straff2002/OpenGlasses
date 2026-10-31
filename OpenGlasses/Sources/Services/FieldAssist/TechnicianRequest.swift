@@ -42,6 +42,50 @@ enum TechnicianRequest {
         ["wrapping", "up"], ["wrapup"],
     ]
 
+    // MARK: - Asking for a person
+
+    /// Whether the words ask for a person (Plan KE P1): "escalate", or someone to reach with a word
+    /// that reaches them ("get me an expert", "can I talk to someone"), or the expert named on its
+    /// own in a few words ("expert please"). "I don't need an expert" and "the manual is no help"
+    /// ask for nobody. Errs towards a request: wrongly passing shows the approval card, wrongly
+    /// refusing would stand between a technician and a person.
+    static func asksForExpert(_ said: String) -> Bool {
+        let words = self.words(said)
+        guard let person = words.firstIndex(where: { personWords.contains($0) || escalateWords.contains($0) }) else {
+            return false
+        }
+        if words[..<person].contains(where: refusingWords.contains) { return false }
+        if words.contains(where: escalateWords.contains) { return true }
+        if words.contains(where: reachWords.contains) { return true }
+        return words.count <= 3 && words.contains(where: namedPersonWords.contains)
+    }
+
+    /// "Yes" to the assistant's offer of a person: a short affirmative, after a reply that mentioned
+    /// one, the way `confirmsEndingJob` reads a reply about ending the job.
+    static func confirmsExpertOffer(_ said: String, previousReply: String?) -> Bool {
+        guard isShortAffirmative(said), let previousReply else { return false }
+        return words(previousReply).contains { personWords.contains($0) || escalateWords.contains($0) }
+    }
+
+    /// Who a technician means. `someone` is here for "can someone look at this"; the words that
+    /// follow it decide whether it asks.
+    private static let personWords: Set<String> = namedPersonWords.union([
+        "someone", "somebody", "person", "people", "support", "helpdesk",
+    ])
+
+    private static let namedPersonWords: Set<String> = [
+        "expert", "experts", "human", "supervisor", "specialist", "engineer", "manager",
+    ]
+
+    private static let escalateWords: Set<String> = ["escalate", "escalating", "escalation"]
+
+    private static let reachWords: Set<String> = [
+        "get", "call", "ring", "page", "need", "want", "talk", "speak", "connect", "bring", "contact",
+        "reach", "send", "fetch",
+    ]
+
+    private static let refusingWords: Set<String> = ["dont", "not", "never", "without", "wont", "doesnt"]
+
     // MARK: - Running a rule chain
 
     /// Whether the words ask to run a chain without naming one: "chain" with a verb that runs it

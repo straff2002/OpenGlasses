@@ -206,8 +206,11 @@ extension ProviderLoopAdapter {
 func runToolLoop(
     maxIterations: Int,
     adapter: ProviderLoopAdapter,
+    repeatGuard: ToolRepeatGuard = ToolRepeatGuard(),
     setStatus: (ToolCallStatus) -> Void
 ) async throws -> String {
+    // What this turn already knows and has not changed since (Plan KE P1).
+    var repeatGuard = repeatGuard
     // Calls this turn whose outcome could not be established. The wire text tells the model not to
     // retry, but "don't retry" is exactly the instruction a model reasons its way around ("I'll
     // just check by doing it again"), so the loop enforces it rather than asking.
@@ -273,6 +276,19 @@ func runToolLoop(
                 continue
             }
 
+            // An answer that cannot have changed: told once, and a call made after being told
+            // counts as a repeat, so the wrap-up below stays the backstop for a model that keeps
+            // going, whatever it passes as arguments.
+            let reading = repeatGuard.reading(of: call)
+            if let reading, repeatGuard.isSettled(reading) {
+                if repeatGuard.markTold(reading) { identicalRepeats += 1 }
+                outcomes.append(ToolDispatchOutcome(
+                    invocation: call,
+                    outcome: .rejected(reason: ToolRepeatGuard.youHaveThis(call.name)),
+                    yieldReason: nil))
+                continue
+            }
+
             if settledSignatures.contains(signature), let previous = completedResults[signature] {
                 identicalRepeats += 1
                 outcomes.append(ToolDispatchOutcome(
@@ -284,6 +300,7 @@ func runToolLoop(
 
             let outcome = await adapter.dispatcher.dispatch(call)
             if outcome.retryDisposition == .unsafeToRetry { unresolvedCalls.insert(signature) }
+            repeatGuard.note(call, reading: reading, outcome: outcome.outcome)
             if case .completed(let text) = outcome.outcome {
                 if completedResults[signature] == text {
                     identicalRepeats += 1
@@ -448,6 +465,94 @@ enum ToolTurnEnd: Equatable {
     static func notRun(_ name: String) -> String {
         "'\(name)' was not run: an earlier result ended this turn. Nothing happened. Call it again "
             + "in a later turn if it is still needed."
+    }
+}
+
+/// The calls a turn cannot learn anything new from (Plan KE P1).
+///
+/// A job ran `equipment_lookup` and `field_session status` round after round, four calls and no
+/// manual search, until the repeat stop ended it (build 581). Replayed, the model asks the same
+/// thing in different words: `set_equipment` with the unit, then a free-text query opening with the
+/// unit and the symptom. Same arguments would miss those, so what counts here is what a call could
+/// change. Status changes only when something else does; a unit lookup that restates the unit
+/// already active changes nothing however it is phrased; a fault code beside it, another model or a
+/// correction is a real call and runs. The answer goes to every call, so the history stays whole.
+///
+/// Live sessions have no loop to guard; `ToolLoopBudget.repeatsBeforeWrapUp` stays the backstop.
+struct ToolRepeatGuard {
+    /// What a call answers, and whether it could change anything.
+    struct Reading: Equatable {
+        fileprivate let answer: Answer
+        fileprivate let changes: Bool
+    }
+
+    fileprivate enum Answer: Hashable { case status, unit, query(String) }
+
+    /// Whether a text names the active unit and nothing that could change it. A seam so a test
+    /// states the unit; read when a call is made, because an earlier call may have just changed it.
+    private let namesActiveUnit: @MainActor (String) -> Bool
+    private var answered: Set<Answer> = []
+    private var told: Set<Answer> = []
+
+    init(namesActiveUnit: @escaping @MainActor (String) -> Bool = { FieldSessionService.shared.namesOnlyActiveUnit($0) }) {
+        self.namesActiveUnit = namesActiveUnit
+    }
+
+    /// What the model is told instead of the call's answer. Nothing ran.
+    static func youHaveThis(_ name: String) -> String {
+        "'\(name)' was not run: you have this; search the manual for the symptom or answer."
+    }
+
+    /// Tools that read the manuals and change nothing a status or a unit lookup reports.
+    private static let readsManuals: Set<String> = ["manual_lookup", "table_lookup", "manual_figure", "show_source"]
+
+    /// The reading of a call about to be made, for the calls this guards.
+    @MainActor func reading(of call: ToolInvocation) -> Reading? {
+        guard let args = call.arguments else { return nil }
+        if call.name == "field_session" {
+            return Self.text("action", in: args)?.lowercased() == "status" ? Reading(answer: .status, changes: false) : nil
+        }
+        guard call.name == "equipment_lookup" else { return nil }
+        // Each of these writes to the unit, or reads the camera, which sees what it sees now.
+        let writes = args["clear_equipment"] as? Bool == true || args["use_camera"] as? Bool == true
+            || ["serial", "field_name", "file"].contains { Self.text($0, in: args) != nil }
+        guard !writes else { return nil }
+        if let unit = Self.text("set_equipment", in: args) {
+            return namesActiveUnit(unit) ? Reading(answer: .unit, changes: false) : nil
+        }
+        guard let query = Self.text("query", in: args) else { return nil }
+        if namesActiveUnit(query) { return Reading(answer: .unit, changes: false) }
+        return Reading(answer: .query(query.lowercased()), changes: !VaultModelIndex.modelLikeTokens(in: query).isEmpty)
+    }
+
+    /// Whether this turn already has what the call would answer, with nothing changed since.
+    func isSettled(_ reading: Reading) -> Bool { answered.contains(reading.answer) }
+
+    /// Records that the model has been told; true when it had been told before.
+    mutating func markTold(_ reading: Reading) -> Bool { !told.insert(reading.answer).inserted }
+
+    /// What a dispatched call leaves known, given its `reading` from before it ran. A call that may
+    /// have changed something forgets everything first, because a status from before it is no
+    /// longer the status. One refused or failed changed nothing and answered nothing; one whose
+    /// outcome is unknown may have changed something.
+    @MainActor mutating func note(_ call: ToolInvocation, reading: Reading?, outcome: ToolExecutionOutcome) {
+        switch outcome {
+        case .rejected, .failedBeforeExecution: return
+        case .completed, .outcomeUnknown: break
+        }
+        if reading?.changes ?? !Self.readsManuals.contains(call.name) { answered = [] }
+        guard case .completed = outcome else { return }
+        if let reading { answered.insert(reading.answer) }
+        // A lookup that has just recorded the unit has answered for it, however it was asked.
+        if call.name == "equipment_lookup", let args = call.arguments,
+           let said = Self.text("set_equipment", in: args) ?? Self.text("query", in: args), namesActiveUnit(said) {
+            answered.insert(.unit)
+        }
+    }
+
+    private static func text(_ key: String, in args: [String: Any]) -> String? {
+        let value = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
     }
 }
 

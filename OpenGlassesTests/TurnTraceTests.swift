@@ -186,6 +186,23 @@ final class TurnTraceTests: XCTestCase {
 
     // MARK: - The banner's words
 
+    /// Plan KE: a refused search went nowhere, so the line says so and there is nothing to record.
+    func testARefusedSearchIsAToolLineWithNoSearchEvidence() throws {
+        let url = directory.appendingPathComponent("refused-traces.json")
+        let store = TurnTraceStore(url: url, clock: { [epoch] in epoch })
+        TurnRecorder.traceSink = { store.record($0) }
+        TurnRecorder.beginTurn()
+        TurnRecorder.noteToolResult(name: "web_search", outcome: "refused", query: "QX100 fan will not start",
+                                    result: VaultOnlyPolicy.refusal(tool: "web_search"),
+                                    turnID: TurnRecorder.toolTraceID)
+        TurnRecorder.endTurn()
+        store.waitForPendingWrites()
+        let call = try XCTUnwrap(store.all.last?.toolCalls.first)
+        XCTAssertEqual(call.name, "web_search")
+        XCTAssertEqual(call.outcome, "refused")
+        XCTAssertNil(call.search)
+    }
+
     func testSearchQueryAndReturnedSourcesSurviveSealingAndPersistence() throws {
         let url = directory.appendingPathComponent("search-traces.json")
         let store = TurnTraceStore(url: url, clock: { [epoch] in epoch })

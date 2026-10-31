@@ -169,7 +169,7 @@ final class ManualFigurePresentation: ObservableObject {
     }
 
     func index(for request: AppState.ManualFigureRequest) -> Int {
-        min(max(0, indices[request.id] ?? 0), request.stops.count - 1)
+        min(max(0, indices[request.id] ?? request.opening), request.stops.count - 1)
     }
 
     func select(_ index: Int, in request: AppState.ManualFigureRequest) {

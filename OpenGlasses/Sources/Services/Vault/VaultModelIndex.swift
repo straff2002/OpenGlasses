@@ -25,9 +25,22 @@ struct VaultModelIndex: Equatable {
         let file: String
         /// Every model-like token in the heading, uppercased, in heading order.
         let tokens: [String]
+        /// The section's text under its heading, up to the next section (Plan KE P1): where a
+        /// vault says which documents the model has.
+        var body: String = ""
 
         /// `tokens` without their hyphens (`VaultModelIndex.key`), in the same order.
         var keys: [String] { tokens.map(VaultModelIndex.key) }
+
+        /// The vault documents among `documents` this section names (Plan KE P1): those with an
+        /// identifier (`documentIdentifiers`) printed anywhere in its text, however the vault lays
+        /// it out. Empty for a section that names none, which is every vault that does not do this.
+        func assignedDocumentIds(among documents: [(id: String, title: String)]) -> Set<String> {
+            let printed = Set(VaultModelIndex.documentWords(in: body).map(VaultModelIndex.key))
+            guard !printed.isEmpty else { return [] }
+            return Set(documents.filter { !printed.isDisjoint(with: VaultModelIndex.documentIdentifiers(title: $0.title)) }
+                .map(\.id))
+        }
     }
 
     let vaultName: String
@@ -155,27 +168,78 @@ struct VaultModelIndex: Equatable {
         var models: [Model] = []
         var known: Set<String> = []
         var all: Set<String> = []
+        var bodies: [Int: [String]] = [:]
         for (filename, contents) in files {
             all.formUnion(Self.modelLikeTokens(in: contents).map { $0.uppercased() })
+            // The model section whose text is being read, by its heading's depth: a heading no
+            // deeper than it ends it, and a sub-heading with no model in it stays part of it.
+            var open: (section: Int, depth: Int)?
             for line in contents.split(separator: "\n", omittingEmptySubsequences: true) {
                 let raw = String(line)
-                guard raw.hasPrefix("## ") || raw.hasPrefix("### ") else { continue }
+                let depth = raw.prefix { $0 == "#" }.count
+                if depth > 0, raw.dropFirst(depth).first == " ", let section = open, depth <= section.depth { open = nil }
+                guard raw.hasPrefix("## ") || raw.hasPrefix("### ") else {
+                    if let open { bodies[open.section, default: []].append(raw) }
+                    continue
+                }
                 let heading = raw.drop(while: { $0 == "#" })
                     .trimmingCharacters(in: .whitespaces)
                 let tokens = Self.modelLikeTokens(in: heading, minimumLength: Self.headingMinimumLength)
                     .map { $0.uppercased() }
-                guard !tokens.isEmpty else { continue }
+                guard !tokens.isEmpty else {
+                    if let open { bodies[open.section, default: []].append(raw) }
+                    continue
+                }
                 let name = heading.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
                 models.append(Model(name: name.isEmpty ? tokens[0] : name,
                                     heading: heading, file: filename,
                                     tokens: Array(NSOrderedSet(array: tokens)) as? [String] ?? tokens))
                 known.formUnion(tokens)
+                open = (models.count - 1, depth)
             }
         }
+        for (section, lines) in bodies { models[section].body = lines.joined(separator: "\n") }
         self.models = models
         self.knownModelTokens = known
         self.vaultTokens = all.union(known)
         self.vaultKeys = Set(vaultTokens.map(Self.key))
+    }
+
+    // MARK: - Which documents a model has (Plan KE P1)
+
+    /// The words a vault could name a document by: runs of letters, digits and hyphens with a digit
+    /// in them, at least three long. Nothing about how a vault lists them is assumed beyond that,
+    /// so a suffix list's `00` and a section's prose name no document.
+    static func documentWords(in text: String) -> [String] {
+        text.components(separatedBy: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-")).inverted)
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-")) }
+            .filter { $0.count >= 3 && $0.contains(where: \.isNumber) }
+    }
+
+    /// What a document goes by (keyed as `key`): its title's first word when that holds a digit
+    /// ("A02 Service Manual"), and any word of the title that looks like a document number
+    /// (`isDocumentNumber`, "Acme Service Manual AB12345"). Vault titles carry the number; the
+    /// ledger has no field for it. Any other word is not an identifier: a section's prose can name
+    /// a refrigerant or a size that a title happens to hold, and that assigned the document alone.
+    static func documentIdentifiers(title: String) -> Set<String> {
+        let numbers = documentWords(in: title).filter(isDocumentNumber)
+        let first = title.split(whereSeparator: \.isWhitespace).first.map(String.init)
+            .flatMap { documentWords(in: $0).first }
+        return Set((numbers + [first].compactMap { $0 }).map(key))
+    }
+
+    /// At least six characters, hyphens aside, five of them digits. A designation or a size is
+    /// shorter or carries fewer ("Q-99X", "400V", "R-1234YF"); a part or document number does not.
+    static func isDocumentNumber(_ word: String) -> Bool {
+        let keyed = key(word)
+        return keyed.count >= 6 && keyed.filter(\.isNumber).count >= 5
+    }
+
+    /// The sections of the vault's series (`seriesStem`): what a member no listed size claims has
+    /// documents by.
+    var seriesModels: [Model] {
+        guard let stem = seriesStem else { return [] }
+        return models.filter { EquipmentRecognition.normalised($0.name).hasPrefix(stem) }
     }
 
     // MARK: - What a model number looks like
@@ -280,6 +344,16 @@ struct VaultModelIndex: Equatable {
             intersection = filtered
         }
         return intersection
+    }
+
+    /// Whether the text names exactly one model, every model-like token in it agreeing on the same
+    /// section. Stricter than `match(text:)`, which keeps its first reading when two tokens name
+    /// different models: "the QX100 is fine, the QX200 trips" is an identification of neither.
+    func namesOneModel(in text: String) -> Bool {
+        let resolutions = Self.modelLikeTokens(in: text).map { resolve(token: $0) }.filter { !$0.isEmpty }
+        guard var common = resolutions.first else { return false }
+        for next in resolutions.dropFirst() { common = common.filter(next.contains) }
+        return common.count == 1
     }
 
     /// A correction spoken as a fragment — "no, it's the 070". Substring over every spelling, so a

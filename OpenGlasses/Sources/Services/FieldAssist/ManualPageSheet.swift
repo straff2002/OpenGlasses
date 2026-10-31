@@ -218,7 +218,7 @@ struct ManualPageSheetModel: Equatable {
 
     /// The cited passages on a page, in the order the answer numbered them.
     func passages(onPage page: Int) -> [CitedPassage] {
-        citedPassages.filter { $0.anchor.page == page }.sorted { $0.number < $1.number }
+        citedPassages.filter { $0.anchor.covers(page) }.sorted { $0.number < $1.number }
     }
 
     /// The regions to outline on a page: where a table read from a picture was recognised.

@@ -854,7 +854,7 @@ struct JobTabModel {
     private func row(for session: FieldSession) -> PastJobRow {
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         let vaultName = defaults.vaultName(session.vaultId)
-        let equipment = session.equipment?.modelToken
+        let equipment = session.equipment?.stated
         return PastJobRow(
             id: session.id,
             jobNumber: reference.map { "Job \($0)" } ?? Self.noJobNumber,

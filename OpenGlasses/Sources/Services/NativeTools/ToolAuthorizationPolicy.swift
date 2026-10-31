@@ -9,6 +9,11 @@ enum ToolRefusalReason: String, Sendable, Equatable {
     /// The tool belongs to an AI feature that is switched off (`AIFeatureGate`, Plan HR P2 item 6).
     /// Applied by the router before the policy runs, on every seam and every origin.
     case featureDisabled
+    /// A job on a vault-only vault seals this tool (`VaultOnlyPolicy`, Plan KE). Applied at the same
+    /// place, for the same reach.
+    case vaultOnlySealed
+    /// A turn whose words asked for nobody tried to page an expert (Plan KE P1).
+    case expertNotRequested
 }
 
 /// What the authority decided about one resolved call. Carrying the model-facing text here (rather
@@ -147,7 +152,12 @@ enum ToolAuthorizationPolicy {
     }
 
     static func declineMessage(_ name: String) -> String {
-        "The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again."
+        // Declining a page is declining a person, not the job (Plan KE P1): "tell the user it was
+        // cancelled" ended a diagnosis there.
+        if name == "escalate_to_expert" {
+            return "The technician said no to paging an expert, so nobody was paged. Keep helping with what the manuals support; do not stop, and do not offer an expert again unless something changes."
+        }
+        return "The user did NOT approve this action, so '\(name)' was not performed. Do not retry it; tell the user it was cancelled unless they explicitly ask again."
     }
 
     static func unavailableConfirmationMessage(_ name: String) -> String {

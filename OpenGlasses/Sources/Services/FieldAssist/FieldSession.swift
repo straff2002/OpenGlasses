@@ -138,6 +138,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// and the approver's role, never the words. Nil, and absent from the JSON, on a job that had
     /// none and on every session recorded before this existed.
     var teamLearningAnswers: [TeamLearningAnswer]?
+    /// True when the job's vault said `vault_only` as the job started (Plan KE), kept with the job
+    /// so its report states the seal it ran under whatever the vault says later. Nil, and absent
+    /// from the JSON, on every other job and on every session recorded before this existed.
+    var vaultOnly: Bool?
     /// Parts recorded as used from the van on this job (Plan IH P4), with quantities. Nil when
     /// none were, so a session written before van stock existed encodes exactly as it did.
     var vanStockUses: [VanStockUse]?
@@ -273,6 +277,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case earlierWorkAttachedAt
         case teamLearnings
         case teamLearningAnswers
+        case vaultOnly
         case vanStockUses, vanStockNotFromVan
     }
 }
@@ -353,6 +358,7 @@ extension FieldSession {
         earlierWorkAttachedAt = try c.decodeIfPresent(Date.self, forKey: .earlierWorkAttachedAt)
         teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
         teamLearningAnswers = try c.decodeIfPresent([TeamLearningAnswer].self, forKey: .teamLearningAnswers)
+        vaultOnly = try c.decodeIfPresent(Bool.self, forKey: .vaultOnly)
         vanStockUses = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStockUses)
         vanStockNotFromVan = try c.decodeIfPresent([String].self, forKey: .vanStockNotFromVan)
     }

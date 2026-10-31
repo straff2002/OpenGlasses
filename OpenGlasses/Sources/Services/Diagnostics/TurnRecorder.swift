@@ -392,7 +392,9 @@ enum TurnRecorder {
         update {
             guard $0.toolCalls.count < maxToolCalls else { return }
             var note = TurnTimeline.ToolNote(name: name, outcome: outcome)
-            if name == "web_search", let query {
+            // A refused search went nowhere: the line says so, and there is no search to record
+            // (Plan KE).
+            if name == "web_search", outcome != "refused", let query {
                 let used = $0.toolCalls.reduce(0) { $0 + ($1.search?.result.count ?? 0) }
                 note.search = .init(query: query, result: result,
                                     remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit - used,

@@ -71,6 +71,7 @@ enum JobTranscriptExport {
         /// "Job 1005", or `JobTabModel.noJobNumber` — never blank.
         let jobNumber: String
         let vaultName: String
+        /// The model as stated, suffix included: the unit line says the same (Plan KE).
         let equipment: String?
         let outcome: String
         let startedAt: Date
@@ -79,6 +80,8 @@ enum JobTranscriptExport {
         let threadId: String?
         let source: Source
         let lines: [Line]
+        /// Whether the job ran sealed to its vault (Plan KE).
+        var vaultOnly: Bool = false
     }
 
     /// A conversation held outside any job on the chosen day, or the one thread a conversation
@@ -402,13 +405,14 @@ enum JobTranscriptExport {
             sessionId: session.id,
             jobNumber: reference.map { "Job \($0)" } ?? JobTabModel.noJobNumber,
             vaultName: vaultName,
-            equipment: session.equipment?.modelToken,
+            equipment: session.equipment?.stated,
             outcome: session.outcome.displayName,
             startedAt: session.startedAt,
             endedAt: session.endedAt,
             threadId: session.conversationThreadId,
             source: source,
-            lines: chosen)
+            lines: chosen,
+            vaultOnly: session.vaultOnly == true)
     }
 
     // MARK: - The file
@@ -543,7 +547,7 @@ enum JobTranscriptExport {
         var failedTurns = 0
 
         for job in jobs {
-            out += ["", rule("="), jobHeading(job, format: format), "Vault: \(job.vaultName)",
+            out += ["", rule("="), jobHeading(job, format: format), vaultLine(job),
                     jobTimes(job, format: format), rule("-")]
             switch job.source {
             case .conversation: break
@@ -658,6 +662,12 @@ enum JobTranscriptExport {
         if let equipment = job.equipment { heading.append(equipment) }
         heading.append(job.outcome)
         return heading.joined(separator: " · ")
+    }
+
+    /// The vault the job ran on, and the seal when there was one. A reader of the trace needs to
+    /// know a `web_search` here was never possible.
+    private static func vaultLine(_ job: Job) -> String {
+        "Vault: \(job.vaultName)" + (job.vaultOnly ? " · Vault-only: on" : "")
     }
 
     private static func jobTimes(_ job: Job, format: Format) -> String {

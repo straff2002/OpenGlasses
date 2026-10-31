@@ -61,6 +61,11 @@ final class DocumentStore: ObservableObject {
         /// judges it by its words alone, under a stricter rule (`RetrievalEvidencePolicy`). Never
         /// set for a Latin document's passage.
         var vectorPending = false
+        /// The pages the chunk is packed across (Plan KE P2); empty for a chunk on one page.
+        var pageBreaks: [DocumentChunker.PageBreak] = []
+        /// What is printed on those pages, by physical page, where the manual's labels say
+        /// (`withPrintedLabels`). The store's row knows nothing of them.
+        var printedLabels: [Int: String] = [:]
     }
 
     // MARK: - Published
@@ -204,7 +209,7 @@ final class DocumentStore: ObservableObject {
                 return Passage(documentId: row.documentId, documentName: row.documentName,
                                chunkIndex: row.chunkIndex, text: row.text, similarity: sim,
                                page: row.page, section: row.section, kind: row.kind, figure: row.figure,
-                               termRule: row.termRule)
+                               termRule: row.termRule, pageBreaks: row.pageBreaks)
             }
             // Any other document in another script (Plan JY P1): its script's model when it is on
             // the phone — healed lazily from the text, like the store's own — and no similarity
@@ -232,7 +237,7 @@ final class DocumentStore: ObservableObject {
                 return Passage(documentId: row.documentId, documentName: row.documentName,
                                chunkIndex: row.chunkIndex, text: row.text, similarity: sim,
                                page: row.page, section: row.section, kind: row.kind, figure: row.figure,
-                               termRule: row.termRule)
+                               termRule: row.termRule, pageBreaks: row.pageBreaks)
             }
             guard let qv else { return nil }
             // A chunk embedded by a different model can't be compared against `qv`. Re-embed it from
@@ -257,7 +262,7 @@ final class DocumentStore: ObservableObject {
             return Passage(documentId: row.documentId, documentName: row.documentName,
                            chunkIndex: row.chunkIndex, text: row.text, similarity: sim,
                            page: row.page, section: row.section, kind: row.kind, figure: row.figure,
-                           termRule: row.termRule)
+                           termRule: row.termRule, pageBreaks: row.pageBreaks)
         }
         vaultQuery.logTimings()
         return Array(scored.sorted { $0.similarity > $1.similarity }.prefix(limit))
@@ -276,7 +281,8 @@ final class DocumentStore: ObservableObject {
         return rows.prefix(max(limit, 1)).map {
             Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
                     text: $0.text, similarity: 0, page: $0.page, section: $0.section,
-                    kind: $0.kind, figure: $0.figure, termRule: $0.termRule, vectorPending: $0.vectorPending)
+                    kind: $0.kind, figure: $0.figure, termRule: $0.termRule, vectorPending: $0.vectorPending,
+                    pageBreaks: $0.pageBreaks)
         }
     }
 
@@ -326,7 +332,7 @@ final class DocumentStore: ObservableObject {
             Passage(documentId: $0.row.documentId, documentName: $0.row.documentName,
                     chunkIndex: $0.row.chunkIndex, text: $0.row.text, similarity: $0.similarity,
                     page: $0.row.page, section: $0.row.section, kind: $0.row.kind, figure: $0.row.figure,
-                    termRule: $0.row.termRule, vectorPending: $0.row.vectorPending)
+                    termRule: $0.row.termRule, vectorPending: $0.row.vectorPending, pageBreaks: $0.row.pageBreaks)
         }
     }
 
@@ -369,7 +375,8 @@ final class DocumentStore: ObservableObject {
                 Passage(documentId: $0.row.documentId, documentName: $0.row.documentName,
                         chunkIndex: $0.row.chunkIndex, text: $0.row.text, similarity: 0, page: $0.row.page,
                         section: $0.row.section, kind: $0.row.kind, figure: $0.row.figure,
-                        clauseMatch: $0.match, termRule: $0.row.termRule, vectorPending: $0.row.vectorPending)
+                        clauseMatch: $0.match, termRule: $0.row.termRule, vectorPending: $0.row.vectorPending,
+                        pageBreaks: $0.row.pageBreaks)
             }
     }
 
@@ -403,7 +410,8 @@ final class DocumentStore: ObservableObject {
         .prefix(max(limit, 1)).map {
             Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
                     text: $0.text, similarity: 0, page: $0.page, section: $0.section,
-                    kind: $0.kind, figure: $0.figure, termRule: $0.termRule, vectorPending: $0.vectorPending)
+                    kind: $0.kind, figure: $0.figure, termRule: $0.termRule, vectorPending: $0.vectorPending,
+                    pageBreaks: $0.pageBreaks)
         }
     }
 
@@ -1452,10 +1460,14 @@ final class DocumentStore: ObservableObject {
     /// it (`DocumentChunker.creditsMajorityPage`), dotted caption labels are whole, a two-pair
     /// fake bold is read off the glyphs, and a recognised manual is read from the pages its import
     /// kept. Text that chunks as stored keeps its rows and vectors; only its places move.
-    nonisolated static let locationVersion = 9
+    /// 10 (Plan KE P2): the text is read again once more, because a chunk's page breaks can only
+    /// come from the sentences that were packed into it, and a table's row and a drawing's label
+    /// stop opening a section. Neither moves a word: the rows and vectors stay, and the page,
+    /// section and breaks are written beside them.
+    nonisolated static let locationVersion = 10
     /// The location version at which a document's text was last read again, below which the
     /// migration re-reads it rather than only its tables.
-    nonisolated static let textReadVersion = 9
+    nonisolated static let textReadVersion = 10
 
     /// The oldest location version among a document's own text chunks (its table rows left out),
     /// or nil when it has none. A never-located row counts as 0.
@@ -1488,7 +1500,7 @@ final class DocumentStore: ObservableObject {
     func anchor(documentId: String, chunkIndex: Int) -> PassageAnchor? {
         if documentId.hasPrefix("captured:"), !capturedNamespaceAllowed(documentId) { return nil }
         let sql = """
-        SELECT text, page, page_start, page_end, sentences, kind, figure FROM doc_chunks
+        SELECT text, page, page_start, page_end, sentences, kind, figure, page_breaks FROM doc_chunks
         WHERE document_id = ? AND chunk_index = ? LIMIT 1
         """
         var stmt: OpaquePointer?
@@ -1517,7 +1529,8 @@ final class DocumentStore: ObservableObject {
         }
         return PassageAnchor(documentId: documentId, chunkIndex: chunkIndex, text: text,
                              page: page, pageStart: pageStart, pageEnd: pageEnd,
-                             sentenceStarts: PassageAnchor.decode(sentences), printedRuns: runs)
+                             sentenceStarts: PassageAnchor.decode(sentences), printedRuns: runs,
+                             pageBreaks: DocumentChunker.PageBreak.decode(optionalText(7)))
     }
 
     /// Whether any of a document's chunks were stored before the current location version.
@@ -1556,7 +1569,7 @@ final class DocumentStore: ObservableObject {
               zip(stored, chunks).allSatisfy({ $0.index == $1.index && $0.text == $1.text }) else { return false }
         guard exec("BEGIN IMMEDIATE") else { return false }
         let update = """
-        UPDATE doc_chunks SET page_start = ?, page_end = ?, sentences = ?, location_version = ?,
+        UPDATE doc_chunks SET page_start = ?, page_end = ?, sentences = ?, page_breaks = ?, location_version = ?,
         page = ?, section = ?, figure = ?
         WHERE document_id = ? AND chunk_index = ?
         """
@@ -1564,11 +1577,11 @@ final class DocumentStore: ObservableObject {
             var row: OpaquePointer?
             guard sqlite3_prepare_v2(db, update, -1, &row, nil) == SQLITE_OK else { exec("ROLLBACK"); return false }
             bindLocation(chunk, to: row, from: 1)
-            if let page = chunk.page { sqlite3_bind_int(row, 5, Int32(page)) } else { sqlite3_bind_null(row, 5) }
-            if let section = chunk.section { sqlite3_bind_text(row, 6, section, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(row, 6) }
-            if let figure = chunk.figure { sqlite3_bind_text(row, 7, figure, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(row, 7) }
-            sqlite3_bind_text(row, 8, documentId, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_int(row, 9, Int32(chunk.index))
+            if let page = chunk.page { sqlite3_bind_int(row, 6, Int32(page)) } else { sqlite3_bind_null(row, 6) }
+            if let section = chunk.section { sqlite3_bind_text(row, 7, section, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(row, 7) }
+            if let figure = chunk.figure { sqlite3_bind_text(row, 8, figure, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(row, 8) }
+            sqlite3_bind_text(row, 9, documentId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(row, 10, Int32(chunk.index))
             let result = sqlite3_step(row)
             sqlite3_finalize(row)
             guard result == SQLITE_DONE else { exec("ROLLBACK"); return false }
@@ -1618,6 +1631,22 @@ final class DocumentStore: ObservableObject {
             sqlite3_bind_text(stmt, 4, label.source.rawValue, -1, SQLITE_TRANSIENT)
             _ = sqlite3_step(stmt)
             sqlite3_finalize(stmt)
+        }
+    }
+
+    /// `passages`, each that crosses a page break carrying what is printed on its pages (Plan KE
+    /// P2), for the marks the model reads. One read of the labels per document.
+    func withPrintedLabels(_ passages: [Passage]) -> [Passage] {
+        var maps: [String: PageLabelMap] = [:]
+        return passages.map { raw in
+            guard !raw.pageBreaks.isEmpty else { return raw }
+            let map = maps[raw.documentId] ?? pageLabels(documentId: raw.documentId)
+            maps[raw.documentId] = map
+            var passage = raw
+            for pageBreak in raw.pageBreaks {
+                if let label = map.printed(forPhysical: pageBreak.page) { passage.printedLabels[pageBreak.page] = label }
+            }
+            return passage
         }
     }
 
@@ -1949,6 +1978,9 @@ final class DocumentStore: ObservableObject {
         exec("ALTER TABLE doc_chunks ADD COLUMN page_end INTEGER")
         exec("ALTER TABLE doc_chunks ADD COLUMN sentences TEXT")
         exec("ALTER TABLE doc_chunks ADD COLUMN location_version INTEGER")
+        // Where a chunk packed across a page break changes page (Plan KE P2). A row from before
+        // reads back as on one page until the migration writes it.
+        exec("ALTER TABLE doc_chunks ADD COLUMN page_breaks TEXT")
         // A vault manual's next index, built beside the one that answers until it is complete
         // (Plan IV P4).
         exec("ALTER TABLE doc_chunks ADD COLUMN pending_embedding BLOB")
@@ -2005,7 +2037,7 @@ final class DocumentStore: ObservableObject {
     private func insertChunk(documentId: String, index: Int, text: String, embedding: Data?,
                              page: Int?, section: String?, kind: DocumentChunker.Kind, figure: String?,
                              createdAt: Double, version: String?, location: DocumentChunker.Chunk? = nil) {
-        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, page, section, created_at, embedding_version, kind, figure, page_start, page_end, sentences, location_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        let sql = "INSERT INTO doc_chunks (id, document_id, chunk_index, text, embedding, page, section, created_at, embedding_version, kind, figure, page_start, page_end, sentences, page_breaks, location_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         defer { sqlite3_finalize(stmt) }
@@ -2029,18 +2061,23 @@ final class DocumentStore: ObservableObject {
         _ = sqlite3_step(stmt)
     }
 
-    /// Binds a chunk's place on its page to four consecutive parameters: start, end, sentences and
-    /// the location version. A chunk without a location (a team learning stored whole) binds nulls,
+    /// Binds a chunk's place on its page to five consecutive parameters: start, end, sentences, page
+    /// breaks and the location version. A chunk without a location (a team learning stored whole) binds nulls,
     /// and a null version is what tells the migration a row was never located.
     private func bindLocation(_ chunk: DocumentChunker.Chunk?, to stmt: OpaquePointer?, from first: Int32) {
         guard let chunk else {
-            for offset in 0..<Int32(4) { sqlite3_bind_null(stmt, first + offset) }
+            for offset in 0..<Int32(5) { sqlite3_bind_null(stmt, first + offset) }
             return
         }
         if let start = chunk.pageStart { sqlite3_bind_int(stmt, first, Int32(start)) } else { sqlite3_bind_null(stmt, first) }
         if let end = chunk.pageEnd { sqlite3_bind_int(stmt, first + 1, Int32(end)) } else { sqlite3_bind_null(stmt, first + 1) }
         sqlite3_bind_text(stmt, first + 2, PassageAnchor.encode(chunk.sentenceStarts), -1, SQLITE_TRANSIENT)
-        sqlite3_bind_int(stmt, first + 3, Int32(Self.locationVersion))
+        if chunk.pageBreaks.isEmpty {
+            sqlite3_bind_null(stmt, first + 3)
+        } else {
+            sqlite3_bind_text(stmt, first + 3, DocumentChunker.PageBreak.encode(chunk.pageBreaks), -1, SQLITE_TRANSIENT)
+        }
+        sqlite3_bind_int(stmt, first + 4, Int32(Self.locationVersion))
     }
 
     // MARK: - Fetches
@@ -2065,13 +2102,15 @@ final class DocumentStore: ObservableObject {
         /// A chunk of a document in another script with no vector from that script's model —
         /// the model is not on the phone, or has not re-indexed it yet. Never set for Latin.
         var vectorPending = false
+        /// The pages the chunk is packed across (Plan KE P2).
+        var pageBreaks: [DocumentChunker.PageBreak] = []
     }
 
     private func fetchChunks(namespace: String?, documentIds: [String]?) -> [ChunkRow] {
         if let namespace, namespace.hasPrefix("captured:"), !capturedNamespaceAllowed(namespace) { return [] }
         var sql = """
         SELECT c.id, c.document_id, d.name, c.chunk_index, c.text, c.embedding, c.page, c.section,
-               c.embedding_version, c.kind, c.figure, d.namespace
+               c.embedding_version, c.kind, c.figure, d.namespace, c.page_breaks
         FROM doc_chunks c JOIN documents d ON c.document_id = d.id
         """
         var clauses: [String] = []
@@ -2104,11 +2143,12 @@ final class DocumentStore: ObservableObject {
             let kindTag = sqlite3_column_type(stmt, 9) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 9)) : nil
             let figure = sqlite3_column_type(stmt, 10) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 10)) : nil
             let rowNamespace = sqlite3_column_type(stmt, 11) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 11)) : ""
+            let breaks = sqlite3_column_type(stmt, 12) != SQLITE_NULL ? String(cString: sqlite3_column_text(stmt, 12)) : nil
             rows.append(ChunkRow(id: id, documentId: docId, documentName: name, namespace: rowNamespace,
                                  chunkIndex: idx, text: text,
                                  embedding: emb, page: page, section: section, embeddingVersion: version,
                                  kind: kindTag.flatMap(DocumentChunker.Kind.init(rawValue:)) ?? .prose,
-                                 figure: figure))
+                                 figure: figure, pageBreaks: DocumentChunker.PageBreak.decode(breaks)))
         }
         var profiles: [String: DocumentLanguageProfile] = [:]
         var scriptTags: [EmbeddingScript: String?] = [:]

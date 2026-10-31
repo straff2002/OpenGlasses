@@ -197,6 +197,7 @@ enum ToolExposurePolicy {
 ///
 /// An active mode adds the tools it is built on: a Field Assist job adds the whole field profile,
 /// accessibility mode its sight tools. `lookup_tools` is added by the declarations themselves.
+/// A vault-only job takes out what `VaultOnlyPolicy` seals, which `web_search` and `get_news` here are.
 enum ToolExposureCore {
 
     static let everyday: Set<String> = [
@@ -228,11 +229,11 @@ enum ToolExposureCore {
     ]
 
     /// The core set for a turn. Pure.
-    static func names(fieldJobActive: Bool, accessibilityMode: Bool) -> Set<String> {
+    static func names(fieldJobActive: Bool, accessibilityMode: Bool, vaultOnly: Bool = false) -> Set<String> {
         var names = everyday
         if fieldJobActive { names.formUnion(FieldToolProfile.names) }
         if accessibilityMode { names.formUnion(accessibility) }
-        return names
+        return vaultOnly ? names.filter { !VaultOnlyPolicy.isSealed(tool: $0) } : names
     }
 }
 

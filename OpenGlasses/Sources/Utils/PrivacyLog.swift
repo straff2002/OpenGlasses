@@ -240,6 +240,10 @@ enum PrivacyLog {
         /// different arguments, a different tool or a different server. The refusal class itself
         /// goes to the authorization ring; this is the dispatch-side counterpart.
         case approvalNotBound
+        /// A vault-only job sealed this tool (Plan KE).
+        case vaultOnlySealed
+        /// A turn that asked for nobody tried to page an expert (Plan KE).
+        case expertNotRequested
     }
 
     @discardableResult

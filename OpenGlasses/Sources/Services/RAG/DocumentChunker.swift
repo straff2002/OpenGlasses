@@ -83,6 +83,28 @@ struct DocumentChunker {
         case tableRow = "table_row"
     }
 
+    /// Where a page starts inside a chunk's text (Plan KE P2): the character offset in `text`, and
+    /// the page that starts there.
+    struct PageBreak: Equatable, Hashable {
+        let offset: Int
+        let page: Int
+
+        /// The compact form `doc_chunks.page_breaks` stores: "0:11,412:12".
+        static func encode(_ breaks: [PageBreak]) -> String {
+            breaks.map { "\($0.offset):\($0.page)" }.joined(separator: ",")
+        }
+
+        /// A row stored before the column, or a chunk on one page, reads back as no breaks.
+        static func decode(_ stored: String?) -> [PageBreak] {
+            guard let stored, !stored.isEmpty else { return [] }
+            return stored.split(separator: ",").compactMap { pair in
+                let parts = pair.split(separator: ":")
+                guard parts.count == 2, let offset = Int(parts[0]), let page = Int(parts[1]) else { return nil }
+                return PageBreak(offset: offset, page: page)
+            }
+        }
+    }
+
     struct Chunk: Equatable {
         let index: Int
         let text: String
@@ -103,6 +125,10 @@ struct DocumentChunker {
         /// sentence by sentence (`PassageLocator`), so a sentence that cannot be found is dropped
         /// rather than the whole passage.
         var sentenceStarts: [Int] = []
+        /// The pages a chunk packed across a page break sits on, in reading order, the first at
+        /// offset 0 (Plan KE P2). `page` is one page and may be either of them: this says which of
+        /// the chunk's words are on which. Empty for a chunk on one page, which is most of them.
+        var pageBreaks: [PageBreak] = []
     }
 
     /// A sentence tagged with the page/section context active where it appears.
@@ -116,6 +142,10 @@ struct DocumentChunker {
         var pageOffset: Int?
         /// A line break, not just a space, separated this sentence from the one before.
         var followsLineBreak = false
+        /// Pages that open inside the sentence (Plan KE P2), offsets into `text`. A form feed does
+        /// not end a sentence for the tokenizer, so the run of a table with no full stop in it
+        /// carries on over the page, and `page` is only where it starts.
+        var turns: [PageBreak] = []
     }
 
     /// IF: source page indices are authoritative. Chunk each body independently so short or
@@ -161,6 +191,7 @@ struct DocumentChunker {
             }.joined().trimmingCharacters(in: .whitespacesAndNewlines)
             guard !joined.isEmpty, let first = current.first else { return }
             let place = Self.location(of: current)
+            let breaks = Self.pageBreaks(of: current, in: joined)
             var majority = creditsMajorityPage
             var share = 0.0
             #if RETRIEVAL_EVAL
@@ -179,12 +210,14 @@ struct DocumentChunker {
                 let end = onPage.compactMap { s in s.pageOffset.map { $0 + s.text.count } }.max()
                 chunks.append(Chunk(index: 0, text: joined, page: page, section: first.section,
                                     kind: first.kind, figure: first.figure,
-                                    pageStart: start, pageEnd: end, sentenceStarts: place.sentenceStarts))
+                                    pageStart: start, pageEnd: end, sentenceStarts: place.sentenceStarts,
+                                    pageBreaks: breaks))
                 return
             }
             chunks.append(Chunk(index: 0, text: joined, page: first.page, section: first.section,
                                 kind: first.kind, figure: first.figure,
-                                pageStart: place.start, pageEnd: place.end, sentenceStarts: place.sentenceStarts))
+                                pageStart: place.start, pageEnd: place.end, sentenceStarts: place.sentenceStarts,
+                                pageBreaks: breaks))
         }
 
         for sentence in sentences {
@@ -228,9 +261,13 @@ struct DocumentChunker {
                 flush()
                 current = []
                 currentLen = 0
+                var cursor = 0
                 for piece in Self.hardSplit(s, maxChars: maxChars) {
-                    chunks.append(Chunk(index: 0, text: piece, page: sentence.page, section: sentence.section,
-                                        kind: sentence.kind, figure: sentence.figure, sentenceStarts: [0]))
+                    let place = Self.pieceBreaks(of: sentence, from: cursor, length: piece.count, text: piece)
+                    chunks.append(Chunk(index: 0, text: piece, page: place.page, section: sentence.section,
+                                        kind: sentence.kind, figure: sentence.figure, sentenceStarts: [0],
+                                        pageBreaks: place.breaks))
+                    cursor += piece.count + 1
                 }
                 continue
             }
@@ -246,7 +283,7 @@ struct DocumentChunker {
 
             current.append(Sentence(text: s, page: sentence.page, section: sentence.section,
                                     kind: sentence.kind, figure: sentence.figure, pageOffset: sentence.pageOffset,
-                                    followsLineBreak: sentence.followsLineBreak))
+                                    followsLineBreak: sentence.followsLineBreak, turns: sentence.turns))
             currentLen += s.count + 1
             overlapOnly = false
         }
@@ -255,7 +292,7 @@ struct DocumentChunker {
         return chunks.enumerated().map { offset, chunk in
             Chunk(index: offset, text: chunk.text, page: chunk.page, section: chunk.section,
                   kind: chunk.kind, figure: chunk.figure, pageStart: chunk.pageStart,
-                  pageEnd: chunk.pageEnd, sentenceStarts: chunk.sentenceStarts)
+                  pageEnd: chunk.pageEnd, sentenceStarts: chunk.sentenceStarts, pageBreaks: chunk.pageBreaks)
         }
     }
 
@@ -292,6 +329,53 @@ struct DocumentChunker {
             if let offset = sentence.pageOffset { end = max(end, offset + sentence.text.count) }
         }
         return (start, end, starts)
+    }
+
+    /// The pages a run of packed sentences sits on: where each page starts in the joined text, from
+    /// the page each sentence starts on and the pages that open inside one. Empty when the run is
+    /// on one page. A page with no words of the run on it (a blank page, a turn in the whitespace
+    /// after a sentence) is not a break: nothing could be cited at it.
+    private static func pageBreaks(of sentences: [Sentence], in text: String) -> [PageBreak] {
+        var found: [PageBreak] = []
+        var cursor = 0
+        for sentence in sentences {
+            if let page = sentence.page, page != found.last?.page {
+                found.append(PageBreak(offset: cursor, page: page))
+            }
+            for turn in sentence.turns where turn.page != found.last?.page {
+                found.append(PageBreak(offset: cursor + turn.offset, page: turn.page))
+            }
+            cursor += sentence.text.count + 1
+        }
+        return holdingWords(found, in: text)
+    }
+
+    /// `breaks` without those that open no words of `text`, and none at all for fewer than two
+    /// pages.
+    private static func holdingWords(_ breaks: [PageBreak], in text: String) -> [PageBreak] {
+        guard breaks.count > 1 else { return [] }
+        let characters = Array(text)
+        var kept: [PageBreak] = []
+        for (index, candidate) in breaks.enumerated() {
+            let end = min(index + 1 < breaks.count ? breaks[index + 1].offset : characters.count, characters.count)
+            guard candidate.offset < end,
+                  characters[candidate.offset..<end].contains(where: { !$0.isWhitespace }),
+                  candidate.page != kept.last?.page else { continue }
+            kept.append(candidate)
+        }
+        return kept.count > 1 ? kept : []
+    }
+
+    /// The page a piece of a hard-split sentence starts on, and the pages that open inside it.
+    /// `hardSplit` rejoins words with one space, so the offsets are the sentence's own unless it
+    /// held a run of spaces, when a mark can land a word or so early. Only ever a mark's place.
+    private static func pieceBreaks(of sentence: Sentence, from start: Int, length: Int,
+                                    text: String) -> (page: Int?, breaks: [PageBreak]) {
+        let page = sentence.turns.last { $0.offset <= start }?.page ?? sentence.page
+        guard let page else { return (nil, []) }
+        let inside = sentence.turns.filter { $0.offset > start && $0.offset < start + length }
+            .map { PageBreak(offset: $0.offset - start, page: $0.page) }
+        return (page, holdingWords([PageBreak(offset: 0, page: page)] + inside, in: text))
     }
 
     // MARK: - Sentence tagging
@@ -339,9 +423,22 @@ struct DocumentChunker {
             let s = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
             if !s.isEmpty {
                 let lead = leading.count
+                // The pages that open inside the sentence: read, not consumed, because the section
+                // and kind they bring are for the sentence after it.
+                var turns: [PageBreak] = []
+                if scanned.paginated {
+                    var ahead = bpIdx
+                    while ahead < breaks.count, breaks[ahead].offset < offset + lead + s.count {
+                        if breaks[ahead].page != (turns.last?.page ?? page) {
+                            turns.append(PageBreak(offset: breaks[ahead].offset - offset - lead, page: breaks[ahead].page))
+                        }
+                        ahead += 1
+                    }
+                }
                 result.append(Sentence(text: s, page: scanned.paginated ? page : nil, section: section,
                                        kind: kind, figure: figure, pageOffset: max(0, offset + lead - pageOrigin),
-                                       followsLineBreak: lineBreakPending || leading.contains(where: \.isNewline)))
+                                       followsLineBreak: lineBreakPending || leading.contains(where: \.isNewline),
+                                       turns: turns))
                 lineBreakPending = raw.reversed().prefix(while: { $0.isWhitespace || $0.isNewline })
                     .contains(where: \.isNewline)
             } else if raw.contains(where: \.isNewline) {
@@ -405,6 +502,7 @@ struct DocumentChunker {
         // The grammar is always read; what the presence of a `## ` heading switches off is the
         // lexical guessing beside it.
         let lexical = !hasStructuredHeadings(raw)
+        let notTitles = lexical ? tableLines(in: raw) : []
         let extractorPaginated = isExtractorPaginated(raw)
         var cleaned = ""
         cleaned.reserveCapacity(raw.count)
@@ -468,7 +566,7 @@ struct DocumentChunker {
                 }
                 emitted = caption.text
             } else if !trimmed.isEmpty {
-                if lexical, let heading = detectHeading(trimmed) {
+                if lexical, !notTitles.contains(trimmed), let heading = detectHeading(trimmed) {
                     section = heading
                     mark()
                 }
@@ -555,8 +653,92 @@ struct DocumentChunker {
     private static let numberedNonHeading = [
         #"^\d+(\.\d+)*\s+[-–—]\s"#,     // 7 - Inspect the condensate drain
         #"^\d+(\.\d+)*\s*\)"#,           // 1) Remove
-        #"^\d+(\.\d+)*\.?\s+\p{Ll}"#    // 2.6 or greater / 1 hour soft lockout.
+        #"^\d+(\.\d+)*\.?\s+\p{Ll}"#,   // 2.6 or greater / 1 hour soft lockout.
+        #"^\d+(\.\d+)*\s*="#,            // 3 = Low Line, a key to a code
+        #"^\d\s+\d\s"#                    // 1 2 TO PANEL, a connector's pins
     ]
+
+    /// Units a figure is printed with. A figure and its unit is a value in a column, however it is
+    /// followed: alone ("24 VAC") or running into the sentence it was wrapped from ("24 VDC is
+    /// fed to"), and neither is a place. "24 VDC Supply" is a title and stays.
+    private static let unit = #"(?:V|VA|VAC|VDC|A|AMPS?|MA|MV|W|KW|HZ|PSI|PSIG|KPA|RPM|CFM|BTU|OHMS?|MM|CM|Cu\.?\s+Ft\.?)"#
+
+    /// Whether a line starting with a number is a row of a table (Plan KE P2). The line's own
+    /// shape, in the cases that can be told from it alone: a word printed three times or a number
+    /// printed twice is a column of values, never a title ("7 ON LOW ON ON"), though a title may
+    /// use a word twice ("9 Control Board to Control Box").
+    private static func isNumberedRow(_ line: String) -> Bool {
+        let words = line.split(whereSeparator: \.isWhitespace).map { $0.lowercased() }
+        guard let number = words.first, number.first?.isNumber == true else { return false }
+        if words.dropFirst().contains(number) { return true }
+        var counts: [String: Int] = [:]
+        for word in words { counts[word, default: 0] += 1 }
+        if counts.values.contains(where: { $0 >= 3 }) { return true }
+        return line.range(of: #"^\d+(\.\d+)?\s+"# + unit + #"(?:,\s*\S+)?$|^\d+(\.\d+)?\s+"# + unit + #"\s+\p{Ll}"#,
+                          options: .regularExpression) != nil
+            || line.range(of: #"^\d+\s+\p{Lu}{1,2}$"#, options: .regularExpression) != nil
+    }
+
+    /// More titles in capitals than a page of text ever prints. A page past it is a table or a
+    /// drawing the extractor did not recognise as one, and each of its labels would otherwise open
+    /// a section ("FAN MOTOR", "TO PANEL"), which every page after it is then cited under (Plan KE
+    /// P2).
+    static let maximumCapitalTitles = 5
+
+    /// The lines that read as headings and are a table's or a drawing's (Plan KE P2), which a rule
+    /// over one line cannot tell. On one page, numbered headings go up. "3 Fixed Shelf" over "1 Door Bin" is a column of quantities, and no
+    /// rule over the line alone can tell it from "12 Wiring". Only a whole number that numbers the
+    /// line is compared: a dotted section under its chapter's running header counts down by design,
+    /// and in "24 VAC Supply" the number is a value. A line at the top or foot of its page that is
+    /// printed on another page too is a running header or footer, and takes no part. Past
+    /// `maximumCapitalTitles` on a page, so are its capitals.
+    static func tableLines(in raw: String) -> Set<String> {
+        var pages: [[String]] = [[]]
+        var line = ""
+        func endLine() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            line = ""
+            if pageNumber(in: trimmed) != nil {
+                pages.append([])
+            } else if !trimmed.isEmpty {
+                pages[pages.count - 1].append(trimmed)
+            }
+        }
+        for character in raw {
+            if character == "\n" {
+                endLine()
+            } else if character == "\u{0C}" {
+                endLine()
+                pages.append([])
+            } else {
+                line.append(character)
+            }
+        }
+        endLine()
+        var pagesHolding: [String: Int] = [:]
+        for page in pages { for text in Set(page) { pagesHolding[text, default: 0] += 1 } }
+        var rows = Set<String>()
+        for page in pages {
+            let numbered = page.indices.compactMap { index -> (number: Int, line: String)? in
+                let text = page[index]
+                let furniture = (index == 0 || index == page.count - 1) && (pagesHolding[text] ?? 0) > 1
+                guard !furniture, let found = text.range(of: #"^\d{1,3}(?=\s)"#, options: .regularExpression),
+                      text.range(of: #"^\d+\s+"# + unit + #"(?:\s|$)"#, options: .regularExpression) == nil,
+                      detectHeading(text) != nil, let number = Int(text[found]) else { return nil }
+                return (number, text)
+            }
+            if zip(numbered, numbered.dropFirst()).contains(where: { $0.number >= $1.number }) {
+                rows.formUnion(numbered.map(\.line))
+            }
+            let capitals = page.filter { $0.first?.isLetter == true && detectHeading($0) != nil }
+            if capitals.count > maximumCapitalTitles {
+                // The page's own title, at its head, is still one.
+                let headed = capitals.first.map { page.prefix(2).contains($0) } ?? false
+                rows.formUnion(capitals.dropFirst(headed ? 1 : 0))
+            }
+        }
+        return rows
+    }
 
     /// A line that reads as a section heading → its text, else nil.
     ///
@@ -582,6 +764,7 @@ struct DocumentChunker {
         for pattern in numberedNonHeading where trimmed.range(of: pattern, options: .regularExpression) != nil {
             return nil
         }
+        if isNumberedRow(trimmed) { return nil }
 
         // A row of figures is a table, not a title.
         let digits = trimmed.reduce(0) { $1.isNumber ? $0 + 1 : $0 }
@@ -598,6 +781,7 @@ struct DocumentChunker {
         }
         if trimmed.range(of: #"^[A-Z0-9\s.,;:()&/-]+$"#, options: .regularExpression) != nil {
             let words = trimmed.split(whereSeparator: { $0.isWhitespace })
+            if isCapitalsNote(trimmed, words: words) { return nil }
             let uppercase = trimmed.filter { $0.isLetter && $0.isUppercase }
             let nonSpace = trimmed.filter { !$0.isWhitespace }
             // A word mixing letters and digits is a part number or a terminal designation
@@ -609,6 +793,17 @@ struct DocumentChunker {
             }
         }
         return nil
+    }
+
+    /// A line in capitals that is no title (Plan KE P2): a drawing's note in brackets, a bracket left
+    /// open by a wrapped cell, a sentence in capitals, a code printed with its letters spaced out
+    /// (half its words a single character), or one word printed twice.
+    private static func isCapitalsNote(_ line: String, words: [Substring]) -> Bool {
+        if line.hasPrefix("("), line.hasSuffix(")") { return true }
+        if line.filter({ $0 == "(" }).count != line.filter({ $0 == ")" }).count { return true }
+        if line.hasSuffix(".") || line.range(of: #"\.\s+\p{Lu}"#, options: .regularExpression) != nil { return true }
+        if words.filter({ $0.count == 1 }).count * 2 >= words.count { return true }
+        return Set(words).count == 1
     }
 
     /// How many runs of two or more consecutive whitespace characters the line contains.

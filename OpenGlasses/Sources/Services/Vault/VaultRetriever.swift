@@ -32,12 +32,18 @@ struct VaultRetriever {
         /// Title of the active procedure step, when one is running.
         var procedureStep: String?
         var limit: Int = 4
+        /// What the job is about, for a follow-up that does not say (`JobSearchContext`, Plan KE
+        /// P1). Searched and compared like the step's title, and deliberately never a boost token:
+        /// the model's own number is on half the vault's pages and would vouch for all of them.
+        var jobContext: String?
 
-        init(turn: String? = nil, ocrText: String? = nil, procedureStep: String? = nil, limit: Int = 4) {
+        init(turn: String? = nil, ocrText: String? = nil, procedureStep: String? = nil, limit: Int = 4,
+             jobContext: String? = nil) {
             self.turn = turn
             self.ocrText = ocrText
             self.procedureStep = procedureStep
             self.limit = limit
+            self.jobContext = jobContext
         }
     }
 
@@ -86,6 +92,12 @@ struct VaultRetriever {
         /// The passage has no vector because its document's script model is not on the phone
         /// yet (Plan JY P1): the gate judges it by its words, under the stricter rule.
         var vectorPending = false
+        /// The pages a chunk packed across a page break sits on (Plan KE P2). `text` carries no
+        /// mark of them, so the gate, token matching and the highlight read what the page printed;
+        /// `markedText` is what the model reads.
+        var pageBreaks: [DocumentChunker.PageBreak] = []
+        /// What is printed on those pages, by physical page, where the manual's labels say.
+        var printedLabels: [Int: String] = [:]
 
         typealias Source = RetrievalSource
 
@@ -105,9 +117,16 @@ struct VaultRetriever {
         /// figure. A drawing with no caption still says it is one, because "page 44" of a wiring
         /// diagram and "page 44" of a procedure are read very differently. A table's row passage
         /// (Plan JJ P0) names its table: the row is in it, by construction.
+        ///
+        /// A passage across a page break gives the range (Plan KE P2): one number would be wrong for
+        /// some of its words, and the marks in `markedText` say which.
         var citation: String {
             var parts = [documentName]
-            if let page { parts.append("page \(page)" + (printedPage.map { " (printed \($0))" } ?? "")) }
+            if let span = pageSpan {
+                parts.append("pages \(span.first)\u{2013}\(span.last)")
+            } else if let page {
+                parts.append("page \(page)" + (printedPage.map { " (printed \($0))" } ?? ""))
+            }
             if kind == .tableRow, let figure, !figure.isEmpty {
                 parts.append(figure)
             } else if kind == .diagram {
@@ -119,6 +138,33 @@ struct VaultRetriever {
                 parts.append("§\(section)")
             }
             return parts.joined(separator: ", ")
+        }
+
+        /// The first and last page of a passage across a page break, nil on one page.
+        var pageSpan: (first: Int, last: Int)? {
+            let pages = pageBreaks.map(\.page)
+            guard let first = pages.min(), let last = pages.max(), first != last else { return nil }
+            return (first, last)
+        }
+
+        /// How one page reads in a mark: "[page 12 (printed 3-4)]".
+        func pageMark(_ page: Int) -> String {
+            "[page \(page)" + (printedLabels[page].map { " (printed \($0))" } ?? "") + "]"
+        }
+
+        /// The text the model reads: a mark where each page starts (Plan KE P2), so a step at the
+        /// head of a page is cited at that page rather than at the chunk's. A chunk on one page
+        /// reads as it always did.
+        var markedText: String {
+            guard !pageBreaks.isEmpty else { return text }
+            let characters = Array(text)
+            var marked = ""
+            var from = 0
+            for pageBreak in pageBreaks where pageBreak.offset >= from && pageBreak.offset <= characters.count {
+                marked += String(characters[from..<pageBreak.offset]) + pageMark(pageBreak.page) + " "
+                from = pageBreak.offset
+            }
+            return marked + String(characters[from...])
         }
 
         /// The key the ranked list is sorted by: the passage's own score, less any model-mismatch
@@ -194,11 +240,17 @@ struct VaultRetriever {
         /// Every spelling of every *other* model the vault names, uppercased.
         var otherTokens: Set<String>
         var penalty: Float = 0.5
+        /// The documents the vault's section for the active model names (Plan KE P1). A generic
+        /// page of another family's manual names no model, so `penalty(for:)` cannot see it; the
+        /// vault's own list can. Empty means the section names none, and nothing is scored by it.
+        var assignedDocumentIds: Set<String> = []
 
-        init(activeTokens: Set<String>, otherTokens: Set<String>, penalty: Float = 0.5) {
+        init(activeTokens: Set<String>, otherTokens: Set<String>, penalty: Float = 0.5,
+             assignedDocumentIds: Set<String> = []) {
             self.activeTokens = activeTokens
             self.otherTokens = otherTokens.subtracting(activeTokens)
             self.penalty = penalty
+            self.assignedDocumentIds = assignedDocumentIds
         }
 
         /// The penalty for one passage: it names another model and does not name this one.
@@ -206,6 +258,15 @@ struct VaultRetriever {
             guard !activeTokens.isEmpty, !otherTokens.isEmpty else { return 0 }
             guard !activeTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) else { return 0 }
             return otherTokens.contains(where: { CodeTokenizer.contains(text, token: $0) }) ? penalty : 0
+        }
+
+        /// The penalty for a page of a vault manual: the one `penalty(for:)` gives, else the same
+        /// amount for a document the active model is not assigned. Ranks down, never out, as Plan EL
+        /// chose, and never twice.
+        func penalty(for text: String, documentId: String) -> Float {
+            let named = penalty(for: text)
+            guard named == 0, !assignedDocumentIds.isEmpty, !assignedDocumentIds.contains(documentId) else { return named }
+            return penalty
         }
 
         /// The penalty for a team learning, by **identity** (contract §7.2): its `modelToken`,
@@ -259,7 +320,7 @@ struct VaultRetriever {
     }
 
     func retrieve(_ request: Request) -> RetrievalOutcome {
-        let parts = [request.turn, request.ocrText, request.procedureStep]
+        let parts = [request.turn, request.ocrText, request.procedureStep, request.jobContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !parts.isEmpty else { return .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence) }
@@ -529,18 +590,24 @@ struct VaultRetriever {
 
     private func scored(_ raw: DocumentStore.Passage, matched: [String]) -> Passage {
         let boost = min(policy.maxBoost, policy.tokenBoost * Float(matched.count))
-        // A manual page is scoped by the models its text names; a team learning by the model its
-        // entry is filed against, never by its prose (Plan FP §5, contract §7.2).
-        let penalty = raw.source == .teamLearning
-            ? modelScope?.penalty(forSubjectToken: raw.subjectModelToken) ?? 0
-            : modelScope?.penalty(for: raw.text) ?? 0
+        // A manual page is scoped by the models its text names and the documents the vault assigns
+        // the model (Plan KE P1); a photographed manual is the job's own, in no vault's list; a team
+        // learning by the model its entry is filed against, never by its prose (Plan FP §5,
+        // contract §7.2).
+        let penalty: Float
+        switch raw.source {
+        case .teamLearning: penalty = modelScope?.penalty(forSubjectToken: raw.subjectModelToken) ?? 0
+        case .manual: penalty = modelScope?.penalty(for: raw.text, documentId: raw.documentId) ?? 0
+        case .capturedManual: penalty = modelScope?.penalty(for: raw.text) ?? 0
+        }
         return Passage(documentId: raw.documentId, documentName: raw.documentName, chunkIndex: raw.chunkIndex,
                        text: raw.text, page: raw.page, section: raw.section,
                        similarity: raw.similarity, score: raw.similarity + boost, matchedTokens: matched,
                        modelPenalty: penalty,
                        recognisedFromScan: raw.source.isReference && (provenance?(raw.documentId) ?? false),
                        kind: raw.kind, figure: raw.figure, source: raw.source, printedPage:raw.printedPage,
-                       editionLabel: raw.editionLabel, termRule: raw.termRule, vectorPending: raw.vectorPending)
+                       editionLabel: raw.editionLabel, termRule: raw.termRule, vectorPending: raw.vectorPending,
+                       pageBreaks: raw.pageBreaks, printedLabels: raw.printedLabels)
     }
 
     // MARK: - Rendering
@@ -596,7 +663,7 @@ struct VaultRetriever {
             : (p.source == .capturedManual ? "PHOTOGRAPHED MANUAL (unreviewed; original job/date in citation) " : "")
                 + (p.kindLabel.map { $0 + " " } ?? "")
                 + (p.editionLabel.map { "(edition: \($0)) " } ?? "")
-        return "[\(index + 1)] \(label)\(p.text)\nSource: \(p.citation)"
+        return "[\(index + 1)] \(label)\(p.markedText)\nSource: \(p.citation)"
             + (p.recognisedFromScan ? " " + Passage.provenanceNote : "")
     }
 
@@ -611,9 +678,16 @@ struct VaultRetriever {
     static let tableRowRule = "Passages marked (table row …) are sentences the app wrote from a table's rows: "
         + "before you say a value from a table, read it with table_lookup (table, row, column) — never quote it from these."
 
+    /// The standing instruction beside any passage that crosses a page (Plan KE P2). The citation
+    /// rule itself is the block's; this says which page of the range a claim belongs to.
+    static let pageMarkRule = "A mark such as [page 12] or [page 12 (printed 3-4)] inside a passage says the words after it, "
+        + "up to the next mark, are on that page. For a claim from those words, cite that page, not the range on the "
+        + "passage's Source line: repeat the line with \"page 12\" in place of its pages."
+
     /// The rules a set of passages calls for, each on its own paragraph after them.
     private static func rules(for passages: [Passage]) -> String {
         var rules: [String] = []
+        if passages.contains(where: { !$0.pageBreaks.isEmpty }) { rules.append(pageMarkRule) }
         if passages.contains(where: { $0.source == .teamLearning }) { rules.append(teamLearningRule) }
         if passages.contains(where: { $0.kind == .tableRow }) { rules.append(tableRowRule) }
         return rules.map { "\n\n" + $0 }.joined()
@@ -762,7 +836,8 @@ struct RetrievalEvidencePolicy: Equatable {
     static let insufficientSentence =
         "No passage in the loaded manuals answers this closely enough to rely on. Say you couldn't find it "
         + "in the manuals — not that they don't cover it — and ask the technician for the model number or "
-        + "different words, or recommend escalation rather than guessing."
+        + "different words. If it stays unanswered, name what is missing and offer an expert if one would help; "
+        + "do not guess."
 
     init(similarityFloor: Float = 0.30, margin: Float = .infinity, minSharedTerms: Int = 0,
          sharedFraction: Double = 0, tokenBoost: Float = 0.25, maxBoost: Float = 0.5) {

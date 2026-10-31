@@ -33,9 +33,13 @@ struct Citation: Equatable, Hashable, Identifiable {
     let section: String?
     /// A drawing with no caption — cited `page 44 (diagram)`.
     let isDiagram: Bool
+    /// The label printed on the page, kept only when it is all the citation says about where to
+    /// look (`Title, printed page 2-6`), so opening it can go through the manual's page labels
+    /// rather than to page 1. Nil beside a `page`, which is the place to open (Plan KE).
+    let printedPage: String?
 
     init(kind: Kind, title: String, page: Int? = nil, throughPage: Int? = nil, figure: String? = nil,
-         section: String? = nil, isDiagram: Bool = false) {
+         section: String? = nil, isDiagram: Bool = false, printedPage: String? = nil) {
         self.kind = kind
         self.title = title
         self.page = page
@@ -43,6 +47,7 @@ struct Citation: Equatable, Hashable, Identifiable {
         self.figure = figure
         self.section = section
         self.isDiagram = isDiagram
+        self.printedPage = page == nil ? printedPage : nil
     }
 
     /// The citation as the answer printed it, rebuilt from the parts — so a chip can never show a
@@ -53,6 +58,8 @@ struct Citation: Equatable, Hashable, Identifiable {
             parts.append("pages \(page)\u{2013}\(throughPage)")
         } else if let page {
             parts.append("page \(page)")
+        } else if let printedPage {
+            parts.append("printed page \(printedPage)")
         }
         if let figure, !figure.isEmpty {
             parts.append(figure)
@@ -79,7 +86,9 @@ struct Citation: Equatable, Hashable, Identifiable {
 /// Pure and total: anything it cannot read is left alone rather than guessed at, because a chip
 /// that opens the wrong page is worse than no chip. It reads the two shapes the app itself
 /// produces — `VaultRetriever.Passage.citation` on its own line, and a vault tool's trailing
-/// `(Source: error_codes.md, models.md)` — and nothing else.
+/// `(Source: error_codes.md, models.md)` — and what a model does with them in an answer (Plan KE):
+/// two `Source:` markers on one line, prose running on after the citation, and "PDF page N" with
+/// "printed page M" and "Step N" beside it.
 enum CitationLineParser {
 
     /// Extensions that mean a core file rather than a manual title.
@@ -91,6 +100,15 @@ enum CitationLineParser {
 
     /// What a model writes where a source would go when it has none. Not a document, so not a door.
     static let nonCitations: Set<String> = ["none", "n/a", "na", "unknown", "-", "\u{2014}"]
+
+    /// Words a title or a section may end a piece of with, with the sentence carrying on after the
+    /// full stop: "Acme Corp. Service Manual", "Service Bulletin No. A123".
+    static let abbreviations: Set<String> = [
+        "approx", "assy", "bros", "bull", "ch", "co", "corp", "dept", "doc", "dr", "ed", "eq", "fig",
+        "figs", "gen", "inc", "inst", "intl", "jr", "ltd", "mfg", "mfr", "mr", "mrs", "ms", "mt", "no",
+        "nos", "p", "pp", "pg", "pgs", "pt", "ref", "rev", "sec", "sect", "sr", "st", "std", "supp",
+        "tab", "tech", "ver", "vers", "vol", "vs",
+    ]
 
     static func parse(_ text: String) -> [Citation] {
         var found: [Citation] = []
@@ -106,41 +124,128 @@ enum CitationLineParser {
     // MARK: - One line
 
     static func citations(inLine line: String) -> [Citation] {
-        guard let body = sourceBody(of: line) else { return [] }
-        return citations(inBody: body)
+        sourceBodies(of: line).flatMap(citations(inBody:))
     }
 
-    /// The text a line's `Source:` marker introduces, with the parenthesised form closed off and
-    /// the scan-provenance note removed. Nil when the line cites nothing.
-    static func sourceBody(of line: String) -> String? {
-        // Searched in the line itself rather than in a lowercased copy: lowercasing can change a
-        // string's length, and an index from the copy would then cut the wrong characters.
-        let markerRange = line.range(of: "sources:", options: .caseInsensitive)
-            ?? line.range(of: "source:", options: .caseInsensitive)
-        guard let markerRange else { return nil }
-        let before = line[line.startIndex..<markerRange.lowerBound].trimmingCharacters(in: .whitespaces)
-        var body = String(line[markerRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-        // `(Source: a.md, b.md)` — the tools' inline suffix. The closing bracket is the last one on
-        // the line, so a `(diagram)` inside the citation survives.
-        if before.hasSuffix("("), let close = body.lastIndex(of: ")") {
-            body = String(body[body.startIndex..<close])
+    /// The text the line's first `Source:` marker introduces, or the first that says anything. Nil
+    /// when the line cites nothing.
+    static func sourceBody(of line: String) -> String? { sourceBodies(of: line).first }
+
+    /// What each of a line's `Source:` markers introduces, with the parenthesised form closed off,
+    /// the scan-provenance note removed and any prose after the citation dropped. A second marker
+    /// starts a new body: read through, a model's two markers on one line made one 140-character
+    /// title, which matched no manual and was reported as removed from the vault (Plan KE).
+    static func sourceBodies(of line: String) -> [String] {
+        // On the line itself rather than a lowercased copy: lowercasing can change a string's
+        // length, and an index from the copy would then cut the wrong characters. Not mid-word, so
+        // "Resources: 2" is not a citation.
+        let pattern = #"(?i)(?<![\p{L}\p{N}])sources?:"#
+        var markers: [Range<String.Index>] = []
+        var searchFrom = line.startIndex
+        while let found = line.range(of: pattern, options: .regularExpression, range: searchFrom..<line.endIndex) {
+            markers.append(found)
+            searchFrom = found.upperBound
         }
-        body = stripProvenanceNote(body)
-        let trimmed = body.trimmingCharacters(in: CharacterSet(charactersIn: " \t.;"))
-        return trimmed.isEmpty ? nil : trimmed
+        return markers.indices.compactMap { index in
+            let end = index + 1 < markers.count ? markers[index + 1].lowerBound : line.endIndex
+            var body = String(line[markers[index].upperBound..<end]).trimmingCharacters(in: .whitespaces)
+            let before = line[line.startIndex..<markers[index].lowerBound].trimmingCharacters(in: .whitespaces)
+            // `(Source: a.md, b.md)` — the tools' inline suffix, closed by its own bracket, so a
+            // `(diagram)` inside the citation survives and a bracket later in the prose does not count.
+            if before.hasSuffix("("), let close = closingBracket(in: body) {
+                body = String(body[body.startIndex..<close])
+            }
+            body = stripProvenanceNote(body)
+            body = closingSentence(body)
+            let trimmed = body.trimmingCharacters(in: CharacterSet(charactersIn: " \t.;("))
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    /// The bracket that closes one already open before `body` starts; the last one when the body's
+    /// brackets do not balance.
+    private static func closingBracket(in body: String) -> String.Index? {
+        var depth = 1
+        for index in body.indices {
+            if body[index] == "(" { depth += 1 }
+            if body[index] == ")" {
+                depth -= 1
+                if depth == 0 { return index }
+            }
+        }
+        return body.lastIndex(of: ")")
     }
 
     /// Drop the sentence a recognised-from-a-scan passage carries after its citation. It is a
-    /// warning about the page, not part of the page's name.
+    /// warning about the page, not part of the page's name. The model writes it in either spelling.
     static func stripProvenanceNote(_ body: String) -> String {
-        guard let start = body.range(of: "(text recognised", options: .caseInsensitive) else { return body }
+        guard let start = body.range(of: #"(?i)\(text recogni[sz]ed"#, options: .regularExpression) else { return body }
         return String(body[body.startIndex..<start.lowerBound]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The body up to the end of its first sentence, so the prose after a citation is never read as
+    /// a title: "Step 9. The manual's listed coverage includes X" made a chip of its own.
+    ///
+    /// A title and a section can hold full stops, so one ends the citation only where it can only
+    /// be a sentence's: after a place in the document (a page, a step, a caption), unless another
+    /// place follows; or after any other word that is not an abbreviation, with a capital next.
+    /// A full stop inside brackets is never the end. The names the app builds itself with `·`
+    /// separators are read whole, as they always were: a subject in one may hold a sentence.
+    static func closingSentence(_ body: String) -> String {
+        guard !isStructuredName(body) else { return body }
+        var depth = 0
+        for index in body.indices {
+            if body[index] == "(" { depth += 1 }
+            if body[index] == ")" { depth = max(0, depth - 1) }
+            guard body[index] == ".", depth == 0 else { continue }
+            let after = body.index(after: index)
+            guard after < body.endIndex, body[after].isWhitespace else { continue }
+            let head = String(body[body.startIndex..<index])
+            let tail = body[after...].trimmingCharacters(in: .whitespaces)
+            guard !tail.isEmpty else { continue }
+            if endsSentence(head: head, tail: tail) { return head }
+        }
+        return body
+    }
+
+    private static func isStructuredName(_ body: String) -> Bool {
+        body.contains(TeamLearningCitation.prefix) || body.hasPrefix("Photographed manual · ")
+            || body.hasPrefix("Reviewed photographed manual · ")
+    }
+
+    private static func endsSentence(head: String, tail: String) -> Bool {
+        func pieces(_ text: String) -> [String] {
+            text.split(whereSeparator: { $0 == "," || $0 == ";" }).map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+        let parts = pieces(head)
+        let tailParts = pieces(tail)
+        guard let part = parts.last, let firstOfTail = tailParts.first else { return false }
+        if isPlace(firstOfTail) { return false }
+        if isPlace(part) { return true }
+        // Still in the title, with a page straight after the next piece: a title with a full stop
+        // in it ("Acme QX100. Service Manual, page 3"), not a sentence that happens to be followed
+        // by one. Prose after a citation has already passed a place, or never reaches one.
+        if parts.count == 1, tailParts.count > 1, isPlace(tailParts[1]) { return false }
+        let word = String(part.split(whereSeparator: \.isWhitespace).last ?? "")
+        let bare = word.trimmingCharacters(in: CharacterSet(charactersIn: "§(")).lowercased()
+        // "U.S" of "U.S. Standard", and any lone letter.
+        let isInitials = bare.range(of: #"^(?:\p{L}\.)*\p{L}$"#, options: .regularExpression) != nil
+        guard !abbreviations.contains(bare), !isInitials else { return false }
+        return tail.first?.isUppercase == true
+    }
+
+    /// Whether a piece of a citation is only a place in a document, nothing after it but a bracket.
+    private static func isPlace(_ part: String) -> Bool {
+        part.range(of: #"(?i)^\(?(?:(?:pdf\s+)?pages?\s+\d[\d\s\-\x{2013}\x{2014}]*|(?:pdf\s+)?pp?\.\s*\d[\d\s\-\x{2013}\x{2014}]*"#
+            + #"|printed\s+(?:pages?|p\.|pg\.?)\s*\S+|(?:figure|table)\s+\d+[a-z]?|steps?\s+\d+[a-z]?)\s*(?:\(.*\))?\)?$"#,
+            options: .regularExpression) != nil
     }
 
     /// Split one `Source:` body into citations. A manual citation carries commas of its own
     /// (`Title, page 44, Figure 58`), so the parts are grouped rather than split: a part that names
     /// a page, a caption or a section belongs to the citation before it, and anything else starts
-    /// a new one.
+    /// a new one. "printed page M" and "Step N" belong to the citation before them and are never a
+    /// citation of their own (Plan KE).
     ///
     /// Semicolons separate citations. Read as commas, "Installation Instructions, page 47; Service
     /// Manual, page 20" lost the second title inside "page 47; Service Manual" and the last page
@@ -165,22 +270,33 @@ enum CitationLineParser {
         var figure: String?
         var section: String?
         var isDiagram = false
+        var printedPage: String?
 
         func flush() {
-            defer { title = nil; page = nil; throughPage = nil; figure = nil; section = nil; isDiagram = false }
+            defer {
+                title = nil; page = nil; throughPage = nil; figure = nil; section = nil
+                isDiagram = false; printedPage = nil
+            }
             guard let name = title?.trimmingCharacters(in: .whitespaces), !name.isEmpty,
                   validTitleLength(name), !nonCitations.contains(name.lowercased()) else { return }
             found.append(Citation(kind: isCoreFileName(name) ? .coreFile : .manual,
                                   title: name, page: page, throughPage: throughPage, figure: figure,
-                                  section: section, isDiagram: isDiagram))
+                                  section: section, isDiagram: isDiagram, printedPage: printedPage))
         }
 
-        let groups = body.components(separatedBy: ";")
+        let groups = separatingPlaces(in: body).components(separatedBy: ";")
         for group in groups {
             flush()
             for (index, raw) in group.components(separatedBy: ",").enumerated() {
             let part = raw.trimmingCharacters(in: CharacterSet(charactersIn: " \t.;"))
             guard !part.isEmpty else { continue }
+            // Before anything else, and without reaching back for a title: a place that adds only a
+            // label to a citation is not a new door.
+            if let label = printedLabel(part) {
+                if title != nil, printedPage == nil { printedPage = label }
+                continue
+            }
+            if isStep(part, inCitation: title != nil) { continue }
             let attaches = pageNumber(part) != nil || part.hasPrefix("§") || isCaption(part)
                 || part.lowercased() == "(diagram)"
             if index == 0, attaches, title == nil, let lastTitle { title = lastTitle }
@@ -232,10 +348,12 @@ enum CitationLineParser {
         pageRange(part).map { ($0.page, $0.isDiagram) }
     }
 
-    /// `page 44`, `pages 64–65`, `pp. 64-65`: the first page, the last when it is a range, and the
-    /// drawing marker.
+    /// `page 44`, `pages 64–65`, `pp. 64-65`, `PDF page 63`: the first page, the last when it is a
+    /// range, and the drawing marker. "PDF page" is how an answer writes the place to open, and read
+    /// as nothing the citation had no page and opened page 1 (Plan KE).
     static func pageRange(_ part: String) -> (page: Int, through: Int?, isDiagram: Bool)? {
-        let lower = part.lowercased()
+        var lower = part.lowercased()
+        if lower.hasPrefix("pdf ") { lower.removeFirst(4) }
         guard lower.hasPrefix("page ") || lower.hasPrefix("pages ") || lower.hasPrefix("p. ")
                 || lower.hasPrefix("pp. ") else { return nil }
         guard let match = part.range(of: #"\d+"#, options: .regularExpression),
@@ -247,6 +365,30 @@ enum CitationLineParser {
             through = Int(rest[range][last])
         }
         return (number, through, lower.contains("(diagram)"))
+    }
+
+    /// `printed page 2-6`: the label printed on a page, as `Citation.printedPage` keeps it. The
+    /// bracket is there when the part was split out of `(printed page 57, Step 4)`.
+    static func printedLabel(_ part: String) -> String? {
+        let pattern = #"(?i)^\(?printed\s+(?:pages?|p\.|pg\.?)\s*"#
+        guard let prefix = part.range(of: pattern, options: .regularExpression) else { return nil }
+        let label = part[prefix.upperBound...].trimmingCharacters(in: CharacterSet(charactersIn: " \t.;()"))
+        return label.isEmpty ? nil : label
+    }
+
+    /// `Step 4`, after a citation or standing alone. A title can start the same way ("Step 4
+    /// Commissioning Checklist"), so with no citation open only the bare step counts.
+    static func isStep(_ part: String, inCitation: Bool) -> Bool {
+        let pattern = inCitation ? #"(?i)^\(?steps?\s+\d"# : #"(?i)^\(?steps?\s+\d+[a-z]?\)?$"#
+        return part.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// The body with "PDF page" and "printed page" made a part of their own when they follow a
+    /// title with no comma: `Service Manual (PDF page 63)`, `Service Manual PDF page 63`. The
+    /// bracket that closes them is left to the page reader, which ignores it.
+    private static func separatingPlaces(in body: String) -> String {
+        body.replacingOccurrences(of: #"(?i)(?<=[^\s,;(])\s*(?:\s|\()(?=(?:pdf|printed)\s+pages?\s+\d)"#,
+                                  with: ", ", options: .regularExpression)
     }
 
     /// `Figure 58` / `Table 16`, as the extractor writes a caption.
