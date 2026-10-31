@@ -66,6 +66,8 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
     private var runningPosition: AVCaptureDevice.Position?
     private var frameHandler: (@Sendable (UIImage) -> Void)?
     private var observers: [NSObjectProtocol] = []
+    private var rotation: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
 
     /// One reusable context; intermediate caching disabled — per-frame CIContext churn
     /// exhausts IOSurfaces on iOS.
@@ -168,6 +170,8 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
         case .stop:
             captureSession.stopRunning()
             runningPosition = nil
+            rotationObservation = nil
+            rotation = nil
             statusPublisher.send(.stopped)
             PrivacyLog.camera(.phone, .stopped)
         }
@@ -202,7 +206,28 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
             output.setSampleBufferDelegate(self, queue: sessionQueue)
             captureSession.addOutput(output)
         }
+        followRotation(of: device)
         return true
+    }
+
+    /// Plan KH: keep frames upright as the phone turns. The output's buffers are the sensor's
+    /// landscape otherwise, which put a phone held upright on air sideways, and the viewfinder now
+    /// shows the wearer an upright picture. The encoder fits whatever comes to its canvas, so a
+    /// turn costs a letterbox and never a restart.
+    private func followRotation(of device: AVCaptureDevice) {
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        rotation = coordinator
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture,
+                                                  options: [.initial, .new]) { [weak self] coordinator, _ in
+            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+            self?.sessionQueue.async { self?.rotateFrames(to: angle) }
+        }
+    }
+
+    private func rotateFrames(to angle: CGFloat) {
+        guard let connection = output.connection(with: .video),
+              connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
     }
 
     private func cameraUnavailable(_ position: AVCaptureDevice.Position) -> Bool {
