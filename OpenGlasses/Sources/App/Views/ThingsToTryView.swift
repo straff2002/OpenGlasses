@@ -11,6 +11,12 @@ struct ThingsToTryView: View {
         ScenarioReadiness.visible(ScenarioCatalog.all, in: appState.scenarioContext)
     }
 
+    /// Plan KH: outside the catalogue on purpose, see `StreamLiveLink`.
+    private var showsStreamLive: Bool {
+        StreamLiveLink.isVisible(broadcastConfigured: Config.isBroadcastConfigured,
+                                 in: appState.scenarioContext)
+    }
+
     /// These are Direct-mode turns, on the grid's own rule.
     private var canRunHere: Bool { HomeSurfaceVisibility.showsActionTiles(mode: appState.currentMode) }
 
@@ -38,6 +44,15 @@ struct ThingsToTryView: View {
                             }
                         }
                     }
+                }
+            }
+            if showsStreamLive {
+                OGCard {
+                    Button { appState.openLivePreview() } label: {
+                        OGRow("Stream live", icon: "dot.radiowaves.left.and.right",
+                              subtitle: "Open the preview and go live.")
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

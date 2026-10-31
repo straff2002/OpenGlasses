@@ -38,7 +38,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// same shape a recording shared from the Recordings folder has. What differs is the length
     /// cap and where the file is filed, neither of which is a privacy classification.
     case jobClipRecording
-    /// RTMP broadcast.
+    /// RTMP broadcast. The glasses feed only: `PhoneVideoSource` hands its frames to the encoder
+    /// directly, so a phone-camera stream or inset does not pass through the relay.
     case rtmpBroadcast
     /// WebRTC/MJPEG browser streaming (`WebRTCStreamingService`).
     case webRTCBrowserStream

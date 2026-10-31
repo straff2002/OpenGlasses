@@ -77,7 +77,14 @@ struct BottomControlBar: View {
         isGemini ? session.isActive : (isOpenAI ? openAISession.isActive : false)
     }
 
-    private var previewVisible: Bool { appState.isConnected }
+    /// Read when the tab appears, not per render: half of the answer is a Keychain item, and the
+    /// settings that change it are on another tab.
+    @State private var broadcastConfigured = false
+
+    private var previewVisible: Bool {
+        HomeGridTilePresence.livePreviewReachable(glassesConnected: appState.isConnected,
+                                                  broadcastConfigured: broadcastConfigured)
+    }
 
     /// Observes the same UserDefaults key `Config.silentMode` writes, so the push-to-talk
     /// BarButton re-renders on toggle AND stays live-synced with the Settings switch.
@@ -238,6 +245,7 @@ struct BottomControlBar: View {
         }
         .padding(.top, DockGridMetrics.moduleGap)
         .padding(.bottom, DockGridMetrics.dockBottomPadding)
+        .onAppear { broadcastConfigured = Config.isBroadcastConfigured }
     }
 
     // MARK: - Panel

@@ -122,10 +122,14 @@ class BroadcastService: ObservableObject {
     var droppedFrameSource: (@MainActor () -> Int)?
 
     /// Start broadcasting to the configured RTMP endpoint.
+    ///
+    /// - Parameter source: the camera to start on, for this broadcast only. `nil` is the Camera
+    ///   setting. It does not change the setting.
     func startBroadcast(
         rtmpURL: String,
         streamKey: String,
-        from publisher: PassthroughSubject<UIImage, Never>
+        from publisher: PassthroughSubject<UIImage, Never>,
+        source: BroadcastVideoSource? = nil
     ) async throws {
         guard !isBroadcasting else { return }
         guard !rtmpURL.isEmpty, !streamKey.isEmpty else {
@@ -138,7 +142,8 @@ class BroadcastService: ObservableObject {
         outputWidth = geometry.width
         outputHeight = geometry.height
         pixelBufferPool = nil   // dims may have changed since the last broadcast
-        let startSource = BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
+        let startSource = source
+            ?? BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
         selector = BroadcastSourceSelector(initial: startSource)
         activeSource = startSource
         mainSourceMirror = startSource

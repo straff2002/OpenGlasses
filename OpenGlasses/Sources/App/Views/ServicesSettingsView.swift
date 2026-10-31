@@ -822,6 +822,21 @@ struct ServicesSettingsView: View {
                         Config.setBroadcastStreamKey(newValue)
                     }
 
+                // Plan KH: folded away for the same reason as Advanced Encoding below. A row each,
+                // so VoiceOver stops on every step, and the selected platform's key line only.
+                DisclosureGroup("How to go live") {
+                    let platform = GoLivePlatform(stored: broadcastPlatform)
+                    ForEach(Array(GoLiveGuide.steps(for: platform).enumerated()), id: \.offset) { index, step in
+                        Text(verbatim: "\(index + 1). \(step)")
+                            .font(.footnote)
+                    }
+                    ForEach(GoLiveGuide.phoneCameraNotes, id: \.self) { note in
+                        Text(verbatim: note)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Picker("Orientation", selection: $broadcastOrientation) {
                     Text("Portrait").tag("portrait")
                     Text("Landscape").tag("landscape")
@@ -931,7 +946,7 @@ struct ServicesSettingsView: View {
                     if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
                         Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
                     } else {
-                        Text("Stream what your glasses see directly to \(broadcastPlatform.capitalized).")
+                        Text(verbatim: GoLiveGuide.readyLine(for: GoLivePlatform(stored: broadcastPlatform)))
                     }
                     Text("Microphone audio keeps flowing to streams and recordings whether or not wake-word listening is on. Spoken replies coming out of the phone speaker are muted from the capture — turn this on to let your audience hear them too.")
                 }
