@@ -163,6 +163,36 @@ Owner: D04. No service manual loaded.
 - **Mind the budget.** One short section per model is about 40 bytes; three hundred models is roughly 12 KB of the 32 KB core.
 - **Sibling brands.** One service manual often covers several of a manufacturer's brands. Decide deliberately whether those models belong in the vault: a model with no section is refused as out of scope, even when a loaded manual covers it.
 
+### Symptoms, in the manual's words
+
+A technician says what the machine is doing. A service manual is arranged by part: it has a test for the condenser fan, and no page headed *not cooling*. So a symptom often misses the page that would help, however good the search, and even a page that is found says how to test a part, not which part to test first. Where the manuals give no order, a person who knows the machines can give one in a core file.
+
+Add a `symptoms.md` core file, list it in the manifest's `files`, and write one section per symptom:
+
+```markdown
+# Symptoms
+
+## Not cooling, compressor running
+Said as: not cooling, warm cabinet, runs all the time, won't pull down.
+Applies to: the RTU-500 family. Not the RTU-550A, which has no service manual loaded.
+The manual's words: condenser fan, condenser coil, suction pressure.
+Checks, in this order:
+1. Condenser fan turns with the compressor. Fan test. D01 page 41 (printed 3-7).
+2. Condenser coil clean. Coil cleaning. D01 page 58 (printed 4-12).
+3. Suction pressure against the chart. Charging chart. D01 page 63 (printed 4-17).
+Reviewed: 12 November, against D01 Rev B.
+```
+
+- **Symptom words.** Write what your technicians actually say, several ways. These are what the assistant recognises the symptom by.
+- **The families it applies to.** A check for one family is wrong on another. Name the families in the section's text, not its heading: a model number in a heading reads as a model (see above). Say which models it does not cover and why.
+- **The manual's words.** Copy the part's name as the manual prints it, spelling and all, so the assistant can search for it. Technicians say *fan*, and the manual may say *condenser fan motor*.
+- **Ordered checks, each with a document and a page.** Give the PDF page, and the printed page when it differs. A check with no page is not a check: leave it out. Use the document IDs from your model map.
+- **A person must check it against the pages.** Open every page cited and read it. The order is yours, not the manufacturer's, unless a page says otherwise: a wrong first check costs a call-out, and an unchecked one looks just as sure as a checked one. Record who reviewed it and against which revision, and review it again when a manual is replaced.
+- **Add a rule that says what the file is**, for example: *"For a symptom in symptoms.md that applies to the unit, give its checks one at a time, in that order, each with its document and page. Say the order is this vault's, not the manufacturer's. Read the cited page before relying on it."*
+- **Mind the budget.** A core file goes to the model on every turn, so a section should stay short. Start with the five symptoms your crew hears most.
+
+A symptom the file does not list changes nothing: the assistant searches the manuals as before.
+
 ### Parts, so a number the assistant says can be checked
 
 A part number is the one thing on a job report that somebody else acts on: base orders against it.
@@ -935,6 +965,7 @@ Updating a published pack is the same folder with a higher `version`. Technician
 - [ ] Fault codes sit under a heading per controller or family, with the models named in the section's first line, one code per row.
 - [ ] No model number or manual number appears in a heading outside `models.md`, and each model's spellings sit in its own heading, in brackets.
 - [ ] For a vault spanning several families, `models.md` lists the documents that apply to each model, confirmed from the manual or the manufacturer's catalogue.
+- [ ] Every check in a `symptoms.md` has a document and page, and a person has read each page against it.
 - [ ] `safety.md` says what you want spoken, in your words.
 - [ ] Core files total well under 32 KB.
 - [ ] Any site document has no contact details, passwords or links, and its serials are the customer's.
