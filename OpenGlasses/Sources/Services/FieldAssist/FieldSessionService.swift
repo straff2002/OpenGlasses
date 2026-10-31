@@ -2480,7 +2480,18 @@ final class FieldSessionService: ObservableObject {
             }) { return true }
             return manualAvailable(documentId)
         }, policy: policy ?? retrievalPolicy(forVault: vaultId), modelScope: retrievalModelScope,
-           modelNames: { [modelIndex] in modelIndex.namesModel($0) })
+           modelNames: { [modelIndex] in modelIndex.namesModel($0) },
+           assignedSearch: VaultRetriever.AssignedSearch(query: { query, limit, within in
+            searched.flatMap { space in
+                tagged(documentStore?.query(query, limit: limit, namespace: space.namespace,
+                                            documentIds: ids(for: space), alsoWithin: within) ?? [], space)
+            }
+        }, terms: { query, limit, within in
+            searched.flatMap { space in
+                tagged(documentStore?.passages(sharingTermsWith: query, limit: limit, namespace: space.namespace,
+                                               documentIds: ids(for: space), alsoWithin: within) ?? [], space)
+            }
+        }))
     }
 
     // MARK: - Team learnings at answer time (Plan FP P2)
