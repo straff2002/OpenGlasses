@@ -64,6 +64,51 @@ enum BroadcastVideoSource: String, CaseIterable, Codable {
     }
 }
 
+/// What tapping Go Live in the live preview does (pure).
+///
+/// The preview is the only caller. `AppState.toggleBroadcast()` stays as it was for Siri and
+/// Shortcuts, so nothing here changes what an intent does.
+enum BroadcastGoLive {
+    struct Facts: Equatable {
+        var isBroadcasting: Bool
+        var isConfigured: Bool
+        /// Live Streaming's Camera setting.
+        var preferredSource: BroadcastVideoSource
+        var glassesConnected: Bool
+        /// Blur Bystander Faces is on.
+        var faceBlurOn: Bool
+        /// iOS has refused the phone camera, or a restriction has.
+        var phoneCameraDenied: Bool
+        /// Capture & Streaming can be opened on this phone.
+        var setupReachable: Bool
+    }
+
+    enum Decision: Equatable {
+        /// Start or stop. `startSource` is nil to start on the Camera setting.
+        case toggle(startSource: BroadcastVideoSource?)
+        case needsSetup(canOpenSettings: Bool)
+        /// Falling back to the phone would quietly drop the blur the wearer has on.
+        case phoneCameraNotBlurred
+        case phoneCameraDenied
+    }
+
+    /// Stopping always wins: nothing below may stand between the wearer and ending a stream.
+    ///
+    /// A glasses stream with no glasses connected would go LIVE with a black picture and an open
+    /// microphone, so it falls back to the phone's back camera. Phone frames do not pass through
+    /// `OutboundFrameRelay`, so with the blur on that fallback is refused, not taken silently.
+    static func decide(_ facts: Facts) -> Decision {
+        guard !facts.isBroadcasting else { return .toggle(startSource: nil) }
+        guard facts.isConfigured else { return .needsSetup(canOpenSettings: facts.setupReachable) }
+        let fallsBack = facts.preferredSource == .glasses && !facts.glassesConnected
+        if fallsBack && facts.faceBlurOn { return .phoneCameraNotBlurred }
+        if (fallsBack || facts.preferredSource.isPhone) && facts.phoneCameraDenied {
+            return .phoneCameraDenied
+        }
+        return .toggle(startSource: fallsBack ? .phoneBack : nil)
+    }
+}
+
 /// Mid-stream source-switch state machine (pure). Debounces rapid switches so the RTMP
 /// pipeline isn't churned, and remembers the active source for frame routing.
 struct BroadcastSourceSelector {

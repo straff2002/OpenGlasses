@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import Combine
 
@@ -7,16 +8,26 @@ struct LivePreviewView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
+    /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
+    /// closes it and opens Settings: neither can happen from in here.
+    private let onOpenSetup: () -> Void
+
     @State private var currentFrame: UIImage?
     @State private var isStartingStream = false
     @State private var streamError: String?
     /// Whether the placeholder has been up long enough to earn a second line of advice.
     @State private var showColdStartHint = false
     @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
+    /// What the Go Live button had to say instead of going live.
+    @State private var goLiveNotice: GoLiveNotice?
 
     @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var controlCircle: CGFloat = 56
     @ScaledMetric(relativeTo: .title) private var recordGlyph: CGFloat = 32
+
+    init(onOpenSetup: @escaping () -> Void) {
+        self.onOpenSetup = onOpenSetup
+    }
 
     var body: some View {
         ZStack {
@@ -109,6 +120,19 @@ struct LivePreviewView: View {
                     .buttonStyle(.ogProminentCompact)
                 }
                 .padding()
+            } else if !appState.isConnected {
+                // The phone camera feeds the encoder directly, with nothing to draw here.
+                VStack(spacing: 12) {
+                    Image(systemName: "iphone")
+                        .font(.largeTitle)
+                        .foregroundStyle(OGTheme.onMedia)
+                        .accessibilityHidden(true)
+                    Text(phoneOnlyHeadline)
+                        .foregroundStyle(OGTheme.onMedia)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 32)
+                .accessibilityElement(children: .combine)
             }
 
             // Overlay controls
@@ -145,7 +169,7 @@ struct LivePreviewView: View {
                             .frame(width: controlCircle, height: controlCircle)
                             .glassEffect(in: .circle)
                     }
-                    .disabled(appState.cameraService.isCaptureInProgress)
+                    .disabled(appState.cameraService.isCaptureInProgress || !appState.isConnected)
                     .accessibilityLabel("Take Photo")
 
                     // Record video
@@ -160,11 +184,13 @@ struct LivePreviewView: View {
                             .frame(width: controlCircle, height: controlCircle)
                             .glassEffect(in: .circle)
                     }
+                    // Stopping a recording never depends on the glasses still being there.
+                    .disabled(!appState.isConnected && !appState.videoRecorder.isRecording)
                     .accessibilityLabel(appState.videoRecorder.isRecording ? "Stop Recording" : "Start Recording")
 
                     // Go Live
                     Button {
-                        Task { await appState.toggleBroadcast() }
+                        Task { await goLiveTapped() }
                     } label: {
                         ZStack {
                             Image(systemName: "antenna.radiowaves.left.and.right")
@@ -300,6 +326,23 @@ struct LivePreviewView: View {
         .sheet(item: $appState.pendingShareItem) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+        .alert(goLiveNotice?.title ?? "",
+               isPresented: Binding(get: { goLiveNotice != nil },
+                                    set: { if !$0 { goLiveNotice = nil } }),
+               presenting: goLiveNotice) { notice in
+            if case .setUp = notice {
+                Button("Open Setup", action: onOpenSetup)
+                Button("Not Now", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { notice in
+            Text(verbatim: notice.message)
+        }
+        // A pair that connects while this is open is the picture the wearer came here for.
+        .onChange(of: appState.isConnected) { _, connected in
+            if connected { startStreamIfNeeded() }
+        }
         .onAppear {
             // Subscribe to camera frames via callback
             let previousCallback = appState.cameraService.onVideoFrame
@@ -354,8 +397,66 @@ struct LivePreviewView: View {
         }
     }
 
+    private var phoneOnlyHeadline: String {
+        if appState.broadcastService.isBroadcasting {
+            return String(localized: "Streaming from the phone camera. The picture doesn't show here.")
+        }
+        // Go Live refuses this fallback with the blur on, so it must not be promised.
+        if preferredBroadcastSource == .glasses, appState.privacyFilter.isEnabled {
+            return String(localized: "No glasses connected.")
+        }
+        return String(localized: "No glasses connected. Go Live uses the phone camera, and the picture doesn't show here.")
+    }
+
+    /// `AppState.toggleBroadcast()` reports a missing URL or key as an error, which is right for
+    /// Siri. Here the wearer is looking at the button, so they get the way to fix it.
+    private func goLiveTapped() async {
+        var decision = goLiveDecision()
+        // Asked before the stream starts, so the microphone isn't on air behind the iOS prompt.
+        if startsOnPhone(decision), AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+            _ = await AVCaptureDevice.requestAccess(for: .video)
+            decision = goLiveDecision()
+        }
+        switch decision {
+        case .toggle(let source):
+            await appState.toggleBroadcast(startSource: source)
+        case .needsSetup(let canOpenSettings):
+            goLiveNotice = canOpenSettings ? .setUp : .notSetUp
+        case .phoneCameraNotBlurred:
+            goLiveNotice = .phoneCameraNotBlurred
+        case .phoneCameraDenied:
+            goLiveNotice = .phoneCameraDenied
+        }
+    }
+
+    private var preferredBroadcastSource: BroadcastVideoSource {
+        BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
+    }
+
+    private func goLiveDecision() -> BroadcastGoLive.Decision {
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        return BroadcastGoLive.decide(.init(
+            isBroadcasting: appState.broadcastService.isBroadcasting,
+            isConfigured: Config.isBroadcastConfigured,
+            preferredSource: preferredBroadcastSource,
+            glassesConnected: appState.isConnected,
+            faceBlurOn: appState.privacyFilter.isEnabled,
+            phoneCameraDenied: camera == .denied || camera == .restricted,
+            setupReachable: SettingsVisibilityPolicy.hubCategories(
+                simpleMode: Config.simpleModeEnabled, in: AdminGate.shared.settingsContext)
+                .contains { $0.id == .capture }))
+    }
+
+    private func startsOnPhone(_ decision: BroadcastGoLive.Decision) -> Bool {
+        guard !appState.broadcastService.isBroadcasting,
+              case .toggle(let source) = decision else { return false }
+        return (source ?? preferredBroadcastSource).isPhone
+    }
+
     private func startStreamIfNeeded() {
-        guard !appState.cameraService.isStreaming else { return }
+        // The glasses camera is all this starts, and asking for it can leave the app for Meta AI.
+        // With no glasses there is nothing to wait for.
+        guard appState.isConnected, !appState.cameraService.isStreaming else { return }
         streamError = nil
         isStartingStream = true
         Task {
@@ -366,6 +467,36 @@ struct LivePreviewView: View {
                 isStartingStream = false
                 streamError = String(localized: "Couldn't start the camera. Make sure your glasses are connected and try again.")
             }
+        }
+    }
+}
+
+/// Why the Go Live button did not go live.
+private enum GoLiveNotice {
+    case setUp
+    case notSetUp
+    case phoneCameraNotBlurred
+    case phoneCameraDenied
+
+    var title: String {
+        switch self {
+        case .setUp: return String(localized: "Set up live streaming?")
+        case .notSetUp: return String(localized: "Live streaming isn't set up")
+        case .phoneCameraNotBlurred: return String(localized: "Can't blur the phone camera")
+        case .phoneCameraDenied: return String(localized: "Camera access is off")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .setUp:
+            return String(localized: "In Settings, open Camera, Recording & Streaming to find Live Streaming. Add your platform and stream key, then come back to go live.")
+        case .notSetUp:
+            return String(localized: "Its settings aren't available on this phone.")
+        case .phoneCameraNotBlurred:
+            return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone.")
+        case .phoneCameraDenied:
+            return String(localized: "Allow camera access for Avenkin in iOS Settings to stream from the phone.")
         }
     }
 }

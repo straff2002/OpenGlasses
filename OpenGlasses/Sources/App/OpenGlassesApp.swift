@@ -2329,6 +2329,16 @@ class AppState: ObservableObject, AppStateProtocol {
         requestedTab = .settings
     }
 
+    /// The Voice tab should open the live preview when it next appears. Consumed and cleared by
+    /// `VoiceTab`, which owns the full-screen cover.
+    @Published var livePreviewRequested = false
+
+    /// Show the live preview, from wherever the wearer is.
+    func openLivePreview() {
+        livePreviewRequested = true
+        requestedTab = .voice
+    }
+
     /// A saved conversation the Chat tab should open when it next appears. Consumed and cleared by
     /// `ChatListView`, which is the only thing that knows how to push onto its own stack.
     ///
@@ -6399,7 +6409,10 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Toggle live broadcast on/off.
-    func toggleBroadcast() async {
+    ///
+    /// - Parameter startSource: the camera to start on, chosen by the live preview
+    ///   (`BroadcastGoLive`). Siri and Shortcuts pass nothing, which starts on the Camera setting.
+    func toggleBroadcast(startSource: BroadcastVideoSource? = nil) async {
         if broadcastService.isBroadcasting {
             broadcastService.stopBroadcast()
             chatReadback.stop()
@@ -6408,7 +6421,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 try await broadcastService.startBroadcast(
                     rtmpURL: Config.broadcastRTMPURL,
                     streamKey: Config.broadcastStreamKey,
-                    from: outboundFrames.publisher    // CP: blurred before it reaches the wire
+                    from: outboundFrames.publisher,   // CP: blurred before it reaches the wire
+                    source: startSource
                 )
                 startChatReadbackIfConfigured()
             } catch {

@@ -227,7 +227,7 @@ enum HomeGridTile: Identifiable, Equatable {
 /// every tile it is handed. Gating changes WHEN a slot appears, never where: the arranged order is
 /// kept, and nothing is added twice.
 struct HomeGridTilePresence: Equatable {
-    /// The live preview is reachable (glasses connected).
+    /// The live preview is reachable (`livePreviewReachable`).
     var previewAvailable = false
     /// The surface can open a typed message.
     var canType = true
@@ -237,6 +237,12 @@ struct HomeGridTilePresence: Equatable {
     var connected = false
     /// The active model runs on the device, so its load/unload key rides in front of Model.
     var localModelActive = false
+
+    /// Go Live sits in the preview, so a phone with streaming set up needs the preview with or
+    /// without glasses. With neither, there is nothing to show in it.
+    static func livePreviewReachable(glassesConnected: Bool, broadcastConfigured: Bool) -> Bool {
+        glassesConnected || broadcastConfigured
+    }
 
     func isPresent(_ item: DockItem) -> Bool {
         switch item {

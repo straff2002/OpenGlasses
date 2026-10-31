@@ -19,6 +19,8 @@ struct VoiceTab: View {
     @ObservedObject private var fieldSessions = FieldSessionService.shared
     @State private var dockPager = DockPagerState()
     @State private var showPreview = false
+    /// The preview asked for streaming setup, which cannot be opened from under its cover.
+    @State private var previewLeavingToSetup = false
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
     @State private var showChatInput = false
@@ -191,9 +193,19 @@ struct VoiceTab: View {
         .onChange(of: dockPager.userMovedThisTurn) { _, moved in
             if moved { scenarios.settleShelfOpening() }
         }
-        .fullScreenCover(isPresented: $showPreview) {
-            LivePreviewView()
-                .environmentObject(appState)
+        .fullScreenCover(isPresented: $showPreview, onDismiss: leavePreview) {
+            LivePreviewView {
+                previewLeavingToSetup = true
+                showPreview = false
+            }
+            .environmentObject(appState)
+        }
+        // Consumed on appearing, not on change: the request arrives from Settings while this tab
+        // is off screen, and a cover presented from there may not come up.
+        .onAppear {
+            guard appState.livePreviewRequested else { return }
+            appState.livePreviewRequested = false
+            showPreview = true
         }
         .fullScreenCover(isPresented: $showingJobDay, onDismiss: leaveJobDay) {
             JobDayView(appState: appState, feed: appState.jobDayFeed) { destination in
@@ -213,6 +225,12 @@ struct VoiceTab: View {
                              set: { appState.pendingShareItem = $0 })) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+    }
+
+    private func leavePreview() {
+        guard previewLeavingToSetup else { return }
+        previewLeavingToSetup = false
+        appState.openSettings(.capture)
     }
 
     // MARK: - First turn
