@@ -4,6 +4,9 @@ import Foundation
 enum ModelTurnRoute: Equatable {
     /// Use the on-device agent model (fast path).
     case localAgent
+    /// A cloud model is set as the agent: an ordinary turn on that model, with the same prompt,
+    /// tool exposure, spend caps and fall-over as any other cloud turn.
+    case cloudAgent(toId: String)
     /// Temporarily switch the active model to this tier-recommended model for the turn.
     case switchModel(toId: String)
     /// Keep the currently active model.
@@ -19,7 +22,7 @@ enum ModelTurnRoute: Equatable {
 /// live voice path.
 enum ModelRoutingPolicy {
     /// - Parameters:
-    ///   - agentIsCloud: whether the configured agent model is a cloud model (vs on-device MLX).
+    ///   - cloudAgentId: the configured agent model when it is a cloud model, nil when it is on-device.
     ///   - localAgentEnabled: user opt-in for the on-device agent (off by default; that path can crash).
     ///   - tierModelId: id of the model recommended for this tier (`Config.modelForTier(...)?.id`), if any.
     ///   - activeModelId: the currently active model id.
@@ -29,7 +32,7 @@ enum ModelRoutingPolicy {
         isFastTier: Bool,
         agentModeEnabled: Bool,
         agentModelDownloaded: Bool,
-        agentIsCloud: Bool,
+        cloudAgentId: String?,
         localAgentEnabled: Bool,
         isPhoto: Bool,
         autoRoutingEnabled: Bool,
@@ -44,9 +47,9 @@ enum ModelRoutingPolicy {
         // Fast-tier queries go to the agent model when agentic mode is on and the model is ready.
         // The on-device MLX agent only runs when the user opted in (it can fatally crash); a cloud
         // agent model routes normally. Photo turns never use the agent (they need vision).
-        if isFastTier, agentModeEnabled, agentModelDownloaded,
-           (agentIsCloud || localAgentEnabled), !isPhoto {
-            return .localAgent
+        if isFastTier, agentModeEnabled, agentModelDownloaded, !isPhoto {
+            if let cloudAgentId { return .cloudAgent(toId: cloudAgentId) }
+            if localAgentEnabled { return .localAgent }
         }
         // Otherwise temporarily switch to the tier-recommended model when auto-routing is on and it
         // differs from the active one.

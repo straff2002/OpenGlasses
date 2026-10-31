@@ -16,7 +16,8 @@ final class AppleRemindersTool: NativeTool, @unchecked Sendable {
                 "description": "Optional absolute ISO-8601 due date/time for create, e.g. '2026-08-30T17:00:00+12:00'. Convert the user's words to this absolute value before calling the tool."
             ],
             "id": ["type": "string", "description": "Stable reminder ID for exact completion."],
-            "search": ["type": "string", "description": "Title to resolve for complete when no stable ID is available."]
+            "search": ["type": "string", "description": "Title to resolve for complete when no stable ID is available."],
+            "offset": ["type": "integer", "description": "For list: how many reminders to skip, when the previous reply said there are more."]
         ],
         "required": ["action"]
     ]
@@ -46,7 +47,7 @@ final class AppleRemindersTool: NativeTool, @unchecked Sendable {
 
         switch (args["action"] as? String ?? "create").lowercased() {
         case "create", "add", "set": return try createReminder(args: args)
-        case "list", "show": return await listReminders()
+        case "list", "show": return await listReminders(offset: args["offset"] as? Int ?? 0)
         case "complete", "done", "finish": return await completeReminder(args: args)
         default: return "Unknown action. Use: create, list, or complete."
         }
@@ -86,17 +87,13 @@ final class AppleRemindersTool: NativeTool, @unchecked Sendable {
         return response + "."
     }
 
-    private func listReminders() async -> String {
+    private func listReminders(offset: Int) async -> String {
         let reminders = await eventStore.incompleteReminders().sorted(by: Self.reminderOrder)
-        guard !reminders.isEmpty else { return "No incomplete reminders." }
-
-        let descriptions = reminders.prefix(10).map { reminder -> String in
+        let descriptions = reminders.map { reminder -> String in
             guard let due = reminder.dueDate else { return reminder.title }
             return "\(reminder.title) (due \(formatDueDate(due, hasTime: reminder.hasTime)))"
         }
-        var result = "\(reminders.count) reminder\(reminders.count == 1 ? "" : "s"): \(descriptions.joined(separator: ". "))."
-        if reminders.count > 10 { result += " Plus \(reminders.count - 10) more." }
-        return result
+        return ReminderListPolicy.reply(descriptions, offset: offset)
     }
 
     private func completeReminder(args: [String: Any]) async -> String {
@@ -172,6 +169,26 @@ enum ReminderDuePolicy {
         if let date = formatter.date(from: text) { return date }
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: text)
+    }
+}
+
+enum ReminderListPolicy {
+    /// Titles in one reply. It goes to the model, which says what was asked for, so this bounds
+    /// the request rather than what is spoken; anything past it is reached with `offset`.
+    static let pageSize = 50
+
+    static func reply(_ descriptions: [String], offset: Int) -> String {
+        let total = descriptions.count
+        guard total > 0 else { return "No incomplete reminders." }
+        let start = max(0, offset)
+        guard start < total else { return "There are only \(total) incomplete reminders." }
+        let end = min(start + pageSize, total)
+        let lead = start == 0
+            ? "\(total) reminder\(total == 1 ? "" : "s")"
+            : "Reminders \(start + 1) to \(end) of \(total)"
+        var result = "\(lead): \(descriptions[start..<end].joined(separator: ". "))."
+        if end < total { result += " Plus \(total - end) more: list again with offset \(end)." }
+        return result
     }
 }
 
