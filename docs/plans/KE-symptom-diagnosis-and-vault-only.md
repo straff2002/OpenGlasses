@@ -1,6 +1,6 @@
 # Plan KE — Symptom Diagnosis and Vault-Only Jobs (no web search in a sealed vault, the known model picks the manuals, citations that open the right page)
 
-**Status:** 🚧 P0 and P1 built 2026-10-31, headless; P2 written, its simulator tests owed; P3 to do. Drafted 2026-10-31 from a
+**Status:** 🚧 P0, P1 and P2 built 2026-10-31, headless; P3 to do. Drafted 2026-10-31 from a
 tester's report of 2026-10-30 (three simulated jobs on a refrigerator vault, build 581). Every cause
 below was traced on main at build 610:
 the citation causes by running the parser on the report's exact lines, the page causes by running
@@ -232,8 +232,10 @@ The plan ships as one PR unless review says otherwise; the phases are the order 
 - **Pages add up.** A second `manual_figure` in a turn joins the first in the sheet through
   `ShowSourceCenter.present`, up to `ShowSourceResolver.maximumPages`, opening on the newest.
 
-**P2 as built (2026-10-31).** Written and checked against the real manuals on the Mac. Not yet compiled for
-the app or run on the simulator, and nothing here has been run on the phone.
+**P2 as built (2026-10-31).** Headless. Compiled for the app, its classes and the P0, P1, retrieval and
+security-regression classes run on the simulator, and checked against the real manuals on the Mac. Nothing
+here has been run on the phone, and the tests that read the example vault's manuals skipped: they are not on
+this machine, so the heading rule has only been read against the vault's service manuals.
 
 - `Sentence.page` is only where a sentence starts. A form feed does not end a sentence for the tokenizer,
   so a run of table lines reads straight over the page: over a third of the service manuals' chunks hold a
@@ -274,11 +276,13 @@ the app or run on the simulator, and nothing here has been run on the phone.
   staged for the model only, so the single-page sheet stays down. A page already up is not logged again
   (`SourcePagesRequest.opening`). `manual_figure` in the personal library still shows one page.
 - Follow-ups from P1: both sentences that nudged an escalation now name the gap and offer an expert. A title
-  word is a document's id only as its first word holding a digit, or at six characters of which four are
-  digits, hyphens aside, so a refrigerant in a title and a section's prose assigns nothing; a designation
-  with four digits would still pass. The turn that records a unit by itself now carries the earlier-work
+  word is a document's id only as its first word holding a digit, or at six characters of which five are
+  digits, hyphens aside, so a refrigerant in a title and a section's prose assigns nothing. The turn that records a unit by itself now carries the earlier-work
   sentence and the site line, for as long as those words are the turn. The vault guide says what naming a
   document does.
+- A chunk across a break is on both pages, so "show me clause N" opened the next page too once the answer
+  cited it. The clause is taken from the page the chunk is cited at, and the next page only when nothing else
+  cited holds it, since the model may have cited the mark inside the chunk.
 
 Against the real manuals, aggregates only (the app's chunker over each page's text, majority rule on):
 
@@ -294,6 +298,20 @@ line of a page title whose first line stays, and the others are labels on drawin
 lines over phone numbers on the contact pages. Of the 41 left, about ten are still no title (two header rows,
 a cell, some wrapped lines). Recall on the acceptance questions was not re-measured: the text and vectors are
 unchanged, so only a section's words could move it.
+
+The documents by model (P1) measured on the same vault, on the Mac with the contextual embedder, a side-by-side
+and a multi-door model active, top four passages, document scoping off then on (aggregates only):
+
+| Questions | Passages | From assigned documents | Refused | Expected page in the top four |
+|---|---|---|---|---|
+| 12 symptom and follow-up | 47 | 19 → 25 | 0 → 0 | not labelled |
+| 15 acceptance | 35 with a unit that has documents | 15 → 19 | 0 → 0 | 2 → 3 of 5 |
+
+Nothing from an assigned document left the top four, and one question gained its expected page. The scoping
+moves little on a symptom question. In the multi-door case the one assigned manual put only the page listing the
+model into the top four on most of them, on or off, and the rest stayed with other documents, since a penalty
+ranks them down and nothing better cleared the gate. A model number said in the turn takes the first slot for
+that page either way. The extractor here is the Mac's rather than the phone's.
 
 ### P3 — the tester's re-run (owed, device)
 
