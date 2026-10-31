@@ -1,8 +1,9 @@
 # Plan KJ — One Answer, Asked For (a reply said once, an offer that was an offer, a reading's unit once)
 
 **Status:** 🚧 P0 run 2026-11-01 (see Evidence): the doubling reproduced on Chat Completions and not on
-Responses, at the cost of slower tool turns. The owner took the route on that evidence. P1 to P3 are being built;
-P4 is owed. Drafted the same day from a tester's report on build 581.
+Responses, at the cost of slower tool turns. The owner took the route on that evidence. P1 to P3 are built
+(see each phase's as-built note); P4, the tester's re-run on a device, is owed. Drafted the same day from a
+tester's report on build 581.
 **Track:** Field Assist first (the tester is comparing models on a vault job), app-wide underneath: any
 Direct-mode turn on an OpenAI model at Automatic, and any reading recorded in a job.
 **Related:** Plan [KD](KD-vault-retest-581.md) (P3's `RepeatedReplyCollapse`, and the route decision it
@@ -94,6 +95,12 @@ reasoning level as well as the route, so it can point to the cause but not prove
 - Table tests in `OpenAIRouteSelectorTests`: flagged family at Automatic, the same with a learned
   rejection, explicit `none`, explicit Low, a custom host, an unflagged family.
 
+**As built:** `ReasoningPolicy.Family.chatDoublesReplies`, true only for ids starting `gpt-6-luna`, and
+`OpenAIRouteSelector.Reason.chatDoublesReplies`, a new rule 9 between explicit `none` and the cheap default.
+On the wire it is `reasoning.effort: none`, because the family's default is `medium`. gpt-6-sol, rule 4, other
+hosts, explicit `none` and no-tools turns are unchanged. The new explanation string is not in the catalog yet;
+the next catalog sync picks it up. A commentary-only reply on this route is silent: see Open.
+
 **P1b, only if P0 points to history:** the part of a reply that repeats the part before it is judged on
 the finished reply, and the cleaned text is what history keeps. The detector itself is a design of its
 own and is not specified here: it must leave a summary, a repeated safety warning and a read-back alone,
@@ -109,6 +116,12 @@ which is why this plan does not start there.
   "escalate rather than…" are refused and show no card. `SymptomDiagnosisTests` keeps passing unchanged.
 - The tool description and the refusal text do not change.
 
+**As built:** `TechnicianRequest.offersExpert`, pure, reads the previous reply a sentence at a time: a person
+or escalate word, and in that same sentence a question mark or an offering phrase. A full stop inside "0.28"
+does not end a sentence. Two limits are accepted, each costing one turn or one approval card: a question that
+names a person without offering one ("did the supervisor sign it?") passes, and an offer split across two
+sentences ("the manual says escalate. Shall I?") is refused.
+
 ### P3 — a reading's unit once (headless)
 
 - `valueWithUnit` prints the value alone when it already ends in the unit: compared case-insensitively,
@@ -118,6 +131,9 @@ which is why this plan does not start there.
 - `value` itself is not rewritten, so what the technician reported stays as recorded. A value and unit
   that differ ("140 F" with `°F`) are left for now; the schema change is what reduces those.
 - Tests on `valueWithUnit` and on the record's reading line, with and without a correction.
+
+**As built:** `valueWithUnit` as written, tests in `JobRecordFidelityTests`. The tool's own description also
+said "'value' exactly as said", which would have contradicted the schema, so it now says the number alone too.
 
 ### P4 — the tester's re-run (owed, device)
 
@@ -195,3 +211,9 @@ behind it. gpt-6-sol stays on Chat Completions, because the doubling has only be
   would not answer a plain yes-or-no. Plan KE's refusal text sends that turn to an expert offer, so the
   question stays unanswered. This is a product decision for the owner, not a fix.
 - Whether gpt-6-sol doubles the same way. Only gpt-6-luna has been reported.
+- **A commentary-only reply is silence.** On Responses, a final round holding only `commentary` is an empty
+  reply: the loop finalizes it, nothing throws, so the cascade does not hop, and the speech service has nothing
+  to say. `commentaryWithheld` records `noAnswer`. On Chat Completions the same words would have been spoken.
+  P0 saw commentary only on rounds that called a tool, and every run ended in a reply, so this was not seen on
+  luna, but moving luna raises the exposure. What to do instead is a design choice: the owner decides whether
+  to treat it as a stall and ask once more.
