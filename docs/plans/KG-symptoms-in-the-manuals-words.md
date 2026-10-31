@@ -1,9 +1,10 @@
 # Plan KG — Symptoms in the Manual's Words (a model number is not evidence, drawings that are prose, a reviewed symptom map)
 
-**Status:** 🚧 P0 and P1's audit built 2026-10-31, headless; P2's guide section written, its app part held for a
+**Status:** 🚧 P0, P1's audit and P4 built 2026-10-31, headless; P2's guide section written, its app part held for a
 core file that proves it; P3 to do. Drafted 2026-10-31 from the measurement behind Plan KE's document scoping.
 **The numbers below "Why" were read through the Mac extractor, which tagged far more pages as drawings than the
-phone does.** P1 as built has the phone's numbers, which are worse for symptoms: start there.
+phone does.** P1 as built has the phone's numbers, which are worse for symptoms, and P4 as built has the latest:
+start there.
 **Track:** Field Assist first (the tester's customer pilot waits on Plan KE's re-run, and this decides
 whether that re-run can pass), app-wide underneath: any vault whose manuals are organised by part.
 **Related:** Plan [KE](KE-symptom-diagnosis-and-vault-only.md) (document scoping, the re-run),
@@ -17,7 +18,7 @@ Plan [EL](EL-equipment-identity.md) (model scoping), Plan [EK](EK-manual-structu
 
 A technician says what the machine is doing. A service manual says how to test a part. On a
 refrigerator vault the right page reached the top four on 3 of 12 symptom questions, with or without
-Plan KE's document scoping. A search limited to the unit's assigned manuals did not change that.
+Plan KE's document scoping. A search limited to the unit's assigned manuals did not change that on the Mac's index; on the phone's it did (P4).
 The manuals' words are the limit: of the 9 questions still missing, 5 have a specific test page under
 the part's name, 3 have only general component tests, and 1 has no page.
 
@@ -51,12 +52,6 @@ searches do not read, though some are plain prose.
 
 ## Rejected
 
-- **A search scoped to the assigned documents.** It brought 4 more right pages into the pool, and the
-  shared-terms check stopped all 4. Top-four results did not change, for about 0.55 s more per search on the
-  Mac. Of the 8 passages it added to the top four, 1 answered the question, and that replaced the same
-  table from another family's document. **This rejection rests on the Mac extractor and needs a second look:**
-  on the phone's text, where the whole vault is searchable, the same route took the right page from 0 of 12 to
-  3 of 12 (P1 as built). It is not built here.
 - **Waiving the gate for the top scoped hits.** The right page reached the top four on 7 of 12, and all 8
   out-of-scope questions were answered. The gate was doing its job.
 - **Lifting the assigned-document rule to a hard filter.** After the search it removes passages and adds
@@ -126,9 +121,10 @@ Measure: the what-if gave 4 of 5 expected pages and useful first checks on 2 mor
 measured again, and labels on real drawings must not crowd the top four.
 
 **P1 as built (2026-10-31).** No app change, no migration. The audit read the vault through the app's extractor
-on the simulator, which is not a phone. A phone pass is owed. The full import stopped there with a recognition error
-after one document, so the audit called the extractor's text-layer path per document: the one scanned document came
-from the Mac, and pages the phone would recognise are as their text layer has them.
+on the simulator, which is not a phone. A phone pass is owed. The audit called the extractor's text-layer path per
+document: the one scanned document came from the Mac, and pages the phone would recognise are as their text layer
+has them. The whole-vault import that stopped at the time was the local test's own fault, a store folder it never
+made. Run properly in P4, it finishes.
 
 - **The 62% was the Mac's.** The app's `isDiagramPage` marks 3 pages of 1,061, all three real wiring diagrams: 13
   chunks of 5,126 (0.25%), against the Mac's 3,245 of 5,236. Font sizes and the rule are the same on both.
@@ -161,8 +157,7 @@ The Mac runner with the contextual embedder, all rows vectored, each arm twice a
 identical results. One index came back with no vectors, it seems because the model had not loaded, and was thrown
 away; Plan KE's odd first run may have been the same. Six of 8 out-of-scope questions are answered on the phone's
 text with or without the number, so finding 3 is larger than it looked. The Mac's corrected text and the phone's
-still differ by 14 chunks. P0 and P1 reach 0 of 12 alone, so the target of 8 rests on P2, and the scoped search has
-to be weighed again first.
+still differ by 14 chunks. P0 and P1 reach 0 of 12 alone, so the target of 8 rests on P2. The what-if became P4.
 
 ### P2 — a reviewed symptom map (no app change first, then headless)
 
@@ -185,6 +180,63 @@ the checklist. No `SymptomMap` and no manifest key: those wait for a core file t
 - An unmatched symptom changes nothing, and a vault without the file behaves as today.
 - The vault guide documents it. The map is the vault's own content and stays out of the repo; tests use
   invented manuals.
+
+### P4 — the unit's documents are searched too (headless)
+
+Added 2026-10-31 by the owner's decision, on the phone's numbers in P1 as built. Rejected at first on the Mac's
+mis-tagged index, where it changed nothing. On the phone's text, where the whole vault is searchable, other
+machines' near-identical pages fill the search's depth, and the document rule can only reorder what was found.
+
+With documents assigned to the unit on the job, the search by meaning and the search by words also bring in the best
+of those documents. Candidates only: the gate does not change, and other documents stay.
+
+**P4 as built (2026-10-31).** Headless; nothing here has been run on the phone yet.
+
+- **One pass.** `DocumentStore.query` and `passages(sharingTermsWith:)` take `alsoWithin`, and every row has been scored
+  by then, so `bestAndBestWithin` is a filter: no second read and no second embedding. `VaultRetriever.AssignedSearch`
+  takes the place of the two routes when there is something to search within, so each runs once for each part of a
+  request, in the second search of a refused turn too.
+- **Where the time went.** Not the search: the embedding takes 12 ms and the search by meaning 35 ms. Each extra
+  candidate cost 18 ms, because the document rule scanned the passage once for each of the vault's hundreds of model
+  spellings, which is why a one-pass route still added 290 ms. `CodeTokenizer.TokenIndex` reads a passage's words into
+  a set, and a test holds it to the long way's answers. That cost was on every search with a unit on the job, so the
+  route now costs nothing measurable and a search is faster than before it.
+- **The search cannot be widened.** `alsoWithin` picks from what the search already read, so an edition, a language
+  group (`ManualLanguageSearch`, `queries` rewrites) or a manual the model named holds as it did. `availability` runs after
+  the merge, so a removed manual is not found. The corpus statistics come from the store, not the pool, so BM25F
+  weighs a word as before. Two routes reaching a chunk leave one passage.
+- **Unchanged:** no unit on the job, a unit with no assigned documents, and the personal library, which builds its own
+  retriever. A turn naming another model is not given the unit's documents: it is asking about that machine. A
+  Vault-only job searches alike, since the seal is about outside sources.
+- A unit changed mid-job takes its own documents on the next turn: `makeRetriever` reads the scope each time.
+- P0's rule holds for these candidates, and being assigned is not evidence. Tests pin each of these on invented manuals.
+
+Measured on the phone's text as in P1, the same questions, each arm twice and this arm re-indexed, all rows vectored,
+with identical results. Search time is per search on the Mac, 12 symptom questions, three passes, with nothing else
+running.
+
+| Arm, top four | Refused of 8, without / with the number | Expected, of 5 | Right page, of 12 | Component words, of 8 | From assigned documents, symptom | Search time |
+|---|---|---|---|---|---|---|
+| P0 and P1 | 2 / 2 | 3 | 0 | 6 | 6 of 46 | about 1,080 ms |
+| **P4** | **2 / 2** | **3** | **3** | **7** | **32 of 48** | **about 805 ms** |
+| P4's shape as two searches, for the cost | 2 / 2 | 3 | 3 | 7 | 32 of 48 | about 860 ms |
+
+- It reached the what-if's numbers with the gate untouched, and no question stopped being refused.
+- **It is less than the numbers look.** Read by hand, the top four answers 3 of 12, not the same 3: one right page
+  (the leak) is a page of parts with no use for a leak, and one question counted as missing got a useful first check
+  (the ice maker's switch). On several questions all four passages are now the unit's owner's manual and about
+  something else, doors and hinges: 32 of 48 from the right documents is not 32 useful passages.
+- The hits on the acceptance questions are the same three. Four acceptance questions changed some passages, towards
+  the unit's documents or in their order, without moving an expected page. The two misses stay missed, among them
+  P0's listing question.
+- **0 to 3 of 12 is still far from 8.** The manuals' words remain the limit, as the component-word row shows, so the
+  target of 8 still rests on P2.
+- The remaining time is two scans of every row: about 490 ms for the search by words and 210 ms for each exact token.
+  They are not this phase's, and they are what a phone will feel. A phone's number is owed.
+- The vault's whole import ran on the simulator: all 44 documents in about 7 minutes, 5 of them through recognition.
+  On that store, with the simulator's sentence embedder, the route adds about 50 ms to about 2.1 s (2,085 to 2,135 ms),
+  after the same speed-up. The table above still reads the text-layer extraction, so the recognised pages of those 5
+  documents are not in it.
 
 ### P3 — the re-run (owed, device)
 
@@ -224,17 +276,15 @@ model number. Those words were chosen knowing the pages, so this is an upper bou
 
 ## Decisions
 
-- **Not the scoped search,** by the measurement above. **Reopened:** that measurement read the Mac's mis-tagged
-  index, and P1's what-if on the phone's text points the other way. The owner decides.
+- **The scoped search is built (P4),** by the owner, 2026-10-31. The measurement that first rejected it read the Mac's
+  mis-tagged index, and the phone's text pointed the other way. Candidates only, not a hard filter.
 - **The gate stays strict.** Fix what reaches it, not its bar.
 - **The symptom order is the author's, checked by a person,** not inferred by the model from a part's test
   page. A wrong order on site costs a call-out, and the manuals don't state one.
 
 ## Open
 
-- Whether to build the search scoped to assigned documents after all: 0 to 3 of 12 right pages and 6 to 7 of 8
-  component-word questions on the phone's text, with no change to refusals, for about 0.55 s more per search
-  on the Mac. Neither the cost on a phone nor the result on a real import has been measured.
+- What a search costs on a phone, and the result on a phone's own import: neither has been measured.
 - Whether a turn answered only from unassigned documents, with a model active, should be refused or
   labelled (finding 3). Plan KE keeps those passages so the assistant can say a figure belongs to another
   model. Labelling is the likely answer.
