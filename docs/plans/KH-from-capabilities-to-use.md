@@ -7,7 +7,8 @@ Plan [DE](DE-settings-capability-journey.md) (the journey HA retired), Plan
 [EA](EA-voice-home-grid.md) (the home grid's canned turns), Plan [GW](GW-home-grid-pages.md) (grid
 pages), Plan [IW](IW-goals-and-activity-trail.md) (Goals and Activity), Plan
 [CT](CT-org-configuration-profiles.md) (organisation profiles), Plan
-[JO](JO-watchers.md) (noticed, then offered).
+[JO](JO-watchers.md) (noticed, then offered), Plan [KI](KI-tasks-that-wait.md) (tasks that wait on
+someone).
 
 ---
 
@@ -110,9 +111,9 @@ by watching new users and by the on-device count in P1, never by telemetry.
 
 ## Phases
 
-Three PRs, against the usual one PR per plan: each delivers on its own, and P2 changes what managed
-phones show, so it should be reviewable alone. P1 goes first because it answers the question people
-are asking.
+One PR per phase, against the usual one PR per plan: each delivers on its own, and P2 changes what
+managed phones show, so it should be reviewable alone. P1 goes first because it answers the question
+people are asking.
 
 ### P0 — Check the scenarios on paper (no code)
 
@@ -185,8 +186,9 @@ Triggers. Services & Integrations keeps the engines and keys it still holds.
 what it now covers. A profile naming `everyday` must not break an older build. Parent on never enables
 a separate-consent member. Parent never writes a locked key. Accessibility's guarantees are unchanged.
 
-### P3 — Show what it has learned
+### P3 — Suggestions that learn, and offers that follow through
 
+**What it has learned:**
 - **Offer to remember by default on a new install.** Memory Suggestions on for fresh installs, with
   `CapabilityDefaultMigration`'s rule that nobody's existing choice moves. It is spoken, confirmed by
   voice, and only filed on a yes. Owner decision, see Open.
@@ -196,6 +198,54 @@ a separate-consent member. Parent never writes a locked key. Accessibility's gua
   me?"). A first memory-backed answer gets one line pointing at What Avenkin Remembers, once.
 - **Copy says what is true.** Retrieved is not the same as used, so no "from memory" badge on an answer
   unless a turn can show the fact was used.
+
+**Personal suggestions:**
+- **`ScenarioRanker`:** pure and on-device. Reorders the catalogue by each scenario's `topics`, from what
+  has been used, remembered and dismissed. It only reorders: it writes no scenario, so it cannot
+  promise what the app cannot do. It changes Things to Try and the spoken answer. The home shelf still
+  ends for good.
+- **A "Personalise suggestions" switch,** on by default because nothing leaves the phone. It sits on
+  Things to Try and moves to the Memory group with P2. Off returns the catalogue order, deletes nothing,
+  and also stops learned offers. It is off whenever User Memory is off.
+
+**Offers and plans:**
+- **Offer templates:** fixed wordings with a gap for a learned detail ("You mentioned the dentist on
+  Tuesday."). The template opens the conversation; it is not the limit of what happens next, because
+  yes starts a normal turn and the agent may chain tools.
+- **A plan summary before a chain.** When a chain has several steps or reaches outside the phone, the
+  agent says what it will do, briefly, and you confirm, trim or clarify. One-step requests just happen.
+  Spoken plans are one breath; with the phone in hand it is a list you can edit.
+- **Yes covers the plan, not the send.** The message does not exist yet when you approve, so you still
+  see the final text. Each step's own rules still apply. If a step fails or finds two answers, it stops
+  and asks. Each step shows in Activity.
+- **Corrections teach it.** "Skip the email, I'll call" feeds the ranker.
+- **Outside Agent Mode there is no planner.** `LLMService` reaches `AgentPlanner` only with Agent Mode
+  on, so the summary is the model's own turn, from prompt guidance. A background chain needs Agent Mode.
+- **Web findings stay unconfirmed.** First check whether web text can reach memory during a normal turn
+  today. Findings are filed as `provisional` with their source until you confirm them, page text is
+  never an instruction, a search carries no name or reason for the visit, and HIPAA mode stops before a
+  web search. This is the part to review hardest.
+
+### P4 — Scenarios that move goals
+
+A goal says where you are going; a scenario is the next useful move. Goals already picks a next step,
+offers a `StepAction`, and suggests when a step looks done (Plan IW).
+
+- **Stages:** try a scenario; repeat it and get offered a routine; related requests lead to "want to
+  make it a goal?"; a goal's next step picks the scenario that moves it; a finished goal raises those
+  topics, and dismissed ones fade.
+- **`Scenario.moves`:** the `StepAction.Kind` a scenario performs. `GoalScenarioMatcher`, pure and
+  rule-based with no model call, matches it to `GoalAdvancePolicy.nextStep`. A due step offers a
+  calendar hold; a stalled step offers to break it down.
+- **No new home shelf.** It appears in My Day's goal line, on the Goals screen, and in "what's next?".
+- **It only offers.** The assistant never runs a step unasked, and the Personalise switch covers it.
+- **Order:** the next-step match and finish signals first. Repeat and goal spotting last, because they
+  speak up unprompted, and their rules should be tuned from real use.
+- **Limits today:** goal check-ins need Agent Mode, which is off by default, and My Day is off by
+  default. Without them these offers appear only on the Goals screen or when asked. Plan IW's device pass
+  is still owed, so nobody knows yet how Goals is used.
+
+Tasks that wait on someone else are Plan [KI](KI-tasks-that-wait.md), which starts from P3's plan summary.
 
 ## Draft scenarios (for P0)
 
