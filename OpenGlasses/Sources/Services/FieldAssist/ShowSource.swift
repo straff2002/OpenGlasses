@@ -283,15 +283,22 @@ enum ShowSourceResolver {
         }
         // A clause number: the cited source that holds it.
         if let clause = ClauseReference.references(in: which).first {
-            let holding = pool.filter { source in
+            func holds(_ source: Source, reachingOnly: Bool) -> Bool {
                 if let section = source.citation.section,
                    (ClauseReference.match(clause, in: section, section: section) ?? .cites) >= .startsSubclause {
                     return true
                 }
-                return memory.retrieved(for: source.citation).contains {
-                    (ClauseReference.match(clause, in: $0.text, section: $0.section) ?? .cites) >= .continues
+                let pages = source.citation.page.map { $0...(source.citation.throughPage ?? $0) }
+                return memory.retrieved(for: source.citation).contains { passage in
+                    guard reachingOnly || (passage.page.flatMap { page in pages?.contains(page) } ?? false) else { return false }
+                    return (ClauseReference.match(clause, in: passage.text, section: passage.section) ?? .cites) >= .continues
                 }
             }
+            // A chunk running onto the next page is on both (Plan KE P2), and the clause is on the
+            // page the chunk is cited at. The next page has it only when nothing else cited does:
+            // the model may have cited the mark inside the chunk.
+            let cited = pool.filter { holds($0, reachingOnly: false) }
+            let holding = cited.isEmpty ? pool.filter { holds($0, reachingOnly: true) } : cited
             guard !holding.isEmpty else {
                 return .problem("The last answer did not cite clause \(clause). It cited "
                     + labels(pool) + ". Nothing was opened.")

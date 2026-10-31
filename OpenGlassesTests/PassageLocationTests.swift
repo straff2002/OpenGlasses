@@ -351,7 +351,7 @@ final class PassageLocationTests: XCTestCase {
         let passages = store.passages(containingToken: "isolate", documentIds: [ref.id])
         let labelled = try XCTUnwrap(store.withPrintedLabels(passages).first)
         XCTAssertEqual(labelled.printedLabels, [2: "3-4"])
-        XCTAssertEqual(labelled.text, text.replacingOccurrences(of: "first.\u{0C}", with: "first. "), "the stored words are as they were")
+        XCTAssertEqual(labelled.text, text.replacingOccurrences(of: "\u{0C}", with: "\n"), "the stored words are as they were")
     }
 
     // MARK: - Migrating a store indexed before P0

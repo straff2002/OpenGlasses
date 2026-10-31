@@ -357,6 +357,7 @@ final class PassageAcrossPagesTests: XCTestCase {
         XCTAssertEqual(asked, PassageLocator.maximumRangePages)
     }
 
+    @MainActor
     func testAPageCanBeMarkedWithoutItsPassageBeingStaged() {
         // `ShowSourceTool.check`: a passage across two pages found on the other one stays out of the
         // page's marks and is counted, as any passage found elsewhere would be.
@@ -390,6 +391,34 @@ final class AnswerSourcesAcrossPagesTests: XCTestCase {
         var memory = AnswerSourceMemory()
         memory.noteRetrieved([retrieved(page: 11, breaks: across)], sessionId: "s")
         XCTAssertTrue(memory.retrieved(for: Citation(kind: .manual, title: "Acme Manual", page: 13)).isEmpty)
+    }
+
+    private func clausePassage(page: Int, breaks: [DocumentChunker.PageBreak]) -> AnswerSourceMemory.Retrieved {
+        .init(documentId: "d", documentName: "Acme Manual", chunkIndex: 0, page: page, section: "3.9.4 Underground wiring",
+              text: "Cover the cable with sand. The next clause follows.", pageBreaks: breaks)
+    }
+
+    private func memory(citing pages: [Int], passage: AnswerSourceMemory.Retrieved) -> AnswerSourceMemory {
+        var memory = AnswerSourceMemory()
+        memory.noteRetrieved([passage], sessionId: "s")
+        memory.noteAnswer(pages.map { Citation(kind: .manual, title: "Acme Manual", page: $0) }, sessionId: "s")
+        return memory
+    }
+
+    func testAClauseOpensAtTheChunksPageNotTheOneItRunsOnto() {
+        let held = memory(citing: [11, 12], passage: clausePassage(page: 11, breaks: across))
+        guard case .sources(let found) = ShowSourceResolver.resolve(which: "clause 3.9.4", document: nil, memory: held) else {
+            return XCTFail("the clause was cited")
+        }
+        XCTAssertEqual(found.map(\.citation.page), [11])
+    }
+
+    func testTheOtherPageStandsInWhenItIsAllTheAnswerCited() {
+        let held = memory(citing: [12], passage: clausePassage(page: 11, breaks: across))
+        guard case .sources(let found) = ShowSourceResolver.resolve(which: "clause 3.9.4", document: nil, memory: held) else {
+            return XCTFail("the model cited the mark inside the chunk")
+        }
+        XCTAssertEqual(found.map(\.citation.page), [12])
     }
 
     func testALookupStandsInWithTheRange() {
