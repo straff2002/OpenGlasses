@@ -105,12 +105,12 @@ final class LiveModeHandoffPlannerTests: XCTestCase {
 
     func testModelRoutingPolicyReadsThePhoneRouteFirst() {
         let route = ModelRoutingPolicy.decide(
-            isFastTier: true, agentModeEnabled: true, agentModelDownloaded: true, agentIsCloud: true,
+            isFastTier: true, agentModeEnabled: true, agentModelDownloaded: true, cloudAgentId: "agent",
             localAgentEnabled: false, isPhoto: false, autoRoutingEnabled: true,
             tierModelId: "tier", activeModelId: "active", phoneModelId: "local")
         XCTAssertEqual(route, .phoneHandoff(toId: "local"))
         let unchanged = ModelRoutingPolicy.decide(
-            isFastTier: false, agentModeEnabled: false, agentModelDownloaded: false, agentIsCloud: true,
+            isFastTier: false, agentModeEnabled: false, agentModelDownloaded: false, cloudAgentId: "agent",
             localAgentEnabled: false, isPhoto: false, autoRoutingEnabled: false,
             tierModelId: nil, activeModelId: "active")
         XCTAssertEqual(unchanged, .keepCurrent, "without a phone route nothing changes")
