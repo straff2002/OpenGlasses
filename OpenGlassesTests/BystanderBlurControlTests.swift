@@ -30,15 +30,24 @@ final class BystanderBlurControlTests: XCTestCase {
 
     /// The shortcut must not reach a switch the lockdown closed, even with the key itself unpinned.
     func testALockdownOnDevicesCannotBeSteppedRoundFromThePreview() {
-        let lockdown = ManagedLockdown(lockedCategories: [.devices])
+        let lockdown = ManagedLockdown.standard
         let technician = context(lockdown: lockdown, restricted: true)
         XCTAssertEqual(SettingsVisibilityPolicy.presentation(.key(.privacyFilterEnabled), in: technician), .editable)
         XCTAssertFalse(BystanderBlurControl.isChangeable(in: technician))
     }
 
     func testAnAdministratorPastTheLockdownCanChangeIt() {
-        let lockdown = ManagedLockdown(lockedCategories: [.devices])
+        let lockdown = ManagedLockdown.standard
         XCTAssertTrue(BystanderBlurControl.isChangeable(in: context(lockdown: lockdown, restricted: false)))
+    }
+
+    /// Simple Mode changes nothing about the switch. It stays where it was, under Devices &
+    /// Privacy, and the Live Streaming row goes with that category, as the streaming setup does.
+    func testSimpleModeKeepsTheSwitchAndDropsOnlyTheStreamingRow() {
+        let shown = Set(SettingsCatalog.visible(simpleMode: true).map(\.id))
+        XCTAssertTrue(shown.contains(.devices))
+        XCTAssertFalse(shown.contains(.capture))
+        XCTAssertTrue(BystanderBlurControl.isChangeable(in: .unmanaged))
     }
 
     // MARK: - Asking first
