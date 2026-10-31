@@ -6271,8 +6271,10 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.endTurn()
     }
 
-    func captureAndSharePhoto() async {
-        guard isConnected else {
+    /// - Parameter allowingPhoneCamera: the live preview's phone viewfinder, which handed the camera
+    ///   over first. `capturePhoto()` takes the phone path by itself with no glasses connected.
+    func captureAndSharePhoto(allowingPhoneCamera: Bool = false) async {
+        guard isConnected || allowingPhoneCamera else {
             errorMessage = String(localized: "Connect glasses first")
             errorMessageIsGlassesConnection = true
             return

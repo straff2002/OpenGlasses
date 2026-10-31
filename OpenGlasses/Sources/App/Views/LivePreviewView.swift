@@ -2,12 +2,15 @@ import AVFoundation
 import SwiftUI
 import Combine
 
-/// Full-screen live camera preview from the glasses.
-/// Subscribes to CameraService.framePublisher for multi-consumer frame delivery.
+/// Full-screen live camera preview: the glasses' frames, or the phone camera's viewfinder.
+/// `LivePreviewPicture` decides which. Glasses frames arrive on `CameraService.onVideoFrame`; the
+/// phone's picture is a preview layer on the session the stream uses (`PhoneViewfinder`).
 struct LivePreviewView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var broadcastService: BroadcastService
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.
@@ -24,6 +27,12 @@ struct LivePreviewView: View {
     @State private var isChangingBroadcast = false
     @State private var isPreviewVisible = false
 
+    /// The camera permission as last read: it can change while the app is away in Settings.
+    @State private var phoneAccess = AVCaptureDevice.authorizationStatus(for: .video)
+    @State private var phoneCapture = PhoneCaptureStatus.stopped
+    /// The viewfinder has handed the camera over for a still.
+    @State private var takingPhonePhoto = false
+
     @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var controlCircle: CGFloat = 56
     @ScaledMetric(relativeTo: .title) private var recordGlyph: CGFloat = 32
@@ -37,7 +46,9 @@ struct LivePreviewView: View {
         ZStack {
             OGTheme.media.ignoresSafeArea()
 
-            if let frame = currentFrame {
+            if case .phone(let position) = picture {
+                phoneViewfinder(position)
+            } else if let frame = currentFrame {
                 Image(uiImage: frame)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -125,13 +136,14 @@ struct LivePreviewView: View {
                 }
                 .padding()
             } else if !appState.isConnected {
-                // The phone camera feeds the encoder directly, with nothing to draw here.
+                // Only a stream on the glasses camera gets here: off air, with no glasses, the
+                // picture is the phone's.
                 VStack(spacing: 12) {
-                    Image(systemName: "iphone")
+                    Image(systemName: "eyeglasses")
                         .font(.largeTitle)
                         .foregroundStyle(OGTheme.onMedia)
                         .accessibilityHidden(true)
-                    Text(phoneOnlyHeadline)
+                    Text("Streaming from the glasses, and they aren't connected.")
                         .foregroundStyle(OGTheme.onMedia)
                         .multilineTextAlignment(.center)
                 }
@@ -161,91 +173,25 @@ struct LivePreviewView: View {
                 }
                 Spacer()
 
-                // Bottom action bar
-                HStack(spacing: 24) {
-                    // Capture photo
-                    Button {
-                        Task { await appState.captureAndSharePhoto() }
-                    } label: {
-                        Image(systemName: "camera.fill")
-                            .font(.title2)
-                            .foregroundStyle(OGTheme.onMedia)
-                            .frame(width: controlCircle, height: controlCircle)
-                            .glassEffect(in: .circle)
-                    }
-                    .disabled(appState.cameraService.isCaptureInProgress || !appState.isConnected)
-                    .accessibilityLabel("Take Photo")
-
-                    // Record video
-                    Button {
-                        Task { await appState.toggleRecording() }
-                    } label: {
-                        Image(systemName: appState.videoRecorder.isRecording ? "stop.circle.fill" : "record.circle")
-                            .font(.system(size: recordGlyph))
-                            .foregroundStyle(
-                                appState.videoRecorder.isRecording ? OGTheme.mediaErrorLabel : OGTheme.onMedia
-                            )
-                            .frame(width: controlCircle, height: controlCircle)
-                            .glassEffect(in: .circle)
-                    }
-                    // Stopping a recording never depends on the glasses still being there.
-                    .disabled(!appState.isConnected && !appState.videoRecorder.isRecording)
-                    .accessibilityLabel(appState.videoRecorder.isRecording ? "Stop Recording" : "Start Recording")
-
-                    // Go Live
-                    Button {
-                        Task { await goLiveTapped() }
-                    } label: {
-                        ZStack {
-                            Image(systemName: "antenna.radiowaves.left.and.right")
-                                .font(.title2)
-                                .foregroundStyle(
-                                    broadcastService.isBroadcasting ? OGTheme.mediaErrorLabel : OGTheme.onMedia
-                                )
-                                .frame(width: controlCircle, height: controlCircle)
-                                .glassEffect(in: .circle)
-                            if broadcastService.isBroadcasting {
-                                Text("LIVE")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(OGTheme.onBadge)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Capsule().fill(OGTheme.badge))
-                                    // Rides the circle's edge, so it stays put as
-                                    // the control scales with the text size.
-                                    .offset(y: controlCircle / 2 - 8)
-                            }
-                        }
-                    }
-                    .disabled(isChangingBroadcast)
-                    .accessibilityLabel(broadcastService.isBroadcasting ? "Stop Broadcasting" : "Go Live")
-
-                    // BS P3: mid-stream source switch — no RTMP teardown, just re-routes
-                    // which camera feeds the encoder (debounced in the service).
-                    if broadcastService.isBroadcasting {
-                        Menu {
-                            ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
-                                Button {
-                                    broadcastService.switchSource(source)
-                                } label: {
-                                    if broadcastService.activeSource == source {
-                                        Label(source.displayLabel, systemImage: "checkmark")
-                                    } else {
-                                        Text(source.displayLabel)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath.camera")
-                                .font(.title2)
-                                .foregroundStyle(OGTheme.onMedia)
-                                .frame(width: controlCircle, height: controlCircle)
-                                .glassEffect(in: .circle)
-                        }
-                        .accessibilityLabel("Switch Broadcast Camera")
-                    }
+                if case .phone = picture, phoneViewfinderPhase == .live {
+                    mediaCaption(LivePreviewPicture.phoneCaption(
+                        isBroadcasting: isBroadcasting,
+                        blurOn: appState.privacyFilter.isEnabled,
+                        preferredSource: preferredBroadcastSource))
+                        .padding(.bottom, 12)
                 }
-                .padding(.bottom, 40)
+
+                // CY: broadcast health while live — state, throughput, achieved frame rate and the
+                // frames that never made the wire. A LIVE badge alone cannot tell "streaming fine"
+                // from "reconnecting into a hole", and those are the two things worth knowing.
+                if isBroadcasting || broadcastService.sessionState.isConnecting {
+                    BroadcastHealthBar(service: broadcastService)
+                        .padding(.bottom, 12)
+                }
+
+                actionBar
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 40)
             }
 
             // FD P0 — a held picture, marked as one, for as long as it is held.
@@ -256,7 +202,7 @@ struct LivePreviewView: View {
             // is persistent rather than a flash, it says what the picture *is* rather than only
             // that something is wrong, and it sits over the image instead of beside it. The same
             // sentence is the image's accessibility label above.
-            if currentFrame != nil,
+            if picture == .glasses, currentFrame != nil,
                let marker = appState.cameraService.readiness.heldPictureMarker {
                 VStack {
                     HStack(spacing: 6) {
@@ -288,17 +234,6 @@ struct LivePreviewView: View {
             // preview — the disagreement between the two IS the feature. Tap to release.
             PinnedFrameCard(pin: appState.framePin) {
                 appState.releaseFramePin(trigger: .explicitUnpin)
-            }
-
-            // CY: broadcast health while live — state, throughput, achieved frame rate and the
-            // frames that never made the wire. A LIVE badge alone cannot tell "streaming fine"
-            // from "reconnecting into a hole", and those are the two things worth knowing.
-            if broadcastService.isBroadcasting || broadcastService.sessionState.isConnecting {
-                VStack {
-                    Spacer()
-                    BroadcastHealthBar(service: broadcastService)
-                        .padding(.bottom, 110)
-                }
             }
 
             // Recording duration overlay
@@ -353,7 +288,19 @@ struct LivePreviewView: View {
                 goLiveNotice = .failed(message)
             }
         }
-        // A pair that connects while this is open is the picture the wearer came here for.
+        .onReceive(phoneCamera.statusPublisher.receive(on: DispatchQueue.main)) { phoneCapture = $0 }
+        // Plan KH: the session follows the picture, and starts here rather than in `onAppear` so
+        // that closing the preview while iOS is asking cannot leave the camera on behind it.
+        .task(id: PictureRequest(picture: picture, access: phoneAccess, takingPhoto: takingPhonePhoto)) {
+            await showPicture()
+        }
+        // Back from Settings with the camera allowed, or taken away.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { phoneAccess = AVCaptureDevice.authorizationStatus(for: .video) }
+        }
+        // A pair that connects while this is open is the picture the wearer came here for, unless
+        // a phone stream is on air. That stays on the phone, and starting the glasses can leave the
+        // app for Meta AI, which would cost the stream its camera.
         .onChange(of: appState.isConnected) { _, connected in
             if connected { startStreamIfNeeded() }
         }
@@ -368,10 +315,11 @@ struct LivePreviewView: View {
                     currentFrame = image
                 }
             }
-            startStreamIfNeeded()
         }
         .onDisappear {
             isPreviewVisible = false
+            // A running stream holds its own claim, so this only stops an idle camera.
+            phoneCamera.releasePreview()
             appState.cameraService.onVideoFrame = previousVideoFrameCallback
             Task {
                 let shouldKeepStreaming =
@@ -413,15 +361,246 @@ struct LivePreviewView: View {
         }
     }
 
-    private var phoneOnlyHeadline: String {
-        if broadcastService.isBroadcasting {
-            return String(localized: "Streaming from the phone camera. The picture doesn't show here.")
+    private var isBroadcasting: Bool { broadcastService.isBroadcasting }
+    private var activeSource: BroadcastVideoSource { broadcastService.activeSource }
+
+    private var picture: LivePreviewPicture {
+        LivePreviewPicture.decide(.init(isBroadcasting: isBroadcasting,
+                                        activeSource: activeSource,
+                                        preferredSource: preferredBroadcastSource,
+                                        glassesConnected: appState.isConnected))
+    }
+
+    private var phoneCamera: PhoneVideoSource { broadcastService.phoneVideoSource }
+
+    private var phoneViewfinderPhase: PhoneViewfinderPhase {
+        PhoneViewfinderPhase.decide(access: phoneAccess, capture: phoneCapture)
+    }
+
+    /// What `picture` needs running. The phone camera is asked for here and nowhere else: the
+    /// wearer opening the preview is the reason. Nothing here touches the Meta permission unless
+    /// the picture is the glasses.
+    private func showPicture() async {
+        guard case .phone(let position) = picture else {
+            phoneCamera.releasePreview()
+            startStreamIfNeeded()
+            return
         }
-        // Go Live refuses this fallback with the blur on, so it must not be promised.
-        if preferredBroadcastSource == .glasses, appState.privacyFilter.isEnabled {
-            return String(localized: "No glasses connected.")
+        // Not drawn from here on, and stale by the time the glasses are back.
+        currentFrame = nil
+        guard !takingPhonePhoto else { return }
+        switch phoneAccess {
+        case .notDetermined:
+            _ = await AVCaptureDevice.requestAccess(for: .video)
+            phoneAccess = AVCaptureDevice.authorizationStatus(for: .video)
+        case .authorized:
+            phoneCamera.claimPreview(position: position)
+        default:
+            phoneCamera.releasePreview()
         }
-        return String(localized: "No glasses connected. Go Live uses the phone camera, and the picture doesn't show here.")
+    }
+
+    private struct PictureRequest: Equatable {
+        let picture: LivePreviewPicture
+        let access: AVAuthorizationStatus
+        let takingPhoto: Bool
+    }
+
+    @ViewBuilder
+    private func phoneViewfinder(_ position: AVCaptureDevice.Position) -> some View {
+        let phase = phoneViewfinderPhase
+        PhoneViewfinder(session: phoneCamera.sessionForPreview, position: position,
+                        isRunning: phoneCapture == .running)
+            .ignoresSafeArea()
+            .accessibilityLabel("Live view from the phone camera")
+            .accessibilityAddTraits(.isImage)
+            .accessibilityHidden(phase != .live)
+
+        switch phase {
+        case .live, .askingForAccess:
+            EmptyView()
+        case .starting:
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(OGTheme.onMedia)
+                Text("Starting the phone camera…")
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaTertiary))
+            }
+        case .paused:
+            phoneCameraMessage(systemImage: "video.slash",
+                               text: String(localized: "The phone camera is paused. It comes back when iOS releases it."))
+        case .unavailable:
+            phoneCameraMessage(systemImage: "video.slash",
+                               text: String(localized: "This phone's camera isn't available."))
+        case .denied:
+            VStack(spacing: 12) {
+                phoneCameraMessage(systemImage: "camera.badge.ellipsis",
+                                   text: String(localized: "Camera access is off. Allow it for Avenkin in iOS Settings to see the phone camera here."))
+                if let settings = URL(string: UIApplication.openSettingsURLString) {
+                    Button("Open Settings") { openURL(settings) }
+                        .buttonStyle(.ogProminentCompact)
+                }
+            }
+        }
+    }
+
+    private func phoneCameraMessage(systemImage: String, text: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.largeTitle)
+                .foregroundStyle(OGTheme.mediaWarnLabel)
+                .accessibilityHidden(true)
+            Text(verbatim: text)
+                .foregroundStyle(OGTheme.onMedia)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A line over arbitrary video. Opaque, not a wash: only a solid fill keeps the pair measurable,
+    /// the same reasoning as the recording badge.
+    private func mediaCaption(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(OGTheme.onMedia)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(OGTheme.media))
+            .padding(.horizontal, 16)
+    }
+
+    // MARK: - The action bar
+
+    /// One row where it fits. Two where it doesn't, which is the case once the switch-camera menu
+    /// joins it on a narrow phone or at a large text size.
+    private var actionBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                photoButton
+                recordButton
+                goLiveButton
+                sourceMenu
+            }
+            VStack(spacing: 12) {
+                HStack(spacing: 24) {
+                    photoButton
+                    recordButton
+                    goLiveButton
+                }
+                sourceMenu
+            }
+        }
+    }
+
+    private var photoButton: some View {
+        Button {
+            takePhoto()
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.title2)
+                .foregroundStyle(OGTheme.onMedia)
+                .frame(width: controlCircle, height: controlCircle)
+                .glassEffect(in: .circle)
+        }
+        .disabled(!LivePreviewPicture.photoEnabled(
+            glassesConnected: appState.isConnected,
+            capturing: appState.cameraService.isCaptureInProgress || takingPhonePhoto,
+            picture: picture,
+            viewfinder: phoneViewfinderPhase,
+            isBroadcasting: isBroadcasting))
+        .accessibilityLabel("Take Photo")
+    }
+
+    /// With no glasses this is `capturePhoto()`'s own phone path, which starts a session of its own,
+    /// so the viewfinder gives the camera up first and takes it back after.
+    private func takePhoto() {
+        Task {
+            guard !appState.isConnected else {
+                await appState.captureAndSharePhoto()
+                return
+            }
+            takingPhonePhoto = true
+            await phoneCamera.releasePreviewAndWait()
+            await appState.captureAndSharePhoto(allowingPhoneCamera: true)
+            takingPhonePhoto = false
+        }
+    }
+
+    private var recordButton: some View {
+        Button {
+            Task { await appState.toggleRecording() }
+        } label: {
+            Image(systemName: appState.videoRecorder.isRecording ? "stop.circle.fill" : "record.circle")
+                .font(.system(size: recordGlyph))
+                .foregroundStyle(
+                    appState.videoRecorder.isRecording ? OGTheme.mediaErrorLabel : OGTheme.onMedia
+                )
+                .frame(width: controlCircle, height: controlCircle)
+                .glassEffect(in: .circle)
+        }
+        // Stopping a recording never depends on the glasses still being there.
+        .disabled(!appState.isConnected && !appState.videoRecorder.isRecording)
+        .accessibilityLabel(appState.videoRecorder.isRecording ? "Stop Recording" : "Start Recording")
+        // A recording is frames through the blur relay, and phone frames do not pass through it.
+        .accessibilityHint(appState.isConnected ? "" : "Recording needs glasses connected.")
+    }
+
+    private var goLiveButton: some View {
+        Button {
+            Task { await goLiveTapped() }
+        } label: {
+            ZStack {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.title2)
+                    .foregroundStyle(isBroadcasting ? OGTheme.mediaErrorLabel : OGTheme.onMedia)
+                    .frame(width: controlCircle, height: controlCircle)
+                    .glassEffect(in: .circle)
+                if isBroadcasting {
+                    Text("LIVE")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(OGTheme.onBadge)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(OGTheme.badge))
+                        // Rides the circle's edge, so it stays put as
+                        // the control scales with the text size.
+                        .offset(y: controlCircle / 2 - 8)
+                }
+            }
+        }
+        .disabled(isChangingBroadcast)
+        .accessibilityLabel(isBroadcasting ? "Stop Broadcasting" : "Go Live")
+    }
+
+    /// BS P3: mid-stream source switch — no RTMP teardown, just re-routes which camera feeds the
+    /// encoder (debounced in the service).
+    @ViewBuilder
+    private var sourceMenu: some View {
+        if isBroadcasting {
+            Menu {
+                ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
+                    Button {
+                        broadcastService.switchSource(source)
+                    } label: {
+                        if activeSource == source {
+                            Label(source.displayLabel, systemImage: "checkmark")
+                        } else {
+                            Text(source.displayLabel)
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath.camera")
+                    .font(.title2)
+                    .foregroundStyle(OGTheme.onMedia)
+                    .frame(width: controlCircle, height: controlCircle)
+                    .glassEffect(in: .circle)
+            }
+            .accessibilityLabel("Switch Broadcast Camera")
+        }
     }
 
     /// `AppState.toggleBroadcast()` reports a missing URL or key as an error, which is right for
@@ -434,6 +613,7 @@ struct LivePreviewView: View {
         // Asked before the stream starts, so the microphone isn't on air behind the iOS prompt.
         if startsOnPhone(decision), AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .video)
+            phoneAccess = AVCaptureDevice.authorizationStatus(for: .video)
             decision = goLiveDecision()
         }
         switch decision {
@@ -484,8 +664,10 @@ struct LivePreviewView: View {
 
     private func startStreamIfNeeded() {
         // The glasses camera is all this starts, and asking for it can leave the app for Meta AI.
-        // With no glasses there is nothing to wait for.
-        guard appState.isConnected, !appState.cameraService.isStreaming else { return }
+        // With no glasses there is nothing to wait for, and with the picture on the phone there is
+        // nothing to show.
+        guard picture == .glasses, appState.isConnected, !appState.cameraService.isStreaming,
+              !isStartingStream else { return }
         streamError = nil
         isStartingStream = true
         Task {
