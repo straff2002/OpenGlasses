@@ -1287,16 +1287,9 @@ struct OnboardingView: View {
 
             pageFooter {
                 primaryButton("Continue") { go(to: .assistantName) }
-                    .disabled(!micGranted)
-
-                if micGranted {
-                    skipButton()
-                } else {
-                    Text("Microphone permission is required")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 6)
-                }
+                // Typed conversations work without microphone access, so permission denial must
+                // not block onboarding.
+                skipButton()
             }
         }
         .onAppear { checkExistingPermissions() }

@@ -97,7 +97,10 @@ enum SubsystemProbes {
                 return .fail("Not listening — check microphone and speech recognition permission")
             },
         ]
-        return SubsystemTestRunner(tests: tests, log: { [weak appState] message in
+        let availableTests = GlassesSupportPolicy.isSupported ? tests : tests.filter {
+            !["glasses", "camera", "hud", "telemetry"].contains($0.id)
+        }
+        return SubsystemTestRunner(tests: availableTests, log: { [weak appState] message in
             appState?.addDebugEvent(message)
         })
     }

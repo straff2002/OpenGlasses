@@ -9,7 +9,7 @@
 
   NSPrivacyAccessedAPITypes below cover the required-reason APIs actually used in
   this target's source:
-    - UserDefaults (standard suite, ~22 files)  -> CA92.1
+    - UserDefaults (app-only and shared App Group suites) -> CA92.1, 1C8F.1
     - File timestamps (HIPAAComplianceService,
       creationDateKey on the app's own container) -> DDA9.1
     - Disk space (DeviceInfoTool, .systemFreeSize) -> E174.1
@@ -172,6 +172,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<dict>

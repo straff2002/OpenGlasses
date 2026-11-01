@@ -122,6 +122,28 @@ final class PrivacyManifestReconciliationTests: XCTestCase {
         }
     }
 
+    func testAppAndWidgetsDeclareAppGroupDefaultsAccess() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let paths = [
+            "OpenGlasses/Sources/Resources/PrivacyInfo.xcprivacy",
+            "GlassesActivityWidget/PrivacyInfo.xcprivacy",
+            "OpenGlassesWatch/PrivacyInfo.xcprivacy",
+            "OpenGlassesWatchWidget/PrivacyInfo.xcprivacy",
+        ]
+        for path in paths {
+            let data = try Data(contentsOf: root.appendingPathComponent(path))
+            let plist = try XCTUnwrap(PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any])
+            let entries = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
+            let defaults = try XCTUnwrap(entries.first {
+                $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults"
+            })
+            let reasons = defaults["NSPrivacyAccessedAPITypeReasons"] as? [String] ?? []
+            XCTAssertTrue(reasons.contains("1C8F.1"), "\(path) reads or writes shared App Group defaults.")
+        }
+    }
+
     /// The manifest claims no tracking and no tracking domains. Both are load-bearing for the
     /// "no analytics SDK" statement the in-app privacy copy makes.
     func testTheNoTrackingClaimIsIntact() throws {

@@ -139,7 +139,9 @@ final class GlassesDisplayService: ObservableObject {
     /// safe to call frequently. Updates `hasDisplayCapability` as a side effect.
     @discardableResult
     func deviceSupportsDisplay() -> Bool {
-        let supported = testCapabilityOverride ?? activeBackend.isAvailable
+        // The Meta bootstrap cannot protect the separate EVEN BLE backend. A saved backend and
+        // pairing from TestFlight must not start a glasses transport after an App Store upgrade.
+        let supported = GlassesSupportPolicy.isSupported && (testCapabilityOverride ?? activeBackend.isAvailable)
         if hasDisplayCapability != supported { hasDisplayCapability = supported }
         return supported
     }

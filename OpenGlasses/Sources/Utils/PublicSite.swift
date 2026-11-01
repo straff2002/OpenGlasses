@@ -18,6 +18,9 @@ enum PublicSite {
     /// The public privacy policy.
     static var privacy: URL { baseURL.appendingPathComponent("privacy.html") }
 
+    /// The standard Apple EULA used by the App Store listing and subscription offers.
+    static let termsOfUse = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+
     /// Support: how to reach us and how to report a problem, with no account needed.
     static var support: URL { baseURL.appendingPathComponent("support.html") }
 

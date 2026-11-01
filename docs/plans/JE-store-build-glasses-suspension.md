@@ -1,5 +1,11 @@
 # Plan JE — The Store Copy Suspends the Glasses
 
+**Review caveat, 2026-11-01:** the runtime rule below must not be treated as proof of the App Review
+experience. It interprets `sandboxReceipt` as TestFlight, while Apple also documents sandbox
+receipts during App Review. The [App Store readiness audit](../../reports/app-store-review-2026-11-01.md)
+recommends revisiting Plan IK's separate phone-only archive and records unresolved release gates.
+The distribution change has not been implemented.
+
 **Status:** ✅ Built 2026-10-18 (this PR) · a store-channel pass is owed once a build is on the store
 (TestFlight cannot show the store behaviour)
 

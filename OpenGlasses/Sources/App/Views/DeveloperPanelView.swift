@@ -29,7 +29,9 @@ struct DeveloperPanelView: View {
     var body: some View {
         OGScrollPage {
             OGNotice(
-                text: "Each test exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card.",
+                text: GlassesSupportPolicy.isSupported
+                    ? "Each test exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card."
+                    : "Each test exercises the real path — the AI answers a tiny query and speech plays through your selected audio output.",
                 systemImage: "stethoscope"
             )
 

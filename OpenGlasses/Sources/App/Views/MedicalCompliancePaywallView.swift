@@ -127,6 +127,8 @@ struct MedicalCompliancePaywallView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
+                    Link("Privacy Policy", destination: PublicSite.privacy)
+                    Link("Terms of Use", destination: PublicSite.termsOfUse)
                 }
                 .padding(.bottom, 24)
             }

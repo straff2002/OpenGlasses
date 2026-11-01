@@ -10,7 +10,8 @@
   camera. Hence NSPrivacyCollectedDataTypes is empty and tracking is false.
 
   The only required-reason API is app-group UserDefaults access (SharedAppState.swift),
-  which is covered by CA92.1 (data accessible only to first-party App Group members).
+  covered by 1C8F.1 (data shared within the same App Group). CA92.1 covers
+  app-only defaults when the App Group suite is unavailable.
 -->
 <plist version="1.0">
 <dict>
@@ -28,6 +29,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 	</array>

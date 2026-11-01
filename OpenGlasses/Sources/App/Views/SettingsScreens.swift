@@ -277,7 +277,7 @@ struct VoiceTriggersSettingsScreen: View {
 
             // MARK: Hands-Free Triggers
             Section {
-                ForEach(AlternativeTrigger.allCases) { trigger in
+                ForEach(AlternativeTrigger.available) { trigger in
                     InfoToggle(
                         title: trigger.displayName,
                         isOn: Binding(
@@ -304,7 +304,7 @@ struct VoiceTriggersSettingsScreen: View {
             } header: {
                 Text("Hands-Free Triggers")
             } footer: {
-                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control. Temple taps are set up under Hardware & Privacy.")
+                Text("Shake the phone to start the assistant without the wake word. Off by default. Headset media controls are set up under Hardware & Privacy.")
             }
         }
         .navigationTitle("Voice & Triggers")

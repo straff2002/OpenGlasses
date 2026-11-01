@@ -323,6 +323,11 @@ private struct MyManualsPlanButtons: View {
         if !store.isLoadingProducts, store.myManualsProducts.count < StoreKitService.myManualsCatalogProductIds.count {
             Button("Retry loading in-app plans") { Task { await store.loadProducts() } }
         }
+        // Shared by every purchase entry point, including the upload preview sheet.
+        Text("Subscriptions renew automatically at the displayed price unless cancelled in your Apple Account subscription settings. Any introductory offer applies only to eligible subscribers.")
+            .font(.footnote)
+        Link("Privacy Policy", destination: PublicSite.privacy)
+        Link("Terms of Use", destination: PublicSite.termsOfUse)
     }
 }
 

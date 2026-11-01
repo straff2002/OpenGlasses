@@ -1205,6 +1205,9 @@ struct FieldAssistSettingsView: View {
             Text(FieldAssistPaywallCopy.purchaseHeader)
         } footer: {
             Text(FieldAssistPaywallCopy.purchaseFooter)
+            Text("Subscription renews automatically. Cancel anytime in iPhone Settings → [your name] → Subscriptions.")
+            Link("Privacy Policy", destination: PublicSite.privacy)
+            Link("Terms of Use", destination: PublicSite.termsOfUse)
             NavigationLink("Only need your own manuals? See My Manuals.") { MyManualsView().environmentObject(appState) }
         }
     }
