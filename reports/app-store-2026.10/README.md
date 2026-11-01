@@ -54,3 +54,11 @@ Earlier direct screen-power switching produced SpringBoard display-configuration
 The App Store settings hub now hides Display & HUD and removes glasses wording from its device subtitle and About footer when the existing glasses policy is disabled. Debug simulator launch support can select this policy and an initial tab for repeatable captures; Release and physical-device channel detection are unchanged.
 
 The final iOS simulator build succeeded (`/private/tmp/avenkin-store-settings-build.log`). The additional settings presentation changes were compile-checked; live purchase acceptance remains outstanding. Unrelated working-tree changes and private Toyota PDFs were not included in this preparation.
+
+## Updating App Review notes
+
+The repository does not automatically sync these notes to App Store Connect. Open Apps > Avenkin > the iOS version being prepared > App Review Information > Notes. Paste `review-notes.txt` and save. Its content is also the `reviewNotes` value in `metadata.json`; keep both in sync. Apple limits Notes to **4,000 UTF-8 bytes**, so allow room for any additional private access instructions. These notes describe the new phone-only submission build and must match the exact selected build.
+
+Attach `avenkin-review-kit.zip` for the fictional demo manuals. Supply valid reviewer-only organisation/service access through private App Review information or an attachment when needed; no credentials are supplied by this repository. `review-notes-detailed.md` is a longer internal preparation draft, not the text to paste into the field. Saving notes does not upload a build or submit the app for review. TestFlight review information is separate.
+
+Reference: [Apple's App Review information fields](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information/#app-review-information).

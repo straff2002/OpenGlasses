@@ -1,0 +1,31 @@
+# Detailed review-note draft
+
+Internal reference for preparing the submission. Use `review-notes.txt` for the App Store Connect Notes field; this longer draft exceeds its byte limit. Verify build-specific claims and supply actual reviewer access before submission.
+
+Avenkin is a phone/tablet AI assistant. No smart glasses or other external hardware are required.
+
+PHONE-ONLY SUBMISSION BUILD
+This submission is compiled as phone-only. Meta Wearables package products, SDK implementations, accessory protocols, Meta callbacks and Bluetooth accessory background declarations are excluded. The hardware-only silent media-button standby player and hardware Siri actions are excluded too. Receipts, remote configuration and organisation licences cannot enable glasses. A separately numbered glasses-beta build may be offered in TestFlight; it is a different binary and is not the build selected for this submission. Build variant appears in support diagnostics.
+
+EXPLICIT AI SHARING PERMISSION
+Before content is sent to an AI service, the app requests permission for that service address and purpose (conversation processing, transcription, spoken replies, live voice/camera, or web search). Saving credentials alone does not grant permission. In Settings > Devices & Privacy > Cloud AI Sharing, reviewers can inspect and withdraw approvals. A different service address or purpose needs its own approval. Withdrawal stops active transfers and blocks later requests. Background requests cannot display the first consent prompt: open the app to review the service. On-device engines and system voices do not require third-party sharing approval. The Auto voice setting uses a cloud voice only after speech-output permission was granted for it.
+
+GETTING STARTED
+There is no Avenkin account or app sign-in. Complete onboarding and choose an AI in Settings > AI Models. On a supported device with Apple Intelligence enabled, select Apple Intelligence to try the assistant without a third-party account or API key. Alternatively, download a compatible local model using the local-model settings. External AI providers and self-hosted services are optional and use the user's own credentials. Tap Type to ask a question, or grant microphone permission and use Tap & Talk. Phone-camera features do not need glasses.
+
+APPLE APP INTEGRATION
+Calendar and Reminders use EventKit, Contacts uses Contacts, compatible Home control uses HomeKit, and music controls and Siri Shortcuts are available through tools. The app requests the relevant system permissions; reviewers may decline optional permissions and continue. Calls and messages use iOS confirmation/composer flows. Siri and the Action Button can invoke the app through its App Intents. These features require an AI model that supports the relevant tools; external services need the user's own setup.
+
+MY MANUALS (PERSONAL IN-APP SUBSCRIPTION)
+Open Settings > My Manuals. Upload manual > Choose PDF, Word or Markdown opens the system file picker before purchase. A preview shows the selected file. A verified Personal subscription is required to save/index it and ask source-cited questions. Photograph pages is also available. Manuals can be selected for a conversation and deleted from the library. Publisher links/codes are an alternative import route under Upload manual. PDF retains the source page layout; Word/Markdown retain the original plus a labelled text reading copy. Users provide their own manuals and are responsible for having permission to use them. No manufacturer workshop PDF is bundled. The attached review kit contains original fictional Markdown manuals for testing. Current allowance: five manuals, up to 8,000 pages each and 10,000 pages in total. Product: com.openglasses.my_manuals_monthly, one month, with a one-week introductory free trial for eligible subscribers. Use Restore purchases to restore verified access.
+
+FIELD ASSIST (SEPARATE SUBSCRIPTION AND ORGANISATION ACCESS)
+Open Settings > Field Assist to inspect the professional workflow and its paywall. New solo purchases offer com.openglasses.field_assist_monthly through StoreKit. Verified annual and retired one-time Field Assist purchases remain recognized for restore but are not offered to new buyers. The Organisation Licence field accepts an existing signed entitlement or activation key issued by the user's organisation; it is a separate access path and must be available to review when included in the submission. No consumer external-purchase link is presented in this field. Personal and Field Assist subscriptions grant separate capabilities; My Manuals does not require Field Assist to be enabled.
+
+MEDICAL COMPLIANCE (SEPARATE SUBSCRIPTION)
+Open Settings > Devices & Privacy > Medical Compliance. Products are com.openglasses.medical_compliance_monthly and com.openglasses.medical_compliance_annual. The subscribed screen provides clinical privacy controls, retention settings and export formats. Controls support organisation policies; the app does not certify legal compliance or clinical accuracy. Use fictional records for review and verify exports with the receiving system.
+
+OTHER NON-OBVIOUS FEATURES
+Connections can reach user-configured agent gateways and MCP servers; tool calls remain subject to app permissions and action checks. User-configured tools, skill/reference packs and workflows are available in Tools & Actions; include representative packs in the review setup. Phone wake-word/listening sessions use microphone audio and have stop controls; no looping silent media-button standby player is compiled into this submission. The consumer app also includes first-aid coaching, advisory camera triage, medication-related tools and a clinical persona. These are within review scope, even when absent from the main listing. No clinical or safety-critical decision should rely on an unchecked AI answer.
+
+Local AI capabilities depend on device/model support. The accompanying submission checklist records required account, device, subscription, service-authorisation and safety evidence before submission.
