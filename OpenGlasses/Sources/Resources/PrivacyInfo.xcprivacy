@@ -3,9 +3,9 @@
 <!--
   Privacy manifest for Avenkin.
 
-  Required by Apple for App Store submission alongside the MFi / ExternalAccessory
-  integration (the Wearables DAT SDK). The App Store is the app's distribution
-  channel, so this manifest ships with every release and must match the build.
+  This manifest ships with both phone-only and glasses-beta builds and describes
+  optional data routes present in both. Each submission must match the archive and
+  the App Store Connect privacy answers.
 
   NSPrivacyAccessedAPITypes below cover the required-reason APIs actually used in
   this target's source:
@@ -23,8 +23,11 @@
   recognizer (off by default), Perplexity / Tavily / Brave /
   SearXNG (user-configured) / DuckDuckGo for search, Apple WeatherKit for weather,
   adsb.fi for flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
-  cross-app/-developer tracking — so every type below is Linked=false,
-  Tracking=false, purpose = App Functionality.
+  cross-app/-developer tracking. Requests are authenticated to provider accounts and
+  content may identify the user or other people; there is no guaranteed de-identification
+  before transmission. Every type below is conservatively Linked=true, Tracking=false,
+  purpose = App Functionality. The lack of a first-party account does not establish
+  that data is unlinked by third-party recipients.
 
   Notes for whoever finalizes submission:
     - Health & Fitness data (HealthKit, via FitnessCoachingTool) is surfaced into
@@ -38,15 +41,16 @@
       artist / album / playlist / station name the wearer asked for to Apple.
       No SDK is linked for it (MusicKit is a system framework; the developer
       token comes from the App ID's MusicKit App Service). Declared under
-      SearchHistory, AppFunctionality, not linked, not tracking.
+      SearchHistory, AppFunctionality, linked, not tracking.
     - Weather comes from Apple's WeatherKit (get_weather, My Day). No SDK is
       linked for it (WeatherKit is a system framework, authorised by the
       com.apple.developer.weatherkit entitlement and the App ID's WeatherKit App
       Service). Coordinates rounded to ~1 km, or a named place geocoded on the
       phone, are sent to Apple. Declared under PreciseLocation, AppFunctionality,
-      not linked, not tracking. Blocked under Medical Local Only.
-    - "Linked=false" assumes no account system is added later. If Avenkin ever
-      gains sign-in or a first-party backend, revisit every Linked flag.
+      linked, not tracking. Blocked under Medical Local Only.
+    - Keep these declarations aligned with App Store Connect and verified provider
+      retention/use terms. Arbitrary user-configured recipients do not establish a
+      blanket guarantee about third-party data handling.
 -->
 <plist version="1.0">
 <dict>
@@ -63,7 +67,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeAudioData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -76,7 +80,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -89,7 +93,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -102,7 +106,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -110,12 +114,23 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
+		<!-- WeatherKit uses coordinates rounded to approximately one kilometre. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeCoarseLocation</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+        </dict>
 		<!-- HealthKit reads (FitnessCoachingTool) surfaced into LLM tool results -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeHealth</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -127,7 +142,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeFitness</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -140,7 +155,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeContacts</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>
@@ -155,7 +170,7 @@
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeSearchHistory</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>

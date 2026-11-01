@@ -149,6 +149,8 @@ final class RealtimeProviderTests: XCTestCase {
 
 /// Drives the production service through its transport interface without a network or audio lease.
 private final class FakeRealtimeTransport: RealtimeConnectionTransport {
+    // In-memory protocol fixture: no connection or user data leaves the test process.
+    func authorize(_ request: URLRequest) async throws {}
     var onOpen: ((String?) -> Void)?
     var onClose: ((URLSessionWebSocketTask.CloseCode, Data?) -> Void)?
     var onError: ((Error?) -> Void)?

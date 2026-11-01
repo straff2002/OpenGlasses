@@ -154,6 +154,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>AvenkinBuildVariant</key>
+	<string>$(AVENKIN_BUILD_VARIANT)</string>
 	<key>AvenkinSourceCommit</key>
 	<string>$(AVENKIN_SOURCE_COMMIT)</string>
 	<key>LSApplicationQueriesSchemes</key>

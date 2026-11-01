@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
 import XCTest
 @testable import OpenGlasses
@@ -77,3 +78,5 @@ final class CameraErrorPolicyTests: XCTestCase {
         XCTAssertTrue(CameraErrorPolicy.message(for: .audioStreamingError).localizedCaseInsensitiveContains("audio"))
     }
 }
+
+#endif

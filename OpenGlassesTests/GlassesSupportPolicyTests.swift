@@ -10,13 +10,9 @@ final class GlassesSupportPolicyTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOnlyTheStoreCopySuspendsTheGlasses() {
-        XCTAssertEqual(GlassesSupportPolicy.verdict(channel: .appStore), .notInThisVersion)
-        XCTAssertEqual(GlassesSupportPolicy.verdict(channel: .testFlight), .supported,
-                       "TestFlight is the same upload with the glasses on")
-        XCTAssertEqual(GlassesSupportPolicy.verdict(channel: .development), .supported,
-                       "a contributor's own build keeps the glasses")
-        XCTAssertEqual(GlassesSupportPolicy.verdict(channel: .simulator), .supported)
+    func testOnlyThePhoneVariantExcludesGlassesRegardlessOfTheReceipt() {
+        XCTAssertEqual(GlassesSupportPolicy.verdict(variant: .phoneOnly), .notInThisVersion)
+        XCTAssertEqual(GlassesSupportPolicy.verdict(variant: .glassesBeta), .supported)
     }
 
     func testTheReasonNamesTheAppAndNoPlan() {
@@ -31,11 +27,13 @@ final class GlassesSupportPolicyTests: XCTestCase {
         GlassesSupportPolicy.overrideForTesting = .notInThisVersion
         XCTAssertEqual(GlassesSupportPolicy.current, .notInThisVersion)
         XCTAssertFalse(GlassesSupportPolicy.isSupported)
-        XCTAssertEqual(GlassesSupportPolicy.reportLine, "Glasses: not in this version (store copy)")
+        XCTAssertEqual(GlassesSupportPolicy.reportLine, "Build variant: \(AppBuildVariant.current.rawValue) · Glasses: not in this version (phone-only build)")
 
         GlassesSupportPolicy.overrideForTesting = .supported
-        XCTAssertTrue(GlassesSupportPolicy.isSupported)
-        XCTAssertEqual(GlassesSupportPolicy.reportLine, "Glasses: offered by this copy")
+        XCTAssertEqual(GlassesSupportPolicy.isSupported, AppBuildVariant.current == .glassesBeta)
+        if AppBuildVariant.current == .glassesBeta {
+            XCTAssertEqual(GlassesSupportPolicy.reportLine, "Build variant: glasses-beta · Glasses: offered by this copy")
+        }
     }
 
     /// The test host is the simulator (or a development build under testability), never a store
@@ -43,6 +41,6 @@ final class GlassesSupportPolicyTests: XCTestCase {
     /// in this bundle assumes.
     func testTheTestHostOffersGlasses() {
         GlassesSupportPolicy.overrideForTesting = nil
-        XCTAssertTrue(GlassesSupportPolicy.isSupported)
+        XCTAssertEqual(GlassesSupportPolicy.isSupported, AppBuildVariant.current == .glassesBeta)
     }
 }

@@ -66,7 +66,7 @@ final class AgentResultTruthTests: XCTestCase {
         MockURLProtocol.reset()
         MockURLProtocol.script = script
         let sleeps = Sleeps()
-        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session())
+        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         harness.policy = policy ?? self.policy
         harness.sleeper = { seconds in sleeps.record(seconds) }
 
@@ -311,7 +311,7 @@ final class AgentResultTruthTests: XCTestCase {
         MockURLProtocol.reset()
         MockURLProtocol.statusCode = 500
         MockURLProtocol.responseBody = Data("stack trace with /Users/someone/secret/path".utf8)
-        let harness = CustomAgentHarness(config: mappedConfig(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: mappedConfig(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         do {
             _ = try await harness.start(prompt: "p", project: nil)
             XCTFail("expected a throw")

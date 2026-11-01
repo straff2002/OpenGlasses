@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import AppIntents
 
 // MARK: - Plan BQ P3 — camera App Schema adoption
@@ -93,3 +94,5 @@ struct StopGlassesCaptureIntent {
         return .result()
     }
 }
+
+#endif

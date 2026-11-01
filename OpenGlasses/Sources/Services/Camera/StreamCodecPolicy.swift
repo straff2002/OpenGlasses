@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
-
+#endif
 /// Plan EO P1 — what the glasses are asked to send, and what to do with each frame that
 /// comes back (pure).
 ///
@@ -18,9 +19,11 @@ enum StreamCodecPolicy {
 
     /// Maps the stored setting to the codec asked of the SDK. Unknown → `hvc1`, because the
     /// default has to survive a value nobody recognises.
+    #if !AVENKIN_PHONE_ONLY
     static func videoCodec(for setting: String) -> VideoCodec {
         setting == rawSetting ? .raw : .hvc1
     }
+    #endif
 
     /// What a delivered frame turned out to be, as three observations rather than a guess about
     /// the codec: whether the SDK's `makeUIImage()` helper produced a picture, whether the sample

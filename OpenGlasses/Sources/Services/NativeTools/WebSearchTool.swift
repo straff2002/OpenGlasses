@@ -102,7 +102,7 @@ struct WebSearchTool: NativeTool {
         let session = URLSession(configuration: config)
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.consentedData(for: request, scope: .webSearch)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 PrivacyLog.webSearch(.perplexity, succeeded: false,
@@ -126,6 +126,8 @@ struct WebSearchTool: NativeTool {
 
             return "Search result for \"\(query)\" (via Perplexity): \(result)"
 
+        } catch let refusal as CloudProcessingRefusal {
+            return refusal.localizedDescription
         } catch {
             PrivacyLog.webSearch(.perplexity, succeeded: false, error: SafeErrorSummary(error))
             return nil
@@ -161,7 +163,7 @@ struct WebSearchTool: NativeTool {
         let session = URLSession(configuration: config)
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.consentedData(for: request, scope: .webSearch)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 PrivacyLog.webSearch(.tavily, succeeded: false,
@@ -193,6 +195,8 @@ struct WebSearchTool: NativeTool {
             let label = keyless ? "Tavily free" : "Tavily"
             return "Search result for \"\(query)\" (via \(label)): \(result)"
 
+        } catch let refusal as CloudProcessingRefusal {
+            return refusal.localizedDescription
         } catch {
             PrivacyLog.webSearch(.tavily, succeeded: false, error: SafeErrorSummary(error))
             return nil
@@ -219,7 +223,7 @@ struct WebSearchTool: NativeTool {
         let session = URLSession(configuration: config)
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.consentedData(for: request, scope: .webSearch)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 PrivacyLog.webSearch(.brave, succeeded: false,
@@ -254,6 +258,8 @@ struct WebSearchTool: NativeTool {
 
             return "Search result for \"\(query)\" (via Brave): \(result)"
 
+        } catch let refusal as CloudProcessingRefusal {
+            return refusal.localizedDescription
         } catch {
             PrivacyLog.webSearch(.brave, succeeded: false, error: SafeErrorSummary(error))
             return nil
@@ -278,7 +284,7 @@ struct WebSearchTool: NativeTool {
         let session = URLSession(configuration: config)
 
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.consentedData(for: request, scope: .webSearch)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 PrivacyLog.webSearch(.searxng, succeeded: false,
@@ -319,6 +325,8 @@ struct WebSearchTool: NativeTool {
             PrivacyLog.webSearch(.searxng, succeeded: true, results: results.count)
             return "Search result for \"\(query)\" (via SearXNG): \(result)"
 
+        } catch let refusal as CloudProcessingRefusal {
+            return refusal.localizedDescription
         } catch {
             PrivacyLog.webSearch(.searxng, succeeded: false, error: SafeErrorSummary(error))
             return nil
@@ -360,7 +368,7 @@ struct WebSearchTool: NativeTool {
         let session = URLSession(configuration: config)
 
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.consentedData(for: URLRequest(url: url), scope: .webSearch)
 
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 return "Search service is temporarily unavailable."
@@ -394,6 +402,8 @@ struct WebSearchTool: NativeTool {
 
             return Self.noClearAnswer(query: query)
 
+        } catch let refusal as CloudProcessingRefusal {
+            return refusal.localizedDescription
         } catch {
             return "Search failed: \(error.localizedDescription)"
         }

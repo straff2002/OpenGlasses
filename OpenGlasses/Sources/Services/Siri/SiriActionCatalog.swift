@@ -18,7 +18,7 @@ struct BuiltinSiriAction: Identifiable, Equatable {
 
     /// Curation rule (plan BQ): only actions Siri/system apps can't already do — glasses
     /// hardware, or OpenGlasses' own data.
-    static let all: [BuiltinSiriAction] = [
+    private static let candidates: [BuiltinSiriAction] = [
         .init(id: "take_photo", displayName: "Take and Describe Photo",
               synonyms: ["describe photo", "what do you see"]),
         .init(id: "capture_photo", displayName: "Capture Photo",
@@ -76,6 +76,16 @@ struct BuiltinSiriAction: Identifiable, Equatable {
         .init(id: "broadcast_toggle", displayName: "Toggle Broadcast",
               synonyms: ["start broadcasting", "stop broadcasting", "go live"]),
     ]
+
+    static let glassesOnlyIDs: Set<String> = ["capture_photo", "record_video", "connect_glasses", "disconnect_glasses", "toggle_glasses", "teleprompter_start", "teleprompter_stop"]
+
+    static var all: [BuiltinSiriAction] {
+        #if AVENKIN_PHONE_ONLY
+        return candidates.filter { !glassesOnlyIDs.contains($0.id) }
+        #else
+        return candidates
+        #endif
+    }
 
     static func action(id: String) -> BuiltinSiriAction? {
         all.first { $0.id == id }

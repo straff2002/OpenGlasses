@@ -1,7 +1,10 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
+#if !AVENKIN_PHONE_ONLY
 import MWDATDisplay
-
+#endif
 /// Plan AH — the widened display-backend seam. `GlassesDisplayService` keeps everything
 /// backend-neutral (render queue, dedup, interactive gate, flash-then-restore, condensing);
 /// a backend owns capability, transport lifecycle, the `HUDScreen`/content → device mapping,
@@ -30,6 +33,7 @@ protocol GlassesDisplayBackend: AnyObject {
     var onTransportError: ((Error) -> Void)? { get set }
 }
 
+#if !AVENKIN_PHONE_ONLY
 /// The Ray-Ban Display path (DAT `MWDATDisplay`) behind the seam — a pure extraction of what
 /// `GlassesDisplayService` did directly; no behavior change, existing HUD tests stay green
 /// (they capture above the backend via `testRenderSink`).
@@ -316,3 +320,5 @@ fileprivate extension HUDButtonStyle {
         }
     }
 }
+
+#endif

@@ -12,6 +12,7 @@ protocol GatewaySocket: AnyObject {
 typealias GatewaySocketFactory = (URLRequest) -> GatewaySocket
 
 final class URLSessionGatewaySocket: GatewaySocket {
+    private let authorization = CloudProcessingSocketAuthorization()
     private let task: URLSessionWebSocketTask
     private let session: URLSession
 
@@ -20,7 +21,7 @@ final class URLSessionGatewaySocket: GatewaySocket {
         config.timeoutIntervalForRequest = timeout
         session = URLSession(configuration: config)
         task = session.webSocketTask(with: request)
-        task.resume()
+        // Deliberately suspended until send/receive obtains sharing permission.
     }
 
     static func make(_ request: URLRequest) -> GatewaySocket {
@@ -28,10 +29,13 @@ final class URLSessionGatewaySocket: GatewaySocket {
     }
 
     func send(_ text: String) async throws {
+        try await authorization.prepare(task, session: session, scope: .conversation)
+        try authorization.requireValid()
         try await task.send(.string(text))
     }
 
     func receive() async throws -> String {
+        try await authorization.prepare(task, session: session, scope: .conversation)
         switch try await task.receive() {
         case .string(let text): return text
         case .data(let data): return String(data: data, encoding: .utf8) ?? ""
@@ -40,6 +44,7 @@ final class URLSessionGatewaySocket: GatewaySocket {
     }
 
     func cancel() {
+        authorization.cancel()
         task.cancel(with: .normalClosure, reason: nil)
         session.invalidateAndCancel()
     }

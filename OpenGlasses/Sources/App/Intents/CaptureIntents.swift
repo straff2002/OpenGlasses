@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import AppIntents
 
 /// Shortcut: silently take a photo on the glasses and save it (no LLM, no TTS).
@@ -77,3 +78,5 @@ struct RecordGlassesVideoIntent: AppIntent {
         }
     }
 }
+
+#endif

@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// The SDK wraps several different startup failures in `unexpectedError(String)`. Keep only
 /// exact, known reasons: an arbitrary SDK payload must never become a public log or AI prompt.
 enum DeviceSessionFailureReason: String, Equatable {
@@ -13,6 +14,7 @@ enum DeviceSessionFailureReason: String, Equatable {
             self = reason
             return
         }
+        #if !AVENKIN_PHONE_ONLY
         guard let sessionError = error as? DeviceSessionError else { return nil }
         switch sessionError {
         case .dwaUnavailable:
@@ -25,6 +27,9 @@ enum DeviceSessionFailureReason: String, Equatable {
             }
         default: return nil
         }
+        #else
+        return nil
+        #endif
     }
 
     var notice: String {

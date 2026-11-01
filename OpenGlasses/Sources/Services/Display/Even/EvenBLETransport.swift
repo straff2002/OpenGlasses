@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import CoreBluetooth
 import Foundation
 
@@ -197,3 +198,5 @@ extension EvenBLETransport: CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
 }
+
+#endif

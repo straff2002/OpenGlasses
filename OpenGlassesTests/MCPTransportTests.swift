@@ -4,6 +4,7 @@ import XCTest
 /// Tests for the Plan V transport layer: the `MCPTransportKind`/`MCPAuthKind` config fields with
 /// backward-compatible decoding, `HTTPTransport` request building (via a stubbed `URLProtocol`), and
 /// the transport factory's selection (including the deferred-SSE clean failure).
+@MainActor
 final class MCPTransportTests: XCTestCase {
 
     // MARK: - Config fields + backward compatibility
@@ -71,7 +72,7 @@ final class MCPTransportTests: XCTestCase {
 
         let server = MCPServerConfig(id: "s", label: "Notion", url: "https://example.test/mcp",
                                      headers: ["Authorization": "Bearer secret-token"], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
 
         let data = try await transport.request(
             ["jsonrpc": "2.0", "id": 1, "method": "tools/list"], server: server)
@@ -108,7 +109,7 @@ final class MCPTransportTests: XCTestCase {
         MockURLProtocol.responseBody = Data(#"{"jsonrpc":"2.0","id":1,"result":{"content":[]}}"#.utf8)
         let server = MCPServerConfig(id: "s", label: "Slow", url: "https://example.test/mcp",
                                      headers: [:], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
 
         _ = try await transport.request(
             ["jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -139,7 +140,7 @@ final class MCPTransportTests: XCTestCase {
 
         let server = MCPServerConfig(id: "hs", label: "FastMCP", url: "https://example.test/mcp",
                                      headers: [:], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
         _ = try await transport.request(["jsonrpc": "2.0", "id": 1, "method": "tools/list"], server: server)
 
         // initialize + notifications/initialized + the real payload.
@@ -160,7 +161,7 @@ final class MCPTransportTests: XCTestCase {
 
         let server = MCPServerConfig(id: "sid", label: "Sessioned", url: "https://example.test/mcp",
                                      headers: [:], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
         _ = try await transport.request(["jsonrpc": "2.0", "id": 1, "method": "tools/list"], server: server)
 
         let captured = try XCTUnwrap(MockURLProtocol.lastRequest)
@@ -177,7 +178,7 @@ final class MCPTransportTests: XCTestCase {
 
         let server = MCPServerConfig(id: "sse-framed", label: "FastMCP", url: "https://example.test/mcp",
                                      headers: [:], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
         let data = try await transport.request(["jsonrpc": "2.0", "id": 7, "method": "tools/list"], server: server)
 
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -192,7 +193,7 @@ final class MCPTransportTests: XCTestCase {
 
         let server = MCPServerConfig(id: "s", label: "Down", url: "https://example.test/mcp",
                                      headers: [:], enabled: true)
-        let transport = HTTPTransport(session: MockURLProtocol.session())
+        let transport = HTTPTransport(session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://example.test"]))
         do {
             _ = try await transport.request(["x": 1], server: server)
             XCTFail("expected http error to throw")

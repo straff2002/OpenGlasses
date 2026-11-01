@@ -19,6 +19,7 @@ protocol EvenTransporting: AnyObject {
 /// framed packets → BLE. Everything up to the transport is deterministic and tested
 /// against a mock; the BLE edge ships dark until hardware validates the community
 /// protocol reconstruction.
+#if !AVENKIN_PHONE_ONLY
 @MainActor
 final class EvenDisplayBackend: GlassesDisplayBackend {
 
@@ -98,6 +99,7 @@ final class EvenDisplayBackend: GlassesDisplayBackend {
         }
     }
 }
+#endif
 
 // MARK: - Config
 

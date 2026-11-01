@@ -18,6 +18,7 @@ final class AgentResultDeliveryTests: XCTestCase {
     private var savedAgentMode = false
     private var defaultsSuite: UserDefaults!
     private var suiteName: String!
+    private var services: [AgentSessionService] = []
 
     override func setUp() {
         super.setUp()
@@ -26,6 +27,14 @@ final class AgentResultDeliveryTests: XCTestCase {
         suiteName = "AgentResultDeliveryTests.\(UUID().uuidString)"
         defaultsSuite = UserDefaults(suiteName: suiteName)
         MockURLProtocol.reset()
+    }
+
+    override func tearDown() async throws {
+        // Result delivery includes a separate acknowledgement task. Join it before another
+        // fixture replaces the shared protocol script.
+        for service in services { await service.awaitDelivery() }
+        services.removeAll()
+        try await super.tearDown()
     }
 
     override func tearDown() {
@@ -50,7 +59,7 @@ final class AgentResultDeliveryTests: XCTestCase {
     }
 
     private func harness(_ config: CustomHarnessConfig) -> CustomAgentHarness {
-        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session())
+        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         harness.policy = AgentPollingPolicy(interval: 5, maxRetries: 2, baseBackoff: 1,
                                             maxBackoff: 4, maxUnknownStatusTicks: 3, maxAckRetries: 2)
         harness.sleeper = { _ in }
@@ -77,6 +86,7 @@ final class AgentResultDeliveryTests: XCTestCase {
                      outcomes: [SpeechDeliveryOutcome] = [.completed],
                      runID: String = "r1") -> Rig {
         let service = AgentSessionService()
+        services.append(service)
         let spoken = Box<[String]>([])
         let store = AgentDeliveryRecordStore(key: "deliveries", store: defaultsSuite)
         let played = Box<Int>(0)
@@ -469,6 +479,7 @@ final class AgentResultDeliveryTests: XCTestCase {
 
         // A fresh session, as after a relaunch: the record survived, the words did not.
         let service = AgentSessionService()
+        services.append(service)
         var spoken: [String] = []
         service.speak = { spoken.append($0) }
         service.speakResult = { line in spoken.append(line); return .completed }
@@ -485,6 +496,7 @@ final class AgentResultDeliveryTests: XCTestCase {
         store.save(AgentResultDelivery(runID: "r1", resultRevision: 0, state: .pending,
                                        ackState: .pending, at: fixedNow))
         let service = AgentSessionService()
+        services.append(service)
         service.deliveryStore = AgentDeliveryRecordStore(key: "deliveries", store: defaultsSuite)
 
         let line = service.currentStatusLine()
@@ -496,6 +508,7 @@ final class AgentResultDeliveryTests: XCTestCase {
         // a crash during playback would leave no trace at all, which reads as "never happened".
         var seenDuringPlayback: AgentResultDelivery?
         let service = AgentSessionService()
+        services.append(service)
         let store = AgentDeliveryRecordStore(key: "deliveries", store: defaultsSuite)
         service.now = { self.fixedNow }
         service.deliveryStore = store

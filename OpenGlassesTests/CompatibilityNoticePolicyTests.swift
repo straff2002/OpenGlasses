@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
 import XCTest
 @testable import OpenGlasses
@@ -233,3 +234,5 @@ final class CompatibilityNoticePolicyTests: XCTestCase {
         XCTAssertFalse(Policy.wasHeard(.failed(reason: "engine")))
     }
 }
+
+#endif

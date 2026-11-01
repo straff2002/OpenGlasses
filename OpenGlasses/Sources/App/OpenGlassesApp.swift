@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
 import AVFoundation
 import AppIntents
 import UIKit
@@ -48,6 +50,7 @@ func privacyAction(for url: URL) -> PrivacyToken? {
     }
 }
 
+#if !AVENKIN_PHONE_ONLY
 private func processWearablesCallbackURL(_ url: URL, source: String) {
     let sourceToken = PrivacyToken(source)
     PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .received)
@@ -84,6 +87,11 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
         }
     }
 }
+#else
+private func processWearablesCallbackURL(_ url: URL, source: String) {
+    return
+}
+#endif
 
 final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
@@ -391,6 +399,9 @@ struct OpenGlassesApp: App {
                         .transition(.opacity)
                         .zIndex(999)
                 }
+            }
+            .overlay {
+                if !isHipaaLocked { CloudProcessingConsentOverlay() }
             }
             // Also once at launch, in case the first activation came before this view; idempotent.
             .task {
@@ -711,7 +722,7 @@ struct OpenGlassesApp: App {
                         try? await Task.sleep(nanoseconds: 1_500_000_000)
 
                         guard WearablesBootstrap.ensureConfigured() else { return }
-                        let state = Wearables.shared.registrationState
+                        let state = WearablesBootstrap.registrationSnapshot
                         if state.rawValue < 3 {
                             PrivacyLog.device(.glasses, .registrationDropped, state: PrivacyToken(String(state.rawValue)))
                         }
@@ -755,6 +766,7 @@ struct OpenGlassesApp: App {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     private func configureWearables() {
         PrivacyLog.app(.loggingActive)
         // Single owner of configure(); safe to call more than once.
@@ -763,7 +775,7 @@ struct OpenGlassesApp: App {
             return
         }
         PrivacyLog.app(.sdkConfigured)
-        let state = Wearables.shared.registrationState
+        let state = WearablesBootstrap.registrationSnapshot
         PrivacyLog.device(.glasses, .registrationState,
                           state: PrivacyToken(String(state.rawValue)))
 
@@ -783,6 +795,11 @@ struct OpenGlassesApp: App {
             PrivacyLog.device(.sdk, .configProblem, state: PrivacyToken.caseName(of: status))
         }
     }
+    #else
+    private func configureWearables() {
+        return
+    }
+    #endif
 }
 
 /// Global application state
@@ -2564,16 +2581,22 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Internal rather than private since Plan FF P1/PR3: the Blind Assistant launch gate needs
     /// the same settle wait the wake-word auto-start does, and two copies of a 20 s timeout is how
     /// they drift apart.
+    #if !AVENKIN_PHONE_ONLY
     func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
         guard WearablesBootstrap.ensureConfigured() else { return 0 }
         let waitStart = ContinuousClock.now
         while true {
-            let state = Wearables.shared.registrationState.rawValue
+            let state = WearablesBootstrap.registrationSnapshot.rawValue
             if state >= minState { return state }
             if ContinuousClock.now - waitStart > .seconds(timeoutSeconds) { return state }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
     }
+    #else
+    func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
+        return 0
+    }
+    #endif
 
     init() {
         let sharedEventKitStore = EventKitDayStore()
@@ -4967,6 +4990,7 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        #if !AVENKIN_PHONE_ONLY
         // Every SDK access below traps if configure() never succeeded. Registration stays at 0 and
         // the UI shows the unregistered state, which is the honest outcome.
         guard WearablesBootstrap.ensureConfigured() else {
@@ -4997,13 +5021,14 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(regToken)
 
         // Check initial state
-        let initialState = Wearables.shared.registrationState
+        let initialState = WearablesBootstrap.registrationSnapshot
         PrivacyLog.device(.glasses, .registrationState, state: PrivacyToken(String(initialState.rawValue)))
         addDebugEvent("Initial registration state: \(initialState.rawValue)")
         registrationStateRaw = initialState.rawValue
         if initialState.rawValue >= 3 {
             PrivacyLog.device(.glasses, .alreadyRegistered)
         }
+        #endif
     }
 
     /// Observe SDK registration state on launch.
@@ -5014,6 +5039,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Launch never asks for it: `glassesService` reads the camera permission when registration
     /// lands (`checkCameraPermission()`), and a missing one shows as "camera access needed" with
     /// a button, instead of throwing a registered wearer into the Meta AI app at every launch.
+    #if !AVENKIN_PHONE_ONLY
     private func autoConnectGlasses() {
         Task {
             // Small delay to let SDK initialize
@@ -5022,7 +5048,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.addDebugEvent("Wearables SDK unavailable — skipping launch state check")
                 return
             }
-            let state = Wearables.shared.registrationState
+            let state = WearablesBootstrap.registrationSnapshot
             self.registrationStateRaw = state.rawValue
             self.addDebugEvent("Launch state check: state=\(state.rawValue)")
 
@@ -5032,7 +5058,7 @@ class AppState: ObservableObject, AppStateProtocol {
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
-                let settledState = Wearables.shared.registrationState
+                let settledState = WearablesBootstrap.registrationSnapshot
                 self.registrationStateRaw = settledState.rawValue
                 if settledState.rawValue >= 3 {
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
@@ -5042,6 +5068,11 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
     }
+    #else
+    private func autoConnectGlasses() {
+        return
+    }
+    #endif
 
     /// Auto-start wake word listener on app launch (don't wait for "Connect" or "Test Mic")
     private func autoStartListening() {

@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 
@@ -71,7 +72,8 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         svc.testCapabilityOverride = nil
 
         GlassesSupportPolicy.overrideForTesting = .supported
-        XCTAssertTrue(svc.deviceSupportsDisplay(), "The saved EVEN pairing is available in the beta.")
+        XCTAssertEqual(svc.deviceSupportsDisplay(), AppBuildVariant.current == .glassesBeta,
+                       "A saved EVEN pairing is available only in the hardware build.")
 
         GlassesSupportPolicy.overrideForTesting = .notInThisVersion
         XCTAssertFalse(svc.deviceSupportsDisplay(), "The separate BLE backend must also obey store suspension.")
@@ -201,3 +203,5 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         XCTAssertEqual(received, ["done", "skip", "back"])
     }
 }
+
+#endif

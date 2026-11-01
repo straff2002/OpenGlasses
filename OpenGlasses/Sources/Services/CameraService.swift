@@ -209,7 +209,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// nonisolated, and the backend is main-actor bound; the phone source takes the same shape so
     /// both halves of the capture decision are substituted the same way.
     init(backend: GlassesCameraBackend? = nil, phoneCamera: PhoneCameraCapturing? = nil) {
-        let backend = backend ?? MetaCameraBackend()
+        let backend = backend ?? GlassesBackendFactory.camera()
         self.backend = backend
         self.phoneSource = phoneCamera ?? PhoneCameraSource()
         backendEvents = backend.events.sink { [weak self] event in

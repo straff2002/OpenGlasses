@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import SwiftUI
 @testable import OpenGlasses
@@ -62,3 +63,5 @@ final class HUDPreviewSnapshotTests: XCTestCase {
         return Double(bright) / Double(w * h)
     }
 }
+
+#endif

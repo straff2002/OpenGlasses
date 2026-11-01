@@ -1,0 +1,19 @@
+# Applied last, including after personal signing overlays. No runtime channel detection.
+settings:
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG AVENKIN_PHONE_ONLY"
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AVENKIN_PHONE_ONLY"
+targets:
+  OpenGlasses:
+    settings:
+      base:
+        AVENKIN_BUILD_VARIANT: phone-only
+        INFOPLIST_FILE: .generated/Info.phone-only.plist
+        CODE_SIGN_ENTITLEMENTS: OpenGlasses/OpenGlasses.entitlements
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG AVENKIN_PHONE_ONLY"
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AVENKIN_PHONE_ONLY"

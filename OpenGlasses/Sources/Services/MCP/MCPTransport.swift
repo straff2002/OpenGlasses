@@ -88,6 +88,7 @@ enum MCPTransportError: LocalizedError, Equatable {
 /// The `session` is injectable purely so tests can stub `URLProtocol`; production uses `.shared`.
 struct HTTPTransport: MCPTransport {
     var session: URLSession = .shared
+    var processingConsent: CloudProcessingConsent? = nil
 
     /// Per-server MCP session IDs, `static` so they survive across the per-request instances that
     /// `MCPTransportFactory` creates. Empty string means "initialized, server doesn't use
@@ -215,7 +216,7 @@ struct HTTPTransport: MCPTransport {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         request.timeoutInterval = Self.timeoutInterval(forMethod: payload["method"] as? String)
-        return try await session.data(for: request)
+        return try await session.consentedData(for: request, scope: .conversation, consent: processingConsent)
     }
 
     /// Protocol calls stay snappy; a tool call is given time to do its work.

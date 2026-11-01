@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 import MWDATCore
@@ -196,3 +197,5 @@ final class RegistrationFlowTests: XCTestCase {
         XCTAssertTrue(RegistrationFlow.registrationErrorMessage(.networkUnavailable).lowercased().contains("connection"))
     }
 }
+
+#endif

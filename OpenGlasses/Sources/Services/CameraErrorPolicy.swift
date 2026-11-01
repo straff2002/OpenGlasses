@@ -1,7 +1,10 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
+#endif
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// Pure mapping from the DAT SDK's typed camera `StreamError` (unified `DatError` model) to a
 /// user-facing message and a capture-recovery decision.
 ///
@@ -12,6 +15,7 @@ import MWDATCore
 enum CameraErrorPolicy {
 
     /// A short, user-facing message for a typed camera stream error.
+    #if !AVENKIN_PHONE_ONLY
     static func message(for error: StreamError) -> String {
         switch error {
         case .hingesClosed:
@@ -42,11 +46,13 @@ enum CameraErrorPolicy {
             return error.errorDescription ?? "The glasses camera hit an error."
         }
     }
+    #endif
 
     /// Whether a pending photo capture should be abandoned (fall back to the latest frame / fail)
     /// the moment this error arrives, rather than waiting for the capture timeout. `true` for
     /// terminal conditions where the photo will not arrive; `false` for transient errors where the
     /// capture (or the existing timeout backstop) may still resolve.
+    #if !AVENKIN_PHONE_ONLY
     static func abortsCapture(_ error: StreamError) -> Bool {
         switch error {
         case .hingesClosed, .timeout, .thermalHot, .peakPowerLimit, .batteryLow,
@@ -63,6 +69,7 @@ enum CameraErrorPolicy {
             return false
         }
     }
+    #endif
 
     /// Whether a *warmup wait* (waiting for the stream to reach `.streaming`) should abort now
     /// rather than keep nudging `start()` until the timeout.
@@ -77,6 +84,7 @@ enum CameraErrorPolicy {
     /// whether they also arrive transiently during the ~15–18 s cold-start churn is unverified, and
     /// an over-eager abort would break exactly the healthy slow start the full timeout protects.
     /// They are still bounded by the timeout, as they are today.
+    #if !AVENKIN_PHONE_ONLY
     static func abortsWarmup(_ error: StreamError) -> Bool {
         switch error {
         case .internalError, .videoStreamingError:
@@ -85,6 +93,7 @@ enum CameraErrorPolicy {
             return false
         }
     }
+    #endif
 
     // MARK: - Retrying (Plan FD P1)
 
@@ -109,6 +118,7 @@ enum CameraErrorPolicy {
     ///
     /// The copy is reused from `message(for:)` rather than written twice, so a failure that stops
     /// the ladder says exactly what the same failure says anywhere else in the app.
+    #if !AVENKIN_PHONE_ONLY
     static func retryDisposition(for error: StreamError) -> RetryDisposition {
         switch error {
         case .permissionDenied,
@@ -133,9 +143,11 @@ enum CameraErrorPolicy {
             return .retryWithBackoff
         }
     }
+    #endif
 
     /// Classify a device-session error. Compatibility refusals arrive here, not on the camera
     /// stream's error publisher.
+    #if !AVENKIN_PHONE_ONLY
     static func retryDisposition(for error: DeviceSessionError) -> RetryDisposition {
         switch error {
         case .dwaUnavailable:
@@ -159,6 +171,7 @@ enum CameraErrorPolicy {
             return .retryWithBackoff
         }
     }
+    #endif
 
     /// Shared copy for the device-level power/thermal refusals, which carry no per-case message of
     /// their own.

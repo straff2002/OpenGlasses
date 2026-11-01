@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// Single owner of `Wearables.configure()`, configuring **on demand at the point of use**.
 ///
 /// # Why this exists
@@ -30,6 +31,17 @@ import MWDATCore
 @MainActor
 enum WearablesBootstrap {
 
+    struct RegistrationSnapshot { let rawValue: Int }
+
+    static var registrationSnapshot: RegistrationSnapshot {
+        #if !AVENKIN_PHONE_ONLY
+        guard isConfigured else { return RegistrationSnapshot(rawValue: 0) }
+        return RegistrationSnapshot(rawValue: Wearables.shared.registrationState.rawValue)
+        #else
+        return RegistrationSnapshot(rawValue: 0)
+        #endif
+    }
+
     /// Whether `configure()` has succeeded. `false` also covers "not attempted yet" — callers
     /// should go through ``ensureConfigured()`` rather than reading this to decide.
     private(set) static var isConfigured = false
@@ -57,6 +69,7 @@ enum WearablesBootstrap {
         }
         if didAttempt { return isConfigured }
         didAttempt = true
+        #if !AVENKIN_PHONE_ONLY
         // Before configure(), so the SDK's analytics uploader can never win a race with it.
         // The Info.plist opt-out is what should stop those uploads; this is the backstop that
         // makes it true in code we own. See MetaTelemetryBlock.
@@ -78,12 +91,13 @@ enum WearablesBootstrap {
             failureReason = error.localizedDescription
             PrivacyLog.device(.sdk, .unavailable, error: SafeErrorSummary(error))
         }
+        #endif
         return isConfigured
     }
 
     /// One-line state for diagnostics/debug surfaces.
     static var statusDescription: String {
-        if !GlassesSupportPolicy.isSupported { return "not in this version (store copy)" }
+        if !GlassesSupportPolicy.isSupported { return "not in this version (phone-only build)" }
         if isConfigured { return "configured" }
         if let failureReason { return "unavailable — \(failureReason)" }
         return "not configured"

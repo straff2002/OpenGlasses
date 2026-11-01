@@ -54,6 +54,6 @@ final class GlassesSurfaceGateTests: XCTestCase {
     func testOnboardingReadsRegistrationOnlyBehindTheBootstrap() throws {
         let text = try source("OpenGlasses/Sources/App/Views/OnboardingView.swift")
         XCTAssertFalse(text.contains("bluetoothConfigured && Wearables.shared"))
-        XCTAssertTrue(text.contains("WearablesBootstrap.isConfigured && Wearables.shared.registrationState"))
+        XCTAssertTrue(text.contains("WearablesBootstrap.isConfigured && WearablesBootstrap.registrationSnapshot"))
     }
 }

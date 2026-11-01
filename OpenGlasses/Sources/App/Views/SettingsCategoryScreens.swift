@@ -277,6 +277,7 @@ struct DisplayHUDSections: View {
                 Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 EvenDisplaySettingsView()
             } label: {
@@ -287,6 +288,7 @@ struct DisplayHUDSections: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            #endif
 
             NavigationLink {
                 WebHUDMirrorSettingsView()

@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// Pure policy for the Meta registration wait — the setup step that most often blocks users
 /// (the DAT permission gate is *the* onboarding blocker).
 ///
@@ -66,6 +67,7 @@ enum RegistrationFlow {
 
     /// What to tell the wearer when Meta AI's callback reports a failure, or nil when the failure
     /// is not one they can act on (an unregistration callback).
+    #if !AVENKIN_PHONE_ONLY
     static func callbackFailureMessage(_ error: WearablesHandleURLError,
                                        appName: String = RegistrationFlow.appName) -> String? {
         switch error {
@@ -77,6 +79,7 @@ enum RegistrationFlow {
             return nil
         }
     }
+    #endif
 
     /// Short, actionable copy for a registration failure.
     ///
@@ -88,6 +91,7 @@ enum RegistrationFlow {
     ///
     /// `alreadyRegistered` is not in the failure set — `connect()` treats it as success, because
     /// it is the normal state on every connect after the first.
+    #if !AVENKIN_PHONE_ONLY
     static func registrationErrorMessage(_ error: RegistrationError) -> String {
         switch error {
         case .alreadyRegistered:
@@ -109,6 +113,7 @@ enum RegistrationFlow {
             return "Registration failed. Restart the glasses and try again."
         }
     }
+    #endif
 
     /// Failure message for a connect that gave up — names what is in the way instead of a bare
     /// "Could not connect to glasses" (issue #246: that string hid a broken registration

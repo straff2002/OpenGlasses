@@ -9,6 +9,9 @@ These two manuals are original fictional examples for software testing. They do 
 5. Open the cited source page. Markdown citations use the labelled generated text reading copy.
 6. Delete a manual from its library management actions.
 
-The App Store installation is phone-only. No smart glasses, manufacturer manual download, organisation account or Field Assist subscription is required to test Personal manuals.
+The separate App Store submission build is compiled phone-only. No smart glasses, manufacturer manual download, organisation account or Field Assist subscription is required to test Personal manuals.
 
 External AI services use the reviewer's own provider setup. Apple Intelligence and compatible downloaded local models are available on supported devices; tool support varies by model.
+
+
+For Field Assist, Medical Compliance, sharing permissions and organisation review access, use [the submission checklist](../submission-checklist.md). This kit alone does not provide an organisation entitlement or prove that the live StoreKit catalogue is ready.

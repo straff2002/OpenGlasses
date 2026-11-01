@@ -68,6 +68,7 @@ final class SelectedPhotoModelTests: XCTestCase {
 
     private func service() -> LLMService {
         let service = LLMService()
+        service.processingConsent = CloudConsentFixture.conversation()
         let session = RecordingQueueProtocol.session()
         service.dataSession = session
         service.streamingSession = session

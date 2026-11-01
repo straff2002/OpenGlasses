@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import Combine
 import MWDATCamera
 import MWDATCore
@@ -795,3 +796,5 @@ final class MetaCameraBackendSchedulingTests: XCTestCase {
                        "no retry rung, stall detector or idle timer outlives a teardown")
     }
 }
+
+#endif

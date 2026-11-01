@@ -30,7 +30,8 @@ struct AppBuildIdentity: Equatable {
     var bundleID: String
 
     /// How this copy was installed, from what the bundle carries. A store or TestFlight build has
-    /// its provisioning profile stripped; only TestFlight's receipt is the sandbox one.
+    /// its provisioning profile stripped. Sandbox receipts also occur during App Review, so
+    /// this is a support hint and must never decide which features the binary offers.
     static func channel(isSimulator: Bool, hasEmbeddedProfile: Bool, receiptName: String?) -> Channel {
         if isSimulator { return .simulator }
         if hasEmbeddedProfile { return .development }
@@ -47,7 +48,7 @@ struct AppBuildIdentity: Equatable {
 
     /// One line, for a report's header: `2026.10 (460) · 1a2b3c4d5 · TestFlight · com.example.app`.
     var summary: String {
-        (["\(version) (\(build))"] + [commit, channel.rawValue, bundleID].compactMap { $0 })
+        (["\(version) (\(build))"] + [commit, channel.rawValue, AppBuildVariant.current.rawValue, bundleID].compactMap { $0 })
             .joined(separator: " · ")
     }
 

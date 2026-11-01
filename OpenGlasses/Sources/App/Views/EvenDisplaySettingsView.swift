@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import SwiftUI
 
 /// Settings for the display backend (Plan AH): Ray-Ban Display (DAT, default) or EVEN
@@ -84,3 +85,5 @@ struct EvenDisplaySettingsView: View {
         }
     }
 }
+
+#endif

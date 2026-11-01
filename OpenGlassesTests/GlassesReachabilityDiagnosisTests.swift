@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
 import XCTest
 @testable import OpenGlasses
@@ -291,3 +292,5 @@ final class GlassesReachabilityDiagnosisTests: XCTestCase {
         XCTAssertFalse(GlassesCameraPermission.failed(summary).reportToken.contains("High Street"))
     }
 }
+
+#endif

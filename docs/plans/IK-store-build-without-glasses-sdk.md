@@ -1,6 +1,6 @@
 # Plan IK — A Store Build Without the Glasses SDK (phone and earbuds on the App Store, glasses on TestFlight)
 
-**Status:** 📝 Drafted 2026-10-16 — nothing implemented; **superseded 2026-10-18 by Plan [JE](JE-store-build-glasses-suspension.md)**, which keeps one upload and suspends the glasses on the App Store copy at run time (`GlassesSupportPolicy`, `WearablesBootstrap` gate) instead of a second build without the SDK. What remains of this plan is the fallback if Meta requires a binary without the SDK for a public listing: the overlay build, the stub seams and the Meta-free `Info.plist` below.
+**Status:** Resumed 2026-11-01 for App Store remediation. The phone-only compile variant and SDK-free dependency overlay are implemented on `codex/app-store-guidelines-audit`; distribution archive/device checks remain release gates. See [the build procedure](../app-store-phone-only-build.md). This replaces JE's receipt-based hardware availability rule because App Review also uses sandbox receipts. The historical investigation and proposals below remain for context.
 **Track:** Distribution (both the consumer app and Field Assist).
 **Related:** Plan [IL](IL-technician-app.md) (the licence-only technician app; since 2026-10-17 it
 keeps the glasses, with the owner renewing the Meta registration if required, and uses this variant

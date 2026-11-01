@@ -85,7 +85,7 @@ final class AgentCustomHarnessTests: XCTestCase {
     func testStartBuildsRequestAndParsesRun() async throws {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data(#"{"id":"run-9","status":"running"}"#.utf8)
-        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
 
         let run = try await harness.start(prompt: "add a toggle", project: "my-app")
         XCTAssertEqual(run.id, "run-9")
@@ -109,7 +109,7 @@ final class AgentCustomHarnessTests: XCTestCase {
         c.idPath = "data.runId"
         c.statusPath = "state"
         c.promptField = "task"
-        let harness = CustomAgentHarness(config: c, session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: c, session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
 
         let run = try await harness.start(prompt: "do it", project: nil)
         XCTAssertEqual(run.id, "R7")
@@ -123,7 +123,7 @@ final class AgentCustomHarnessTests: XCTestCase {
     func testStartThrowsWhenNoRunId() async {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data(#"{"status":"running"}"#.utf8)
-        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         do { _ = try await harness.start(prompt: "p", project: nil); XCTFail("expected throw") }
         catch let e as AgentHarnessError {
             guard case .transport(let msg) = e else { return XCTFail("wrong case") }
@@ -135,7 +135,7 @@ final class AgentCustomHarnessTests: XCTestCase {
         MockURLProtocol.reset()
         MockURLProtocol.statusCode = 401
         MockURLProtocol.responseBody = Data("unauthorized: token sk-123".utf8)
-        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         do { _ = try await harness.start(prompt: "p", project: nil); XCTFail("expected throw") }
         catch let e as AgentHarnessError {
             // Plan FE P0: the code is user-facing, the body is not. The previous assertion accepted
@@ -148,7 +148,7 @@ final class AgentCustomHarnessTests: XCTestCase {
     func testStatusRefusesToGuessAtAnUnrecognisedValue() async {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data(#"{"status":"frobnicating"}"#.utf8)
-        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         let run = AgentRun(id: "r", harness: .custom, prompt: "p", project: nil, status: .running, startedAt: Date())
         do { _ = try await harness.status(run); XCTFail("expected throw") }
         catch let e as AgentHarnessError {
@@ -160,7 +160,7 @@ final class AgentCustomHarnessTests: XCTestCase {
     func testStatusPolls() async throws {
         MockURLProtocol.reset()
         MockURLProtocol.responseBody = Data(#"{"status":"completed"}"#.utf8)
-        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session())
+        let harness = CustomAgentHarness(config: config(), session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         let run = AgentRun(id: "r", harness: .custom, prompt: "p", project: nil, status: .running, startedAt: Date())
         let status = try await harness.status(run)
         XCTAssertEqual(status, .completed)

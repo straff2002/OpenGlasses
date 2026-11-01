@@ -10,5 +10,6 @@
 # copy project.local.yml.example. See README "Local development setup".
 include:
   - project.base.yml
+  - project.glasses-sdk.yml
   - project.watch.yml
   - project.tests.yml

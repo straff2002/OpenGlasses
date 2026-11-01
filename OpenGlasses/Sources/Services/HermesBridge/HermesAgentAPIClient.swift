@@ -13,7 +13,6 @@ protocol HermesHTTPTransport: AnyObject, Sendable {
 /// somewhere the wearer never typed.
 final class URLSessionHermesHTTPTransport: HermesHTTPTransport, @unchecked Sendable {
     private let session: URLSession
-    private let redirectRefuser = RedirectRefuser()
 
     init(timeout: TimeInterval = HermesAgentAPI.requestTimeout) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -27,18 +26,13 @@ final class URLSessionHermesHTTPTransport: HermesHTTPTransport, @unchecked Senda
     }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.data(for: request, delegate: redirectRefuser)
+        let (data, response) = try await session.consentedData(for: request, scope: .conversation,
+                                                              allowSameOriginRedirects: false)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         return (data, http)
     }
 
-    private final class RedirectRefuser: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-        func urlSession(_ session: URLSession, task: URLSessionTask,
-                        willPerformHTTPRedirection response: HTTPURLResponse,
-                        newRequest request: URLRequest) async -> URLRequest? {
-            nil
-        }
-    }
+
 }
 
 /// Client for Hermes Agent's own API server (Plan JP) — the second way to reach Hermes, beside the

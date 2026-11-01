@@ -154,7 +154,8 @@ final class PrivacyManifestReconciliationTests: XCTestCase {
         for entry in entries {
             let name = entry["NSPrivacyCollectedDataType"] as? String ?? "?"
             XCTAssertEqual(entry["NSPrivacyCollectedDataTypeTracking"] as? Bool, false, name)
-            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeLinked"] as? Bool, false, name)
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeLinked"] as? Bool, true,
+                           "\(name): authenticated third-party requests are not guaranteed de-identified")
             XCTAssertEqual(entry["NSPrivacyCollectedDataTypePurposes"] as? [String],
                            ["NSPrivacyCollectedDataTypePurposeAppFunctionality"], name)
         }

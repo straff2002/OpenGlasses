@@ -1079,7 +1079,7 @@ struct GlassesPrivacySettingsScreen: View {
                 } header: {
                     Text("Devices & Privacy")
                 } footer: {
-                    Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
+                    Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance adds clinical privacy controls and export formats (separate subscription); it does not certify legal compliance.")
                 }
             }
 
@@ -1087,6 +1087,11 @@ struct GlassesPrivacySettingsScreen: View {
             // (`SettingsVisibilityPolicy.alwaysShown`).
             if requestRouting.isShown {
                 Section {
+                    NavigationLink {
+                        CloudProcessingSettingsView()
+                    } label: {
+                        Label("Cloud AI Sharing", systemImage: "hand.raised")
+                    }
                     NavigationLink {
                         ProcessingSummaryView()
                     } label: {

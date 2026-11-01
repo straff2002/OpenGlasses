@@ -1,7 +1,8 @@
 import SwiftUI
 import AVFoundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 struct SettingsView: View {
     @ObservedObject var appState: AppState
     @Environment(\.appAccent) private var accent
@@ -793,6 +794,7 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
                 }
+                #if !AVENKIN_PHONE_ONLY
                 NavigationLink {
                     EvenDisplaySettingsView()
                 } label: {
@@ -803,6 +805,7 @@ struct HardwarePrivacyView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                #endif
                 NavigationLink {
                     WebHUDMirrorSettingsView()
                 } label: {
@@ -998,6 +1001,7 @@ struct GlassesSettingsView: View {
     /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
     /// swallowed: the whole point is that the user could not find this screen on their own, so a
     /// button that silently does nothing is worse than the copy it replaced.
+    #if !AVENKIN_PHONE_ONLY
     @MainActor
     private func openGlassesAppUpdate() async {
         glassesUpdateError = nil
@@ -1008,7 +1012,13 @@ struct GlassesSettingsView: View {
         do { try await Wearables.shared.openDATGlassesAppUpdate() }
         catch { glassesUpdateError = String(localized: "Couldn't open the update screen: \(error.localizedDescription)") }
     }
+    #else
+    private func openGlassesAppUpdate() async {
+        return
+    }
+    #endif
 
+    #if !AVENKIN_PHONE_ONLY
     @MainActor
     private func openGlassesFirmwareUpdate() async {
         glassesUpdateError = nil
@@ -1019,6 +1029,11 @@ struct GlassesSettingsView: View {
         do { try await Wearables.shared.openFirmwareUpdate() }
         catch { glassesUpdateError = String(localized: "Couldn't open the firmware screen: \(error.localizedDescription)") }
     }
+    #else
+    private func openGlassesFirmwareUpdate() async {
+        return
+    }
+    #endif
 
     /// What shows above the settings while the glasses are not connected: the row to press, if
     /// there is one, and why they are not connected (Plan HX P3).

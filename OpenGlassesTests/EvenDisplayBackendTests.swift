@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import Combine
 import XCTest
 @testable import OpenGlasses
@@ -234,3 +235,5 @@ final class EvenDisplayBackendTests: XCTestCase {
         XCTAssertEqual(source.completed, 1)
     }
 }
+
+#endif

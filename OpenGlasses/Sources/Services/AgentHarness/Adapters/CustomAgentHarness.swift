@@ -12,6 +12,7 @@ struct CustomAgentHarness: AgentHarness {
     let kind: AgentHarnessKind
     let config: CustomHarnessConfig
     var session: URLSession = .shared
+    var processingConsent: CloudProcessingConsent?
     /// Bounded retry/backoff + unknown-status tolerance for `events(for:)` (Plan FE P0).
     var policy: AgentPollingPolicy = .default
     /// Injected so tests drive the poll loop without waiting out a single real tick.
@@ -30,12 +31,14 @@ struct CustomAgentHarness: AgentHarness {
          config: CustomHarnessConfig,
          displayName: String? = nil,
          isConfigured: Bool? = nil,
-         session: URLSession = .shared) {
+         session: URLSession = .shared,
+         processingConsent: CloudProcessingConsent? = nil) {
         self.kind = kind
         self.config = config
         self.displayNameOverride = displayName
         self.isConfiguredOverride = isConfigured
         self.session = session
+        self.processingConsent = processingConsent
     }
 
     var displayName: String {
@@ -283,7 +286,7 @@ struct CustomAgentHarness: AgentHarness {
               (try? EndpointPolicy.require(url: url, for: .customAgentHarness)) != nil else {
             throw AgentHarnessError.transport("The harness URL is not a permitted endpoint.")
         }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.consentedData(for: request, scope: .conversation, consent: processingConsent)
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             // The body is endpoint-authored content; it used to ride the spoken error verbatim.
             // Only the code is user-facing now, and the body is counted, not quoted.

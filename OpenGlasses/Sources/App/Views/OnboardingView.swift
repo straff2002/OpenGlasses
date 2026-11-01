@@ -1,7 +1,9 @@
 import SwiftUI
 import AVFoundation
 import CoreLocation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
 import Speech
 
 /// Full-screen onboarding flow — Apple HIG compliant.
@@ -1524,7 +1526,7 @@ struct OnboardingView: View {
             // `isConfigured`, not the page's own flag: that flag is set after a configure() that may
             // have failed (or, on a copy without glasses, never ran), and an unconfigured
             // `Wearables.shared` is a fatalError, not a throw.
-            metaRegistered = WearablesBootstrap.isConfigured && Wearables.shared.registrationState.rawValue >= 3
+            metaRegistered = WearablesBootstrap.isConfigured && WearablesBootstrap.registrationSnapshot.rawValue >= 3
         }
     }
 
@@ -1631,7 +1633,7 @@ struct OnboardingView: View {
         await appState.connectGlasses(awaitLink: false)
         // Behind the bootstrap's truth: `connectGlasses` degrades to "SDK unavailable" without
         // configuring, and an unconfigured `Wearables.shared` is a fatalError.
-        let stateRaw = WearablesBootstrap.isConfigured ? Wearables.shared.registrationState.rawValue : 0
+        let stateRaw = WearablesBootstrap.isConfigured ? WearablesBootstrap.registrationSnapshot.rawValue : 0
         metaRegistered = stateRaw >= 3
         registrationStatus = metaRegistered
             ? ""

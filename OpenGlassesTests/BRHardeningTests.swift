@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import MWDATCore
 @testable import OpenGlasses
@@ -187,3 +188,5 @@ final class BRHardeningTests: XCTestCase {
         XCTAssertEqual(OpenClawBridge.messageChannel, "glass")
     }
 }
+
+#endif

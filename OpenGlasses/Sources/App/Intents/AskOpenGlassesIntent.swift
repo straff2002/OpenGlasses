@@ -164,6 +164,17 @@ struct OpenGlassesShortcuts: AppShortcutsProvider {
             shortTitle: "Describe Environment",
             systemImageName: "eye"
         )
+        #if AVENKIN_PHONE_ONLY
+        AppShortcut(
+            intent: ConnectGlassesIntent(),
+            phrases: [
+                "Connect \(.applicationName)",
+                "\(.applicationName) connect"
+            ],
+            shortTitle: "Start Listening",
+            systemImageName: "mic"
+        )
+        #else
         AppShortcut(
             intent: ConnectGlassesIntent(),
             phrases: [
@@ -173,6 +184,7 @@ struct OpenGlassesShortcuts: AppShortcutsProvider {
             shortTitle: "Connect Glasses",
             systemImageName: "eyeglasses"
         )
+        #endif
         AppShortcut(
             intent: DisableListeningIntent(),
             phrases: [

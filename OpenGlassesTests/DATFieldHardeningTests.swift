@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import MWDATCamera
 @testable import OpenGlasses
@@ -86,3 +87,5 @@ final class DATFieldHardeningTests: XCTestCase {
                        "payload-shape change must be opt-in until validated live")
     }
 }
+
+#endif

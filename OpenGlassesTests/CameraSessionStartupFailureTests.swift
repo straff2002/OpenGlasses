@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
 import XCTest
 @testable import OpenGlasses
@@ -83,9 +84,11 @@ final class CameraSessionStartupFailureTests: XCTestCase {
 
     func testCameraTransportCapabilitiesAreInTheAuthoredEntitlements() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        let data = try Data(contentsOf: root.appendingPathComponent("OpenGlasses/OpenGlasses.entitlements"))
+        let data = try Data(contentsOf: root.appendingPathComponent(".generated/OpenGlasses.glasses.entitlements"))
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
         XCTAssertEqual(plist["com.apple.developer.networking.HotspotConfiguration"] as? Bool, true)
         XCTAssertEqual(plist["com.apple.developer.networking.wifi-info"] as? Bool, true)
     }
 }
+
+#endif

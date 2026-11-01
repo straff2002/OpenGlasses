@@ -74,6 +74,10 @@ final class TelemetryOptOutGuardTests: XCTestCase {
     /// the keys live in the authored plist and `GENERATE_INFOPLIST_FILE` is `NO` (both asserted
     /// below), so there is no per-configuration plist that could diverge.
     func testShippedBundleAgreesWithTheAuthoredPlist() throws {
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "MWDAT"), "The phone-only build must not carry SDK configuration")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "AvenkinBuildVariant") as? String, "phone-only")
+        #else
         let authored = MetaTelemetryBlock.plistOptOut(in: try authoredInfoDictionary())
         let bundled = MetaTelemetryBlock.bundleOptOut
 
@@ -82,6 +86,7 @@ final class TelemetryOptOutGuardTests: XCTestCase {
                            + "something between the authored plist and the bundle is rewriting it")
         XCTAssertEqual(authored.crashReporting, bundled.crashReporting,
                        "the built app's CrashReporting opt-out does not match \(Self.authoredInfoPlist)")
+        #endif
     }
 
     // MARK: - The manifest pairing rule
