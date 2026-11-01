@@ -3224,7 +3224,7 @@ struct Config {
     }
 
     static var isBroadcastConfigured: Bool {
-        !broadcastRTMPURL.isEmpty && !broadcastStreamKey.isEmpty
+        (try? BroadcastDestination(rtmpURL: broadcastRTMPURL, streamKey: broadcastStreamKey)) != nil
     }
 
     // MARK: - Broadcast Encoding (Plan CY)

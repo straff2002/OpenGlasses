@@ -7,6 +7,7 @@ import Combine
 struct LivePreviewView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var broadcastService: BroadcastService
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.
@@ -20,12 +21,15 @@ struct LivePreviewView: View {
     @State private var previousVideoFrameCallback: ((UIImage) -> Void)?
     /// What the Go Live button had to say instead of going live.
     @State private var goLiveNotice: GoLiveNotice?
+    @State private var isChangingBroadcast = false
+    @State private var isPreviewVisible = false
 
     @ScaledMetric(relativeTo: .body) private var tapTarget: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var controlCircle: CGFloat = 56
     @ScaledMetric(relativeTo: .title) private var recordGlyph: CGFloat = 32
 
-    init(onOpenSetup: @escaping () -> Void) {
+    init(broadcastService: BroadcastService, onOpenSetup: @escaping () -> Void) {
+        self.broadcastService = broadcastService
         self.onOpenSetup = onOpenSetup
     }
 
@@ -196,11 +200,11 @@ struct LivePreviewView: View {
                             Image(systemName: "antenna.radiowaves.left.and.right")
                                 .font(.title2)
                                 .foregroundStyle(
-                                    appState.broadcastService.isBroadcasting ? OGTheme.mediaErrorLabel : OGTheme.onMedia
+                                    broadcastService.isBroadcasting ? OGTheme.mediaErrorLabel : OGTheme.onMedia
                                 )
                                 .frame(width: controlCircle, height: controlCircle)
                                 .glassEffect(in: .circle)
-                            if appState.broadcastService.isBroadcasting {
+                            if broadcastService.isBroadcasting {
                                 Text("LIVE")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(OGTheme.onBadge)
@@ -213,17 +217,18 @@ struct LivePreviewView: View {
                             }
                         }
                     }
-                    .accessibilityLabel(appState.broadcastService.isBroadcasting ? "Stop Broadcasting" : "Go Live")
+                    .disabled(isChangingBroadcast)
+                    .accessibilityLabel(broadcastService.isBroadcasting ? "Stop Broadcasting" : "Go Live")
 
                     // BS P3: mid-stream source switch — no RTMP teardown, just re-routes
                     // which camera feeds the encoder (debounced in the service).
-                    if appState.broadcastService.isBroadcasting {
+                    if broadcastService.isBroadcasting {
                         Menu {
                             ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
                                 Button {
-                                    appState.broadcastService.switchSource(source)
+                                    broadcastService.switchSource(source)
                                 } label: {
-                                    if appState.broadcastService.activeSource == source {
+                                    if broadcastService.activeSource == source {
                                         Label(source.displayLabel, systemImage: "checkmark")
                                     } else {
                                         Text(source.displayLabel)
@@ -288,10 +293,10 @@ struct LivePreviewView: View {
             // CY: broadcast health while live — state, throughput, achieved frame rate and the
             // frames that never made the wire. A LIVE badge alone cannot tell "streaming fine"
             // from "reconnecting into a hole", and those are the two things worth knowing.
-            if appState.broadcastService.isBroadcasting {
+            if broadcastService.isBroadcasting || broadcastService.sessionState.isConnecting {
                 VStack {
                     Spacer()
-                    BroadcastHealthBar(service: appState.broadcastService)
+                    BroadcastHealthBar(service: broadcastService)
                         .padding(.bottom, 110)
                 }
             }
@@ -334,16 +339,26 @@ struct LivePreviewView: View {
                 Button("Open Setup", action: onOpenSetup)
                 Button("Not Now", role: .cancel) {}
             } else {
+                if case .failed = notice, setupReachable {
+                    Button("Open Setup", action: onOpenSetup)
+                }
                 Button("OK", role: .cancel) {}
             }
         } message: { notice in
             Text(verbatim: notice.message)
+        }
+        .onChange(of: broadcastService.sessionState) { _, state in
+            // Includes failures after going live, such as exhausting reconnect attempts.
+            if case .failed(let message) = state {
+                goLiveNotice = .failed(message)
+            }
         }
         // A pair that connects while this is open is the picture the wearer came here for.
         .onChange(of: appState.isConnected) { _, connected in
             if connected { startStreamIfNeeded() }
         }
         .onAppear {
+            isPreviewVisible = true
             // Subscribe to camera frames via callback
             let previousCallback = appState.cameraService.onVideoFrame
             previousVideoFrameCallback = previousCallback
@@ -356,11 +371,12 @@ struct LivePreviewView: View {
             startStreamIfNeeded()
         }
         .onDisappear {
+            isPreviewVisible = false
             appState.cameraService.onVideoFrame = previousVideoFrameCallback
             Task {
                 let shouldKeepStreaming =
                     appState.videoRecorder.isRecording ||
-                    appState.broadcastService.isBroadcasting ||
+                    broadcastService.isBroadcasting ||
                     appState.webRTCStreaming.isStreaming ||
                     appState.geminiLiveSession.isActive ||
                     appState.openAIRealtimeSession.isActive ||
@@ -398,7 +414,7 @@ struct LivePreviewView: View {
     }
 
     private var phoneOnlyHeadline: String {
-        if appState.broadcastService.isBroadcasting {
+        if broadcastService.isBroadcasting {
             return String(localized: "Streaming from the phone camera. The picture doesn't show here.")
         }
         // Go Live refuses this fallback with the blur on, so it must not be promised.
@@ -411,6 +427,9 @@ struct LivePreviewView: View {
     /// `AppState.toggleBroadcast()` reports a missing URL or key as an error, which is right for
     /// Siri. Here the wearer is looking at the button, so they get the way to fix it.
     private func goLiveTapped() async {
+        guard !isChangingBroadcast else { return }
+        isChangingBroadcast = true
+        defer { isChangingBroadcast = false }
         var decision = goLiveDecision()
         // Asked before the stream starts, so the microphone isn't on air behind the iOS prompt.
         if startsOnPhone(decision), AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
@@ -419,7 +438,13 @@ struct LivePreviewView: View {
         }
         switch decision {
         case .toggle(let source):
-            await appState.toggleBroadcast(startSource: source)
+            await appState.toggleBroadcast(startSource: source) { message in
+                if isPreviewVisible {
+                    goLiveNotice = .failed(message)
+                } else {
+                    appState.errorMessage = message
+                }
+            }
         case .needsSetup(let canOpenSettings):
             goLiveNotice = canOpenSettings ? .setUp : .notSetUp
         case .phoneCameraNotBlurred:
@@ -436,19 +461,23 @@ struct LivePreviewView: View {
     private func goLiveDecision() -> BroadcastGoLive.Decision {
         let camera = AVCaptureDevice.authorizationStatus(for: .video)
         return BroadcastGoLive.decide(.init(
-            isBroadcasting: appState.broadcastService.isBroadcasting,
+            isBroadcasting: broadcastService.isBroadcasting,
             isConfigured: Config.isBroadcastConfigured,
             preferredSource: preferredBroadcastSource,
             glassesConnected: appState.isConnected,
             faceBlurOn: appState.privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
-            setupReachable: SettingsVisibilityPolicy.hubCategories(
-                simpleMode: Config.simpleModeEnabled, in: AdminGate.shared.settingsContext)
-                .contains { $0.id == .capture }))
+            setupReachable: setupReachable))
+    }
+
+    private var setupReachable: Bool {
+        SettingsVisibilityPolicy.hubCategories(
+            simpleMode: Config.simpleModeEnabled, in: AdminGate.shared.settingsContext)
+            .contains { $0.id == .capture }
     }
 
     private func startsOnPhone(_ decision: BroadcastGoLive.Decision) -> Bool {
-        guard !appState.broadcastService.isBroadcasting,
+        guard !broadcastService.isBroadcasting,
               case .toggle(let source) = decision else { return false }
         return (source ?? preferredBroadcastSource).isPhone
     }
@@ -477,26 +506,29 @@ private enum GoLiveNotice {
     case notSetUp
     case phoneCameraNotBlurred
     case phoneCameraDenied
+    case failed(String)
 
     var title: String {
         switch self {
-        case .setUp: return String(localized: "Set up live streaming?")
-        case .notSetUp: return String(localized: "Live streaming isn't set up")
+        case .setUp, .notSetUp: return String(localized: "Live streaming isn't set up")
         case .phoneCameraNotBlurred: return String(localized: "Can't blur the phone camera")
         case .phoneCameraDenied: return String(localized: "Camera access is off")
+        case .failed: return String(localized: "Couldn't broadcast")
         }
     }
 
     var message: String {
         switch self {
         case .setUp:
-            return String(localized: "In Settings, open Camera, Recording & Streaming to find Live Streaming. Add your platform and stream key, then come back to go live.")
+            return String(localized: "In Settings, open Camera, Recording & Streaming to find Live Streaming. Add a valid RTMP URL and your platform's stream key, then come back to go live.")
         case .notSetUp:
-            return String(localized: "Its settings aren't available on this phone.")
+            return String(localized: "A valid RTMP URL and stream key are needed to go live. Live Streaming settings aren't available on this phone.")
         case .phoneCameraNotBlurred:
             return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone.")
         case .phoneCameraDenied:
             return String(localized: "Allow camera access for Avenkin in iOS Settings to stream from the phone.")
+        case .failed(let message):
+            return message
         }
     }
 }
