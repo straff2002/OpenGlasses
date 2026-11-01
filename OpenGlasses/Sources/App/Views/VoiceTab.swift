@@ -194,7 +194,7 @@ struct VoiceTab: View {
             if moved { scenarios.settleShelfOpening() }
         }
         .fullScreenCover(isPresented: $showPreview, onDismiss: leavePreview) {
-            LivePreviewView {
+            LivePreviewView(broadcastService: appState.broadcastService) {
                 previewLeavingToSetup = true
                 showPreview = false
             }

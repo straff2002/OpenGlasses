@@ -132,10 +132,14 @@ class BroadcastService: ObservableObject {
         source: BroadcastVideoSource? = nil
     ) async throws {
         guard !isBroadcasting else { return }
-        guard !rtmpURL.isEmpty, !streamKey.isEmpty else {
-            broadcastError = "Configure RTMP URL and stream key in Settings"
-            throw BroadcastError.notConfigured
+        let destination: BroadcastDestination
+        do {
+            destination = try BroadcastDestination(rtmpURL: rtmpURL, streamKey: streamKey)
+        } catch {
+            broadcastError = error.localizedDescription
+            throw error
         }
+        broadcastError = nil
 
         // BS P2/P3: apply configured geometry and starting source.
         let geometry = BroadcastGeometry.outputSize(orientation: Config.broadcastOrientation)
@@ -158,12 +162,12 @@ class BroadcastService: ObservableObject {
 
         // Parse URL: split into connection URL and stream name
         // e.g. rtmp://a.rtmp.youtube.com/live2 + streamKey
-        if rtmpURL.hasSuffix("/") {
-            connectionURL = String(rtmpURL.dropLast())
+        if destination.url.hasSuffix("/") {
+            connectionURL = String(destination.url.dropLast())
         } else {
-            connectionURL = rtmpURL
+            connectionURL = destination.url
         }
-        streamName = streamKey
+        streamName = destination.streamKey
 
         // Neither half of an RTMP destination is loggable: the ingest URL names the platform and
         // the wearer's own channel, and the stream key is a bearer credential that lets anyone
@@ -186,11 +190,13 @@ class BroadcastService: ObservableObject {
             // the wearer is looking at the button they just pressed, and a wrong URL or key would
             // otherwise spend five minutes in a backoff loop before saying so.
             wantsConnection = false
-            machine.apply(.fail(error.localizedDescription))
-            broadcastError = error.localizedDescription
+            let failure = BroadcastError.connectionFailed
+            machine.apply(.fail(failure.localizedDescription))
+            broadcastError = failure.localizedDescription
+            teardownConnectionObjects()
             cleanup()
             publishHealth()
-            throw BroadcastError.connectionFailed(error.localizedDescription)
+            throw failure
         }
 
         isBroadcasting = true
@@ -883,19 +889,6 @@ final actor BroadcastBitRateController: StreamBitRateStrategy {
         }
     }
 }
-
-enum BroadcastError: LocalizedError {
-    case notConfigured
-    case connectionFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .notConfigured: return "Broadcast not configured — set RTMP URL and stream key in Settings"
-        case .connectionFailed(let reason): return "Broadcast connection failed: \(reason)"
-        }
-    }
-}
-
 
 /// BS P2: seam for a mic buffer source. Adopted by `WakeWordService` (the shared tap), by
 /// `StandaloneMicTapService`, and by `CaptureAudioRouter`, which is what capture consumers actually

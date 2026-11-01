@@ -6412,7 +6412,10 @@ class AppState: ObservableObject, AppStateProtocol {
     ///
     /// - Parameter startSource: the camera to start on, chosen by the live preview
     ///   (`BroadcastGoLive`). Siri and Shortcuts pass nothing, which starts on the Camera setting.
-    func toggleBroadcast(startSource: BroadcastVideoSource? = nil) async {
+    /// - Parameter onError: lets a presented preview show failures beside its own controls.
+    ///   Other callers use the main screen's error banner.
+    func toggleBroadcast(startSource: BroadcastVideoSource? = nil,
+                         onError: ((String) -> Void)? = nil) async {
         if broadcastService.isBroadcasting {
             broadcastService.stopBroadcast()
             chatReadback.stop()
@@ -6426,7 +6429,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 )
                 startChatReadbackIfConfigured()
             } catch {
-                errorMessage = error.localizedDescription
+                if let onError {
+                    onError(error.localizedDescription)
+                } else {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
