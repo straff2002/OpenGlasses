@@ -1624,6 +1624,10 @@ enum PrivacyLog {
         // the answer (`StallReplyPolicy`); it was asked once more with the results still in
         // history. The character count of the stalled reply only.
         case stallReplyReasked
+        // A reply with no words in it, on a provider that would keep it as the answer, was asked
+        // for once more (`StallReplyPolicy.isSilent`). The character count of the blank reply and
+        // the provider label only.
+        case silentReplyReasked
         // Plan FG P1a — an account route's request was refused with a 401 and a refresh was
         // forced; `success` says whether a new token came back for the one retry. Provider only.
         case authRefreshRetry

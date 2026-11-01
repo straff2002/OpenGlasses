@@ -188,6 +188,184 @@ final class ToolLoopDriverTests: XCTestCase {
         XCTAssertEqual(result, "One moment, let me check.")
     }
 
+    // MARK: - A reply with no words in it
+
+    /// A scripted adapter on a provider that keeps an empty reply, with the re-ask wired in.
+    private func makeSilenceAdapter(turns: [AssistantTurn], history: Box<[String]>,
+                                    statuses: Box<[ToolCallStatus]>, requests: Box<Int>,
+                                    optedIn: Bool = true) -> ProviderLoopAdapter {
+        var adapter = makeScriptedAdapter(turns: turns, history: history, statuses: statuses)
+        let perform = adapter.performTurn
+        adapter = ProviderLoopAdapter(
+            label: adapter.label, dispatcher: adapter.dispatcher,
+            performTurn: { requests.value += 1; return try await perform() },
+            appendAssistantToolCall: adapter.appendAssistantToolCall,
+            appendToolResults: adapter.appendToolResults, finalize: adapter.finalize,
+            appendUserNote: { history.value.append("note:\($0)") })
+        adapter.asksAgainWhenSilent = optedIn
+        return adapter
+    }
+
+    private func toolCall(_ name: String = "web_search") -> AssistantTurn {
+        AssistantTurn(text: "", toolCalls: [ToolInvocation(id: "1", name: name, arguments: [:])])
+    }
+
+    func testAnEmptyReplyIsAskedForOnceAndTheAnswerIsReturned() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [AssistantTurn(text: ""), AssistantTurn(text: "It's noon.")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "It's noon.")
+        XCTAssertEqual(requests.value, 2)
+        XCTAssertEqual(history.value, ["note:\(StallReplyPolicy.silenceNudge)", "final:It's noon."],
+                       "the empty reply is never finalised")
+    }
+
+    func testABlankReplyCountsAsEmpty() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [AssistantTurn(text: " \n "), AssistantTurn(text: "It's noon.")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "It's noon.")
+    }
+
+    /// With no tool to speak from, the turn ends as it always did, and no third request is made.
+    func testASecondEmptyWithNoToolsEndsTheTurnAsBefore() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [AssistantTurn(text: ""), AssistantTurn(text: "")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "")
+        XCTAssertEqual(requests.value, 2)
+        XCTAssertEqual(history.value, ["note:\(StallReplyPolicy.silenceNudge)", "final:"])
+        XCTAssertEqual(statuses.value.last, .idle)
+    }
+
+    func testAnEmptyReplyAfterAToolIsAskedForOnce() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [toolCall(), AssistantTurn(text: ""), AssistantTurn(text: "Two listings.")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "Two listings.")
+        XCTAssertEqual(history.value, ["assistant:toolcall", "results:web_search",
+                                       "note:\(StallReplyPolicy.silenceNudge)", "final:Two listings."])
+    }
+
+    /// The tool did something on the technician's behalf, so the turn says what, not nothing.
+    func testASecondEmptyAfterAToolSaysWhatTheToolsAnswered() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        var adapter = makeSilenceAdapter(turns: [toolCall("close_task"), AssistantTurn(text: ""), AssistantTurn(text: "")],
+                                         history: history, statuses: statuses, requests: requests)
+        adapter = ProviderLoopAdapter(
+            label: adapter.label,
+            dispatcher: ToolDispatcher(execute: { _, _, _, _ in .completed("Task closed.") }, onStatus: { _ in }),
+            performTurn: adapter.performTurn, appendAssistantToolCall: adapter.appendAssistantToolCall,
+            appendToolResults: adapter.appendToolResults, finalize: adapter.finalize,
+            appendUserNote: adapter.appendUserNote, asksAgainWhenSilent: true)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, ToolLoopBudget.doneSoFarPrefix + "Task closed.")
+        XCTAssertEqual(requests.value, 3, "the tool round, the empty reply, and the one re-ask")
+        XCTAssertEqual(history.value.last, "final:\(result)")
+        XCTAssertEqual(statuses.value.last, .idle)
+    }
+
+    /// One re-ask a turn, whichever cause spent it.
+    func testAStallThenAnEmptyIsNotAskedForTwice() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(
+            turns: [toolCall(), AssistantTurn(text: "One moment, let me check."), AssistantTurn(text: "")],
+            history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(requests.value, 3)
+        XCTAssertEqual(history.value.filter { $0.hasPrefix("note:") }, ["note:\(StallReplyPolicy.nudge)"])
+        XCTAssertFalse(result.isEmpty, "the tool answered, so the turn says what it answered")
+    }
+
+    func testAnEmptyThenAStallIsSpokenAsTheAnswer() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(
+            turns: [toolCall(), AssistantTurn(text: ""), AssistantTurn(text: "One moment, let me check.")],
+            history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "One moment, let me check.")
+        XCTAssertEqual(requests.value, 3)
+    }
+
+    /// A provider that throws on an empty reply hops to the next model at once, with no extra request.
+    func testOptedOutTheEmptyReplyGoesStraightToFinalize() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        var adapter = makeSilenceAdapter(turns: [AssistantTurn(text: ""), AssistantTurn(text: "never")],
+                                         history: history, statuses: statuses, requests: requests, optedIn: false)
+        adapter = ProviderLoopAdapter(
+            label: adapter.label, dispatcher: adapter.dispatcher, performTurn: adapter.performTurn,
+            appendAssistantToolCall: adapter.appendAssistantToolCall,
+            appendToolResults: adapter.appendToolResults,
+            finalize: { turn in
+                guard !turn.text.isEmpty else { throw LLMError.invalidResponse("Test") }
+                return turn.text
+            },
+            appendUserNote: adapter.appendUserNote)
+        do {
+            _ = try await runToolLoop(maxIterations: 5, adapter: adapter, setStatus: { statuses.value.append($0) })
+            XCTFail("expected the empty reply to throw")
+        } catch LLMError.invalidResponse {
+            XCTAssertEqual(requests.value, 1, "no extra request before the hop")
+            XCTAssertEqual(history.value, [])
+        }
+    }
+
+    func testOptedOutASecondRoundEmptyEndsAsBefore() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [toolCall(), AssistantTurn(text: "")],
+                                         history: history, statuses: statuses, requests: requests, optedIn: false)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "")
+        XCTAssertEqual(requests.value, 2)
+        XCTAssertEqual(history.value, ["assistant:toolcall", "results:web_search", "final:"])
+    }
+
+    /// Without a way to add the note there is nothing to ask with.
+    func testWithoutANoteHookAnEmptyReplyEndsAsBefore() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([])
+        var adapter = makeScriptedAdapter(turns: [AssistantTurn(text: "")], history: history, statuses: statuses)
+        adapter.asksAgainWhenSilent = true
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "")
+        XCTAssertEqual(history.value, ["final:"])
+    }
+
+    /// The reset tool's result says to say nothing: the app confirms it once the context is clear.
+    func testABlankReplyAfterTheResetToolIsNotAskedFor() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [toolCall("new_topic"), AssistantTurn(text: "")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 5, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "")
+        XCTAssertEqual(requests.value, 2)
+        XCTAssertEqual(history.value, ["assistant:toolcall", "results:new_topic", "final:"])
+    }
+
+    /// The re-ask on the last round leaves the wrap-up to speak from, as a stall there does.
+    func testAnEmptyOnTheLastRoundGoesToTheWrapUp() async throws {
+        let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([]), requests = Box(0)
+        let adapter = makeSilenceAdapter(turns: [toolCall(), AssistantTurn(text: ""), AssistantTurn(text: "Wrapped up.")],
+                                         history: history, statuses: statuses, requests: requests)
+        let result = try await runToolLoop(maxIterations: 2, adapter: adapter,
+                                           setStatus: { statuses.value.append($0) })
+        XCTAssertEqual(result, "Wrapped up.")
+        XCTAssertEqual(requests.value, 3)
+    }
+
     func testLoopShortCircuitsOnYield() async throws {
         let history = Box<[String]>([]), statuses = Box<[ToolCallStatus]>([])
         let adapter = makeScriptedAdapter(

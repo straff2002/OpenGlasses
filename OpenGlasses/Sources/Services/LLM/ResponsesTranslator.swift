@@ -154,8 +154,9 @@ enum ResponsesTranslator {
     /// is the model's interim narration — a preamble before a tool call, or a terse note to itself
     /// about how it means to answer, which a tester heard spoken as the reply (2026-10-16) — and
     /// is never spoken or shown as the answer. `withheldCommentary` counts the commentary items held back, for the
-    /// caller's diagnostic. A turn left with no text and no tool call is an empty reply, and the
-    /// caller's ordinary empty-reply handling takes it.
+    /// caller's diagnostic. A turn left with no text and no tool call is an empty reply. Nothing
+    /// here or in the caller's `finalize` treats that as a failure: the tool loop asks the model once
+    /// more (`StallReplyPolicy.isSilent`), and these items are dropped with the empty turn.
     ///
     /// `rawOutputItems` is the `output` array exactly as received (reasoning items, commentary
     /// messages, `phase`, `encrypted_content` and all) for `assistantHistoryMessage(…rawOutputItems:)`

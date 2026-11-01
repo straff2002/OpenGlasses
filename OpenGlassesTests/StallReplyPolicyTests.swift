@@ -53,4 +53,28 @@ final class StallReplyPolicyTests: XCTestCase {
         XCTAssertTrue(StallReplyPolicy.nudge.contains("already in"))
         XCTAssertTrue(StallReplyPolicy.nudge.contains("answer now"))
     }
+
+    // MARK: A reply with no words in it
+
+    func testABlankReplyIsSilent() {
+        for text in ["", " ", "\n\t  \n"] {
+            XCTAssertTrue(StallReplyPolicy.isSilent(text), "blank")
+        }
+        XCTAssertFalse(StallReplyPolicy.isSilent("Done."))
+    }
+
+    /// The reset tool tells the model to say nothing, because the app confirms it aloud.
+    @MainActor
+    func testABlankReplyAfterAToolThatAskedForSilenceIsWhatItAskedFor() {
+        XCTAssertFalse(StallReplyPolicy.isSilent("", toolsRun: ["web_search", "new_topic"]))
+        XCTAssertTrue(StallReplyPolicy.isSilent("", toolsRun: ["web_search"]))
+        XCTAssertTrue(StallReplyPolicy.toolsThatEndInSilence.contains(NewTopicTool(currentUtterance: { nil }).name))
+    }
+
+    /// No tool may have run, so the note cannot say that their results are in.
+    func testTheSilenceNoteClaimsNoToolResults() {
+        XCTAssertFalse(StallReplyPolicy.silenceNudge.lowercased().contains("result"))
+        XCTAssertFalse(StallReplyPolicy.silenceNudge.lowercased().contains("tool"))
+        XCTAssertTrue(StallReplyPolicy.silenceNudge.contains("answer now"))
+    }
 }

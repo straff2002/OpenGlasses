@@ -253,7 +253,7 @@ final class OpenAIResponsesRouteTests: XCTestCase {
     // MARK: - 6. Output cap reached before any text → named, then the empty-completion path
 
     func testMaxOutputIncompleteIsLoggedNotSilent() async throws {
-        RecordingQueueProtocol.queue = [(200, """
+        let cutOff = """
         event: response.output_item.done
         data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_9","summary":[],"encrypted_content":"enc"}}
 
@@ -261,7 +261,9 @@ final class OpenAIResponsesRouteTests: XCTestCase {
         data: {"type":"response.incomplete","response":{"id":"resp_9","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":50,"output_tokens":4096}}}
 
 
-        """)]
+        """
+        // Twice: the loop asks once more when a reply has no words in it.
+        RecordingQueueProtocol.queue = [(200, cutOff), (200, cutOff)]
         let (svc, _) = service()
         var reply: String?
 
@@ -272,6 +274,64 @@ final class OpenAIResponsesRouteTests: XCTestCase {
         XCTAssertEqual(reply, "", "the turn ends the way an empty completion does")
         XCTAssertTrue(lines.contains { $0.contains("emptyCompletion") && $0.contains("maxOutputTokens") },
                       "the cut-off reply is named in the privacy log")
+    }
+
+    // MARK: - A reply with no words in it
+
+    /// A response holding nothing but a commentary message: withheld, so it has no words.
+    private func commentaryOnlyTurn(_ note: String = "Need brief reply.") -> String {
+        """
+        event: response.output_item.added
+        data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_c","role":"assistant","phase":"commentary","content":[]}}
+
+        event: response.output_text.delta
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_c","delta":"\(note)"}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_c","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"\(note)"}]}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_c","status":"completed","usage":{"input_tokens":50,"output_tokens":5}}}
+
+
+        """
+    }
+
+    /// The commentary is not spoken, not streamed and not kept, and the note goes in instead.
+    func testACommentaryOnlyTurnIsAskedForOnceAndLeavesNothingBehind() async throws {
+        RecordingQueueProtocol.queue = [(200, commentaryOnlyTurn()), (200, answerTurn("It is noon."))]
+        let (svc, _) = service()
+        var bubble = ""
+
+        var reply: String?
+        let lines = try await capturingLog {
+            reply = try await svc.sendOpenAICompatibleForTesting(
+                "what time is it", config: config(), onToken: { bubble += $0 }, onStreamReset: { bubble = "" })
+        }
+
+        XCTAssertEqual(reply, "It is noon.")
+        XCTAssertEqual(bubble, "It is noon.", "the commentary never reached the bubble")
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        let second = RecordingQueueProtocol.requests[1].bodyText
+        XCTAssertTrue(second.contains("had no answer in it"), "the note goes out with the second request")
+        XCTAssertFalse(second.contains("Need brief reply."), "the withheld note is not replayed")
+        XCTAssertTrue(lines.contains { $0.contains("silentReplyReasked") }, "the re-ask is named in the log")
+
+        let said = svc.rawConversationHistoryForTesting().compactMap { $0["content"] as? String }
+        XCTAssertFalse(said.contains { $0.contains("Need brief reply.") })
+        XCTAssertFalse(said.contains(""), "the empty turn is not kept")
+        XCTAssertEqual(said.suffix(3), ["what time is it", StallReplyPolicy.silenceNudge, "It is noon."])
+    }
+
+    func testAnEmptyChatCompletionsReplyIsAskedForOnce() async throws {
+        RecordingQueueProtocol.queue = [(200, chatAnswer("")), (200, chatAnswer("Fine."))]
+        let (svc, _) = service()
+
+        let reply = try await svc.sendOpenAICompatibleForTesting("hello", config: config(effort: nil))
+
+        XCTAssertEqual(reply, "Fine.")
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertTrue(RecordingQueueProtocol.requests[1].bodyText.contains("had no answer in it"))
     }
 
     // MARK: - Streamed (Chat tab) turn
