@@ -19,7 +19,7 @@ struct VehicleTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         guard !Config.homeAssistantURL.isEmpty else {
-            return "Vehicle status reads from Home Assistant, which isn't set up yet. Add your HA URL and token in Settings → Connections → Services & Integrations → Home Assistant, then make sure your car or charger is exposed to Home Assistant."
+            return "Vehicle status reads from Home Assistant, which isn't set up yet. Add your HA URL and token in Settings → Everyday → Home, Music & Messages → Home Assistant, then make sure your car or charger is exposed to Home Assistant."
         }
 
         let cache = HomeAssistantEntityCache.shared

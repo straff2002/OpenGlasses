@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → AI & Personality → Activity (Plan IW P2): what the assistant did for the wearer, a
+/// Settings → Everyday → Memory → Activity (Plan IW P2): what the assistant did for the wearer, a
 /// day at a time — each row's time, what it served, and how it was authorised — with filters, a
 /// link to the goal or conversation a row belongs to, and Clear. Thin over `ActivityScreenModel`.
 ///

@@ -10,7 +10,7 @@ import Foundation
 /// That is still health data on disk, so it is held the way the rest of the app holds sensitive
 /// stores: `completeUntilFirstUserAuthentication` (readable while locked after the first unlock
 /// since boot, which is the point), excluded from backup, dropped after 24 hours, and clearable
-/// from Settings → Devices & Privacy → Hardware & Privacy → Health. Registered as `SensitiveStore.healthSummaryCache`.
+/// from Settings → Everyday → Health & Fitness → Health. Registered as `SensitiveStore.healthSummaryCache`.
 struct HealthSummarySnapshot: Codable, Equatable {
     var heartRate: HeartRateSummary?
     var sleep: SleepNight?

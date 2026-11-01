@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → AI & Personality → Goals (Plan IW P2): the wearer's goals with their progress, each
+/// Settings → Everyday → Memory → Goals (Plan IW P2): the wearer's goals with their progress, each
 /// opening its steps. Everything here can be read, changed and deleted; none of it needs Agent
 /// Mode. Thin over `GoalsScreenModel`, which holds every rule.
 struct GoalsView: View {

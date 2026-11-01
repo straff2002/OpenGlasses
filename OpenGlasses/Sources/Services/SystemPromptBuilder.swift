@@ -58,6 +58,7 @@ enum SystemPromptBuilder {
         - Your name, the wake phrase, push-to-talk and hands-free triggers: Settings > \(title(.voice)).
         - The AI model, personas and system prompt: Settings > \(title(.intelligence)).
         - Agent Mode and remote agents: Settings > \(title(.intelligence)) > Agentic Features.
+        - Memory, My Day, navigation, parking, home control, music, messaging, translation and health: Settings > \(title(.everyday)).
         - Tools and quick actions: Settings > \(title(.tools)).
         - The glasses, microphone and privacy: Settings > \(title(.devices)).
         - Theme and languages: Settings > \(title(.lookAndFeel)).
@@ -88,7 +89,7 @@ enum SystemPromptBuilder {
         THIS APP: You run inside the \(appName) app on the user's iPhone. Your settings are in the app's own \
         Settings tab, never in the iPhone's Settings app, the glasses' app or Siri: your voice under \
         \(title(.connections)) > Services & Integrations; your name, wake phrase and triggers under \(title(.voice)); \
-        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; tools under \(title(.tools)); glasses, \
+        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; memory, My Day, home and health under \(title(.everyday)); tools under \(title(.tools)); glasses, \
         microphone and privacy under \(title(.devices)); theme and languages under \(title(.lookAndFeel)). You \
         cannot change settings yourself. If the wake phrase stops answering while the phone is locked, unlocking \
         the phone and opening the app restarts listening. When a tool returns, answer with its result in that \

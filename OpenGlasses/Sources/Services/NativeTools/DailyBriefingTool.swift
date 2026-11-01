@@ -19,7 +19,7 @@ struct DailyBriefingTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.myDayEnabled else {
-            return "My Day is off. Turn it on in Settings → Connections → Works with your iPhone."
+            return "My Day is off. Turn it on in Settings → Everyday."
         }
         return await myDayService.spokenBriefing()
     }

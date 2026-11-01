@@ -3,8 +3,8 @@ import PhotosUI
 import SwiftUI
 
 /// Parking memory (Plan GH): the current spot as a card — map, level and space, the sign photo,
-/// walking directions — plus automatic capture and history settings. Lives in the general
-/// services list, not the glasses section: phone, CarPlay and the phone speaker are enough.
+/// walking directions — plus automatic capture and history settings. Lives under Everyday,
+/// not the glasses section: phone, CarPlay and the phone speaker are enough.
 struct ParkingSettingsView: View {
     @ObservedObject var appState: AppState
     @ObservedObject private var store: ParkingStore

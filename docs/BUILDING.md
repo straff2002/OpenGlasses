@@ -380,7 +380,9 @@ instead of the sign-in. The account credentials are stored in Keychain on this d
 | **Web Search** | Optional Perplexity / Tavily / Brave keys + SearXNG instance URL. Order: Perplexity → Tavily → Brave → SearXNG → Tavily free tier (keyless) → DuckDuckGo |
 | **Live Streaming** | Platform + RTMP URL + stream key + chat read-aloud (Twitch channel, rate, mentions-only) |
 | **OpenClaw** | Enable + connection mode + host/port + token |
-| **Home Assistant** | URL + Long-Lived Access Token |
+
+
+Home Assistant's URL and Long-Lived Access Token are under Settings → Everyday → Home, Music & Messages.
 
 ---
 
