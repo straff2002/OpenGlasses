@@ -4258,6 +4258,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // CY: the broadcast health readout counts frames that never reached the wire, which
         // includes the ones the privacy relay dropped to keep up. The relay is the only thing
         // that knows about those, so it hands the count over rather than the service reaching in.
+        // Plan KH: however a stream ends (a stop, a rule, a failed connection), the glasses camera
+        // it brought up for itself goes with it.
+        cancellables.append(broadcastService.$isBroadcasting.removeDuplicates().dropFirst().filter { !$0 }
+            .sink { [weak self] _ in
+                Task { @MainActor in await self?.cameraService.releaseStream(for: .broadcast) }
+            })
         broadcastService.droppedFrameSource = { [weak self] in
             self?.outboundFrames.droppedFrameCount ?? 0
         }
@@ -6556,7 +6562,6 @@ class AppState: ObservableObject, AppStateProtocol {
         if broadcastService.isBroadcasting {
             broadcastService.stopBroadcast()
             chatReadback.stop()
-            await cameraService.releaseStream(for: .broadcast)
         } else {
             do {
                 try await broadcastService.startBroadcast(
@@ -6566,6 +6571,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     source: startSource
                 )
                 startChatReadbackIfConfigured()
+                // Connecting takes seconds, and a rule can change inside them.
+                enforceBroadcastRules()
             } catch {
                 if let onError {
                     onError(error.localizedDescription)

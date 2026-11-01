@@ -180,6 +180,20 @@ final class BroadcastSafetyTests: XCTestCase {
         XCTAssertFalse(service.isBroadcasting)
     }
 
+    /// A rule can change during the seconds it takes to connect.
+    func testAStreamIsCheckedAgainOnceItIsUp() throws {
+        let source = try String(contentsOf: Self.appFile, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func toggleBroadcast(startSource:"))
+        XCTAssertTrue(source[start.lowerBound...].prefix(900).contains("enforceBroadcastRules()"))
+    }
+
+    /// A claim taken for a stream must not outlive it, however the stream ended.
+    func testTheEndOfAStreamGivesBackItsCamera() throws {
+        let source = try String(contentsOf: Self.appFile, encoding: .utf8)
+        let hook = try XCTUnwrap(source.range(of: "broadcastService.$isBroadcasting"))
+        XCTAssertTrue(source[hook.lowerBound...].prefix(300).contains("releaseStream(for: .broadcast)"))
+    }
+
     /// The mode's one entry point has to reach the rule, or a stream would outlive it.
     func testTurningTheModeOnReachesTheRunningStream() throws {
         let source = try String(contentsOf: Self.appFile, encoding: .utf8)
