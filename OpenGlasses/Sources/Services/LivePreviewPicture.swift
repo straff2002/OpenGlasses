@@ -43,6 +43,11 @@ enum LivePreviewPicture: Equatable {
         return picture == .phone(.back) && viewfinder == .live && !isBroadcasting
     }
 
+    /// Why there is no Go Live button in Medical Compliance mode.
+    static var streamingOffCaption: String {
+        String(localized: "Preview only. Live streaming is off in Medical Compliance mode.")
+    }
+
     /// The line over the phone camera's picture: what Go Live does with it, and the blur.
     ///
     /// A phone stream with the blur on does not exist (`BroadcastGoLive`), so nothing here has to

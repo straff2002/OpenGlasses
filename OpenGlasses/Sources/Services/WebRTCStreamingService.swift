@@ -59,6 +59,13 @@ class WebRTCStreamingService: ObservableObject {
     func startStreaming(framePublisher: PassthroughSubject<UIImage, Never>) -> String {
         guard !isStreaming else { return streamURL }
 
+        // Plan KH: Local Only closes this route. `connectWebSocket()` is refused further down, but
+        // by then this method has gone on to report a live stream and a viewer link to nothing.
+        guard MedicalEgressGuard.allows(.webRTCBrowserStreaming) else {
+            errorMessage = MedicalEgressRefusal.userMessage
+            return ""
+        }
+
         // A relay is per-deployment and the app ships none, so refuse rather than half-start:
         // marking the stream live against an unusable address would hand the caller a viewer link
         // that can never resolve, and page an expert with it.

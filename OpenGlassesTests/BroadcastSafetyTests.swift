@@ -119,6 +119,89 @@ final class BroadcastSafetyTests: XCTestCase {
         }
     }
 
+    // MARK: - Medical Compliance
+
+    func testGoLiveIsBlockedInAllOfMedicalCompliance() {
+        XCTAssertEqual(BroadcastGoLive.decide(.init(
+            isBroadcasting: false, isConfigured: true, preferredSource: .glasses, glassesConnected: true,
+            faceBlurOn: false, phoneCameraDenied: false, setupReachable: true, medicalCompliance: true)),
+                       .blockedByMedicalCompliance)
+    }
+
+    /// Setting up a key would not change the answer, so that is not what it says.
+    func testTheBlockComesBeforeSetup() {
+        XCTAssertEqual(BroadcastGoLive.decide(.init(
+            isBroadcasting: false, isConfigured: false, preferredSource: .glasses, glassesConnected: true,
+            faceBlurOn: false, phoneCameraDenied: false, setupReachable: true, medicalCompliance: true)),
+                       .blockedByMedicalCompliance)
+    }
+
+    func testStoppingWinsOverTheBlock() {
+        XCTAssertEqual(BroadcastGoLive.decide(.init(
+            isBroadcasting: true, isConfigured: true, preferredSource: .glasses, glassesConnected: true,
+            faceBlurOn: false, phoneCameraDenied: false, setupReachable: true, medicalCompliance: true)),
+                       .toggle(startSource: nil))
+    }
+
+    func testMedicalComplianceEndsARunningStreamOnEitherCamera() {
+        for source in BroadcastVideoSource.allCases {
+            for blur in [true, false] {
+                XCTAssertEqual(BroadcastGoLive.whileLive(live {
+                    $0.activeSource = source
+                    $0.faceBlurOn = blur
+                    $0.medicalCompliance = true
+                }), .end(.medicalCompliance), "\(source)")
+            }
+        }
+    }
+
+    func testMedicalComplianceDoesNothingOffAir() {
+        XCTAssertEqual(BroadcastGoLive.whileLive(live {
+            $0.isBroadcasting = false
+            $0.medicalCompliance = true
+        }), .carryOn)
+    }
+
+    func testTheEndOfAStreamSaysWhy() {
+        XCTAssertTrue(BroadcastGoLive.endMessage(.medicalCompliance).contains("Medical Compliance"))
+    }
+
+    func testTheServiceRefusesAStartInMedicalCompliance() async {
+        let service = BroadcastService()
+        service.faceBlurOn = { false }
+        service.medicalComplianceOn = { true }
+        do {
+            try await service.startBroadcast(rtmpURL: "rtmp://example.invalid/live", streamKey: "key",
+                                             from: PassthroughSubject<UIImage, Never>(), source: .glasses)
+            XCTFail("a stream started in Medical Compliance mode")
+        } catch {
+            XCTAssertEqual(error as? BroadcastError, .blockedByMedicalCompliance)
+        }
+        XCTAssertFalse(service.isBroadcasting)
+    }
+
+    /// The mode's one entry point has to reach the rule, or a stream would outlive it.
+    func testTurningTheModeOnReachesTheRunningStream() throws {
+        let source = try String(contentsOf: Self.appFile, encoding: .utf8)
+        let hook = try XCTUnwrap(source.range(of: "hipaaService.onModeChanged = {"))
+        XCTAssertTrue(source[hook.lowerBound...].prefix(900).contains("enforceBroadcastRules()"))
+    }
+
+    /// Local Only closes the browser stream's route, so it must not report a stream to nothing.
+    func testTheBrowserStreamRefusesToStartInLocalOnly() {
+        let original = MedicalEgressGuard.currentMode
+        MedicalEgressGuard.currentMode = { .localOnly }
+        defer { MedicalEgressGuard.currentMode = original }
+        let service = WebRTCStreamingService()
+        XCTAssertEqual(service.startStreaming(framePublisher: PassthroughSubject<UIImage, Never>()), "")
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertEqual(service.errorMessage, MedicalEgressRefusal.userMessage)
+    }
+
+    func testThePreviewSaysWhyThereIsNoGoLive() {
+        XCTAssertTrue(LivePreviewPicture.streamingOffCaption.contains("Medical Compliance"))
+    }
+
     private static var appFile: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("OpenGlasses/Sources/App/OpenGlassesApp.swift")
@@ -173,6 +256,11 @@ final class BroadcastIntentTests: XCTestCase {
     }
 
     /// An intent never raises the iOS prompt. The preview can, because someone is looking at it.
+    func testAnIntentIsRefusedInMedicalCompliance() {
+        XCTAssertEqual(decide { $0.medicalCompliance = true }, .refuse(.medicalCompliance))
+        XCTAssertEqual(decide { $0.medicalCompliance = true; $0.isBroadcasting = true }, .stop)
+    }
+
     func testAnIntentNeverAsksForThePhoneCamera() {
         XCTAssertEqual(decide(notAsked: true) { $0.glassesConnected = false }, .refuse(.phoneCameraNotAsked))
         XCTAssertEqual(decide(notAsked: true) { $0.preferredSource = .phoneBack }, .refuse(.phoneCameraNotAsked))
@@ -196,7 +284,7 @@ final class BroadcastIntentTests: XCTestCase {
 
     func testEveryRefusalHasItsOwnSentence() {
         let refusals: [BroadcastGoLive.IntentRefusal] = [
-            .notSetUp, .phoneCameraNotBlurred(.fallback), .phoneCameraNotBlurred(.chosen),
+            .notSetUp, .medicalCompliance, .phoneCameraNotBlurred(.fallback), .phoneCameraNotBlurred(.chosen),
             .phoneCameraNotBlurred(.inset), .phoneCameraDenied, .phoneCameraNotAsked, .noPicture,
             .couldNotConnect,
         ]

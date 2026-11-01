@@ -26,6 +26,8 @@ enum BroadcastError: LocalizedError, Equatable {
     case connectionFailed
     /// Plan KH: the phone camera was asked for while Blur Bystander Faces is on.
     case phoneCameraNotBlurred
+    /// Plan KH: a stream was asked for in Medical Compliance mode.
+    case blockedByMedicalCompliance
 
     var errorDescription: String? {
         switch self {
@@ -37,6 +39,8 @@ enum BroadcastError: LocalizedError, Equatable {
             return String(localized: "Couldn't connect to the streaming server. Check your internet connection, then check the RTMP URL and stream key in Settings → Camera, Recording & Streaming → Live Streaming and try again.")
         case .phoneCameraNotBlurred:
             return String(localized: "Blur Bystander Faces doesn't cover the phone camera, so a stream can't use it while the blur is on.")
+        case .blockedByMedicalCompliance:
+            return BroadcastGoLive.medicalComplianceMessage
         }
     }
 }

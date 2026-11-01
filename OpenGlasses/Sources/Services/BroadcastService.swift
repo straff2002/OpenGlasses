@@ -127,6 +127,10 @@ class BroadcastService: ObservableObject {
     /// this service. Injectable so a test does not have to write the setting.
     var faceBlurOn: @MainActor () -> Bool = { Config.privacyFilterEnabled }
 
+    /// Plan KH: Medical Compliance mode is on, with or without Local Only. Injectable for the same
+    /// reason. Asked here, not only by the callers, so no route can start a stream past it.
+    var medicalComplianceOn: @MainActor () -> Bool = { Config.hipaaMode }
+
     private var phoneFramesAllowed: Bool {
         BroadcastGoLive.phoneFramesAllowed(faceBlurOn: faceBlurOn())
     }
@@ -149,6 +153,10 @@ class BroadcastService: ObservableObject {
         source: BroadcastVideoSource? = nil
     ) async throws {
         guard !isBroadcasting else { return }
+        guard !medicalComplianceOn() else {
+            broadcastError = BroadcastError.blockedByMedicalCompliance.errorDescription
+            throw BroadcastError.blockedByMedicalCompliance
+        }
         let destination: BroadcastDestination
         do {
             destination = try BroadcastDestination(rtmpURL: rtmpURL, streamKey: streamKey)

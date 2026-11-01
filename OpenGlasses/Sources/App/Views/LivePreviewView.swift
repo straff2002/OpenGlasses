@@ -12,6 +12,8 @@ struct LivePreviewView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var adminGate = AdminGate.shared
+    /// Plan KH: the preview stays, for looking. Going live does not.
+    @AppStorage("hipaaMode") private var medicalCompliance = false
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.
@@ -178,7 +180,10 @@ struct LivePreviewView: View {
                 }
                 Spacer()
 
-                if case .phone = picture, phoneViewfinderPhase == .live {
+                if medicalCompliance && !isBroadcasting {
+                    mediaCaption(LivePreviewPicture.streamingOffCaption)
+                        .padding(.bottom, 12)
+                } else if case .phone = picture, phoneViewfinderPhase == .live {
                     mediaCaption(LivePreviewPicture.phoneCaption(
                         isBroadcasting: isBroadcasting,
                         blurOn: blurOn))
@@ -569,7 +574,14 @@ struct LivePreviewView: View {
         .accessibilityHint(appState.isConnected ? "" : "Recording needs glasses connected.")
     }
 
+    /// Stopping is always on offer: a stream cannot outlive the mode coming on, but this must not
+    /// be what stands in its way if it ever did.
+    @ViewBuilder
     private var goLiveButton: some View {
+        if !medicalCompliance || isBroadcasting { goLiveControl }
+    }
+
+    private var goLiveControl: some View {
         Button {
             Task { await goLiveTapped() }
         } label: {
@@ -702,6 +714,8 @@ struct LivePreviewView: View {
                 route: route, changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
         case .phoneCameraDenied:
             goLiveNotice = .phoneCameraDenied
+        case .blockedByMedicalCompliance:
+            goLiveNotice = .streamChanged(BroadcastGoLive.medicalComplianceMessage)
         }
     }
 
@@ -719,7 +733,8 @@ struct LivePreviewView: View {
             faceBlurOn: appState.privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
             setupReachable: setupReachable,
-            dualCaptureOn: Config.broadcastDualCapture))
+            dualCaptureOn: Config.broadcastDualCapture,
+            medicalCompliance: Config.hipaaMode))
     }
 
     private var setupReachable: Bool {

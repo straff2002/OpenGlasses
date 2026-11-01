@@ -2811,6 +2811,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // A guard stops the next request; it cannot close a socket that is already streaming.
             // Every live session on a route the mode has just closed ends here.
             self?.egressCoordinator.modeDidChange()
+            // Plan KH: a live stream ends in all of Medical Compliance, not only in Local Only,
+            // and RTMP has no route for the coordinator above to close.
+            self?.enforceBroadcastRules()
             // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
             if Config.hipaaMode {
                 self?.webHUDMirror.stop()
@@ -6432,7 +6435,8 @@ class AppState: ObservableObject, AppStateProtocol {
             activeSource: broadcastService.activeSource,
             phoneInsetOn: broadcastService.isPhoneInsetOn,
             faceBlurOn: privacyFilter.isEnabled,
-            glassesConnected: isConnected)) {
+            glassesConnected: isConnected,
+            medicalCompliance: Config.hipaaMode)) {
         case .carryOn:
             break
         case .dropPhoneInset:
@@ -6516,7 +6520,8 @@ class AppState: ObservableObject, AppStateProtocol {
             faceBlurOn: privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
             setupReachable: true,
-            dualCaptureOn: Config.broadcastDualCapture), phoneCameraNotAsked: camera == .notDetermined)
+            dualCaptureOn: Config.broadcastDualCapture,
+            medicalCompliance: Config.hipaaMode), phoneCameraNotAsked: camera == .notDetermined)
         switch decision {
         case .stop:
             await toggleBroadcast()

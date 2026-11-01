@@ -87,6 +87,8 @@ enum BroadcastGoLive {
         var setupReachable: Bool
         /// Live Streaming's Dual Capture setting: the phone camera as an inset.
         var dualCaptureOn = false
+        /// Medical Compliance mode is on, with or without Local Only.
+        var medicalCompliance = false
     }
 
     /// The ways a phone frame could reach the encoder.
@@ -108,6 +110,7 @@ enum BroadcastGoLive {
         /// The phone camera would go out with the blur the wearer has on not covering it.
         case phoneCameraNotBlurred(PhoneRoute)
         case phoneCameraDenied
+        case blockedByMedicalCompliance
     }
 
     /// The one rule every route asks.
@@ -117,8 +120,12 @@ enum BroadcastGoLive {
     ///
     /// A glasses stream with no glasses connected would go LIVE with a black picture and an open
     /// microphone, so it falls back to the phone's back camera, unless the blur is on.
+    ///
+    /// Medical Compliance comes next, ahead of setup: a clinic's camera and microphone do not go to
+    /// a public streaming platform, Local Only or not, and setting up a key would not change that.
     static func decide(_ facts: Facts) -> Decision {
         guard !facts.isBroadcasting else { return .toggle(startSource: nil) }
+        guard !facts.medicalCompliance else { return .blockedByMedicalCompliance }
         guard facts.isConfigured else { return .needsSetup(canOpenSettings: facts.setupReachable) }
         let fallsBack = facts.preferredSource == .glasses && !facts.glassesConnected
         if !phoneFramesAllowed(faceBlurOn: facts.faceBlurOn) {
@@ -138,6 +145,7 @@ enum BroadcastGoLive {
     /// to and no alert to answer, so each is a sentence to say.
     enum IntentRefusal: Equatable {
         case notSetUp
+        case medicalCompliance
         case phoneCameraNotBlurred(PhoneRoute)
         case phoneCameraDenied
         /// iOS has never been asked for the phone camera. Asking here would raise a prompt out of
@@ -165,6 +173,8 @@ enum BroadcastGoLive {
         switch decide(facts) {
         case .needsSetup:
             return .refuse(.notSetUp)
+        case .blockedByMedicalCompliance:
+            return .refuse(.medicalCompliance)
         case .phoneCameraNotBlurred(let route):
             return .refuse(.phoneCameraNotBlurred(route))
         case .phoneCameraDenied:
@@ -182,6 +192,8 @@ enum BroadcastGoLive {
         switch refusal {
         case .notSetUp:
             return String(localized: "Live streaming isn't set up. Add your platform and stream key in Avenkin first.")
+        case .medicalCompliance:
+            return medicalComplianceMessage
         case .phoneCameraNotBlurred(.inset):
             return String(localized: "I can't go live. Blur Bystander Faces is on, and Dual Capture would put the phone camera on the stream.")
         case .phoneCameraNotBlurred(.fallback):
@@ -197,6 +209,11 @@ enum BroadcastGoLive {
         case .couldNotConnect:
             return String(localized: "I couldn't reach the streaming server, so you aren't live.")
         }
+    }
+
+    /// The reason, wherever it is shown or said.
+    static var medicalComplianceMessage: String {
+        String(localized: "Live streaming is off in Medical Compliance mode, so the camera and microphone don't go to a streaming service.")
     }
 
     /// How long the phone camera has to come up for an intent. It starts in a moment or not at all.
@@ -220,10 +237,13 @@ enum BroadcastGoLive {
         var phoneInsetOn: Bool
         var faceBlurOn: Bool
         var glassesConnected: Bool
+        var medicalCompliance = false
     }
 
     /// Why a running stream was ended rather than left to carry on.
     enum EndReason: Equatable {
+        /// Medical Compliance mode came on during a stream.
+        case medicalCompliance
         /// The blur came on during a phone stream with no glasses to move to.
         case blurNeedsGlasses
         /// The blur came on during a phone stream, and the glasses gave no picture to move to.
@@ -244,6 +264,7 @@ enum BroadcastGoLive {
     /// ends, because there is no third picture to send.
     static func whileLive(_ facts: LiveFacts) -> LiveAction {
         guard facts.isBroadcasting else { return .carryOn }
+        guard !facts.medicalCompliance else { return .end(.medicalCompliance) }
         guard !phoneFramesAllowed(faceBlurOn: facts.faceBlurOn) else { return .carryOn }
         if facts.activeSource.isPhone {
             return facts.glassesConnected ? .moveToGlasses : .end(.blurNeedsGlasses)
@@ -256,6 +277,8 @@ enum BroadcastGoLive {
 
     static func endMessage(_ reason: EndReason) -> String {
         switch reason {
+        case .medicalCompliance:
+            return String(localized: "The live stream has ended, because Medical Compliance mode is on.")
         case .blurNeedsGlasses:
             return String(localized: "The live stream has ended. Blur Bystander Faces is on, it can't cover the phone camera, and no glasses are connected.")
         case .glassesGaveNoPicture:

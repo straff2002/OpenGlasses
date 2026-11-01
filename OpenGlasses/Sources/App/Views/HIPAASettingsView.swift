@@ -256,6 +256,8 @@ struct HIPAASettingsView: View {
                               detail: "Disabled — prevents clinical query leakage")
                     changeRow(icon: "paperplane.fill", color: OGTheme.errorLabel, title: "External Messaging",
                               detail: "Disabled — prevents uncontrolled PHI sharing")
+                    changeRow(icon: "dot.radiowaves.left.and.right", color: OGTheme.errorLabel, title: "Live Streaming",
+                              detail: "Disabled — camera and microphone never go to a streaming service")
                     changeRow(icon: "cloud.fill", color: OGTheme.errorLabel, title: "Cloud Memory Sync",
                               detail: "Disabled — memories stay on-device only")
                     changeRow(icon: "globe", color: OGTheme.warnLabel, title: "Caption Translation",
