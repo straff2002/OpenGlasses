@@ -2,7 +2,7 @@
 
 Reviewed 1 November 2026 against source at `3b886bbe6`; the audit and app fixes now live in the isolated `codex/app-store-guidelines-audit` worktree based on `a18dba43b`. Other ongoing app changes were excluded from this branch. This is a source and submission-material review, with focused simulator validation recorded below. It is not an approval guarantee or an inspection of the build currently selected in App Store Connect. No app submission or App Store Connect changes were made.
 
-**Recommendation: hold submission until the distribution, AI-consent, privacy and reviewer-access items below are resolved.** Disabling Meta glasses is a sensible product boundary, but the current implementation does not establish that boundary reliably for review. The Reddit post is anecdotal; neither review-volume figures nor its author's outcome establish the likely outcome for this app.
+**Recommendation: hold submission until the exact signed phone-only archive, live privacy answers, purchases and complete reviewer access are verified.** The initial distribution and AI-consent source findings have been remediated on this branch; the release evidence below is still required. The Reddit post is anecdotal; neither review-volume figures nor its author's outcome establish the likely outcome for this app.
 
 ## Policy reference
 
@@ -10,7 +10,19 @@ Apple's [current guidelines](https://developer.apple.com/app-store/review/guidel
 
 The priorities and implementation recommendations below are this audit's assessment, not statements that Apple has rejected or approved these mechanisms.
 
-## Findings that remain open
+## Remediation on the audit branch
+
+- A compile-time phone-only build omits the Meta package products, SDK implementations, hardware Siri surfaces and silent media-button standby. Receipt classification is diagnostic only. The separate glasses-beta build retains hardware functionality. [Build procedure](../docs/app-store-phone-only-build.md).
+- Recipient-and-purpose sharing approval now gates HTTP/SSE, live voice/camera, cloud transcription, cloud speech, web search, custom agents, MCP and gateway sockets. Permission is versioned and withdrawable. Requests without an available foreground prompt refuse; saving credentials does not approve sending content. Refusal stops model/search fallback, and a refused cloud voice falls back to the system voice.
+- The privacy manifest now declares authenticated provider data as linked and includes reduced-precision location. Tracking remains false. This corrects source declarations; live App Store Connect answers and recipient terms still require verification.
+- Review notes cover the separate binary, sharing permissions, Field Assist, organisation activation, Medical and non-obvious remote/background features. The Medical paywall now describes controls and export formats without claims of certification, secure erasure or direct integration with named clinical systems.
+- The privacy-policy change is a branch draft for the release. It has not been published. About/Support corrections from the earlier audit were already published separately.
+
+The remaining operational and owner evidence is listed in the [submission checklist](app-store-2026.10/submission-checklist.md). No live StoreKit purchase, organisation credential, clinical verification, third-party authorisation or signed distribution archive has been fabricated or treated as verified.
+
+## Initial findings (before remediation)
+
+The following evidence describes the initial audit baseline, not the current implementation. Read it alongside the remediation status above.
 
 ### 1. High — receipt-based glasses suspension cannot establish the review experience
 
@@ -26,7 +38,7 @@ There are also ungated static Shortcuts surfaces: `App/Intents/CaptureIntents.sw
 
 The phone-only archive should exclude Meta products and glasses-only implementations/UI, Meta plist keys and URL scheme, `com.meta.ar.wearable`, accessory background modes and glasses-only entitlements. Decide Bluetooth declarations from the code actually retained; ordinary headset audio does not justify a Meta pairing implementation. Keep the phone camera, headset audio, watch and supported phone workflows. Verify the final linked artifact, including static SDK symbols, not only its Frameworks directory. Preserve TestFlight support through a different archive. A different bundle ID is not inherently required for this approach.
 
-No receipt replacement, reviewer-device detection, secret unlock, region trick or remotely activated post-review feature should be added. This audit has not implemented the archive separation or changed the owner's existing distribution decision.
+No receipt replacement, reviewer-device detection, secret unlock, region trick or remotely activated post-review feature should be added. The follow-up implementation now provides that separate build; workflow configuration and signed-archive verification remain outstanding.
 
 ### 2. High — explicit permission for third-party AI processing is not established
 
@@ -98,7 +110,7 @@ The owner subsequently authorized publication. The two corrected pages were comm
 
 The App Group correction follows Apple's [UserDefaults reason definitions](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype): `CA92.1` covers app-only defaults; `1C8F.1` covers defaults shared within an App Group.
 
-These fixes do not resolve the receipt-based distribution architecture or general AI-sharing consent. The existing user edits were preserved.
+The first audit commit did not resolve the distribution architecture or general AI-sharing consent; the follow-up remediation above addresses the source implementation. The existing user edits were preserved.
 
 ## 4.3 and 5.6 assessment
 
@@ -129,3 +141,24 @@ No reviewer-specific premium unlock was found in the inspected paths. The larger
 Final test result bundle: `/private/tmp/avenkin-app-store-audit-verified-sim.xcresult`. Final execution log: `/private/tmp/avenkin-app-store-audit-verified-sim-tests.log`.
 
 This is a focused test run, not the full test suite. Full signed archive validation, the actual App Store Connect state, live purchases, permission-denial UI walkthroughs and physical-device tests remain outside the evidence collected here. These limits and the open findings above prevent a release sign-off.
+
+
+## Remediation verification — source commit `79eb874c2`
+
+The fix set is committed on `codex/app-store-guidelines-audit`; the main worktree was not changed by this remediation. The final phone-only app was rebuilt as a fresh bundle and stamped with `79eb874c2`. Both complete simulator projects, including watch targets, built successfully. These are simulator artifacts, not distribution archives or App Store upload candidates.
+
+- **Final phone-only run:** 394 focused tests passed; zero failures, skips, expected failures or runtime warnings. This includes consent grant/refusal, recipient/purpose isolation, persistence, cancellation, withdrawal of in-flight HTTP, redirect refusal, background refusal, unsaved-approval refusal, SDK-free factories, migrated EVEN state, saved Siri bindings, provider request/stream fixtures, MCP/agent fixtures and privacy reconciliation.
+- **Glasses-beta compatibility run:** 538 focused tests passed; zero failures, skips or runtime warnings. This verified the retained SDK implementations and typed policies, alongside the common network tests. It preceded the last shared consent-storage failure handling and phone-only Siri metadata cleanup; those final changes were validated in the phone-only run. The beta-specific SDK implementations did not change after that run.
+- **Packaging inspection:** the final phone-only artifact passed checks of its main metadata and signed app entitlements, plus linkage/symbol inspection across **20 Mach-O binaries**, including extensions/watch/test host components. Meta package products and SDK code were absent. Generated App Intents metadata contained none of the five unsupported hardware actions; the phone shortcut was **Start Listening**, with a microphone icon. No individual SDK files were stripped to obtain this result.
+- **Positive control:** the completed glasses-beta artifact was correctly rejected by the same phone-only checker for its beta marker, hardware configuration/intents, SDK frameworks and linked SDK symbols.
+- **Build tooling:** five Python metadata/derivation tests passed. Shell syntax, metadata JSON parsing and `git diff --check` passed.
+
+The first unsigned broad run exposed missing simulator Keychain entitlements, an outdated telemetry expectation and a fixture acknowledgement still running after its test. The final simulator host was signed ad hoc for Keychain coverage; the telemetry test now checks SDK absence in the phone variant, and fixture teardown joins acknowledgement work. No tests were skipped to hide these failures. Simulator signing does not verify distribution signing, provisioning or device behavior.
+
+Result bundles and evidence:
+
+- Phone: `/private/tmp/avenkin-phone-only-final.xcresult`; summary `/private/tmp/avenkin-phone-only-final-summary.json`; execution `/private/tmp/avenkin-phone-only-final-tests.log`.
+- Beta: `/private/tmp/avenkin-glasses-beta-verified.xcresult`; summary `/private/tmp/avenkin-glasses-beta-verified-summary.json`; execution `/private/tmp/avenkin-glasses-beta-verified-tests.log`.
+- Final artifact check: `/private/tmp/avenkin-phone-only-final-artifact-check.log`; beta rejection control `/private/tmp/avenkin-glasses-beta-rejected-as-phone.log`.
+
+A dedicated simulator was used and removed after verification. Existing simulators were left alone. Native UI inspection was unavailable because the Mac was locked. A physical-device/permission walkthrough, an exact signed distribution archive, App Store Connect workflow/build selection and privacy answers, live sandbox purchases, valid organisation review access, and safety/third-party-rights evidence remain outstanding in the [submission checklist](app-store-2026.10/submission-checklist.md). The revised privacy policy is a branch draft and was not published. No app was uploaded or submitted by this remediation.
