@@ -384,12 +384,16 @@ final class BrandNameGuardTests: XCTestCase {
             + "choice of AI, your memory on your device, on your iPhone, through headphones or AirPods, "
             + "from your watch or with your glasses."
         let deviceLine = "On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses."
-        for page in ["README.md", "about.html", "index.html"] {
+        for page in ["README.md", "index.html"] {
             let body = try text(page)
             for line in [tagline, sentence, deviceLine] {
                 XCTAssertTrue(body.contains(line), "\(page) is missing \"\(line)\"")
             }
         }
+        // The About page is the App Store-facing copy and deliberately words the devices without
+        // glasses, so only the tagline is required there.
+        let about = try text("about.html")
+        XCTAssertTrue(about.contains(tagline), "about.html is missing \"\(tagline)\"")
         let onboarding = try text("OpenGlasses/Sources/App/Views/OnboardingView.swift")
         XCTAssertTrue(onboarding.contains("Text(\"\(tagline)\")") && onboarding.contains(sentence))
         let hub = try text("OpenGlasses/Sources/App/Views/SettingsView.swift")
