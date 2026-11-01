@@ -11,6 +11,7 @@ final class SettingsHubTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.all.map(\.title), [
             "AI & Personality",
             "Voice & Triggers",
+            "Everyday",
             "Devices & Privacy",
             "Accessibility",
             "Field Assist",
@@ -31,9 +32,17 @@ final class SettingsHubTests: XCTestCase {
     /// The raw values are what an organisation profile names; they must not drift.
     func testCategoryIdsAreStable() {
         XCTAssertEqual(SettingsCategoryID.allCases.map(\.rawValue), [
-            "intelligence", "voice", "devices", "accessibility", "field-assist", "my-manuals", "look-and-feel",
-            "tools", "connections", "capture", "display", "advanced", "diagnostics",
+            "intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "my-manuals",
+            "look-and-feel", "tools", "connections", "capture", "display", "advanced", "diagnostics",
         ])
+    }
+
+    /// Plan KH P2: added after Voice & Triggers, and no id that a profile already names moved.
+    func testEverydayAddedNothingButItself() {
+        let before = ["intelligence", "voice", "devices", "accessibility", "field-assist", "my-manuals",
+                      "look-and-feel", "tools", "connections", "capture", "display", "advanced", "diagnostics"]
+        XCTAssertEqual(SettingsCategoryID.allCases.map(\.rawValue).filter { $0 != "everyday" }, before)
+        XCTAssertEqual(SettingsCategoryID.allCases[2], .everyday)
     }
 
     func testTitlesAndIconsAreUniqueAndPresent() {
@@ -93,15 +102,26 @@ final class SettingsHubTests: XCTestCase {
         // AI & Personality.
         ("PersonasView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("PromptPresetsView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("MemoryView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("SmartRoutingView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("LLMImageSettingsView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("AgenticFeaturesView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        // Plan IW P2: the wearer's goals and the assistant's activity — and the Memory screen's
-        // way to the goals, under "Unfinished things".
-        ("GoalsView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("ActivityView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("GoalsView", .intelligence, ["AIPersonalitySettingsScreen", "MemoryView"]),
+        // Plan KH P2: Everyday, and the rows that moved to it. Plan IW P2's goals and activity came
+        // with Memory, along with the Memory screen's way to the goals, under "Unfinished things".
+        ("EverydaySettingsScreen", .everyday, []),
+        ("MemoryView", .everyday, ["EverydaySettingsScreen"]),
+        ("GoalsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ActivityView", .everyday, ["EverydaySettingsScreen"]),
+        ("GoalsView", .everyday, ["EverydaySettingsScreen", "MemoryView"]),
+        ("MyDayContentsSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("MyDayDeliverySettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ScheduledTasksView", .everyday, ["EverydaySettingsScreen"]),
+        ("ScheduledTasksView", .intelligence, ["AIPersonalitySettingsScreen", "AgenticFeaturesView"]),
+        ("NavigationSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ParkingSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("MusicSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("HomeAssistantSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("TranslationSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("HealthSettingsView", .everyday, ["EverydaySettingsScreen"]),
         // Voice & Triggers.
         ("TempleTapSettingsView", .voice, ["VoiceTriggersSettingsScreen"]),
         // Devices & Privacy. The Connected Glasses section is the Glasses screen now.
@@ -111,7 +131,6 @@ final class SettingsHubTests: XCTestCase {
         ("ProcessingSummaryView", .devices, ["GlassesPrivacySettingsScreen"]),
         ("RecordingsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         ("MeetingRecordsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
-        ("HealthSettingsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         ("InsightsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         // Look & Feel.
         ("LanguageSettingsView", .lookAndFeel, ["LookFeelSettingsScreen"]),

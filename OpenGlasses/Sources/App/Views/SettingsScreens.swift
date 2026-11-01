@@ -15,6 +15,8 @@ struct VoiceTriggersSettingsScreen: View {
     // Plan JM P1 — "Check what I said before sending", read back through `Config` for the clamp.
     @State private var checkBeforeSending = Config.checkBeforeSendingEnabled
     @State private var checkBeforeSendingSeconds = Config.checkBeforeSendingSeconds
+    /// Plan KH P2: moved from AI & Personality, in plain words.
+    @State private var ignoreNearbyChatter = Config.intentClassifierEnabled
 
     // Plan FE P6. The typed name, written straight back through `Config` so the validation lives
     // in one place; `nameRefused` carries the one reason a keystroke can be turned away.
@@ -255,6 +257,18 @@ struct VoiceTriggersSettingsScreen: View {
                     }
                     .accessibilityValue("\(Int(checkBeforeSendingSeconds)) seconds")
                 }
+
+                InfoToggle(
+                    title: "Ignore nearby chatter",
+                    isOn: Binding(
+                        get: { ignoreNearbyChatter },
+                        set: { newValue in
+                            ignoreNearbyChatter = newValue
+                            Config.setIntentClassifierEnabled(newValue)
+                        }
+                    ),
+                    info: "Checks whether what it heard was meant for the assistant or was just background talk, so it stays quiet for people nearby, the TV, or you thinking aloud. To check, it sends the words it heard to your OpenAI or Groq model, using the key you added, and it does nothing without one of those models. It works with the wake word, not in live sessions."
+                )
             } header: {
                 Text("Conversation")
             } footer: {
@@ -295,6 +309,8 @@ struct VoiceTriggersSettingsScreen: View {
         }
         .navigationTitle("Voice & Triggers")
         .ogFormStyle()
+        // As it did under AI & Personality: the listener reads this when it starts.
+        .onDisappear { appState.restartWakeWordIfDirect() }
     }
 }
 
@@ -351,11 +367,6 @@ struct AIPersonalitySettingsScreen: View {
     @State private var rolesRevision = 0
 
     // Intelligence settings
-    @State private var intentClassifierEnabled = Config.intentClassifierEnabled
-    @State private var userMemoryEnabled = Config.userMemoryEnabled
-    @State private var memoryNudgesEnabled = Config.memoryNudgesEnabled
-    @State private var brainEnrichmentEnabled = Config.brainEnrichmentEnabled
-    @State private var conversationPersistenceEnabled = Config.conversationPersistenceEnabled
     @State private var autoModelRoutingEnabled = Config.autoModelRoutingEnabled
     /// Plan HY P1 — the same key `Config.liveIdleMinutes` reads; `0` is Off.
     @AppStorage(Config.liveIdleMinutesKey) private var liveIdleMinutes = Config.liveIdleMinutesDefault
@@ -478,61 +489,11 @@ struct AIPersonalitySettingsScreen: View {
                 Text("Personas are different characters with their own model + prompt (e.g. a museum docent, a fitness coach). System Prompt tweaks the default voice and behaviour.")
             }
 
-            // MARK: Goals and activity (Plan IW P2)
-            Section {
-                NavigationLink {
-                    GoalsView()
-                } label: {
-                    Label("Goals", systemImage: "target")
-                }
-                NavigationLink {
-                    ActivityView(model: ActivityScreenModel.live(conversations: appState.conversationStore))
-                        .environmentObject(appState)
-                } label: {
-                    Label("Activity", systemImage: "clock.arrow.circlepath")
-                }
-            } header: {
-                Text("Goals and activity")
-            } footer: {
-                Text("Goals are what you're working on, kept with you step by step. Activity is what the assistant has done for you.")
-            }
-
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             // MARK: — Intelligence
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             Section {
-                InfoToggle(
-                    title: "Intent Classifier",
-                    isOn: $intentClassifierEnabled,
-                    info: "Uses a lightweight on-device model to determine if speech is directed at the assistant or is just background conversation. Prevents the AI from responding to nearby chatter, TV audio, or other people talking."
-                )
-                InfoToggle(
-                    title: "User Memory",
-                    isOn: $userMemoryEnabled,
-                    info: "Remembers facts you share across conversations — your name, preferences, routines, dietary needs, etc. This context is included in future conversations so the AI can personalise responses. Memory is stored locally on your device."
-                )
-                NavigationLink {
-                    MemoryView(model: appState.memoryFacts.makeScreenModel())
-                } label: {
-                    Label("What Avenkin Remembers", systemImage: "brain.head.profile")
-                }
-                InfoToggle(
-                    title: "Conversation History",
-                    isOn: $conversationPersistenceEnabled,
-                    info: "Saves conversation transcripts so you can review them later in the History tab. Also provides context for follow-up questions within a session. When off, conversations are ephemeral and discarded after each session."
-                )
-                InfoToggle(
-                    title: "Memory Suggestions",
-                    isOn: $memoryNudgesEnabled,
-                    info: "After you state a durable fact (\"my daughter's name is Mia\") or repeat a multi-step request, the assistant offers a spoken nudge to remember it or save it as a skill — you confirm by voice. With Agentic Features on, these are saved automatically instead of nudged. Off by default."
-                )
-                InfoToggle(
-                    title: "Memory Enrichment",
-                    isOn: $brainEnrichmentEnabled,
-                    info: "Sends the text of your turns to your configured AI provider so it can spot relationships the on-device patterns miss (who works where, who lives where, who knows whom). What it finds is filed as unconfirmed until you say it again in another conversation. Needs Agentic Features on and a cloud model \u{2014} it never runs in HIPAA mode, and never on an on-device model. Off by default."
-                )
-
                 OfflineHandoffSettingsRow(appState: appState)
 
                 NavigationLink {
@@ -580,7 +541,7 @@ struct AIPersonalitySettingsScreen: View {
             } header: {
                 Text("How It Behaves")
             } footer: {
-                Text("Intent Classifier ignores nearby chatter so the AI only responds when you're talking to it. Memory and History let the AI remember who you are across sessions. Smart Routing picks the right model for the task; Agentic Features let the AI take multi-step actions on its own.")
+                Text("Smart Routing picks the right model for the task; Agentic Features let the AI take multi-step actions on its own.")
             }
 
             // Plan IU: on-demand tool definitions. Pinned by an organisation's profile, the row is
@@ -748,12 +709,6 @@ struct AIPersonalitySettingsScreen: View {
             }
         }
         appState.llmService.refreshActiveModel()
-
-        Config.setIntentClassifierEnabled(intentClassifierEnabled)
-        Config.setUserMemoryEnabled(userMemoryEnabled)
-        Config.setMemoryNudgesEnabled(memoryNudgesEnabled)
-        Config.setBrainEnrichmentEnabled(brainEnrichmentEnabled)
-        Config.setConversationPersistenceEnabled(conversationPersistenceEnabled)
 
         appState.restartWakeWordIfDirect()
     }
@@ -941,7 +896,7 @@ struct ConnectionsSettingsScreen: View {
                     Label("Works with your iPhone", systemImage: "iphone.gen3")
                 }
             } footer: {
-                Text("Home, Calendar, Reminders, Contacts, Music, Maps and Alarms, and My Day.")
+                Text("Home, Calendar, Reminders, Contacts, Music, Maps and Alarms.")
             }
 
             Section {
@@ -974,7 +929,7 @@ struct ConnectionsSettingsScreen: View {
             } header: {
                 Text("Connected Apps & Services")
             } footer: {
-                Text("Cloud voices (ElevenLabs, OpenAI, xAI), Perplexity search, broadcast targets, and live-streaming live under Services. Gateways connect the app to external agents — OpenClaw tool bridges and Hermes Agent. MCP Servers expose external tool servers the AI can call.")
+                Text("Cloud voices (ElevenLabs, OpenAI, xAI), web search, broadcast targets, and live-streaming live under Services. Gateways connect the app to external agents — OpenClaw tool bridges and Hermes Agent. MCP Servers expose external tool servers the AI can call.")
             }
         }
         .navigationTitle("Connections")

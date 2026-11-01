@@ -178,10 +178,20 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
 
     // MARK: - Saying so
 
+    /// Plan KH P2: added by subtraction, so it is locked until a profile opens it.
+    func testEverydayIsLockedUntilAProfileOpensIt() {
+        XCTAssertEqual(Policy.presentation(.category(.everyday), in: technician()), .hidden)
+        XCTAssertEqual(Policy.presentation(.row(in: .everyday), in: technician()), .hidden)
+        XCTAssertEqual(Policy.presentation(.category(.everyday), in: administrator()), .editable)
+        let opened = ManagedLockdown(opening: [.everyday], locking: [], closedTools: [])
+        XCTAssertEqual(Policy.presentation(.category(.everyday), in: technician(opened)), .editable)
+        XCTAssertEqual(Policy.presentation(.category(.everyday), in: .unmanaged), .editable)
+    }
+
     func testTheHubSaysSomethingIsHiddenAndThePageNamesIt() {
         XCTAssertTrue(Policy.hidesSettings(in: technician()))
         XCTAssertEqual(Policy.hiddenSummary(in: technician()), [
-            "AI & Personality", "Voice & Triggers", "Parts of Devices & Privacy", "My Manuals", "Tools & Actions",
+            "AI & Personality", "Voice & Triggers", "Everyday", "Parts of Devices & Privacy", "My Manuals", "Tools & Actions",
             "Connections", "Capture & Streaming", "Display & HUD", "Advanced",
             "Turning Field Assist off", "Simple Mode and Lock Settings",
         ])

@@ -9,7 +9,6 @@ struct ServicesSettingsView: View {
     @ObservedObject var appState: AppState
     @AppStorage("digestEnabled") private var digestEnabled = true
     @AppStorage("diarizationEnabled") private var diarizationEnabled = false
-    @AppStorage("translationCaptionsEnabled") private var translationCaptionsEnabled = false
     @AppStorage("hipaaMode") private var hipaaMode = false
 
     // Text-to-Speech — self-contained: seeded from Config, persisted on change.
@@ -56,10 +55,6 @@ struct ServicesSettingsView: View {
     @State private var transcriptFolderName: String? = Config.transcriptFolderURL?.lastPathComponent
     @State private var recordingFolderName: String? = Config.recordingFolderURL?.lastPathComponent
 
-    // Home Assistant
-    @State private var haURL: String = Config.homeAssistantURL
-    @State private var haToken: String = Config.homeAssistantToken
-    @AppStorage("smartHomeControlEnabled") private var smartHomeControlEnabled = true
     @ObservedObject private var adminGate = AdminGate.shared
 
     // TTS engine preference (Additional Capabilities #1 — Kokoro on-device tier)
@@ -135,8 +130,6 @@ struct ServicesSettingsView: View {
     // copy of a HIPAA suppression rule in a view, and two copies is how one of them later drifts
     // from the services that gate real egress on it.
     private var isDiarizationOn: Bool { Config.isDiarizationConfigured }
-
-    private var isTranslationOn: Bool { Config.isTranslationCloudConfigured }
 
     /// Plan JM P2: an organisation profile has pinned cloud dictation off. The cloud choices leave
     /// the picker and a locked row says it is off.
@@ -548,45 +541,6 @@ struct ServicesSettingsView: View {
                 Text("Label captions and meeting transcripts by speaker (\u{201C}who said what\u{201D}) via Deepgram. Off by default.")
             }
 
-            // MARK: Walking Navigation
-            Section {
-                NavigationLink {
-                    NavigationSettingsView()
-                } label: {
-                    Label("Walking Navigation", systemImage: "figure.walk")
-                }
-            } footer: {
-                Text("Turn-by-turn pedestrian directions on the HUD — \u{201C}navigate to\u{2026}\u{201D}.")
-            }
-
-            // MARK: Parking
-            Section {
-                NavigationLink {
-                    ParkingSettingsView(appState: appState)
-                } label: {
-                    HStack {
-                        Label("Parking", systemImage: "car")
-                        Spacer()
-                        if appState.parkingStore.active != nil {
-                            Text("Spot saved").foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } footer: {
-                Text("\u{201C}Where did I park?\u{201D} — the level, space and a way back, saved by voice, from a sign photo, or when a drive ends.")
-            }
-
-            // MARK: Music
-            Section {
-                NavigationLink {
-                    MusicSettingsView()
-                } label: {
-                    Label("Music", systemImage: "music.note")
-                }
-            } footer: {
-                Text("Apple Music or a Home Assistant speaker — \u{201C}play Rumours on the kitchen speaker.\u{201D}")
-            }
-
             // MARK: Notification Digest
             Section {
                 NavigationLink {
@@ -601,22 +555,6 @@ struct ServicesSettingsView: View {
                 }
             } footer: {
                 Text("\u{201C}What's new\u{201D} — one ranked glance of pending notifications on the HUD or spoken.")
-            }
-
-            // MARK: Translation
-            Section {
-                NavigationLink {
-                    TranslationSettingsView()
-                } label: {
-                    HStack {
-                        Label("Translation", systemImage: "globe")
-                        Spacer()
-                        Text(isTranslationOn ? "On" : "Off")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } footer: {
-                Text("Translated captions — surrounding speech rendered in your language. Off by default.")
             }
 
             // MARK: Web Search
@@ -963,37 +901,6 @@ struct ServicesSettingsView: View {
                 }
             }
 
-            // MARK: Home Assistant
-            Section {
-                if adminGate.presentation(.row(in: .connections)).isShown &&
-                    AIFeature.smartHomeControl.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isShown }) {
-                    InfoToggle(
-                        title: "AI Smart Home Control",
-                        isOn: $smartHomeControlEnabled,
-                        info: "When off, the assistant cannot use HomeKit or Home Assistant, including reading device status or controlling lights, locks and scenes. Your saved connection settings stay on this phone."
-                    )
-                    .disabled(!adminGate.presentation(.row(in: .connections)).isEditable ||
-                              !AIFeature.smartHomeControl.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isEditable }))
-                }
-                TextField("HA URL (e.g. http://192.168.1.100:8123)", text: $haURL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .onChange(of: haURL) { _, newValue in
-                        Config.setHomeAssistantURL(newValue)
-                    }
-                    // Show the address as it will be used, scheme included.
-                    .onSubmit { haURL = Config.homeAssistantURL }
-
-                SecretInputField(placeholder: String(localized: "Long-Lived Access Token"), text: $haToken)
-                    .onChange(of: haToken) { _, newValue in
-                        Config.setHomeAssistantToken(newValue)
-                    }
-            } header: {
-                Text("Home Assistant")
-            } footer: {
-                Text("Direct REST API control — works alongside or instead of HomeKit. Generate a token in HA → Profile → Security → Long-Lived Access Tokens.")
-            }
         }
         .navigationTitle("Services")
         .ogFormStyle()

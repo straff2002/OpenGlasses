@@ -8,7 +8,8 @@ import SwiftUI
 
 // MARK: - Works with your iPhone
 
-/// The Apple-app integrations and My Day — Connections › Works with your iPhone (Plan HA).
+/// The Apple-app integrations — Connections › Works with your iPhone (Plan HA). My Day and the AI
+/// access switches moved to Everyday (Plan KH P2).
 ///
 /// "Turn off the lights", "what's on my calendar", "remind me to…" are day-one
 /// voice-assistant expectations and the Apple set needs no configuration: iOS's
@@ -45,183 +46,13 @@ struct AppleIntegrationsSettingsScreen: View {
     ]
 
     @State private var disabledTools: Set<String> = Config.disabledTools
-    @AppStorage("smartHomeControlEnabled") private var smartHomeControlEnabled = true
-    @AppStorage("aiMessagingEnabled") private var aiMessagingEnabled = true
     @State private var permissionDeniedTool: String?
-    @State private var didResetMyDayHistory = false
     /// Plan HA C4: an app switch the organisation closed is not shown to the technician.
     @ObservedObject private var adminGate = AdminGate.shared
-    @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
-    /// The card's placement — the same key the card's "Remove from Home" and the home screen's
-    /// editor write, so this switch always says what the home screen shows.
-    @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
-        = MyDayHomePlacement.onHomeDefault
-    @AppStorage("myDayCalendarIncluded") private var myDayCalendarIncluded = true
-    @AppStorage("myDayRemindersIncluded") private var myDayRemindersIncluded = true
-    @AppStorage("myDayWeatherIncluded") private var myDayWeatherIncluded = true
-    @AppStorage("myDayTravelIncluded") private var myDayTravelIncluded = true
-    @AppStorage("myDayDigestIncluded") private var myDayDigestIncluded = true
-    @AppStorage("myDayGoalsIncluded") private var myDayGoalsIncluded = true
-    @AppStorage("myDayTransportMode") private var myDayTransportMode = MyDayTransportMode.walking.rawValue
-    @AppStorage("myDayTravelBufferMinutes") private var myDayTravelBufferMinutes = 10
-    @AppStorage("myDayTravelOrigin") private var myDayTravelOrigin = MyDayTravelOrigin.currentLocation.rawValue
-    @AppStorage("myDayHomeAddress") private var myDayHomeAddress = ""
-    @AppStorage("myDayWorkAddress") private var myDayWorkAddress = ""
-    @AppStorage("myDayMorningDeliveryEnabled") private var myDayMorningDeliveryEnabled = false
-    @AppStorage("myDayMorningDeliveryMinutes") private var myDayMorningDeliveryMinutes = 8 * 60
-    @AppStorage("myDayEveningDeliveryEnabled") private var myDayEveningDeliveryEnabled = false
-    @AppStorage("myDayEveningDeliveryMinutes") private var myDayEveningDeliveryMinutes = 19 * 60
-    @AppStorage("myDayScheduledSpeechEnabled") private var myDayScheduledSpeechEnabled = false
-    @AppStorage("myDayQuietHoursEnabled") private var myDayQuietHoursEnabled = true
-    @AppStorage("myDayQuietStartMinutes") private var myDayQuietStartMinutes = 22 * 60
-    @AppStorage("myDayQuietEndMinutes") private var myDayQuietEndMinutes = 7 * 60
 
     var body: some View {
         Form {
-            Section {
-                Toggle("My Day", isOn: $myDayEnabled)
-                    .onChange(of: myDayEnabled) { _, enabled in
-                        Config.setMyDayEnabled(enabled)
-                    }
-
-                if myDayEnabled {
-                    Toggle("Show on Home Screen", isOn: $myDayOnHome)
-                }
-
-            } header: {
-                Text("Everyday Briefing")
-            } footer: {
-                Text("Adds a phone and spoken briefing of what matters next. My Day keeps an ephemeral read model and does not save a separate copy of your day. Taking the card off the Home screen keeps the briefings.")
-            }
-
-            if myDayEnabled {
-                Section {
-                    Toggle("Calendar", isOn: $myDayCalendarIncluded)
-                    Toggle("Reminders", isOn: $myDayRemindersIncluded)
-                    Toggle("Weather", isOn: $myDayWeatherIncluded)
-                    Toggle("Travel time", isOn: $myDayTravelIncluded)
-                        .disabled(!myDayCalendarIncluded)
-                    Toggle("Actionable updates", isOn: $myDayDigestIncluded)
-                    Toggle("Goals", isOn: $myDayGoalsIncluded)
-                } header: {
-                    Text("Included in My Day")
-                } footer: {
-                    Text("Calendar includes Apple, Outlook, Microsoft 365, and other accounts that are available in the iPhone Calendar app. My Day does not connect directly to the Outlook app.")
-                }
-
-                if myDayCalendarIncluded && myDayTravelIncluded {
-                    Section {
-                        Picker("Travel mode", selection: $myDayTransportMode) {
-                            ForEach(MyDayTransportMode.allCases, id: \.rawValue) { mode in
-                                Text(mode.displayName).tag(mode.rawValue)
-                            }
-                        }
-
-                        Stepper(
-                            "Leave-by buffer: \(myDayTravelBufferMinutes) min",
-                            value: $myDayTravelBufferMinutes,
-                            in: 0...60,
-                            step: 5
-                        )
-
-                        Picker("Start from", selection: $myDayTravelOrigin) {
-                            ForEach(MyDayTravelOrigin.allCases, id: \.rawValue) { origin in
-                                Text(origin.displayName).tag(origin.rawValue)
-                            }
-                        }
-
-                        if myDayTravelOrigin == MyDayTravelOrigin.home.rawValue {
-                            TextField("Home address", text: $myDayHomeAddress)
-                                .textContentType(.fullStreetAddress)
-                                .autocorrectionDisabled()
-                        } else if myDayTravelOrigin == MyDayTravelOrigin.work.rawValue {
-                            TextField("Work address", text: $myDayWorkAddress)
-                                .textContentType(.fullStreetAddress)
-                                .autocorrectionDisabled()
-                        }
-                    } header: {
-                        Text("Leave By")
-                    } footer: {
-                        Text("Maps estimates only the next event with a physical location. Event locations and routes are not saved by Avenkin.")
-                    }
-                }
-
-                Section {
-                    Toggle("Morning briefing", isOn: $myDayMorningDeliveryEnabled)
-                    if myDayMorningDeliveryEnabled {
-                        DatePicker(
-                            "Morning time",
-                            selection: timeBinding($myDayMorningDeliveryMinutes),
-                            displayedComponents: .hourAndMinute
-                        )
-                    }
-
-                    Toggle("Evening preparation", isOn: $myDayEveningDeliveryEnabled)
-                    if myDayEveningDeliveryEnabled {
-                        DatePicker(
-                            "Evening time",
-                            selection: timeBinding($myDayEveningDeliveryMinutes),
-                            displayedComponents: .hourAndMinute
-                        )
-                    }
-
-                    Toggle("Speak scheduled briefings", isOn: $myDayScheduledSpeechEnabled)
-                        .disabled(!myDayMorningDeliveryEnabled && !myDayEveningDeliveryEnabled)
-
-                    Toggle("Quiet hours", isOn: $myDayQuietHoursEnabled)
-                    if myDayQuietHoursEnabled {
-                        DatePicker(
-                            "Quiet from",
-                            selection: timeBinding($myDayQuietStartMinutes),
-                            displayedComponents: .hourAndMinute
-                        )
-                        DatePicker(
-                            "Quiet until",
-                            selection: timeBinding($myDayQuietEndMinutes),
-                            displayedComponents: .hourAndMinute
-                        )
-                    }
-                } header: {
-                    Text("Scheduled Delivery")
-                } footer: {
-                    Text("Delivered while Avenkin is active. Open My Day once to resolve Calendar and Reminders access before scheduled delivery. Speech is private-by-default: it only plays while you are present, outside quiet hours, online, and out of power reserve.")
-                }
-
-                Section {
-                    Button(didResetMyDayHistory ? "Delivery history reset" : "Reset delivery history") {
-                        Config.resetMyDayDeliveryHistory()
-                        didResetMyDayHistory = true
-                    }
-                    .disabled(didResetMyDayHistory)
-                } footer: {
-                    Text("Resets content-free occurrence markers only. It does not delete Calendar, Reminders, routes, or digest items.")
-                }
-            }
-
             let shownIntegrations = Self.integrations.filter { adminGate.presentation(.tool($0.id)).isShown }
-            if adminGate.presentation(.row(in: .connections)).isShown {
-                Section {
-                    if AIFeature.smartHomeControl.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isShown }) {
-                        InfoToggle(
-                            title: "AI Smart Home Control",
-                            isOn: $smartHomeControlEnabled,
-                            info: "When off, the assistant cannot use HomeKit or Home Assistant, including reading device status or controlling lights, locks and scenes. Your saved connection settings stay on this phone."
-                        )
-                        .disabled(!AIFeature.smartHomeControl.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isEditable }))
-                    }
-                    if AIFeature.messaging.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isShown }) {
-                        InfoToggle(
-                            title: "AI Messaging",
-                            isOn: $aiMessagingEnabled,
-                            info: "When off, the assistant cannot compose or send messages through its messaging tools. Your contacts and other calling tools are unchanged."
-                        )
-                        .disabled(!AIFeature.messaging.record.toolNames.contains(where: { adminGate.presentation(.tool($0)).isEditable }))
-                    }
-                } header: {
-                    Text("AI Access")
-                }
-                .disabled(!adminGate.presentation(.row(in: .connections)).isEditable)
-            }
             if !shownIntegrations.isEmpty {
                 Section {
                     ForEach(shownIntegrations) { integration in
@@ -289,24 +120,6 @@ struct AppleIntegrationsSettingsScreen: View {
                     .accessibilityHidden(true)
             }
         }
-    }
-
-    private func timeBinding(_ minutes: Binding<Int>) -> Binding<Date> {
-        Binding(
-            get: {
-                let value = min(23 * 60 + 59, max(0, minutes.wrappedValue))
-                return Calendar.current.date(
-                    bySettingHour: value / 60,
-                    minute: value % 60,
-                    second: 0,
-                    of: Date()
-                ) ?? Date()
-            },
-            set: { date in
-                let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-                minutes.wrappedValue = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
-            }
-        )
     }
 
     /// The same write the full tool list performs, including the permission

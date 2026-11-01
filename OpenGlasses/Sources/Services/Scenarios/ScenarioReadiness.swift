@@ -61,9 +61,9 @@ enum ScenarioSetupStep: Equatable, Sendable {
     /// could be on several screens, so the row says so and the person opens Settings.
     var destination: SettingsCategoryID? {
         switch self {
-        case .chooseModel, .chooseVisionModel, .turnOnMemory: return .intelligence
+        case .chooseModel, .chooseVisionModel: return .intelligence
+        case .turnOnMemory, .setUpHome: return .everyday
         case .turnOnTool: return .tools
-        case .setUpHome: return .connections
         case .addManual: return .myManuals
         case .turnOnFeature, .runCaptions: return nil
         }

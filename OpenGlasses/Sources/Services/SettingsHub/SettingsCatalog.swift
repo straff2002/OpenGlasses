@@ -23,6 +23,9 @@ import Foundation
 enum SettingsCategoryID: String, CaseIterable, Codable, Sendable {
     case intelligence
     case voice
+    /// Plan KH P2: settings by what you want done. Locked on a managed phone unless a profile opens
+    /// it, because `ManagedLockdown` locks whatever is not listed as open.
+    case everyday
     case devices
     case accessibility
     case fieldAssist = "field-assist"
@@ -106,6 +109,10 @@ enum SettingsCatalog {
             return .category(id, title: String(localized: "Voice & Triggers"), icon: "waveform",
                              subtitle: String(localized: "Wake phrase, push-to-talk, hands-free triggers"),
                              shownInSimpleMode: true)
+        case .everyday:
+            return .category(id, title: String(localized: "Everyday"), icon: "sun.max",
+                             subtitle: String(localized: "Memory, your day, getting around, home, translation, and health"),
+                             shownInSimpleMode: false)
         case .devices:
             // Glasses settings live here, under Glasses — never in a general category.
             return .category(id, title: String(localized: "Devices & Privacy"), icon: "lock.shield",

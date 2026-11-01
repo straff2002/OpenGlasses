@@ -3029,6 +3029,18 @@ struct Config {
         recordingFolderBookmark = nil
     }
 
+    // MARK: - Settings Groups
+
+    /// Plan KH P2: which members of an Everyday group were on when its parent toggle went off, so
+    /// turning it back on restores that mix. Member ids only. Nil is nothing to restore.
+    static func settingsGroupRemembered(group: String) -> [String]? {
+        UserDefaults.standard.stringArray(forKey: "settingsGroupRemembered.\(group)")
+    }
+
+    static func setSettingsGroupRemembered(_ members: [String]?, group: String) {
+        UserDefaults.standard.set(members, forKey: "settingsGroupRemembered.\(group)")
+    }
+
     // MARK: - HIPAA Compliance
 
     /// Master toggle for HIPAA-compliant mode.
@@ -3143,7 +3155,7 @@ struct Config {
 
     /// Where "play", "pause" and play-by-name go when the wearer names no speaker. Apple Music for
     /// new installs and for everyone upgrading — unchanged behaviour until the wearer picks a
-    /// Home Assistant speaker in Settings → Connections → Services & Integrations → Music.
+    /// Home Assistant speaker in Settings → Everyday → Home, Music & Messages → Music.
     static var musicDefaultProvider: MusicProviderID {
         get {
             UserDefaults.standard.string(forKey: "musicDefaultProvider")

@@ -287,7 +287,7 @@ struct SettingsView: View {
         case .accessibility: return Config.accessibilityModeEnabled ? String(localized: "On") : nil
         case .display: return glassesDisplayEnabled ? String(localized: "On") : nil
         case .advanced: return String(localized: "Test panel")
-        case .tools, .connections, .capture, .diagnostics: return nil
+        case .everyday, .tools, .connections, .capture, .diagnostics: return nil
         }
     }
 
@@ -300,6 +300,8 @@ struct SettingsView: View {
             AIPersonalitySettingsScreen(appState: appState)
         case .voice:
             VoiceTriggersSettingsScreen(appState: appState)
+        case .everyday:
+            EverydaySettingsScreen(appState: appState)
         case .devices:
             GlassesPrivacySettingsScreen(appState: appState)
         case .accessibility:
@@ -934,24 +936,6 @@ struct HardwarePrivacyView: View {
 
             Section {
                 BystanderBlurSwitch(appState: appState)
-                // Apple Health: what is read, whether the AI may see it (the share toggle lives
-                // there now), and the summary kept for locked-phone answers.
-                NavigationLink {
-                    HealthSettingsView()
-                } label: {
-                    Label("Health", systemImage: "heart.text.square")
-                }
-                // Plan HP P2 item 12: the switch the privacy notice names. It existed only as a
-                // release switch (`AIFeature.firstAidAssist`), so the wearer had no way to turn
-                // first-aid coaching and camera triage off.
-                InfoToggle(
-                    title: String(localized: "First-Aid Coaching and Triage"),
-                    isOn: Binding(
-                        get: { Config.firstAidAssistEnabled },
-                        set: { Config.firstAidAssistEnabled = $0 }
-                    ),
-                    info: String(localized: "First-aid coaching talks you through a protocol, such as CPR, and camera triage gives an AI assessment of an injury the camera can see. Both are advisory: they are not a medical device, and they don't replace a trained first aider or calling emergency services. Turning this off stops both.")
-                )
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
@@ -960,7 +944,7 @@ struct HardwarePrivacyView: View {
             } header: {
                 Text("Privacy")
             } footer: {
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Health) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
             }
 
             Section {
