@@ -178,27 +178,26 @@ final class LivePreviewPictureTests: XCTestCase {
     // MARK: - The caption
 
     func testTheCaptionNeverPromisesAFallbackTheBlurRefuses() {
-        let caption = LivePreviewPicture.phoneCaption(isBroadcasting: false, blurOn: true, preferredSource: .glasses)
+        let caption = LivePreviewPicture.phoneCaption(isBroadcasting: false, blurOn: true)
         XCTAssertTrue(caption.contains("needs glasses"))
         XCTAssertFalse(caption.contains("streams this picture"))
     }
 
-    func testTheCaptionSaysAPhoneStreamIsNotBlurred() {
-        XCTAssertTrue(LivePreviewPicture.phoneCaption(isBroadcasting: true, blurOn: true, preferredSource: .phoneBack)
-            .contains("aren't blurred"))
-        XCTAssertTrue(LivePreviewPicture.phoneCaption(isBroadcasting: false, blurOn: true, preferredSource: .phoneBack)
-            .contains("aren't blurred"))
-        XCTAssertFalse(LivePreviewPicture.phoneCaption(isBroadcasting: true, blurOn: false, preferredSource: .phoneBack)
-            .contains("blurred"))
+    /// A phone stream with the blur on no longer exists, so no caption describes one.
+    func testNoCaptionDescribesAnUnblurredPhoneStream() {
+        for live in [true, false] {
+            for blur in [true, false] {
+                XCTAssertFalse(LivePreviewPicture.phoneCaption(isBroadcasting: live, blurOn: blur)
+                    .contains("aren't blurred"))
+            }
+        }
     }
 
     func testNoCaptionSaysThePictureIsMissing() {
         for live in [true, false] {
             for blur in [true, false] {
-                for source in BroadcastVideoSource.allCases {
-                    let caption = LivePreviewPicture.phoneCaption(isBroadcasting: live, blurOn: blur, preferredSource: source)
-                    XCTAssertFalse(caption.contains("doesn't show"), caption)
-                }
+                let caption = LivePreviewPicture.phoneCaption(isBroadcasting: live, blurOn: blur)
+                XCTAssertFalse(caption.contains("doesn't show"), caption)
             }
         }
     }

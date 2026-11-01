@@ -38,8 +38,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// same shape a recording shared from the Recordings folder has. What differs is the length
     /// cap and where the file is filed, neither of which is a privacy classification.
     case jobClipRecording
-    /// RTMP broadcast. The glasses feed only: `PhoneVideoSource` hands its frames to the encoder
-    /// directly, so a phone-camera stream or inset does not pass through the relay.
+    /// RTMP broadcast. The relay protects the glasses feed. `PhoneVideoSource` hands its frames to
+    /// the encoder directly, without the relay, so while the blur is on no phone frame reaches the
+    /// encoder at all: `BroadcastGoLive` refuses every route, `BroadcastService` asks the same rule
+    /// at each one, and turning the blur on moves a phone stream to the glasses or ends it. With
+    /// the blur off, phone frames go out as the wearer chose.
     case rtmpBroadcast
     /// WebRTC/MJPEG browser streaming (`WebRTCStreamingService`).
     case webRTCBrowserStream
@@ -187,9 +190,9 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// Plan KH: the phone camera's viewfinder in that preview. A preview layer on the stream's
     /// capture session, composited by the system, so no pixel reaches app code and none leaves the
     /// screen. Listed so the claim is written down. The stream on the same session is another
-    /// matter: its frames go to the encoder unfiltered, which is why Go Live refuses the phone
-    /// fallback with the blur on (`BroadcastGoLive`), and `OutboundFrameConsumerTests` holds those
-    /// frames to the encoder alone.
+    /// matter: its frames go to the encoder unfiltered, which is why every phone route is refused
+    /// with the blur on (`rtmpBroadcast` above), and `OutboundFrameConsumerTests` holds those frames
+    /// to the encoder alone.
     case phoneViewfinder
     /// Reading companion page detection — on-device OCR, emits text.
     case readingCompanion

@@ -86,6 +86,16 @@ final class GoLiveGuideTests: XCTestCase {
         XCTAssertTrue(notes.contains("unless Blur Bystander Faces is on"))
     }
 
+    /// The phone routes are refused now, so the guide must not describe a blurless phone stream as
+    /// something the wearer can do with the blur on.
+    func testTheNotesSayEveryPhoneRouteIsRefused() {
+        let notes = GoLiveGuide.phoneCameraNotes.joined(separator: " ")
+        XCTAssertTrue(notes.contains("won't use the phone camera at all"))
+        XCTAssertTrue(notes.contains("Dual Capture"))
+        XCTAssertTrue(notes.contains("moves the stream to your glasses"))
+        XCTAssertFalse(notes.contains("won't blur a stream from the phone camera"))
+    }
+
     func testTheReadyLineNamesNoCamera() {
         for platform in GoLivePlatform.allCases {
             let line = GoLiveGuide.readyLine(for: platform)
@@ -161,7 +171,35 @@ final class GoLiveGuideTests: XCTestCase {
         XCTAssertEqual(BroadcastGoLive.decide(facts {
             $0.glassesConnected = false
             $0.faceBlurOn = true
-        }), .phoneCameraNotBlurred)
+        }), .phoneCameraNotBlurred(.fallback))
+    }
+
+    func testAChosenPhoneCameraIsRefusedWithTheBlurOn() {
+        for source in [BroadcastVideoSource.phoneBack, .phoneFront] {
+            for connected in [true, false] {
+                XCTAssertEqual(BroadcastGoLive.decide(facts {
+                    $0.preferredSource = source
+                    $0.glassesConnected = connected
+                    $0.faceBlurOn = true
+                }), .phoneCameraNotBlurred(.chosen), "\(source)")
+            }
+        }
+    }
+
+    func testTheDualCaptureInsetIsRefusedWithTheBlurOn() {
+        XCTAssertEqual(BroadcastGoLive.decide(facts {
+            $0.dualCaptureOn = true
+            $0.faceBlurOn = true
+        }), .phoneCameraNotBlurred(.inset))
+    }
+
+    func testDualCaptureGoesLiveWithTheBlurOff() {
+        XCTAssertEqual(BroadcastGoLive.decide(facts { $0.dualCaptureOn = true }), .toggle(startSource: nil))
+    }
+
+    func testAChosenPhoneCameraGoesLiveWithTheBlurOff() {
+        XCTAssertEqual(BroadcastGoLive.decide(facts { $0.preferredSource = .phoneBack }),
+                       .toggle(startSource: nil))
     }
 
     func testTheBlurDoesNotStopAGlassesStream() {

@@ -20,10 +20,12 @@ struct BroadcastDestination {
     }
 }
 
-enum BroadcastError: LocalizedError {
+enum BroadcastError: LocalizedError, Equatable {
     case notConfigured
     case invalidURL
     case connectionFailed
+    /// Plan KH: the phone camera was asked for while Blur Bystander Faces is on.
+    case phoneCameraNotBlurred
 
     var errorDescription: String? {
         switch self {
@@ -33,6 +35,8 @@ enum BroadcastError: LocalizedError {
             return String(localized: "The streaming server address isn't valid. In Settings → Camera, Recording & Streaming → Live Streaming, enter the RTMP URL from your platform. It must start with rtmp:// or rtmps:// and include a server address.")
         case .connectionFailed:
             return String(localized: "Couldn't connect to the streaming server. Check your internet connection, then check the RTMP URL and stream key in Settings → Camera, Recording & Streaming → Live Streaming and try again.")
+        case .phoneCameraNotBlurred:
+            return String(localized: "Blur Bystander Faces doesn't cover the phone camera, so a stream can't use it while the blur is on.")
         }
     }
 }

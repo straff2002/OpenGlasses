@@ -122,6 +122,22 @@ class BroadcastService: ObservableObject {
     /// the service stays constructible in a test without the vision stack.
     var droppedFrameSource: (@MainActor () -> Int)?
 
+    /// Plan KH: whether Blur Bystander Faces is on. Asked at every route a phone frame could take
+    /// to the encoder (`BroadcastGoLive.phoneFramesAllowed`), so the refusal holds whoever calls
+    /// this service. Injectable so a test does not have to write the setting.
+    var faceBlurOn: @MainActor () -> Bool = { Config.privacyFilterEnabled }
+
+    private var phoneFramesAllowed: Bool {
+        BroadcastGoLive.phoneFramesAllowed(faceBlurOn: faceBlurOn())
+    }
+
+    /// Plan KH: something happened to a running stream that the wearer should hear about. Not a
+    /// `@Published`, so a preview opened later does not replay an old one.
+    let notices = PassthroughSubject<String, Never>()
+
+    /// The phone camera is in the picture as a Dual Capture inset.
+    var isPhoneInsetOn: Bool { dualCaptureMirror && !activeSource.isPhone }
+
     /// Start broadcasting to the configured RTMP endpoint.
     ///
     /// - Parameter source: the camera to start on, for this broadcast only. `nil` is the Camera
@@ -140,6 +156,12 @@ class BroadcastService: ObservableObject {
             broadcastError = error.localizedDescription
             throw error
         }
+        let startSource = source
+            ?? BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
+        guard phoneFramesAllowed || !startSource.isPhone else {
+            broadcastError = BroadcastError.phoneCameraNotBlurred.errorDescription
+            throw BroadcastError.phoneCameraNotBlurred
+        }
         broadcastError = nil
 
         // BS P2/P3: apply configured geometry and starting source.
@@ -147,12 +169,10 @@ class BroadcastService: ObservableObject {
         outputWidth = geometry.width
         outputHeight = geometry.height
         pixelBufferPool = nil   // dims may have changed since the last broadcast
-        let startSource = source
-            ?? BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
         selector = BroadcastSourceSelector(initial: startSource)
         activeSource = startSource
         mainSourceMirror = startSource
-        dualCaptureMirror = Config.broadcastDualCapture
+        dualCaptureMirror = Config.broadcastDualCapture && phoneFramesAllowed
         latestSecondaryFrame = nil
         audioClock = BroadcastAudioClock()
 
@@ -534,6 +554,9 @@ class BroadcastService: ObservableObject {
     @discardableResult
     func switchSource(_ source: BroadcastVideoSource) -> Bool {
         guard isBroadcasting else { return false }
+        guard BroadcastGoLive.decideSwitch(to: source, faceBlurOn: faceBlurOn()) == .switchCamera else {
+            return false
+        }
         guard selector.requestSwitch(to: source, now: Date()) else { return false }
         activeSource = source
         mainSourceMirror = source
@@ -544,9 +567,25 @@ class BroadcastService: ObservableObject {
         return true
     }
 
+    /// Plan KH: take the phone camera off the encoder now, whatever the debounce says. The stream
+    /// stays up, on the glasses. Frames already past the mirrors are the only ones still to arrive.
+    func leavePhoneCamera() {
+        guard isBroadcasting else { return }
+        dualCaptureMirror = false
+        if activeSource.isPhone {
+            selector.moveNow(to: .glasses, now: Date())
+            activeSource = .glasses
+            mainSourceMirror = .glasses
+            PrivacyLog.stream(.rtmpBroadcast, .sourceSwitched,
+                              detail: PrivacyToken(BroadcastVideoSource.glasses.rawValue))
+        }
+        latestSecondaryFrame = nil
+        phoneVideoSource.releaseFrames()
+    }
+
     private func startPhoneSourceIfNeeded() {
         let phoneWanted = activeSource.isPhone || (dualCaptureMirror && activeSource == .glasses)
-        if phoneWanted {
+        if phoneWanted && phoneFramesAllowed {
             let position = activeSource.phonePosition ?? .back
             phoneVideoSource.claimFrames(position: position) { [weak self] image in
                 guard let self else { return }

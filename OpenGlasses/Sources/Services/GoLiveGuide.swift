@@ -57,7 +57,8 @@ enum GoLiveGuide {
         [
             String(localized: "With no glasses connected, the preview shows the phone camera."),
             String(localized: "If Camera is set to Glasses and none are connected, Go Live uses the phone's back camera instead, unless Blur Bystander Faces is on."),
-            String(localized: "Blur Bystander Faces covers the glasses camera only. It won't blur a stream from the phone camera, and your microphone is streamed either way."),
+            String(localized: "Blur Bystander Faces covers the glasses camera only, so while it is on, Go Live won't use the phone camera at all: not the Camera setting, not Dual Capture, and not a switch during a stream. Turning it on during a phone stream moves the stream to your glasses, or ends it if none are connected."),
+            String(localized: "Your microphone is streamed whichever camera is in use."),
         ]
     }
 

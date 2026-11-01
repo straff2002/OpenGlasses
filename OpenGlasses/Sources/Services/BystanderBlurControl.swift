@@ -29,22 +29,45 @@ enum BystanderBlurControl {
         return !wanted && isLive ? .confirmTurningOff : .set(wanted)
     }
 
-    /// Go Live's answer when the phone camera can't be blurred.
+    /// The answer when something asks for the phone camera, which can't be blurred.
     struct Refusal: Equatable {
         let message: String
         /// `false` when nobody on this phone can change it, so the alert must not offer to.
         let offersTurningOff: Bool
     }
 
-    static func refusal(changeable: Bool, organization: String?) -> Refusal {
+    static func refusal(route: BroadcastGoLive.PhoneRoute = .fallback, changeable: Bool,
+                        organization: String?) -> Refusal {
         if changeable {
-            return Refusal(
-                message: String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on."),
-                offersTurningOff: true)
+            return Refusal(message: changeableMessage(route), offersTurningOff: true)
         }
-        let who = organization ?? String(localized: "your organisation")
-        return Refusal(
-            message: String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. The blur is set by \(who), so connect your glasses to stream."),
-            offersTurningOff: false)
+        return Refusal(message: lockedMessage(route, who: organization ?? String(localized: "your organisation")),
+                       offersTurningOff: false)
+    }
+
+    private static func changeableMessage(_ route: BroadcastGoLive.PhoneRoute) -> String {
+        switch route {
+        case .fallback:
+            return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
+        case .chosen:
+            return String(localized: "Camera is set to the phone, which Blur Bystander Faces doesn't cover. Set Camera to Glasses under Live Streaming, or turn the blur off to stream from the phone. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
+        case .inset:
+            return String(localized: "Dual Capture puts the phone camera in the picture, and Blur Bystander Faces doesn't cover it. Turn Dual Capture off under Live Streaming, or turn the blur off. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
+        case .midStreamSwitch:
+            return String(localized: "Blur Bystander Faces doesn't cover the phone camera, so the stream stays where it is. Turning the blur off lets you switch, but viewers will see faces straight away, and it applies everywhere until you turn it back on.")
+        }
+    }
+
+    private static func lockedMessage(_ route: BroadcastGoLive.PhoneRoute, who: String) -> String {
+        switch route {
+        case .fallback:
+            return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. The blur is set by \(who), so connect your glasses to stream.")
+        case .chosen:
+            return String(localized: "Camera is set to the phone, which Blur Bystander Faces doesn't cover. The blur is set by \(who), so set Camera to Glasses under Live Streaming.")
+        case .inset:
+            return String(localized: "Dual Capture puts the phone camera in the picture, and Blur Bystander Faces doesn't cover it. The blur is set by \(who), so turn Dual Capture off under Live Streaming.")
+        case .midStreamSwitch:
+            return String(localized: "Blur Bystander Faces doesn't cover the phone camera, and it is set by \(who), so the stream stays where it is.")
+        }
     }
 }

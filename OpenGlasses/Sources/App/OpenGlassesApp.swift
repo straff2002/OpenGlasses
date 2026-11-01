@@ -6046,6 +6046,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// the live privacy filter, and anything running that the policy has now switched off.
     func applyOrgPolicyChange() {
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        // A profile that pins the blur on during a phone stream is the same case as the switch.
+        enforceBroadcastRules()
         if !Config.agentModeEnabled {
             agentScheduler.stop()
             // Both are gated on agent mode at start; one already running would otherwise outlive
@@ -6419,6 +6421,68 @@ class AppState: ObservableObject, AppStateProtocol {
         // Read back rather than trusting the switch: an organisation profile may pin the filter on
         // (Plan CT), and then the setter above was refused.
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        enforceBroadcastRules()
+    }
+
+    /// Plan KH: bring a running stream into line with the rules it started under. Called whenever
+    /// one of them can change, from every place that changes it. Nothing here runs off air.
+    func enforceBroadcastRules() {
+        switch BroadcastGoLive.whileLive(.init(
+            isBroadcasting: broadcastService.isBroadcasting,
+            activeSource: broadcastService.activeSource,
+            phoneInsetOn: broadcastService.isPhoneInsetOn,
+            faceBlurOn: privacyFilter.isEnabled,
+            glassesConnected: isConnected)) {
+        case .carryOn:
+            break
+        case .dropPhoneInset:
+            broadcastService.leavePhoneCamera()
+            tellWearerAboutBroadcast(BroadcastGoLive.insetDroppedMessage)
+        case .moveToGlasses:
+            // The phone comes off first, so nothing unblurred goes out while the glasses start.
+            broadcastService.leavePhoneCamera()
+            tellWearerAboutBroadcast(BroadcastGoLive.movedToGlassesMessage)
+            Task { @MainActor in
+                let picture = await self.glassesPictureIsUp()
+                guard !picture, self.broadcastService.isBroadcasting else { return }
+                self.endBroadcast(.glassesGaveNoPicture)
+            }
+        case .end(let reason):
+            endBroadcast(reason)
+        }
+    }
+
+    private func endBroadcast(_ reason: BroadcastGoLive.EndReason) {
+        broadcastService.stopBroadcast()
+        chatReadback.stop()
+        tellWearerAboutBroadcast(BroadcastGoLive.endMessage(reason))
+    }
+
+    /// Said aloud and shown: the wearer may be holding the phone or may have it in a pocket.
+    private func tellWearerAboutBroadcast(_ message: String) {
+        broadcastService.notices.send(message)
+        NoticeCenter.shared.post(message, severity: .warning, source: .camera)
+        Task { @MainActor in await self.speechService.speak(message) }
+    }
+
+    /// Whether the glasses camera is giving a picture, starting it if it is not. The claim is
+    /// given back when the stream ends. Runs as the app's own start, so it never leaves for Meta
+    /// AI to ask for a permission: nobody is looking at a prompt.
+    private func glassesPictureIsUp() async -> Bool {
+        do {
+            try await CameraPermissionRequestPolicy.startedByApp {
+                try await cameraService.claimStream(for: .broadcast)
+            }
+        } catch {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(BroadcastGoLive.glassesPictureTimeout)
+        while Date() < deadline, !Task.isCancelled {
+            if cameraService.readiness.phase == .ready { return true }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        await cameraService.releaseStream(for: .broadcast)
+        return false
     }
 
     /// Toggle live broadcast on/off.
@@ -6432,6 +6496,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if broadcastService.isBroadcasting {
             broadcastService.stopBroadcast()
             chatReadback.stop()
+            await cameraService.releaseStream(for: .broadcast)
         } else {
             do {
                 try await broadcastService.startBroadcast(

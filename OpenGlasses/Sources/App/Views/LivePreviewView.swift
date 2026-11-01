@@ -181,8 +181,7 @@ struct LivePreviewView: View {
                 if case .phone = picture, phoneViewfinderPhase == .live {
                     mediaCaption(LivePreviewPicture.phoneCaption(
                         isBroadcasting: isBroadcasting,
-                        blurOn: blurOn,
-                        preferredSource: preferredBroadcastSource))
+                        blurOn: blurOn))
                         .padding(.bottom, 12)
                 }
 
@@ -304,6 +303,7 @@ struct LivePreviewView: View {
             }
         }
         .onReceive(appState.privacyFilter.$isEnabled) { blurOn = $0 }
+        .onReceive(appState.broadcastService.notices) { goLiveNotice = .streamChanged($0) }
         .bystanderBlurOffConfirmation(isPresented: $confirmingBlurOff, appState: appState)
         .onReceive(phoneCamera.statusPublisher.receive(on: DispatchQueue.main)) { phoneCapture = $0 }
         // Plan KH: the session follows the picture, and starts here rather than in `onAppear` so
@@ -641,7 +641,7 @@ struct LivePreviewView: View {
             Menu {
                 ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
                     Button {
-                        broadcastService.switchSource(source)
+                        switchCamera(to: source)
                     } label: {
                         if activeSource == source {
                             Label(source.displayLabel, systemImage: "checkmark")
@@ -658,6 +658,18 @@ struct LivePreviewView: View {
                     .glassEffect(in: .circle)
             }
             .accessibilityLabel("Switch Broadcast Camera")
+        }
+    }
+
+    /// Refused with the blur on, and said so: a menu row that does nothing reads as a broken one.
+    private func switchCamera(to source: BroadcastVideoSource) {
+        switch BroadcastGoLive.decideSwitch(to: source, faceBlurOn: blurOn) {
+        case .switchCamera:
+            appState.broadcastService.switchSource(source)
+        case .phoneCameraNotBlurred:
+            goLiveNotice = .phoneCameraNotBlurred(BystanderBlurControl.refusal(
+                route: .midStreamSwitch, changeable: canChangeBlur,
+                organization: PolicyEnvelope.organizationName))
         }
     }
 
@@ -685,9 +697,9 @@ struct LivePreviewView: View {
             }
         case .needsSetup(let canOpenSettings):
             goLiveNotice = canOpenSettings ? .setUp : .notSetUp
-        case .phoneCameraNotBlurred:
+        case .phoneCameraNotBlurred(let route):
             goLiveNotice = .phoneCameraNotBlurred(BystanderBlurControl.refusal(
-                changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
+                route: route, changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
         case .phoneCameraDenied:
             goLiveNotice = .phoneCameraDenied
         }
@@ -706,7 +718,8 @@ struct LivePreviewView: View {
             glassesConnected: appState.isConnected,
             faceBlurOn: appState.privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
-            setupReachable: setupReachable))
+            setupReachable: setupReachable,
+            dualCaptureOn: Config.broadcastDualCapture))
     }
 
     private var setupReachable: Bool {
@@ -748,6 +761,8 @@ private enum GoLiveNotice {
     case phoneCameraNotBlurred(BystanderBlurControl.Refusal)
     case phoneCameraDenied
     case failed(String)
+    /// A running stream moved camera, or ended, because of something that changed under it.
+    case streamChanged(String)
 
     var title: String {
         switch self {
@@ -755,6 +770,7 @@ private enum GoLiveNotice {
         case .phoneCameraNotBlurred: return String(localized: "Can't blur the phone camera")
         case .phoneCameraDenied: return String(localized: "Camera access is off")
         case .failed: return String(localized: "Couldn't broadcast")
+        case .streamChanged: return String(localized: "Live stream")
         }
     }
 
@@ -768,7 +784,7 @@ private enum GoLiveNotice {
             return refusal.message
         case .phoneCameraDenied:
             return String(localized: "Allow camera access for Avenkin in iOS Settings to stream from the phone.")
-        case .failed(let message):
+        case .failed(let message), .streamChanged(let message):
             return message
         }
     }

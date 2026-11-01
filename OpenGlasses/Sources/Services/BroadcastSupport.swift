@@ -64,10 +64,14 @@ enum BroadcastVideoSource: String, CaseIterable, Codable {
     }
 }
 
-/// What tapping Go Live in the live preview does (pure).
+/// What Go Live does, and what may reach the encoder while a stream runs (pure).
 ///
-/// The preview is the only caller. `AppState.toggleBroadcast()` stays as it was for Siri and
-/// Shortcuts, so nothing here changes what an intent does.
+/// **Phone frames are never blurred** (`PhoneVideoSource` hands them straight to the encoder, and
+/// Plan KH deliberately builds no phone-frame blur). So while Blur Bystander Faces is on, every
+/// route from the phone camera to the encoder is refused here: the fallback, a phone Camera
+/// setting, the Dual Capture inset and a mid-stream switch. `BroadcastService` asks
+/// `phoneFramesAllowed(faceBlurOn:)` at each of those routes too, so a caller that skipped this
+/// type still cannot put a phone frame on air with the blur on.
 enum BroadcastGoLive {
     struct Facts: Equatable {
         var isBroadcasting: Bool
@@ -81,31 +85,120 @@ enum BroadcastGoLive {
         var phoneCameraDenied: Bool
         /// Capture & Streaming can be opened on this phone.
         var setupReachable: Bool
+        /// Live Streaming's Dual Capture setting: the phone camera as an inset.
+        var dualCaptureOn = false
+    }
+
+    /// The ways a phone frame could reach the encoder.
+    enum PhoneRoute: Equatable {
+        /// Camera is set to Glasses, none are connected, and the phone would stand in.
+        case fallback
+        /// Camera is set to a phone camera.
+        case chosen
+        /// Dual Capture would put the phone camera in the picture.
+        case inset
+        /// A switch of camera during a stream.
+        case midStreamSwitch
     }
 
     enum Decision: Equatable {
         /// Start or stop. `startSource` is nil to start on the Camera setting.
         case toggle(startSource: BroadcastVideoSource?)
         case needsSetup(canOpenSettings: Bool)
-        /// Falling back to the phone would quietly drop the blur the wearer has on.
-        case phoneCameraNotBlurred
+        /// The phone camera would go out with the blur the wearer has on not covering it.
+        case phoneCameraNotBlurred(PhoneRoute)
         case phoneCameraDenied
     }
+
+    /// The one rule every route asks.
+    static func phoneFramesAllowed(faceBlurOn: Bool) -> Bool { !faceBlurOn }
 
     /// Stopping always wins: nothing below may stand between the wearer and ending a stream.
     ///
     /// A glasses stream with no glasses connected would go LIVE with a black picture and an open
-    /// microphone, so it falls back to the phone's back camera. Phone frames do not pass through
-    /// `OutboundFrameRelay`, so with the blur on that fallback is refused, not taken silently.
+    /// microphone, so it falls back to the phone's back camera, unless the blur is on.
     static func decide(_ facts: Facts) -> Decision {
         guard !facts.isBroadcasting else { return .toggle(startSource: nil) }
         guard facts.isConfigured else { return .needsSetup(canOpenSettings: facts.setupReachable) }
         let fallsBack = facts.preferredSource == .glasses && !facts.glassesConnected
-        if fallsBack && facts.faceBlurOn { return .phoneCameraNotBlurred }
+        if !phoneFramesAllowed(faceBlurOn: facts.faceBlurOn) {
+            if fallsBack { return .phoneCameraNotBlurred(.fallback) }
+            if facts.preferredSource.isPhone { return .phoneCameraNotBlurred(.chosen) }
+            if facts.dualCaptureOn { return .phoneCameraNotBlurred(.inset) }
+        }
         if (fallsBack || facts.preferredSource.isPhone) && facts.phoneCameraDenied {
             return .phoneCameraDenied
         }
         return .toggle(startSource: fallsBack ? .phoneBack : nil)
+    }
+
+    enum SwitchDecision: Equatable {
+        case switchCamera
+        case phoneCameraNotBlurred
+    }
+
+    /// A camera chosen during a stream. The glasses are always open: their frames are blurred.
+    static func decideSwitch(to source: BroadcastVideoSource, faceBlurOn: Bool) -> SwitchDecision {
+        source.isPhone && !phoneFramesAllowed(faceBlurOn: faceBlurOn) ? .phoneCameraNotBlurred : .switchCamera
+    }
+
+    /// What a stream that is already on air is doing, read when something it depends on changes.
+    struct LiveFacts: Equatable {
+        var isBroadcasting: Bool
+        var activeSource: BroadcastVideoSource
+        /// The phone camera is in the picture as an inset.
+        var phoneInsetOn: Bool
+        var faceBlurOn: Bool
+        var glassesConnected: Bool
+    }
+
+    /// Why a running stream was ended rather than left to carry on.
+    enum EndReason: Equatable {
+        /// The blur came on during a phone stream with no glasses to move to.
+        case blurNeedsGlasses
+        /// The blur came on during a phone stream, and the glasses gave no picture to move to.
+        case glassesGaveNoPicture
+    }
+
+    enum LiveAction: Equatable {
+        case carryOn
+        /// The stream stays on the glasses, whose frames are blurred. Only the inset goes.
+        case dropPhoneInset
+        case moveToGlasses
+        case end(EndReason)
+    }
+
+    /// Turning the blur on during a phone stream must not leave faces going out unblurred: the
+    /// wearer asked for them to be covered, and viewers are watching now. The stream moves to the
+    /// glasses when there are glasses, which keeps it on air and covers the faces. Otherwise it
+    /// ends, because there is no third picture to send.
+    static func whileLive(_ facts: LiveFacts) -> LiveAction {
+        guard facts.isBroadcasting else { return .carryOn }
+        guard !phoneFramesAllowed(faceBlurOn: facts.faceBlurOn) else { return .carryOn }
+        if facts.activeSource.isPhone {
+            return facts.glassesConnected ? .moveToGlasses : .end(.blurNeedsGlasses)
+        }
+        return facts.phoneInsetOn ? .dropPhoneInset : .carryOn
+    }
+
+    /// How long a glasses camera has to give a picture: its cold start takes up to twenty seconds.
+    static let glassesPictureTimeout: TimeInterval = 20
+
+    static func endMessage(_ reason: EndReason) -> String {
+        switch reason {
+        case .blurNeedsGlasses:
+            return String(localized: "The live stream has ended. Blur Bystander Faces is on, it can't cover the phone camera, and no glasses are connected.")
+        case .glassesGaveNoPicture:
+            return String(localized: "The live stream has ended. Blur Bystander Faces is on, it can't cover the phone camera, and the glasses camera didn't start.")
+        }
+    }
+
+    static var movedToGlassesMessage: String {
+        String(localized: "Blur Bystander Faces is on, so the stream has moved to the glasses camera.")
+    }
+
+    static var insetDroppedMessage: String {
+        String(localized: "Blur Bystander Faces is on, so the phone camera inset has left the stream.")
     }
 }
 
@@ -128,6 +221,14 @@ struct BroadcastSourceSelector {
         active = source
         lastSwitch = now
         return true
+    }
+
+    /// A move a safety rule made. The debounce exists to save the pipeline from churn, and a frame
+    /// of unblurred faces is worth more than that, so this one is not held back. It still starts
+    /// the debounce, so a tap straight after cannot bounce back.
+    mutating func moveNow(to source: BroadcastVideoSource, now: Date) {
+        active = source
+        lastSwitch = now
     }
 }
 
