@@ -67,6 +67,23 @@ final class OpenAIRouteSelectorTests: XCTestCase {
             // 9. Automatic with tools.
             Row(name: "5.5 automatic", selection: select("gpt-5.5", nil),
                 endpoint: .chatCompletions, reason: .automaticStaysCheap, effective: .level(.none)),
+            // Plan KJ P1: luna doubles its replies on Chat Completions, so Automatic moves.
+            Row(name: "luna automatic", selection: select("gpt-6-luna", nil),
+                endpoint: .responses, reason: .chatDoublesReplies, effective: .level(.none)),
+            Row(name: "luna dated snapshot", selection: select("gpt-6-luna-2026-09-01", nil),
+                endpoint: .responses, reason: .chatDoublesReplies, effective: .level(.none)),
+            Row(name: "luna refused on Responses", selection: select("gpt-6-luna", nil, learnedResponses: true),
+                endpoint: .chatCompletions, reason: .responsesRefusedEarlier, effective: .level(.none)),
+            Row(name: "luna explicit none", selection: select("gpt-6-luna", ReasoningEffort.none),
+                endpoint: .chatCompletions, reason: .explicitNone, effective: .level(.none)),
+            Row(name: "luna explicit low", selection: select("gpt-6-luna", .low),
+                endpoint: .responses, reason: .reasoningWithTools, effective: .level(.low)),
+            Row(name: "luna custom host", selection: select("gpt-6-luna", base: "https://r.openai.azure.com/openai/v1", nil),
+                endpoint: .chatCompletions, reason: .customHostChat, effective: .level(.none)),
+            Row(name: "luna no tools", selection: select("gpt-6-luna", tools: false, nil),
+                endpoint: .chatCompletions, reason: .noToolsAttached, effective: .providerDefault(.medium)),
+            Row(name: "sol automatic unchanged", selection: select("gpt-6-sol", nil),
+                endpoint: .chatCompletions, reason: .automaticStaysCheap, effective: .level(.none)),
         ]
         for row in rows {
             XCTAssertEqual(row.selection.endpoint, row.endpoint, row.name)
@@ -112,6 +129,31 @@ final class OpenAIRouteSelectorTests: XCTestCase {
         XCTAssertEqual(s.reasoning.wire, .responsesEffort(.low))
         XCTAssertEqual(s.reasoning.effective, .level(.low))
         XCTAssertEqual(s.displayValue, "Low · Responses API")
+    }
+
+    /// Plan KJ P1: the route moves, the reasoning does not. `none` is named on the wire because it
+    /// is not this family's default, which would otherwise think at `medium`.
+    func testGPT6LunaAutomaticWithToolsGoesToResponsesAtNone() {
+        let s = select("gpt-6-luna", nil)
+        XCTAssertEqual(s.endpoint, .responses)
+        XCTAssertEqual(s.reason, .chatDoublesReplies)
+        XCTAssertEqual(s.reasoning.wire, .responsesEffort(.none))
+        XCTAssertEqual(s.reasoning.effective, .level(.none))
+        XCTAssertEqual(s.token, "responses")
+        XCTAssertEqual(s.displayValue, "None · Responses API")
+        var body: [String: Any] = [:]
+        s.reasoning.apply(to: &body)
+        XCTAssertEqual(body["reasoning"] as? [String: String], ["effort": "none"])
+        XCTAssertNil(body["reasoning_effort"])
+    }
+
+    func testOnlyLunaIsFlaggedForDoublingItsReplies() {
+        for model in ["gpt-6-luna", "gpt-6-luna-2026-09-01", "GPT-6-Luna"] {
+            XCTAssertEqual(ReasoningPolicy.openAIFamily(model: model)?.chatDoublesReplies, true, model)
+        }
+        for model in ["gpt-6-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-luna", "gpt-5.5", "o4-mini"] {
+            XCTAssertEqual(ReasoningPolicy.openAIFamily(model: model)?.chatDoublesReplies, false, model)
+        }
     }
 
     func testGPT55ExplicitHighNoToolsStaysOnChatWithReasoningEffort() {
@@ -216,13 +258,15 @@ final class OpenAIRouteSelectorTests: XCTestCase {
 
     func testDisplayValueAndExplanationAreNonEmpty() {
         let reasons: [OpenAIRouteSelector.Reason] = [
-            .reasoningWithTools, .chatToolsUnavailable, .automaticStaysCheap, .noToolsAttached,
-            .explicitNone, .notReasoningModel, .otherProvider, .customHostChat,
+            .reasoningWithTools, .chatToolsUnavailable, .chatDoublesReplies, .automaticStaysCheap,
+            .noToolsAttached, .explicitNone, .notReasoningModel, .otherProvider, .customHostChat,
             .customHostResponsesURL, .responsesRefusedEarlier,
         ]
         for reason in reasons {
             XCTAssertFalse(reason.explanation.isEmpty, reason.rawValue)
             XCTAssertTrue(reason.explanation.hasSuffix("."), reason.rawValue)
+            XCTAssertNil(reason.explanation.range(of: #"\bPlan [A-Z]{1,2}\b"#, options: .regularExpression),
+                         reason.rawValue)
         }
         let samples = [select("gpt-6-sol", .medium), select("gpt-6-sol", nil), select("gpt-4o", .high),
                        select("claude-sonnet-5", provider: .anthropic, base: "", .high),

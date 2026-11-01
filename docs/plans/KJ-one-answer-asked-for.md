@@ -1,7 +1,9 @@
 # Plan KJ — One Answer, Asked For (a reply said once, an offer that was an offer, a reading's unit once)
 
-**Status:** 📝 Drafted 2026-11-01 from a tester's report on build 581. Nothing built. P0 is a live probe and
-needs an OpenAI API key for the session; P1 waits on it. P2 and P3 are headless and can go first.
+**Status:** 🚧 P0 run 2026-11-01 (see Evidence): the doubling reproduced on Chat Completions and not on
+Responses, at the cost of slower tool turns. The owner took the route on that evidence. P1 to P3 are built
+(see each phase's as-built note); P4, the tester's re-run on a device, is owed. Drafted the same day from a
+tester's report on build 581.
 **Track:** Field Assist first (the tester is comparing models on a vault job), app-wide underneath: any
 Direct-mode turn on an OpenAI model at Automatic, and any reading recorded in a job.
 **Related:** Plan [KD](KD-vault-retest-581.md) (P3's `RepeatedReplyCollapse`, and the route decision it
@@ -29,10 +31,14 @@ second, and reading the same report turned up two smaller faults beside them.
      the logs and has never been run against the live model. KD also calls these tool turns; here the
      tools were attached and not always called.
    - gpt-6-luna at Automatic goes to Chat Completions (`automaticStaysCheap`). Responses already holds
-     back a message labelled `commentary` (`ResponsesTranslator.isCommentary`), if the API route labels
-     it. Whether it does for this model is unknown.
+     back a message labelled `commentary` (`ResponsesTranslator.isCommentary`), and P0 shows the API
+     route labels it for this model.
    - A doubled reply goes into history as it came. The model may be copying its own earlier replies,
-     which the probe tests, because a route change would not stop that.
+     which the probe tests, because a route change would not stop that. P0 saw no sign of it.
+   - The prompt tells the model to "ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool"
+     (`TOOL USAGE RULES`), and on OpenAI the job block and manual passages arrive as a trailing system
+     message, after the technician's turn (`PromptLayout.chatMessages`). P0 found both matter to the
+     replay; neither is named in Plan KD.
 2. **The expert gate reads a mention as an offer.** `TechnicianRequest.confirmsExpertOffer` passes a
    short affirmative whenever the previous reply contained a person word or "escalate". A reply that
    says "escalate rather than treating it as a pass" offers nothing, yet "okay I will check it" and
@@ -89,6 +95,12 @@ reasoning level as well as the route, so it can point to the cause but not prove
 - Table tests in `OpenAIRouteSelectorTests`: flagged family at Automatic, the same with a learned
   rejection, explicit `none`, explicit Low, a custom host, an unflagged family.
 
+**As built:** `ReasoningPolicy.Family.chatDoublesReplies`, true only for ids starting `gpt-6-luna`, and
+`OpenAIRouteSelector.Reason.chatDoublesReplies`, a new rule 9 between explicit `none` and the cheap default.
+On the wire it is `reasoning.effort: none`, because the family's default is `medium`. gpt-6-sol, rule 4, other
+hosts, explicit `none` and no-tools turns are unchanged. The new explanation string is not in the catalog yet;
+the next catalog sync picks it up. A commentary-only reply on this route is silent: see Open.
+
 **P1b, only if P0 points to history:** the part of a reply that repeats the part before it is judged on
 the finished reply, and the cleaned text is what history keeps. The detector itself is a design of its
 own and is not specified here: it must leave a summary, a repeated safety warning and a read-back alone,
@@ -104,6 +116,12 @@ which is why this plan does not start there.
   "escalate rather than…" are refused and show no card. `SymptomDiagnosisTests` keeps passing unchanged.
 - The tool description and the refusal text do not change.
 
+**As built:** `TechnicianRequest.offersExpert`, pure, reads the previous reply a sentence at a time: a person
+or escalate word, and in that same sentence a question mark or an offering phrase. A full stop inside "0.28"
+does not end a sentence. Two limits are accepted, each costing one turn or one approval card: a question that
+names a person without offering one ("did the supervisor sign it?") passes, and an offer split across two
+sentences ("the manual says escalate. Shall I?") is refused.
+
 ### P3 — a reading's unit once (headless)
 
 - `valueWithUnit` prints the value alone when it already ends in the unit: compared case-insensitively,
@@ -113,6 +131,9 @@ which is why this plan does not start there.
 - `value` itself is not rewritten, so what the technician reported stays as recorded. A value and unit
   that differ ("140 F" with `°F`) are left for now; the schema change is what reduces those.
 - Tests on `valueWithUnit` and on the record's reading line, with and without a correction.
+
+**As built:** `valueWithUnit` as written, tests in `JobRecordFidelityTests`. The tool's own description also
+said "'value' exactly as said", which would have contradicted the schema, so it now says the number alone too.
 
 ### P4 — the tester's re-run (owed, device)
 
@@ -127,10 +148,61 @@ no expert card unless asked or accepted, and each reading's unit printed once.
 - No reading prints its unit twice.
 - First output on the moved route is within what the owner accepts from P0's timing.
 
+## Evidence
+
+**P0, 2026-11-01.** gpt-6-luna on the OpenAI API, outside the app. The app's real default prompt, tool rules
+and tool descriptions for the Field Assist set (64 tools, schemas simplified), its request shapes and its
+layout. An invented furnace job, stubbed tools, turns of 29 to 37 messages, three closing turns in rotation.
+One-off key, deleted after the runs. About 22 million input tokens, 18 million of them cached.
+
+Three runs, because the first two did not measure what was intended:
+
+| Run | Set-up | Result |
+|---|---|---|
+| 1 | Job block and passages at the top of the prompt, acknowledgment rule absent | No doubling in 40 Chat Completions runs. Not the app's layout. Over half the Responses runs lost to a harness fault; discarded |
+| 2 | The app's layout: block last, rule present; four arms of 20 | Doubling reproduced. The harness's stubs ran many turns into the round limit with no reply |
+| 3 | Run 2 with stubs that finish and a last round without tools; three arms of 40 | Every run ended in a reply. Table below |
+
+Run 3, on clean history:
+
+| Arm | Doubled | Turns with a spoken preamble | Median whole turn | Rounds per turn | Turns calling the expert tool |
+|---|---|---|---|---|---|
+| Chat Completions | 2 of 40 | 22 of 40 | 4.5 s | 3.5 | 8 |
+| Chat Completions, acknowledgment rule removed | 0 of 40 (1 reply repeated itself mildly on one line) | 0 of 40 | 6.6 s | 4.5 | 15 |
+| Responses | 0 of 40 | 0 heard, 23 `commentary` messages held back | 9.1 s | 4.2 | 7 |
+
+Every reply from runs 2 and 3, on both kinds of history:
+
+| Route | Doubled | Replies |
+|---|---|---|
+| Chat Completions | 5 | 68 |
+| Responses | 0 | 57 |
+
+- **Every doubled reply was read by eye** and had the tester's shape: the same answer or question twice, on
+  a new line. Two came from turns that made no tool call, as two of the tester's did.
+- **The difference is suggestive, not proven.** 5 of 68 against 0 of 57 gives p = 0.06 (Fisher, two-sided).
+  Against the rule-removed arm, p = 0.16.
+- **The rate is below the tester's.** 7% against 4 of 14. The replay is shorter and its job is invented, so
+  the rate here does not predict the rate on a phone.
+- **Two messages in one response were never seen on Responses.** Each response carried one message, so the
+  plain reading of "preamble merged into the answer" is still unconfirmed. Commentary only appeared on
+  rounds that called a tool.
+- **Doubled history made no visible difference:** 1 of 13 clean against 2 of 15 doubled in run 2.
+- **Responses is slower.** About 0.3 s to the first output of the final round, and roughly 2.2 s against
+  1.3 s for each round of a turn. The stubs inflate the number of rounds, so the whole-turn figures are
+  an upper bound. Nothing is spoken during those rounds, because commentary is held back.
+- **Removing the rule is not free.** It stopped the preambles, added a round, and nearly doubled the calls
+  to `escalate_to_expert`. It also takes away the words that fill the silence on every provider.
+
+**Reading it against P0's table:** doubling stopped on Responses, so the first row applies and P1 stands as
+written, subject to the owner accepting the latency under Acceptance, which the owner did. The tester's check with reasoning at
+Low is still worth having, on a real job.
+
 ## Decisions
 
-Recorded here when taken. The owner kept gpt-6-luna on Chat Completions in Plan KD P3, with no probe
-behind that choice either way; this plan asks to revisit it on P0's result.
+**Owner decision 2026-11-01: gpt-6-luna moves to Responses at Automatic (P1), accepting the slower tool
+rounds and the silence during them.** This reverses the choice made in Plan KD P3, which had no probe
+behind it. gpt-6-sol stays on Chat Completions, because the doubling has only been seen on luna.
 
 ## Open
 
@@ -139,3 +211,9 @@ behind that choice either way; this plan asks to revisit it on P0's result.
   would not answer a plain yes-or-no. Plan KE's refusal text sends that turn to an expert offer, so the
   question stays unanswered. This is a product decision for the owner, not a fix.
 - Whether gpt-6-sol doubles the same way. Only gpt-6-luna has been reported.
+- **A commentary-only reply is silence.** On Responses, a final round holding only `commentary` is an empty
+  reply: the loop finalizes it, nothing throws, so the cascade does not hop, and the speech service has nothing
+  to say. `commentaryWithheld` records `noAnswer`. On Chat Completions the same words would have been spoken.
+  P0 saw commentary only on rounds that called a tool, and every run ended in a reply, so this was not seen on
+  luna, but moving luna raises the exposure. What to do instead is a design choice: the owner decides whether
+  to treat it as a stall and ask once more.

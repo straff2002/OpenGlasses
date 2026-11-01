@@ -60,11 +60,63 @@ enum TechnicianRequest {
         return words.count <= 3 && words.contains(where: namedPersonWords.contains)
     }
 
-    /// "Yes" to the assistant's offer of a person: a short affirmative, after a reply that mentioned
-    /// one, the way `confirmsEndingJob` reads a reply about ending the job.
+    /// "Yes" to the assistant's offer of a person: a short affirmative, after a reply that made one.
+    /// Stricter than `confirmsEndingJob`, because a reply can name a person without offering one
+    /// (Plan KJ P2): after "escalate rather than treating it as a pass", "okay I will check it" had
+    /// opened the expert card.
     static func confirmsExpertOffer(_ said: String, previousReply: String?) -> Bool {
         guard isShortAffirmative(said), let previousReply else { return false }
-        return words(previousReply).contains { personWords.contains($0) || escalateWords.contains($0) }
+        return offersExpert(previousReply)
+    }
+
+    /// Whether a reply offers a person: one of its sentences names a person or escalating and either
+    /// asks, by ending in a question mark, or offers, by `offeringPhrases`. Each sentence is read on
+    /// its own, so a "Source: …" line after the question does not hide it. Reading an offer wrongly
+    /// costs one turn: the refusal tells the model to make the offer.
+    private static func offersExpert(_ reply: String) -> Bool {
+        sentences(reply).contains { sentence in
+            let words = self.words(sentence.text)
+            guard words.contains(where: { personWords.contains($0) || escalateWords.contains($0) }) else {
+                return false
+            }
+            return sentence.asks || containsPhrase(words, among: offeringPhrases)
+        }
+    }
+
+    /// How an offer sounds without a question mark ("I can get an expert if you want"), in spoken
+    /// replies. Apostrophes are dropped, so "I can't" is not "I can".
+    private static let offeringPhrases: [[String]] = [
+        ["i", "can"], ["i", "could"], ["happy", "to"], ["let", "me", "know"], ["if", "you", "want"],
+        ["if", "youd", "like"], ["say", "the", "word"],
+    ]
+
+    /// A reply's sentences, each with whether it ended in a question mark. A full stop ends a
+    /// sentence only before a space or the end of the text, so "0.28" stays in one piece, and a line
+    /// break always ends one.
+    private static func sentences(_ text: String) -> [(text: String, asks: Bool)] {
+        var sentences: [(text: String, asks: Bool)] = []
+        var current = ""
+        func closeSentence(asks: Bool) {
+            sentences.append((current, asks))
+            current = ""
+        }
+        let characters = Array(text)
+        for (index, character) in characters.enumerated() {
+            if character.isNewline {
+                closeSentence(asks: false)
+                continue
+            }
+            current.append(character)
+            if character == "?" {
+                closeSentence(asks: true)
+            } else if character == "!" {
+                closeSentence(asks: false)
+            } else if character == ".", index + 1 == characters.count || characters[index + 1].isWhitespace {
+                closeSentence(asks: false)
+            }
+        }
+        closeSentence(asks: false)
+        return sentences
     }
 
     /// Who a technician means. `someone` is here for "can someone look at this"; the words that

@@ -468,6 +468,51 @@ final class ExpertRequestWordsTests: XCTestCase {
                                                              previousReply: "Want me to get an expert?"))
     }
 
+    // MARK: Plan KJ P2: an offer has to be an offer
+
+    private static let aMention = "If the reading stays there, escalate rather than treating it as a pass. "
+        + "Source: Field Guide, page 20."
+
+    func testAYesAfterARealOfferPasses() {
+        let offers = [
+            "I don't want to guess. Would you like me to escalate this to an expert? Source: Field Guide, page 20.",
+            "I don't want to guess. Would you like me to escalate this to an expert?\nSource: Field Guide, page 20.",
+            "I can get an expert if you want.",
+            "I could call a supervisor.",
+            "Happy to bring in a specialist.",
+            "Let me know if you need someone.",
+            "We can escalate this if you'd like.",
+            "We can escalate this if you\u{2019}d like.",
+            "Say the word and I'll page the expert.",
+            "Want an expert on that 0.28 reading?",
+        ]
+        for offer in offers {
+            XCTAssertTrue(TechnicianRequest.confirmsExpertOffer("yes", previousReply: offer), offer)
+            XCTAssertNil(EscalateToExpertTool.refusal(said: "yes", previousReply: offer), offer)
+        }
+    }
+
+    func testAShortYesAfterAMentionIsRefused() {
+        for said in ["Okay I will check it", "Right, the meter is on ohms", "Yeah that's right", "yes"] {
+            XCTAssertFalse(TechnicianRequest.confirmsExpertOffer(said, previousReply: Self.aMention), said)
+            XCTAssertEqual(EscalateToExpertTool.refusal(said: said, previousReply: Self.aMention),
+                           EscalateToExpertTool.notRequested, said)
+        }
+    }
+
+    /// The person and the offer have to be in the same sentence.
+    func testAnOfferFarFromThePersonIsNoOffer() {
+        let replies = [
+            "I can check the fan next. The expert note says it runs on high.",
+            "The supervisor signed it off. Anything else?",
+            "I can't reach an expert from here.",
+            "The next step is to escalate.\nAnything else?",
+        ]
+        for reply in replies {
+            XCTAssertFalse(TechnicianRequest.confirmsExpertOffer("yes", previousReply: reply), reply)
+        }
+    }
+
     func testTheGateFollowsTheWords() {
         XCTAssertEqual(EscalateToExpertTool.refusal(said: "what next", previousReply: nil), EscalateToExpertTool.notRequested)
         XCTAssertNil(EscalateToExpertTool.refusal(said: "get me an expert", previousReply: nil))

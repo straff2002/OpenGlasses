@@ -235,6 +235,56 @@ final class JobRecordFidelityTests: XCTestCase {
         XCTAssertTrue(record.tasks.isEmpty, "and no finished task at all")
     }
 
+    // Plan KJ P3: a model can pass the unit in `value` as well as in `unit`.
+
+    func testAValueThatEndsInItsUnitPrintsItOnce() {
+        let rows: [(value: String, unit: String?, printed: String)] = [
+            ("2 Mega Ohm", "Mega Ohm", "2 Mega Ohm"),
+            ("2 mega ohm", "Mega Ohm", "2 mega ohm"),
+            ("2MΩ", "MΩ", "2MΩ"),
+            ("140 °F", "°F", "140 °F"),
+            ("5 am", "m", "5 am m"),
+            ("140", "°F", "140 °F"),
+            ("140 F", "°F", "140 F °F"),
+            ("3.5 to 3.7", "volts", "3.5 to 3.7 volts"),
+            ("140", "", "140"),
+            ("140", nil, "140"),
+        ]
+        for row in rows {
+            let reading = SpokenReading(quantity: "q", value: row.value, unit: row.unit)
+            XCTAssertEqual(reading.valueWithUnit, row.printed, row.value)
+            XCTAssertEqual(reading.value, row.value, "the value stays as recorded")
+        }
+    }
+
+    func testTheRecordLinePrintsAUnitOnce() {
+        let chain = SpokenReadingLedger.Chain(
+            original: SpokenReading(quantity: "insulation resistance", value: "2 Mega Ohm", unit: "Mega Ohm"),
+            corrections: [])
+        XCTAssertEqual(SpokenReadingLedger.line(for: chain), "Insulation resistance 2 Mega Ohm")
+    }
+
+    func testACorrectedRecordLinePrintsEachUnitOnce() {
+        let first = SpokenReading(id: "r1", quantity: "insulation resistance", value: "2 Mega Ohm", unit: "Mega Ohm")
+        var parts = DateComponents()
+        parts.year = 2026; parts.month = 9; parts.day = 30; parts.hour = 17; parts.minute = 28
+        parts.timeZone = TimeZone(identifier: "UTC")
+        let at = Calendar(identifier: .gregorian).date(from: parts) ?? t0
+        let second = SpokenReading(id: "r2", quantity: "insulation resistance", value: "3 Mega Ohm",
+                                   unit: "Mega Ohm", at: at, supersedes: "r1")
+        let chain = SpokenReadingLedger.Chain(original: first, corrections: [second])
+        XCTAssertEqual(SpokenReadingLedger.line(for: chain, timeZone: TimeZone(identifier: "UTC") ?? .current),
+                       "Insulation resistance 2 Mega Ohm (corrected to 3 Mega Ohm at 5:28 PM)")
+    }
+
+    func testTheReadingToolAsksForTheNumberAlone() throws {
+        let properties = try XCTUnwrap(ReadingTool().parametersSchema["properties"] as? [String: Any])
+        let value = try XCTUnwrap(properties["value"] as? [String: Any])
+        let description = try XCTUnwrap(value["description"] as? String)
+        XCTAssertTrue(description.contains("number alone"), description)
+        XCTAssertTrue(description.contains("'140'"), description)
+    }
+
     func testAReadingCitesOnlyAVerifiedPage() throws {
         let service = FieldSessionService(sessionsRoot: tempRoot)
         _ = try service.startSession(vaultId: "refrigeration", assetId: nil)

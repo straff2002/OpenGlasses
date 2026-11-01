@@ -12,8 +12,8 @@ final class ReadingTool: NativeTool {
     Record a value the technician reads off the machine ("supply air is 140 degrees", "inducer \
     pressure 0.28") with 'record_reading', or correct one they gave earlier ("135, not 140") with \
     'correct_reading' — a correction replaces the earlier value on the record; never record it as a \
-    new reading or a task. Pass 'quantity' (what was measured), 'value' exactly as said, and 'unit' \
-    when said. Pass 'page' only for a manual page the technician confirmed. Readings are recorded as \
+    new reading or a task. Pass 'quantity' (what was measured), 'value' as the number alone, and \
+    'unit' when said. Pass 'page' only for a manual page the technician confirmed. Readings are recorded as \
     the technician's report, not as verified. Requires an active session.
     """
     let parametersSchema: [String: Any] = [
@@ -28,7 +28,7 @@ final class ReadingTool: NativeTool {
                 "type": "string",
                 "description": "What was measured, e.g. 'supply air', 'manifold pressure'. On correct_reading, which reading (omit for the latest)."
             ],
-            "value": ["type": "string", "description": "The value exactly as said, e.g. '140', '0.28'."],
+            "value": ["type": "string", "description": "The number alone, without the unit, e.g. '140', '0.28'."],
             "unit": ["type": "string", "description": "The unit as said, e.g. '°F', 'inWC', 'volts'."],
             "reading_id": ["type": "string", "description": "On correct_reading: the reading to correct, when known."],
             "page": ["type": "string", "description": "A manual page the technician confirmed this against."]

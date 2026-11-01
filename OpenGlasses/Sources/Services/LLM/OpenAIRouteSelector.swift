@@ -21,7 +21,9 @@ import Foundation
 /// 6. A model that takes no tools on Chat Completions → Responses, even at Automatic.
 /// 7. An explicit level above `none` with tools → Responses at that level (Decision 1).
 /// 8. Explicit `none` → Chat Completions.
-/// 9. Automatic with tools → Chat Completions at `none`: GB's cheap default, unchanged.
+/// 9. Automatic with tools, on a family that doubles its replies on Chat Completions → Responses,
+///    at that family's lowest setting (Plan KJ P1). An explicit `none` is rule 8 and stays.
+/// 10. Any other Automatic with tools → Chat Completions at `none`: GB's cheap default, unchanged.
 ///
 /// Pure and table-tested. `LLMService` consults it once per request before building the URL, and
 /// the model editor shows the same selection, so what the tester reads is what goes on the wire.
@@ -52,6 +54,8 @@ enum OpenAIRouteSelector {
         case reasoningWithTools
         /// The model takes no tools on Chat Completions → Responses even at Automatic.
         case chatToolsUnavailable
+        /// Automatic with tools, on a family that doubles its replies on Chat Completions → Responses.
+        case chatDoublesReplies
         /// Automatic with tools → Chat Completions at `none`.
         case automaticStaysCheap
         /// No tools → Chat Completions carries `reasoning_effort` itself.
@@ -75,6 +79,8 @@ enum OpenAIRouteSelector {
                 return String(localized: "This level needs the Responses API when tools are attached.")
             case .chatToolsUnavailable:
                 return String(localized: "This model can't use tools on Chat Completions, so tool turns use the Responses API.")
+            case .chatDoublesReplies:
+                return String(localized: "This model can say an answer twice on Chat Completions, so Automatic sends tool turns to the Responses API.")
             case .automaticStaysCheap:
                 return String(localized: "Automatic keeps tool turns on Chat Completions without reasoning, to stay quick and cheap.")
             case .noToolsAttached:
@@ -180,9 +186,10 @@ enum OpenAIRouteSelector {
         guard toolsAttached else { return chat(.noToolsAttached) }
         // 6. No tools on Chat Completions at any level: Responses even at Automatic.
         if family.chatToolsUnavailable { return responses(.chatToolsUnavailable) }
-        // 9. Automatic with tools: GB's clamp, quick and cheap.
+        // 9. Automatic with tools, doubling on Chat Completions: Responses.
+        // 10. Any other Automatic with tools: GB's clamp, quick and cheap.
         guard let explicit = requested.flatMap(ReasoningEffort.init(rawValue:)) else {
-            return chat(.automaticStaysCheap)
+            return family.chatDoublesReplies ? responses(.chatDoublesReplies) : chat(.automaticStaysCheap)
         }
         // 7. An explicit level above `none` → Responses; 8. explicit `none` → Chat Completions.
         return explicit > ReasoningEffort.none ? responses(.reasoningWithTools) : chat(.explicitNone)

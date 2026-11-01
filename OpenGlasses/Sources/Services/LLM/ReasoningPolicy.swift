@@ -41,8 +41,8 @@ enum ReasoningEffort: String, CaseIterable, Codable, Comparable {
 enum ReasoningRoute: String, Equatable {
     /// OpenAI-style `/chat/completions`: OpenAI and every OpenAI-compatible provider.
     case chatCompletions
-    /// The Responses API: the ChatGPT subscription backend, and (Plan GC) OpenAI API tool turns
-    /// that carry reasoning — chosen per request by `OpenAIRouteSelector`, not by `route(for:)`.
+    /// The Responses API: the ChatGPT subscription backend, and (Plan GC) the OpenAI API tool turns
+    /// `OpenAIRouteSelector` moves there — chosen per request by it, not by `route(for:)`.
     case responses
     case anthropicMessages
     case geminiREST
@@ -114,13 +114,20 @@ enum ReasoningPolicy {
         /// Chat Completions takes no function tools at all for this model, at any effort
         /// (`gpt-6-astra`, `gpt-6.1-sol`). Tool turns can only go to the Responses API (Plan GC).
         let chatToolsUnavailable: Bool
+        /// On Chat Completions this model can say one answer twice in different words, so Automatic
+        /// takes tool turns to Responses instead (Plan KJ P1: a replay doubled 5 replies of 68 there
+        /// and none of 57 on Responses, which points to the route without proving it). Set only for
+        /// a family the replay was run on; an unmeasured family stays on Chat Completions.
+        let chatDoublesReplies: Bool
 
         init(accepted: [ReasoningEffort], providerDefault: ReasoningEffort,
-             chatToolsRequireNone: Bool = false, chatToolsUnavailable: Bool = false) {
+             chatToolsRequireNone: Bool = false, chatToolsUnavailable: Bool = false,
+             chatDoublesReplies: Bool = false) {
             self.accepted = accepted
             self.providerDefault = providerDefault
             self.chatToolsRequireNone = chatToolsRequireNone
             self.chatToolsUnavailable = chatToolsUnavailable
+            self.chatDoublesReplies = chatDoublesReplies
         }
 
         /// Chat Completions refuses function tools alongside any reasoning above `none` — either
@@ -168,7 +175,9 @@ enum ReasoningPolicy {
         if id.hasPrefix("gpt-6") {
             // gpt-6-sol, gpt-6-luna (there is no bare `gpt-6` id; an unknown 6.x variant is
             // treated like sol, the conservative side: tools on Chat Completions only at `none`).
-            return Family(accepted: fullRange, providerDefault: .medium, chatToolsRequireNone: true)
+            // Only luna has been seen doubling its replies (Plan KJ); sol stays as it is.
+            return Family(accepted: fullRange, providerDefault: .medium, chatToolsRequireNone: true,
+                          chatDoublesReplies: id.hasPrefix("gpt-6-luna"))
         }
         if id.hasPrefix("gpt-5.4") {
             return Family(accepted: fullRange, providerDefault: .none, chatToolsRequireNone: true)
@@ -441,8 +450,10 @@ enum ReasoningPolicy {
             let family = openAIFamily(model: model)
             guard let explicit else {
                 // Plan GC: on the API route a tool turn at Automatic reasons as little as the
-                // model allows — only models that take no tools on Chat Completions reach here
-                // at Automatic (`OpenAIRouteSelector`), and `low` is the cheapest they answer at.
+                // model allows. Two kinds of model reach here at Automatic (`OpenAIRouteSelector`):
+                // one that takes no tools on Chat Completions, where `low` is the cheapest it
+                // answers at, and a family moved off Chat Completions for doubling its replies
+                // (`chatDoublesReplies`), which stays at the `none` it had there.
                 // The ChatGPT subscription route keeps its shipped behaviour (nothing sent).
                 if toolsAttached, provider != .chatgpt, let family {
                     let lowest = family.lowest
