@@ -132,6 +132,76 @@ enum BroadcastGoLive {
         return .toggle(startSource: fallsBack ? .phoneBack : nil)
     }
 
+    // MARK: Siri and Shortcuts
+
+    /// Why a stream asked for by voice or a Shortcut did not start. There is no button to go back
+    /// to and no alert to answer, so each is a sentence to say.
+    enum IntentRefusal: Equatable {
+        case notSetUp
+        case phoneCameraNotBlurred(PhoneRoute)
+        case phoneCameraDenied
+        /// iOS has never been asked for the phone camera. Asking here would raise a prompt out of
+        /// nowhere, with nobody holding the phone.
+        case phoneCameraNotAsked
+        /// The camera it would use gave no picture, so going live would be an open microphone over
+        /// a black screen.
+        case noPicture
+        /// The streaming server would not take the stream. What it said is on screen, not spoken:
+        /// a connection error can name the destination.
+        case couldNotConnect
+    }
+
+    enum IntentDecision: Equatable {
+        case stop
+        /// Start on this camera, once it is giving a picture.
+        case start(BroadcastVideoSource)
+        case refuse(IntentRefusal)
+    }
+
+    /// The same checks as Go Live, then what only an intent has to care about: nobody is looking at
+    /// the phone, so nothing may ask them anything. Stopping still wins before all of it.
+    static func decideForIntent(_ facts: Facts, phoneCameraNotAsked: Bool) -> IntentDecision {
+        guard !facts.isBroadcasting else { return .stop }
+        switch decide(facts) {
+        case .needsSetup:
+            return .refuse(.notSetUp)
+        case .phoneCameraNotBlurred(let route):
+            return .refuse(.phoneCameraNotBlurred(route))
+        case .phoneCameraDenied:
+            return .refuse(.phoneCameraDenied)
+        case .toggle(let source):
+            let start = source ?? facts.preferredSource
+            if phoneCameraNotAsked && (start.isPhone || facts.dualCaptureOn) {
+                return .refuse(.phoneCameraNotAsked)
+            }
+            return .start(start)
+        }
+    }
+
+    static func spokenRefusal(_ refusal: IntentRefusal) -> String {
+        switch refusal {
+        case .notSetUp:
+            return String(localized: "Live streaming isn't set up. Add your platform and stream key in Avenkin first.")
+        case .phoneCameraNotBlurred(.inset):
+            return String(localized: "I can't go live. Blur Bystander Faces is on, and Dual Capture would put the phone camera on the stream.")
+        case .phoneCameraNotBlurred(.fallback):
+            return String(localized: "I can't go live. No glasses are connected, and Blur Bystander Faces doesn't cover the phone camera.")
+        case .phoneCameraNotBlurred:
+            return String(localized: "I can't go live. Camera is set to the phone, and Blur Bystander Faces doesn't cover it.")
+        case .phoneCameraDenied:
+            return String(localized: "I can't go live. Camera access is off for Avenkin in iOS Settings.")
+        case .phoneCameraNotAsked:
+            return String(localized: "I can't go live yet. Open Preview in Avenkin and tap Go Live once, to allow the phone camera.")
+        case .noPicture:
+            return String(localized: "I can't go live, because the camera isn't giving a picture.")
+        case .couldNotConnect:
+            return String(localized: "I couldn't reach the streaming server, so you aren't live.")
+        }
+    }
+
+    /// How long the phone camera has to come up for an intent. It starts in a moment or not at all.
+    static let phonePictureTimeout: TimeInterval = 4
+
     enum SwitchDecision: Equatable {
         case switchCamera
         case phoneCameraNotBlurred

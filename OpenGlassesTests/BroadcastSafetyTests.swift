@@ -124,3 +124,98 @@ final class BroadcastSafetyTests: XCTestCase {
             .appendingPathComponent("OpenGlasses/Sources/App/OpenGlassesApp.swift")
     }
 }
+
+/// Plan KH. Siri and Shortcuts go through the same checks as Go Live, and neither may put an open
+/// microphone on air over a black picture or raise a prompt with nobody holding the phone.
+final class BroadcastIntentTests: XCTestCase {
+
+    private func facts(_ change: (inout BroadcastGoLive.Facts) -> Void = { _ in }) -> BroadcastGoLive.Facts {
+        var facts = BroadcastGoLive.Facts(
+            isBroadcasting: false, isConfigured: true, preferredSource: .glasses,
+            glassesConnected: true, faceBlurOn: false, phoneCameraDenied: false, setupReachable: true)
+        change(&facts)
+        return facts
+    }
+
+    private func decide(notAsked: Bool = false, _ change: (inout BroadcastGoLive.Facts) -> Void = { _ in })
+        -> BroadcastGoLive.IntentDecision {
+        BroadcastGoLive.decideForIntent(facts(change), phoneCameraNotAsked: notAsked)
+    }
+
+    func testItStartsOnTheGlassesWithGlasses() {
+        XCTAssertEqual(decide(), .start(.glasses))
+    }
+
+    func testItStartsOnTheCameraTheSettingNames() {
+        XCTAssertEqual(decide { $0.preferredSource = .phoneFront }, .start(.phoneFront))
+    }
+
+    func testItFallsBackToThePhoneAsGoLiveDoes() {
+        XCTAssertEqual(decide { $0.glassesConnected = false }, .start(.phoneBack))
+    }
+
+    func testNotSetUpIsARefusalNotAnError() {
+        XCTAssertEqual(decide { $0.isConfigured = false }, .refuse(.notSetUp))
+    }
+
+    func testEveryPhoneRouteIsRefusedWithTheBlurOn() {
+        XCTAssertEqual(decide { $0.glassesConnected = false; $0.faceBlurOn = true },
+                       .refuse(.phoneCameraNotBlurred(.fallback)))
+        XCTAssertEqual(decide { $0.preferredSource = .phoneBack; $0.faceBlurOn = true },
+                       .refuse(.phoneCameraNotBlurred(.chosen)))
+        XCTAssertEqual(decide { $0.dualCaptureOn = true; $0.faceBlurOn = true },
+                       .refuse(.phoneCameraNotBlurred(.inset)))
+    }
+
+    func testARefusedPhoneCameraIsSaid() {
+        XCTAssertEqual(decide { $0.glassesConnected = false; $0.phoneCameraDenied = true },
+                       .refuse(.phoneCameraDenied))
+    }
+
+    /// An intent never raises the iOS prompt. The preview can, because someone is looking at it.
+    func testAnIntentNeverAsksForThePhoneCamera() {
+        XCTAssertEqual(decide(notAsked: true) { $0.glassesConnected = false }, .refuse(.phoneCameraNotAsked))
+        XCTAssertEqual(decide(notAsked: true) { $0.preferredSource = .phoneBack }, .refuse(.phoneCameraNotAsked))
+        XCTAssertEqual(decide(notAsked: true) { $0.dualCaptureOn = true }, .refuse(.phoneCameraNotAsked))
+    }
+
+    func testAPhoneCameraNobodyAskedAboutDoesNotStopAGlassesStream() {
+        XCTAssertEqual(decide(notAsked: true), .start(.glasses))
+    }
+
+    func testStoppingAlwaysWins() {
+        XCTAssertEqual(decide(notAsked: true) {
+            $0.isBroadcasting = true
+            $0.isConfigured = false
+            $0.glassesConnected = false
+            $0.faceBlurOn = true
+            $0.phoneCameraDenied = true
+            $0.dualCaptureOn = true
+        }, .stop)
+    }
+
+    func testEveryRefusalHasItsOwnSentence() {
+        let refusals: [BroadcastGoLive.IntentRefusal] = [
+            .notSetUp, .phoneCameraNotBlurred(.fallback), .phoneCameraNotBlurred(.chosen),
+            .phoneCameraNotBlurred(.inset), .phoneCameraDenied, .phoneCameraNotAsked, .noPicture,
+            .couldNotConnect,
+        ]
+        let sentences = refusals.map(BroadcastGoLive.spokenRefusal)
+        XCTAssertEqual(Set(sentences).count, refusals.count)
+    }
+
+    /// Both intents reach the stream through the one that proves a picture, and no intent can start
+    /// a stream by the plain toggle.
+    func testNoIntentCallsThePlainToggle() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("OpenGlasses/Sources/App/Intents")
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+        var callers = 0
+        for file in files where file.pathExtension == "swift" {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertFalse(source.contains(".toggleBroadcast("), file.lastPathComponent)
+            if source.contains(".toggleBroadcastFromIntent()") { callers += 1 }
+        }
+        XCTAssertEqual(callers, 2)
+    }
+}

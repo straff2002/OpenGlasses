@@ -6485,10 +6485,65 @@ class AppState: ObservableObject, AppStateProtocol {
         return false
     }
 
+    /// Whether the phone camera gives a picture, without leaving it running for anyone. iOS will
+    /// not run it for an app in the background, so this is also how an intent finds that out.
+    private func phonePictureIsUp(_ source: BroadcastVideoSource) async -> Bool {
+        guard let position = source.phonePosition else { return false }
+        let camera = broadcastService.phoneVideoSource
+        if camera.statusPublisher.value == .running { return true }
+        camera.claimPreview(position: position)
+        let deadline = Date().addingTimeInterval(BroadcastGoLive.phonePictureTimeout)
+        while Date() < deadline, !Task.isCancelled {
+            if camera.statusPublisher.value == .running { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        camera.releasePreview()
+        return false
+    }
+
+    /// Start or stop a stream from Siri or a Shortcut (Plan KH).
+    ///
+    /// Goes through `BroadcastGoLive` as the preview does, and on top of that proves there is a
+    /// picture first: nothing else starts the camera here, and the microphone goes on air with the
+    /// stream, so a stream with no picture would be an open microphone over a black screen.
+    func toggleBroadcastFromIntent() async -> (isLive: Bool, message: String) {
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        let decision = BroadcastGoLive.decideForIntent(.init(
+            isBroadcasting: broadcastService.isBroadcasting,
+            isConfigured: Config.isBroadcastConfigured,
+            preferredSource: BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses,
+            glassesConnected: isConnected,
+            faceBlurOn: privacyFilter.isEnabled,
+            phoneCameraDenied: camera == .denied || camera == .restricted,
+            setupReachable: true,
+            dualCaptureOn: Config.broadcastDualCapture), phoneCameraNotAsked: camera == .notDetermined)
+        switch decision {
+        case .stop:
+            await toggleBroadcast()
+            return (false, String(localized: "Broadcasting stopped."))
+        case .refuse(let refusal):
+            return (false, BroadcastGoLive.spokenRefusal(refusal))
+        case .start(let source):
+            let hadPhoneCamera = broadcastService.phoneVideoSource.statusPublisher.value == .running
+            guard await source.isPhone ? phonePictureIsUp(source) : glassesPictureIsUp() else {
+                return (false, BroadcastGoLive.spokenRefusal(.noPicture))
+            }
+            await toggleBroadcast(startSource: source)
+            // The stream's own claim has the camera now, if it went live. One the check took is
+            // given back either way; one the preview holds is not this code's to give.
+            if source.isPhone && !hadPhoneCamera { broadcastService.phoneVideoSource.releasePreview() }
+            guard broadcastService.isBroadcasting else {
+                await cameraService.releaseStream(for: .broadcast)
+                return (false, BroadcastGoLive.spokenRefusal(.couldNotConnect))
+            }
+            return (true, String(localized: "Broadcasting started."))
+        }
+    }
+
     /// Toggle live broadcast on/off.
     ///
-    /// - Parameter startSource: the camera to start on, chosen by the live preview
-    ///   (`BroadcastGoLive`). Siri and Shortcuts pass nothing, which starts on the Camera setting.
+    /// - Parameter startSource: the camera to start on, chosen by whichever of the live preview or
+    ///   `toggleBroadcastFromIntent()` ran the `BroadcastGoLive` checks. Call one of those, not this.
     /// - Parameter onError: lets a presented preview show failures beside its own controls.
     ///   Other callers use the main screen's error banner.
     func toggleBroadcast(startSource: BroadcastVideoSource? = nil,

@@ -132,13 +132,12 @@ struct ToggleBroadcastIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> & ProvidesDialog {
-        try IntentSupport.requireEnabled("broadcast_toggle")
         let appState = try await IntentSupport.awaitConnectedAppState()
-        await appState.toggleBroadcast()
-        let isOn = appState.broadcastService.isBroadcasting
-        return .result(
-            value: isOn,
-            dialog: isOn ? IntentDialog("Broadcasting started.") : IntentDialog("Broadcasting stopped.")
-        )
+        // Turning the action off stops it being started. It must not trap a stream on air.
+        if !appState.broadcastService.isBroadcasting {
+            try IntentSupport.requireEnabled("broadcast_toggle")
+        }
+        let result = await appState.toggleBroadcastFromIntent()
+        return .result(value: result.isLive, dialog: IntentDialog(stringLiteral: result.message))
     }
 }
