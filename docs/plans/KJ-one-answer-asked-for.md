@@ -99,7 +99,7 @@ reasoning level as well as the route, so it can point to the cause but not prove
 `OpenAIRouteSelector.Reason.chatDoublesReplies`, a new rule 9 between explicit `none` and the cheap default.
 On the wire it is `reasoning.effort: none`, because the family's default is `medium`. gpt-6-sol, rule 4, other
 hosts, explicit `none` and no-tools turns are unchanged. The new explanation string is not in the catalog yet;
-the next catalog sync picks it up. A commentary-only reply on this route is silent: see Open.
+the next catalog sync picks it up. A commentary-only reply on this route is asked again once: see Decisions.
 
 **P1b, only if P0 points to history:** the part of a reply that repeats the part before it is judged on
 the finished reply, and the cleaned text is what history keeps. The detector itself is a design of its
@@ -204,6 +204,14 @@ Low is still worth having, on a real job.
 rounds and the silence during them.** This reverses the choice made in Plan KD P3, which had no probe
 behind it. gpt-6-sol stays on Chat Completions, because the doubling has only been seen on luna.
 
+**Owner decision 2026-11-01: a turn that would end in silence asks the model once more.** On Responses a final
+round holding only `commentary` was an empty reply, and nothing re-asked, so moving luna raised the exposure.
+P0 did not see it on luna. Built outside the phases above: `StallReplyPolicy.isSilent`, one re-ask per turn
+shared with the stall, on the three paths that keep an empty reply (Chat Completions, Responses, ChatGPT).
+Anthropic and Gemini throw on one, which is how the cascade hops, so they are left alone. A second empty reply
+ends on what the tools answered, if any did. `new_topic` is exempt, because it asks for the silence. Not yet
+tried against a live model.
+
 ## Open
 
 - **Not in this plan:** when a manual says "replace if outside specification" and gives no figure, may
@@ -211,9 +219,3 @@ behind it. gpt-6-sol stays on Chat Completions, because the doubling has only be
   would not answer a plain yes-or-no. Plan KE's refusal text sends that turn to an expert offer, so the
   question stays unanswered. This is a product decision for the owner, not a fix.
 - Whether gpt-6-sol doubles the same way. Only gpt-6-luna has been reported.
-- **A commentary-only reply is silence.** On Responses, a final round holding only `commentary` is an empty
-  reply: the loop finalizes it, nothing throws, so the cascade does not hop, and the speech service has nothing
-  to say. `commentaryWithheld` records `noAnswer`. On Chat Completions the same words would have been spoken.
-  P0 saw commentary only on rounds that called a tool, and every run ended in a reply, so this was not seen on
-  luna, but moving luna raises the exposure. What to do instead is a design choice: the owner decides whether
-  to treat it as a stall and ask once more.
