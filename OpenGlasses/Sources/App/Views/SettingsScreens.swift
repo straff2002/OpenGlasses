@@ -267,7 +267,7 @@ struct VoiceTriggersSettingsScreen: View {
                             Config.setIntentClassifierEnabled(newValue)
                         }
                     ),
-                    info: "Checks whether what it heard was meant for the assistant or was just background talk, so it stays quiet for people nearby, the TV, or you thinking aloud. To check, it sends the words it heard to your OpenAI or Groq model, using the key you added, and it does nothing without one of those models. It works with the wake word, not in live sessions."
+                    info: "Checks whether what it heard was meant for the assistant or was just background talk, so it stays quiet for people nearby, the TV, or you thinking aloud. To check, it sends the words it heard to your AI provider, OpenAI or Groq, using the key you added, and it does nothing without one of those models. It works with the wake word, not in live sessions."
                 )
             } header: {
                 Text("Conversation")

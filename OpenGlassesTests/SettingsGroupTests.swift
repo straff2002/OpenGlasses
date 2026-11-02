@@ -445,7 +445,7 @@ final class SettingsGroupTests: XCTestCase {
     func testIgnoreNearbyChatterSaysWhereTheWordsGo() throws {
         let source = try String(contentsOf: Self.viewsRoot.appendingPathComponent("SettingsScreens.swift"),
                                 encoding: .utf8)
-        XCTAssertTrue(source.contains("it sends the words it heard to your OpenAI or Groq model"))
+        XCTAssertTrue(source.contains("it sends the words it heard to your AI provider, OpenAI or Groq"))
     }
 
     func testBlurBystanderFacesStaysUnderDevicesAndPrivacy() throws {
