@@ -74,7 +74,7 @@ class BannedTextTests(unittest.TestCase):
     def test_unrelated_meanings_are_left_alone(self):
         for text in ("metadata", "Metadata", "Metal", "metal.default", "<meta charset=\"utf-8\">", "meta-commentary",
                      "mlx-community/Meta-Llama-3-8B-Instruct-4bit", "creating a Meta device", "Meta", "Meta Agent",
-                     "Oakley-EC2N-3", "OAKLEY-EC2N-4", "arrayBan", "13raybanDisplay", "metaRayBan"):
+                     "Oakley-EC2N-3", "OAKLEY-EC2N-4", "oakley\x00parallax", "arrayBan", "13raybanDisplay", "metaRayBan"):
             self.assertEqual(check.banned_terms(text), [], text)
             self.assertIsNone(check.BANNED_BYTES.search(text.encode("utf-8")), text)
 

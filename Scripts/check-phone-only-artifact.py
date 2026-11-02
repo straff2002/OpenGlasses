@@ -17,8 +17,9 @@ SDK = re.compile(r"MWDAT(?:Core|Camera|Display|MockDevice)|MetaWearablesDAT")
 SYMBOL = re.compile(r"(?:\$s|\$S)(?:9MWDATCore|11MWDATCamera|12MWDATDisplay|15MWDATMockDevice)")
 # Product and company text. The bare word "Meta" is allowed because it means "goal" in several
 # translations and is a device kind in llama.cpp, so only a phrase counts. Boundaries are ASCII so
-# that a phrase next to CJK text still matches. "Oakley-EC2N" is a key-exchange group in WebRTC.
-BANNED = (r"(?i:\bmeta\.com\b|\bray[- ]?ban|\boakley\b(?!-ec2n)|neural band|fb-viewapp|mwdat)"
+# that a phrase next to CJK text still matches. "Oakley-EC2N" is a key-exchange group in WebRTC, and
+# "oakley" before "parallax" is an unrelated entry in MediaPipe's internal list of graph names.
+BANNED = (r"(?i:\bmeta\.com\b|\bray[- ]?ban|\boakley\b(?!-ec2n|\x00parallax)|neural band|fb-viewapp|mwdat)"
           r"|\bMeta(?:(?:'|’)s\b| (?:AI|[Gg]lasses|SDK|app)\b| ?Wearables| / Facebook)")
 BANNED_TEXT = re.compile(BANNED, re.ASCII)
 BANNED_BYTES = re.compile(BANNED.encode("utf-8"))
