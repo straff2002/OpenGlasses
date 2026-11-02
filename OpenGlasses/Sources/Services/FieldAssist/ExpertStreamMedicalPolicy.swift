@@ -50,5 +50,5 @@ enum ExpertStreamMedicalPolicy {
     /// What the escalation tools report, for the assistant to say. In the same shape as the other
     /// two sentences in `EscalationCoordinator.liveViewSummary()`.
     static let liveViewOffSummary =
-        "The live view is off in Medical Compliance mode, so the expert has the job record and can't see the camera."
+        "The live view is off in Medical Compliance mode, so the expert has the job record. A meeting call already open in another app keeps running until the technician leaves it there."
 }
