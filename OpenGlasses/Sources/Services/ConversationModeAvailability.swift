@@ -63,7 +63,7 @@ enum ConversationModeAvailability {
                 return Option(mode: mode,
                               isAvailable: configuration.hasCompatibleRealtimeConfiguration,
                               unavailableReason: configuration.hasCompatibleRealtimeConfiguration ? nil
-                                : String(localized: "Add a realtime model in Settings → AI & Personality."))
+                                : String(localized: "Add a realtime model in Settings → Assistant."))
             }
         }
     }

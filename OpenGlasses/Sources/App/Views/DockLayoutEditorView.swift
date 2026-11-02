@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Arranges the dock panel's one grid: every control and every content action, in one ordered list.
-/// Reached from Settings → Tools & Actions → Quick Actions → Actions & Bar Layout — the roomy alternative to the panel's own
+/// Reached from Settings → Connections → Quick Actions → Actions & Bar Layout — the roomy alternative to the panel's own
 /// edit page, with drag-to-reorder and a full screen to do it on.
 ///
 /// It used to be two editors — a Bar Layout list for the controls and a Home Grid list for the

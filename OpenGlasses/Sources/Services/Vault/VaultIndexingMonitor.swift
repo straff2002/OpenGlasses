@@ -174,7 +174,7 @@ enum ManualIndexAvailability {
     static func unsearchableSentence(vaultName: String, listedDocuments: Int,
                                      run: VaultIndexingMonitor.Run?, lockBusy: Bool) -> String {
         guard listedDocuments > 0 else {
-            return "No manuals have been imported for the \(vaultName) vault yet. Import them in Settings → Tools & Actions → Custom Vaults."
+            return "No manuals have been imported for the \(vaultName) vault yet. Import them in Settings → Connections → Custom Vaults."
         }
         if let run {
             return "The \(vaultName) manuals are still being indexed (\(run.title) \(run.manualNumber) of \(run.manualCount)). "
@@ -185,7 +185,7 @@ enum ManualIndexAvailability {
                 + "They can't be searched until that finishes; tell the technician, and don't search again this turn."
         }
         return "The \(vaultName) manuals are imported but not indexed. The technician can index them in "
-            + "Settings → Tools & Actions → Custom Vaults → Re-index manuals. Don't search again this turn."
+            + "Settings → Connections → Custom Vaults → Re-index manuals. Don't search again this turn."
     }
 
     /// The same, read off the app's live state for one vault.

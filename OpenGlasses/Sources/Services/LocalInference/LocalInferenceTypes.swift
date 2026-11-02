@@ -547,7 +547,7 @@ enum LocalInferenceError: LocalizedError, Equatable {
         case .transitionInProgress:
             return "The on-device model is still loading or unloading. Try again in a moment."
         case .notLoaded:
-            return "No local model is loaded. In Settings → AI & Personality → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
+            return "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
         case .wrongModelResident(let expected, let resident):
             return "The on-device model \(resident.rawValue) is loaded, but this request needs "
                 + "\(expected.rawValue)."

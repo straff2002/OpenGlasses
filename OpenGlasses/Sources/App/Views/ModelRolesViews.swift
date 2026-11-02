@@ -6,7 +6,7 @@ import SwiftUI
 // `ModelRoleWriter`'s. The voice engine, the live model and the recogniser are these pickers —
 // the screens that held them link here rather than keep a second copy.
 
-/// The Roles section of AI & Personality, under the assistant's models: one row per role, naming
+/// The Roles section of the Assistant page, under the assistant's models: one row per role, naming
 /// what it is set to, opening that role's picker.
 struct ModelRolesSection: View {
     @ObservedObject var appState: AppState
@@ -212,7 +212,7 @@ struct ModelRoleSuggestionCard: View {
         } header: {
             Text(title)
         } footer: {
-            Text("Nothing is switched on until you choose it. Each job can be changed later under Roles in AI & Personality.")
+            Text("Nothing is switched on until you choose it. Each job can be changed later under Roles in Settings, under Assistant.")
         }
     }
 }

@@ -58,7 +58,7 @@ struct QuickActionTool: NativeTool {
         // Quick Actions
         let actions = Config.quickActions
         if actions.isEmpty {
-            sections.append("## Quick Actions\nNo quick actions configured. The user can add them in Settings → Tools & Actions → Quick Actions.")
+            sections.append("## Quick Actions\nNo quick actions configured. The user can add them in Settings → Connections → Quick Actions.")
         } else {
             var lines = ["## Quick Actions (\(actions.count))"]
             for qa in actions {

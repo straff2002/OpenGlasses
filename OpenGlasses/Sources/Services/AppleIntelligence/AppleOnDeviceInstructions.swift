@@ -80,7 +80,7 @@ enum AppleOnDeviceInstructions {
         var job: JobSummary?
         /// Field Assist is on, so the manuals line is said even before a job opens.
         var fieldAssistActive: Bool
-        /// Where the AI model is chosen, for the manuals line ("Settings > AI & Personality").
+        /// Where the AI model is chosen, for the manuals line ("Settings > Assistant").
         var modelSettingsPath: String
         var speakerLine: String
     }

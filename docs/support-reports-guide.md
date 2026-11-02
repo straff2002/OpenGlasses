@@ -6,7 +6,7 @@
 
 Do this once on each phone, so reports come to you.
 
-1. Open **Settings** → **Diagnostics & Support**.
+1. Open **Settings** → **Advanced & Support**.
 2. In **Support email**, type the address reports should go to, for example *support@yourcompany.com*.
 
 On a company phone, reports only ever go to your company. If the support email is empty, they go to the office address that receives job reports. If that's empty too, the email button is hidden and the report can only be shared, so a technician can't send it to the app's makers by mistake. Your company's setup can fill the address in for you.
@@ -27,8 +27,8 @@ Nothing is ever sent on its own. The person always sees the report first and tap
 | Send one job to support | **Job** tab → tap a past job → **Export transcript…** → **Support report with troubleshooting details** |
 | Send today's conversations so far | **Job** tab → **Send today's conversations…** |
 | Send an earlier day | **Job** tab → **Past jobs** → **Export a day…** → pick a day → **Transcript** or **Support report** |
-| Send only the last conversation | **Settings** → **Diagnostics & Support** → **Send Last Conversation** |
-| Send today from Settings | **Settings** → **Diagnostics & Support** → **Send Today's Activity** |
+| Send only the last conversation | **Settings** → **Advanced & Support** → **Send Last Conversation** |
+| Send today from Settings | **Settings** → **Advanced & Support** → **Send Today's Activity** |
 | Send straight after a problem | tap **Send to support** on the **That didn't work** banner |
 
 ## The review screen
@@ -80,11 +80,11 @@ Each job starts with its job number, the machine, and when it started and finish
 
 ## Report a Problem is different
 
-**Settings** → **Diagnostics & Support** → **Report a Problem** is for problems with the app itself. It goes to the developer of Avenkin, not to your company, and it never includes conversations or private data. For anything about a job or a customer, use **Send to Support**.
+**Settings** → **Advanced & Support** → **Report a Problem** is for problems with the app itself. It goes to the developer of Avenkin, not to your company, and it never includes conversations or private data. For anything about a job or a customer, use **Send to Support**.
 
 ## Privacy
 
-The app keeps a record of each AI request for up to 14 days, on the phone only, with a storage limit that may remove older records sooner. It contains timings, pages used, errors, and bounded web search queries and returned text. Keys and tokens are masked before search contents are saved and again when a support report is made. Search contents can still contain names, locations or other personal information. The records can be deleted in **Settings** → **Diagnostics & Support** → **Delete AI Turn Records**. A support report also contains conversations, so it is only made when someone asks for one, and only sent when they send it. Search contents are not included in the separate **Export Diagnostics** event log or **Report a Problem** report.
+The app keeps a record of each AI request for up to 14 days, on the phone only, with a storage limit that may remove older records sooner. It contains timings, pages used, errors, and bounded web search queries and returned text. Keys and tokens are masked before search contents are saved and again when a support report is made. Search contents can still contain names, locations or other personal information. The records can be deleted in **Settings** → **Advanced & Support** → **Delete AI Turn Records**. A support report also contains conversations, so it is only made when someone asks for one, and only sent when they send it. Search contents are not included in the separate **Export Diagnostics** event log or **Report a Problem** report.
 
 ## Quick test (1 minute)
 

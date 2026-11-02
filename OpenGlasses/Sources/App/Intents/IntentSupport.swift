@@ -24,7 +24,7 @@ enum IntentSupport {
     }
 
     /// Plan BQ runtime guard: static intents can't be removed from the compiled metadata,
-    /// so a built-in the user turned off in Settings → Tools & Actions → Siri & Search refuses here instead.
+    /// so a built-in the user turned off in Settings → Connections → Siri & Search refuses here instead.
     /// (The Live Activity listening intents are deliberately unguarded — they're in-app
     /// surface controls, not Siri exposure.)
     @MainActor

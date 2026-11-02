@@ -63,7 +63,7 @@ enum ModelRole: String, CaseIterable, Identifiable, Sendable {
         case .vision:
             return String(localized: "The model that looks at photos you ask about. It answers that question itself; the rest of the conversation stays with the assistant. With Automatic, the assistant looks if it can, otherwise the first model in your fallback order that can see photos.")
         case .voice:
-            return String(localized: "The voice that speaks replies. A cloud voice is sent the text of each reply and uses that provider's key. Voices and speech models are set under Voice & Triggers.")
+            return String(localized: "The voice that speaks replies. A cloud voice is sent the text of each reply and uses that provider's key. Voices and speech models are set under Assistant, then Voice & Triggers.")
         case .live:
             return String(localized: "The model Live mode talks to. In Live mode your voice, and the camera when you share it, stream to that provider on its key. Add or edit live models under Realtime Models.")
         case .dictation:

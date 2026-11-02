@@ -335,7 +335,7 @@ Select your iPhone, fix signing if prompted, and run (⌘R).
 
 All settings are in-app — no source code editing needed.
 
-### API Keys (Settings → AI Models)
+### API Keys (Settings → Assistant → AI Models)
 
 | Service | Purpose | Where to Get |
 |---------|---------|--------------|
@@ -350,7 +350,7 @@ All settings are in-app — no source code editing needed.
 
 ### ChatGPT subscription sign-in
 
-Choose **ChatGPT (Subscription)** in Settings → AI Models to use the models enabled for your
+Choose **ChatGPT (Subscription)** in Settings → Assistant → AI Models to use the models enabled for your
 ChatGPT workspace without adding an OpenAI API key. Normal browser sign-in is recommended on
 iPhone. After connecting, **Fetch available models** loads the account-scoped Codex catalog and
 uses the model marked as its current default.
@@ -366,13 +366,13 @@ billing, and is still required for OpenAI Realtime voice.
 
 ### xAI subscription sign-in
 
-Choose **xAI (Grok)** in Settings → AI Models and tap **Sign in with xAI** to use Grok models on a
+Choose **xAI (Grok)** in Settings → Assistant → AI Models and tap **Sign in with xAI** to use Grok models on a
 SuperGrok subscription without an xAI API key. The sign-in token is accepted by the public xAI
 API, so the model works like a keyed one — photos and tools included — and **Fetch available
 models** lists the chat models the account can use. A key typed into the model is always used
 instead of the sign-in. The account credentials are stored in Keychain on this device only.
 
-### Services (Settings → Services & Integrations)
+### Services (Settings → Connections → Services & Integrations)
 
 | Service | Settings |
 |---------|----------|

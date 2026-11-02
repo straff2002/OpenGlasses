@@ -62,7 +62,7 @@ struct SupportReportRequest: Identifiable {
 
 /// Support reporting (support ask, 2026-09-26): every AI turn is traced, a failed one offers to
 /// send a report, and the report is one review sheet away from any of its entry points — the
-/// banner, Settings → Diagnostics & Support, and the Job tab.
+/// banner, Settings → Advanced & Support, and the Job tab.
 ///
 /// Nothing is sent without the person pressing Send: the offer opens a sheet showing the whole
 /// file, and Mail or the share sheet does the sending.

@@ -8527,7 +8527,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// every turn (`returnToWakeWord`) honoured it. With the switch off that is a wake word that
     /// works exactly once per launch — or once per trip into Settings — and then never re-arms,
     /// logged as `listeningDisabled detail=masterOff`. The switch now wins everywhere, and
-    /// Settings › Voice & Triggers shows it so an "off" left by the Lock Screen button, Control Center or
+    /// Settings › Assistant › Voice & Triggers shows it so an "off" left by the Lock Screen button, Control Center or
     /// Siri can be seen and undone.
     ///
     /// Not used by `setListeningEnabled(true)` (that *is* the switch) or by the TTS stop

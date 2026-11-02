@@ -17,7 +17,7 @@ enum MedicalLLMRoutingPolicy {
 
     static let unavailableMessage =
         "Medical Local LLM Only is on, but no downloaded on-device model is available. "
-        + "Download an on-device model in Settings > AI & Personality > AI Models, or turn off Local LLM Only "
+        + "Download an on-device model in Settings > Assistant > AI Models, or turn off Local LLM Only "
         + "before using a cloud model."
 
     static func isEnforced(hipaaMode: Bool, localOnly: Bool) -> Bool {

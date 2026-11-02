@@ -22,7 +22,7 @@ enum QuickVisionMode: String, AppEnum {
         ]
     }
 
-    /// The Plan BQ built-in action id this mode maps to, for the Settings → Tools & Actions → Siri & Search
+    /// The Plan BQ built-in action id this mode maps to, for the Settings → Connections → Siri & Search
     /// runtime guard (`IntentSupport.requireEnabled`).
     var builtinActionId: String {
         switch self {

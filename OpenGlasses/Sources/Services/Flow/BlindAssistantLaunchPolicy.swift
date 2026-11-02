@@ -121,7 +121,7 @@ enum BlindAssistantLaunchPolicy {
                 return "Speech recognition permission is off. Turn it on in iOS Settings, under Avenkin."
             case .providerNotConfigured(let provider):
                 if provider == .openAICompatibleRealtime {
-                    return "Set up OpenAI-compatible Realtime in Settings → AI & Personality."
+                    return "Set up OpenAI-compatible Realtime in Settings → Assistant."
                 }
                 return "There's no \(provider.displayName) API key yet. Add one in Avenkin settings."
             }

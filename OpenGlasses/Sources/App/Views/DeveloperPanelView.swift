@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → Advanced → Developer (Plan CL P2): one-tap cold-start
+/// Settings → Advanced & Support → Advanced → Developer (Plan CL P2): one-tap cold-start
 /// verification that each subsystem is alive — glasses link, camera,
 /// HUD, AI round-trip, TTS, wake word — plus the live debug-event tail.
 /// Field debugging starts here instead of "say the wake word and guess".

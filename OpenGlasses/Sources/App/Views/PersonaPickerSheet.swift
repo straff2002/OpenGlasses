@@ -462,7 +462,7 @@ struct PersonaDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 } footer: {
-                    Text("Native tools this persona can use. Restrict in Settings → AI & Personality → Personas to create focused agents.")
+                    Text("Native tools this persona can use. Restrict in Settings → Assistant → Personas to create focused agents.")
                 }
             }
             .navigationTitle("Persona Details")
