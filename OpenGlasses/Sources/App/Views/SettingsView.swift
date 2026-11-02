@@ -104,7 +104,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ThingsToTryView()
                 } label: {
-                    OGRow("Things to Try", icon: "sparkles", subtitle: "Ideas for what to do with it")
+                    ThingsToTryRow()
                 }
                 .buttonStyle(.plain)
             }

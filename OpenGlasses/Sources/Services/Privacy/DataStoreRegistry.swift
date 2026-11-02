@@ -1156,8 +1156,9 @@ enum SensitiveStore: String, CaseIterable {
 
         case .scenarioProgress:
             // Which of the app's own scenarios the wearer tried or dismissed, what they said they
-            // wanted it for, and a pending first turn (Plan KH P1). Ids from the catalogue and one
-            // intent token: nothing they said and nobody else. Backed up like other preferences,
+            // wanted it for, a pending first turn, and whether the Voice tab's intro card was closed
+            // or how many launches showed it (Plan KH P1). Ids from the catalogue, one intent token
+            // and a count: nothing they said and nobody else. Backed up like other preferences,
             // because the cards should not come back on a new phone.
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
                           protection: .platformDefault, backupExcluded: false, retention: .none,

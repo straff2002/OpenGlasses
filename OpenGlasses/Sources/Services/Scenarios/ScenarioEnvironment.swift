@@ -27,6 +27,14 @@ enum ScenarioEnvironment {
         return context
     }
 
+    /// Whether this phone gets the choice of what it is for, on the Ready page and the Voice tab's
+    /// sheet alike (`ScenarioFirstRun.showsPicker`).
+    static var offersIntentChoice: Bool {
+        ScenarioFirstRun.showsPicker(isManaged: OrgProfileManager.shared.isManaged,
+                                     fieldAssistSetUp: LicenseService.shared.activeLicense != nil
+                                         || Config.fieldAssistActive)
+    }
+
     private static func base(isOnline: Bool, captionHistoryExists: Bool) -> ScenarioContext {
         let model = Config.activeModel
         let onDevice = model.map { LLMService.isOnDeviceProvider($0.llmProvider) } ?? false
