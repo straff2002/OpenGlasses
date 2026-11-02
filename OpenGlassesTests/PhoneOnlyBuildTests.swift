@@ -30,10 +30,13 @@ final class PhoneOnlyBuildTests: XCTestCase {
         XCTAssertNotNil(BuiltinSiriAction.action(id: "take_photo"), "Phone photo analysis remains available")
     }
     func testSavedEvenPairingCannotEnableBLEDisplay() {
-        let backend = Config.displayBackend
+        let backend = UserDefaults.standard.object(forKey: "displayBackend")
         let left = Config.evenLeftPeripheralID
-        defer { Config.displayBackend = backend; Config.evenLeftPeripheralID = left }
-        Config.displayBackend = .evenG2
+        defer {
+            UserDefaults.standard.set(backend, forKey: "displayBackend")
+            Config.evenLeftPeripheralID = left
+        }
+        UserDefaults.standard.set("evenG2", forKey: "displayBackend")
         Config.evenLeftPeripheralID = UUID().uuidString
         let display = GlassesDisplayService()
         display.testCapabilityOverride = true

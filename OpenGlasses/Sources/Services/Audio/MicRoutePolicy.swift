@@ -49,9 +49,7 @@ enum MicRoutePolicy {
     /// Non-Meta entries are **unverified against hardware** — they are the advertised names
     /// these devices are reported to use, and matching them only affects which route label the
     /// user sees and which port the route prefers.
-    static let glassesNameMarkers = [
-        // Meta's lineup.
-        "meta", "ray-ban", "rayban", "oakley", "glasses",
+    static let glassesNameMarkers = vendorNameMarkers + [
         // Plan CQ Track B — the OEM capture-to-storage class, sold under many badges.
         // (Products literally named "Camera Glasses" are already caught by "glasses".)
         "anko", "heycyan",
@@ -60,6 +58,16 @@ enum MicRoutePolicy {
         // Display-tier glasses (Plan AH and the wider display class).
         "even g", "vuzix",
     ]
+
+    // Apart from the list above because `#if` cannot sit inside an array literal.
+    #if AVENKIN_PHONE_ONLY
+    private static let vendorNameMarkers = ["glasses"]
+    #else
+    private static let vendorNameMarkers = [
+        // Meta's lineup.
+        "meta", "ray-ban", "rayban", "oakley", "glasses",
+    ]
+    #endif
 
     static func looksLikeGlasses(portName: String) -> Bool {
         let name = portName.lowercased()

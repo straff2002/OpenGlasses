@@ -248,6 +248,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testAwayHintNamesWhatToDoNotTheSDKsInternalState() {
         for diagnosis in GlassesReachabilityDiagnosis.allCases {
             let hint = SessionCardGlassesPill.awayHint(for: diagnosis)
@@ -272,6 +273,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .noDeviceSeen).contains("Meta AI isn't showing"))
         XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .notAdded).contains("connect them to Meta AI"))
     }
+    #endif
 
     // MARK: - Session card: job pill
 

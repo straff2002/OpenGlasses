@@ -24,7 +24,7 @@ After an archive completes and before upload:
 python3 Scripts/check-phone-only-artifact.py --require-signed /absolute/path/Avenkin.xcarchive
 ```
 
-The check fails on a missing variant marker, Meta metadata, embedded SDK files, linked SDK framework names or Swift module symbols, or glasses Wi-Fi entitlements. It inspects all Mach-O binaries, including extensions. It never strips or edits the artifact. An unsigned simulator check is useful during development but does not verify signed entitlements or distribution behavior. Xcode Cloud's post-build hook runs the signed check for phone-only archives.
+The check fails on a missing variant marker, Meta metadata, embedded SDK files, linked SDK framework names or Swift module symbols, or glasses Wi-Fi entitlements. It inspects all Mach-O binaries, including extensions, and also fails on Meta product or company text in any of them or in a compiled `.strings` table, naming the file and the term; `prepare-phone-only-build.py` keeps that text out of the catalogs by compiling filtered copies from `.generated/`. It never strips or edits the artifact. An unsigned simulator check is useful during development but does not verify signed entitlements or distribution behavior. Xcode Cloud's post-build hook runs the signed check for phone-only archives.
 
 Use a fresh archive. When switching variants, an old local build product can retain a beta test plug-in; do not treat a contaminated product as release evidence or remove individual SDK files to make a check pass.
 

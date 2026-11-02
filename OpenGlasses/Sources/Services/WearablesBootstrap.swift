@@ -107,7 +107,11 @@ enum WearablesBootstrap {
     struct Unavailable: LocalizedError {
         let reason: String?
         var errorDescription: String? {
-            "Meta SDK not registered\(reason.map { " — \($0)" } ?? "")"
+            #if AVENKIN_PHONE_ONLY
+            return reason ?? GlassesSupportPolicy.unavailableReason()
+            #else
+            return "Meta SDK not registered\(reason.map { " — \($0)" } ?? "")"
+            #endif
         }
     }
 

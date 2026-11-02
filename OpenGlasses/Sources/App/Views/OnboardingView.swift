@@ -1474,6 +1474,7 @@ struct OnboardingView: View {
 
                 // Plan JE: a copy that offers no glasses asks about no glasses — this phone is
                 // the device, and the step ends with the one button below.
+                #if !AVENKIN_PHONE_ONLY
                 if GlassesSupportPolicy.isSupported {
                     Section {
                         if showingGlassesSetup {
@@ -1507,6 +1508,7 @@ struct OnboardingView: View {
                         }
                     }
                 }
+                #endif
             }
             .listStyle(.insetGrouped)
             .ogFormStyle()
@@ -1554,6 +1556,7 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
+    #if !AVENKIN_PHONE_ONLY
     /// The one tap that brings the glasses rows up.
     private var addGlassesRow: some View {
         Button {
@@ -1585,6 +1588,7 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
         .accessibilityHint("Shows the camera and Meta AI steps for connecting glasses.")
     }
+    #endif
 
     /// Either answer ends the step. Glasses are recorded as a device this person uses, so the
     /// session card reports them; this phone records nothing, so nothing is left half-set-up.
@@ -1595,6 +1599,7 @@ struct OnboardingView: View {
         go(to: OnboardingFlow.page(after: answer))
     }
 
+    #if !AVENKIN_PHONE_ONLY
     @ViewBuilder
     private var registrationFooter: some View {
         if isRegistering {
@@ -1645,6 +1650,7 @@ struct OnboardingView: View {
         // Start observing devices now that registration is in progress
         appState.glassesService.startObserving()
     }
+    #endif
 
     // MARK: - Page 6: Name Your Assistant (Plan FE P6)
 

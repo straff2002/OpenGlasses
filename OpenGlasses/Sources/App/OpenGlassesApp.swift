@@ -1155,12 +1155,18 @@ class AppState: ObservableObject, AppStateProtocol {
         // The service's own reading, not `Wearables.shared`: with the SDK unconfigured the latter
         // traps, and that is one of the failures this message exists to report.
         let reachability = glassesService.reachability
+        #if AVENKIN_PHONE_ONLY
+        errorMessage = GlassesSupportPolicy.unavailableReason()
+        errorMessageIsGlassesConnection = true
+        addDebugEvent("connectGlasses gave up: \(reachability.diagnosis)")
+        #else
         let configStatus = MWDATConfigCheck.validate(
             Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
         errorMessage = RegistrationFlow.connectFailureMessage(reachability: reachability,
                                                               configStatus: configStatus)
         errorMessageIsGlassesConnection = true
         addDebugEvent("connectGlasses gave up: \(reachability.diagnosis), config=\(configStatus)")
+        #endif
     }
 
     /// The wearer's glasses connect (`connectGlasses()`) is under way — the session card shows its

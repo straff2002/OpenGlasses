@@ -2,14 +2,18 @@
 
 /// Categorizes network requests by destination.
 enum NetworkCategory: String, CaseIterable {
+    #if !AVENKIN_PHONE_ONLY
     case meta = "Meta"
+    #endif
     case aiProvider = "AI Provider"
     case appService = "App Service"
     case other = "Other"
 
     var icon: String {
         switch self {
+        #if !AVENKIN_PHONE_ONLY
         case .meta: return "m.circle.fill"
+        #endif
         case .aiProvider: return "brain"
         case .appService: return "cloud"
         case .other: return "network"
@@ -18,11 +22,13 @@ enum NetworkCategory: String, CaseIterable {
 
     static func categorize(host: String) -> NetworkCategory {
         let h = host.lowercased()
+        #if !AVENKIN_PHONE_ONLY
         // Meta / Facebook
         if h.contains("facebook.com") || h.contains("meta.com") || h.contains("fbcdn")
             || h.contains("wearables") || h.contains("instagram.com") || h.contains("fb.com") {
             return .meta
         }
+        #endif
         // AI providers
         if h.contains("anthropic.com") || h.contains("openai.com") || h.contains("googleapis.com")
             || h.contains("groq.com") || h.contains("together") || h.contains("perplexity")
@@ -66,14 +72,18 @@ final class NetworkMonitorService: ObservableObject {
     @Published var entries: [NetworkEntry] = []
     private let maxEntries = 200
 
+    #if !AVENKIN_PHONE_ONLY
     var metaEntries: [NetworkEntry] { entries.filter { $0.category == .meta } }
+    #endif
     var aiEntries: [NetworkEntry] { entries.filter { $0.category == .aiProvider } }
     var appEntries: [NetworkEntry] { entries.filter { $0.category == .appService } }
     var otherEntries: [NetworkEntry] { entries.filter { $0.category == .other } }
 
     var totalBytesSent: Int { entries.reduce(0) { $0 + $1.requestSize } }
     var totalBytesReceived: Int { entries.reduce(0) { $0 + $1.responseSize } }
+    #if !AVENKIN_PHONE_ONLY
     var metaBytesSent: Int { metaEntries.reduce(0) { $0 + $1.requestSize } }
+    #endif
 
     func addEntry(_ entry: NetworkEntry) {
         entries.insert(entry, at: 0)

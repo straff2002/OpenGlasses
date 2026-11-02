@@ -144,7 +144,11 @@ struct TeleprompterSettingsView: View {
     private var pacingFooter: String {
         switch mode {
         case .audioPaced: return String(localized: "Auto-advances by listening to what you read. Say \"faster\"/\"slower\", \"pause\", \"next\"/\"back\".")
+        #if AVENKIN_PHONE_ONLY
+        case .voice: return String(localized: "No auto-advance — drive it with \"next\"/\"back\" by voice.")
+        #else
         case .voice: return String(localized: "No auto-advance — drive it with \"next\"/\"back\" by voice or the Neural Band.")
+        #endif
         case .autoScroll: return String(localized: "Scrolls at a fixed words-per-minute.")
         }
     }

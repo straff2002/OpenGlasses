@@ -31,8 +31,10 @@ final class CameraPermissionRequestPolicyTests: XCTestCase {
 
     func testTheNoticeSaysWhereTheRowToPressIsAndIsTheCardsOwnHint() {
         XCTAssertEqual(Policy.notice, SessionCardGlassesPill.awayHint(for: .permissionNeeded))
+        #if !AVENKIN_PHONE_ONLY
         XCTAssertTrue(Policy.notice.contains("Settings › Devices & Privacy › Glasses"))
         XCTAssertTrue(Policy.notice.localizedCaseInsensitiveContains("camera access"))
+        #endif
         XCTAssertEqual(CameraError.permissionNotRequested.errorDescription, Policy.notice,
                        "a caller that shows the error shows what to press, not a bare refusal")
     }

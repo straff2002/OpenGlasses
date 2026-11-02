@@ -240,6 +240,9 @@ enum SessionCardGlassesPill {
     /// where the thing to press lives. Kept short — the notice card shows four lines, and the path
     /// is the part that must not be cut off at a large text size.
     static func awayHint(for diagnosis: GlassesReachabilityDiagnosis) -> String {
+        #if AVENKIN_PHONE_ONLY
+        return GlassesSupportPolicy.unavailableReason()
+        #else
         let glassesSettings = "Settings › Devices & Privacy › Glasses"
         switch diagnosis {
         case .notAdded:
@@ -255,6 +258,7 @@ enum SessionCardGlassesPill {
             // as out of reach in case a caller asks a moment late.
             return "Glasses are out of reach — put them on, or see \(glassesSettings)."
         }
+        #endif
     }
 }
 

@@ -776,7 +776,11 @@ enum CameraError: LocalizedError {
         case .captureFailed: return "Failed to capture photo"
         case .timeout: return "Photo capture timed out"
         case .notConnected: return "Glasses not connected"
+        #if AVENKIN_PHONE_ONLY
+        case .sdkNotRegistered: return GlassesSupportPolicy.unavailableReason()
+        #else
         case .sdkNotRegistered: return "Meta SDK not registered — open Meta app first"
+        #endif
         case .streamNotReady: return "Camera stream not ready — try again"
         case .sessionBusy: return "The glasses are still releasing a previous camera session — try again in about a minute"
         case .sessionUnavailable(let reason): return reason.notice

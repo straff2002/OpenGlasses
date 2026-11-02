@@ -72,11 +72,18 @@ final class WearablesBootstrapTests: XCTestCase {
     /// MWDAT answers an unconfigured `Wearables.shared` with `fatalError`, so the whole point is
     /// that callers get a catchable error instead. Pin the type's existence and its message.
     func testUnavailableErrorReadsAsAnHonestState() {
+        #if AVENKIN_PHONE_ONLY
+        let withReason = WearablesBootstrap.Unavailable(reason: "not configured")
+        XCTAssertEqual(withReason.errorDescription, "not configured")
+        let bare = WearablesBootstrap.Unavailable(reason: nil)
+        XCTAssertEqual(bare.errorDescription, GlassesSupportPolicy.unavailableReason())
+        #else
         let withReason = WearablesBootstrap.Unavailable(reason: "no MWDAT configuration")
         XCTAssertEqual(withReason.errorDescription,
                        "Meta SDK not registered — no MWDAT configuration")
         let bare = WearablesBootstrap.Unavailable(reason: nil)
         XCTAssertEqual(bare.errorDescription, "Meta SDK not registered")
+        #endif
     }
 
     // `resetForTesting` only exists in Debug app builds; these two tests compile out of a
@@ -117,8 +124,13 @@ final class WearablesBootstrapTests: XCTestCase {
         XCTAssertEqual(WearablesBootstrap.failureReason, GlassesSupportPolicy.unavailableReason())
         XCTAssertEqual(WearablesBootstrap.statusDescription, "not in this version (phone-only build)")
         XCTAssertThrowsError(try WearablesBootstrap.requireConfigured()) { error in
+            #if AVENKIN_PHONE_ONLY
+            XCTAssertEqual((error as? WearablesBootstrap.Unavailable)?.errorDescription,
+                           GlassesSupportPolicy.unavailableReason())
+            #else
             XCTAssertEqual((error as? WearablesBootstrap.Unavailable)?.errorDescription,
                            "Meta SDK not registered — " + GlassesSupportPolicy.unavailableReason())
+            #endif
         }
     }
     #endif

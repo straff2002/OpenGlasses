@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 
@@ -153,3 +154,4 @@ final class RegistrationFlowConfigMessageTests: XCTestCase {
                        RegistrationFlow.connectFailureMessage(reachability: unregistered, configStatus: .ok))
     }
 }
+#endif

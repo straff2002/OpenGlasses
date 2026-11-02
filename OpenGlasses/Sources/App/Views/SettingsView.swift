@@ -68,6 +68,9 @@ struct SettingsView: View {
                     symbol: "iphone"
                 )
             case .glasses:
+                #if AVENKIN_PHONE_ONLY
+                EmptyView()
+                #else
                 OGHeroDeviceCard(
                     title: appState.glassesService.deviceName ?? "Meta Glasses",
                     status: glassesStatus,
@@ -81,6 +84,7 @@ struct SettingsView: View {
                          glassesDisplayEnabled),
                     ]
                 )
+                #endif
             }
 
             // Plan CT PR 2: a managed phone says so, always, with the way out beside it.
@@ -712,12 +716,16 @@ struct HardwarePrivacyView: View {
     @State private var historyRetentionDays = Config.historyRetentionDays
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
+    #if !AVENKIN_PHONE_ONLY
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
+    #endif
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
 
+    #if !AVENKIN_PHONE_ONLY
     private var displayedDisplayBackendName: String {
         DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
     }
+    #endif
 
     var body: some View {
         Form {
@@ -743,6 +751,7 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Disables camera video streaming from the glasses. Voice commands still work but vision features (photo capture, live video analysis) are unavailable. Significantly extends glasses battery life."
                 )
+                #if !AVENKIN_PHONE_ONLY
                 InfoToggle(
                     title: "Glasses Display (HUD)",
                     isOn: Binding(
@@ -764,6 +773,7 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
                 )
+                #endif
                 InfoToggle(
                     title: "Dwell Capture",
                     isOn: Binding(
@@ -897,11 +907,13 @@ struct HardwarePrivacyView: View {
 
             Section {
                 BystanderBlurSwitch(appState: appState)
+                #if !AVENKIN_PHONE_ONLY
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
                     info: "Avenkin has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Advanced & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
                 )
+                #endif
             } header: {
                 Text("Privacy")
             } footer: {
@@ -983,6 +995,7 @@ struct HardwarePrivacyView: View {
 
 // MARK: - Glasses Sub-View
 
+#if !AVENKIN_PHONE_ONLY
 /// Devices & Privacy › Glasses (Plan HA C3): the settings that belong to the glasses themselves —
 /// where the wake word waits, how replies play, sleep, and the glasses-side updates. Reachable
 /// whether or not the glasses are attached, and open on an organisation's locked phone, where a
@@ -1001,7 +1014,6 @@ struct GlassesSettingsView: View {
     /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
     /// swallowed: the whole point is that the user could not find this screen on their own, so a
     /// button that silently does nothing is worse than the copy it replaced.
-    #if !AVENKIN_PHONE_ONLY
     @MainActor
     private func openGlassesAppUpdate() async {
         glassesUpdateError = nil
@@ -1012,13 +1024,7 @@ struct GlassesSettingsView: View {
         do { try await Wearables.shared.openDATGlassesAppUpdate() }
         catch { glassesUpdateError = String(localized: "Couldn't open the update screen: \(error.localizedDescription)") }
     }
-    #else
-    private func openGlassesAppUpdate() async {
-        return
-    }
-    #endif
 
-    #if !AVENKIN_PHONE_ONLY
     @MainActor
     private func openGlassesFirmwareUpdate() async {
         glassesUpdateError = nil
@@ -1029,11 +1035,6 @@ struct GlassesSettingsView: View {
         do { try await Wearables.shared.openFirmwareUpdate() }
         catch { glassesUpdateError = String(localized: "Couldn't open the firmware screen: \(error.localizedDescription)") }
     }
-    #else
-    private func openGlassesFirmwareUpdate() async {
-        return
-    }
-    #endif
 
     /// What shows above the settings while the glasses are not connected: the row to press, if
     /// there is one, and why they are not connected (Plan HX P3).
@@ -1258,6 +1259,7 @@ struct GlassesSettingsView: View {
         .task { await appState.glassesService.checkCameraPermission() }
     }
 }
+#endif
 
 // MARK: - Info Status Row
 

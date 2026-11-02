@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import Foundation
 
 /// Validates the `MWDAT` Info.plist dictionary the Meta DAT SDK reads at configure time.
@@ -67,3 +68,4 @@ enum MWDATConfigCheck {
         }
     }
 }
+#endif

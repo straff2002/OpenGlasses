@@ -8,11 +8,13 @@ struct NetworkMonitorView: View {
         List {
             // MARK: Summary
             Section {
+                #if !AVENKIN_PHONE_ONLY
                 summaryRow(
                     category: .meta,
                     count: monitor.metaEntries.count,
                     bytes: monitor.metaBytesSent
                 )
+                #endif
                 summaryRow(
                     category: .aiProvider,
                     count: monitor.aiEntries.count,
@@ -35,6 +37,7 @@ struct NetworkMonitorView: View {
             }
 
             // MARK: Meta calls (if any)
+            #if !AVENKIN_PHONE_ONLY
             if !monitor.metaEntries.isEmpty {
                 Section {
                     ForEach(monitor.metaEntries.prefix(20)) { entry in
@@ -46,6 +49,7 @@ struct NetworkMonitorView: View {
                     Text("These are requests made by the Meta Wearables SDK. Some internal SDK calls may not appear here.")
                 }
             }
+            #endif
 
             // MARK: Recent requests
             Section {
@@ -76,7 +80,11 @@ struct NetworkMonitorView: View {
     private func summaryRow(category: NetworkCategory, count: Int, bytes: Int) -> some View {
         HStack {
             Image(systemName: category.icon)
+                #if AVENKIN_PHONE_ONLY
+                .foregroundStyle(.secondary)
+                #else
                 .foregroundStyle(category == .meta ? OGTheme.warnLabel : .secondary)
+                #endif
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.rawValue)

@@ -116,7 +116,9 @@ struct VoiceTriggersSettingsScreen: View {
                     Text("Hey Jarvis").tag("hey jarvis")
                     Text("Hey Computer").tag("hey computer")
                     Text("Hey Assistant").tag("hey assistant")
+                    #if !AVENKIN_PHONE_ONLY
                     Text("Hey Rayban").tag("hey rayban")
+                    #endif
                     if Config.isCustomWakePhrase(wakePhrase, presets: wakePhrasePresets) {
                         Text("Custom: \(wakePhrase)").tag(wakePhrase)
                     }
@@ -1009,6 +1011,7 @@ struct GlassesPrivacySettingsScreen: View {
         Form {
             // Plan HA C3: the glasses' own settings, one row away whatever the hero card shows —
             // on a copy that offers glasses (Plan JE).
+            #if !AVENKIN_PHONE_ONLY
             if glasses.isShown && GlassesSupportPolicy.isSupported {
                 Section {
                     NavigationLink {
@@ -1026,6 +1029,7 @@ struct GlassesPrivacySettingsScreen: View {
                     Text("Where the wake word listens, how replies play, sleep, and updates for the glasses themselves.")
                 }
             }
+            #endif
 
             if rest.isShown {
                 Section {

@@ -1,5 +1,8 @@
 # Applied last, including after personal signing overlays. No runtime channel detection.
 settings:
+  base:
+    # The generated catalogs are the build's input, and a build must not write back into them.
+    SWIFT_EMIT_LOC_STRINGS: "NO"
   configs:
     Debug:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG AVENKIN_PHONE_ONLY"
@@ -7,6 +10,30 @@ settings:
       SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AVENKIN_PHONE_ONLY"
 targets:
   OpenGlasses:
+    # XcodeGen appends overlay arrays, so an exclude means restating the list. This is the target's
+    # list in project.base.yml with the catalogs swapped for the filtered copies from
+    # Scripts/prepare-phone-only-build.py (test_phone_only_build.py holds the two lists together).
+    # The config check's file goes too, because a Debug binary keeps its object file's name.
+    sources:REPLACE:
+      - path: OpenGlasses/MedicalCompliance.storekit
+        buildPhase: none
+      - path: Contracts/fixtures/workiz-v2
+        type: folder
+        buildPhase: resources
+      - path: OpenGlasses/Sources
+        excludes:
+          - "Resources/Vaults/**"
+          - "Resources/Localizable.xcstrings"
+          - "Resources/InfoPlist.xcstrings"
+          - "Services/MWDATConfigCheck.swift"
+      - path: OpenGlasses/Sources/Resources/Vaults
+        type: folder
+      - path: GlassesActivityWidget/AccentColors.swift
+      - path: GlassesActivityWidget/SharedAppState.swift
+      - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
+      - path: GlassesActivityWidget/PendingAskRequest.swift
+      - path: .generated/Localizable.xcstrings
+      - path: .generated/InfoPlist.xcstrings
     settings:
       base:
         AVENKIN_BUILD_VARIANT: phone-only

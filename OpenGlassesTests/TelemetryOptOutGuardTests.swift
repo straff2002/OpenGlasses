@@ -50,6 +50,7 @@ final class TelemetryOptOutGuardTests: XCTestCase {
     ///
     /// Parsed through `MetaTelemetryBlock.plistOptOut` on purpose: the guard and the app read the
     /// same keys through the same code, so they cannot disagree about where the flags live.
+    #if !AVENKIN_PHONE_ONLY
     func testAuthoredInfoPlistOptsOutOfAnalyticsAndCrashReporting() throws {
         let state = MetaTelemetryBlock.plistOptOut(in: try authoredInfoDictionary())
 
@@ -61,6 +62,7 @@ final class TelemetryOptOutGuardTests: XCTestCase {
                       "MWDAT/CrashReporting/OptOut is missing or false in \(Self.authoredInfoPlist). "
                           + "Absent means opted IN: a crash ships a report to the SDK vendor.")
     }
+    #endif
 
     /// The authored file and the bundle the tests are hosted by must say the same thing.
     ///
@@ -112,6 +114,7 @@ final class TelemetryOptOutGuardTests: XCTestCase {
     /// vendor telemetry, this test fails until the manifest comment and the user-facing disclosure
     /// copy are updated in the same PR — the claim is never allowed to outlive the egress it
     /// describes.
+    #if !AVENKIN_PHONE_ONLY
     func testManifestNoTelemetryClaimRequiresThePlistOptOut() throws {
         let manifest = normalisedWhitespace(try sourceText(Self.privacyManifest))
         guard manifest.contains(Self.noTelemetrySDKClaim) else {
@@ -129,6 +132,7 @@ final class TelemetryOptOutGuardTests: XCTestCase {
                           + "comment and the in-app privacy copy in this same PR so the app never "
                           + "ships a privacy claim it does not honour.")
     }
+    #endif
 
     /// Plan JM P2 — the same rule for a vendor the wearer chooses: cloud dictation sends the audio
     /// of a question to Deepgram or OpenAI, so the manifest's audio entry and the in-app privacy

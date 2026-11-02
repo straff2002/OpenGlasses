@@ -112,11 +112,16 @@ enum GlassesReachabilityDiagnosis: Equatable, Sendable, CaseIterable {
     func statusLine(deviceName: String?, appName: String = RegistrationFlow.appName) -> String {
         switch self {
         case .notAdded: return "Not connected"
+        #if AVENKIN_PHONE_ONLY
+        case .awaitingApproval, .permissionNeeded, .noDeviceSeen:
+            return GlassesSupportPolicy.unavailableReason(appName: appName)
+        #else
         case .awaitingApproval:
             return RegistrationFlow.status(stateRaw: RegistrationFlow.registeredStateRawValue - 1,
                                            appName: appName)
         case .permissionNeeded: return "Allow camera access in Meta AI"
         case .noDeviceSeen: return "Waiting for Meta AI to show your glasses…"
+        #endif
         case .linkDown: return "Glasses out of reach"
         case .linkComingUp: return "Connecting…"
         case .connected: return "Connected to \(deviceName ?? "glasses")"
@@ -182,12 +187,17 @@ struct GlassesReachability: Equatable, Sendable {
         switch diagnosis {
         case .notAdded:
             return "Not added — connect in Settings › Devices & Privacy › Glasses"
+        #if AVENKIN_PHONE_ONLY
+        case .awaitingApproval, .permissionNeeded, .noDeviceSeen:
+            return GlassesSupportPolicy.unavailableReason()
+        #else
         case .awaitingApproval:
             return "Registration in flight — approve the app in Meta AI"
         case .permissionNeeded:
             return "Registered, no device listed — camera access in Meta AI is \(permission.reportToken)"
         case .noDeviceSeen:
             return "Registered, camera access granted — Meta AI lists no device"
+        #endif
         case .linkDown:
             return "\(links.count) listed, none in reach — on, out of the case, nearby?"
         case .linkComingUp:

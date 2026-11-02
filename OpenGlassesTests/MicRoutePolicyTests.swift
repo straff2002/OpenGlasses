@@ -55,6 +55,7 @@ final class MicRoutePolicyTests: XCTestCase {
         XCTAssertEqual(MicRoutePolicy.preferredInputIndex(for: .headset, ports: mixedPorts), 2)
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testHeadsetRouteNeverFallsBackToGlasses() {
         // Only the glasses are around: preferring them would put the call
         // screen over the HUD this mode exists to keep — so prefer nothing.
@@ -64,11 +65,13 @@ final class MicRoutePolicyTests: XCTestCase {
         ]
         XCTAssertNil(MicRoutePolicy.preferredInputIndex(for: .headset, ports: onlyGlasses))
     }
+    #endif
 
     func testPhoneRoutePrefersNothing() {
         XCTAssertNil(MicRoutePolicy.preferredInputIndex(for: .phone, ports: mixedPorts))
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testGlassesRouteMatchesLEAudioAndAllMarkerNames() {
         // iOS 26: glasses audio may ride Bluetooth LE (LC3), not classic HFP.
         for name in ["Ray-Ban Meta", "rayban display", "Oakley Vanguard", "Meta Glasses"] {
@@ -79,6 +82,7 @@ final class MicRoutePolicyTests: XCTestCase {
             )
         }
     }
+    #endif
 
     func testNonBluetoothPortsAreNeverPreferred() {
         // A wired "glasses" accessory name on a non-Bluetooth port is not a mic route.

@@ -90,7 +90,11 @@ class GlassesConnectionService: ObservableObject {
     func startObserving() {
         guard !isObserving else { return }
         guard source.activate() else {
+            #if AVENKIN_PHONE_ONLY
+            connectionStatus = GlassesSupportPolicy.unavailableReason()
+            #else
             connectionStatus = "Meta SDK unavailable"
+            #endif
             return
         }
         isObserving = true

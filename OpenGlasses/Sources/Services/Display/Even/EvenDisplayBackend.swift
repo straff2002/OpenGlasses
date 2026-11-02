@@ -103,6 +103,7 @@ final class EvenDisplayBackend: GlassesDisplayBackend {
 
 // MARK: - Config
 
+#if !AVENKIN_PHONE_ONLY
 /// Which device family renders the HUD (Plan AH). Display only — camera/audio run on
 /// their own services, so Meta camera + EVEN HUD is a working hybrid by construction.
 enum DisplayBackendChoice: String, CaseIterable {
@@ -116,8 +117,10 @@ enum DisplayBackendChoice: String, CaseIterable {
         }
     }
 }
+#endif
 
 extension Config {
+    #if !AVENKIN_PHONE_ONLY
     static var displayBackend: DisplayBackendChoice {
         get {
             UserDefaults.standard.string(forKey: "displayBackend")
@@ -125,6 +128,7 @@ extension Config {
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: "displayBackend") }
     }
+    #endif
 
     /// Persisted CoreBluetooth peripheral identifiers — left/right lenses are separate
     /// peripherals and both are paired. Single-lens degraded state: right may be nil.

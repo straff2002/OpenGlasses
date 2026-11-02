@@ -300,9 +300,15 @@ struct Config {
     /// The wake phrases the pickers offer, the new name's first. The old name's are listed below
     /// them for one App Store version (Plan FY P3.2) and then dropped from here — only from here:
     /// the migration and `defaultAlternativesForPhrase` keep them for good.
+    #if AVENKIN_PHONE_ONLY
+    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
+        "hey claude", "hey jarvis", "hey computer", "hey assistant",
+    ]
+    #else
     static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
         "hey claude", "hey jarvis", "hey computer", "hey assistant", "hey rayban",
     ]
+    #endif
 
     /// Whether `phrase` is one the picker does not list, and so shows as "Custom: …". The wake word
     /// is whatever is stored, not whatever the picker lists, so a custom phrase still wakes the app.
@@ -353,8 +359,10 @@ struct Config {
             return ["hey compuder", "a computer"]
         case "hey assistant":
             return ["hey assistance", "a assistant"]
+        #if !AVENKIN_PHONE_ONLY
         case "hey rayban":
             return ["hey ray ban", "hey ray-ban", "hey raven", "hey rayben", "hey ray band"]
+        #endif
         case "avenkin":
             // Hey-less default (D4). Three syllables of a coined word are not ordinary speech, so
             // the bare name is safe; the alternates cover the recogniser splitting it or hearing a

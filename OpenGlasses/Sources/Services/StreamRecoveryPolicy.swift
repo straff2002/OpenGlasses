@@ -252,7 +252,11 @@ enum DATCompatibilityMessage {
     static func message(for compatibility: GlassesCompatibility) -> String? {
         switch compatibility {
         case .deviceUpdateRequired:
+            #if AVENKIN_PHONE_ONLY
+            return GlassesSupportPolicy.unavailableReason()
+            #else
             return "Your glasses need a firmware update — open the Meta AI app to update them."
+            #endif
         case .sdkUpdateRequired:
             return appUpdateRequired
         case .compatible, .undefined:

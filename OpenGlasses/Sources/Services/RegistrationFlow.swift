@@ -30,6 +30,7 @@ enum RegistrationFlow {
             ?? "this app"
     }
 
+    #if !AVENKIN_PHONE_ONLY
     /// User-facing connection status — tells the user what to *do*, never an internal state number.
     static func status(stateRaw: Int, appName: String = RegistrationFlow.appName) -> String {
         isRegistered(stateRaw: stateRaw)
@@ -176,4 +177,5 @@ enum RegistrationFlow {
             return "\(appName) is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows \(appName) your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses."
         }
     }
+    #endif
 }
