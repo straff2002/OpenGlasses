@@ -46,6 +46,9 @@ struct CameraStreamClaims: Equatable {
         /// Plan HE — "Record this job". Claims so a recording can bring the stream up itself, and
         /// gives back only what it opened when the recording stops.
         static let jobRecording = Owner("jobRecording")
+        /// Plan KH: a live stream that had to bring the glasses camera up itself, because the
+        /// wearer was not in the preview: Siri, a Shortcut, or a move off the phone camera.
+        static let broadcast = Owner("broadcast")
     }
 
     /// What the service should do about a `claim`.

@@ -43,18 +43,19 @@ enum LivePreviewPicture: Equatable {
         return picture == .phone(.back) && viewfinder == .live && !isBroadcasting
     }
 
+    /// Why there is no Go Live button in Medical Compliance mode.
+    static var streamingOffCaption: String {
+        String(localized: "Preview only. Live streaming is off in Medical Compliance mode.")
+    }
+
     /// The line over the phone camera's picture: what Go Live does with it, and the blur.
-    static func phoneCaption(isBroadcasting: Bool, blurOn: Bool,
-                             preferredSource: BroadcastVideoSource) -> String {
-        if isBroadcasting {
-            return blurOn ? String(localized: "Streaming from the phone camera. Faces aren't blurred.")
-                          : String(localized: "Streaming from the phone camera.")
-        }
-        guard blurOn else { return String(localized: "Phone camera. Go Live streams this picture.") }
-        // Go Live refuses the fallback with the blur on, so it must not be promised.
-        return preferredSource == .glasses
-            ? String(localized: "Phone camera. Go Live needs glasses while Blur Bystander Faces is on.")
-            : String(localized: "Phone camera. Go Live streams this picture, and faces aren't blurred.")
+    ///
+    /// A phone stream with the blur on does not exist (`BroadcastGoLive`), so nothing here has to
+    /// warn that faces are going out unblurred.
+    static func phoneCaption(isBroadcasting: Bool, blurOn: Bool) -> String {
+        if isBroadcasting { return String(localized: "Streaming from the phone camera.") }
+        return blurOn ? String(localized: "Phone camera. Go Live needs glasses while Blur Bystander Faces is on.")
+                      : String(localized: "Phone camera. Go Live streams this picture.")
     }
 }
 

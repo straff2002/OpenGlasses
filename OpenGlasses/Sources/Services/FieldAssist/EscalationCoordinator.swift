@@ -103,6 +103,12 @@ final class EscalationCoordinator: ObservableObject {
         state = .cancelled
     }
 
+    /// End the live view and nothing else: the escalation and the job carry on without it. For a
+    /// rule that takes the stream away, as Medical Compliance coming on does.
+    func endLiveView() async {
+        await bridge.disconnect()
+    }
+
     /// Reset to idle (e.g. when a new session starts).
     func reset() {
         state = .idle
@@ -113,7 +119,8 @@ final class EscalationCoordinator: ObservableObject {
     /// One sentence on whether the expert can see the technician's view, so the tools never
     /// promise live video that didn't come up.
     func liveViewSummary() -> String {
-        bridge.isConnected
+        if ExpertStreamMedicalPolicy.refusesNow { return ExpertStreamMedicalPolicy.liveViewOffSummary }
+        return bridge.isConnected
             ? "The live view is being shared with the expert."
             : "Live view didn't start (no live-view relay is set up, or it couldn't be reached), so the expert has the job record."
     }

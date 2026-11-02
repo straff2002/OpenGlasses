@@ -824,16 +824,22 @@ struct ServicesSettingsView: View {
 
                 // Plan KH: folded away for the same reason as Advanced Encoding below. A row each,
                 // so VoiceOver stops on every step, and the selected platform's key line only.
-                DisclosureGroup("How to go live") {
-                    let platform = GoLivePlatform(stored: broadcastPlatform)
-                    ForEach(Array(GoLiveGuide.steps(for: platform).enumerated()), id: \.offset) { index, step in
-                        Text(verbatim: "\(index + 1). \(step)")
-                            .font(.footnote)
-                    }
-                    ForEach(GoLiveGuide.phoneCameraNotes, id: \.self) { note in
-                        Text(verbatim: note)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                if hipaaMode {
+                    Label(BroadcastGoLive.medicalComplianceMessage, systemImage: "lock.shield")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    DisclosureGroup("How to go live") {
+                        let platform = GoLivePlatform(stored: broadcastPlatform)
+                        ForEach(Array(GoLiveGuide.steps(for: platform).enumerated()), id: \.offset) { index, step in
+                            Text(verbatim: "\(index + 1). \(step)")
+                                .font(.footnote)
+                        }
+                        ForEach(GoLiveGuide.phoneCameraNotes, id: \.self) { note in
+                            Text(verbatim: note)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -946,7 +952,9 @@ struct ServicesSettingsView: View {
                 Text("Live Streaming")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
+                    if hipaaMode {
+                        EmptyView()
+                    } else if broadcastRTMPURL.isEmpty || broadcastStreamKey.isEmpty {
                         Text("Enter both the RTMP URL and stream key from your streaming platform to go live.")
                     } else {
                         Text(verbatim: GoLiveGuide.readyLine(for: GoLivePlatform(stored: broadcastPlatform)))

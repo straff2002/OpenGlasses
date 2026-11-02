@@ -12,6 +12,8 @@ struct LivePreviewView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var adminGate = AdminGate.shared
+    /// Plan KH: the preview stays, for looking. Going live does not.
+    @AppStorage("hipaaMode") private var medicalCompliance = false
 
     /// Streaming isn't set up and the wearer asked to go and set it up. The owner of the cover
     /// closes it and opens Settings: neither can happen from in here.
@@ -178,11 +180,13 @@ struct LivePreviewView: View {
                 }
                 Spacer()
 
-                if case .phone = picture, phoneViewfinderPhase == .live {
+                if medicalCompliance && !isBroadcasting {
+                    mediaCaption(LivePreviewPicture.streamingOffCaption)
+                        .padding(.bottom, 12)
+                } else if case .phone = picture, phoneViewfinderPhase == .live {
                     mediaCaption(LivePreviewPicture.phoneCaption(
                         isBroadcasting: isBroadcasting,
-                        blurOn: blurOn,
-                        preferredSource: preferredBroadcastSource))
+                        blurOn: blurOn))
                         .padding(.bottom, 12)
                 }
 
@@ -304,6 +308,7 @@ struct LivePreviewView: View {
             }
         }
         .onReceive(appState.privacyFilter.$isEnabled) { blurOn = $0 }
+        .onReceive(appState.broadcastService.notices) { goLiveNotice = .streamChanged($0) }
         .bystanderBlurOffConfirmation(isPresented: $confirmingBlurOff, appState: appState)
         .onReceive(phoneCamera.statusPublisher.receive(on: DispatchQueue.main)) { phoneCapture = $0 }
         // Plan KH: the session follows the picture, and starts here rather than in `onAppear` so
@@ -569,7 +574,14 @@ struct LivePreviewView: View {
         .accessibilityHint(appState.isConnected ? "" : "Recording needs glasses connected.")
     }
 
+    /// Stopping is always on offer: a stream cannot outlive the mode coming on, but this must not
+    /// be what stands in its way if it ever did.
+    @ViewBuilder
     private var goLiveButton: some View {
+        if !medicalCompliance || isBroadcasting { goLiveControl }
+    }
+
+    private var goLiveControl: some View {
         Button {
             Task { await goLiveTapped() }
         } label: {
@@ -641,7 +653,7 @@ struct LivePreviewView: View {
             Menu {
                 ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
                     Button {
-                        broadcastService.switchSource(source)
+                        switchCamera(to: source)
                     } label: {
                         if activeSource == source {
                             Label(source.displayLabel, systemImage: "checkmark")
@@ -658,6 +670,18 @@ struct LivePreviewView: View {
                     .glassEffect(in: .circle)
             }
             .accessibilityLabel("Switch Broadcast Camera")
+        }
+    }
+
+    /// Refused with the blur on, and said so: a menu row that does nothing reads as a broken one.
+    private func switchCamera(to source: BroadcastVideoSource) {
+        switch BroadcastGoLive.decideSwitch(to: source, faceBlurOn: blurOn) {
+        case .switchCamera:
+            appState.broadcastService.switchSource(source)
+        case .phoneCameraNotBlurred:
+            goLiveNotice = .phoneCameraNotBlurred(BystanderBlurControl.refusal(
+                route: .midStreamSwitch, changeable: canChangeBlur,
+                organization: PolicyEnvelope.organizationName))
         }
     }
 
@@ -685,11 +709,13 @@ struct LivePreviewView: View {
             }
         case .needsSetup(let canOpenSettings):
             goLiveNotice = canOpenSettings ? .setUp : .notSetUp
-        case .phoneCameraNotBlurred:
+        case .phoneCameraNotBlurred(let route):
             goLiveNotice = .phoneCameraNotBlurred(BystanderBlurControl.refusal(
-                changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
+                route: route, changeable: canChangeBlur, organization: PolicyEnvelope.organizationName))
         case .phoneCameraDenied:
             goLiveNotice = .phoneCameraDenied
+        case .blockedByMedicalCompliance:
+            goLiveNotice = .streamChanged(BroadcastGoLive.medicalComplianceMessage)
         }
     }
 
@@ -706,7 +732,9 @@ struct LivePreviewView: View {
             glassesConnected: appState.isConnected,
             faceBlurOn: appState.privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
-            setupReachable: setupReachable))
+            setupReachable: setupReachable,
+            dualCaptureOn: Config.broadcastDualCapture,
+            medicalCompliance: Config.hipaaMode))
     }
 
     private var setupReachable: Bool {
@@ -748,6 +776,8 @@ private enum GoLiveNotice {
     case phoneCameraNotBlurred(BystanderBlurControl.Refusal)
     case phoneCameraDenied
     case failed(String)
+    /// A running stream moved camera, or ended, because of something that changed under it.
+    case streamChanged(String)
 
     var title: String {
         switch self {
@@ -755,6 +785,7 @@ private enum GoLiveNotice {
         case .phoneCameraNotBlurred: return String(localized: "Can't blur the phone camera")
         case .phoneCameraDenied: return String(localized: "Camera access is off")
         case .failed: return String(localized: "Couldn't broadcast")
+        case .streamChanged: return String(localized: "Live stream")
         }
     }
 
@@ -768,7 +799,7 @@ private enum GoLiveNotice {
             return refusal.message
         case .phoneCameraDenied:
             return String(localized: "Allow camera access for Avenkin in iOS Settings to stream from the phone.")
-        case .failed(let message):
+        case .failed(let message), .streamChanged(let message):
             return message
         }
     }

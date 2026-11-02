@@ -22,6 +22,10 @@ final class MeetingLinkTransport: ExpertStreamTransport {
     var opener: (URL) -> Void = { url in UIApplication.shared.open(url) }
 
     func start(framePublisher: PassthroughSubject<UIImage, Never>) async throws -> String? {
+        // The call runs in another app, but it is still a live view of the room to an expert.
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            throw ExpertStreamError.transportUnavailable(ExpertStreamMedicalPolicy.refusalMessage)
+        }
         let urlString = Config.expertMeetingURL.trimmingCharacters(in: .whitespaces)
         guard !urlString.isEmpty, let url = URL(string: urlString) else {
             throw ExpertStreamError.transportUnavailable(

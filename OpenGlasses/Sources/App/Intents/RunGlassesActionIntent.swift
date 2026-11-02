@@ -27,7 +27,9 @@ struct RunGlassesActionIntent: AppIntent {
         guard let entry = catalog.entry(id: action.id) else {
             throw SiriActionError.notFound
         }
-        guard entry.isEnabled else {
+        // A stream on air can always be stopped, even with its action turned off.
+        guard entry.isEnabled
+                || (entry.binding == .builtin(id: "broadcast_toggle") && appState.broadcastService.isBroadcasting) else {
             throw SiriActionError.disabled
         }
 
@@ -222,8 +224,7 @@ enum BuiltinActionRunner {
             return await IntentSupport.runTool("save_location", args: [:], appState: appState)
 
         case "broadcast_toggle":
-            await appState.toggleBroadcast()
-            return appState.broadcastService.isBroadcasting ? String(localized: "Broadcasting started.") : String(localized: "Broadcasting stopped.")
+            return await appState.toggleBroadcastFromIntent().message
 
         default:
             throw SiriActionError.notFound

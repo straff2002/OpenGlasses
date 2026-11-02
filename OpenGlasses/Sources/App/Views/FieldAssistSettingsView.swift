@@ -365,6 +365,11 @@ struct FieldAssistSettingsView: View {
 
                 // ──────────────── Expert escalation
                 Section {
+                    if Config.hipaaMode {
+                        Label(ExpertStreamMedicalPolicy.refusalMessage, systemImage: "lock.shield")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     Picker("Stream transport", selection: Binding(
                         get: { Config.expertStreamTransport },
                         set: { Config.setExpertStreamTransport($0) }

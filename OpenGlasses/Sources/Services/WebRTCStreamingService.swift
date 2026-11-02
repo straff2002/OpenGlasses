@@ -59,6 +59,13 @@ class WebRTCStreamingService: ObservableObject {
     func startStreaming(framePublisher: PassthroughSubject<UIImage, Never>) -> String {
         guard !isStreaming else { return streamURL }
 
+        // All of Medical Compliance, not only Local Only. Refused here rather than further down:
+        // `connectWebSocket()` refuses too, but by then this has reported a stream to nothing.
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            errorMessage = ExpertStreamMedicalPolicy.refusalMessage
+            return ""
+        }
+
         // A relay is per-deployment and the app ships none, so refuse rather than half-start:
         // marking the stream live against an unusable address would hand the caller a viewer link
         // that can never resolve, and page an expert with it.

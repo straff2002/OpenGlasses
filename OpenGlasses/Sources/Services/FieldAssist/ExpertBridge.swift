@@ -23,6 +23,10 @@ protocol ExpertBridge {
     /// Shareable room/join URL the expert opens to view the stream (nil until connected / for stubs).
     var roomURL: String? { get }
 
+    /// Whether the connected call runs in another app, where `disconnect` cannot end it. Read it
+    /// before disconnecting: afterwards there is no active call to ask about.
+    var isCallInAnotherApp: Bool { get }
+
     /// Establish the live connection for a session. Throws until the Phase 5 implementation lands.
     func connect(sessionId: String, expertId: String?) async throws
 
@@ -32,6 +36,7 @@ protocol ExpertBridge {
 
 extension ExpertBridge {
     var roomURL: String? { nil }
+    var isCallInAnotherApp: Bool { false }
 }
 
 enum ExpertBridgeError: LocalizedError {

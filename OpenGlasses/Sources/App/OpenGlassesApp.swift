@@ -2811,6 +2811,11 @@ class AppState: ObservableObject, AppStateProtocol {
             // A guard stops the next request; it cannot close a socket that is already streaming.
             // Every live session on a route the mode has just closed ends here.
             self?.egressCoordinator.modeDidChange()
+            // Plan KH: a live stream ends in all of Medical Compliance, not only in Local Only,
+            // and RTMP has no route for the coordinator above to close.
+            self?.enforceBroadcastRules()
+            // The same for a live expert stream, in all of the mode.
+            self?.enforceExpertStreamRules()
             // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
             if Config.hipaaMode {
                 self?.webHUDMirror.stop()
@@ -4255,6 +4260,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // CY: the broadcast health readout counts frames that never reached the wire, which
         // includes the ones the privacy relay dropped to keep up. The relay is the only thing
         // that knows about those, so it hands the count over rather than the service reaching in.
+        // Plan KH: however a stream ends (a stop, a rule, a failed connection), the glasses camera
+        // it brought up for itself goes with it.
+        cancellables.append(broadcastService.$isBroadcasting.removeDuplicates().dropFirst().filter { !$0 }
+            .sink { [weak self] _ in
+                Task { @MainActor in await self?.cameraService.releaseStream(for: .broadcast) }
+            })
         broadcastService.droppedFrameSource = { [weak self] in
             self?.outboundFrames.droppedFrameCount ?? 0
         }
@@ -6046,6 +6057,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// the live privacy filter, and anything running that the policy has now switched off.
     func applyOrgPolicyChange() {
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        // A profile that pins the blur on during a phone stream is the same case as the switch.
+        enforceBroadcastRules()
         if !Config.agentModeEnabled {
             agentScheduler.stop()
             // Both are gated on agent mode at start; one already running would otherwise outlive
@@ -6419,12 +6432,147 @@ class AppState: ObservableObject, AppStateProtocol {
         // Read back rather than trusting the switch: an organisation profile may pin the filter on
         // (Plan CT), and then the setter above was refused.
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        enforceBroadcastRules()
+    }
+
+    /// Plan KH: bring a running stream into line with the rules it started under. Called whenever
+    /// one of them can change, from every place that changes it. Nothing here runs off air.
+    func enforceBroadcastRules() {
+        switch BroadcastGoLive.whileLive(.init(
+            isBroadcasting: broadcastService.isBroadcasting,
+            activeSource: broadcastService.activeSource,
+            phoneInsetOn: broadcastService.isPhoneInsetOn,
+            faceBlurOn: privacyFilter.isEnabled,
+            glassesConnected: isConnected,
+            medicalCompliance: Config.hipaaMode)) {
+        case .carryOn:
+            break
+        case .dropPhoneInset:
+            broadcastService.leavePhoneCamera()
+            tellWearerAboutBroadcast(BroadcastGoLive.insetDroppedMessage)
+        case .moveToGlasses:
+            // The phone comes off first, so nothing unblurred goes out while the glasses start.
+            broadcastService.leavePhoneCamera()
+            tellWearerAboutBroadcast(BroadcastGoLive.movedToGlassesMessage)
+            Task { @MainActor in
+                let picture = await self.glassesPictureIsUp()
+                guard !picture, self.broadcastService.isBroadcasting else { return }
+                self.endBroadcast(.glassesGaveNoPicture)
+            }
+        case .end(let reason):
+            endBroadcast(reason)
+        }
+    }
+
+    /// A live expert stream cannot outlive Medical Compliance coming on. The escalation and the job
+    /// carry on: only the stream ends, and the wearer is told.
+    func enforceExpertStreamRules() {
+        let escalation = EscalationCoordinator.shared
+        guard ExpertStreamMedicalPolicy.whileRunning(
+            isStreaming: escalation.bridge.isConnected || webRTCStreaming.isStreaming,
+            mode: MedicalEgressGuard.currentMode()) == .end else { return }
+        // Before the disconnect, which forgets the call. It keeps going in its own app regardless.
+        let externalCall = escalation.bridge.isCallInAnotherApp
+        webRTCStreaming.stopStreaming()
+        Task { @MainActor in await escalation.endLiveView() }
+        let message = ExpertStreamMedicalPolicy.endedMessage(externalCall: externalCall)
+        NoticeCenter.shared.post(message, severity: .warning, source: .camera)
+        Task { @MainActor in await self.speechService.speak(message) }
+    }
+
+    private func endBroadcast(_ reason: BroadcastGoLive.EndReason) {
+        broadcastService.stopBroadcast()
+        chatReadback.stop()
+        tellWearerAboutBroadcast(BroadcastGoLive.endMessage(reason))
+    }
+
+    /// Said aloud and shown: the wearer may be holding the phone or may have it in a pocket.
+    private func tellWearerAboutBroadcast(_ message: String) {
+        broadcastService.notices.send(message)
+        NoticeCenter.shared.post(message, severity: .warning, source: .camera)
+        Task { @MainActor in await self.speechService.speak(message) }
+    }
+
+    /// Whether the glasses camera is giving a picture, starting it if it is not. The claim is
+    /// given back when the stream ends. Runs as the app's own start, so it never leaves for Meta
+    /// AI to ask for a permission: nobody is looking at a prompt.
+    private func glassesPictureIsUp() async -> Bool {
+        do {
+            try await CameraPermissionRequestPolicy.startedByApp {
+                try await cameraService.claimStream(for: .broadcast)
+            }
+        } catch {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(BroadcastGoLive.glassesPictureTimeout)
+        while Date() < deadline, !Task.isCancelled {
+            if cameraService.readiness.phase == .ready { return true }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        await cameraService.releaseStream(for: .broadcast)
+        return false
+    }
+
+    /// Whether the phone camera gives a picture, without leaving it running for anyone. iOS will
+    /// not run it for an app in the background, so this is also how an intent finds that out.
+    private func phonePictureIsUp(_ source: BroadcastVideoSource) async -> Bool {
+        guard let position = source.phonePosition else { return false }
+        let camera = broadcastService.phoneVideoSource
+        if camera.statusPublisher.value == .running { return true }
+        camera.claimPreview(position: position)
+        let deadline = Date().addingTimeInterval(BroadcastGoLive.phonePictureTimeout)
+        while Date() < deadline, !Task.isCancelled {
+            if camera.statusPublisher.value == .running { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        camera.releasePreview()
+        return false
+    }
+
+    /// Start or stop a stream from Siri or a Shortcut (Plan KH).
+    ///
+    /// Goes through `BroadcastGoLive` as the preview does, and on top of that proves there is a
+    /// picture first: nothing else starts the camera here, and the microphone goes on air with the
+    /// stream, so a stream with no picture would be an open microphone over a black screen.
+    func toggleBroadcastFromIntent() async -> (isLive: Bool, message: String) {
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        let decision = BroadcastGoLive.decideForIntent(.init(
+            isBroadcasting: broadcastService.isBroadcasting,
+            isConfigured: Config.isBroadcastConfigured,
+            preferredSource: BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses,
+            glassesConnected: isConnected,
+            faceBlurOn: privacyFilter.isEnabled,
+            phoneCameraDenied: camera == .denied || camera == .restricted,
+            setupReachable: true,
+            dualCaptureOn: Config.broadcastDualCapture,
+            medicalCompliance: Config.hipaaMode), phoneCameraNotAsked: camera == .notDetermined)
+        switch decision {
+        case .stop:
+            await toggleBroadcast()
+            return (false, String(localized: "Broadcasting stopped."))
+        case .refuse(let refusal):
+            return (false, BroadcastGoLive.spokenRefusal(refusal))
+        case .start(let source):
+            let hadPhoneCamera = broadcastService.phoneVideoSource.statusPublisher.value == .running
+            guard await source.isPhone ? phonePictureIsUp(source) : glassesPictureIsUp() else {
+                return (false, BroadcastGoLive.spokenRefusal(.noPicture))
+            }
+            await toggleBroadcast(startSource: source)
+            // The stream's own claim has the camera now, if it went live. One the check took is
+            // given back either way; one the preview holds is not this code's to give.
+            if source.isPhone && !hadPhoneCamera { broadcastService.phoneVideoSource.releasePreview() }
+            guard broadcastService.isBroadcasting else {
+                await cameraService.releaseStream(for: .broadcast)
+                return (false, BroadcastGoLive.spokenRefusal(.couldNotConnect))
+            }
+            return (true, String(localized: "Broadcasting started."))
+        }
     }
 
     /// Toggle live broadcast on/off.
     ///
-    /// - Parameter startSource: the camera to start on, chosen by the live preview
-    ///   (`BroadcastGoLive`). Siri and Shortcuts pass nothing, which starts on the Camera setting.
+    /// - Parameter startSource: the camera to start on, chosen by whichever of the live preview or
+    ///   `toggleBroadcastFromIntent()` ran the `BroadcastGoLive` checks. Call one of those, not this.
     /// - Parameter onError: lets a presented preview show failures beside its own controls.
     ///   Other callers use the main screen's error banner.
     func toggleBroadcast(startSource: BroadcastVideoSource? = nil,
@@ -6441,6 +6589,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     source: startSource
                 )
                 startChatReadbackIfConfigured()
+                // Connecting takes seconds, and a rule can change inside them.
+                enforceBroadcastRules()
             } catch {
                 if let onError {
                     onError(error.localizedDescription)

@@ -108,6 +108,42 @@ final class BystanderBlurControlTests: XCTestCase {
         XCTAssertEqual(BroadcastGoLive.decide(.init(
             isBroadcasting: false, isConfigured: true, preferredSource: .glasses,
             glassesConnected: false, faceBlurOn: true, phoneCameraDenied: false, setupReachable: true)),
-                       .phoneCameraNotBlurred)
+                       .phoneCameraNotBlurred(.fallback))
+    }
+
+    private let routes: [BroadcastGoLive.PhoneRoute] = [.fallback, .chosen, .inset, .midStreamSwitch]
+
+    func testEveryRouteHasItsOwnWords() {
+        let messages = routes.map { BystanderBlurControl.refusal(route: $0, changeable: true, organization: nil).message }
+        XCTAssertEqual(Set(messages).count, routes.count)
+        let locked = routes.map { BystanderBlurControl.refusal(route: $0, changeable: false, organization: "Northfield").message }
+        XCTAssertEqual(Set(locked).count, routes.count)
+    }
+
+    /// Every refusal offers the existing way out, says what it costs, and a locked one offers none.
+    func testEveryRouteOffersTheTurnOffPathOnlyWhenItCanBeUsed() {
+        for route in routes {
+            let open = BystanderBlurControl.refusal(route: route, changeable: true, organization: nil)
+            XCTAssertTrue(open.offersTurningOff, "\(route)")
+            XCTAssertTrue(open.message.contains("everywhere"), "\(route)")
+            let locked = BystanderBlurControl.refusal(route: route, changeable: false, organization: "Northfield")
+            XCTAssertFalse(locked.offersTurningOff, "\(route)")
+            XCTAssertTrue(locked.message.contains("Northfield"), "\(route)")
+        }
+    }
+
+    func testTheMidStreamRefusalSaysViewersWouldSeeFaces() {
+        let refusal = BystanderBlurControl.refusal(route: .midStreamSwitch, changeable: true, organization: nil)
+        XCTAssertTrue(refusal.message.contains("viewers will see faces"))
+    }
+
+    /// The switch's own description has to say what it does and does not cover.
+    func testTheSwitchSaysWhatItCovers() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("OpenGlasses/Sources/App/Views/BystanderBlurSwitch.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(source.contains("the glasses camera feed"))
+        XCTAssertTrue(source.contains("The phone camera can't be blurred"))
+        XCTAssertTrue(source.contains("Photos you take yourself"))
     }
 }
