@@ -40,7 +40,7 @@ Everything below goes only to addresses and systems you set up.
 | Help request | When the technician asks for help. It can carry a transcript and their location, to the notification address you set. |
 | Support report | Only when someone makes and sends one. On your phones it always goes to your support address, or else your job-report office, and never to us. |
 | Recorded job | If you use Avenkin Office and allow it: video and audio of a job the technician chose to record, after a recording consent. You can require faces blurred first, keep it off mobile data, or forbid recording. |
-| Live expert call | Camera and sound to the expert, through your signalling server, only while the call runs. |
+| Live expert call | Camera and sound to the expert, through your signalling server, only while the call runs. Never in Medical Compliance mode: a help request still goes out, and the expert gets the job record. |
 | First-aid triage | Never. Camera triage is for personal use and is not offered in Field Assist editions or on a phone your profile manages. First-aid coaching, the spoken protocols, is, and it keeps no record. |
 
 What you never receive, because nothing collects it: a continuous feed of location, camera or captions; a productivity score, ranking or activity log; the person's conversation history, memories, AI request records or enrolled faces, which stay on the phone. We run no server and no account system, so nothing passes through us and we keep no copy.

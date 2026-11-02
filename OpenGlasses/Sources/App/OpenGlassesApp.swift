@@ -2814,6 +2814,8 @@ class AppState: ObservableObject, AppStateProtocol {
             // Plan KH: a live stream ends in all of Medical Compliance, not only in Local Only,
             // and RTMP has no route for the coordinator above to close.
             self?.enforceBroadcastRules()
+            // The same for a live expert stream, in all of the mode.
+            self?.enforceExpertStreamRules()
             // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
             if Config.hipaaMode {
                 self?.webHUDMirror.stop()
@@ -6460,6 +6462,20 @@ class AppState: ObservableObject, AppStateProtocol {
         case .end(let reason):
             endBroadcast(reason)
         }
+    }
+
+    /// A live expert stream cannot outlive Medical Compliance coming on. The escalation and the job
+    /// carry on: only the stream ends, and the wearer is told.
+    func enforceExpertStreamRules() {
+        let escalation = EscalationCoordinator.shared
+        guard ExpertStreamMedicalPolicy.whileRunning(
+            isStreaming: escalation.bridge.isConnected || webRTCStreaming.isStreaming,
+            mode: MedicalEgressGuard.currentMode()) == .end else { return }
+        webRTCStreaming.stopStreaming()
+        Task { @MainActor in await escalation.endLiveView() }
+        let message = ExpertStreamMedicalPolicy.endedMessage
+        NoticeCenter.shared.post(message, severity: .warning, source: .camera)
+        Task { @MainActor in await self.speechService.speak(message) }
     }
 
     private func endBroadcast(_ reason: BroadcastGoLive.EndReason) {

@@ -258,6 +258,8 @@ struct HIPAASettingsView: View {
                               detail: "Disabled — prevents uncontrolled PHI sharing")
                     changeRow(icon: "dot.radiowaves.left.and.right", color: OGTheme.errorLabel, title: "Live Streaming",
                               detail: "Disabled — camera and microphone never go to a streaming service")
+                    changeRow(icon: "person.2.wave.2", color: OGTheme.errorLabel, title: "Live Expert View",
+                              detail: "Disabled — an expert gets the job record, never the camera or microphone")
                     changeRow(icon: "cloud.fill", color: OGTheme.errorLabel, title: "Cloud Memory Sync",
                               detail: "Disabled — memories stay on-device only")
                     changeRow(icon: "globe", color: OGTheme.warnLabel, title: "Caption Translation",

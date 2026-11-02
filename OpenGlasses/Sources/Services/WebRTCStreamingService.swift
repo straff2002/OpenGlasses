@@ -59,10 +59,10 @@ class WebRTCStreamingService: ObservableObject {
     func startStreaming(framePublisher: PassthroughSubject<UIImage, Never>) -> String {
         guard !isStreaming else { return streamURL }
 
-        // Plan KH: Local Only closes this route. `connectWebSocket()` is refused further down, but
-        // by then this method has gone on to report a live stream and a viewer link to nothing.
-        guard MedicalEgressGuard.allows(.webRTCBrowserStreaming) else {
-            errorMessage = MedicalEgressRefusal.userMessage
+        // All of Medical Compliance, not only Local Only. Refused here rather than further down:
+        // `connectWebSocket()` refuses too, but by then this has reported a stream to nothing.
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            errorMessage = ExpertStreamMedicalPolicy.refusalMessage
             return ""
         }
 

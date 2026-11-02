@@ -209,7 +209,7 @@ final class BroadcastSafetyTests: XCTestCase {
         let service = WebRTCStreamingService()
         XCTAssertEqual(service.startStreaming(framePublisher: PassthroughSubject<UIImage, Never>()), "")
         XCTAssertFalse(service.isStreaming)
-        XCTAssertEqual(service.errorMessage, MedicalEgressRefusal.userMessage)
+        XCTAssertEqual(service.errorMessage, ExpertStreamMedicalPolicy.refusalMessage)
     }
 
     func testThePreviewSaysWhyThereIsNoGoLive() {

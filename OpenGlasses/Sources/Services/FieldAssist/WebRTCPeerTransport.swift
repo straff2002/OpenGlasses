@@ -94,6 +94,9 @@ final class WebRTCPeerTransport: ExpertStreamTransport {
     private var room: String = ""
 
     func start(framePublisher: PassthroughSubject<UIImage, Never>) async throws -> String? {
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            throw ExpertStreamError.transportUnavailable(ExpertStreamMedicalPolicy.refusalMessage)
+        }
         let signalingURL = Config.expertSignalingURL.trimmingCharacters(in: .whitespaces)
         guard !signalingURL.isEmpty else {
             throw ExpertStreamError.transportUnavailable(

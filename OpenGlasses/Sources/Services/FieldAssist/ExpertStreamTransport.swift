@@ -96,6 +96,10 @@ final class ExpertStreamBridge: ExpertBridge {
     var isConnected: Bool { active?.isStreaming ?? false }
 
     func connect(sessionId: String, expertId: String?) async throws {
+        // Ahead of the transport's own checks, so the reason is this one and not a missing relay.
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            throw ExpertStreamError.transportUnavailable(ExpertStreamMedicalPolicy.refusalMessage)
+        }
         let kind = Config.expertStreamTransport
         guard let transport = transports[kind] else {
             throw ExpertStreamError.transportUnavailable("No transport for \(kind.rawValue).")
@@ -103,7 +107,13 @@ final class ExpertStreamBridge: ExpertBridge {
         guard transport.isAvailable else {
             throw ExpertStreamError.transportUnavailable("\(transport.displayName) isn't available in this build.")
         }
-        roomURL = try await transport.start(framePublisher: framePublisher)
+        let joinURL = try await transport.start(framePublisher: framePublisher)
+        // Starting takes a moment, and the mode can come on inside it.
+        guard !ExpertStreamMedicalPolicy.refusesNow else {
+            await transport.stop()
+            throw ExpertStreamError.transportUnavailable(ExpertStreamMedicalPolicy.refusalMessage)
+        }
+        roomURL = joinURL
         active = transport
         // The room URL is a capability to the live camera feed and the expert id names a person;
         // the transport kind and a session fingerprint are what a bridge fault is traced with.
