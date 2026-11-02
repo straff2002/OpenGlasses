@@ -74,6 +74,18 @@ final class GoLiveGuideTests: XCTestCase {
         XCTAssertTrue(notes.contains("microphone"))
     }
 
+    /// Plan KH: the preview has a viewfinder now, and the guide must not say it hasn't.
+    func testTheNotesSayThePreviewShowsThePhoneCamera() {
+        let notes = GoLiveGuide.phoneCameraNotes.joined(separator: " ")
+        XCTAssertTrue(notes.contains("the preview shows the phone camera"))
+        XCTAssertFalse(notes.contains("doesn't show"))
+    }
+
+    func testTheNotesStillSayTheFallbackStopsAtTheBlur() {
+        let notes = GoLiveGuide.phoneCameraNotes.joined(separator: " ")
+        XCTAssertTrue(notes.contains("unless Blur Bystander Faces is on"))
+    }
+
     func testTheReadyLineNamesNoCamera() {
         for platform in GoLivePlatform.allCases {
             let line = GoLiveGuide.readyLine(for: platform)
@@ -194,14 +206,6 @@ final class GoLiveGuideTests: XCTestCase {
             isBroadcasting: true, isConfigured: false, preferredSource: .glasses,
             glassesConnected: false, faceBlurOn: true, phoneCameraDenied: true, setupReachable: false)),
                        .toggle(startSource: nil))
-    }
-
-    // MARK: - The way in
-
-    func testThePreviewIsReachableWithGlassesOrWithStreamingSetUp() {
-        XCTAssertTrue(HomeGridTilePresence.livePreviewReachable(glassesConnected: true, broadcastConfigured: false))
-        XCTAssertTrue(HomeGridTilePresence.livePreviewReachable(glassesConnected: false, broadcastConfigured: true))
-        XCTAssertFalse(HomeGridTilePresence.livePreviewReachable(glassesConnected: false, broadcastConfigured: false))
     }
 
     // MARK: - Things to Try

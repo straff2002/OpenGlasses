@@ -184,6 +184,13 @@ enum OutboundFrameConsumer: String, CaseIterable {
     case sceneNarration
     /// The live camera preview on the phone's own screen.
     case livePreview
+    /// Plan KH: the phone camera's viewfinder in that preview. A preview layer on the stream's
+    /// capture session, composited by the system, so no pixel reaches app code and none leaves the
+    /// screen. Listed so the claim is written down. The stream on the same session is another
+    /// matter: its frames go to the encoder unfiltered, which is why Go Live refuses the phone
+    /// fallback with the blur on (`BroadcastGoLive`), and `OutboundFrameConsumerTests` holds those
+    /// frames to the encoder alone.
+    case phoneViewfinder
     /// Reading companion page detection — on-device OCR, emits text.
     case readingCompanion
     /// Sign-language fingerspelling decoding — on-device, emits letters.
@@ -263,6 +270,9 @@ enum OutboundFrameConsumer: String, CaseIterable {
         /// the consumer reads files, and what is being policed is where those files may go — to
         /// the office, or through the blur and back into the same folder.
         case jobRecordingFolder
+        /// A preview layer on the phone's own capture session. The system draws it; app code never
+        /// holds a pixel, so there is no still to read and nothing to subscribe to.
+        case phonePreviewLayer
     }
 
     /// What protects the consumer.
@@ -303,6 +313,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .faceRecognition: return "FaceRecognitionService"
         case .sceneNarration: return "SceneNarrationService"
         case .livePreview: return "LivePreviewView"
+        case .phoneViewfinder: return "PhoneViewfinder"
         case .readingCompanion: return "ReadingCompanionService"
         case .fingerspelling: return "FingerspellingSessionService"
         case .dwellCapture, .dwellCaptureSave: return "DwellCaptureService"
@@ -355,7 +366,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .agentAttachment, .hermesAgentTurnAttachment, .hermesBridgePhotoRequest: return .agentAttachment
         case .faceRecognition: return .faceRecognition
         case .sceneNarration: return .sceneNarration
-        case .livePreview: return .onDevicePreview
+        case .livePreview, .phoneViewfinder: return .onDevicePreview
         case .readingCompanion, .fingerspelling, .dwellCapture: return .onDeviceVision
         case .structuredVisionAssessment, .safetyAssessment, .refrigerantGaugeReading: return .visionAssessment
         case .assistiveGuidanceLoop, .navigationAssist, .liveCoach: return .assistiveGuidance
@@ -379,6 +390,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .fingerspelling, .dwellCapture, .jobRecordingCapture: return .rawCameraPublisher
         case .jobRecordingBlurPass, .jobRecordingOfficeSync: return .jobRecordingFolder
         case .liveSessionPush, .livePreview: return .rawCameraCallback
+        case .phoneViewfinder: return .phonePreviewLayer
         case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
              .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
              .expertMeetingLinkTransport, .expertPeerTransport,
@@ -407,7 +419,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .expertTransportProtocol: return .relay
         case .liveSessionPush, .liveSessionPollFallback, .directModelTurn, .pinnedFrame,
              .agentAttachment, .hermesAgentTurnAttachment, .hermesBridgePhotoRequest: return .chokepoint
-        case .faceRecognition, .sceneNarration, .livePreview, .readingCompanion,
+        case .faceRecognition, .sceneNarration, .livePreview, .phoneViewfinder, .readingCompanion,
              .fingerspelling, .dwellCapture, .jobRecordingCapture: return .exemptByScope
         case .jobRecordingOfficeSync: return .organisationExit
         case .structuredVisionAssessment, .safetyAssessment, .refrigerantGaugeReading,
@@ -439,6 +451,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
     static var typesAllowedOnARawStill: Set<String> {
         Set(allCases.filter { $0.tap != .filteredStill && $0.tap != .outboundRelay
                               && $0.tap != .heldImage && $0.tap != .jobRecordingFolder
+                              && $0.tap != .phonePreviewLayer
                               && $0 != .jobRecordingCapture }
                     .map(\.owningType))
     }

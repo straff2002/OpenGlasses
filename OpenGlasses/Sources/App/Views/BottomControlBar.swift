@@ -77,15 +77,6 @@ struct BottomControlBar: View {
         isGemini ? session.isActive : (isOpenAI ? openAISession.isActive : false)
     }
 
-    /// Read when the tab appears, not per render: half of the answer is a Keychain item, and the
-    /// settings that change it are on another tab.
-    @State private var broadcastConfigured = false
-
-    private var previewVisible: Bool {
-        HomeGridTilePresence.livePreviewReachable(glassesConnected: appState.isConnected,
-                                                  broadcastConfigured: broadcastConfigured)
-    }
-
     /// Observes the same UserDefaults key `Config.silentMode` writes, so the push-to-talk
     /// BarButton re-renders on toggle AND stays live-synced with the Settings switch.
     @AppStorage("silentMode") private var pushToTalk = false
@@ -213,13 +204,9 @@ struct BottomControlBar: View {
     /// What gates a control's tile right now — applied before paging, so every page holds exactly
     /// the tiles it draws.
     private var tilePresence: HomeGridTilePresence {
-        HomeGridTilePresence(
-            previewAvailable: previewVisible,
-            canType: showChatInput != nil,
-            assistiveAvailable: Config.accessibilityModeEnabled,
-            connected: appState.isConnected,
-            localModelActive: appState.llmService.localLLMService != nil
-                && Config.activeModel?.llmProvider == .local)
+        var presence = appState.homeGridTilePresence
+        presence.canType = presence.canType && showChatInput != nil
+        return presence
     }
 
     /// The tiles the grid draws, in the one arranged order.
@@ -245,7 +232,6 @@ struct BottomControlBar: View {
         }
         .padding(.top, DockGridMetrics.moduleGap)
         .padding(.bottom, DockGridMetrics.dockBottomPadding)
-        .onAppear { broadcastConfigured = Config.isBroadcastConfigured }
     }
 
     // MARK: - Panel
@@ -1226,6 +1212,18 @@ private struct RecordingQuickActionTile: View {
 /// prompt is `ChatInputBar`'s send, a photo prompt is the dock camera's capture-and-ask, and a
 /// speed-dial action is the one the widget, the watch and the launcher all run.
 extension AppState: HomeGridSession {
+    /// What gates a tile on the grid right now. The one reading, so the editors explain what the
+    /// grid actually does.
+    var homeGridTilePresence: HomeGridTilePresence {
+        HomeGridTilePresence(
+            canType: !currentMode.isRealtime,
+            assistiveAvailable: Config.accessibilityModeEnabled,
+            connected: isConnected,
+            localModelActive: llmService.localLLMService != nil
+                && Config.activeModel?.llmProvider == .local,
+            actionsShown: HomeSurfaceVisibility.showsActionTiles(mode: currentMode))
+    }
+
     func submitHomePrompt(_ text: String) async {
         await sendTextMessage(text)
     }

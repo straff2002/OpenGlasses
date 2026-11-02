@@ -6271,8 +6271,10 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.endTurn()
     }
 
-    func captureAndSharePhoto() async {
-        guard isConnected else {
+    /// - Parameter allowingPhoneCamera: the live preview's phone viewfinder, which handed the camera
+    ///   over first. `capturePhoto()` takes the phone path by itself with no glasses connected.
+    func captureAndSharePhoto(allowingPhoneCamera: Bool = false) async {
+        guard isConnected || allowingPhoneCamera else {
             errorMessage = String(localized: "Connect glasses first")
             errorMessageIsGlassesConnection = true
             return
@@ -6406,6 +6408,17 @@ class AppState: ObservableObject, AppStateProtocol {
                 errorMessage = String(localized: "Recording failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Something is on air to people watching now. Blur Bystander Faces asks before going off then.
+    var isStreamingLive: Bool { broadcastService.isBroadcasting || webRTCStreaming.isStreaming }
+
+    /// Blur Bystander Faces, from wherever it is changed (`BystanderBlurControl`).
+    func setBystanderBlur(_ enabled: Bool) {
+        Config.setPrivacyFilterEnabled(enabled)
+        // Read back rather than trusting the switch: an organisation profile may pin the filter on
+        // (Plan CT), and then the setter above was refused.
+        privacyFilter.isEnabled = Config.privacyFilterEnabled
     }
 
     /// Toggle live broadcast on/off.

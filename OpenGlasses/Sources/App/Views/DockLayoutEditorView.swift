@@ -21,6 +21,13 @@ struct DockLayoutEditorView: View {
     /// The republish beacon for the speed dial — see the note on the panel's edit page. The value
     /// is never read; `Config.quickActions` owns it.
     @AppStorage("quickActions") private var quickActionsBeacon = Data()
+    /// The same republish for the technician's trades, whose tiles `Config.quickActions` injects.
+    @AppStorage(FieldTradeSetting.key) private var tradesBeacon: String?
+
+    /// Plan KH: read for why a tile is not on the grid right now. The rows themselves stay the
+    /// arrangement's, whatever the moment allows.
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var adminGate = AdminGate.shared
 
     @State private var editing: EditorTarget?
 
@@ -76,7 +83,7 @@ struct DockLayoutEditorView: View {
             } header: {
                 Text("On the Bar")
             } footer: {
-                Text("Controls and actions in one grid, wrapping into rows of four and scrolling if it outgrows the bar. Drag to reorder; swipe to take an action off. Taking a tile off never deletes the action behind it, and controls always stay.")
+                Text("Controls and actions in one grid, three across, running onto more pages if it outgrows the bar. Tap Edit, then drag to reorder; swipe to take an action off. Taking a tile off never deletes the action behind it, and controls always stay.")
             }
 
             if !available.isEmpty {
@@ -143,8 +150,15 @@ struct DockLayoutEditorView: View {
                 .font(.title3)
                 .foregroundStyle(Color(.label))
                 .frame(width: 28)
-            Text(slot.editorLabel)
-                .foregroundStyle(Color(.label))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(slot.editorLabel)
+                    .foregroundStyle(Color(.label))
+                if let reason = reasonNotShown(slot) {
+                    Text(verbatim: reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer()
             if case .control = slot {
                 Text("control")
@@ -166,6 +180,7 @@ struct DockLayoutEditorView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(slot.isHideable ? slot.editorLabel : "\(slot.editorLabel), control")
+        .accessibilityValue(reasonNotShown(slot) ?? "")
         // A swipe that does nothing is worse than no swipe at all, so the row says why
         // before the user tries it.
         .accessibilityHint(slot.isHideable
@@ -177,6 +192,11 @@ struct DockLayoutEditorView: View {
             }
         }
         .deleteDisabled(!slot.isHideable)
+    }
+
+    /// Why this tile is not on the grid right now, or `nil` when it is.
+    private func reasonNotShown(_ slot: DockSlot) -> String? {
+        appState.homeGridTilePresence.reasonNotShown(for: slot, restricted: adminGate.isRestricted)
     }
 
     /// The speed-dial action behind a slot, when this editor may rewrite it.

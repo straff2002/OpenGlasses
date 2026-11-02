@@ -453,6 +453,40 @@ final class OutboundFrameConsumerTests: XCTestCase {
         }
     }
 
+    // MARK: - The phone camera (Plan KH)
+
+    /// The viewfinder is a preview layer and nothing else: on the roster as local, with no raw tap
+    /// and no still of its own, and the scrape finds no frame reference in it.
+    func testThePhoneViewfinderHoldsNoPixels() throws {
+        let viewfinder = OutboundFrameConsumer.phoneViewfinder
+        XCTAssertEqual(viewfinder.owningType, "PhoneViewfinder")
+        XCTAssertEqual(viewfinder.scope, .onDevicePreview)
+        XCTAssertEqual(viewfinder.scope?.isFiltered, false)
+        XCTAssertEqual(viewfinder.tap, .phonePreviewLayer)
+        XCTAssertEqual(viewfinder.mechanism, .exemptByScope)
+        XCTAssertFalse(OutboundFrameConsumer.typesAllowedOnTheRawCameraTap.contains("PhoneViewfinder"))
+        XCTAssertFalse(OutboundFrameConsumer.typesAllowedOnARawStill.contains("PhoneViewfinder"))
+        XCTAssertTrue(try allHits().filter { $0.file == "PhoneViewfinder.swift" }.isEmpty)
+    }
+
+    /// Phone frames do not pass the blur, so they go to the encoder and nowhere else: a second
+    /// taker of them would be an unfiltered egress nobody argued for.
+    func testPhoneCameraFramesReachOnlyTheEncoder() throws {
+        guard let enumerator = FileManager.default.enumerator(at: Self.sourcesRoot,
+                                                              includingPropertiesForKeys: nil) else {
+            return XCTFail("Could not enumerate sources")
+        }
+        var takers: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let code = try String(contentsOf: url, encoding: .utf8)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.hasPrefix("//") }
+            if code.contains(where: { $0.contains(".claimFrames(") }) { takers.append(url.lastPathComponent) }
+        }
+        XCTAssertEqual(takers, ["BroadcastService.swift"])
+    }
+
     /// Plan GH: the parking sign photo — glasses and phone — is on the roster, filtered at a
     /// chokepoint, and the scraper actually finds its calls under the owning type.
     func testParkingSignPhotosAreFilteredAtTheChokepoint() throws {

@@ -55,7 +55,8 @@ enum GoLiveGuide {
     /// What is true about the phone camera, shown under the steps.
     static var phoneCameraNotes: [String] {
         [
-            String(localized: "If Camera is set to Glasses and none are connected, Go Live uses the phone's back camera instead, unless Blur Bystander Faces is on. The picture doesn't show in the preview."),
+            String(localized: "With no glasses connected, the preview shows the phone camera."),
+            String(localized: "If Camera is set to Glasses and none are connected, Go Live uses the phone's back camera instead, unless Blur Bystander Faces is on."),
             String(localized: "Blur Bystander Faces covers the glasses camera only. It won't blur a stream from the phone camera, and your microphone is streamed either way."),
         ]
     }

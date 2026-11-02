@@ -68,7 +68,8 @@ class BroadcastService: ObservableObject {
     // before/between frames; frames are routed serially).
     @Published private(set) var activeSource: BroadcastVideoSource = .glasses
     private var selector = BroadcastSourceSelector(initial: .glasses)
-    private let phoneVideoSource = PhoneVideoSource()
+    /// Plan KH: not private, because the live preview's viewfinder draws this same session.
+    let phoneVideoSource = PhoneVideoSource()
     nonisolated(unsafe) private var mainSourceMirror: BroadcastVideoSource = .glasses
     nonisolated(unsafe) private var dualCaptureMirror = false
     nonisolated(unsafe) private var latestSecondaryFrame: UIImage?
@@ -547,13 +548,13 @@ class BroadcastService: ObservableObject {
         let phoneWanted = activeSource.isPhone || (dualCaptureMirror && activeSource == .glasses)
         if phoneWanted {
             let position = activeSource.phonePosition ?? .back
-            phoneVideoSource.start(position: position) { [weak self] image in
+            phoneVideoSource.claimFrames(position: position) { [weak self] image in
                 guard let self else { return }
                 let kind: BroadcastVideoSource = position == .front ? .phoneFront : .phoneBack
                 self.handleFrame(image, from: kind)
             }
         } else {
-            phoneVideoSource.stop()
+            phoneVideoSource.releaseFrames()
         }
     }
 
@@ -580,7 +581,7 @@ class BroadcastService: ObservableObject {
         frameSubscription?.cancel()
         frameSubscription = nil
         audioProvider?.removeAudioBufferConsumer(id: Self.audioConsumerId)
-        phoneVideoSource.stop()
+        phoneVideoSource.releaseFrames()
         latestSecondaryFrame = nil
         durationTimer?.invalidate()
         durationTimer = nil
