@@ -167,13 +167,13 @@ struct ServicesSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(ttsEnginePreference.detail)
                     if ttsEnginePreference == .openAI, !openAIVoiceAvailable {
-                        Text("No OpenAI API key is saved. Add an OpenAI model with an API key under \(SettingsCatalog.category(.intelligence).title) to use this voice.")
+                        Text("No OpenAI API key is saved. Add an OpenAI model with an API key under \(SettingsHub.path(to: .intelligence)) to use this voice.")
                     }
                     if ttsEnginePreference == .xai, !xaiVoiceAvailable {
-                        Text("No xAI key or sign-in is saved. Add an xAI model under \(SettingsCatalog.category(.intelligence).title) to use this voice.")
+                        Text("No xAI key or sign-in is saved. Add an xAI model under \(SettingsHub.path(to: .intelligence)) to use this voice.")
                     }
                     if ttsEnginePreference == .gemini, !geminiVoiceAvailable {
-                        Text("No Gemini API key is saved. Add a Gemini model with an API key under \(SettingsCatalog.category(.intelligence).title) to use this voice.")
+                        Text("No Gemini API key is saved. Add a Gemini model with an API key under \(SettingsHub.path(to: .intelligence)) to use this voice.")
                     }
                 }
             }
@@ -511,7 +511,7 @@ struct ServicesSettingsView: View {
                             Text("No Deepgram key is saved. Enter one under Diarization, below — diarization itself doesn't need to be on.")
                         }
                         if asrEnginePreference == .openAI, !openAIDictationKeyPresent {
-                            Text("No OpenAI API key is saved. Add an OpenAI model with an API key under \(SettingsCatalog.category(.intelligence).title) to use it.")
+                            Text("No OpenAI API key is saved. Add an OpenAI model with an API key under \(SettingsHub.path(to: .intelligence)) to use it.")
                         }
                     } else if isCloudDictationLocked {
                         Text("Cloud dictation is off on this phone, so the audio of your questions stays on it.")

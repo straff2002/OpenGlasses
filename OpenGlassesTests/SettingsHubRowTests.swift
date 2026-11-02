@@ -309,7 +309,7 @@ final class SettingsHubRowTests: XCTestCase {
     func testNoStatedPathStartsAtARowThatIsGone() {
         let gone = ["AI & Personality", "Tools & Actions", "Voice & Triggers", "Capture & Streaming",
                     "Display & HUD", "Diagnostics & Support", "Camera, Recording & Streaming",
-                    "AI Models", "Personas", "Services & Integrations", "Custom Vaults"]
+                    "AI Models", "Personas", "Services & Integrations", "Custom Vaults", "My Manuals"]
         let arrows = ["→", "›", ">"]
         for file in Self.appSources() {
             for row in gone {
@@ -321,6 +321,25 @@ final class SettingsHubRowTests: XCTestCase {
             for arrow in arrows {
                 XCTAssertFalse(file.text.contains("Settings \(arrow) Advanced \(arrow)"), file.path)
             }
+        }
+    }
+
+    func testAPathNamesTheRowThenALinkRow() {
+        XCTAssertEqual(Hub.path(to: .voice), "Assistant > Voice & Triggers")
+        XCTAssertEqual(Hub.path(to: .advanced), "Advanced & Support > Advanced")
+        XCTAssertEqual(Hub.path(to: .intelligence), "Assistant")
+        XCTAssertEqual(Hub.path(to: .tools), "Connections")
+        XCTAssertEqual(Hub.path(to: .capture), "Devices & Privacy")
+        XCTAssertEqual(Hub.path(to: .diagnostics), "Advanced & Support")
+        XCTAssertEqual(Hub.path(to: .myManuals), "Everyday > My Manuals")
+        XCTAssertEqual(Hub.path(to: .myManuals, on: fieldPhone), "Field Assist > My Manuals")
+    }
+
+    /// Interpolated paths are not caught by the search above.
+    func testNoPathIsBuiltFromACategoryTitle() {
+        for file in Self.appSources() where file.path != "SettingsHubRow.swift" {
+            XCTAssertFalse(file.text.contains("Settings > \\(SettingsCatalog"), file.path)
+            XCTAssertFalse(file.text.contains("under \\(SettingsCatalog"), file.path)
         }
     }
 

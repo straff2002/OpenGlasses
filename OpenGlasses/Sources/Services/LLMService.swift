@@ -425,7 +425,7 @@ class LLMService: ObservableObject {
             weather: weatherContext,
             job: Config.fieldAssistActive ? FieldSessionService.shared.activeSession.map(AppleOnDeviceInstructions.JobSummary.init(session:)) : nil,
             fieldAssistActive: Config.fieldAssistActive,
-            modelSettingsPath: "Settings > \(SettingsCatalog.category(.intelligence).title)",
+            modelSettingsPath: "Settings > \(SettingsHub.path(to: .intelligence))",
             speakerLine: "The person speaking to you is \(speaker). Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name."))
         if built.memoryDroppedCharacters > 0, let memory = memoryContext {
             MemoryContextRecorder.noteClip(renderedCharacters: max(memory.count - built.memoryDroppedCharacters, 0),

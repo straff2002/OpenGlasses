@@ -112,6 +112,20 @@ enum SettingsHub {
         rows(on: phone).first { $0.children.contains(category) }?.id ?? .advancedSupport
     }
 
+    /// How a category is named in a path after "Settings": its row, then the category itself where
+    /// it is a link row of its own rather than content on the row's page. For the words a person
+    /// reads, and the model repeats, so a path cannot name a row the hub does not draw.
+    static func path(to category: SettingsCategoryID,
+                     on phone: SettingsHubPhone = SettingsHubPhone(fieldAssistOn: false, glassesSupported: true)) -> String {
+        let row = row(home(of: category, on: phone), on: phone).title
+        switch category {
+        case .voice, .advanced, .myManuals:
+            return "\(row) > \(SettingsCatalog.category(category).title)"
+        default:
+            return row
+        }
+    }
+
     // MARK: - What is visible
 
     /// The categories this person can reach. `SettingsVisibilityPolicy` decides, per category; this
