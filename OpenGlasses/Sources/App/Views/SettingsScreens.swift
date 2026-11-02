@@ -351,6 +351,9 @@ struct ToolDefinitionsSettingsSection: View {
 
 struct AIPersonalitySettingsScreen: View {
     @ObservedObject var appState: AppState
+    /// Plan KH P2: this is the hub's Assistant page, so Voice & Triggers is one row at the top. Both
+    /// are too long to share a page, and the models are what most people come here for.
+    var showsVoiceLink = false
     /// Plan HA C4: a page whose only control the organisation pinned is not linked.
     @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("activePromptPresetId") private var activePresetId = "preset-default"
@@ -373,6 +376,16 @@ struct AIPersonalitySettingsScreen: View {
 
     var body: some View {
         Form {
+            if showsVoiceLink {
+                Section {
+                    NavigationLink {
+                        SettingsCategoryScreen(appState: appState, id: .voice)
+                    } label: {
+                        SettingsLinkLabel(.voice)
+                    }
+                }
+            }
+
             // MARK: AI Models
             Section {
                 ForEach(modelConfigs) { model in
@@ -549,7 +562,7 @@ struct AIPersonalitySettingsScreen: View {
             ToolDefinitionsSettingsSection(presentation: adminGate.presentation(.key(.organizationToolDefinitionsMode)))
 
         }
-        .navigationTitle("AI & Personality")
+        .navigationTitle(showsVoiceLink ? String(localized: "Assistant") : String(localized: "AI & Personality"))
         .ogFormStyle()
         .sheet(item: $editingModel) { model in
             ModelEditorView(model: model) { updated in
@@ -719,163 +732,172 @@ struct AIPersonalitySettingsScreen: View {
 /// Tools the AI can use (owner-only; hidden in Simple Mode).
 struct ToolsActionsSettingsScreen: View {
     @ObservedObject var appState: AppState
+
+    var body: some View {
+        Form {
+            ToolsActionsSections(appState: appState)
+        }
+        .navigationTitle("Tools & Actions")
+        .ogFormStyle()
+    }
+}
+
+/// The section itself, which Connections draws on its own page (Plan KH P2).
+struct ToolsActionsSections: View {
+    @ObservedObject var appState: AppState
     /// Plan HA C4: a page whose only control the organisation pinned is not linked.
     @ObservedObject private var adminGate = AdminGate.shared
 
     var body: some View {
-        Form {
-            Section {
-                NavigationLink {
-                    QuickActionsSettingsView()
-                        .environmentObject(appState)
-                } label: {
-                    Label("Quick Actions", systemImage: "dial.high")
-                }
-
-                NavigationLink {
-                    ToolsSettingsView(appState: appState)
-                } label: {
-                    Label("Tools", systemImage: "wrench.and.screwdriver")
-                }
-
-                // Field Assist moved to its own row on the hub (Plan HA).
-
-                NavigationLink {
-                    VaultManagerView()
-                } label: {
-                    Label("Custom Vaults", systemImage: "tray.full")
-                }
-
-                NavigationLink {
-                    VaultFilesEditorView(vaultId: "notes", title: String(localized: "Personal Notes"))
-                } label: {
-                    Label("Personal Notes", systemImage: "note.text")
-                }
-
-                NavigationLink {
-                    DeckListView()
-                } label: {
-                    Label("Study Mode", systemImage: "graduationcap")
-                }
-
-                NavigationLink {
-                    ReadingStatsView()
-                } label: {
-                    Label("Reading", systemImage: "book")
-                }
-
-                NavigationLink {
-                    HealthVaultEditorView()
-                } label: {
-                    HStack {
-                        Label("Health Vault", systemImage: "heart.text.square")
-                        Spacer()
-                        if VaultRegistry.shared.isUnlocked("health") {
-                            Text("Unlocked").foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                // Accessibility is its own row on the hub, pinned: assistive features are free
-                // forever and must never be reachable only through a category that Simple Mode
-                // hides outright, or an organisation locks.
-
-                NavigationLink {
-                    CustomToolsView()
-                        .environmentObject(appState)
-                } label: {
-                    Label("Custom Tools", systemImage: "hammer")
-                }
-
-                NavigationLink {
-                    SkillPacksSettingsView()
-                        .environmentObject(appState)
-                } label: {
-                    HStack {
-                        Label("Skill Packs", systemImage: "shippingbox")
-                        Spacer()
-                        if !appState.skillPackStore.installedPacks.isEmpty {
-                            Text("\(appState.skillPackStore.installedPacks.count) installed")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    SiriExposureView()
-                } label: {
-                    Label("Siri & Search", systemImage: "mic.badge.plus")
-                }
-
-                if Config.agentModeEnabled, adminGate.presentation(.key(.mcpServerEnabled)).isShown {
-                    NavigationLink {
-                        MCPServerSettingsView()
-                            .environmentObject(appState)
-                    } label: {
-                        HStack {
-                            Label("MCP Server", systemImage: "macbook.and.iphone")
-                            Spacer()
-                            if !LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses) {
-                                Text("Unavailable").foregroundStyle(.secondary)
-                            } else if MCPGlassesServer.shared.isRunning {
-                                Text("Running").foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    PlaybooksSettingsView(store: appState.playbookStore)
-                } label: {
-                    Label("Playbooks", systemImage: "list.clipboard")
-                }
-
-                NavigationLink {
-                    ClawHubBrowserView()
-                } label: {
-                    HStack {
-                        Label("Skill Store", systemImage: "square.grid.3x3.square")
-                        Spacer()
-                        let count = InstalledSkillStore.shared.installedSkills.filter(\.enabled).count
-                        if count > 0 {
-                            Text("\(count) active")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    VoiceSkillsManagerView()
-                } label: {
-                    Label("Voice Skills", systemImage: "waveform")
-                }
-
-                if Config.agentModeEnabled {
-                    NavigationLink {
-                        SuggestedSkillsView()
-                    } label: {
-                        HStack {
-                            Label("Suggested Skills", systemImage: "lightbulb.max")
-                            Spacer()
-                            let count = EvolvedSkillStore.shared.pending().count
-                            if count > 0 {
-                                Text("\(count)")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(OGTheme.onBadge)
-                                    .padding(.horizontal, 7).padding(.vertical, 2)
-                                    .background(Capsule().fill(OGTheme.badge))
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("Tools the AI Can Use")
-            } footer: {
-                Text("Quick Actions are shortcuts you can tap from the widget. Tools are built-in capabilities (camera, search, HomeKit, music…). Custom Tools and Playbooks let you script your own. The Skill Store adds community-built skills.")
+        Section {
+            NavigationLink {
+                QuickActionsSettingsView()
+                    .environmentObject(appState)
+            } label: {
+                Label("Quick Actions", systemImage: "dial.high")
             }
+
+            NavigationLink {
+                ToolsSettingsView(appState: appState)
+            } label: {
+                Label("Tools", systemImage: "wrench.and.screwdriver")
+            }
+
+            // Field Assist moved to its own row on the hub (Plan HA).
+
+            NavigationLink {
+                VaultManagerView()
+            } label: {
+                Label("Custom Vaults", systemImage: "tray.full")
+            }
+
+            NavigationLink {
+                VaultFilesEditorView(vaultId: "notes", title: String(localized: "Personal Notes"))
+            } label: {
+                Label("Personal Notes", systemImage: "note.text")
+            }
+
+            NavigationLink {
+                DeckListView()
+            } label: {
+                Label("Study Mode", systemImage: "graduationcap")
+            }
+
+            NavigationLink {
+                ReadingStatsView()
+            } label: {
+                Label("Reading", systemImage: "book")
+            }
+
+            NavigationLink {
+                HealthVaultEditorView()
+            } label: {
+                HStack {
+                    Label("Health Vault", systemImage: "heart.text.square")
+                    Spacer()
+                    if VaultRegistry.shared.isUnlocked("health") {
+                        Text("Unlocked").foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            // Accessibility is its own row on the hub, pinned: assistive features are free
+            // forever and must never be reachable only through a category that Simple Mode
+            // hides outright, or an organisation locks.
+
+            NavigationLink {
+                CustomToolsView()
+                    .environmentObject(appState)
+            } label: {
+                Label("Custom Tools", systemImage: "hammer")
+            }
+
+            NavigationLink {
+                SkillPacksSettingsView()
+                    .environmentObject(appState)
+            } label: {
+                HStack {
+                    Label("Skill Packs", systemImage: "shippingbox")
+                    Spacer()
+                    if !appState.skillPackStore.installedPacks.isEmpty {
+                        Text("\(appState.skillPackStore.installedPacks.count) installed")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            NavigationLink {
+                SiriExposureView()
+            } label: {
+                Label("Siri & Search", systemImage: "mic.badge.plus")
+            }
+
+            if Config.agentModeEnabled, adminGate.presentation(.key(.mcpServerEnabled)).isShown {
+                NavigationLink {
+                    MCPServerSettingsView()
+                        .environmentObject(appState)
+                } label: {
+                    HStack {
+                        Label("MCP Server", systemImage: "macbook.and.iphone")
+                        Spacer()
+                        if !LocalServiceExposurePolicy.current.permitsListener(for: .mcpGlasses) {
+                            Text("Unavailable").foregroundStyle(.secondary)
+                        } else if MCPGlassesServer.shared.isRunning {
+                            Text("Running").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            NavigationLink {
+                PlaybooksSettingsView(store: appState.playbookStore)
+            } label: {
+                Label("Playbooks", systemImage: "list.clipboard")
+            }
+
+            NavigationLink {
+                ClawHubBrowserView()
+            } label: {
+                HStack {
+                    Label("Skill Store", systemImage: "square.grid.3x3.square")
+                    Spacer()
+                    let count = InstalledSkillStore.shared.installedSkills.filter(\.enabled).count
+                    if count > 0 {
+                        Text("\(count) active")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            NavigationLink {
+                VoiceSkillsManagerView()
+            } label: {
+                Label("Voice Skills", systemImage: "waveform")
+            }
+
+            if Config.agentModeEnabled {
+                NavigationLink {
+                    SuggestedSkillsView()
+                } label: {
+                    HStack {
+                        Label("Suggested Skills", systemImage: "lightbulb.max")
+                        Spacer()
+                        let count = EvolvedSkillStore.shared.pending().count
+                        if count > 0 {
+                            Text("\(count)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(OGTheme.onBadge)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(Capsule().fill(OGTheme.badge))
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Tools the AI Can Use")
+        } footer: {
+            Text("Quick Actions are shortcuts you can tap from the widget. Tools are built-in capabilities (camera, search, HomeKit, music…). Custom Tools and Playbooks let you script your own. The Skill Store adds community-built skills.")
         }
-        .navigationTitle("Tools & Actions")
-        .ogFormStyle()
     }
 }
 
@@ -887,53 +909,62 @@ struct ConnectionsSettingsScreen: View {
 
     var body: some View {
         Form {
-            // The Apple apps on this phone, and My Day (Plan HA: this was the hub's "Works with
-            // your iPhone" row — a connection to the apps you already have).
-            Section {
-                NavigationLink {
-                    AppleIntegrationsSettingsScreen()
-                } label: {
-                    Label("Works with your iPhone", systemImage: "iphone.gen3")
-                }
-            } footer: {
-                Text("Home, Calendar, Reminders, Contacts, Music, Maps and Alarms.")
-            }
-
-            Section {
-                NavigationLink {
-                    ServicesSettingsView(appState: appState)
-                } label: {
-                    Label("Services & Integrations", systemImage: "square.grid.2x2")
-                }
-
-                NavigationLink {
-                    GatewaySettingsView(appState: appState)
-                } label: {
-                    HStack {
-                        Label("Gateways", systemImage: "server.rack")
-                        Spacer()
-                        let count = Config.enabledGateways.count
-                        if count > 0 {
-                            Text("\(count) active")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    MCPServersView()
-                        .environmentObject(appState)
-                } label: {
-                    Label("MCP Servers", systemImage: "point.3.connected.trianglepath.dotted")
-                }
-            } header: {
-                Text("Connected Apps & Services")
-            } footer: {
-                Text("Cloud voices (ElevenLabs, OpenAI, xAI), web search, broadcast targets, and live-streaming live under Services. Gateways connect the app to external agents — OpenClaw tool bridges and Hermes Agent. MCP Servers expose external tool servers the AI can call.")
-            }
+            ConnectionsSections(appState: appState)
         }
         .navigationTitle("Connections")
         .ogFormStyle()
+    }
+}
+
+/// The sections themselves, drawn with Tools & Actions on the hub's Connections page (Plan KH P2).
+struct ConnectionsSections: View {
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        // The Apple apps on this phone, and My Day (Plan HA: this was the hub's "Works with
+        // your iPhone" row — a connection to the apps you already have).
+        Section {
+            NavigationLink {
+                AppleIntegrationsSettingsScreen()
+            } label: {
+                Label("Works with your iPhone", systemImage: "iphone.gen3")
+            }
+        } footer: {
+            Text("Home, Calendar, Reminders, Contacts, Music, Maps and Alarms.")
+        }
+
+        Section {
+            NavigationLink {
+                ServicesSettingsView(appState: appState)
+            } label: {
+                Label("Services & Integrations", systemImage: "square.grid.2x2")
+            }
+
+            NavigationLink {
+                GatewaySettingsView(appState: appState)
+            } label: {
+                HStack {
+                    Label("Gateways", systemImage: "server.rack")
+                    Spacer()
+                    let count = Config.enabledGateways.count
+                    if count > 0 {
+                        Text("\(count) active")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            NavigationLink {
+                MCPServersView()
+                    .environmentObject(appState)
+            } label: {
+                Label("MCP Servers", systemImage: "point.3.connected.trianglepath.dotted")
+            }
+        } header: {
+            Text("Connected Apps & Services")
+        } footer: {
+            Text("Cloud voices (ElevenLabs, OpenAI, xAI), web search, broadcast targets, and live-streaming live under Services. Gateways connect the app to external agents — OpenClaw tool bridges and Hermes Agent. MCP Servers expose external tool servers the AI can call.")
+        }
     }
 }
 
@@ -946,6 +977,9 @@ struct ConnectionsSettingsScreen: View {
 /// rows stay open and the rest are not shown to the technician (Plan HA C2, C4).
 struct GlassesPrivacySettingsScreen: View {
     @ObservedObject var appState: AppState
+    /// Plan KH P2: the other categories the hub's row shows on this page, in order. This screen
+    /// keeps the page because its saved state and `onDisappear` belong to the Form, not a section.
+    var alsoShows: [SettingsCategoryID] = []
     @ObservedObject private var adminGate = AdminGate.shared
     @AppStorage("hipaaMode") private var hipaaMode = false
 
@@ -1064,6 +1098,10 @@ struct GlassesPrivacySettingsScreen: View {
                 } footer: {
                     Text("One page for the camera picture, what you say, the answer, the voice you hear and any tools running on other machines — each with the destination your settings send it to. It names a mixed setup as mixed, and lists anything that still has to be downloaded before the app could work offline. It describes intended routing; Network Activity, under Advanced, is the separate record of requests the app actually observed.")
                 }
+            }
+
+            ForEach(alsoShows, id: \.self) { category in
+                SettingsInlineSections(appState: appState, category: category)
             }
         }
         .navigationTitle("Devices & Privacy")

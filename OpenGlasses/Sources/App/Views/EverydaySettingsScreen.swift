@@ -46,6 +46,26 @@ struct EverydaySettingsScreen: View {
 
     var body: some View {
         Form {
+            // Plan KH P2: not on the one-group page Devices & Privacy opens.
+            if only == nil {
+                Section {
+                    NavigationLink {
+                        ThingsToTryView().environmentObject(appState)
+                    } label: {
+                        SettingsLinkLabel(title: String(localized: "Things to Try"),
+                                          subtitle: String(localized: "Ideas for what to do with it"),
+                                          icon: "sparkles")
+                    }
+                    if SettingsHub.showsMyManuals(on: .everyday) {
+                        NavigationLink {
+                            MyManualsView().environmentObject(appState)
+                        } label: {
+                            SettingsLinkLabel(.myManuals)
+                        }
+                    }
+                }
+            }
+
             ForEach(groups, id: \.self) { id in
                 let state = SettingsGroupStore.state(of: id, in: context)
                 if state.isDrawn {
@@ -200,7 +220,7 @@ struct EverydaySettingsScreen: View {
                 }
             }
         case .scheduledTasks:
-            // Still gated by Agentic Features, which stays on AI & Personality, on its own.
+            // Still gated by Agentic Features, which stays on the Assistant page, on its own.
             if Config.agentModeEnabled {
                 NavigationLink {
                     ScheduledTasksView()
@@ -214,7 +234,7 @@ struct EverydaySettingsScreen: View {
                 } label: {
                     Label("Scheduled Tasks", systemImage: "clock.arrow.2.circlepath")
                 }
-                .accessibilityHint("Turn on Agentic Features under AI & Personality to use this.")
+                .accessibilityHint("Turn on Agentic Features under Assistant to use this.")
             }
         case .navigation:
             NavigationLink {

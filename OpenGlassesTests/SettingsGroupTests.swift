@@ -497,6 +497,17 @@ final class SettingsGroupTests: XCTestCase {
         XCTAssertTrue(source.contains("it sends the words it heard to your AI provider, OpenAI or Groq"))
     }
 
+    /// The Things to Try and My Manuals rows open Everyday, and the one-group page has neither.
+    func testTheOneGroupPageIsOnlyThatGroup() throws {
+        let source = try String(contentsOf: SettingsHubTests.repoRoot.appendingPathComponent(
+            "OpenGlasses/Sources/App/Views/EverydaySettingsScreen.swift"), encoding: .utf8)
+        let guardLine = try XCTUnwrap(source.range(of: "if only == nil {"))
+        let things = try XCTUnwrap(source.range(of: "ThingsToTryView()"))
+        let groups = try XCTUnwrap(source.range(of: "ForEach(groups"))
+        XCTAssertLessThan(guardLine.lowerBound, things.lowerBound)
+        XCTAssertLessThan(things.lowerBound, groups.lowerBound, "Things to Try is the first row")
+    }
+
     func testBlurBystanderFacesStaysUnderDevicesAndPrivacy() throws {
         XCTAssertEqual(try files(drawing: "BystanderBlurSwitch(appState: appState)").sorted(),
                        ["ServicesSettingsView.swift", "SettingsView.swift"])

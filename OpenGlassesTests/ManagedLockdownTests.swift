@@ -148,6 +148,25 @@ final class ManagedLockdownTests: XCTestCase {
         ])
     }
 
+    // MARK: - The hub's rows
+
+    /// Plan KH P2: a profile names categories, and the rows are nothing it can name.
+    func testAProfileNamingARowIsADrop() {
+        let (lockdown, drops) = ManagedLockdown.resolve(.init(open: ["assistant", "devicesPrivacy"]))
+        XCTAssertEqual(lockdown, .standard)
+        XCTAssertEqual(drops.map(\.key), ["lockdown.open", "lockdown.open"])
+    }
+
+    func testOpeningOneCategoryOfARowShowsThatCategoryAlone() throws {
+        let (lockdown, _) = ManagedLockdown.resolve(.init(open: ["voice", "capture"]))
+        let context = ManagedSettingsContext(managed: true, lockdown: lockdown, restricted: true, lockedKeys: [])
+        let rows = SettingsHub.visibleRows(simpleMode: false, in: context,
+                                           on: SettingsHubPhone(fieldAssistOn: false, glassesSupported: true))
+        XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .assistant }).page, .category(.voice))
+        XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .devicesPrivacy }).page, .merged([.devices, .capture]))
+        XCTAssertNil(rows.first { $0.id == .connections })
+    }
+
     // MARK: - Tools, clamped on read
 
     func testClosedToolsAreOffForEveryReaderAndTheStoredListIsKept() {

@@ -27,18 +27,20 @@ struct SettingsView: View {
     @State private var entryGate = OwnerGateMachine()
 
     // The individual settings live in per-category screens (SettingsScreens.swift and
-    // SettingsCategoryScreens.swift); this view is the hub (Plan HA): the hero device card,
-    // every category in `SettingsCatalog` order, then Simple Mode and About.
+    // SettingsCategoryScreens.swift); this view is the hub (Plan HA): the hero device card, the
+    // eight rows of `SettingsHub` (Plan KH P2), then Simple Mode and About.
     //
-    // Simple Mode filters the owner-configuration rows out. On a managed phone, a category the
-    // organisation locked whole is not shown to the technician either (Plan HA C4,
-    // `SettingsVisibilityPolicy`) — the Organisation section says so, and an administrator session
-    // shows it again.
+    // A row draws categories together and decides nothing about them. Simple Mode filters the
+    // owner-configuration categories out. On a managed phone, a category the organisation locked
+    // whole is not shown to the technician either (Plan HA C4, `SettingsVisibilityPolicy`) — the
+    // Organisation section says so, and an administrator session shows it again.
 
     private var visibleCategories: [SettingsCategory] {
-        SettingsVisibilityPolicy.hubCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext)
-            .filter { $0.id != .myManuals || !adminGate.isRestricted }
-            .filter { GlassesSupportPolicy.isSupported || $0.id != .display }
+        SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current)
+    }
+
+    private var visibleRows: [SettingsHub.VisibleRow] {
+        SettingsHub.visibleRows(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current)
     }
 
     private var organization: String { ManagedLockReason.organization }
@@ -85,9 +87,9 @@ struct SettingsView: View {
             OrgAdministratorSection(gate: adminGate, manager: orgProfile)
 
             OGSection {
-                ForEach(Array(visibleCategories.enumerated()), id: \.element.id) { index, category in
+                ForEach(Array(visibleRows.enumerated()), id: \.element.id) { index, row in
                     if index > 0 { OGDivider() }
-                    categoryRow(category)
+                    hubRow(row)
                 }
             }
 
@@ -98,15 +100,18 @@ struct SettingsView: View {
                 simpleModeSection
             }
 
-            // Plan KH P1: a row beside About, not a category. Scenarios are not settings, and a
-            // category id is a profile's to name.
-            OGSection {
-                NavigationLink {
-                    ThingsToTryView()
-                } label: {
-                    ThingsToTryRow()
+            // Plan KH P1: not a category. Scenarios are not settings, and a category id is a
+            // profile's to name. Plan KH P2: the first row of Everyday, and a row here only where
+            // Everyday's screen cannot be reached.
+            if SettingsHub.thingsToTryPlace(visible: visibleCategories) == .besideAbout {
+                OGSection {
+                    NavigationLink {
+                        ThingsToTryView()
+                    } label: {
+                        ThingsToTryRow()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             OGSection(
@@ -171,7 +176,7 @@ struct SettingsView: View {
         // through the same lock wrapper its hub row uses, and held while the Lock Settings cover is
         // up: the cover sits over this view, not over what is pushed on top of it.
         .navigationDestination(item: $openedCategory) { id in
-            lockedDestination(for: id, lock: adminGate.lock(id))
+            SettingsCategoryScreen(appState: appState, id: id)
         }
         .onChange(of: appState.requestedSettingsCategory, initial: true) { _, _ in
             openRequestedCategory()
@@ -187,8 +192,8 @@ struct SettingsView: View {
         // Simple Mode hides the owner's configuration from the hub, and an organisation's lockdown
         // hides what it locked (Plan HA C4); a shortcut is not a way round either. The hub itself
         // is where the request lands instead.
-        guard visibleCategories.contains(where: { $0.id == requested }) else { return }
-        openedCategory = requested
+        guard case .category(let id) = SettingsHub.route(requested, visible: visibleCategories) else { return }
+        openedCategory = id
     }
 
     // MARK: - Simple Mode
@@ -226,37 +231,28 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Category rendering
+    // MARK: - Row rendering
 
-    /// One hub row. A category the organisation locked whole never gets here (`visibleCategories`);
-    /// a partly open one is a normal row, and its screen leaves out the rows that are locked.
+    /// One hub row. A category the organisation locked whole never gets here (`visibleRows`); a
+    /// partly open one is a normal row, and its screen leaves out the rows that are locked.
     @ViewBuilder
-    private func categoryRow(_ category: SettingsCategory) -> some View {
-        let lock = adminGate.lock(category.id)
-        categoryLink(destination: lockedDestination(for: category.id, lock: lock)) {
+    private func hubRow(_ row: SettingsHub.VisibleRow) -> some View {
+        categoryLink(destination: SettingsHubRowScreen(appState: appState, row: row.id)) {
             OGRow(
-                category.title,
-                icon: category.icon,
-                mutedIcon: category.mutedIcon,
-                subtitle: category.id == .devices && !GlassesSupportPolicy.isSupported
-                    ? String(localized: "Hardware, privacy, and medical compliance") : category.subtitle,
-                value: summary(for: category.id),
+                row.title,
+                icon: row.row.icon,
+                mutedIcon: row.row.mutedIcon,
+                subtitle: rowSubtitle(row),
+                value: summary(for: row.summaryCategory),
                 alwaysStacksValue: true
             )
         }
     }
 
-    @ViewBuilder
-    private func lockedDestination(for id: SettingsCategoryID, lock: CategoryLock) -> some View {
-        switch lock {
-        case .open, .partlyOpen:
-            // A partly open screen asks `AdminGate` per row and leaves the locked ones out.
-            destination(for: id)
-        case .locked:
-            // Reached only when the lock changed under an open screen (an administrator session
-            // ending); the screen's own controls are never built.
-            ManagedHiddenScreen(organization: organization)
-        }
+    /// A copy without glasses says hardware where Devices & Privacy is the only category showing.
+    private func rowSubtitle(_ row: SettingsHub.VisibleRow) -> String {
+        row.children.map(\.id) == [.devices] && !GlassesSupportPolicy.isSupported
+            ? String(localized: "Hardware, privacy, and medical compliance") : row.subtitle
     }
 
     /// The hero card's glasses status, from the link's phase.
@@ -291,42 +287,6 @@ struct SettingsView: View {
         }
     }
 
-    /// Every category's screen. Exhaustive on purpose: a category added to `SettingsCategoryID`
-    /// does not compile until it has somewhere to go.
-    @ViewBuilder
-    private func destination(for id: SettingsCategoryID) -> some View {
-        switch id {
-        case .intelligence:
-            AIPersonalitySettingsScreen(appState: appState)
-        case .voice:
-            VoiceTriggersSettingsScreen(appState: appState)
-        case .everyday:
-            EverydaySettingsScreen(appState: appState)
-        case .devices:
-            GlassesPrivacySettingsScreen(appState: appState)
-        case .accessibility:
-            AccessibilitySettingsView().environmentObject(appState)
-        case .fieldAssist:
-            FieldAssistSettingsView().environmentObject(appState)
-        case .myManuals:
-            MyManualsView().environmentObject(appState)
-        case .lookAndFeel:
-            LookFeelSettingsScreen()
-        case .tools:
-            ToolsActionsSettingsScreen(appState: appState)
-        case .connections:
-            ConnectionsSettingsScreen(appState: appState)
-        case .capture:
-            CaptureStreamingSettingsScreen(appState: appState)
-        case .display:
-            DisplayHUDSettingsScreen(appState: appState)
-        case .advanced:
-            AdvancedSettingsScreen(appState: appState)
-        case .diagnostics:
-            DiagnosticsSupportView(appState: appState)
-        }
-    }
-
     /// The Look & Feel row's value: the stored appearance (`system`/`light`/`dark`) in words.
     private var appearanceName: String {
         switch appearance {
@@ -345,8 +305,6 @@ struct SettingsView: View {
     private var displayedActiveModelName: String? {
         Config.savedModels.first { $0.id == activeModelId }?.name ?? Config.activeModel?.name
     }
-
-    // MARK: - Category Row
 
     /// A hub row wrapped in a plain-styled NavigationLink — outside a List,
     /// the link adds no chrome of its own, so `OGRow` supplies the chevron.
@@ -939,7 +897,7 @@ struct HardwarePrivacyView: View {
                 InfoStatusRow(
                     title: "Glasses Analytics",
                     status: MetaTelemetryBlock.disclosureState.summary,
-                    info: "Avenkin has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Diagnostics & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
+                    info: "Avenkin has no analytics or crash-reporting service of its own: no developer backend, no account, so the app never sends us usage data or crash reports. Apple can, in TestFlight builds or if you turn on Share with App Developers in iOS. The glasses SDK does collect its own — connection sessions, camera streams, permission checks, crashes — and uploads them to Meta. This app opts out and additionally blocks those uploads from leaving your phone; there is nothing to turn on. This row says Off when nothing has ever had to be stopped, and Blocked if an upload was attempted anyway — the self-test in Advanced & Support shows how many. Pairing still contacts Meta once to verify the app is allowed to talk to your glasses, which is what makes the connection work and carries no usage data."
                 )
             } header: {
                 Text("Privacy")

@@ -188,6 +188,21 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         XCTAssertEqual(Policy.presentation(.category(.everyday), in: .unmanaged), .editable)
     }
 
+    /// Plan KH P2: the rows are drawing. A row never shows what this policy hid, and what it lists
+    /// as hidden is still named by category.
+    func testTheRowsShowOnlyWhatThePolicyShows() {
+        let phone = SettingsHubPhone(fieldAssistOn: false, glassesSupported: true)
+        for context in [ManagedSettingsContext.unmanaged, technician(), administrator(), ceilingsOnly([.agentModeEnabled])] {
+            for simpleMode in [false, true] {
+                let policy = Policy.hubCategories(simpleMode: simpleMode, in: context).map(\.id)
+                let drawn = SettingsHub.visibleRows(simpleMode: simpleMode, in: context, on: phone)
+                    .flatMap(\.children).map(\.id)
+                XCTAssertEqual(Set(drawn), Set(policy).subtracting(context.restricted ? [.myManuals] : []))
+            }
+        }
+        XCTAssertTrue(Policy.hiddenSummary(in: technician()).contains("Capture & Streaming"))
+    }
+
     func testTheHubSaysSomethingIsHiddenAndThePageNamesIt() {
         XCTAssertTrue(Policy.hidesSettings(in: technician()))
         XCTAssertEqual(Policy.hiddenSummary(in: technician()), [

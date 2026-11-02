@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Settings → Diagnostics & Support: the self-test and the bug-report path.
+/// Settings → Advanced & Support: the self-test and the bug-report path.
 ///
 /// Deliberately a top-level category rather than a page inside Advanced, because
 /// Simple Mode hides Advanced — and the wearers most likely to need diagnostics are
@@ -9,6 +9,9 @@ import UIKit
 /// report the wearer reads in full before any of it leaves the device.
 struct DiagnosticsSupportView: View {
     @ObservedObject var appState: AppState
+    /// Plan KH P2: this is the hub's Advanced & Support page, so Advanced is one row at the top.
+    /// This page is too long to share, and it is the one a wearer needs in a hurry.
+    private let showsAdvancedLink: Bool
     @StateObject private var runner: SubsystemTestRunner
     @Environment(\.appAccent) private var accent
 
@@ -19,8 +22,9 @@ struct DiagnosticsSupportView: View {
     /// Where support reports go. Empty means the developer's support address.
     @AppStorage("supportReportEmail") private var supportEmail: String = ""
 
-    init(appState: AppState) {
+    init(appState: AppState, showsAdvancedLink: Bool = false) {
         self.appState = appState
+        self.showsAdvancedLink = showsAdvancedLink
         _runner = StateObject(wrappedValue: SubsystemProbes.makeRunner(appState: appState))
     }
 
@@ -30,6 +34,19 @@ struct DiagnosticsSupportView: View {
                 text: "Nothing is ever sent on its own. A report is built only when you ask for one, and you see every line of it before you share it.",
                 systemImage: "hand.raised"
             )
+
+            if showsAdvancedLink {
+                OGSection {
+                    NavigationLink {
+                        SettingsCategoryScreen(appState: appState, id: .advanced)
+                    } label: {
+                        let advanced = SettingsCatalog.category(.advanced)
+                        OGRow(advanced.title, icon: advanced.icon, mutedIcon: advanced.mutedIcon,
+                              subtitle: advanced.subtitle)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             OGSection(
                 header: "Send to Support",
@@ -167,7 +184,7 @@ struct DiagnosticsSupportView: View {
                 .buttonStyle(.plain)
             }
         }
-        .navigationTitle("Diagnostics & Support")
+        .navigationTitle(showsAdvancedLink ? String(localized: "Advanced & Support") : String(localized: "Diagnostics & Support"))
         .tint(accent)
         .sheet(isPresented: $showingReport) {
             if let report {

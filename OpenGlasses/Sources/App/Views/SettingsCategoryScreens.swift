@@ -155,54 +155,63 @@ struct CaptureStreamingSettingsScreen: View {
 
     var body: some View {
         Form {
-            Section {
-                NavigationLink {
-                    RecordingsView(
-                        store: appState.recordedSessionStore,
-                        controller: appState.sessionRecorder,
-                        audioRecorder: appState.audioRecorder
-                    )
-                } label: {
-                    HStack {
-                        Label("Recordings", systemImage: "waveform")
-                        Spacer()
-                        if appState.sessionRecorder.isRecording {
-                            OGStatusLabel("Recording", kind: .error, systemImage: "record.circle")
-                        }
-                    }
-                }
-
-                NavigationLink {
-                    MeetingRecordsView()
-                } label: {
-                    Label("Meeting Records", systemImage: "text.book.closed")
-                }
-            } header: {
-                Text("What You Keep")
-            } footer: {
-                Text("Finished recordings with playback and transcripts, and the summaries the Meeting Summary tool saves.")
-            }
-
-            Section {
-                NavigationLink {
-                    ServicesSettingsView(appState: appState)
-                } label: {
-                    HStack {
-                        Label("Camera, Recording & Streaming", systemImage: "dot.radiowaves.left.and.right")
-                        Spacer()
-                        if Config.isBroadcastConfigured {
-                            OGStatusLabel("Ready", kind: .ok)
-                        }
-                    }
-                }
-            } header: {
-                Text("Going Live")
-            } footer: {
-                Text("Capture quality, where recordings are copied, your streaming platform and key, and chat read-aloud — the assistant speaking your live chat into your ear — all live under Services.")
-            }
+            CaptureStreamingSections(appState: appState)
         }
         .navigationTitle("Capture & Streaming")
         .ogFormStyle()
+    }
+}
+
+/// The sections themselves, which Devices & Privacy draws on its own page (Plan KH P2).
+struct CaptureStreamingSections: View {
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        Section {
+            NavigationLink {
+                RecordingsView(
+                    store: appState.recordedSessionStore,
+                    controller: appState.sessionRecorder,
+                    audioRecorder: appState.audioRecorder
+                )
+            } label: {
+                HStack {
+                    Label("Recordings", systemImage: "waveform")
+                    Spacer()
+                    if appState.sessionRecorder.isRecording {
+                        OGStatusLabel("Recording", kind: .error, systemImage: "record.circle")
+                    }
+                }
+            }
+
+            NavigationLink {
+                MeetingRecordsView()
+            } label: {
+                Label("Meeting Records", systemImage: "text.book.closed")
+            }
+        } header: {
+            Text("What You Keep")
+        } footer: {
+            Text("Finished recordings with playback and transcripts, and the summaries the Meeting Summary tool saves.")
+        }
+
+        Section {
+            NavigationLink {
+                ServicesSettingsView(appState: appState)
+            } label: {
+                HStack {
+                    Label("Camera, Recording & Streaming", systemImage: "dot.radiowaves.left.and.right")
+                    Spacer()
+                    if Config.isBroadcastConfigured {
+                        OGStatusLabel("Ready", kind: .ok)
+                    }
+                }
+            }
+        } header: {
+            Text("Going Live")
+        } footer: {
+            Text("Capture quality, where recordings are copied, your streaming platform and key, and chat read-aloud — the assistant speaking your live chat into your ear — all live under Services.")
+        }
     }
 }
 
@@ -212,6 +221,19 @@ struct CaptureStreamingSettingsScreen: View {
 /// and everything that draws on it.
 struct DisplayHUDSettingsScreen: View {
     @ObservedObject var appState: AppState
+
+    var body: some View {
+        Form {
+            DisplayHUDSections(appState: appState)
+        }
+        .navigationTitle("Display & HUD")
+        .ogFormStyle()
+    }
+}
+
+/// The sections themselves, which Devices & Privacy draws on its own page (Plan KH P2).
+struct DisplayHUDSections: View {
+    @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
 
@@ -220,84 +242,80 @@ struct DisplayHUDSettingsScreen: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                InfoToggle(
-                    title: "Glasses Display (HUD)",
-                    isOn: Binding(
-                        get: { Config.glassesDisplayEnabled },
-                        set: { newValue in
-                            Config.setGlassesDisplayEnabled(newValue)
-                            if !newValue {
-                                Task { await appState.glassesDisplay.shutdown() }
-                            }
-                        }
-                    ),
-                    info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). Ray-Ban Display glasses only — no effect on glasses without a built-in display."
-                )
-                InfoToggle(
-                    title: "HUD Choice Buttons",
-                    isOn: Binding(
-                        get: { Config.hudChoiceButtonsEnabled },
-                        set: { Config.setHudChoiceButtonsEnabled($0) }
-                    ),
-                    info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
-                )
-            } header: {
-                Text("In-Lens Display")
-            } footer: {
-                Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
-            }
-
-            Section {
-                NavigationLink {
-                    HUDMirrorView(router: appState.hudRouter)
-                } label: {
-                    Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
-                }
-
-                NavigationLink {
-                    EvenDisplaySettingsView()
-                } label: {
-                    HStack {
-                        Label("Display Backend", systemImage: "display")
-                        Spacer()
-                        Text(displayedDisplayBackendName)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                NavigationLink {
-                    WebHUDMirrorSettingsView()
-                } label: {
-                    HStack {
-                        Label("Web HUD Mirror", systemImage: "globe.desk")
-                        Spacer()
-                        Text(LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
-                             ? (hudMirrorEnabled ? "On" : "Off") : "Unavailable")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                NavigationLink {
-                    TeleprompterSettingsView(service: appState.teleprompterService,
-                                             store: appState.teleprompterStore)
-                } label: {
-                    HStack {
-                        Label("Teleprompter", systemImage: "text.alignleft")
-                        Spacer()
-                        if appState.teleprompterService.isActive {
-                            OGStatusLabel("Running", kind: .ok)
+        Section {
+            InfoToggle(
+                title: "Glasses Display (HUD)",
+                isOn: Binding(
+                    get: { Config.glassesDisplayEnabled },
+                    set: { newValue in
+                        Config.setGlassesDisplayEnabled(newValue)
+                        if !newValue {
+                            Task { await appState.glassesDisplay.shutdown() }
                         }
                     }
-                }
-            } header: {
-                Text("What Draws On It")
-            } footer: {
-                Text("Preview the lens on your phone, choose which display hardware to drive, mirror the HUD to a browser, or read a script hands-free.")
-            }
+                ),
+                info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). Ray-Ban Display glasses only — no effect on glasses without a built-in display."
+            )
+            InfoToggle(
+                title: "HUD Choice Buttons",
+                isOn: Binding(
+                    get: { Config.hudChoiceButtonsEnabled },
+                    set: { Config.setHudChoiceButtonsEnabled($0) }
+                ),
+                info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
+            )
+        } header: {
+            Text("In-Lens Display")
+        } footer: {
+            Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
         }
-        .navigationTitle("Display & HUD")
-        .ogFormStyle()
+
+        Section {
+            NavigationLink {
+                HUDMirrorView(router: appState.hudRouter)
+            } label: {
+                Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
+            }
+
+            NavigationLink {
+                EvenDisplaySettingsView()
+            } label: {
+                HStack {
+                    Label("Display Backend", systemImage: "display")
+                    Spacer()
+                    Text(displayedDisplayBackendName)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            NavigationLink {
+                WebHUDMirrorSettingsView()
+            } label: {
+                HStack {
+                    Label("Web HUD Mirror", systemImage: "globe.desk")
+                    Spacer()
+                    Text(LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
+                         ? (hudMirrorEnabled ? "On" : "Off") : "Unavailable")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            NavigationLink {
+                TeleprompterSettingsView(service: appState.teleprompterService,
+                                         store: appState.teleprompterStore)
+            } label: {
+                HStack {
+                    Label("Teleprompter", systemImage: "text.alignleft")
+                    Spacer()
+                    if appState.teleprompterService.isActive {
+                        OGStatusLabel("Running", kind: .ok)
+                    }
+                }
+            }
+        } header: {
+            Text("What Draws On It")
+        } footer: {
+            Text("Preview the lens on your phone, choose which display hardware to drive, mirror the HUD to a browser, or read a script hands-free.")
+        }
     }
 }
