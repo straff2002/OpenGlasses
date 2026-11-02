@@ -289,4 +289,70 @@ final class SettingsHubRowTests: XCTestCase {
         XCTAssertEqual(Hub.route(.capture, visible: visible(in: technician(), on: personal)), .hub)
         XCTAssertEqual(Hub.route(.fieldAssist, visible: visible(in: technician(), on: personal)), .category(.fieldAssist))
     }
+
+    // MARK: - The paths the app states
+
+    private static func source(_ path: String) throws -> String {
+        try String(contentsOf: SettingsHubTests.repoRoot.appendingPathComponent(path), encoding: .utf8)
+    }
+
+    private static func appSources() -> [(path: String, text: String)] {
+        let root = SettingsHubTests.repoRoot.appendingPathComponent("OpenGlasses/Sources")
+        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" } ?? []
+        return files.compactMap { url in
+            (try? String(contentsOf: url, encoding: .utf8)).map { (url.lastPathComponent, $0) }
+        }
+    }
+
+    /// No path may start at a row the hub no longer has.
+    func testNoStatedPathStartsAtARowThatIsGone() {
+        let gone = ["AI & Personality", "Tools & Actions", "Voice & Triggers", "Capture & Streaming",
+                    "Display & HUD", "Diagnostics & Support", "Camera, Recording & Streaming",
+                    "AI Models", "Personas", "Services & Integrations", "Custom Vaults"]
+        let arrows = ["→", "›", ">"]
+        for file in Self.appSources() {
+            for row in gone {
+                for arrow in arrows {
+                    XCTAssertFalse(file.text.contains("Settings \(arrow) \(row)"),
+                                   "\(file.path) says the path starts at \(row)")
+                }
+            }
+            for arrow in arrows {
+                XCTAssertFalse(file.text.contains("Settings \(arrow) Advanced \(arrow)"), file.path)
+            }
+        }
+    }
+
+    /// Traced by hand and then pinned: each step of the streaming path is a row on the step before.
+    func testTheStreamingPathIsRealStepByStep() throws {
+        let path = "Settings → Devices & Privacy → Camera, Recording & Streaming → Live Streaming"
+        XCTAssertTrue(try Self.source("OpenGlasses/Sources/Services/BroadcastDestination.swift").contains(path))
+        XCTAssertEqual(Hub.home(of: .capture, on: personal), .devicesPrivacy)
+        XCTAssertEqual(Hub.row(.devicesPrivacy, on: personal).title, "Devices & Privacy")
+        let capture = try Self.source("OpenGlasses/Sources/App/Views/SettingsCategoryScreens.swift")
+        XCTAssertTrue(capture.contains("Label(\"Camera, Recording & Streaming\""))
+        let services = try Self.source("OpenGlasses/Sources/App/Views/ServicesSettingsView.swift")
+        XCTAssertTrue(services.contains("Text(\"Live Streaming\")"))
+        XCTAssertTrue(services.contains("DisclosureGroup(\"How to go live\")"))
+        XCTAssertTrue(services.contains("BystanderBlurSwitch(appState: appState)"))
+    }
+
+    func testTheOpenSetupAlertNamesTheSamePath() throws {
+        let preview = try Self.source("OpenGlasses/Sources/App/Views/LivePreviewView.swift")
+        XCTAssertTrue(preview.contains("In Settings, open Devices & Privacy, then Camera, Recording & Streaming, to find Live Streaming."))
+        let voiceTab = try Self.source("OpenGlasses/Sources/App/Views/VoiceTab.swift")
+        XCTAssertTrue(voiceTab.contains("appState.openSettings(.capture)"), "Open Setup lands on the page with that row")
+        XCTAssertTrue(voiceTab.contains("appState.openSettings(.myManuals)"), "Add your first manual still goes there")
+    }
+
+    func testTheBlurAndToolPathsAreReal() throws {
+        XCTAssertEqual(Hub.home(of: .devices, on: personal), .devicesPrivacy)
+        XCTAssertEqual(Hub.home(of: .tools, on: personal), .connections)
+        XCTAssertEqual(Hub.home(of: .voice, on: personal), .assistant)
+        XCTAssertEqual(Hub.home(of: .advanced, on: personal), .advancedSupport)
+        let hardware = try Self.source("OpenGlasses/Sources/App/Views/SettingsView.swift")
+        XCTAssertTrue(hardware.contains("BystanderBlurSwitch(appState: appState)"), "in Hardware & Privacy")
+        XCTAssertTrue(ScenarioSetupStep.turnOnTool.instruction.contains("under Connections, then Tools"))
+    }
 }
