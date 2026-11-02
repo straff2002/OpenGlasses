@@ -47,9 +47,9 @@ enum BroadcastVideoSource: String, CaseIterable, Codable {
 
     var displayLabel: String {
         switch self {
-        case .glasses: return "Glasses"
-        case .phoneBack: return "Phone (Back)"
-        case .phoneFront: return "Phone (Front)"
+        case .glasses: return String(localized: "Glasses")
+        case .phoneBack: return String(localized: "Phone (Back)")
+        case .phoneFront: return String(localized: "Phone (Front)")
         }
     }
 
