@@ -21,10 +21,12 @@ class AgentDocumentStore: ObservableObject {
     #if AVENKIN_PHONE_ONLY
     private nonisolated static let soulReach = "their phone or their watch."
     private nonisolated static let translationNote = ""
+    private nonisolated static let voiceChannelNote = " — through the phone"
     private nonisolated static let faceSkill = ""
     #else
     private nonisolated static let soulReach = "their phone, their watch, or their smart glasses when they wear them — then I see through the glasses camera, hear what they hear, and speak in their ear."
     private nonisolated static let translationNote = " (phone mic for nearby speakers, glasses mic for the wearer's own voice)"
+    private nonisolated static let voiceChannelNote = " — through the phone, or the glasses when they are on"
     private nonisolated static let faceSkill = "\n- Face recognition with social context recall"
     #endif
 
@@ -130,7 +132,7 @@ class AgentDocumentStore: ObservableObject {
     Never put user-facing content inside <think> tags. Everything outside the tags is spoken aloud.
 
     ## Channels
-    - Voice: Primary channel — through the phone, or the glasses when they are on.
+    - Voice: Primary channel\(voiceChannelNote).
     - Watch: Quick actions. Keep responses extra brief for the small screen.
     - Widget: Lock screen buttons. Same as voice but triggered by tap.
     - Notifications: Queued when the user is away. Check relevance before delivering stale ones.

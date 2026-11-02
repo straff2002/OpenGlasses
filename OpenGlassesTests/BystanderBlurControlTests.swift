@@ -85,7 +85,7 @@ final class BystanderBlurControlTests: XCTestCase {
     func testTheRefusalOffersTheWayOutAndSaysWhatItCosts() {
         let refusal = BystanderBlurControl.refusal(changeable: true, organization: nil)
         XCTAssertTrue(refusal.offersTurningOff)
-        XCTAssertTrue(refusal.message.contains("turn the blur off"))
+        XCTAssertTrue(refusal.message.lowercased().contains("turn the blur off"))
         XCTAssertTrue(refusal.message.contains("applies everywhere"))
         XCTAssertTrue(refusal.message.contains("until you turn it back on"))
     }

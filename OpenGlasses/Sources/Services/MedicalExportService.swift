@@ -13,10 +13,8 @@ import UIKit
 class MedicalExportService: ObservableObject {
     #if AVENKIN_PHONE_ONLY
     private nonisolated static let recordSource = "Avenkin"
-    private nonisolated static let hl7Sender = "Avenkin|iPhone"
     #else
     private nonisolated static let recordSource = "Avenkin Smart Glasses"
-    private nonisolated static let hl7Sender = "OpenGlasses|SmartGlasses"
     #endif
 
     @Published var isExporting = false
@@ -503,7 +501,7 @@ class MedicalExportService: ObservableObject {
         let escapedOrigin = Self.hl7Escaped(origin.statement)
 
         return """
-        MSH|^~\\&|\(Self.hl7Sender)|EMR|Hospital|\(timestamp)||MDM^T02|MSG\(msgId)|P|2.5.1
+        MSH|^~\\&|OpenGlasses|SmartGlasses|EMR|Hospital|\(timestamp)||MDM^T02|MSG\(msgId)|P|2.5.1
         EVN|T02|\(timestamp)
         TXA|1|CN|TX|\(timestamp)|||\(timestamp)||||||||AU
         OBX|1|TX|11506-3^Progress note^LN||Duration: \(duration)\\.br\\\(escapedText)||||||F

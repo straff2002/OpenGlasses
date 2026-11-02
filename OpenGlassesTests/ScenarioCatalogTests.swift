@@ -78,7 +78,11 @@ final class ScenarioCatalogTests: XCTestCase {
             "identify_color": "OpenGlasses/Sources/App/OpenGlassesApp.swift",
             "navigation_assist": "OpenGlasses/Sources/App/OpenGlassesApp.swift",
         ]
-        let missing = ScenarioCatalog.namedTools.subtracting(headless).subtracting(wiredElsewhere.keys)
+        var missing = ScenarioCatalog.namedTools.subtracting(headless).subtracting(wiredElsewhere.keys)
+        #if AVENKIN_PHONE_ONLY
+        // Glasses-only: the tool isn't registered here, and its scenario hides on that.
+        missing.remove("live_coach")
+        #endif
         XCTAssertEqual(missing.sorted(), [], "not registered headless, and not named as wired elsewhere")
 
         let appState = try String(contentsOf: Self.repoRoot.appendingPathComponent(

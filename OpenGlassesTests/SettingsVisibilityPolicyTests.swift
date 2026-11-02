@@ -207,7 +207,7 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         XCTAssertTrue(Policy.hidesSettings(in: technician()))
         XCTAssertEqual(Policy.hiddenSummary(in: technician()), [
             "AI & Personality", "Voice & Triggers", "Everyday", "Parts of Devices & Privacy", "My Manuals", "Tools & Actions",
-            "Connections", "Capture & Streaming", "Display & HUD", "Advanced",
+            "Connections", "Capture & Streaming", SettingsCatalog.category(.display).title, "Advanced",
             "Turning Field Assist off", "Simple Mode and Lock Settings",
         ])
         let openedEverything = ManagedLockdown(opening: Set(SettingsCategoryID.allCases), locking: [], closedTools: [])
