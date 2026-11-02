@@ -83,6 +83,9 @@ struct SettingsGroupMember: Identifiable, Equatable, Sendable {
     var hardDisabledInMedicalMode = false
     /// A category this row reaches into. A row in Everyday is not a way round that category's lock.
     var reachesInto: SettingsCategoryID?
+    /// A category whose openness opens this row too, because the row lived there and is still linked
+    /// from it. A row that moved to Everyday must not leave a person who could reach it before.
+    var alsoOpenedBy: SettingsCategoryID?
 
     var isSwitch: Bool { kind != .link }
 }
@@ -145,24 +148,38 @@ enum SettingsGroupCatalog {
             ])
         case .healthFitness:
             return SettingsGroup(id: id, title: String(localized: "Health & Fitness"), members: [
-                .init(id: .health, title: String(localized: "Health"), kind: .link),
+                .init(id: .health, title: String(localized: "Health"), kind: .link, alsoOpenedBy: .devices),
                 .init(id: .healthSummaries, title: String(localized: "Health Summaries"), kind: .follows,
-                      onFirstTime: true, feature: .healthSummaries),
+                      onFirstTime: true, feature: .healthSummaries, alsoOpenedBy: .devices),
                 .init(id: .firstAid, title: String(localized: "First-Aid Coaching and Triage"), kind: .follows,
-                      onFirstTime: true, feature: .firstAidAssist),
+                      onFirstTime: true, feature: .firstAidAssist, alsoOpenedBy: .devices),
                 .init(id: .shareHealth, title: String(localized: "Share Health Data with AI"), kind: .separateConsent,
-                      parentMayRestore: false, hardDisabledInMedicalMode: true),
+                      parentMayRestore: false, hardDisabledInMedicalMode: true, alsoOpenedBy: .devices),
             ])
         }
     }
 
+    /// The Health & Fitness link under Devices & Privacy. Everyday is left out of Simple Mode and is
+    /// locked on a managed phone unless a profile opens it, but the health switches, First-Aid
+    /// Coaching among them, have to stay reachable wherever Devices & Privacy is: the privacy notice
+    /// names that switch. It is a link to the group's one screen, so no switch is on two screens.
+    /// With Everyday on the hub there is nothing to make up for, so no second way in.
+    static func showsHealthLinkUnderDevices(simpleMode: Bool, in context: ManagedSettingsContext) -> Bool {
+        let hub = SettingsVisibilityPolicy.hubCategories(simpleMode: simpleMode, in: context).map(\.id)
+        guard hub.contains(.devices), !hub.contains(.everyday) else { return false }
+        return group(.healthFitness).members.contains { presentation(of: $0, in: context).isShown }
+    }
+
+    static func member(_ id: SettingsGroupMemberID) -> SettingsGroupMember? {
+        all.flatMap(\.members).first { $0.id == id }
+    }
+
     /// How a member draws on a managed phone: the most restrictive of the Everyday category's lock,
-    /// its key, its tools and any category it reaches into. An unmanaged phone gets `.editable`.
+    /// its key, its tools and any category it reaches into. An unmanaged phone gets `.editable`. A
+    /// category that also opens it counts as a second way past the first of those.
     static func presentation(of member: SettingsGroupMember,
                              in context: ManagedSettingsContext) -> SettingPresentation {
-        var settings: [SettingPresentation] = [
-            SettingsVisibilityPolicy.presentation(.row(in: .everyday), in: context)
-        ]
+        var settings: [SettingPresentation] = [everydayRow(of: member, in: context)]
         if let key = member.settingKey {
             settings.append(SettingsVisibilityPolicy.presentation(.key(key), in: context))
         }
@@ -176,5 +193,14 @@ enum SettingsGroupCatalog {
         }
         if settings.contains(.hidden) { return .hidden }
         return settings.contains(.readOnly) ? .readOnly : .editable
+    }
+
+    private static func everydayRow(of member: SettingsGroupMember,
+                                    in context: ManagedSettingsContext) -> SettingPresentation {
+        let everyday = SettingsVisibilityPolicy.presentation(.row(in: .everyday), in: context)
+        guard let other = member.alsoOpenedBy else { return everyday }
+        let also = SettingsVisibilityPolicy.presentation(.row(in: other), in: context)
+        if everyday.isEditable || also.isEditable { return .editable }
+        return everyday.isShown || also.isShown ? .readOnly : .hidden
     }
 }

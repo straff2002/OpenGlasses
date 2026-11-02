@@ -122,6 +122,8 @@ final class SettingsHubTests: XCTestCase {
         ("HomeAssistantSettingsView", .everyday, ["EverydaySettingsScreen"]),
         ("TranslationSettingsView", .everyday, ["EverydaySettingsScreen"]),
         ("HealthSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        // Where Everyday is not on the hub, Devices & Privacy links to the same screen.
+        ("EverydaySettingsScreen", .devices, ["GlassesPrivacySettingsScreen"]),
         // Voice & Triggers.
         ("TempleTapSettingsView", .voice, ["VoiceTriggersSettingsScreen"]),
         // Devices & Privacy. The Connected Glasses section is the Glasses screen now.

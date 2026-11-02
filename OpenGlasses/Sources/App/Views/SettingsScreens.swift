@@ -1007,6 +1007,22 @@ struct GlassesPrivacySettingsScreen: View {
                     }
                     .disabled(!rest.isEditable)
 
+                    // Plan KH P2: where Everyday is not on the hub, the health switches stay a row
+                    // away. A link to their one screen, not a second copy of them.
+                    if SettingsGroupCatalog.showsHealthLinkUnderDevices(simpleMode: Config.simpleModeEnabled,
+                                                                        in: adminGate.settingsContext) {
+                        NavigationLink {
+                            EverydaySettingsScreen(appState: appState, only: .healthFitness)
+                        } label: {
+                            Label {
+                                Text(verbatim: SettingsGroupCatalog.group(.healthFitness).title)
+                            } icon: {
+                                Image(systemName: "heart.text.square")
+                            }
+                        }
+                        .disabled(!rest.isEditable)
+                    }
+
                     NavigationLink {
                         MedicalCompliancePaywallView(
                             hipaaService: appState.hipaaService,

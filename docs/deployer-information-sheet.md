@@ -75,7 +75,7 @@ Anything below can be switched off on the phone without asking anyone, unless yo
 
 - **Face recognition:** Settings › Devices & Privacy › Glasses › Enrolled Faces. "Forget Everyone" on the same screen removes every enrolled face.
 - **Bystander face blur:** Settings › Devices & Privacy › Hardware & Privacy.
-- **First-Aid Coaching and Triage:** Settings › Everyday › Health & Fitness.
+- **First-Aid Coaching and Triage:** Settings › Everyday › Health & Fitness, or Settings › Devices & Privacy › Health & Fitness where Everyday isn't shown.
 - **"Connecting to Avenkin AI":** Settings, under Voice.
 - **Any single tool:** the Tools list in Settings.
 - **Agent features:** Agentic Features in Settings.

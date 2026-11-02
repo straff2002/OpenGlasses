@@ -6,6 +6,12 @@ import SwiftUI
 struct HealthSettingsView: View {
     @AppStorage("healthVaultAIEnabled") private var healthVaultAIEnabled = true
     @ObservedObject private var adminGate = AdminGate.shared
+    /// This screen opens from Everyday, or from Devices & Privacy where Everyday is not on the hub.
+    private var row: SettingPresentation {
+        SettingsGroupCatalog.member(.health).map {
+            SettingsGroupCatalog.presentation(of: $0, in: adminGate.settingsContext)
+        } ?? .hidden
+    }
     @State private var authorization: HealthAuthorizationState?
     @State private var savedAt: Date?
     @State private var requesting = false
@@ -25,14 +31,14 @@ struct HealthSettingsView: View {
                 Text("Read only. Avenkin never writes heart rate, sleep or steps to Apple Health. The fitness coach separately reads your workouts and saves the workouts you log.")
             }
 
-            if adminGate.presentation(.row(in: .everyday)).isShown && adminGate.presentation(.tool("health_vault")).isShown {
+            if row.isShown && adminGate.presentation(.tool("health_vault")).isShown {
                 Section {
                     InfoToggle(
                         title: "AI Access to Health Vault",
                         isOn: $healthVaultAIEnabled,
                         info: "When off, the assistant cannot look up or edit your Health Vault directly. Existing records stay on this phone. Apple Health summaries and their sharing setting are controlled separately, under Health & Fitness."
                     )
-                    .disabled(!adminGate.presentation(.row(in: .everyday)).isEditable || !adminGate.presentation(.tool("health_vault")).isEditable)
+                    .disabled(!row.isEditable || !adminGate.presentation(.tool("health_vault")).isEditable)
                 }
             }
 

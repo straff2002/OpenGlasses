@@ -6,8 +6,12 @@ import SwiftUI
 /// real switch. The rows moved here from AI & Personality, Connections and Devices & Privacy and
 /// each lives in this one place. Parents write through `SettingsGroupStore`, and everything they
 /// are allowed to do is decided in `SettingsGroupState`.
+///
+/// `only` draws one group. It is how Devices & Privacy reaches Health & Fitness where Everyday is
+/// not on the hub: the same screen, so each switch is still on one screen.
 struct EverydaySettingsScreen: View {
     @ObservedObject var appState: AppState
+    private let only: SettingsGroupID?
     @ObservedObject private var adminGate = AdminGate.shared
 
     // These exist to redraw the screen when a setter writes the key, here or elsewhere. The values
@@ -26,20 +30,30 @@ struct EverydaySettingsScreen: View {
     @AppStorage("shareHealthDataWithAI") private var shareHealthDataWithAI = false
     @AppStorage("translationCaptionsEnabled") private var translationCaptionsEnabled = false
 
-    @State private var expanded: Set<SettingsGroupID> = []
+    @State private var expanded: Set<SettingsGroupID>
+
+    init(appState: AppState, only: SettingsGroupID? = nil) {
+        self.appState = appState
+        self.only = only
+        _expanded = State(initialValue: only.map { [$0] } ?? [])
+    }
+
+    private var groups: [SettingsGroupID] { only.map { [$0] } ?? SettingsGroupID.allCases }
+
+    private var title: String { only.map { SettingsGroupCatalog.group($0).title } ?? String(localized: "Everyday") }
 
     private var context: ManagedSettingsContext { adminGate.settingsContext }
 
     var body: some View {
         Form {
-            ForEach(SettingsGroupID.allCases, id: \.self) { id in
+            ForEach(groups, id: \.self) { id in
                 let state = SettingsGroupStore.state(of: id, in: context)
                 if state.isDrawn {
                     groupSection(state)
                 }
             }
         }
-        .navigationTitle("Everyday")
+        .navigationTitle(title)
         .ogFormStyle()
         // As it did when these rows lived under AI & Personality: what the assistant keeps about you
         // is read when the listener starts.

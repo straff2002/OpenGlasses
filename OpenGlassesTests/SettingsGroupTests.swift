@@ -311,6 +311,55 @@ final class SettingsGroupTests: XCTestCase {
                                                          in: technician(both, keys: [.agentModeEnabled])), .hidden)
     }
 
+    // MARK: - Where Everyday is not on the hub
+
+    private func healthLink(simpleMode: Bool = false, _ context: ManagedSettingsContext) -> Bool {
+        SettingsGroupCatalog.showsHealthLinkUnderDevices(simpleMode: simpleMode, in: context)
+    }
+
+    func testSimpleModeKeepsTheHealthSwitchesAwayFromEverydayButReachable() {
+        XCTAssertTrue(healthLink(simpleMode: true, .unmanaged))
+        XCTAssertFalse(SettingsCatalog.visible(simpleMode: true).contains { $0.id == .everyday })
+        XCTAssertTrue(SettingsCatalog.visible(simpleMode: true).contains { $0.id == .devices })
+    }
+
+    func testThereIsNoSecondWayInWhileEverydayIsOnTheHub() {
+        XCTAssertFalse(healthLink(.unmanaged))
+    }
+
+    /// Devices open and Everyday locked: these rows were reachable before they moved.
+    func testAManagedPhoneWithDevicesOpenKeepsTheHealthSwitches() throws {
+        let open = technician(ManagedLockdown(opening: [.devices], locking: [], closedTools: []))
+        XCTAssertTrue(healthLink(open))
+        for id in [Member.health, .healthSummaries, .firstAid, .shareHealth] {
+            XCTAssertEqual(SettingsGroupCatalog.presentation(of: try member(id), in: open), .editable, "\(id)")
+        }
+        XCTAssertEqual(SettingsGroupCatalog.presentation(of: try member(.userMemory), in: open), .hidden,
+                       "only the rows that came from Devices & Privacy")
+    }
+
+    func testAStandardLockShowsNoLinkAndNoHealthRows() throws {
+        XCTAssertFalse(healthLink(technician()))
+        XCTAssertEqual(SettingsGroupCatalog.presentation(of: try member(.firstAid), in: technician()), .hidden)
+    }
+
+    func testAProfileThatOpensEverydayNeedsNoLink() {
+        XCTAssertFalse(healthLink(technician(ManagedLockdown(opening: [.everyday, .devices], locking: [], closedTools: []))))
+    }
+
+    func testAClosedToolStaysClosedThroughTheLink() throws {
+        let open = technician(ManagedLockdown(opening: [.devices], locking: [],
+                                              closedTools: Set(AIFeature.firstAidAssist.record.toolNames)))
+        XCTAssertEqual(SettingsGroupCatalog.presentation(of: try member(.firstAid), in: open), .hidden)
+    }
+
+    /// It opens the group's own screen, so the one-screen rule below is what keeps it honest.
+    func testTheLinkIsTheSameScreen() throws {
+        let source = try String(contentsOf: Self.viewsRoot.appendingPathComponent("SettingsScreens.swift"),
+                                encoding: .utf8)
+        XCTAssertTrue(source.contains("EverydaySettingsScreen(appState: appState, only: .healthFitness)"))
+    }
+
     func testAccessibilityKeepsItsGuarantees() {
         XCTAssertTrue(ManagedLockdown.pinnedOpen.contains(.accessibility))
         XCTAssertFalse(ManagedLockdown.pinnedOpen.contains(.everyday))
