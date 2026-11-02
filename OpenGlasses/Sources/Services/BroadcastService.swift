@@ -164,8 +164,7 @@ class BroadcastService: ObservableObject {
             broadcastError = error.localizedDescription
             throw error
         }
-        let startSource = source
-            ?? BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
+        let startSource = source ?? BroadcastVideoSource.resolved(Config.broadcastDefaultSource)
         guard phoneFramesAllowed || !startSource.isPhone else {
             broadcastError = BroadcastError.phoneCameraNotBlurred.errorDescription
             throw BroadcastError.phoneCameraNotBlurred
@@ -561,7 +560,7 @@ class BroadcastService: ObservableObject {
     /// Debounced; returns whether the switch was applied.
     @discardableResult
     func switchSource(_ source: BroadcastVideoSource) -> Bool {
-        guard isBroadcasting else { return false }
+        guard isBroadcasting, BroadcastVideoSource.available.contains(source) else { return false }
         guard BroadcastGoLive.decideSwitch(to: source, faceBlurOn: faceBlurOn()) == .switchCamera else {
             return false
         }
@@ -579,6 +578,12 @@ class BroadcastService: ObservableObject {
     /// stays up, on the glasses. Frames already past the mirrors are the only ones still to arrive.
     func leavePhoneCamera() {
         guard isBroadcasting else { return }
+        // A phone-only build has no other camera, and a stream with no picture is an open
+        // microphone over a black screen.
+        guard GlassesSupportPolicy.isSupported else {
+            stopBroadcast()
+            return
+        }
         dualCaptureMirror = false
         if activeSource.isPhone {
             selector.moveNow(to: .glasses, now: Date())

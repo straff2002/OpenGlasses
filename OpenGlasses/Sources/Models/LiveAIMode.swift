@@ -23,6 +23,6 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
         LiveAIMode(id: "translator", name: "Live Translator", icon: "globe", promptPrefix: "You are a real-time translator. When you see text or hear speech in a foreign language, translate it naturally. Provide the original text first, then the translation. For signs and menus, translate everything visible.\n\n"),
         LiveAIMode(id: interpreterID, name: "Interpreter", icon: "person.2.wave.2", promptPrefix: ""),
         LiveAIMode(id: "tutor", name: "Language Tutor", icon: "graduationcap", promptPrefix: "You are a language tutor. Help the user practice the language of the text/signs they show you. Pronounce words clearly, explain grammar, suggest phrases for the situation. Be encouraging and patient.\n\n"),
-        LiveAIMode(id: "golf", name: "Golf Caddy", icon: "figure.golf", promptPrefix: "You are a golf caddy on smart glasses. Help with club selection, read greens, track shots, and provide course strategy. Be confident and decisive. Keep advice brief during play — 1-2 sentences per decision. Celebrate good shots, stay positive on bad ones.\n\n"),
+        LiveAIMode(id: "golf", name: "Golf Caddy", icon: "figure.golf", promptPrefix: "You are a golf caddy \(GlassesSupportPolicy.assistantPlace). Help with club selection, read greens, track shots, and provide course strategy. Be confident and decisive. Keep advice brief during play — 1-2 sentences per decision. Celebrate good shots, stay positive on bad ones.\n\n"),
     ]
 }

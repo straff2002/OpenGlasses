@@ -162,10 +162,14 @@ enum CameraFeatureGate {
     ) -> CameraFeatureAvailability {
         if feature.requiresLiveFrames {
             guard capabilities.liveFrames else {
+                #if AVENKIN_PHONE_ONLY
+                return .unavailable("\(feature.displayName) needs a live camera feed, which this version doesn't have.")
+                #else
                 return .unavailable(
                     "\(feature.displayName) needs a live camera feed from the glasses, and the "
                     + "connected glasses don't provide one."
                 )
+                #endif
             }
             return .available
         }
@@ -185,10 +189,14 @@ enum CameraFeatureGate {
         guard phoneFallbackAvailable else {
             return .unavailable("No camera is available.")
         }
+        #if AVENKIN_PHONE_ONLY
+        return .degraded("The iPhone camera is used — point the phone at what you want captured.")
+        #else
         return .degraded(
             "The connected glasses can't capture photos, so the iPhone camera is used instead — "
             + "point the phone at what you want captured."
         )
+        #endif
     }
 
     /// Features that cannot run at all on this backend. Used for the honest list in Settings,

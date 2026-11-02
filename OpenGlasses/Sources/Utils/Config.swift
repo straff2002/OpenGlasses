@@ -301,7 +301,7 @@ struct Config {
     /// them for one App Store version (Plan FY P3.2) and then dropped from here — only from here:
     /// the migration and `defaultAlternativesForPhrase` keep them for good.
     #if AVENKIN_PHONE_ONLY
-    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
+    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin",
         "hey claude", "hey jarvis", "hey computer", "hey assistant",
     ]
     #else
@@ -3201,7 +3201,9 @@ struct Config {
 
     /// BS P3: starting video source for a broadcast (BroadcastVideoSource rawValue).
     static var broadcastDefaultSource: String {
-        UserDefaults.standard.string(forKey: "broadcastDefaultSource") ?? "glasses"
+        let stored = UserDefaults.standard.string(forKey: "broadcastDefaultSource")
+        return GlassesSupportPolicy.isSupported ? stored ?? "glasses"
+                                                : BroadcastVideoSource.resolved(stored).rawValue
     }
     static func setBroadcastDefaultSource(_ value: String) {
         UserDefaults.standard.set(value, forKey: "broadcastDefaultSource")
@@ -3792,6 +3794,12 @@ struct Config {
     /// Unified capture route: phone / glasses / headset. Migrates the old
     /// `useGlassesMicForWakeWord` boolean (whose default was glasses-on).
     static var micRoute: MicRoute {
+        let route = storedMicRoute
+        // A beta's saved route is no route in a build without glasses.
+        return MicRoute.available.contains(route) ? route : .phone
+    }
+
+    private static var storedMicRoute: MicRoute {
         if let raw = UserDefaults.standard.string(forKey: "micRoute"),
            let route = MicRoute(rawValue: raw) {
             return route

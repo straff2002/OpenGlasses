@@ -369,12 +369,12 @@ final class RecordingFilerTests: XCTestCase {
 
     func testSummaryNamesTwoDestinations() {
         XCTAssertEqual(outcome(library: true, photos: true, folder: false).summary,
-                       "Saved to the app's Recordings folder and the Glasses album in Photos.")
+                       "Saved to the app's Recordings folder and the \(GlassesPhotoAlbum.albumName) album in Photos.")
     }
 
     func testSummaryNamesThreeDestinations() {
         XCTAssertEqual(outcome(library: true, photos: true, folder: true).summary,
-                       "Saved to the app's Recordings folder, the Glasses album in Photos "
+                       "Saved to the app's Recordings folder, the \(GlassesPhotoAlbum.albumName) album in Photos "
                        + "and your chosen folder.")
     }
 

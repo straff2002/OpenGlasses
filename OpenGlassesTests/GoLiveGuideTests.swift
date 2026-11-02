@@ -68,6 +68,17 @@ final class GoLiveGuideTests: XCTestCase {
         XCTAssertTrue(steps.contains("a few seconds"))
     }
 
+#if AVENKIN_PHONE_ONLY
+    /// No glasses in this build: the guide says the one thing that is true of the blur, and names no
+    /// hardware it does not have.
+    func testTheNotesSayGoLiveIsOffWhileTheBlurIsOn() {
+        let notes = GoLiveGuide.phoneCameraNotes.joined(separator: " ")
+        XCTAssertTrue(notes.contains("doesn't cover the phone camera, so Go Live is off while it's on"))
+        XCTAssertTrue(notes.contains("the phone camera"))
+        XCTAssertTrue(notes.contains("microphone"))
+        XCTAssertFalse(notes.lowercased().contains("glasses"))
+    }
+#else
     func testTheNotesSayWhatTheBlurDoesNotCover() {
         let notes = GoLiveGuide.phoneCameraNotes.joined(separator: " ")
         XCTAssertTrue(notes.contains("glasses camera only"))
@@ -95,6 +106,7 @@ final class GoLiveGuideTests: XCTestCase {
         XCTAssertTrue(notes.contains("moves the stream to your glasses"))
         XCTAssertFalse(notes.contains("won't blur a stream from the phone camera"))
     }
+#endif
 
     func testTheReadyLineNamesNoCamera() {
         for platform in GoLivePlatform.allCases {

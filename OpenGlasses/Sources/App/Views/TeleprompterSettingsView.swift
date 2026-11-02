@@ -67,7 +67,11 @@ struct TeleprompterSettingsView: View {
         } header: {
             Text("Capture from camera")
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Point the camera at a printed or written script and scan it. Repeat for multiple pages, then start.")
+            #else
             Text("Point the glasses at a printed or written script and scan it. Repeat for multiple pages, then start.")
+            #endif
         }
     }
 

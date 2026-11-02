@@ -734,15 +734,20 @@ struct HardwarePrivacyView: View {
             // screen over the lens HUD — earbuds carry mic + voice, lens stays free.
             Section {
                 Picker("Microphone", selection: $micRoute) {
-                    ForEach(MicRoute.allCases) { route in
+                    ForEach(MicRoute.available) { route in
                         Text(route.label).tag(route)
                     }
                 }
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Where you are heard once the conversation starts, and where its replies play. Headset Mic keeps voice in your earbuds. iPhone Mic never uses a Bluetooth mic.")
+                #else
                 Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, under Devices & Privacy › Glasses.")
+                #endif
             }
 
             Section {
+                #if !AVENKIN_PHONE_ONLY
                 InfoToggle(
                     title: "Audio-Only Mode",
                     isOn: Binding(
@@ -751,7 +756,6 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Disables camera video streaming from the glasses. Voice commands still work but vision features (photo capture, live video analysis) are unavailable. Significantly extends glasses battery life."
                 )
-                #if !AVENKIN_PHONE_ONLY
                 InfoToggle(
                     title: "Glasses Display (HUD)",
                     isOn: Binding(
@@ -773,7 +777,6 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
                 )
-                #endif
                 InfoToggle(
                     title: "Dwell Capture",
                     isOn: Binding(
@@ -804,7 +807,6 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
                 }
-                #if !AVENKIN_PHONE_ONLY
                 NavigationLink {
                     EvenDisplaySettingsView()
                 } label: {
@@ -815,7 +817,6 @@ struct HardwarePrivacyView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                #endif
                 NavigationLink {
                     WebHUDMirrorSettingsView()
                 } label: {
@@ -827,6 +828,7 @@ struct HardwarePrivacyView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                #endif
                 NavigationLink {
                     TeleprompterSettingsView(service: appState.teleprompterService,
                                              store: appState.teleprompterStore)
@@ -849,6 +851,7 @@ struct HardwarePrivacyView: View {
                 } label: {
                     Label("Memory", systemImage: "brain.head.profile")
                 }
+                #if !AVENKIN_PHONE_ONLY
                 InfoToggle(
                     title: "Use Phone Mic for Translation",
                     isOn: Binding(
@@ -865,6 +868,7 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "When on, the agent and notification sounds are silent if your glasses aren't connected. When off (default), audio plays through the phone speaker even without glasses."
                 )
+                #endif
                 Button {
                     #if !targetEnvironment(simulator)
                     AVCaptureDevice.showSystemUserInterface(.microphoneModes)
@@ -875,7 +879,11 @@ struct HardwarePrivacyView: View {
             } header: {
                 Text("Hardware")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Where the mic listens and how audio is routed. Tap any \(Image(systemName: "info.circle")) for a full explanation.")
+                #else
                 Text("Where the mic listens and how audio is routed. Tap any \(Image(systemName: "info.circle")) for a full explanation. Glasses mic uses more battery but is truly hands-free.")
+                #endif
             }
 
             Section {
@@ -917,7 +925,11 @@ struct HardwarePrivacyView: View {
             } header: {
                 Text("Privacy")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred picture is what an AI provider receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS).")
+                #else
                 Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                #endif
             }
 
             Section {

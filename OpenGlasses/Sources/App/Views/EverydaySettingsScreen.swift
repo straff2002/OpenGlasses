@@ -328,7 +328,11 @@ struct EverydaySettingsScreen: View {
         case .myDayRoutines:
             Text("Adds a phone and spoken briefing of what matters next. My Day keeps an ephemeral read model and does not save a separate copy of your day. Taking the card off the Home screen keeps the briefings.")
         case .gettingAround:
+            #if AVENKIN_PHONE_ONLY
+            Text("Turn-by-turn pedestrian directions — \u{201C}navigate to\u{2026}\u{201D}. \u{201C}Where did I park?\u{201D} — the level, space and a way back, saved by voice, from a sign photo, or when a drive ends.")
+            #else
             Text("Turn-by-turn pedestrian directions on the HUD — \u{201C}navigate to\u{2026}\u{201D}. \u{201C}Where did I park?\u{201D} — the level, space and a way back, saved by voice, from a sign photo, or when a drive ends.")
+            #endif
         case .homeMusicMessages:
             Text("Apple Music or a Home Assistant speaker — \u{201C}play Rumours on the kitchen speaker.\u{201D}")
         case .translate:

@@ -153,13 +153,15 @@ enum DiagnosticsReportBuilder {
         } else {
             glasses = "Not connected"
         }
+        let hardware = GlassesSupportPolicy.isSupported
+            ? [row("Glasses", glasses), row("Display", snapshot.hasDisplayCapability ? "Available" : "None")]
+            : []
         return [
             row("App", "\(snapshot.appVersion) (\(snapshot.buildNumber))"),
             row("System", "\(snapshot.systemName) \(snapshot.systemVersion)"),
             row("Device", snapshot.deviceModel),
             row("Locale", snapshot.localeIdentifier),
-            row("Glasses", glasses),
-            row("Display", snapshot.hasDisplayCapability ? "Available" : "None"),
+        ] + hardware + [
             row("Model", modelCell(snapshot, clean: clean)),
         ]
     }

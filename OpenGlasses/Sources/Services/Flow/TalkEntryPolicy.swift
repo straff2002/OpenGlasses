@@ -60,7 +60,7 @@ enum SessionCardGlassesHeadline {
     static func headline(connectAttemptInFlight: Bool,
                          link: GlassesConnectionPhase,
                          connectionStatus: String) -> String? {
-        guard connectAttemptInFlight, !link.isConnected else { return nil }
+        guard GlassesSupportPolicy.isSupported, connectAttemptInFlight, !link.isConnected else { return nil }
         if link.isConnecting { return "Connecting…" }
         return connectionStatus == "Not connected" ? "Glasses Not Connected" : connectionStatus
     }

@@ -57,8 +57,13 @@ final class WakePhraseMigrationTests: XCTestCase {
     }
 
     func testThePickersListTheNewPhrasesFirstAndTheOldOnesBelow() {
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertEqual(Array(Config.wakePhrasePresets.prefix(2)), ["avenkin", "hey avenkin"])
+        XCTAssertTrue(Set(Config.wakePhrasePresets).isDisjoint(with: Config.legacyDefaultWakePhrases))
+        #else
         XCTAssertEqual(Array(Config.wakePhrasePresets.prefix(4)),
                        ["avenkin", "hey avenkin", "openglasses", "hey openglasses"])
+        #endif
         XCTAssertEqual(Config.legacyDefaultWakePhrases, ["openglasses", "hey openglasses"])
     }
 
@@ -140,7 +145,9 @@ final class WakePhraseMigrationTests: XCTestCase {
         let nextVersion = Config.wakePhrasePresets.filter { !Config.legacyDefaultWakePhrases.contains($0) }
         XCTAssertTrue(Config.isCustomWakePhrase("openglasses", presets: nextVersion))
         XCTAssertTrue(Config.isCustomWakePhrase("hey openglasses", presets: nextVersion))
+        #if !AVENKIN_PHONE_ONLY
         XCTAssertFalse(Config.isCustomWakePhrase("openglasses"), "listed in the presets this version")
+        #endif
         XCTAssertFalse(Config.isCustomWakePhrase("avenkin", presets: nextVersion))
         XCTAssertFalse(Config.isCustomWakePhrase("", presets: nextVersion), "empty means the default")
 

@@ -18,12 +18,22 @@ class AgentDocumentStore: ObservableObject {
 
     private let documentsDir: URL
 
+    #if AVENKIN_PHONE_ONLY
+    private nonisolated static let soulReach = "their phone or their watch."
+    private nonisolated static let translationNote = ""
+    private nonisolated static let faceSkill = ""
+    #else
+    private nonisolated static let soulReach = "their phone, their watch, or their smart glasses when they wear them — then I see through the glasses camera, hear what they hear, and speak in their ear."
+    private nonisolated static let translationNote = " (phone mic for nearby speakers, glasses mic for the wearer's own voice)"
+    private nonisolated static let faceSkill = "\n- Face recognition with social context recall"
+    #endif
+
     /// Default soul for a fresh install.
     nonisolated static let defaultSoul = """
     # Avenkin Agent
 
     ## Identity
-    I am a private AI assistant that works for the person I serve, not for a platform. I go where they are: their phone, their watch, or their smart glasses when they wear them — then I see through the glasses camera, hear what they hear, and speak in their ear. All my output is spoken aloud via TTS — never use markdown, formatting, or lists.
+    I am a private AI assistant that works for the person I serve, not for a platform. I go where they are: \(soulReach) All my output is spoken aloud via TTS — never use markdown, formatting, or lists.
 
     ## Communication
     - Everything I say is spoken aloud. Keep it natural and conversational.
@@ -139,7 +149,7 @@ class AgentDocumentStore: ObservableObject {
     ## Communication
     - Send messages via iMessage, WhatsApp, Telegram, WeChat, LINE, KakaoTalk, email
     - Make phone calls, look up contacts
-    - Translate spoken language in real-time (phone mic for nearby speakers, glasses mic for the wearer's own voice)
+    - Translate spoken language in real-time\(translationNote)
     - Open Chinese apps: WeChat, Alipay, Baidu Maps, QQ, Weibo, Douyin, DingTalk, Taobao
 
     ## Productivity
@@ -156,8 +166,7 @@ class AgentDocumentStore: ObservableObject {
     ## Knowledge
     - Web search (Perplexity/Tavily/Brave/SearXNG, DuckDuckGo fallback)
     - Weather, news, currency conversion, dictionary
-    - Remember where things are (object memory with GPS)
-    - Face recognition with social context recall
+    - Remember where things are (object memory with GPS)\(faceSkill)
 
     ## Agentic
     - Manage scheduled background tasks (manage_schedule tool)

@@ -186,7 +186,11 @@ enum BlindAssistantLaunchPolicy {
             case .cameraPermissionOff:
                 return "Starting the assistant. Camera access is off, so it can hear you but not see."
             case .noGlasses:
+                #if AVENKIN_PHONE_ONLY
+                return "Starting the assistant. It can hear you, but there's no camera."
+                #else
                 return "Starting the assistant without the glasses. It can hear you, but there's no camera."
+                #endif
             }
         }
     }

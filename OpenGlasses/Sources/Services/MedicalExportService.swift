@@ -11,6 +11,14 @@ import UIKit
 /// All exports are logged in the HIPAA audit trail when Medical Compliance mode is active.
 @MainActor
 class MedicalExportService: ObservableObject {
+    #if AVENKIN_PHONE_ONLY
+    private nonisolated static let recordSource = "Avenkin"
+    private nonisolated static let hl7Sender = "Avenkin|iPhone"
+    #else
+    private nonisolated static let recordSource = "Avenkin Smart Glasses"
+    private nonisolated static let hl7Sender = "OpenGlasses|SmartGlasses"
+    #endif
+
     @Published var isExporting = false
     @Published var lastExportResult: ExportResult?
 
@@ -427,7 +435,7 @@ class MedicalExportService: ObservableObject {
                     .font: UIFont.systemFont(ofSize: 11),
                     .foregroundColor: UIColor.darkGray
                 ]
-                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: Avenkin Smart Glasses"
+                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: \(Self.recordSource)"
                 meta.draw(at: CGPoint(x: margin, y: margin + 24), withAttributes: metaAttrs)
 
                 // Who wrote the text, above the text.
@@ -495,7 +503,7 @@ class MedicalExportService: ObservableObject {
         let escapedOrigin = Self.hl7Escaped(origin.statement)
 
         return """
-        MSH|^~\\&|OpenGlasses|SmartGlasses|EMR|Hospital|\(timestamp)||MDM^T02|MSG\(msgId)|P|2.5.1
+        MSH|^~\\&|\(Self.hl7Sender)|EMR|Hospital|\(timestamp)||MDM^T02|MSG\(msgId)|P|2.5.1
         EVN|T02|\(timestamp)
         TXA|1|CN|TX|\(timestamp)|||\(timestamp)||||||||AU
         OBX|1|TX|11506-3^Progress note^LN||Duration: \(duration)\\.br\\\(escapedText)||||||F

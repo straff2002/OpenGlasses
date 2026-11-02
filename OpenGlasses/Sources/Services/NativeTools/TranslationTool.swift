@@ -4,7 +4,11 @@ import Foundation
 /// The LLM does the actual translation in its response.
 struct TranslationTool: NativeTool {
     let name = "translate"
+    #if AVENKIN_PHONE_ONLY
+    let description = "Translate text between languages. Works with text from camera captures — can translate foreign signs, menus, labels, and documents seen through the camera."
+    #else
     let description = "Translate text between languages. Works with text from camera captures — can translate foreign signs, menus, labels, and documents seen through the glasses."
+    #endif
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [

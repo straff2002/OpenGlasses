@@ -54,12 +54,20 @@ enum GoLiveGuide {
 
     /// What is true about the phone camera, shown under the steps.
     static var phoneCameraNotes: [String] {
-        [
+        #if AVENKIN_PHONE_ONLY
+        return [
+            String(localized: "The preview shows the phone camera."),
+            String(localized: "Blur Bystander Faces doesn't cover the phone camera, so Go Live is off while it's on. Turning it on during a stream ends the stream."),
+            String(localized: "Your microphone is streamed with the camera."),
+        ]
+        #else
+        return [
             String(localized: "With no glasses connected, the preview shows the phone camera."),
             String(localized: "If Camera is set to Glasses and none are connected, Go Live uses the phone's back camera instead, unless Blur Bystander Faces is on."),
             String(localized: "Blur Bystander Faces covers the glasses camera only, so while it is on, Go Live won't use the phone camera at all: not the Camera setting, not Dual Capture, and not a switch during a stream. Turning it on during a phone stream moves the stream to your glasses, or ends it if none are connected."),
             String(localized: "Your microphone is streamed whichever camera is in use."),
         ]
+        #endif
     }
 
     /// The Live Streaming footer once a URL and key are in. Names no camera, because either can

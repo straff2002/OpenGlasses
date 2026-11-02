@@ -47,10 +47,15 @@ enum BystanderBlurControl {
 
     private static func changeableMessage(_ route: BroadcastGoLive.PhoneRoute) -> String {
         switch route {
+        #if AVENKIN_PHONE_ONLY
+        case .fallback, .chosen:
+            return String(localized: "Blur Bystander Faces doesn't cover the phone camera, so Go Live is off while it's on. Turn the blur off to stream. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
+        #else
         case .fallback:
             return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. Connect your glasses, or turn the blur off to stream from the phone. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
         case .chosen:
             return String(localized: "Camera is set to the phone, which Blur Bystander Faces doesn't cover. Set Camera to Glasses under Live Streaming, or turn the blur off to stream from the phone. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
+        #endif
         case .inset:
             return String(localized: "Dual Capture puts the phone camera in the picture, and Blur Bystander Faces doesn't cover it. Turn Dual Capture off under Live Streaming, or turn the blur off. Turning it off applies everywhere: recordings, streams and pictures sent to the assistant stop being blurred until you turn it back on.")
         case .midStreamSwitch:
@@ -60,10 +65,15 @@ enum BystanderBlurControl {
 
     private static func lockedMessage(_ route: BroadcastGoLive.PhoneRoute, who: String) -> String {
         switch route {
+        #if AVENKIN_PHONE_ONLY
+        case .fallback, .chosen:
+            return String(localized: "Blur Bystander Faces doesn't cover the phone camera, so Go Live is off while it's on. The blur is set by \(who).")
+        #else
         case .fallback:
             return String(localized: "With no glasses connected, a stream would use the phone camera, which Blur Bystander Faces doesn't cover. The blur is set by \(who), so connect your glasses to stream.")
         case .chosen:
             return String(localized: "Camera is set to the phone, which Blur Bystander Faces doesn't cover. The blur is set by \(who), so set Camera to Glasses under Live Streaming.")
+        #endif
         case .inset:
             return String(localized: "Dual Capture puts the phone camera in the picture, and Blur Bystander Faces doesn't cover it. The blur is set by \(who), so turn Dual Capture off under Live Streaming.")
         case .midStreamSwitch:

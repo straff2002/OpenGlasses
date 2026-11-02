@@ -70,6 +70,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testAWearersGlassesConnectShowsItsProgress() {
         XCTAssertEqual(SessionCardGlassesHeadline.headline(connectAttemptInFlight: true,
                                                            link: .addedDisconnected,
@@ -84,6 +85,7 @@ final class TalkEntryPolicyTests: XCTestCase {
                                                            connectionStatus: "Registering..."),
                        "Connecting…")
     }
+    #endif
 
     func testOnceConnectedTheCardIsTheSessionsAgain() {
         XCTAssertNil(SessionCardGlassesHeadline.headline(connectAttemptInFlight: true, link: .connected,

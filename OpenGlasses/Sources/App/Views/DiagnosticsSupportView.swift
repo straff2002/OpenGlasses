@@ -50,7 +50,9 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Send to Support",
-                footer: "Send Last Conversation carries only your most recent conversation, with the app's events from five minutes before it to five minutes after — nothing else you said today. Send Today's Activity carries all of today's conversations, in jobs and out of them, with the day's app events. Both add each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone and any connected glasses. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+                footer: GlassesSupportPolicy.isSupported
+                    ? "Send Last Conversation carries only your most recent conversation, with the app's events from five minutes before it to five minutes after — nothing else you said today. Send Today's Activity carries all of today's conversations, in jobs and out of them, with the day's app events. Both add each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone and any connected glasses. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
+                    : "Send Last Conversation carries only your most recent conversation, with the app's events from five minutes before it to five minutes after — nothing else you said today. Send Today's Activity carries all of today's conversations, in jobs and out of them, with the day's app events. Both add each AI turn's details: which model answered, the manual pages and photos that went with it, how long it took and whether it failed. Plus this phone. Keys are masked, and you read it all before you send it. Reports are emailed to the support email above."
             ) {
                 supportEmailField
                 OGDivider()
@@ -74,7 +76,9 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Self-Test",
-                footer: "Each check exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card."
+                footer: GlassesSupportPolicy.isSupported
+                    ? "Each check exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card."
+                    : "Each test exercises the real path — the AI answers a tiny query and speech plays through your selected audio output."
             ) {
                 ForEach(Array(runner.tests.enumerated()), id: \.element.id) { index, test in
                     if index > 0 { OGDivider() }
@@ -122,7 +126,9 @@ struct DiagnosticsSupportView: View {
 
             OGSection(
                 header: "Report a Problem",
-                footer: "For problems with the app itself. This goes to the developer of Avenkin, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
+                footer: GlassesSupportPolicy.isSupported
+                    ? "For problems with the app itself. This goes to the developer of Avenkin, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, glasses connection, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
+                    : "For problems with the app itself. This goes to the developer of Avenkin, not to your company's support — for help with a job, use Send to Support above. It carries your app and iOS versions, device model, language, and the recent debug log, with keys and personal identifiers masked. It never includes your conversations or other private data: no contacts, location or saved memories."
             ) {
                 Button {
                     presentReport()

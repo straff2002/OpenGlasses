@@ -109,6 +109,8 @@ final class MCPGlassesServer: ObservableObject {
     }
 
     func start() {
+        // Nothing to serve in a build without glasses, whatever a beta left saved.
+        guard GlassesSupportPolicy.isSupported else { return }
         // The listener serves the glasses' own tool surface — frames and prompts — to a client on
         // the LAN. In local-only mode there is nothing it may hand out, so it does not listen.
         guard MedicalEgressGuard.allows(.mcpGlassesListener) else { return }

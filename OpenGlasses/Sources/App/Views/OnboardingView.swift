@@ -335,11 +335,19 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
 
+                    #if AVENKIN_PHONE_ONLY
+                    Text("Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your iPhone, through headphones or AirPods, or from your watch.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #else
                     Text("Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your iPhone, through headphones or AirPods, from your watch or with your glasses.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                    #endif
                 }
 
                 // AI transparency disclosure (Apple Generative AI HIG)
@@ -1463,7 +1471,9 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             pageTitle(
                 "Add a device",
-                "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings.",
+                GlassesSupportPolicy.isSupported
+                    ? "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings."
+                    : "Avenkin works on this iPhone.",
                 page: .addDevice
             )
 

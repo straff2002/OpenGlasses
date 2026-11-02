@@ -62,8 +62,13 @@ final class BroadcastSafetyTests: XCTestCase {
     }
 
     func testEndingSaysWhy() {
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertTrue(BroadcastGoLive.endMessage(.blurNeedsGlasses).contains("can't cover the phone camera"))
+        XCTAssertFalse(BroadcastGoLive.endMessage(.glassesGaveNoPicture).lowercased().contains("glasses"))
+        #else
         XCTAssertTrue(BroadcastGoLive.endMessage(.blurNeedsGlasses).contains("no glasses"))
         XCTAssertTrue(BroadcastGoLive.endMessage(.glassesGaveNoPicture).contains("didn't start"))
+        #endif
     }
 
     // MARK: - The move itself
@@ -297,11 +302,20 @@ final class BroadcastIntentTests: XCTestCase {
     }
 
     func testEveryRefusalHasItsOwnSentence() {
+        // In a phone-only build the fallback and a chosen phone camera are one refusal.
+        #if AVENKIN_PHONE_ONLY
+        let refusals: [BroadcastGoLive.IntentRefusal] = [
+            .notSetUp, .medicalCompliance, .phoneCameraNotBlurred(.chosen),
+            .phoneCameraNotBlurred(.inset), .phoneCameraDenied, .phoneCameraNotAsked, .noPicture,
+            .couldNotConnect,
+        ]
+        #else
         let refusals: [BroadcastGoLive.IntentRefusal] = [
             .notSetUp, .medicalCompliance, .phoneCameraNotBlurred(.fallback), .phoneCameraNotBlurred(.chosen),
             .phoneCameraNotBlurred(.inset), .phoneCameraDenied, .phoneCameraNotAsked, .noPicture,
             .couldNotConnect,
         ]
+        #endif
         let sentences = refusals.map(BroadcastGoLive.spokenRefusal)
         XCTAssertEqual(Set(sentences).count, refusals.count)
     }

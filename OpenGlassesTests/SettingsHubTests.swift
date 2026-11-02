@@ -20,7 +20,7 @@ final class SettingsHubTests: XCTestCase {
             "Tools & Actions",
             "Connections",
             "Capture & Streaming",
-            "Display & HUD",
+            GlassesSupportPolicy.isSupported ? "Display & HUD" : "Teleprompter",
             "Advanced",
             "Diagnostics & Support",
         ])

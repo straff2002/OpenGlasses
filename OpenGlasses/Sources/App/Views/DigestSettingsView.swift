@@ -19,7 +19,11 @@ struct DigestSettingsView: View {
                         Config.digestEnabled = newValue
                     }
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Say \u{201C}what's new\u{201D} for one ranked glance of pending calendar, location, and agent notifications — instead of one-at-a-time interruptions.")
+                #else
                 Text("Say \u{201C}what's new\u{201D} (or pick What's new in the HUD menu) for one ranked glance of pending calendar, location, and agent notifications — instead of one-at-a-time interruptions.")
+                #endif
             }
 
             Section {
@@ -35,14 +39,18 @@ struct DigestSettingsView: View {
                 .onChange(of: delivery) { _, newValue in
                     Config.digestDelivery = newValue
                 }
+                #if !AVENKIN_PHONE_ONLY
                 Toggle("Show on Reconnect", isOn: $autoSurface)
                     .onChange(of: autoSurface) { _, newValue in
                         Config.digestAutoSurfaceOnConnect = newValue
                     }
+                #endif
             } header: {
                 Text("Glance")
             } footer: {
+                #if !AVENKIN_PHONE_ONLY
                 Text("Show on Reconnect flashes the digest once when the glasses reconnect and something urgent is pending — never while you're away, and never in power reserve.")
+                #endif
             }
 
             Section {

@@ -7,7 +7,7 @@ import UIKit
 /// Inspired by VisionClaw's capture_photo tool.
 struct CapturePhotoTool: NativeTool {
     let name = "capture_photo"
-    let description = "Capture a photo from the camera (the glasses when connected, otherwise the phone) for visual analysis. Use when you need to see what the user is looking at, or when the user says 'look at this', 'what do you see', 'take a photo'. Returns the image for your analysis."
+    let description = "Capture a photo from the camera (\(GlassesSupportPolicy.toolCameraSource)) for visual analysis. Use when you need to see what the user is looking at, or when the user says 'look at this', 'what do you see', 'take a photo'. Returns the image for your analysis."
 
     /// Typed as the privacy chokepoint (W04.1): this tool's whole job is to produce a still that
     /// goes to the model, so the unfiltered accessor must not be within its reach.

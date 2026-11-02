@@ -554,7 +554,11 @@ struct ServicesSettingsView: View {
                     }
                 }
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("\u{201C}What's new\u{201D} — one ranked glance of pending notifications, spoken.")
+                #else
                 Text("\u{201C}What's new\u{201D} — one ranked glance of pending notifications on the HUD or spoken.")
+                #endif
             }
 
             // MARK: Web Search
@@ -635,6 +639,7 @@ struct ServicesSettingsView: View {
                 Text("Order: Perplexity → Tavily → Brave → SearXNG → Tavily free → DuckDuckGo. With no keys configured, Tavily free runs automatically (rate-limited, no signup). Add a Tavily key to lift the free rate limit.")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             // MARK: Camera Quality
             Section {
                 Picker("Resolution", selection: $cameraResolution) {
@@ -669,9 +674,11 @@ struct ServicesSettingsView: View {
             } footer: {
                 Text("Changes take effect next time the camera session starts. Higher settings use more battery.\n\nHEVC sends compressed video and the phone decodes it, which is what lets the higher resolutions actually arrive. Switch to Raw only if compressed video misbehaves on your glasses.")
             }
+            #endif
 
             // MARK: Recording & Transcripts
             Section {
+                #if !AVENKIN_PHONE_ONLY
                 Picker("Video Quality", selection: $recordingBitrate) {
                     Text(automaticBitrateLabel).tag(0)
                     Text("2 Mbps").tag(2_000_000)
@@ -698,6 +705,7 @@ struct ServicesSettingsView: View {
                     Config.clearRecordingFolder()
                     recordingFolderName = nil
                 }
+                #endif
 
                 folderRow(title: "Transcript Save Location",
                           defaultLabel: "Documents/Transcripts",
@@ -711,7 +719,11 @@ struct ServicesSettingsView: View {
             } header: {
                 Text("Recording & Transcripts")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Every finished recording is kept in the app's own Recordings folder. Pick a folder below to also keep transcripts somewhere you can browse in the Files app.")
+                #else
                 Text("Automatic scales the recording bitrate to the resolution and frame rate above, which is almost always what you want — a fixed rate either starves 720p or wastes space at 360p. A higher fixed rate fills storage faster and shortens the low-storage warning's estimate.\n\nEvery finished recording is kept in the app's own Recordings folder — that copy always happens, so nothing is lost if you dismiss the share sheet. On top of that it goes to the Glasses album in Photos unless you switch that off. Pick a video or transcript folder below to also keep copies somewhere you can browse in the Files app.")
+                #endif
             }
             .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result {
@@ -793,7 +805,7 @@ struct ServicesSettingsView: View {
                 }
 
                 Picker("Camera", selection: $broadcastSource) {
-                    ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
+                    ForEach(BroadcastVideoSource.available, id: \.rawValue) { source in
                         Text(source.displayLabel).tag(source.rawValue)
                     }
                 }
@@ -801,10 +813,13 @@ struct ServicesSettingsView: View {
                     Config.setBroadcastDefaultSource(value)
                 }
 
+                // Dual Capture is the phone as an inset over the glasses picture.
+                #if !AVENKIN_PHONE_ONLY
                 Toggle("Dual Capture (picture-in-picture)", isOn: $broadcastDualCapture)
                     .onChange(of: broadcastDualCapture) { _, value in
                         Config.setBroadcastDualCapture(value)
                     }
+                #endif
 
                 // Plan CZ: assistant replies played through the phone speaker are audible to the
                 // mic and would otherwise be muxed into every stream and recording.

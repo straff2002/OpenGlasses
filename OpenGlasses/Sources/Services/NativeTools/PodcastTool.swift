@@ -11,12 +11,16 @@ import UIKit
 /// through `PodcastToolEnvironment`, so tests drive it with fakes.
 struct PodcastTool: NativeTool {
     let name = "play_podcast"
+    #if AVENKIN_PHONE_ONLY
+    private static let transport = "It cannot pause, skip or say what Podcasts is playing."
+    #else
+    private static let transport = "It cannot pause, skip or say what Podcasts is playing — the glasses' temple taps do that."
+    #endif
     let description = """
         Play a podcast by name in the Apple Podcasts app. Looks the show up in Apple's podcast directory and opens \
         the chosen episode in Podcasts, which plays it. Use for "play the latest episode of X", "put on the X podcast", \
         "play an episode of X about Y". Actions: play ('query' = the show; optional 'episode' = 'latest' or words \
-        from the episode), search ('query' = words; lists matching shows). It cannot pause, skip or say what Podcasts \
-        is playing — the glasses' temple taps do that. Music and Apple Music go to music_control, not here.
+        from the episode), search ('query' = words; lists matching shows). \(Self.transport) Music and Apple Music go to music_control, not here.
         """
     let parametersSchema: [String: Any] = [
         "type": "object",

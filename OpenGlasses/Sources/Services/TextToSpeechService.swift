@@ -509,7 +509,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func currentSuppression() -> SpeechDeliveryOutcome.SuppressionReason? {
         if let suppressionCheck { return suppressionCheck() }
         if routeHeld?() == true { return .routeHeld }
-        return Config.glassesOnlyAudio && !glassesConnected ? .noRoute : nil
+        return Config.glassesOnlyAudio && GlassesSupportPolicy.isSupported && !glassesConnected ? .noRoute : nil
     }
 
     /// Record one engine signal against the utterance the callbacks belong to.

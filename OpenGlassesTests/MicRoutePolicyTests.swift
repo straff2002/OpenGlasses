@@ -107,7 +107,7 @@ final class MicRoutePolicyTests: XCTestCase {
         // Unset route + legacy default (true) → glasses.
         defaults.removeObject(forKey: "micRoute")
         defaults.removeObject(forKey: "useGlassesMicForWakeWord")
-        XCTAssertEqual(Config.micRoute, .glasses)
+        XCTAssertEqual(Config.micRoute, GlassesSupportPolicy.isSupported ? .glasses : .phone)
 
         // Legacy explicitly off → phone.
         defaults.set(false, forKey: "useGlassesMicForWakeWord")

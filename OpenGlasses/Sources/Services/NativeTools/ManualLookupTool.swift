@@ -14,7 +14,7 @@ final class ManualLookupTool: NativeTool {
     Search the OEM manuals and code books loaded on this phone for a fault \
     code, model, component, procedure, or a clause or rule number (pass it as printed, e.g. \
     "clause 3.9.4.2", "rule 26-700", "section 110.26"). Pass 'query' with what to look for, or omit it (or set 'use_camera') \
-    to read a nameplate / fault display through the camera (the glasses when connected, otherwise the phone) and search on what it says. \
+    to read a nameplate / fault display through the camera (\(GlassesSupportPolicy.toolCameraSource)) and search on what it says. \
     Returns the matching manual passages, each with a Source line naming the manual and page — \
     cite those lines. If it reports that the manuals do not cover the question, or that they are \
     not for the machine the question names, say so verbatim rather than answering from general \

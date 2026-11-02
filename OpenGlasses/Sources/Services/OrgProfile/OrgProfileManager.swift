@@ -926,7 +926,11 @@ extension SettingKey {
         case .remoteInvokeObserveEnabled: return "Remote status requests are off"
         case .remoteInvokeOutputEnabled: return "Remote speak-and-display requests are off"
         case .remoteInvokeCaptureEnabled: return "Remote camera, recording and transcript requests are off"
+        #if AVENKIN_PHONE_ONLY
+        case .mcpServerEnabled: return "The MCP server is off"
+        #else
         case .mcpServerEnabled: return "The MCP glasses server is off"
+        #endif
         case .agentModeEnabled: return "Agentic features are off"
         case .faceRecognitionEnabled: return "Face recognition is off"
         case .aiConnectionCueEnabled: return "Voice startup always says it is connecting to Avenkin AI"

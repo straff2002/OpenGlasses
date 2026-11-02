@@ -71,7 +71,7 @@ class IntentClassifier {
         }
 
         let systemPrompt = """
-        You are a voice intent classifier for a smart glasses assistant. \
+        You are a voice intent classifier for a \(GlassesSupportPolicy.assistantKind) assistant. \
         The user just spoke after saying a wake word. Your job is to decide if \
         they are talking TO the assistant or if this is background noise, \
         a bystander conversation, filler words, or thinking aloud.

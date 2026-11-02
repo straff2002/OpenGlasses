@@ -25,6 +25,7 @@ struct LiveVisionSettingsView: View {
                 Text("Resize and compress photos before they're sent to the AI for description — keeps context smaller while preserving readable detail.")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             Section {
                 Toggle("Drop near-duplicate frames", isOn: $enabled)
                     .onChange(of: enabled) { _, v in Config.setFrameDedupEnabled(v) }
@@ -51,6 +52,7 @@ struct LiveVisionSettingsView: View {
                     Text("Higher threshold drops more (treats more frames as \"the same scene\"). Heartbeat forces a fresh frame through after this many seconds even if nothing changed, so the AI's view can't go stale. Defaults: 4 and 12s.")
                 }
             }
+            #endif
         }
         .navigationTitle("Live Vision")
         .navigationBarTitleDisplayMode(.inline)

@@ -11,7 +11,7 @@ import UIKit
 final class PhotoLogTool: NativeTool {
     let name = "photo_log"
     let description = """
-    Capture a photo from the camera (the glasses when connected, otherwise the phone) and attach it to the active Field Assist session log \
+    Capture a photo from the camera (\(GlassesSupportPolicy.toolCameraSource)) and attach it to the active Field Assist session log \
     with a caption (e.g. 'suction gauge 118 PSIG', 'nameplate', 'leak site'). Returns the image for \
     analysis too. Use to document readings and evidence during a session. Requires an active session.
     """

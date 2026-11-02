@@ -139,8 +139,13 @@ enum HermesAgentAPI {
 
     /// Layered on Hermes's own system prompt. The reply is read out by the app's TTS, so anything
     /// that only works on a screen comes out as noise.
+    #if AVENKIN_PHONE_ONLY
+    private static let spokenTo = "Your reply will be spoken aloud to the user."
+    #else
+    private static let spokenTo = "Your reply will be spoken aloud to the wearer through smart glasses."
+    #endif
     static let spokenReplyInstructions =
-        "Your reply will be spoken aloud to the wearer through smart glasses. Keep it brief: a few "
+        spokenTo + " Keep it brief: a few "
         + "plain sentences. No markdown, headings, bullet or numbered lists, tables, code blocks or URLs."
 
     // MARK: Base URL
@@ -457,7 +462,11 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
         case .apiServerReady(nil):
             return String(localized: "Connected to Hermes's API server, and the API key works.")
         case .bridgeReady:
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "Connected to the bridge script.")
+            #else
             return String(localized: "Connected to the glasses bridge script.")
+            #endif
         case .noHost:
             return String(localized: "Enter the address of the machine running Hermes.")
         case .invalidAddress:
@@ -477,7 +486,11 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
         case .notHermesAPIServer:
             return String(localized: "Something answered at that address, but it isn't Hermes's API server. Check the port (8642 by default) and that API_SERVER_ENABLED=true is set on the Hermes machine.")
         case .looksLikeBridgeScript:
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "That port answered like the bridge script, not the API server. Switch Connection to Bridge script, or use the API server's port (8642 by default).")
+            #else
             return String(localized: "That port answered like the glasses bridge script, not the API server. Switch Connection to Bridge script, or use the API server's port (8642 by default).")
+            #endif
         case .keyRejected:
             return String(localized: "Hermes's API server is reachable, but it refused the API key. Enter the API_SERVER_KEY set on the Hermes machine.")
         case .serverError(let status, let message?):
@@ -489,7 +502,11 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
         case .bridgeRefusedToken:
             return String(localized: "The bridge script refused the token. Enter the HERMES_BRIDGE_TOKEN the script was started with, or leave it empty if it has none.")
         case .noWelcome:
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "Something accepted the connection but didn't greet like the bridge script. Check the port (8765 by default).")
+            #else
             return String(localized: "Something accepted the connection but didn't greet like the glasses bridge script. Check the port (8765 by default).")
+            #endif
         case .bridgeSilent:
             return String(localized: "The bridge is connected but didn't answer a ping within 5 seconds. It may be busy with a question; try again.")
         case .transportFailed(let code):

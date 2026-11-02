@@ -107,7 +107,8 @@ final class RemoteCommandExecutor {
                 return .success(["spoke": "true"])
             case .displayShow(let text, let icon):
                 guard deps.displayShow(text, icon) else {
-                    return .failed("No in-lens display available on this device")
+                    return .failed(GlassesSupportPolicy.isSupported ? "No in-lens display available on this device"
+                                                                    : "No display available on this device")
                 }
                 return .success(["displayed": "true"])
             case .displayClear:

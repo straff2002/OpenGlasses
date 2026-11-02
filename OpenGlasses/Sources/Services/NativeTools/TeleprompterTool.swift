@@ -20,8 +20,13 @@ struct TeleprompterTool: NativeTool {
     }
 
     let name = "teleprompter"
+    #if AVENKIN_PHONE_ONLY
+    private nonisolated static let surface = "in the app's Teleprompter screen"
+    #else
+    private nonisolated static let surface = "on the in-lens HUD"
+    #endif
     let description = """
-        Hands-free teleprompter on the in-lens HUD. Shows a script a window at a time and \
+        Hands-free teleprompter \(Self.surface). Shows a script a window at a time and \
         (in audio-paced mode) auto-advances by listening to you read. Sources: inline text, a \
         saved script, a captured page (action=scan), or one of the user's saved documents \
         (document=<name>).

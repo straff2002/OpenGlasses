@@ -169,6 +169,10 @@ enum ToolAuthorizationPolicy {
     }
 
     static func holdMessage(_ name: String) -> String {
-        "'\(name)' wasn't run because you've been away from the glasses; I've held it to raise when you're back. Do not retry automatically."
+        #if AVENKIN_PHONE_ONLY
+        return "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
+        #else
+        return "'\(name)' wasn't run because you've been away from the glasses; I've held it to raise when you're back. Do not retry automatically."
+        #endif
     }
 }

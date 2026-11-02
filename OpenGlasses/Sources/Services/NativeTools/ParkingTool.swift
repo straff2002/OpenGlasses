@@ -9,6 +9,11 @@ import Foundation
 @MainActor
 final class ParkingTool: NativeTool {
     let name = "parking"
+    #if AVENKIN_PHONE_ONLY
+    private static let whereShown = ""
+    #else
+    private static let whereShown = " and show it on the glasses"
+    #endif
     let description = """
         Remember and find where the wearer parked their car. Actions: 'save' — store the spot at \
         the current location, with level, space and zone taken from 'details' (the wearer's own \
@@ -16,7 +21,7 @@ final class ParkingTool: NativeTool {
         read a parking sign or bay marker through the camera and save the spot with the \
         photo (for "remember this" at a pillar); 'update' — correct the level/space/zone of the \
         saved spot from 'details'; 'where' — say where the car is (level, space, distance, \
-        direction, how long ago) and show it on the glasses; 'directions' — walking directions \
+        direction, how long ago)\(ParkingTool.whereShown); 'directions' — walking directions \
         back to the car; 'clear' — forget the spot; 'history' — recent spots, when history is on. \
         Use for "I parked on level 2", "remember where I parked", "where did I park?", "where's \
         my car?", "take me back to my car". Nothing leaves the phone.

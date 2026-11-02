@@ -76,7 +76,9 @@ final class NativeToolRegistry {
         register(ClipboardTool())
         register(PhoneCallTool())
         register(FlashlightTool())
+        #if !AVENKIN_PHONE_ONLY
         register(PinFrameTool())   // Plan CE: "pin this" — resolves AppState at execution time
+        #endif
         register(NavigateTool())   // Plan CA: walking directions — resolves AppState at execution time
         register(ParkingTool(locationService: locationService))   // Plan GH: where did I park
         register(DeviceInfoTool())
@@ -107,9 +109,14 @@ final class NativeToolRegistry {
             register(ConversationSummaryTool(conversationStore: store))
             register(SessionSearchTool(conversationStore: store))
         }
+        // Face recognition, the live-stream tools and the reading companion watch a live picture,
+        // which only glasses give (`PhoneCapturePolicy.glassesOnlyTools`, Plan GV): a phone-only
+        // build registers none of them.
+        #if !AVENKIN_PHONE_ONLY
         if let faceService = faceRecognitionService, let camera = cameraService {
             register(FaceRecognitionTool(faceService: faceService, cameraService: camera))
         }
+        #endif
         if let rewind = memoryRewindService {
             register(MemoryRewindTool(rewindService: rewind))
         }
@@ -186,10 +193,12 @@ final class NativeToolRegistry {
             // Plan CG: badge OCR → person record in the brain store.
             register(BadgeScanTool(cameraService: camera, locationService: locationService,
                                    faceService: faceRecognitionService))
+            #if !AVENKIN_PHONE_ONLY
             if let recorder = videoRecorder {
                 register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,
                                             medicalExportService: medicalExportService))
             }
+            #endif
         }
 
         // Audio-only recording (lighter than video — no camera needed)
@@ -285,14 +294,18 @@ final class NativeToolRegistry {
             // record_clip: the sibling of photo_log for a fault a still cannot show (Plan FO P2b).
             // It needs no camera reference of its own — it records off the blurred frame relay,
             // which only `AppState` is allowed to hand out.
+            #if !AVENKIN_PHONE_ONLY
             register(RecordClipTool())
+            #endif
         }
 
         // Accessibility Tier (A1) — Reading Accessibility. Needs the camera for OCR.
         if Config.accessibilityModeEnabled, let camera = cameraService {
             register(ReadingAccessibilityTool(cameraService: camera))
             // Low-Vision Navigation Assist (Plan J) — deps configured by AppState.
+            #if !AVENKIN_PHONE_ONLY
             register(NavigationAssistTool())
+            #endif
             // Sight tools: name colors / identify banknotes.
             register(ColorIdentifierTool(cameraService: camera))
             register(MoneyIdentifierTool(cameraService: camera))
@@ -315,7 +328,9 @@ final class NativeToolRegistry {
         register(AircraftOverheadTool(locationService: locationService))
 
         // Live Coach (Plan C) — service deps are configured by AppState; tool just starts/stops.
+        #if !AVENKIN_PHONE_ONLY
         register(LiveCoachTool())
+        #endif
         // Always registered — tool checks agentModeEnabled at execution time
         register(YieldToHumanTool())
         var discoveryTool = DiscoverCapabilitiesTool()
@@ -361,7 +376,9 @@ final class NativeToolRegistry {
         }
         // Reading companion — session lifecycle only; the book Q&A rides the context block
         // ReadingCompanionService injects into the prompt (Plan BT).
+        #if !AVENKIN_PHONE_ONLY
         register(ReadingSessionTool())
+        #endif
 
         // LiveTranslationTool is registered separately after the service is created
 

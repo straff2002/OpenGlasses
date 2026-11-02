@@ -110,7 +110,11 @@ struct NarrationVoiceNotices: Equatable {
             return "Scene narration has stopped. Descriptions are generated on this device, "
                 + "and that can't run while the app is in the background. Open the app to start again."
         case .cameraUnavailable:
+            #if AVENKIN_PHONE_ONLY
+            return "Scene narration has stopped. There's no live camera feed."
+            #else
             return "Scene narration has stopped. There's no live camera feed from your glasses."
+            #endif
         case .userTurn, .realtimeSession, .ambientCaptions:
             // These take the ear, not the loop, so the policy never reports them as a halt reason.
             // Kept exhaustive so a new interruption has to decide what the wearer is told.
@@ -163,7 +167,11 @@ struct NarrationVoiceNotices: Equatable {
     /// one who can decide whether narration is worth their remaining battery, and they can only
     /// decide it if they are told.
     static func warmingCopy(posture: PowerPosture) -> String {
+        #if AVENKIN_PHONE_ONLY
+        let base = "Starting the camera for scene narration. This takes a few seconds."
+        #else
         let base = "Starting the glasses camera for scene narration. This takes a few seconds."
+        #endif
         guard posture >= .conserve else { return base }
         return base + " Battery is getting low, so it won't last long."
     }
@@ -184,8 +192,13 @@ struct NarrationVoiceNotices: Equatable {
     /// refusal they can act on beats an outcome they cannot.
     static func powerRefusal(posture: PowerPosture) -> String? {
         guard posture >= .reserve else { return nil }
+        #if AVENKIN_PHONE_ONLY
+        return "Can't start scene narration right now. It keeps the camera running, and "
+            + "the phone is too low on power or too warm for that. Charge or cool it and try again."
+        #else
         return "Can't start scene narration right now. It keeps the glasses camera running, and "
             + "they're too low on power or too warm for that. Charge or cool them and try again."
+        #endif
     }
 
     /// Spoken copy for a start that can't happen at all, so a wearer asking for narration on

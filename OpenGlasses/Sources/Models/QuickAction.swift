@@ -76,7 +76,7 @@ struct QuickAction: Codable, Identifiable, Equatable {
             label: "Translate Sign",
             icon: "text.viewfinder",
             type: .photoThenPrompt,
-            promptText: "Read all visible text in this image. First provide exact original text, then translate to English. If helpful, use the translate tool to improve accuracy. Keep response concise for glasses."
+            promptText: "Read all visible text in this image. First provide exact original text, then translate to English. If helpful, use the translate tool to improve accuracy. Keep response concise\(GlassesSupportPolicy.forGlasses)."
         ),
         QuickAction(
             id: "travel-ask-local-phrase",

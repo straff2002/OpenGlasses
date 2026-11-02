@@ -115,9 +115,15 @@ enum SettingsCatalog {
                              shownInSimpleMode: false)
         case .devices:
             // Glasses settings live here, under Glasses — never in a general category.
+            #if AVENKIN_PHONE_ONLY
+            return .category(id, title: String(localized: "Devices & Privacy"), icon: "lock.shield",
+                             subtitle: String(localized: "Hardware, privacy, and medical compliance"),
+                             shownInSimpleMode: true)
+            #else
             return .category(id, title: String(localized: "Devices & Privacy"), icon: "lock.shield",
                              subtitle: String(localized: "Glasses, hardware, privacy, and medical compliance"),
                              shownInSimpleMode: true)
+            #endif
         case .accessibility:
             return .pinnedAssistive(id, title: String(localized: "Accessibility"), icon: "accessibility",
                                     subtitle: String(localized: "Assistive narration, guidance, and reading help"))
@@ -146,9 +152,15 @@ enum SettingsCatalog {
                              subtitle: String(localized: "Recordings, meetings, and going live"),
                              shownInSimpleMode: false)
         case .display:
+            #if AVENKIN_PHONE_ONLY
+            return .category(id, title: String(localized: "Teleprompter"), icon: "text.alignleft",
+                             subtitle: String(localized: "Read a script hands-free"),
+                             shownInSimpleMode: false)
+            #else
             return .category(id, title: String(localized: "Display & HUD"), icon: "eyeglasses",
                              subtitle: String(localized: "The in-lens display and everything that draws on it"),
                              shownInSimpleMode: false)
+            #endif
         case .advanced:
             return .category(id, title: String(localized: "Advanced"), icon: "gearshape.2", mutedIcon: true,
                              subtitle: String(localized: "Developer and power-user tools"),

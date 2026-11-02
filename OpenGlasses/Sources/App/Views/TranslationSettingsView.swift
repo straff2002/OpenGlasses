@@ -87,7 +87,11 @@ struct TranslationSettingsView: View {
             } header: {
                 Text("Conversation Mode")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("For a bilingual exchange: the screen splits, and each side's speech renders in the other's language.")
+                #else
                 Text("For a bilingual exchange: the screen splits, each side's speech renders in the other's language, and the glasses display shows only the line addressed to you.")
+                #endif
             }
 
             Section {
@@ -99,7 +103,11 @@ struct TranslationSettingsView: View {
                     }
                 ManagedSettingNote(key: .interpreterEnabled)
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Ask for a two-way translation and each of you hears the other in your own language, from the phone held between you. It uses your Gemini API key and sends what you both say to Google. The other person hears that it's AI translation when it starts. Nothing either of you says is saved here.")
+                #else
                 Text("Ask for a two-way translation and each of you hears the other in your own language: you in the glasses, them from the phone, held between you. It uses your Gemini API key and sends what you both say to Google. The other person hears that it's AI translation when it starts. Nothing either of you says is saved here.")
+                #endif
             }
 
             Section {

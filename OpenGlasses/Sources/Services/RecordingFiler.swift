@@ -134,7 +134,7 @@ struct RecordingFiler {
         var summary: String {
             var places: [String] = []
             if savedToLibrary { places.append("the app's Recordings folder") }
-            if savedToPhotos { places.append("the Glasses album in Photos") }
+            if savedToPhotos { places.append("the \(GlassesPhotoAlbum.albumName) album in Photos") }
             if folderCopyURL != nil { places.append("your chosen folder") }
             switch places.count {
             case 0:

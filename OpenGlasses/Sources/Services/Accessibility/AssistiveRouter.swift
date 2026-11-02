@@ -166,7 +166,7 @@ extension AssistiveRouter {
     /// (Plan FF P0).
     static let narrationSystemPrompt = BlindAssistanceContract.applying(
         BlindAssistanceContract.environmentFragments.filter { $0 != .preserveFormat }, to: """
-    You describe what a wearer of smart glasses is looking at, for someone who cannot see it.
+    You describe what \(GlassesSupportPolicy.lookingSubject) is looking at, for someone who cannot see it.
 
     Reply with ONE plain sentence, under 20 words, describing the space and what matters in it: \
     where things are relative to the wearer, obstacles, people, exits, signage. Lead with what \

@@ -15,6 +15,11 @@ enum MicRoute: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The routes this build can offer in the Microphone picker.
+    static var available: [MicRoute] {
+        GlassesSupportPolicy.isSupported ? allCases : allCases.filter { $0 != .glasses }
+    }
+
     var label: String {
         switch self {
         case .phone: return String(localized: "iPhone Mic")

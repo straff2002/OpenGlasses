@@ -58,7 +58,11 @@ struct HealthSettingsView: View {
             } header: {
                 Text("Stored on this phone")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Apple Health can't be read while your phone is locked. So Avenkin keeps the last summary numbers — never the underlying samples — encrypted on this phone, out of backups, for up to 24 hours. A locked-phone answer says how old it is.")
+                #else
                 Text("Apple Health can't be read while your phone is locked, which is when you're most likely to ask from your glasses. So Avenkin keeps the last summary numbers — never the underlying samples — encrypted on this phone, out of backups, for up to 24 hours. A locked-phone answer says how old it is.")
+                #endif
             }
         }
         .navigationTitle("Health")

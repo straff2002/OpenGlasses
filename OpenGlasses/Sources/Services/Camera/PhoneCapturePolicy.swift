@@ -144,7 +144,11 @@ enum PhoneCapturePolicy {
 
     /// Appended to a tool result that used a phone photo, so the model never says "through your
     /// glasses" about a picture the phone took.
+    #if AVENKIN_PHONE_ONLY
+    static let phonePhotoNote = "(Photo taken with the phone camera.)"
+    #else
     static let phonePhotoNote = "(Photo taken with the phone camera — no glasses are connected.)"
+    #endif
 
     /// The tool result the model receives, given what happened to phone photos during the call.
     ///
@@ -196,7 +200,11 @@ enum PhonePhotoOutcome: Equatable, Sendable {
         case .busy:
             return "The phone camera is already open for another request, so no photo was taken for this one. Ask the user to finish or cancel that photo first."
         case .appNotOnScreen:
+            #if AVENKIN_PHONE_ONLY
+            return "The phone camera needs Avenkin open on screen, so no photo was taken. Ask the user to open the app and try again, or to describe what they see."
+            #else
             return "No glasses are connected, and the phone camera needs Avenkin open on screen, so no photo was taken. Ask the user to open the app and try again, or to describe what they see."
+            #endif
         case .couldNotPresent:
             return "The phone camera couldn't open over what is on screen, so no photo was taken. Ask the user to close the open screen and try again."
         }

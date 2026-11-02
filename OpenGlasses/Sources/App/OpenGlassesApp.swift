@@ -3679,12 +3679,14 @@ class AppState: ObservableObject, AppStateProtocol {
         hermesBridge.photoProvider = { [weak self] in
             guard let self, self.isConnected else {
                 throw NSError(domain: "HermesBridge", code: 3,
-                              userInfo: [NSLocalizedDescriptionKey: "Glasses camera unavailable"])
+                              userInfo: [NSLocalizedDescriptionKey: GlassesSupportPolicy.isSupported
+                                ? "Glasses camera unavailable" : "Camera unavailable"])
             }
             let still = await self.cameraService.filteredStill(for: .agentAttachment, source: .photoOnly)
             guard let jpeg = still.jpegData(compressionQuality: 0.85) else {
                 throw NSError(domain: "HermesBridge", code: 4,
-                              userInfo: [NSLocalizedDescriptionKey: "Glasses picture unavailable"])
+                              userInfo: [NSLocalizedDescriptionKey: GlassesSupportPolicy.isSupported
+                                ? "Glasses picture unavailable" : "Camera picture unavailable"])
             }
             return jpeg
         }
@@ -6279,7 +6281,7 @@ class AppState: ObservableObject, AppStateProtocol {
             var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
             // A phone-camera capture must SAY so — the phone sees the desk, not what the
             // glasses are pointed at, and an unannounced camera swap reads as hallucination.
-            if cameraService.lastCaptureSource == .phone {
+            if GlassesSupportPolicy.isSupported, cameraService.lastCaptureSource == .phone {
                 response = "From the phone camera — the glasses weren't available. " + response
             }
             lastResponse = response
@@ -6493,6 +6495,10 @@ class AppState: ObservableObject, AppStateProtocol {
             broadcastService.leavePhoneCamera()
             tellWearerAboutBroadcast(BroadcastGoLive.insetDroppedMessage)
         case .moveToGlasses:
+            #if AVENKIN_PHONE_ONLY
+            // Nothing to move to: the stream ends, like a phone stream with no glasses connected.
+            endBroadcast(.blurNeedsGlasses)
+            #else
             // The phone comes off first, so nothing unblurred goes out while the glasses start.
             broadcastService.leavePhoneCamera()
             tellWearerAboutBroadcast(BroadcastGoLive.movedToGlassesMessage)
@@ -6501,6 +6507,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard !picture, self.broadcastService.isBroadcasting else { return }
                 self.endBroadcast(.glassesGaveNoPicture)
             }
+            #endif
         case .end(let reason):
             endBroadcast(reason)
         }
@@ -6581,7 +6588,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let decision = BroadcastGoLive.decideForIntent(.init(
             isBroadcasting: broadcastService.isBroadcasting,
             isConfigured: Config.isBroadcastConfigured,
-            preferredSource: BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses,
+            preferredSource: BroadcastVideoSource.resolved(Config.broadcastDefaultSource),
             glassesConnected: isConnected,
             faceBlurOn: privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
@@ -7372,7 +7379,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         postProcess: { rawResponse in
                             var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: self.conversationStore.activeThreadId) : rawResponse
                             // Phone-camera captures must announce themselves (see captureAndAnalyzePhoto).
-                            if self.cameraService.lastCaptureSource == .phone {
+                            if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                                 response = "From the phone camera — the glasses weren't available. " + response
                             }
                             return response
@@ -8765,7 +8772,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // if the fallback fired, the wearer just had their phone's view — of whatever
                 // pocket or desk it was on — sent off at a remote agent's request, and only
                 // this correction tells them.
-                if self.cameraService.lastCaptureSource == .phone {
+                if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                     await self.speechService.speak(
                         "That photo came from the phone camera — the glasses weren't available.")
                 }

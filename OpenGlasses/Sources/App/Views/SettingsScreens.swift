@@ -110,8 +110,10 @@ struct VoiceTriggersSettingsScreen: View {
                     // version (Plan FY P3.2). Tags match `Config.wakePhrasePresets`.
                     Text("Avenkin").tag("avenkin")
                     Text("Hey Avenkin").tag("hey avenkin")
+                    #if !AVENKIN_PHONE_ONLY
                     Text("OpenGlasses").tag("openglasses")
                     Text("Hey OpenGlasses").tag("hey openglasses")
+                    #endif
                     Text("Hey Claude").tag("hey claude")
                     Text("Hey Jarvis").tag("hey jarvis")
                     Text("Hey Computer").tag("hey computer")
@@ -292,6 +294,7 @@ struct VoiceTriggersSettingsScreen: View {
                         info: trigger.detail
                     )
                 }
+                #if !AVENKIN_PHONE_ONLY
                 // Temple taps live with the glasses now (Plan GJ); this row is a way there.
                 NavigationLink {
                     TempleTapSettingsView(appState: appState)
@@ -303,10 +306,15 @@ struct VoiceTriggersSettingsScreen: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                #endif
             } header: {
                 Text("Hands-Free Triggers")
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Shake the phone to start the assistant without the wake word. Off by default.")
+                #else
                 Text("Shake the phone to start the assistant without the wake word. Off by default. Headset media controls are set up under Hardware & Privacy.")
+                #endif
             }
         }
         .navigationTitle("Voice & Triggers")
@@ -785,11 +793,13 @@ struct ToolsActionsSections: View {
                 Label("Study Mode", systemImage: "graduationcap")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 ReadingStatsView()
             } label: {
                 Label("Reading", systemImage: "book")
             }
+            #endif
 
             NavigationLink {
                 HealthVaultEditorView()
@@ -834,6 +844,7 @@ struct ToolsActionsSections: View {
                 Label("Siri & Search", systemImage: "mic.badge.plus")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             if Config.agentModeEnabled, adminGate.presentation(.key(.mcpServerEnabled)).isShown {
                 NavigationLink {
                     MCPServerSettingsView()
@@ -850,6 +861,7 @@ struct ToolsActionsSections: View {
                     }
                 }
             }
+            #endif
 
             NavigationLink {
                 PlaybooksSettingsView(store: appState.playbookStore)

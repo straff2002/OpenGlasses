@@ -104,7 +104,9 @@ struct DeveloperPanelView: View {
 
             OGSection(
                 header: "Reply Speech",
-                footer: "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes. Off until it has been measured on the glasses."
+                footer: GlassesSupportPolicy.isSupported
+                    ? "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes. Off until it has been measured on the glasses."
+                    : "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes."
             ) {
                 OGRow("Speak as it writes", isOn: $directSentenceStreamingEnabled,
                       icon: "text.bubble")

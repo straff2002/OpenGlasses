@@ -336,7 +336,9 @@ struct TurnTimelineDebugView: View {
     private var cohortSection: some View {
         OGSection(
             header: "Perceived Latency by Cohort",
-            footer: "Split by backend × TTS engine × mic route — never pooled. An 8 kHz glasses mic and a cloud TTS engine are a different population from a phone mic and on-device TTS; averaging across them would describe neither."
+            footer: GlassesSupportPolicy.isSupported
+                ? "Split by backend × TTS engine × mic route — never pooled. An 8 kHz glasses mic and a cloud TTS engine are a different population from a phone mic and on-device TTS; averaging across them would describe neither."
+                : "Split by backend × TTS engine × mic route — never pooled. A Bluetooth mic and a cloud TTS engine are a different population from a phone mic and on-device TTS; averaging across them would describe neither."
         ) {
             if cohortEntries.isEmpty {
                 Text("No cohort has a sealed turn with a recorded perceived latency yet.")

@@ -9,8 +9,12 @@ enum MusicPhraser {
     /// A service Avenkin has no route to. Generic on purpose: it does not promise any other
     /// assistant can do it, and it offers what does work.
     static func cannotControl(_ service: String) -> String {
-        "Avenkin can't control \(service) directly. Your glasses' temple controls still work on whatever's playing, "
+        #if AVENKIN_PHONE_ONLY
+        return "Avenkin can't control \(service) directly. You can set a Home Assistant speaker as your music provider in Settings."
+        #else
+        return "Avenkin can't control \(service) directly. Your glasses' temple controls still work on whatever's playing, "
             + "and you can set a Home Assistant speaker as your music provider in Settings."
+        #endif
     }
 
     /// The hand-off is a search page, not playback; say so, so nobody waits for music.
@@ -160,9 +164,14 @@ enum MusicPhraser {
     }
 
     /// Honest about what the phone cannot see: another app's playback is invisible to Avenkin.
+    #if AVENKIN_PHONE_ONLY
+    static let nothingPlaying =
+        "Nothing is playing in Apple Music. If another app is playing, Avenkin can't see what it is."
+    #else
     static let nothingPlaying =
         "Nothing is playing in Apple Music. If another app is playing, Avenkin can't see what it is, "
             + "but your glasses' temple controls still work on it."
+    #endif
 
     /// "3 minutes 20", "1 minute", "45 seconds".
     static func clock(_ seconds: TimeInterval) -> String {

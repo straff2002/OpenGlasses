@@ -9,7 +9,7 @@ struct SafetyAssessmentTool: NativeTool {
     let name = "safety_assessment"
 
     let description = """
-    Run a High-Energy Control Assessment (HECA) on the current job-site view from the camera (the glasses when connected, otherwise the phone) — \
+    Run a High-Energy Control Assessment (HECA) on the current job-site view from the camera (\(GlassesSupportPolicy.toolCameraSource)) — \
     detects the 13 high-energy serious-injury/fatality hazards and whether each is safeguarded by a DIRECT \
     control, and returns a summary plus a HECA score. Use for "assess this site", "is this safe?", "safety \
     check". Actions: run (assess now), last (repeat the latest result), score (just the latest HECA score), \

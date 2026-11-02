@@ -17,7 +17,11 @@ final class GlassesSupportPolicyTests: XCTestCase {
 
     func testTheReasonNamesTheAppAndNoPlan() {
         let reason = GlassesSupportPolicy.unavailableReason(appName: "Avenkin")
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertEqual(reason, "That isn't available in this version of Avenkin.")
+        #else
         XCTAssertEqual(reason, "Smart glasses aren't supported in this version of Avenkin.")
+        #endif
         XCTAssertFalse(reason.contains("JE"), "plan letters never reach a rendered string")
         XCTAssertFalse(reason.lowercased().contains("meta"),
                        "the store copy does not explain Meta's release channel to a store user")
@@ -27,7 +31,11 @@ final class GlassesSupportPolicyTests: XCTestCase {
         GlassesSupportPolicy.overrideForTesting = .notInThisVersion
         XCTAssertEqual(GlassesSupportPolicy.current, .notInThisVersion)
         XCTAssertFalse(GlassesSupportPolicy.isSupported)
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertEqual(GlassesSupportPolicy.reportLine, "Build variant: phone-only")
+        #else
         XCTAssertEqual(GlassesSupportPolicy.reportLine, "Build variant: \(AppBuildVariant.current.rawValue) · Glasses: not in this version (phone-only build)")
+        #endif
 
         GlassesSupportPolicy.overrideForTesting = .supported
         XCTAssertEqual(GlassesSupportPolicy.isSupported, AppBuildVariant.current == .glassesBeta)

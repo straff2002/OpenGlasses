@@ -13,7 +13,11 @@ struct OpenGlassesHomeWidget: Widget {
         }
         .configurationDisplayName("Avenkin")
         // Static metadata, shown on every copy: a store copy offers no glasses (Plan JE).
+        #if AVENKIN_PHONE_ONLY
+        .description("A quick Listen toggle.")
+        #else
         .description("A quick Listen toggle, and your glasses' connection and battery when you use them.")
+        #endif
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

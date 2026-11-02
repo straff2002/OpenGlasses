@@ -226,7 +226,11 @@ struct DisplayHUDSettingsScreen: View {
         Form {
             DisplayHUDSections(appState: appState)
         }
+        #if AVENKIN_PHONE_ONLY
+        .navigationTitle("Teleprompter")
+        #else
         .navigationTitle("Display & HUD")
+        #endif
         .ogFormStyle()
     }
 }
@@ -275,13 +279,13 @@ struct DisplayHUDSections: View {
         #endif
 
         Section {
+            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 HUDMirrorView(router: appState.hudRouter)
             } label: {
                 Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
             }
 
-            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 EvenDisplaySettingsView()
             } label: {
@@ -292,7 +296,6 @@ struct DisplayHUDSections: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            #endif
 
             NavigationLink {
                 WebHUDMirrorSettingsView()
@@ -305,6 +308,7 @@ struct DisplayHUDSections: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            #endif
 
             NavigationLink {
                 TeleprompterSettingsView(service: appState.teleprompterService,
@@ -319,9 +323,15 @@ struct DisplayHUDSections: View {
                 }
             }
         } header: {
+            #if !AVENKIN_PHONE_ONLY
             Text("What Draws On It")
+            #endif
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Read a script hands-free.")
+            #else
             Text("Preview the lens on your phone, choose which display hardware to drive, mirror the HUD to a browser, or read a script hands-free.")
+            #endif
         }
     }
 }

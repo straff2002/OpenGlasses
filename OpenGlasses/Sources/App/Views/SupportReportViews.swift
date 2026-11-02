@@ -319,7 +319,15 @@ struct SupportReportSheet: View {
         if failed > 0 { turns += " " + String(localized: "(\(failed) failed)") }
         parts.append(turns)
         return parts.joined(separator: " · ")
-            + "\n" + String(localized: "Plus this phone, any connected glasses, and the app's own event log.")
+            + "\n" + deviceSummary
+    }
+
+    private var deviceSummary: String {
+        #if AVENKIN_PHONE_ONLY
+        return String(localized: "Plus this phone and the app's own event log.")
+        #else
+        return String(localized: "Plus this phone, any connected glasses, and the app's own event log.")
+        #endif
     }
 
     private func maskingSummary(_ document: JobTranscriptExport.Document) -> String {

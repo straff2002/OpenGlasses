@@ -381,7 +381,11 @@ struct GoalDetailView: View {
         } header: {
             Text("Check-ins")
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("A check-in is a line in your digest — at most two goal check-ins a day.")
+            #else
             Text("A check-in is one sentence when you're wearing your glasses, and a line in your digest otherwise — at most two goal check-ins a day.")
+            #endif
         }
     }
 

@@ -63,7 +63,7 @@ enum ReadingMode: String, CaseIterable {
             // invention is worse than "I can't find it".
             return """
             READING MODE — ANSWER FROM CAPTURED TEXT. The user asked a question about text their \
-            glasses camera captured (below). They may not be able to verify what you say, so answer \
+            \(GlassesSupportPolicy.cameraOwner) camera captured (below). They may not be able to verify what you say, so answer \
             using ONLY the captured text: give the direct answer first, then one brief supporting \
             detail if it is present. If the answer is not in the captured text, say you can't find \
             it and suggest repositioning the glasses — do NOT guess or add anything that isn't \

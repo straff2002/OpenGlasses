@@ -111,7 +111,12 @@ final class BystanderBlurControlTests: XCTestCase {
                        .phoneCameraNotBlurred(.fallback))
     }
 
+    // In a phone-only build the fallback and a chosen phone camera are one refusal.
+    #if AVENKIN_PHONE_ONLY
+    private let routes: [BroadcastGoLive.PhoneRoute] = [.chosen, .inset, .midStreamSwitch]
+    #else
     private let routes: [BroadcastGoLive.PhoneRoute] = [.fallback, .chosen, .inset, .midStreamSwitch]
+    #endif
 
     func testEveryRouteHasItsOwnWords() {
         let messages = routes.map { BystanderBlurControl.refusal(route: $0, changeable: true, organization: nil).message }

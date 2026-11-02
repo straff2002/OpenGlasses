@@ -96,7 +96,11 @@ struct ScanAssistSettingsView: View {
         } header: {
             Text("Which side would you like reminders to check?")
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Your own left or right — not the page's, not the room's, not the side someone opposite you would call it. Nothing picks this for you, and you can change it whenever you like.")
+            #else
             Text("Your own left or right as you're wearing the glasses — not the page's, not the room's, not the side someone opposite you would call it. Nothing picks this for you, and you can change it whenever you like.")
+            #endif
         }
     }
 

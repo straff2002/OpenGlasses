@@ -371,7 +371,11 @@ enum GlassesDisplayError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        #if AVENKIN_PHONE_ONLY
+        case .noDisplay: return "No display is available"
+        #else
         case .noDisplay: return "Connected glasses have no in-lens display"
+        #endif
         case .sessionUnavailable: return "Display session unavailable"
         }
     }

@@ -6,8 +6,7 @@ import Foundation
 final class RememberSceneTool: NativeTool {
     let name = "remember_scene"
     let description = """
-    Remember what the user is looking at through the camera (the glasses when connected, otherwise \
-    the phone). Use only when they ask to 'remember this scene', 'remember what I am looking at', \
+    Remember what the user is looking at through the camera (\(GlassesSupportPolicy.toolCameraSource)). Use only when they ask to 'remember this scene', 'remember what I am looking at', \
     or 'remember this label'. Saves a timestamped description and readable text in saved memory, \
     using the selected vision model when available. The photo itself is not saved. Optional 'note' \
     is the user's own label or context. Later use memory_search to recall the scene or its text; \
