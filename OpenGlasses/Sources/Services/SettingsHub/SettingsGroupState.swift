@@ -3,7 +3,8 @@ import Foundation
 /// Plan KH P2: what a group's parent toggle says and does (pure). Decisions 6 to 8 live here:
 ///
 /// - A parent covers one consent. Off turns its members off. On restores what was on, and never
-///   turns on a separate-consent member for the first time.
+///   turns on a separate-consent member for the first time. A member that says `parentMayRestore`
+///   false is not restored either: it comes back only at its own switch.
 /// - A parent never writes a locked member, and never writes one Medical Compliance mode refuses.
 /// - A locked member is not drawn, and a group with nothing left to draw is not drawn.
 ///
@@ -79,9 +80,9 @@ struct SettingsGroupState: Equatable, Sendable {
         guard on else {
             let wasOn = writable.filter { reading($0).isOn }
             return Change(writes: wasOn.map { Write(member: $0.id, value: false) },
-                          remembered: Set(wasOn.map(\.id)))
+                          remembered: Set(wasOn.filter(\.parentMayRestore).map(\.id)))
         }
-        var targets = writable.filter { remembered?.contains($0.id) ?? $0.onFirstTime }
+        var targets = writable.filter(\.parentMayRestore).filter { remembered?.contains($0.id) ?? $0.onFirstTime }
         // A parent that turns nothing on would be a switch that springs back. Nothing to restore
         // for a follower means the followers' first-time set, and failing that the first of them.
         if !targets.contains(where: { $0.kind == .follows }) {

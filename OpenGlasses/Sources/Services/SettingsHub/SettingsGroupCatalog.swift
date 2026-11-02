@@ -12,7 +12,8 @@ import Foundation
 //   2. **Some things are never a `.follows` member:** face recognition, Agentic Features, and
 //      sharing health data with the AI (Decision 7). The first two are not in any group. Sharing
 //      and Memory Enrichment appear as `.separateConsent`, because each sends something off the
-//      phone that the parent's own consent does not cover.
+//      phone that the parent's own consent does not cover. Sharing goes further: a parent may turn
+//      it off, and nothing but its own switch turns it back on (`parentMayRestore`).
 
 /// A group of the Everyday screen.
 enum SettingsGroupID: String, CaseIterable, Sendable {
@@ -66,6 +67,10 @@ struct SettingsGroupMember: Identifiable, Equatable, Sendable {
     let id: SettingsGroupMemberID
     let title: String
     let kind: Kind
+    /// A parent's on may bring this back if it was on when the parent went off. False for a consent
+    /// so sensitive that it is only ever given at its own switch: the parent's off still takes it
+    /// away, and is never remembered for it.
+    var parentMayRestore = true
     /// Comes on with the parent when there is nothing to restore. Off for a member that is off by
     /// default because it does something unasked: Memory Suggestions speaks up by itself.
     var onFirstTime = false
@@ -146,7 +151,7 @@ enum SettingsGroupCatalog {
                 .init(id: .firstAid, title: String(localized: "First-Aid Coaching and Triage"), kind: .follows,
                       onFirstTime: true, feature: .firstAidAssist),
                 .init(id: .shareHealth, title: String(localized: "Share Health Data with AI"), kind: .separateConsent,
-                      hardDisabledInMedicalMode: true),
+                      parentMayRestore: false, hardDisabledInMedicalMode: true),
             ])
         }
     }

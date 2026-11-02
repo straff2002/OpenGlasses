@@ -73,6 +73,39 @@ final class SettingsGroupTests: XCTestCase {
         }
     }
 
+    // MARK: - A consent only its own switch gives
+
+    func testHealthSharingGoesOffWithTheParent() {
+        let on: Set<Member> = [.firstAid, .shareHealth]
+        XCTAssertEqual(applied(state(.healthFitness, on: on).parentChange(to: false), to: on), [])
+    }
+
+    func testHealthSharingNeverComesBackThroughAParent() {
+        let mix: Set<Member> = [.healthSummaries, .firstAid, .shareHealth]
+        let off = state(.healthFitness, on: mix).parentChange(to: false)
+        XCTAssertEqual(off.remembered, [.healthSummaries, .firstAid], "off does not remember the consent")
+        let on = state(.healthFitness, remembered: off.remembered).parentChange(to: true)
+        XCTAssertEqual(applied(on, to: []), [.healthSummaries, .firstAid])
+    }
+
+    /// Whatever is on the phone already, the parent's on cannot be the thing that gives it.
+    func testHealthSharingIsNotRestoredFromAnOlderRecord() {
+        let change = state(.healthFitness, remembered: [.firstAid, .shareHealth]).parentChange(to: true)
+        XCTAssertFalse(change.writes.contains { $0.member == .shareHealth })
+    }
+
+    func testMemoryEnrichmentIsStillRestoredIfItWasOn() {
+        let mix: Set<Member> = [.userMemory, .memoryEnrichment]
+        let off = state(.memory, on: mix).parentChange(to: false)
+        XCTAssertEqual(off.remembered, mix)
+        XCTAssertEqual(applied(state(.memory, remembered: off.remembered).parentChange(to: true), to: []), mix)
+    }
+
+    func testOnlyHealthSharingStandsOutsideRestore() {
+        let held = SettingsGroupCatalog.all.flatMap(\.members).filter { !$0.parentMayRestore }.map(\.id)
+        XCTAssertEqual(held, [.shareHealth])
+    }
+
     /// A consent given by hand while the parent was off is not taken back by turning the parent on.
     func testOnNeverTurnsAMemberOff() {
         let change = state(.memory, on: [.memoryEnrichment]).parentChange(to: true)
@@ -327,6 +360,29 @@ final class SettingsGroupTests: XCTestCase {
         XCTAssertFalse(Config.conversationPersistenceEnabled, "it was off, so it stays off")
         XCTAssertFalse(Config.brainEnrichmentEnabled)
         XCTAssertNil(Config.settingsGroupRemembered(group: "memory"))
+    }
+
+    /// The live store, for the one consent a parent can only take away.
+    @MainActor
+    func testTheStoreNeverRestoresHealthSharing() {
+        let keys = SettingsGroupCatalog.group(.healthFitness).members.filter(\.isSwitch).map(\.id.rawValue)
+            + ["settingsGroupRemembered.health-fitness"]
+        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, saved) {
+                if let value { UserDefaults.standard.set(value, forKey: key) }
+                else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+        }
+        Config.firstAidAssistEnabled = true
+        Config.setShareHealthDataWithAI(true)
+        SettingsGroupStore.setParent(false, of: .healthFitness, in: .unmanaged)
+        XCTAssertFalse(Config.shareHealthDataWithAI)
+        SettingsGroupStore.setParent(true, of: .healthFitness, in: .unmanaged)
+        XCTAssertTrue(Config.firstAidAssistEnabled)
+        XCTAssertFalse(Config.shareHealthDataWithAI)
+        SettingsGroupStore.setMember(.shareHealth, to: true, in: .healthFitness)
+        XCTAssertTrue(Config.shareHealthDataWithAI, "its own switch is the way back")
     }
 
     /// Turned off by hand while the parent is off, it stays off when the parent comes back.

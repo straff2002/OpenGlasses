@@ -300,7 +300,7 @@ struct EverydaySettingsScreen: View {
         case .translate:
             Text("Translated captions — surrounding speech rendered in your language. Off by default.")
         case .healthFitness:
-            Text("When Share Health Data with AI is on, replies that include health numbers are spoken with your chosen voice, which may be a cloud voice.")
+            Text("When Share Health Data with AI is on, replies that include health numbers are spoken with your chosen voice, which may be a cloud voice. Turning Health & Fitness off turns sharing off too, and it stays off until you turn it on here.")
         }
     }
 }
