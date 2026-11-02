@@ -178,7 +178,7 @@ final class TurnLedger: ObservableObject {
     // MARK: - Debug export
 
     /// Plain-text dump of the sealed history plus per-cohort perceived-latency stats, for the
-    /// Settings → Advanced → Developer "copy diagnostics" action. Text, not JSON: nothing parses
+    /// Settings → Advanced & Support → Advanced → Developer "copy diagnostics" action. Text, not JSON: nothing parses
     /// this back, a developer reads it, so legibility wins (see also Plan CU P1 item 5 — no sink, no
     /// push; this on-device export is the entire surface).
     /// - Parameter liveMemory: the live backends' connect-time memory snapshots, already aged (see

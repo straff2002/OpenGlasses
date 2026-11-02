@@ -1,6 +1,6 @@
 # Plan KH — From Capabilities to Use (what to try first, settings by what you want done, showing what it has learned)
 
-**Status:** 🚧 P1 built 2026-10-31: the scenario catalogue (59 scenarios, with data-only topics), readiness, the shelf policy, first-turn choice, on-device progress store, Ready page, Voice tab cards (the tab starts on them at most once per launch while there are cards to show), Things to Try, the `scenarios` category of `discover_capabilities`, and the support report count. Headless tests cover the catalogue, readiness, shelf, first turn, store, tool and report; the Ready page and Voice tab cards have not been seen running, because the simulator cannot get past onboarding. Owed: P0, which was not run first; and the device pass (a first turn from the Ready page, cards with VoiceOver, a managed phone, one right-to-left language). The string catalog sync is done, 2026-11-01. P2, P3 and P4 not built.
+**Status:** 🚧 P1 built 2026-10-31: the scenario catalogue (59 scenarios, with data-only topics), readiness, the shelf policy, first-turn choice, on-device progress store, Ready page, Voice tab cards (the tab starts on them at most once per launch while there are cards to show), Things to Try, the `scenarios` category of `discover_capabilities`, and the support report count. Headless tests cover the catalogue, readiness, shelf, first turn, store, tool and report; the Ready page and Voice tab cards have not been seen running, because the simulator cannot get past onboarding. Owed: P0, which was not run first; and the device pass (a first turn from the Ready page, cards with VoiceOver, a managed phone, one right-to-left language). The string catalog sync for P1 is done, 2026-11-01. P2 built 2026-11-02 (branch, not merged): the hub is 8 rows, a drawing layer on the categories (`SettingsHub`), and no id, lockdown or profile changed; Everyday's six groups with parent toggles; separate consents that a parent never turns on; and health sharing that no parent ever restores. Headless tests cover the rows, routing, visibility and groups. Owed: the catalog sync for P2's new strings, the fresh-install Ready page, P0, and a device pass of the new hub. P3 and P4 not built.
 **Track:** App-wide. Field Assist keeps its own guided flows and gets its own scenarios.
 **Related:** Plan [HA](HA-settings-hub-and-org-lockdown.md) (the fixed hub, and the shelf it removed),
 Plan [DE](DE-settings-capability-journey.md) (the journey HA retired), Plan
@@ -180,6 +180,38 @@ Agentic Features, and its link says so.
 
 **Also in P2:** Intent Classifier becomes a plain-words row ("Ignore nearby chatter") under Voice &
 Triggers. Services & Integrations keeps the engines and keys it still holds.
+
+**Built 2026-11-02, and what changed on the way.** The owner, on seeing fourteen rows: "i thought we
+were simplifying settings not adding yet another one?" So the hub became 8 rows and Everyday stayed.
+"The hub stays one fixed list" above is superseded by this.
+
+| Hub row | Holds | Opens |
+|---|---|---|
+| Assistant | AI & Personality, Voice & Triggers | AI & Personality's content, with Voice & Triggers as one link row at the top. Both are too long to share a page. |
+| Everyday | Everyday, plus My Manuals on a personal phone | Things to Try, My Manuals, then the six groups |
+| Devices & Privacy | Devices, Capture & Streaming, Display & HUD | All three on one page, with their existing sections |
+| Connections | Connections, Tools & Actions | Both on one page |
+| Accessibility | Accessibility | Unchanged, pinned |
+| Field Assist | Field Assist, plus My Manuals on a Field Assist phone | Field Assist, with My Manuals as a row |
+| Look & Feel | Look & Feel | Unchanged |
+| Advanced & Support | Diagnostics & Support, Advanced | Diagnostics, with Advanced as one link row at the top |
+
+- **A drawing layer.** `SettingsHub` says which categories a row draws, and nothing else.
+  `SettingsCategoryID`, its raw values, `ManagedLockdown`, `SettingKey`, `ProfileContract` and
+  everything a profile names are unchanged, `everyday` included. `SettingsVisibilityPolicy` still
+  decides per category. A row shows if any child is visible, shows only visible children, and with one
+  child goes straight to it. So Simple Mode and a technician's phone see the same categories as
+  before, and a category still opens by itself through `AppState.openSettings(_:)`.
+- **My Manuals** sits with Field Assist while `Config.fieldAssistActive`, the same fact that keeps
+  `PersonalManualLibrary.permitted` false. The row itself keeps the hub's old rule, so it still shows
+  to someone who has not bought it, or who turned its answers off.
+- **Things to Try** is the first row of Everyday, and stays beside About where Everyday's screen
+  cannot be reached.
+- **The Field Assist row stays for everyone.** It is the only home of licence entry, purchase and the
+  organisation code, and the Modes tab's way there is not always shown.
+- **Separate consent.** A parent never turns on Memory Enrichment or Share Health Data with AI.
+- **Health sharing.** Turning Health & Fitness off turns sharing off, and no parent ever brings it
+  back: only its own switch does.
 
 **Tests:** extend `SettingsHubTests` and `SettingsVisibilityPolicyTests`. A profile that opened
 `connections` or `intelligence` must be checked against the moved rows, and the review sheet must say

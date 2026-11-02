@@ -192,7 +192,7 @@ struct SupportReportSheet: View {
         } else {
             // An organisation phone with nowhere to send it: never the developer (see
             // `SupportReportRecipient`). Share still works, so the report is not stuck.
-            OGStatusLabel("Your organisation hasn't set a support email. Ask your manager for the address and add it in Settings → Diagnostics & Support, or share the file below.",
+            OGStatusLabel("Your organisation hasn't set a support email. Ask your manager for the address and add it in Settings → Advanced & Support, or share the file below.",
                           kind: .warn, systemImage: "envelope.badge")
         }
 
@@ -234,7 +234,7 @@ struct SupportReportSheet: View {
             }
             .buttonStyle(.plain)
 
-            Text("Goes to \(recipient) with the file attached. You can add to the email before you send it. Change the address in Settings → Diagnostics & Support.")
+            Text("Goes to \(recipient) with the file attached. You can add to the email before you send it. Change the address in Settings → Advanced & Support.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

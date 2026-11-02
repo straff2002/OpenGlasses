@@ -63,7 +63,7 @@ struct AgentControlTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.agentModeEnabled else {
-            return "Agent Mode is off. Turn it on in Settings → AI & Personality → Agentic Features to dispatch or control a remote coding agent."
+            return "Agent Mode is off. Turn it on in Settings → Assistant → Agentic Features to dispatch or control a remote coding agent."
         }
 
         let session = AgentSessionService.shared
@@ -125,7 +125,7 @@ struct AgentControlTool: NativeTool {
                 return "Which agent backend? Options: \(options)."
             }
             guard session.registry?.harness(for: kind)?.isConfigured == true else {
-                return "\(kind.displayName) isn't configured. Set it up in Settings → AI & Personality → Agentic Features → Remote Agents."
+                return "\(kind.displayName) isn't configured. Set it up in Settings → Assistant → Agentic Features → Remote Agents."
             }
             Config.setDefaultAgentHarness(kind)
             return "Switched the agent backend to \(kind.displayName)."

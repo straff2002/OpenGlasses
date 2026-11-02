@@ -161,7 +161,7 @@ final class PersonalManualLibrary: ObservableObject {
     }
 
     func accessRefusal() -> String? {
-        if Self.canManage && !Config.myManualsEnabled { return "Manual answers are switched off in Settings → My Manuals." }
+        if Self.canManage && !Config.myManualsEnabled { return "Manual answers are switched off in Settings > \(SettingsHub.path(to: .myManuals, on: .current))." }
         switch ManualSource.resolve(fieldActive: Config.fieldAssistActive, restricted: AdminGate.shared.isRestricted,
             medical: Config.hipaaMode, sessionAvailable: FieldSessionService.shared.activeVault != nil,
             ownManuals: FieldAssistEntitlement.shared.has(.personalManuals), libraryAvailable: !available.isEmpty) {

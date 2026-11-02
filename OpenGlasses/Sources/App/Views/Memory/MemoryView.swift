@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → AI & Personality → Memory: every fact Avenkin keeps about the wearer, grouped the way
+/// Settings → Everyday → Memory: every fact Avenkin keeps about the wearer, grouped the way
 /// people think about them, each with where it came from, Correct and Forget.
 struct MemoryView: View {
     @StateObject private var model: MemoryScreenModel

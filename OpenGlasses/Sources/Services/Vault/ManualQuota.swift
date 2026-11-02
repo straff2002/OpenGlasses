@@ -99,6 +99,6 @@ enum ManualSource {
             return sessionAvailable ? .session : .denied("Start a Field Assist session to use its manuals.")
         }
         guard ownManuals else { return .denied("My Manuals needs an active subscription. Your files remain on this phone.") }
-        return libraryAvailable ? .library : .denied("You have no manuals yet. Add one in Settings → My Manuals.")
+        return libraryAvailable ? .library : .denied("You have no manuals yet. Add one in Settings → Everyday → My Manuals.")
     }
 }

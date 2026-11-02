@@ -1,28 +1,31 @@
 import Foundation
 
-// The settings hub's categories, in the order the hub draws them (Plan HA C1). Pure data and pure
-// functions — no `Config`, no `UserDefaults`, no views — so the order, the Simple Mode subset and
-// the guarantees below are asserted headlessly.
+// The settings categories (Plan HA C1), which the hub draws as eight rows (`SettingsHub`, Plan KH
+// P2). Pure data and pure functions — no `Config`, no `UserDefaults`, no views — so the order, the
+// Simple Mode subset and the guarantees below are asserted headlessly.
 //
-// There is no folding, no Discover shelf and no "Show everything": the hub lists the whole surface,
-// in one fixed order. Only two things leave a row out — Simple Mode (below), and on a managed phone
-// an organisation's lock on the whole category, which `SettingsVisibilityPolicy` applies (Plan HA C4).
+// There is no folding, no Discover shelf and no "Show everything": the hub reaches the whole
+// surface. Only two things leave a category out — Simple Mode (below), and on a managed phone an
+// organisation's lock on the whole category, which `SettingsVisibilityPolicy` applies (Plan HA C4).
 //
 // Two guarantees the types carry rather than a comment:
 //
-//   1. **The order is the enum's declaration order.** `SettingsCategoryID.allCases` *is* the hub,
-//      so a category cannot exist without a place in it, and the view's `destination(for:)` switch
-//      is exhaustive — a new case does not compile until it has a screen.
+//   1. **The order is the enum's declaration order.** A category cannot exist without a place in
+//      `SettingsCategoryID.allCases`, and `SettingsCategoryScreen.destination(for:)` is exhaustive —
+//      a new case does not compile until it has a screen.
 //   2. **The assistive surface is built by `SettingsCategory.pinnedAssistive`**, which takes no
 //      Simple Mode parameter. Accessibility is free forever, and a blind or low-vision wearer is a
 //      first-class day-one user: no Simple Mode, organisation profile or edition may withhold it
 //      (an organisation's lockdown keeps it pinned open too — `ManagedLockdown.pinnedOpen`).
 
-/// One category of the hub. The raw value is stable: it is the id an organisation profile names
+/// One category of settings. The raw value is stable: it is the id an organisation profile names
 /// when it opens or locks a category (`ConfigProfile.lockdown`), so **never change one**.
 enum SettingsCategoryID: String, CaseIterable, Codable, Sendable {
     case intelligence
     case voice
+    /// Plan KH P2: settings by what you want done. Locked on a managed phone unless a profile opens
+    /// it, because `ManagedLockdown` locks whatever is not listed as open.
+    case everyday
     case devices
     case accessibility
     case fieldAssist = "field-assist"
@@ -36,7 +39,7 @@ enum SettingsCategoryID: String, CaseIterable, Codable, Sendable {
     case diagnostics
 }
 
-/// One row of the settings hub. `title` and `subtitle` are localized where they are written
+/// One category's words. `title` and `subtitle` are localized where they are written
 /// (`describe(_:)`): the hub hands them to its rows as runtime `String`s, which SwiftUI shows
 /// verbatim, so a bare literal here would never reach the string catalog.
 struct SettingsCategory: Identifiable, Equatable, Hashable, Sendable {
@@ -82,14 +85,14 @@ struct SettingsCategory: Identifiable, Equatable, Hashable, Sendable {
 /// The shipped hub: every category, its copy, and what Simple Mode keeps.
 enum SettingsCatalog {
 
-    /// The hub's rows, in `SettingsCategoryID` order.
+    /// Every category, in `SettingsCategoryID` order.
     static let all: [SettingsCategory] = SettingsCategoryID.allCases.map(describe)
 
     static func category(_ id: SettingsCategoryID) -> SettingsCategory {
         describe(id)
     }
 
-    /// The rows the hub draws. Simple Mode keeps the everyday surface — Voice & Triggers, Devices &
+    /// The categories the hub reaches. Simple Mode keeps the everyday surface — Voice & Triggers, Devices &
     /// Privacy, Accessibility, Look & Feel, Diagnostics & Support — and hides the owner's
     /// configuration. An organisation's lockdown is applied on top, by `SettingsVisibilityPolicy`.
     static func visible(simpleMode: Bool) -> [SettingsCategory] {
@@ -106,6 +109,10 @@ enum SettingsCatalog {
             return .category(id, title: String(localized: "Voice & Triggers"), icon: "waveform",
                              subtitle: String(localized: "Wake phrase, push-to-talk, hands-free triggers"),
                              shownInSimpleMode: true)
+        case .everyday:
+            return .category(id, title: String(localized: "Everyday"), icon: "sun.max",
+                             subtitle: String(localized: "Memory, your day, getting around, home, translation, and health"),
+                             shownInSimpleMode: false)
         case .devices:
             // Glasses settings live here, under Glasses — never in a general category.
             return .category(id, title: String(localized: "Devices & Privacy"), icon: "lock.shield",

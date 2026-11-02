@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Settings → Diagnostics & Support → Export Diagnostics.
+/// Settings → Advanced & Support → Export Diagnostics.
 ///
 /// The preview is the consent. Nothing is written to disk until the wearer has been shown the
 /// exact bytes — the same string the file receives, built once by `DiagnosticExportBuilder` —

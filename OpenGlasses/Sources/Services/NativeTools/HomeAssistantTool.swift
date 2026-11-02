@@ -27,7 +27,7 @@ struct HomeAssistantTool: NativeTool {
     func execute(args: [String: Any]) async throws -> String {
         guard MedicalEgressGuard.allows(.homeAssistantCommand) else { return MedicalEgressRefusal.userMessage }
         guard !Config.homeAssistantURL.isEmpty else {
-            return "Home Assistant not configured. Add your HA URL and access token in Settings → Connections → Services & Integrations → Home Assistant."
+            return "Home Assistant not configured. Add your HA URL and access token in Settings → Everyday → Home, Music & Messages → Home Assistant."
         }
         guard !Config.homeAssistantToken.isEmpty else {
             return "Home Assistant access token not set. Generate a Long-Lived Access Token in HA → Profile → Security."

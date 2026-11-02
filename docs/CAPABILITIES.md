@@ -10,15 +10,15 @@ Use the microphone button, an enabled wake word, or Siri to start a request. Sta
 
 ### Make the assistant your own
 
-In **Settings → Personas**, give an assistant its own wake word, model, and prompt preset. For example, set up “Hey Jarvis” for short answers from a local model and “Hey Claude” for a cloud assistant. Wake words can listen together; saying an enabled wake word can also interrupt a spoken answer.
+In **Settings → Assistant → Personas**, give an assistant its own wake word, model, and prompt preset. For example, set up “Hey Jarvis” for short answers from a local model and “Hey Claude” for a cloud assistant. Wake words can listen together; saying an enabled wake word can also interrupt a spoken answer.
 
 Prompt presets adjust the response style. Model routing can assign requests to your configured Fast, Balanced, or Best tier, or you can keep one model selected.
 
 ### Siri and shortcuts
 
-Try “Hey Siri, ask Avenkin a question.” Siri prompts for the question, then returns the answer. Configure built-in actions and opt your own capabilities into **Settings → Siri & Search**. Photo and video actions are also available in Shortcuts, including for the Action button.
+Try “Hey Siri, ask Avenkin a question.” Siri prompts for the question, then returns the answer. Configure built-in actions and opt your own capabilities into **Settings → Connections → Siri & Search**. Photo and video actions are also available in Shortcuts, including for the Action button.
 
-If Siri reports that the app is not running, enable **Settings → Voice → Open App for Siri Questions**. Available Siri phrasing depends on iOS and your language settings.
+If Siri reports that the app is not running, enable **Settings → Assistant → Voice & Triggers → Open App for Siri Questions**. Available Siri phrasing depends on iOS and your language settings.
 
 ### Translation and captions
 
@@ -154,7 +154,7 @@ Its **Local LLM Only** setting enforces local model selection when Medical Compl
 
 ## Choose your AI
 
-Choose models under **Settings → AI Models**. Speech recognition and spoken voice have separate service settings.
+Choose models under **Settings → Assistant → AI Models**. Speech recognition and spoken voice have separate service settings.
 
 | Run the AI | Setup | Considerations |
 |---|---|---|

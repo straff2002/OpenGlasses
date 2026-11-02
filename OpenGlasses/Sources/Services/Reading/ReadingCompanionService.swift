@@ -354,7 +354,7 @@ final class ReadingCompanionService: ObservableObject {
             return "I don't have a book on the shelf yet — say \"start reading\" with the title first."
         }
         guard store.reference(forBook: book) != nil else {
-            return "That works once a copy of the book is attached — add one under Settings → Tools & Actions → Reading."
+            return "That works once a copy of the book is attached — add one under Settings → Connections → Reading."
         }
         guard store.assertCaughtUp(forBook: book) != nil else {
             return "Let me see a page first so I know where you are, then say that again."

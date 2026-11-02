@@ -26,7 +26,7 @@ struct HermesBridgeSettingsView: View {
                     }
             } footer: {
                 if !Config.agentModeEnabled {
-                    Text("Requires Agent Mode (Settings → AI & Personality → Agentic Features). Until it's on, turns keep using the normal model path.")
+                    Text("Requires Agent Mode (Settings → Assistant → Agentic Features). Until it's on, turns keep using the normal model path.")
                 } else {
                     Text("When on, Hermes answers your questions with its own tools and memory; the app still transcribes and speaks on-device. If Hermes can't be reached, the turn falls back to the normal model path automatically.")
                 }

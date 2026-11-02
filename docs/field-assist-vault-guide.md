@@ -508,7 +508,7 @@ The lines under the heading are prose to `chains.md`, so the file imports as it 
 
 Some books print a table as a picture: the caption is text and the grid under it is not. The phone reads such a table from the picture at import, on the phone, and every value it gives from one says so: "read from a picture of the table on page 31 of …". A cell the picture did not show clearly is never given; the technician is offered the page instead. Until someone checks the table against the page, each value is also read back for the technician to check.
 
-**Checking a table.** Open **Settings › Custom Vaults**. Under each manual, a table read from a picture shows **Read from a picture: not checked**, **checked** or **checks disagree**. Tap it to see the picture of the page above the grid the phone read. A cell it could not read clearly, or one checked to two different values, is marked with a triangle. Tap a cell and type what the page prints, or leave what was read and save it to confirm it. A row's name or a column's heading the phone was unsure of can be confirmed, not corrected: if the phone misread it, its values are not given and the page is shown instead. **Mark table checked** confirms every cell that was read clearly, and leaves the marked ones for you to look at one by one. Checking is for whoever can import vaults on that phone.
+**Checking a table.** Open **Settings › Connections › Custom Vaults**. Under each manual, a table read from a picture shows **Read from a picture: not checked**, **checked** or **checks disagree**. Tap it to see the picture of the page above the grid the phone read. A cell it could not read clearly, or one checked to two different values, is marked with a triangle. Tap a cell and type what the page prints, or leave what was read and save it to confirm it. A row's name or a column's heading the phone was unsure of can be confirmed, not corrected: if the phone misread it, its values are not given and the page is shown instead. **Mark table checked** confirms every cell that was read clearly, and leaves the marked ones for you to look at one by one. Checking is for whoever can import vaults on that phone.
 
 A checked value is still said to be read from a picture, with who checked it and when, and is no longer handed back to the technician to check. A rule chain step that read a checked cell is marked the same way. Every check names who made it (the name in **Settings › Field Assist**, or the phone's name) and when.
 
@@ -673,7 +673,7 @@ Some content must not be mixed with anything else: a licence forbids it, or a cu
 ## Step 5 · Import on the iPhone
 
 1. Copy the whole folder into iCloud Drive (or AirDrop it to the phone and save it in Files). Do not zip it; the importer takes a folder.
-2. Open **Settings › Custom Vaults** and tap **Import Vault Folder…**, then pick the folder.
+2. Open **Settings › Connections › Custom Vaults** and tap **Import Vault Folder…**, then pick the folder.
 3. The app validates first. If anything is wrong it names the file and the problem, and nothing is installed. Fix it on the computer and try again.
 4. On success the vault appears in the list and indexing starts immediately. Each manual shows a progress bar and then a section count, for example *RTU-500 Service Manual · 412 sections*. Leave the app in the foreground until every manual has a count.
 5. Warnings are advisory. The one you are most likely to see says the core files exceed the budget; move long material into `documents` and re-import.
@@ -754,7 +754,7 @@ Edit the folder on the computer, bump `version`, and import again with the same 
 
 ## Removing one manual on the phone
 
-A manual gets superseded, or it turns out to be the wrong revision, and the technician holding the phone is not the person with the vault folder on a computer. Open **Settings › Custom Vaults**, find the manual under its vault, and tap **Remove manual…**.
+A manual gets superseded, or it turns out to be the wrong revision, and the technician holding the phone is not the person with the vault folder on a computer. Open **Settings › Connections › Custom Vaults**, find the manual under its vault, and tap **Remove manual…**.
 
 The confirmation names the manual and the vault and says what it does: *Remove this manual from this device's vault and search index? Existing conversations and core reference files are unchanged. Importing a vault containing this manual again can restore it.* Tap **Remove manual** and the row shows **Removing…** until it is done; the rest of the vault keeps working throughout, and the vault itself stays installed even if you remove the last manual in it.
 
@@ -815,7 +815,7 @@ make every subscriber a redistributor of manufacturers' manuals.
 You need an active subscription (or a team licence) to add a vault of your own, by link or by
 folder.
 
-1. Open **Settings › Custom Vaults** and tap **Add from Link or QR…**. Paste the address from the
+1. Open **Settings › Connections › Custom Vaults** and tap **Add from Link or QR…**. Paste the address from the
    publisher's page, or tap **Scan a QR code** and point the phone at theirs. Scanning the same code
    with the phone's own Camera app works too — it opens the app on this screen.
 2. The app shows you the **site** the vault would come from and asks before it downloads anything.

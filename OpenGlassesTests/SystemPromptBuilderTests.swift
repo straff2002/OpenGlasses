@@ -90,7 +90,13 @@ final class SystemPromptBuilderTests: XCTestCase {
     func testTheGuideNamesOnlyCategoriesTheHubDraws() {
         let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
         for id in [SettingsCategoryID.voice, .intelligence, .tools, .devices, .lookAndFeel] {
-            XCTAssertTrue(guide.contains("Settings > \(SettingsCatalog.category(id).title)"), id.rawValue)
+            XCTAssertTrue(guide.contains("Settings > \(SettingsHub.path(to: id))"), id.rawValue)
+        }
+        XCTAssertTrue(guide.contains("Settings > Assistant > Voice & Triggers"))
+        XCTAssertTrue(guide.contains("Settings > Assistant > Agentic Features"))
+        for gone in ["AI & Personality", "Tools & Actions"] {
+            XCTAssertFalse(guide.contains(gone), gone)
+            XCTAssertFalse(SystemPromptBuilder.onDeviceAppGuide(appName: "Avenkin").contains(gone), gone)
         }
     }
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → Connections → Services & Integrations → Music (Plan GS P2): where music plays by default, Apple Music access and
+/// Settings → Everyday → Home, Music & Messages → Music (Plan GS P2): where music plays by default, Apple Music access and
 /// catalogue status, and which Home Assistant speakers Avenkin may use. A general setting, not a
 /// glasses one — the phone and a speaker are enough.
 struct MusicSettingsView: View {
@@ -45,7 +45,7 @@ struct MusicSettingsView: View {
             .onChange(of: defaultProvider) { _, value in Config.musicDefaultProvider = value }
         } footer: {
             if defaultProvider == .homeAssistant && !homeAssistant.isConfigured {
-                Text("Home Assistant isn't set up, so music plays on your phone until you add it under Services.")
+                Text("Home Assistant isn't set up, so music plays on your phone until you add it under Home, Music & Messages.")
             } else {
                 Text("Where \u{201C}play\u{201D}, \u{201C}pause\u{201D} and \u{201C}skip\u{201D} go when you don't name a speaker. Whatever is already playing is controlled first.")
             }

@@ -83,7 +83,7 @@ enum BroadcastGoLive {
         var faceBlurOn: Bool
         /// iOS has refused the phone camera, or a restriction has.
         var phoneCameraDenied: Bool
-        /// Capture & Streaming can be opened on this phone.
+        /// Capture & Streaming, the category Live Streaming sits in, can be opened on this phone.
         var setupReachable: Bool
         /// Live Streaming's Dual Capture setting: the phone camera as an inset.
         var dualCaptureOn = false

@@ -48,7 +48,7 @@ enum ScenarioSetupStep: Equatable, Sendable {
         switch self {
         case .chooseModel: return String(localized: "Choose an AI model first.")
         case .chooseVisionModel: return String(localized: "Choose a model that can see images.")
-        case .turnOnTool: return String(localized: "Turn this on in Settings, under Tools.")
+        case .turnOnTool: return String(localized: "Turn this on in Settings, under Connections, then Tools.")
         case .turnOnFeature: return String(localized: "This is turned off in Settings.")
         case .turnOnMemory: return String(localized: "Turn on User Memory first.")
         case .setUpHome: return String(localized: "Set up Apple Home or Home Assistant first.")
@@ -61,9 +61,9 @@ enum ScenarioSetupStep: Equatable, Sendable {
     /// could be on several screens, so the row says so and the person opens Settings.
     var destination: SettingsCategoryID? {
         switch self {
-        case .chooseModel, .chooseVisionModel, .turnOnMemory: return .intelligence
+        case .chooseModel, .chooseVisionModel: return .intelligence
+        case .turnOnMemory, .setUpHome: return .everyday
         case .turnOnTool: return .tools
-        case .setUpHome: return .connections
         case .addManual: return .myManuals
         case .turnOnFeature, .runCaptions: return nil
         }

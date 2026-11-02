@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Plan BX P2 — Settings → Tools & Actions → Skill Packs: installed packs (kill switch, settings, uninstall) and
+/// Plan BX P2 — Settings → Connections → Skill Packs: installed packs (kill switch, settings, uninstall) and
 /// the signed catalog (browse + one-tap install, hardware-gated).
 struct SkillPacksSettingsView: View {
     @EnvironmentObject private var appState: AppState

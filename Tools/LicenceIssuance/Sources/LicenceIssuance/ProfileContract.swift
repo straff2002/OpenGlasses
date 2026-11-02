@@ -127,7 +127,7 @@ public enum ProfileContract {
                                                      "mistral", "zai", "qwen", "minimax", "xai", "openrouter", "custom", "local",
                                                      "appleOnDevice"]
     /// `SettingsCategoryID` raw values, in hub order. Must stay identical to the app's enum.
-    public static let settingsCategoryIds = ["intelligence", "voice", "devices", "accessibility", "field-assist", "my-manuals", "look-and-feel",
+    public static let settingsCategoryIds = ["intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "my-manuals", "look-and-feel",
                                              "tools", "connections", "capture", "display", "advanced", "diagnostics"]
     /// `ManagedLockdown.pinnedOpen` — never locked by an organisation.
     public static let pinnedOpenCategoryIds: Set<String> = ["accessibility", "look-and-feel", "diagnostics"]

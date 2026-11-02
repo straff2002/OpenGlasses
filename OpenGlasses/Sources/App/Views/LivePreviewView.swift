@@ -792,7 +792,7 @@ private enum GoLiveNotice {
     var message: String {
         switch self {
         case .setUp:
-            return String(localized: "In Settings, open Camera, Recording & Streaming to find Live Streaming. Add a valid RTMP URL and your platform's stream key, then come back to go live.")
+            return String(localized: "In Settings, open Devices & Privacy, then Camera, Recording & Streaming, to find Live Streaming. Add a valid RTMP URL and your platform's stream key, then come back to go live.")
         case .notSetUp:
             return String(localized: "A valid RTMP URL and stream key are needed to go live. Live Streaming settings aren't available on this phone.")
         case .phoneCameraNotBlurred(let refusal):

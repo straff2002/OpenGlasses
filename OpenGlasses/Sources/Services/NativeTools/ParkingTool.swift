@@ -218,7 +218,7 @@ final class ParkingTool: NativeTool {
 
     private func history() -> String {
         guard seams.keepHistory() else {
-            return "Parking history is off, so only the current spot is kept. It can be turned on in Settings → Connections → Services & Integrations → Parking."
+            return "Parking history is off, so only the current spot is kept. It can be turned on in Settings → Everyday → Getting Around → Parking."
         }
         let store = seams.store()
         let spots = ([store.active].compactMap { $0 } + store.history).prefix(ParkingStore.historyCap)

@@ -12,7 +12,7 @@ import SwiftUI
 /// **order**, never pages: the grid cuts that order into pages to fit the screen
 /// (`HomeGridPaging`), so moving a tile never depends on how tall the screen is. Reordering is a
 /// pair of buttons rather than a drag, because buttons are the only form of reordering VoiceOver
-/// can drive; Settings → Tools & Actions → Quick Actions → Actions & Bar Layout keeps the drag.
+/// can drive; Settings → Connections → Quick Actions → Actions & Bar Layout keeps the drag.
 struct DockLayoutEditPage: View {
     /// The one arrangement the dock, this page and the full editor all read.
     @AppStorage("homeGridArrangement") private var storedArrangement = ""

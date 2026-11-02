@@ -11,7 +11,7 @@ mkdir mypack && $EDITOR mypack/skillpack.json     # write the manifest (referenc
 ./Scripts/serve-skillpack.sh mypack               # serves over LAN + prints a QR
 ```
 
-Turn on **Settings → Skill Packs → Developer Mode**, scan the QR with the iPhone camera, and the
+Turn on **Settings → Connections → Skill Packs → Developer Mode**, scan the QR with the iPhone camera, and the
 app previews the pack and asks to install. Edit, re-run, re-scan — seconds per iteration.
 Sideloads work over HTTPS anywhere, or plain HTTP on your own LAN only; unsigned packs always
 require Developer Mode and are badged `UNSIGNED`.

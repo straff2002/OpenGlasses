@@ -45,10 +45,10 @@ enum SystemPromptBuilder {
     /// Where the assistant's own settings live in this app, so "how do I change your voice?" gets
     /// the real path. Without it the model has never heard of the app it runs in and answers from
     /// general knowledge — the iPhone's Settings, the glasses' own app, Siri — none of which hold
-    /// these settings (support report, 2026-10-05). The category names come from `SettingsCatalog`,
-    /// the hub's own source, so the guide cannot name a screen the hub does not draw.
+    /// these settings (support report, 2026-10-05). The paths come from `SettingsHub`, the hub's own
+    /// source, so the guide cannot name a row the hub does not draw.
     static func appGuide(appName: String) -> String {
-        func title(_ id: SettingsCategoryID) -> String { SettingsCatalog.category(id).title }
+        func title(_ id: SettingsCategoryID) -> String { SettingsHub.path(to: id) }
         return """
         THIS APP:
         You run inside the \(appName) app on the user's iPhone, and the app's own Settings tab is where you are set up. \
@@ -58,6 +58,7 @@ enum SystemPromptBuilder {
         - Your name, the wake phrase, push-to-talk and hands-free triggers: Settings > \(title(.voice)).
         - The AI model, personas and system prompt: Settings > \(title(.intelligence)).
         - Agent Mode and remote agents: Settings > \(title(.intelligence)) > Agentic Features.
+        - Memory, My Day, navigation, parking, home control, music, messaging, translation and health: Settings > \(title(.everyday)).
         - Tools and quick actions: Settings > \(title(.tools)).
         - The glasses, microphone and privacy: Settings > \(title(.devices)).
         - Theme and languages: Settings > \(title(.lookAndFeel)).
@@ -83,12 +84,12 @@ enum SystemPromptBuilder {
     /// live in the app, the model cannot change them, locked listening is restarted by opening the
     /// app, a tool's result is answered in the same reply — in a third of the length.
     static func onDeviceAppGuide(appName: String) -> String {
-        func title(_ id: SettingsCategoryID) -> String { SettingsCatalog.category(id).title }
+        func title(_ id: SettingsCategoryID) -> String { SettingsHub.path(to: id) }
         return """
         THIS APP: You run inside the \(appName) app on the user's iPhone. Your settings are in the app's own \
         Settings tab, never in the iPhone's Settings app, the glasses' app or Siri: your voice under \
         \(title(.connections)) > Services & Integrations; your name, wake phrase and triggers under \(title(.voice)); \
-        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; tools under \(title(.tools)); glasses, \
+        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; memory, My Day, home and health under \(title(.everyday)); tools under \(title(.tools)); glasses, \
         microphone and privacy under \(title(.devices)); theme and languages under \(title(.lookAndFeel)). You \
         cannot change settings yourself. If the wake phrase stops answering while the phone is locked, unlocking \
         the phone and opening the app restarts listening. When a tool returns, answer with its result in that \

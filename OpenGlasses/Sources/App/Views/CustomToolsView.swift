@@ -50,7 +50,7 @@ struct CustomToolsView: View {
                 } header: {
                     Text("Custom Tools")
                 } footer: {
-                    Text("These tools are available to the AI alongside built-in tools. Disable them in Settings → Tools & Actions → Tools.")
+                    Text("These tools are available to the AI alongside built-in tools. Disable them in Settings → Connections → Tools.")
                 }
             }
 

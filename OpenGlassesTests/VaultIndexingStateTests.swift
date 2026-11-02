@@ -136,12 +136,12 @@ final class VaultIndexingStateTests: XCTestCase {
         let notIndexed = ManualIndexAvailability.unsearchableSentence(vaultName: "Electrical", listedDocuments: 2,
                                                                       run: nil, lockBusy: false)
         XCTAssertEqual(notIndexed, "The Electrical manuals are imported but not indexed. The technician can index them in "
-                       + "Settings → Tools & Actions → Custom Vaults → Re-index manuals. Don't search again this turn.")
+                       + "Settings → Connections → Custom Vaults → Re-index manuals. Don't search again this turn.")
         XCTAssertFalse(notIndexed.contains("No manuals have been imported"))
 
         let none = ManualIndexAvailability.unsearchableSentence(vaultName: "Electrical", listedDocuments: 0,
                                                                 run: nil, lockBusy: false)
-        XCTAssertEqual(none, "No manuals have been imported for the Electrical vault yet. Import them in Settings → Tools & Actions → Custom Vaults.")
+        XCTAssertEqual(none, "No manuals have been imported for the Electrical vault yet. Import them in Settings → Connections → Custom Vaults.")
     }
 
     func testTheLiveSentenceReadsTheMonitor() {

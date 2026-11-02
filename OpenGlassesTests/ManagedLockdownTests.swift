@@ -12,7 +12,7 @@ final class ManagedLockdownTests: XCTestCase {
 
     func testTheStandardSetLocksEverythingButTheBasicsAndFieldAssist() {
         XCTAssertEqual(ManagedLockdown.standard.lockedCategories,
-                       [.intelligence, .voice, .devices, .myManuals, .tools, .connections, .capture, .display, .advanced])
+                       [.intelligence, .voice, .everyday, .devices, .myManuals, .tools, .connections, .capture, .display, .advanced])
         XCTAssertTrue(ManagedLockdown.standard.closedTools.isEmpty)
     }
 
@@ -80,10 +80,10 @@ final class ManagedLockdownTests: XCTestCase {
         XCTAssertEqual(everything.count, SettingsCategoryID.allCases.count)
         XCTAssertEqual(everything.filter { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true) == .locked }
                            .map(\.id),
-                       [.intelligence, .voice, .myManuals, .tools, .connections, .capture, .display, .advanced])
+                       [.intelligence, .voice, .everyday, .myManuals, .tools, .connections, .capture, .display, .advanced])
         XCTAssertEqual(everything.filter { SettingsLockPolicy.lock($0.id, lockdown: .standard, restricted: true).isLocked }
                            .map(\.id),
-                       [.intelligence, .voice, .devices, .myManuals, .tools, .connections, .capture, .display, .advanced])
+                       [.intelligence, .voice, .everyday, .devices, .myManuals, .tools, .connections, .capture, .display, .advanced])
     }
 
     // MARK: - The profile's adjustments
@@ -146,6 +146,25 @@ final class ManagedLockdownTests: XCTestCase {
             "Also locked: Field Assist",
             "Tools switched off: broadcast, web_search",
         ])
+    }
+
+    // MARK: - The hub's rows
+
+    /// Plan KH P2: a profile names categories, and the rows are nothing it can name.
+    func testAProfileNamingARowIsADrop() {
+        let (lockdown, drops) = ManagedLockdown.resolve(.init(open: ["assistant", "devicesPrivacy"]))
+        XCTAssertEqual(lockdown, .standard)
+        XCTAssertEqual(drops.map(\.key), ["lockdown.open", "lockdown.open"])
+    }
+
+    func testOpeningOneCategoryOfARowShowsThatCategoryAlone() throws {
+        let (lockdown, _) = ManagedLockdown.resolve(.init(open: ["voice", "capture"]))
+        let context = ManagedSettingsContext(managed: true, lockdown: lockdown, restricted: true, lockedKeys: [])
+        let rows = SettingsHub.visibleRows(simpleMode: false, in: context,
+                                           on: SettingsHubPhone(fieldAssistOn: false, glassesSupported: true))
+        XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .assistant }).page, .category(.voice))
+        XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .devicesPrivacy }).page, .merged([.devices, .capture]))
+        XCTAssertNil(rows.first { $0.id == .connections })
     }
 
     // MARK: - Tools, clamped on read

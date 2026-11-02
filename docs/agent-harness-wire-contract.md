@@ -11,7 +11,7 @@ retry policy), P1 (question identity, typed replies, explicit agent selection) a
 delivery states and the acknowledgement).
 
 Every URL, field name and dot-path below is configured by the wearer in
-**Settings → Agentic Features → Remote Agents**. Nothing is guessed: a path that is not set is a
+**Settings → Assistant → Agentic Features → Remote Agents**. Nothing is guessed: a path that is not set is a
 field the endpoint does not report, and an unreported field is **unknown**, never "none".
 
 ## Transport rules

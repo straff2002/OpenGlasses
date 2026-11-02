@@ -1,12 +1,17 @@
 import SwiftUI
 
-/// Settings → Devices & Privacy → Hardware & Privacy → Health: what Avenkin reads from Apple Health, whether the AI may see it,
-/// and the summary kept on this phone for locked-phone answers (Plan GI).
+/// Settings → Everyday → Health & Fitness → Health: what Avenkin reads from Apple Health, and the
+/// summary kept on this phone for locked-phone answers (Plan GI). The switches for summaries and
+/// for sharing with the AI are the group's (Plan KH P2).
 struct HealthSettingsView: View {
-    @State private var shareWithAI = Config.shareHealthDataWithAI
-    @State private var summariesEnabled = Config.healthSummariesEnabled
     @AppStorage("healthVaultAIEnabled") private var healthVaultAIEnabled = true
     @ObservedObject private var adminGate = AdminGate.shared
+    /// This screen opens from Everyday, or from Devices & Privacy where Everyday is not on the hub.
+    private var row: SettingPresentation {
+        SettingsGroupCatalog.member(.health).map {
+            SettingsGroupCatalog.presentation(of: $0, in: adminGate.settingsContext)
+        } ?? .hidden
+    }
     @State private var authorization: HealthAuthorizationState?
     @State private var savedAt: Date?
     @State private var requesting = false
@@ -26,36 +31,15 @@ struct HealthSettingsView: View {
                 Text("Read only. Avenkin never writes heart rate, sleep or steps to Apple Health. The fitness coach separately reads your workouts and saves the workouts you log.")
             }
 
-            Section {
-                if adminGate.presentation(.row(in: .devices)).isShown && adminGate.presentation(.tool("health_vault")).isShown {
+            if row.isShown && adminGate.presentation(.tool("health_vault")).isShown {
+                Section {
                     InfoToggle(
                         title: "AI Access to Health Vault",
                         isOn: $healthVaultAIEnabled,
-                        info: "When off, the assistant cannot look up or edit your Health Vault directly. Existing records stay on this phone. Apple Health summaries and their sharing setting are controlled separately below."
+                        info: "When off, the assistant cannot look up or edit your Health Vault directly. Existing records stay on this phone. Apple Health summaries and their sharing setting are controlled separately, under Health & Fitness."
                     )
-                    .disabled(!adminGate.presentation(.row(in: .devices)).isEditable || !adminGate.presentation(.tool("health_vault")).isEditable)
+                    .disabled(!row.isEditable || !adminGate.presentation(.tool("health_vault")).isEditable)
                 }
-                Toggle("Health Summaries", isOn: $summariesEnabled)
-                    .onChange(of: summariesEnabled) { _, newValue in
-                        Config.healthSummariesEnabled = newValue
-                    }
-            } footer: {
-                Text("Answers questions like “how did I sleep?” or “what's my heart rate?” with one short sentence of numbers. It reports; it never interprets or gives medical advice.")
-            }
-
-            Section {
-                InfoToggle(
-                    title: "Share Health Data with AI",
-                    isOn: $shareWithAI,
-                    info: "Off by default. While it's off and you use a cloud AI model, Avenkin speaks a health summary to you itself, using an on-device voice, and the AI provider only learns that you asked — never the numbers. Turn it on to let your AI provider (Anthropic, OpenAI, Google, etc.) see the summary so it can answer follow-ups like “is that usual for me?”, and so the fitness coach can discuss your workout history. With an on-device model the numbers never leave your phone either way. Medical Compliance mode always keeps them from the AI."
-                )
-                .onChange(of: shareWithAI) { _, newValue in
-                    Config.setShareHealthDataWithAI(newValue)
-                }
-            } header: {
-                Text("AI")
-            } footer: {
-                Text("When this is on, replies that include health numbers are spoken with your chosen voice, which may be a cloud voice.")
             }
 
             Section {

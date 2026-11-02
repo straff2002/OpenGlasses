@@ -156,7 +156,7 @@ struct PromptInspectorView: View {
                 ? memoryContext!
                 : memoryEnabled
                     ? "Enabled — no memories stored yet. Tell the AI facts about yourself and it will remember them."
-                    : "Disabled. Turn on User Memory in Settings → AI & Personality.",
+                    : "Disabled. Turn on User Memory in Settings → Everyday.",
             isPresent: memoryEnabled
         ))
 

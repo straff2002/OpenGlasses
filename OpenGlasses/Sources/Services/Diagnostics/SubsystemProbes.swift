@@ -86,7 +86,7 @@ enum SubsystemProbes {
                     return .pass("Listening for “\(Config.wakePhrase.capitalized)”")
                 }
                 if !appState.listeningEnabled {
-                    return .fail("Listening is switched off — turn on Listen for Wake Phrase in Settings › Voice & Triggers")
+                    return .fail("Listening is switched off — turn on Listen for Wake Phrase in Settings › Assistant › Voice & Triggers")
                 }
                 if Config.silentMode {
                     return .fail("Push-to-Talk is on — the wake phrase is not listened for")

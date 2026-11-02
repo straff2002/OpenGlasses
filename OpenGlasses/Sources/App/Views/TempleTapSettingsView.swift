@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → Voice & Triggers → Temple Taps (Plan GJ P1): the on/off switch, what one, two and
+/// Settings → Assistant → Voice & Triggers → Temple Taps (Plan GJ P1): the on/off switch, what one, two and
 /// three taps do, and a test mode that only announces each tap — which is also how the tap-to-command
 /// mapping gets checked on a given pair of glasses.
 struct TempleTapSettingsView: View {

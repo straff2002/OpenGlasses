@@ -93,7 +93,7 @@ Start on an **iPhone running iOS 26+**; the phone is enough on its own. Add comp
 Avenkin is in beta. The quickest way in is TestFlight, Apple's app for pre-release builds; building from source is the route for contributors. See [availability and the first-use checklist](docs/BUILDING.md#availability-and-first-use) before starting.
 
 1. **Install the app.** [Join the beta on TestFlight](https://testflight.apple.com/join/1dcAytte), or follow the [source setup guide](docs/BUILDING.md) for Xcode 26+, dependencies, signing, and Meta developer configuration.
-2. **Choose your AI.** Open **Settings → AI Models** and connect a provider or download a compatible local model.
+2. **Choose your AI.** Open **Settings → Assistant → AI Models** and connect a provider or download a compatible local model.
 3. **Add glasses, if you use them.** Pair them in the Meta AI app, complete developer setup, then connect and grant camera access in Avenkin.
 4. **Start talking.** Enable listening and say **“Avenkin”**, or tap the microphone. Try asking about something in front of you.
 

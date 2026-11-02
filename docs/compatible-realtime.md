@@ -10,7 +10,7 @@ keeps its own wire contract.
 
 Open **Add Model** from model settings or the conversation picker. Choose **Chat**
 or **Realtime**, then select a provider. Realtime models can also be managed in
-**Settings → AI & Personality → Realtime Models**. Enter the endpoint, API key
+**Settings → Assistant → Realtime Models**. Enter the endpoint, API key
 and model ID; Qwen and Doubao also expose the voice setting. Select the saved live
 model in the conversation's **Realtime** picker to start it.
 

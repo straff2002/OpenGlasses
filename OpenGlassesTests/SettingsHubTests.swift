@@ -11,6 +11,7 @@ final class SettingsHubTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.all.map(\.title), [
             "AI & Personality",
             "Voice & Triggers",
+            "Everyday",
             "Devices & Privacy",
             "Accessibility",
             "Field Assist",
@@ -31,9 +32,17 @@ final class SettingsHubTests: XCTestCase {
     /// The raw values are what an organisation profile names; they must not drift.
     func testCategoryIdsAreStable() {
         XCTAssertEqual(SettingsCategoryID.allCases.map(\.rawValue), [
-            "intelligence", "voice", "devices", "accessibility", "field-assist", "my-manuals", "look-and-feel",
-            "tools", "connections", "capture", "display", "advanced", "diagnostics",
+            "intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "my-manuals",
+            "look-and-feel", "tools", "connections", "capture", "display", "advanced", "diagnostics",
         ])
+    }
+
+    /// Plan KH P2: added after Voice & Triggers, and no id that a profile already names moved.
+    func testEverydayAddedNothingButItself() {
+        let before = ["intelligence", "voice", "devices", "accessibility", "field-assist", "my-manuals",
+                      "look-and-feel", "tools", "connections", "capture", "display", "advanced", "diagnostics"]
+        XCTAssertEqual(SettingsCategoryID.allCases.map(\.rawValue).filter { $0 != "everyday" }, before)
+        XCTAssertEqual(SettingsCategoryID.allCases[2], .everyday)
     }
 
     func testTitlesAndIconsAreUniqueAndPresent() {
@@ -71,7 +80,7 @@ final class SettingsHubTests: XCTestCase {
 
     /// Every screen the hub reached before Plan HA (main at 14d04710) — its own rows, and the rows
     /// of each category screen — with the category it lives in now and the chain of screens it is
-    /// reached through. The chain starts at the screen `SettingsView.destination(for:)` opens for
+    /// reached through. The chain starts at the screen `SettingsCategoryScreen.destination(for:)` opens for
     /// that category.
     static let inventory: [(screen: String, category: SettingsCategoryID, via: [String])] = [
         // The old hub's own rows.
@@ -87,21 +96,34 @@ final class SettingsHubTests: XCTestCase {
         ("AdvancedSettingsScreen", .advanced, []),
         ("DiagnosticsSupportView", .diagnostics, []),
         // "Works with your iPhone" was a hub row; it is the first row of Connections now.
-        ("AppleIntegrationsSettingsScreen", .connections, ["ConnectionsSettingsScreen"]),
+        ("AppleIntegrationsSettingsScreen", .connections, ["ConnectionsSettingsScreen", "ConnectionsSections"]),
         // Tools & Actions › Field Assist is its own category now.
         ("FieldAssistSettingsView", .fieldAssist, []),
         // AI & Personality.
         ("PersonasView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("PromptPresetsView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("MemoryView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("SmartRoutingView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("LLMImageSettingsView", .intelligence, ["AIPersonalitySettingsScreen"]),
         ("AgenticFeaturesView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        // Plan IW P2: the wearer's goals and the assistant's activity — and the Memory screen's
-        // way to the goals, under "Unfinished things".
-        ("GoalsView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("ActivityView", .intelligence, ["AIPersonalitySettingsScreen"]),
-        ("GoalsView", .intelligence, ["AIPersonalitySettingsScreen", "MemoryView"]),
+        // Plan KH P2: Everyday, and the rows that moved to it. Plan IW P2's goals and activity came
+        // with Memory, along with the Memory screen's way to the goals, under "Unfinished things".
+        ("EverydaySettingsScreen", .everyday, []),
+        ("MemoryView", .everyday, ["EverydaySettingsScreen"]),
+        ("GoalsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ActivityView", .everyday, ["EverydaySettingsScreen"]),
+        ("GoalsView", .everyday, ["EverydaySettingsScreen", "MemoryView"]),
+        ("MyDayContentsSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("MyDayDeliverySettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ScheduledTasksView", .everyday, ["EverydaySettingsScreen"]),
+        ("ScheduledTasksView", .intelligence, ["AIPersonalitySettingsScreen", "AgenticFeaturesView"]),
+        ("NavigationSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("ParkingSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("MusicSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("HomeAssistantSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("TranslationSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        ("HealthSettingsView", .everyday, ["EverydaySettingsScreen"]),
+        // Where Everyday is not on the hub, Devices & Privacy links to the same screen.
+        ("EverydaySettingsScreen", .devices, ["GlassesPrivacySettingsScreen"]),
         // Voice & Triggers.
         ("TempleTapSettingsView", .voice, ["VoiceTriggersSettingsScreen"]),
         // Devices & Privacy. The Connected Glasses section is the Glasses screen now.
@@ -111,39 +133,38 @@ final class SettingsHubTests: XCTestCase {
         ("ProcessingSummaryView", .devices, ["GlassesPrivacySettingsScreen"]),
         ("RecordingsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         ("MeetingRecordsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
-        ("HealthSettingsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         ("InsightsView", .devices, ["GlassesPrivacySettingsScreen", "HardwarePrivacyView"]),
         // Look & Feel.
         ("LanguageSettingsView", .lookAndFeel, ["LookFeelSettingsScreen"]),
         // Tools & Actions.
-        ("QuickActionsSettingsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("ToolsSettingsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("VaultManagerView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("VaultFilesEditorView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("DeckListView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("ReadingStatsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("HealthVaultEditorView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("CustomToolsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("SkillPacksSettingsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("SiriExposureView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("MCPServerSettingsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("PlaybooksSettingsView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("ClawHubBrowserView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("VoiceSkillsManagerView", .tools, ["ToolsActionsSettingsScreen"]),
-        ("SuggestedSkillsView", .tools, ["ToolsActionsSettingsScreen"]),
+        ("QuickActionsSettingsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("ToolsSettingsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("VaultManagerView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("VaultFilesEditorView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("DeckListView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("ReadingStatsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("HealthVaultEditorView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("CustomToolsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("SkillPacksSettingsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("SiriExposureView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("MCPServerSettingsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("PlaybooksSettingsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("ClawHubBrowserView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("VoiceSkillsManagerView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
+        ("SuggestedSkillsView", .tools, ["ToolsActionsSettingsScreen", "ToolsActionsSections"]),
         // Connections.
-        ("ServicesSettingsView", .connections, ["ConnectionsSettingsScreen"]),
-        ("GatewaySettingsView", .connections, ["ConnectionsSettingsScreen"]),
-        ("MCPServersView", .connections, ["ConnectionsSettingsScreen"]),
-        ("WeatherDataAboutView", .connections, ["ConnectionsSettingsScreen", "AppleIntegrationsSettingsScreen"]),
+        ("ServicesSettingsView", .connections, ["ConnectionsSettingsScreen", "ConnectionsSections"]),
+        ("GatewaySettingsView", .connections, ["ConnectionsSettingsScreen", "ConnectionsSections"]),
+        ("MCPServersView", .connections, ["ConnectionsSettingsScreen", "ConnectionsSections"]),
+        ("WeatherDataAboutView", .connections, ["ConnectionsSettingsScreen", "ConnectionsSections", "AppleIntegrationsSettingsScreen"]),
         // Capture & Streaming. (Services is Connections' screen; Capture keeps a shortcut to it.)
-        ("RecordingsView", .capture, ["CaptureStreamingSettingsScreen"]),
-        ("MeetingRecordsView", .capture, ["CaptureStreamingSettingsScreen"]),
+        ("RecordingsView", .capture, ["CaptureStreamingSettingsScreen", "CaptureStreamingSections"]),
+        ("MeetingRecordsView", .capture, ["CaptureStreamingSettingsScreen", "CaptureStreamingSections"]),
         // Display & HUD.
-        ("HUDMirrorView", .display, ["DisplayHUDSettingsScreen"]),
-        ("EvenDisplaySettingsView", .display, ["DisplayHUDSettingsScreen"]),
-        ("WebHUDMirrorSettingsView", .display, ["DisplayHUDSettingsScreen"]),
-        ("TeleprompterSettingsView", .display, ["DisplayHUDSettingsScreen"]),
+        ("HUDMirrorView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
+        ("EvenDisplaySettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
+        ("WebHUDMirrorSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
+        ("TeleprompterSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         // Advanced.
         ("DeveloperPanelView", .advanced, ["AdvancedSettingsScreen"]),
         ("PromptInspectorView", .advanced, ["AdvancedSettingsScreen"]),
@@ -174,6 +195,45 @@ final class SettingsHubTests: XCTestCase {
         let destinations = try destinationCases()
         XCTAssertEqual(Set(destinations.keys), Set(SettingsCategoryID.allCases))
         XCTAssertEqual(Set(destinations.values).count, destinations.count)
+    }
+
+    /// Plan KH P2: what a hub row opens, for the pages that hold more than one category.
+    func testEveryMergedPageReachesWhatItHolds() throws {
+        let rowScreen = try structBody("SettingsHubRowScreen")
+        for screen in ["AIPersonalitySettingsScreen(", "DiagnosticsSupportView(", "GlassesPrivacySettingsScreen(",
+                       "SettingsInlineSections(", "SettingsCategoryScreen("] {
+            XCTAssertTrue(rowScreen.contains(screen), screen)
+        }
+        let inline = try structBody("SettingsInlineSections")
+        for sections in ["CaptureStreamingSections(", "DisplayHUDSections(", "ConnectionsSections(", "ToolsActionsSections("] {
+            XCTAssertTrue(inline.contains(sections), sections)
+        }
+        XCTAssertTrue(try structBody("GlassesPrivacySettingsScreen").contains("SettingsInlineSections("))
+        XCTAssertTrue(try structBody("AIPersonalitySettingsScreen").contains("id: .voice"))
+        XCTAssertTrue(try structBody("DiagnosticsSupportView").contains("id: .advanced"))
+    }
+
+    /// A link out of a merged page goes through the lock, like a hub row.
+    func testTheHubOpensRowsAndRequestsThroughTheLockedScreens() throws {
+        let hub = try structBody("SettingsView")
+        XCTAssertTrue(hub.contains("SettingsHubRowScreen(appState: appState, row: row.id)"))
+        XCTAssertTrue(hub.contains("SettingsCategoryScreen(appState: appState, id: id)"))
+        XCTAssertTrue(hub.contains("SettingsHub.route(requested, visible: visibleCategories)"))
+        XCTAssertTrue(try structBody("SettingsCategoryScreen").contains("ManagedHiddenScreen("))
+        XCTAssertTrue(try structBody("SettingsHubRowScreen").contains("ManagedHiddenScreen("))
+    }
+
+    func testMyManualsAndThingsToTryAreOnTheScreensThePlanSays() throws {
+        let everyday = try structBody("EverydaySettingsScreen")
+        XCTAssertTrue(everyday.contains("ThingsToTryView()"))
+        XCTAssertTrue(everyday.contains("SettingsHub.showsMyManuals(on: .everyday)"))
+        XCTAssertTrue(everyday.contains("MyManualsView()"))
+        let fieldAssist = try structBody("FieldAssistSettingsView")
+        XCTAssertTrue(fieldAssist.contains("SettingsHub.showsMyManuals(on: .fieldAssist)"))
+        XCTAssertTrue(fieldAssist.contains("MyManualsView()"))
+        let hub = try structBody("SettingsView")
+        XCTAssertTrue(hub.contains("SettingsHub.thingsToTryPlace(visible: visibleCategories) == .besideAbout"))
+        XCTAssertTrue(hub.contains("ThingsToTryView()"))
     }
 
     func testTheAboutSectionStillReachesAttributions() throws {
@@ -214,9 +274,9 @@ final class SettingsHubTests: XCTestCase {
         throw MissingScreen(name: name)
     }
 
-    /// `SettingsView.destination(for:)`, read as `case .x:` → the screen type on the next line.
+    /// `SettingsCategoryScreen.destination(for:)`, read as `case .x:` → the screen type on the next line.
     private func destinationCases() throws -> [SettingsCategoryID: String] {
-        let hub = try structBody("SettingsView")
+        let hub = try structBody("SettingsCategoryScreen")
         let function = try XCTUnwrap(hub.components(separatedBy: "private func destination(for id: SettingsCategoryID)")
             .dropFirst().first, "destination(for:) is gone")
         var result: [SettingsCategoryID: String] = [:]

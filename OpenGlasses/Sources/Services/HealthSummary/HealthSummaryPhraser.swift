@@ -33,7 +33,7 @@ struct HealthSummaryPhraser {
     static let noData = "I don't have heart-rate, sleep or step data from Apple Health yet."
     static let healthUnavailable = "Apple Health isn't available on this device."
     static let needsPermission =
-        "I need permission to read Apple Health first. Open Avenkin on your phone, then Settings, Devices and Privacy, Hardware and Privacy, then Health."
+        "I need permission to read Apple Health first. Open Avenkin on your phone, then Settings, Everyday, then Health."
     static let lockedNoCache = "I can read Apple Health once your phone is unlocked."
     static let readFailed = "I couldn't read Apple Health just now."
 

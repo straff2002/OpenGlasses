@@ -559,7 +559,7 @@ struct Config {
     /// Speak a Direct-mode reply a sentence at a time while the model is still writing it, instead
     /// of after its last token (Plan HZ P1). What is said does not change, only when. Default off
     /// until the device measurement (Plan HZ P2) shows it is better on the glasses route; the switch
-    /// is in Settings › Advanced › Developer.
+    /// is in Settings › Advanced & Support › Advanced › Developer.
     @UserDefaultsBacked("directSentenceStreamingEnabled", default: false)
     static var directSentenceStreamingEnabled: Bool
 
@@ -567,20 +567,20 @@ struct Config {
     /// cancellation) during dictation, on the engine dictation builds for itself (Plan JM P0).
     /// Never on a Bluetooth route and never on the wake-word listener's shared engine — see
     /// `DictationCapturePolicy`. An experiment: it changes the input format and may add latency,
-    /// so it stays off until measured on the device. The switch is in Settings › Advanced › Developer.
+    /// so it stays off until measured on the device. The switch is in Settings › Advanced & Support › Advanced › Developer.
     @UserDefaultsBacked("dictationVoiceProcessingEnabled", default: false)
     static var dictationVoiceProcessingEnabled: Bool
 
     /// Keep the last question's audio in memory for the recogniser comparison (Plan JM P3). Off by
     /// default. Memory only, until the next question, the switch going off or the app leaving the
     /// screen — see `UtteranceRetention`. Comparing sends that audio to any cloud recogniser the
-    /// gate allows. The switch is in Settings › Advanced › Developer.
+    /// gate allows. The switch is in Settings › Advanced & Support › Advanced › Developer.
     @UserDefaultsBacked("recognizerComparisonEnabled", default: false)
     static var recognizerComparisonEnabled: Bool
 
     /// "Check what I said before sending" (Plan JM P1): a finished transcript waits in the chat bar
     /// for a short countdown before it goes, so the wearer can correct it. Off by default; only on
-    /// the phone's screen in Direct mode — see `SendReviewPolicy`. In Settings › Voice & Triggers.
+    /// the phone's screen in Direct mode — see `SendReviewPolicy`. In Settings › Assistant › Voice & Triggers.
     @UserDefaultsBacked("checkBeforeSendingEnabled", default: false)
     static var checkBeforeSendingEnabled: Bool
 
@@ -3029,6 +3029,18 @@ struct Config {
         recordingFolderBookmark = nil
     }
 
+    // MARK: - Settings Groups
+
+    /// Plan KH P2: which members of an Everyday group were on when its parent toggle went off, so
+    /// turning it back on restores that mix. Member ids only. Nil is nothing to restore.
+    static func settingsGroupRemembered(group: String) -> [String]? {
+        UserDefaults.standard.stringArray(forKey: "settingsGroupRemembered.\(group)")
+    }
+
+    static func setSettingsGroupRemembered(_ members: [String]?, group: String) {
+        UserDefaults.standard.set(members, forKey: "settingsGroupRemembered.\(group)")
+    }
+
     // MARK: - HIPAA Compliance
 
     /// Master toggle for HIPAA-compliant mode.
@@ -3143,7 +3155,7 @@ struct Config {
 
     /// Where "play", "pause" and play-by-name go when the wearer names no speaker. Apple Music for
     /// new installs and for everyone upgrading — unchanged behaviour until the wearer picks a
-    /// Home Assistant speaker in Settings → Connections → Services & Integrations → Music.
+    /// Home Assistant speaker in Settings → Everyday → Home, Music & Messages → Music.
     static var musicDefaultProvider: MusicProviderID {
         get {
             UserDefaults.standard.string(forKey: "musicDefaultProvider")
@@ -4843,7 +4855,7 @@ struct Config {
 
     /// Where support reports are emailed (support ask 2026-09-26). Empty means the developer's
     /// support address. An organisation profile can set it as a starting value; the person can
-    /// change it in Diagnostics & Support.
+    /// change it in Advanced & Support.
     static var supportReportEmail: String {
         get { UserDefaults.standard.string(forKey: "supportReportEmail") ?? "" }
         set {

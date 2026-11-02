@@ -1,7 +1,7 @@
 import SwiftUI
 import Intents
 
-/// Settings → Tools & Actions → Quick Actions: three links, and no editing of its own.
+/// Settings → Connections → Quick Actions: three links, and no editing of its own.
 ///
 /// Actions are edited where they live — on the Voice tab's grid and in its editor — so this screen
 /// is a signpost rather than a second, divergent form. What did not move is here explicitly:

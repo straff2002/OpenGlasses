@@ -91,7 +91,7 @@ struct FieldAssistSettingsView: View {
         // rather than discovered at the customer's door.
         if !appState.listeningEnabled {
             return wakeWordEditable
-                ? String(localized: "Listening is switched off, so this phrase won't start a turn. Turn on Listen for Wake Phrase in Settings › Voice & Triggers.")
+                ? String(localized: "Listening is switched off, so this phrase won't start a turn. Turn on Listen for Wake Phrase in Settings › Assistant › Voice & Triggers.")
                 : String(localized: "Listening is switched off, so this phrase won't start a turn. Your administrator can turn it on.")
         }
         // The phrase is the technician's whole interface on a job, so it is always said; where the
@@ -146,6 +146,17 @@ struct FieldAssistSettingsView: View {
                     }
                 } footer: {
                     Text("Field Assist, powered by Avenkin, gives service technicians hands-free, domain-grounded guidance. When enabled, the `field_session` tool becomes available and an active session injects the relevant knowledge vault into the AI's context.")
+                }
+            }
+
+            // ──────────────── My Manuals, on a Field Assist phone (Plan KH P2)
+            if SettingsHub.showsMyManuals(on: .fieldAssist) {
+                Section {
+                    NavigationLink {
+                        MyManualsView().environmentObject(appState)
+                    } label: {
+                        SettingsLinkLabel(.myManuals)
+                    }
                 }
             }
 

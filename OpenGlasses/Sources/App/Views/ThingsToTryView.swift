@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Everything this phone can try, by situation (Plan KH P1). One row in the Settings hub reaches it.
+/// Everything this phone can try, by situation (Plan KH P1). One row in Settings reaches it: the
+/// first row of Everyday, or beside About where Everyday cannot be reached (Plan KH P2).
 /// It is the same catalogue the cards read, so a card that has left is still here.
 struct ThingsToTryView: View {
     @EnvironmentObject var appState: AppState
@@ -100,8 +101,8 @@ struct ThingsToTryView: View {
                 leaveSheet(.settings(destination))
                 return
             }
-            // Back to the hub first: the request lands there, and pushing a category on top of
-            // this page would leave two ways back to the same place.
+            // Back out first: the request lands on the hub, and pushing a category on top of this
+            // page would leave two ways back to the same place.
             dismiss()
             appState.openSettings(destination)
             return
@@ -118,7 +119,7 @@ struct ThingsToTryView: View {
     }
 }
 
-/// The row that leads to Things to Try, in the Settings hub and the Voice tab's sheet.
+/// The row that leads to Things to Try, beside About in Settings and in the Voice tab's sheet.
 struct ThingsToTryRow: View {
     var body: some View {
         OGRow("Things to Try", icon: "sparkles", subtitle: "Ideas for what to do with it")

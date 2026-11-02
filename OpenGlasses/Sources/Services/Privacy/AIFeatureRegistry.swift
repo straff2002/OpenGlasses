@@ -216,7 +216,7 @@ enum AIFeature: String, CaseIterable {
                                                 preexisting: false),
                           toolNames: ["health_summary"],
                           stores: [.healthSummaryCache],
-                          dataRetainedWhenDisabled: "The last summary numbers kept for locked-phone answers stay until they expire after 24 hours or are cleared in Settings → Devices & Privacy → Hardware & Privacy → Health. Apple Health's own data is never touched.",
+                          dataRetainedWhenDisabled: "The last summary numbers kept for locked-phone answers stay until they expire after 24 hours or are cleared in Settings → Everyday → Health & Fitness → Health. Apple Health's own data is never touched.",
                           erasure: .api("HealthSummaryCache.clear()"))
 
         case .safetyAssessment:

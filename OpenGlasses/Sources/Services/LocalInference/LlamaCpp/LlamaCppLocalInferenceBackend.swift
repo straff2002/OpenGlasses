@@ -26,7 +26,7 @@ enum LlamaBackendError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .runtimeDisabled:
-            return "GGUF models are turned off. In Settings → AI & Personality → AI Models, edit or add a Local (On-Device MLX) model and open Download & Manage Models to pick a "
+            return "GGUF models are turned off. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model and open Download & Manage Models to pick a "
                 + "different on-device model."
         case .installationIncomplete(let id):
             return "The installed files for \(id.rawValue) are incomplete. Download the model again."
@@ -46,7 +46,7 @@ enum LlamaBackendError: LocalizedError, Equatable {
                 + "but only \(gb(available)) GB is available. Free up memory by closing other apps, "
                 + "or switch to a cloud model."
         case .notLoaded:
-            return "No local model is loaded. In Settings → AI & Personality → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
+            return "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
         case .alreadyGenerating:
             return "The on-device model is already generating a response. Wait for it to finish."
         case .promptTooLong(let prompt, let reserve, let context):

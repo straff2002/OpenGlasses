@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// "Keep talking without signal" (Plan GE P1), in Settings → AI & Personality. It works with or
+/// "Keep talking without signal" (Plan GE P1), in Settings → Assistant. It works with or
 /// without glasses, so it lives with the other intelligence settings rather than the glasses
 /// section.
 ///

@@ -3,7 +3,7 @@ import Foundation
 
 /// The one generic Siri intent behind the user-curated action catalog (Plan BQ P1).
 /// "Run *daily briefing* on OpenGlasses" — the `action` entity resolves against whatever
-/// the user has exposed in Settings → Tools & Actions → Siri & Search.
+/// the user has exposed in Settings → Connections → Siri & Search.
 struct RunGlassesActionIntent: AppIntent {
     static var title: LocalizedStringResource = "Run Avenkin Action"
     // App Intent metadata must not name a reserved term — App Store Connect rejects the upload
@@ -48,9 +48,9 @@ enum SiriActionError: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notFound:
-            return "That action no longer exists. Check Avenkin Settings → Tools & Actions → Siri & Search."
+            return "That action no longer exists. Check Avenkin Settings → Connections → Siri & Search."
         case .disabled:
-            return "That action is turned off in Avenkin Settings → Tools & Actions → Siri & Search."
+            return "That action is turned off in Avenkin Settings → Connections → Siri & Search."
         case .busy:
             return "Avenkin is busy with another request. Try again in a moment."
         case .noResponse:

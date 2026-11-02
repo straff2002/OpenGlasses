@@ -29,7 +29,7 @@ struct YieldToHumanTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         guard Config.agentModeEnabled else {
-            return "yield_to_human is only available in agentic mode. Enable it in Settings → AI & Personality → Agentic Features."
+            return "yield_to_human is only available in agentic mode. Enable it in Settings → Assistant → Agentic Features."
         }
 
         let reason = args["reason"] as? String ?? "Human intervention needed"

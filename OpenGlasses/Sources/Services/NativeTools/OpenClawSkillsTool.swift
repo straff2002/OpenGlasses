@@ -42,7 +42,7 @@ struct OpenClawSkillsTool: NativeTool {
             return "OpenClaw is not configured. Set it up in Settings → Connections → Gateways and provide a gateway token."
         }
         guard Config.agentModeEnabled else {
-            return "Agent Mode is off, so the OpenClaw gateway is disabled. Turn it on in Settings → AI & Personality → Agentic Features to use it."
+            return "Agent Mode is off, so the OpenClaw gateway is disabled. Turn it on in Settings → Assistant → Agentic Features to use it."
         }
 
         switch action {

@@ -149,11 +149,11 @@ enum LLMProvider: String, CaseIterable {
     var missingCredentialMessage: String {
         switch self {
         case .anthropic:
-            return "Anthropic API key not configured — add a key in Settings → AI & Personality → AI Models, sign in with Claude, or switch to on-device intelligence"
+            return "Anthropic API key not configured — add a key in Settings → Assistant → AI Models, sign in with Claude, or switch to on-device intelligence"
         case .xai:
-            return "xAI API key not configured — add a key in Settings → AI & Personality → AI Models, sign in with xAI, or switch to on-device intelligence"
+            return "xAI API key not configured — add a key in Settings → Assistant → AI Models, sign in with xAI, or switch to on-device intelligence"
         default:
-            return "\(displayName) API key not configured — add a key in Settings → AI & Personality → AI Models, or switch to on-device intelligence"
+            return "\(displayName) API key not configured — add a key in Settings → Assistant → AI Models, or switch to on-device intelligence"
         }
     }
 
@@ -425,7 +425,7 @@ class LLMService: ObservableObject {
             weather: weatherContext,
             job: Config.fieldAssistActive ? FieldSessionService.shared.activeSession.map(AppleOnDeviceInstructions.JobSummary.init(session:)) : nil,
             fieldAssistActive: Config.fieldAssistActive,
-            modelSettingsPath: "Settings > \(SettingsCatalog.category(.intelligence).title)",
+            modelSettingsPath: "Settings > \(SettingsHub.path(to: .intelligence))",
             speakerLine: "The person speaking to you is \(speaker). Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name."))
         if built.memoryDroppedCharacters > 0, let memory = memoryContext {
             MemoryContextRecorder.noteClip(renderedCharacters: max(memory.count - built.memoryDroppedCharacters, 0),
@@ -4376,7 +4376,7 @@ class LLMService: ObservableObject {
                 switch reason {
                 case .deviceNotEligible:
                     // The keyless first-run default can land here, so name the way out.
-                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence — add an API key in Settings → AI & Personality → AI Models to use a cloud model")
+                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence — add an API key in Settings → Assistant → AI Models to use a cloud model")
                 case .appleIntelligenceNotEnabled:
                     throw LLMError.missingAPIKey("Enable Apple Intelligence in iPhone Settings > Apple Intelligence & Siri")
                 case .modelNotReady:
@@ -4563,9 +4563,9 @@ class LLMService: ObservableObject {
         case .exceededContextWindowSize:
             return .contextOverflow(provider: "Apple Intelligence", toolsRan: false)
         case .assetsUnavailable:
-            return .missingAPIKey("Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → AI & Personality → AI Models")
+            return .missingAPIKey("Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → Assistant → AI Models")
         case .unsupportedLanguageOrLocale:
-            return .invalidConfiguration("Apple Intelligence doesn't support this language yet — choose a cloud model in Settings → AI & Personality → AI Models")
+            return .invalidConfiguration("Apple Intelligence doesn't support this language yet — choose a cloud model in Settings → Assistant → AI Models")
         case .rateLimited, .concurrentRequests:
             return .invalidResponse("Apple Intelligence is busy — try again in a moment")
         case .unsupportedGuide, .decodingFailure:
@@ -5584,7 +5584,7 @@ enum LLMError: LocalizedError {
         case .slowResponse(let provider):
             return "\(provider) took too long to answer"
         case .contextOverflow(let provider, _):
-            return "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → AI & Personality → AI Models for requests like this"
+            return "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → Assistant → AI Models for requests like this"
         }
     }
 }
