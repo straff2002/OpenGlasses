@@ -38,9 +38,13 @@ enum ExpertStreamMedicalPolicy {
         String(localized: "A live view to an expert is off in Medical Compliance mode, so your camera and microphone stay on this phone. You can still ask for an expert, and they get the job record.")
     }
 
-    /// Said and shown when the mode ends a running stream.
-    static var endedMessage: String {
-        String(localized: "The live view to your expert has ended, because Medical Compliance mode is on. The job carries on, and the expert has the job record.")
+    /// Said and shown when the mode ends a running stream. A meeting runs in its own app, where
+    /// stopping the transport reaches nothing: the wearer is told it is still up and is theirs to
+    /// leave, never that it has ended.
+    static func endedMessage(externalCall: Bool) -> String {
+        externalCall
+            ? String(localized: "Medical Compliance mode is on, but your expert call runs in another app and is still going. Leave the call in that app to stop it. The job carries on, and the expert has the job record.")
+            : String(localized: "The live view to your expert has ended, because Medical Compliance mode is on. The job carries on, and the expert has the job record.")
     }
 
     /// What the escalation tools report, for the assistant to say. In the same shape as the other

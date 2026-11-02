@@ -6471,9 +6471,11 @@ class AppState: ObservableObject, AppStateProtocol {
         guard ExpertStreamMedicalPolicy.whileRunning(
             isStreaming: escalation.bridge.isConnected || webRTCStreaming.isStreaming,
             mode: MedicalEgressGuard.currentMode()) == .end else { return }
+        // Before the disconnect, which forgets the call. It keeps going in its own app regardless.
+        let externalCall = escalation.bridge.isCallInAnotherApp
         webRTCStreaming.stopStreaming()
         Task { @MainActor in await escalation.endLiveView() }
-        let message = ExpertStreamMedicalPolicy.endedMessage
+        let message = ExpertStreamMedicalPolicy.endedMessage(externalCall: externalCall)
         NoticeCenter.shared.post(message, severity: .warning, source: .camera)
         Task { @MainActor in await self.speechService.speak(message) }
     }

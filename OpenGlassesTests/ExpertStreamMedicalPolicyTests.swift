@@ -95,9 +95,69 @@ final class ExpertStreamMedicalPolicyTests: XCTestCase {
     func testTheWordsSayWhyAndThatTheJobCarriesOn() {
         XCTAssertTrue(Policy.refusalMessage.contains("Medical Compliance"))
         XCTAssertTrue(Policy.refusalMessage.contains("job record"))
-        XCTAssertTrue(Policy.endedMessage.contains("Medical Compliance"))
-        XCTAssertTrue(Policy.endedMessage.contains("job carries on"))
+        for externalCall in [false, true] {
+            XCTAssertTrue(Policy.endedMessage(externalCall: externalCall).contains("Medical Compliance"))
+            XCTAssertTrue(Policy.endedMessage(externalCall: externalCall).contains("job carries on"))
+        }
         XCTAssertTrue(Policy.liveViewOffSummary.contains("Medical Compliance"))
+    }
+
+    // MARK: - A call in another app
+
+    func testOurOwnTransportsSayTheViewHasEnded() {
+        XCTAssertTrue(Policy.endedMessage(externalCall: false).contains("has ended"))
+        XCTAssertFalse(Policy.endedMessage(externalCall: false).contains("another app"))
+    }
+
+    func testACallInAnotherAppIsNeverSaidToHaveEnded() {
+        let message = Policy.endedMessage(externalCall: true)
+        XCTAssertFalse(message.contains("has ended"))
+        XCTAssertTrue(message.contains("another app"))
+        XCTAssertTrue(message.contains("still going"))
+        XCTAssertTrue(message.contains("Leave the call"))
+    }
+
+    func testOnlyTheMeetingLinkRunsInAnotherApp() {
+        XCTAssertEqual(ExpertStreamKind.allCases.filter(\.runsInAnotherApp), [.meetingLink])
+    }
+
+    /// The real transport, whose `stop()` only flips a flag: the bridge says the call is elsewhere
+    /// while it runs, and forgets once disconnected.
+    func testTheBridgeKnowsWhenTheActiveCallIsInAnotherApp() async throws {
+        MedicalEgressGuard.currentMode = { .off }
+        let previousURL = Config.expertMeetingURL
+        let previousKind = Config.expertStreamTransport
+        defer {
+            Config.setExpertMeetingURL(previousURL)
+            Config.setExpertStreamTransport(previousKind)
+        }
+        Config.setExpertMeetingURL("https://example.invalid/meeting")
+        Config.setExpertStreamTransport(.meetingLink)
+        let meeting = MeetingLinkTransport()
+        meeting.opener = { _ in }
+        let bridge = ExpertStreamBridge(transports: [.meetingLink: meeting, .mjpeg: transport],
+                                        framePublisher: PassthroughSubject<UIImage, Never>())
+        XCTAssertFalse(bridge.isCallInAnotherApp)
+
+        try await bridge.connect(sessionId: "s", expertId: nil)
+        XCTAssertTrue(bridge.isCallInAnotherApp)
+        // The active transport decides, not a setting changed after the call began.
+        Config.setExpertStreamTransport(.mjpeg)
+        XCTAssertTrue(bridge.isCallInAnotherApp)
+
+        await bridge.disconnect()
+        XCTAssertFalse(bridge.isCallInAnotherApp)
+    }
+
+    func testOurOwnStreamIsNotACallInAnotherApp() async throws {
+        MedicalEgressGuard.currentMode = { .off }
+        let previousKind = Config.expertStreamTransport
+        defer { Config.setExpertStreamTransport(previousKind) }
+        Config.setExpertStreamTransport(.mjpeg)
+        let bridge = bridge()
+        try await bridge.connect(sessionId: "s", expertId: nil)
+        XCTAssertTrue(bridge.isConnected)
+        XCTAssertFalse(bridge.isCallInAnotherApp)
     }
 
     // MARK: - Every route
@@ -203,6 +263,18 @@ final class ExpertStreamMedicalPolicyTests: XCTestCase {
             "OpenGlasses/Sources/App/OpenGlassesApp.swift"), encoding: .utf8)
         let hook = try XCTUnwrap(source.range(of: "hipaaService.onModeChanged = {"))
         XCTAssertTrue(source[hook.lowerBound...].prefix(900).contains("enforceExpertStreamRules()"))
+    }
+
+    /// `disconnect` forgets the call, so the app has to ask first.
+    func testTheAppAsksAboutTheCallBeforeEndingIt() throws {
+        let source = try String(contentsOf: Self.repoRoot.appendingPathComponent(
+            "OpenGlasses/Sources/App/OpenGlassesApp.swift"), encoding: .utf8)
+        let rules = try XCTUnwrap(source.range(of: "func enforceExpertStreamRules()"))
+        let body = source[rules.lowerBound...]
+        let asks = try XCTUnwrap(body.range(of: "bridge.isCallInAnotherApp"))
+        let ends = try XCTUnwrap(body.range(of: "escalation.endLiveView()"))
+        XCTAssertLessThan(asks.lowerBound, ends.lowerBound)
+        XCTAssertTrue(body.prefix(900).contains("endedMessage(externalCall: externalCall)"))
     }
 
     func testTheModeSaysSoInItsOwnList() throws {
