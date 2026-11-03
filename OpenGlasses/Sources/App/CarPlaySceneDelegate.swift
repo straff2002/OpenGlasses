@@ -496,7 +496,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard let store = AppStateProvider.shared?.playbookStore else { return }
-            let playbooks = store.playbooks
+            let playbooks = store.reusablePlaybooks
             let activeId = store.activeSession?.playbookId
 
             let items: [CPListItem] = playbooks.map { playbook in

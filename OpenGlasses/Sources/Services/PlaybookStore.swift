@@ -111,6 +111,21 @@ struct Playbook: Codable, Identifiable {
     /// Reference material (manual text, procedures, specs) used as RAG context.
     var referenceText: String
     var createdAt: Date
+    /// Set on an agenda taken from a calendar event, for that meeting only. Left out of
+    /// `CodingKeys`: such a playbook is never written to disk.
+    var meetingEndsAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, icon, steps, referenceText, createdAt
+    }
+
+    /// The agenda for the current meeting, which lasts only as long as the meeting does.
+    var isMeetingAgenda: Bool { meetingEndsAt != nil }
+
+    /// Anything that came from a calendar event rather than from the wearer: the current meeting's
+    /// agenda, or a playbook an earlier version saved. Stays out of everything that lists playbooks
+    /// for reuse, and out of Spotlight.
+    var isFromCalendar: Bool { isMeetingAgenda || MeetingAgenda.wasSavedFromCalendar(self) }
 
     init(id: String? = nil, name: String, icon: String = "list.clipboard", steps: [PlaybookStep] = [], referenceText: String = "") {
         self.id = id ?? name.lowercased().replacingOccurrences(of: " ", with: "-").filter { $0.isLetter || $0.isNumber || $0 == "-" }
@@ -337,6 +352,77 @@ class PlaybookStore: ObservableObject {
         playbooks.first { $0.name.localizedCaseInsensitiveContains(name) }
     }
 
+    // MARK: - Meeting Agendas
+
+    /// The wearer's own playbooks, for everything that lists playbooks to reuse.
+    var reusablePlaybooks: [Playbook] {
+        playbooks.filter { !$0.isFromCalendar }
+    }
+
+    /// The current meeting's agenda, on offer or running.
+    var meetingAgenda: Playbook? {
+        playbook(byId: MeetingAgenda.playbookID)
+    }
+
+    /// The agenda on offer, while it hasn't been started.
+    var offeredMeetingAgenda: Playbook? {
+        guard activeSession?.playbookId != MeetingAgenda.playbookID else { return nil }
+        return meetingAgenda
+    }
+
+    /// Playbooks earlier versions saved from calendar events, one row for each name: repeats of a
+    /// meeting were saved again and again under the same id.
+    var savedMeetingPlaybooks: [Playbook] {
+        var seen = Set<String>()
+        return playbooks.filter {
+            MeetingAgenda.wasSavedFromCalendar($0) && seen.insert($0.id).inserted
+        }
+    }
+
+    /// Hold an agenda for the wearer to start. Replaces any earlier offer, starts nothing, and
+    /// stands aside if a playbook is running. Returns whether the offer stands.
+    func offerMeetingAgenda(_ offer: MeetingAgendaOffer) -> Bool {
+        guard activeSession == nil else { return false }
+        playbooks.removeAll(where: \.isMeetingAgenda)
+        var agenda = Playbook(
+            id: MeetingAgenda.playbookID,
+            name: offer.title,
+            icon: "person.3",
+            steps: offer.items.map { PlaybookStep(title: $0) }
+        )
+        agenda.meetingEndsAt = offer.endsAt
+        playbooks.append(agenda)
+        return true
+    }
+
+    /// Drop an agenda whose meeting has ended, unless the wearer is still following it: a meeting
+    /// can overrun, and finishing removes it anyway.
+    func expireMeetingAgenda(now: Date) {
+        guard let endsAt = offeredMeetingAgenda?.meetingEndsAt, endsAt <= now else { return }
+        withdrawMeetingAgenda()
+    }
+
+    /// Drop the agenda on offer, if there is one.
+    func withdrawMeetingAgenda() {
+        guard offeredMeetingAgenda != nil else { return }
+        playbooks.removeAll(where: \.isMeetingAgenda)
+    }
+
+    /// Remove what earlier versions saved from calendar events: every repeat of the meeting with
+    /// this id, or all of them. Matches on more than the id, which came from the event's name and
+    /// can be shared with a wearer's own playbook.
+    func removeSavedMeetingPlaybooks(id: String? = nil) {
+        let isTarget = { (playbook: Playbook) in
+            MeetingAgenda.wasSavedFromCalendar(playbook) && (id == nil || playbook.id == id)
+        }
+        if let session = activeSession, playbook(byId: session.playbookId).map(isTarget) == true {
+            activeSession = nil
+            saveSession()
+        }
+        playbooks.removeAll(where: isTarget)
+        save()
+    }
+
     // MARK: - Session Management
 
     func startPlaybook(_ id: String) -> String {
@@ -544,6 +630,7 @@ class PlaybookStore: ObservableObject {
 
         activeSession = nil
         saveSession()
+        playbooks.removeAll(where: \.isMeetingAgenda)
         return summary
     }
 
@@ -713,7 +800,7 @@ class PlaybookStore: ObservableObject {
 
     private func save() {
         do {
-            let data = try JSONEncoder().encode(playbooks)
+            let data = try JSONEncoder().encode(playbooks.filter { !$0.isMeetingAgenda })
             UserDefaults.standard.set(data, forKey: storageKey)
         } catch {
             PrivacyLog.store(.playbooks, .saveFailed, error: SafeErrorSummary(error))
@@ -730,7 +817,8 @@ class PlaybookStore: ObservableObject {
     }
 
     private func saveSession() {
-        if let session = activeSession, let data = try? JSONEncoder().encode(session) {
+        if let session = activeSession, session.playbookId != MeetingAgenda.playbookID,
+           let data = try? JSONEncoder().encode(session) {
             UserDefaults.standard.set(data, forKey: sessionKey)
         } else {
             UserDefaults.standard.removeObject(forKey: sessionKey)
@@ -741,6 +829,13 @@ class PlaybookStore: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: sessionKey),
            let decoded = try? JSONDecoder().decode(PlaybookSession.self, from: data) {
             activeSession = decoded
+        }
+        // Earlier versions started these by themselves, and an unfinished one would feed its
+        // invite notes to the assistant on every turn.
+        if let session = activeSession, let pb = playbook(byId: session.playbookId),
+           MeetingAgenda.wasSavedFromCalendar(pb) {
+            activeSession = nil
+            saveSession()
         }
     }
 

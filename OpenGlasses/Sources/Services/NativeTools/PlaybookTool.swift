@@ -11,7 +11,9 @@ struct PlaybookTool: NativeTool {
         Manage guided task playbooks — step-by-step procedures the agent walks the user through hands-free. \
         Supports adaptive replanning: record step results, replan remaining steps on failure, insert/remove \
         steps dynamically, and skip irrelevant steps. Actions: list, start, status, next, back, add_note, \
-        finish, create, add_result, replan, insert_step, remove_step, skip.
+        finish, create, add_result, replan, insert_step, remove_step, skip. \
+        When the user asks to start the agenda, start playbook_id "\(MeetingAgenda.playbookID)", \
+        the agenda offered for the current meeting; never start it otherwise.
         """
 
     let parametersSchema: [String: Any] = [
@@ -109,6 +111,9 @@ struct PlaybookTool: NativeTool {
                     return store.startPlaybook(idOrName)
                 } else if let pb = store.playbook(byName: idOrName) {
                     return store.startPlaybook(pb.id)
+                }
+                if idOrName == MeetingAgenda.playbookID {
+                    return "No meeting agenda is on offer right now."
                 }
                 return "Playbook '\(idOrName)' not found. Use 'list' to see available playbooks."
             }

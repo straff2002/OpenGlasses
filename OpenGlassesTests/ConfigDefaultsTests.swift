@@ -16,6 +16,8 @@ final class ConfigDefaultsTests: XCTestCase {
         // Cohort 3
         "hasCompletedOnboarding", "autoModelRoutingEnabled", "openClawEnabled", "privacyFilterEnabled",
         "shareHealthDataWithAI", "agentModelDownloaded", "localAgentEnabled", "visualStateInjectThumbnails",
+        // Meeting agendas
+        Config.meetingAgendaOffersKey,
     ]
 
     override func setUp() {
@@ -53,6 +55,7 @@ final class ConfigDefaultsTests: XCTestCase {
         XCTAssertFalse(Config.agentModelDownloaded)
         XCTAssertFalse(Config.localAgentEnabled)
         XCTAssertFalse(Config.visualStateInjectThumbnails)
+        XCTAssertFalse(Config.meetingAgendaOffersEnabled)
     }
 
     /// Each `setX` façade writes the property, and it round-trips through the exact legacy key.

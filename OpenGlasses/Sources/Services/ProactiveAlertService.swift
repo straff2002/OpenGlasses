@@ -39,8 +39,12 @@ final class ProactiveAlertService: ObservableObject {
     /// across foreground checks and process restarts instead of a second notification source.
     var onDigestItem: ((String, String, Date?, TextToSpeechService.SpeechUrgency) -> Void)?
 
-    /// Callback to auto-create a playbook from a calendar event's agenda/notes
-    var onMeetingPlaybook: ((String, String, [String]) -> Void)?
+    /// An event just started with a list-formatted agenda and agenda offers are on. Only ever
+    /// offers it: starting the agenda is the wearer's choice.
+    var onMeetingAgenda: ((MeetingAgendaOffer) -> Void)?
+
+    /// Runs at the top of every check, so an offer can lapse when its meeting ends.
+    var onCheck: ((Date) -> Void)?
 
     // MARK: - Configuration
 
@@ -108,6 +112,8 @@ final class ProactiveAlertService: ObservableObject {
     private func checkForAlerts() async {
         guard isRunning else { return }
 
+        onCheck?(Date())
+
         // Presence throttle (Plan W): calendar alerts are time-sensitive, so they floor at `.present`
         // — never slower than 2× base and never paused merely because the user is idle (the existing
         // background path still pauses them when truly away). This trims redundant calendar queries
@@ -174,13 +180,14 @@ final class ProactiveAlertService: ObservableObject {
                     eventDate: event.startDate
                 )
 
-                // Auto-create playbook from calendar event notes/agenda
-                if let notes = event.notes, !notes.isEmpty {
-                    let steps = parseAgendaSteps(from: notes)
-                    if steps.count >= 2 {
-                        onMeetingPlaybook?(title, notes, steps)
-                        PrivacyLog.proactiveAlert(.playbookCreated, count: steps.count)
-                    }
+                if let offer = MeetingAgenda.offer(
+                    title: title,
+                    notes: event.notes,
+                    endsAt: event.endDate,
+                    enabled: Config.meetingAgendaOffersEnabled
+                ) {
+                    onMeetingAgenda?(offer)
+                    PrivacyLog.proactiveAlert(.agendaOffered, count: offer.items.count)
                 }
             }
             // Early alert (around 10 minutes)
@@ -254,26 +261,6 @@ final class ProactiveAlertService: ObservableObject {
             trigger: nil // Deliver immediately
         )
         UNUserNotificationCenter.current().add(request)
-    }
-
-    // MARK: - Agenda Parsing
-
-    /// Parse bullet points, numbered items, or line-separated items from calendar notes into steps.
-    private func parseAgendaSteps(from notes: String) -> [String] {
-        let lines = notes.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-
-        return lines.compactMap { line in
-            // Strip common prefixes: "- ", "• ", "1. ", "1) ", "* "
-            var cleaned = line
-            if let match = cleaned.range(of: #"^[\-\•\*]\s+"#, options: .regularExpression) {
-                cleaned = String(cleaned[match.upperBound...])
-            } else if let match = cleaned.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) {
-                cleaned = String(cleaned[match.upperBound...])
-            }
-            return cleaned.isEmpty ? nil : cleaned
-        }
     }
 
     // MARK: - Cleanup
