@@ -75,6 +75,23 @@ final class RequestContextBudgetTests: XCTestCase {
         XCTAssertEqual((result.body["input"] as? [[String: Any]])?.count, 1)
     }
 
+    // Plan KK: the note says the left-out messages can be searched only when `brain` can be called.
+    func testOmissionNoteOffersRecallOnlyWhenAsked() throws {
+        let history: [[String: Any]] = [
+            ["role": "user", "content": String(repeating: "old", count: 1_000)],
+            ["role": "assistant", "content": "old answer"],
+            ["role": "user", "content": "current question"],
+        ]
+        func instructions(recallOffered: Bool) throws -> String {
+            let result = try RequestContextBudget.build(model: "m", instructions: "policy", history: history,
+                tools: nil, protectedStart: 2, allowance: 1_000, recallOffered: recallOffered)
+            XCTAssertEqual(result.omittedMessages, 2)
+            return try XCTUnwrap(result.body["instructions"] as? String)
+        }
+        XCTAssertTrue(try instructions(recallOffered: true).contains(APIHistoryBudget.recallSentence))
+        XCTAssertFalse(try instructions(recallOffered: false).contains("brain"))
+    }
+
     func testCurrentQuestionInstructionsAndHugeToolAreNeverClipped() {
         let huge = String(repeating: "X", count: 10_000)
         XCTAssertThrowsError(try RequestContextBudget.build(model: "m", instructions: huge,

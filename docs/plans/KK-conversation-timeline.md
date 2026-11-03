@@ -2,7 +2,8 @@
 
 **Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03, unwired: nothing reads the timeline yet,
 and no summary is written.
-- P0 found that one sentence telling the model to search recovers most of the gap.
+- P0 found that one sentence telling the model to search recovers most of the gap. That sentence now ends
+  the omission note whenever `brain` can be called.
 - It also found the timeline closes the rest only when coverage is complete, which changes P2's design (see
   P0).
 - P2 to P4 are owed, and the four owner decisions are still open (see the end).
@@ -214,7 +215,10 @@ Limits of the run:
 
 **Outcome.**
 - **Not the stop condition.** B does not reach the ceiling.
-- **B's sentence is worth shipping on its own.**
+- **B's sentence is worth shipping on its own.** Shipped in the same PR (owner, 2026-11-03), word for word:
+  `APIHistoryBudget.recallSentence` ends the omission note on the API routes and the ChatGPT one, only when
+  the request declares `brain` and the model may call it. A vault-only job (which seals `brain`), a request
+  without tools and the tool loop's wrap-up keep the note as it was.
 - **The timeline is worth P2 and P3 only with complete coverage.** The open run has to be covered before a
   block is rendered: summarised at request time, or with a far smaller minimum. A chunk whose later
   correction is still uncovered must never be shown alone.

@@ -2464,10 +2464,8 @@ class LLMService: ObservableObject {
                 // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
                 // cache on every follow-up turn instead of re-billing full input tokens each time.
                 // Plan GB P5: the breakpoint sits on the *untimestamped* head; the volatile tail
-                // (date and time, memory, passages) follows as its own uncached block.
-                var system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
-                var systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
-
+                // (date and time, memory, passages) follows as its own uncached block. The tools
+                // come first: the omission note offers `brain` only when it is declared.
                 var tools: [[String: Any]] = []
                 if includeTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
@@ -2487,6 +2485,10 @@ class LLMService: ObservableObject {
                         tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
                     }
                 }
+                let recallOffered = includeTools && !withholding.active && APIHistoryBudget.declaresRecall(tools)
+                var system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail,
+                                                     recallOffered: recallOffered)
+                var systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
 
                 // Plan IE P2: this turn's thinking blocks ride only over the prefix they were
                 // produced over. The hygiene and the budget above can rewrite an earlier message
@@ -2498,7 +2500,8 @@ class LLMService: ObservableObject {
                                                         tools: tools, messages: historyForRequest) {
                     self.conversationHistory = HistoryHygiene.stripThinkingBlocks(self.conversationHistory)
                     historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
-                    system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                    system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail,
+                                                     recallOffered: recallOffered)
                     systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
                     PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
                                      model: PrivacyToken(config.model))
@@ -2943,15 +2946,28 @@ class LLMService: ObservableObject {
                 // never reach a Chat Completions body — including a fallback retry's.
                 let historySlice = HistoryHygiene.stripResponsesItems(
                     self.requestHistory(for: provider, smallContext: smallContext))
-                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
-                let messages = PromptLayout.chatMessages(stable: system.stable, history: historySlice,
-                                                         volatile: system.volatile)
 
                 // Only attach Tools if the provider reliably supports function calling.
                 let providerSupportsTools = Self.providerSupportsTools(
                     provider,
                     customEndpointRejectsTools: Self.customEndpointRejectsTools
                 )
+                // Declared before the prompt parts: the omission note offers `brain` only when it is.
+                var declared: (tools: [[String: Any]], data: Data)?
+                if includeTools && providerSupportsTools {
+                    let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
+                    let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
+                    let toolsData: Data = await MainActor.run {
+                        let tools = ToolDeclarations.openAITools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient, declaring: declaring)
+                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                    }
+                    declared = ((try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? [], toolsData)
+                }
+                let system = self.requestSystemParts(
+                    stable: systemPrompt, volatileTail: volatileTail,
+                    recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(declared?.tools))
+                let messages = PromptLayout.chatMessages(stable: system.stable, history: historySlice,
+                                                         volatile: system.volatile)
                 // Plan GB P0 / GC: the saved model's reasoning setting as the route selector resolved
                 // it for Chat Completions and for whether tools ride along — the pair the
                 // `gpt-6-sol` 400 depends on. Re-selected only when an earlier iteration of this
@@ -2976,14 +2992,7 @@ class LLMService: ObservableObject {
                 Self.applyGroqReasoningVisibility(to: &body, provider: provider, model: config.model)
                 Self.noteReasoning(reasoning, provider: provider, model: config.model)
 
-                if includeTools && providerSupportsTools {
-                    let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
-                    let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
-                    let toolsData: Data = await MainActor.run {
-                        let tools = ToolDeclarations.openAITools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient, declaring: declaring)
-                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
-                    }
-                    let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                if case let (tools, toolsData)? = declared {
                     body["tools"] = tools
                     if withholding.active, !tools.isEmpty { body["tool_choice"] = "none" }
                     // Plan GB P5: route requests that share this prefix to the same cache. A hash of
@@ -3304,7 +3313,9 @@ class LLMService: ObservableObject {
                 let (tools, toolsData) = roundTools()
                 // GB's request copy, then its prompt parts (the omission note depends on the copy).
                 let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
-                let system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail)
+                let system = self.requestSystemParts(
+                    stable: systemPrompt, volatileTail: volatileTail,
+                    recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(tools))
                 // The current user message's index within the copy: every message since it is
                 // this turn's own and is protected from the capacity guard.
                 let turnTail = max(0, self.conversationHistory.count - self.turnHistoryStart)
@@ -3574,7 +3585,7 @@ class LLMService: ObservableObject {
             // inside the estimate; the default is the subscription body, byte for byte.
             let selected = try RequestContextBudget.build(model: model, instructions: instructions(),
                 history: history, tools: tools, protectedStart: protectedStart, allowance: allowance,
-                options: options)
+                options: options, recallOffered: !withholdTools && APIHistoryBudget.declaresRecall(tools))
             PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(model),
                              count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
                              detail: PrivacyToken(limit.provenance))
@@ -5209,8 +5220,10 @@ class LLMService: ObservableObject {
 
     /// The volatile tail for a request, with the budget's omission note when older messages were
     /// left out. `volatileTail` nil (a single-string provider) puts the note at the prompt's end.
-    private func requestSystemParts(stable systemPrompt: String, volatileTail: String?) -> (stable: String, volatile: String?) {
-        let note = APIHistoryBudget.omissionNote(lastRequestOmittedMessages)
+    /// `recallOffered`: this request declares `brain` and the model may call it.
+    private func requestSystemParts(stable systemPrompt: String, volatileTail: String?,
+                                    recallOffered: Bool) -> (stable: String, volatile: String?) {
+        let note = APIHistoryBudget.omissionNote(lastRequestOmittedMessages, recallOffered: recallOffered)
         if let volatileTail {
             return (systemPrompt, [volatileTail, note.map { "\n\n" + $0 }].compactMap { $0 }.joined())
         }

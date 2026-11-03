@@ -128,9 +128,13 @@ enum RequestContextBudget {
     /// `options` (Plan GC) are passed to `ResponsesTranslator.requestBody`, so the API route's
     /// trailing developer message and extra fields are inside the estimate; the default is the
     /// subscription body, unchanged.
+    ///
+    /// `recallOffered` (Plan KK) adds `APIHistoryBudget.recallSentence` to the omission note: true
+    /// only when `tools` declares `brain` and the model may call it.
     static func build(model: String, instructions: String, history: [[String: Any]],
                       tools: [[String: Any]]?, protectedStart: Int, allowance: Int,
-                      options: ResponsesTranslator.RequestOptions = ResponsesTranslator.RequestOptions()) throws -> Selection {
+                      options: ResponsesTranslator.RequestOptions = ResponsesTranslator.RequestOptions(),
+                      recallOffered: Bool = false) throws -> Selection {
         let boundary = min(max(0, protectedStart), history.count)
         var selected = history
         // Retain every current-turn image; omit historical images before removing text.
@@ -140,7 +144,7 @@ enum RequestContextBudget {
         while true {
             var prompt = instructions
             if removed > 0 {
-                prompt += "\n\n[Working context: \(removed) older messages omitted. The saved transcript is unchanged. Do not infer missing results. Use field_session recall for older technician reports and task evidence; current session state takes precedence over older conversation.]"
+                prompt += "\n\n[Working context: \(removed) older messages omitted. The saved transcript is unchanged. Do not infer missing results. Use field_session recall for older technician reports and task evidence; current session state takes precedence over older conversation.\(recallOffered ? " " + APIHistoryBudget.recallSentence : "")]"
             }
             let body = ResponsesTranslator.requestBody(model: model, instructions: prompt, history: selected,
                                                        tools: tools, options: options)

@@ -61,9 +61,29 @@ enum APIHistoryBudget {
 
     /// One line for the volatile tail when older messages were left out, so the model does not
     /// infer that an absent exchange never happened. Nil when nothing was omitted.
-    static func omissionNote(_ omitted: Int) -> String? {
+    ///
+    /// `recallOffered` adds `recallSentence`: true only when the request declares `brain` and
+    /// the model may call it (not the tool loop's wrap-up, not a vault-only job, which seals
+    /// `brain`), so the note never points at a tool the model cannot reach.
+    static func omissionNote(_ omitted: Int, recallOffered: Bool) -> String? {
         guard omitted > 0 else { return nil }
-        return "[Working context: \(omitted) older messages are not included in this request. The saved conversation is unchanged. Do not infer missing results; current job state takes precedence over older conversation.]"
+        let search = recallOffered ? " " + recallSentence : ""
+        return "[Working context: \(omitted) older messages are not included in this request. The saved conversation is unchanged. Do not infer missing results; current job state takes precedence over older conversation.\(search)]"
+    }
+
+    /// Plan KK P0: without it the model rarely searches for what the budget left out, answering
+    /// from what it can see or searching stored memory instead. With it, old-detail recall went
+    /// from 6 to 32 of 40 on a field job and from 17 to 36 in everyday chat, at about one extra
+    /// model call per question and no added wrong answers.
+    static let recallSentence = "Those older messages can still be searched: before you answer about anything said earlier in this conversation, look it up with brain, action recall."
+
+    /// Whether `tools` declares `brain`, in the Anthropic and Responses shape (`name`) or the
+    /// Chat Completions one (`function.name`).
+    static func declaresRecall(_ tools: [[String: Any]]?) -> Bool {
+        (tools ?? []).contains { tool in
+            let name = tool["name"] as? String ?? (tool["function"] as? [String: Any])?["name"] as? String
+            return name == "brain"
+        }
     }
 }
 
