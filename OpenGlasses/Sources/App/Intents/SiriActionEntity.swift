@@ -41,7 +41,7 @@ enum SiriActionCatalogProvider {
             .map { CaptureFlowLibrary(store: $0).all.map { (id: $0.id, title: $0.title) } } ?? []
         let procedures = FieldSessionService.shared.availableProcedureDefinitions()
             .map { (id: $0.id, title: $0.title) }
-        let playbooks = (AppStateProvider.shared?.playbookStore.playbooks ?? [])
+        let playbooks = (AppStateProvider.shared?.playbookStore.reusablePlaybooks ?? [])
             .map { (id: $0.id, name: $0.name) }
         let harvested = CapabilityHarvester.harvest(
             flows: flows,

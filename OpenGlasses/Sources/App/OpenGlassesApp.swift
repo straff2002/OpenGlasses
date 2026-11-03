@@ -3287,16 +3287,14 @@ class AppState: ObservableObject, AppStateProtocol {
                 eventDate: eventDate
             )
         }
-        proactiveAlerts.onMeetingPlaybook = { [weak self] title, notes, steps in
-            guard let self else { return }
-            let pbSteps = steps.map { PlaybookStep(title: $0) }
-            let playbook = Playbook(name: title, icon: "person.3", steps: pbSteps, referenceText: notes)
-            self.playbookStore.add(playbook)
-            // Auto-start the meeting playbook
-            _ = self.playbookStore.startPlaybook(playbook.id)
+        proactiveAlerts.onMeetingAgenda = { [weak self] offer in
+            guard let self, self.playbookStore.offerMeetingAgenda(offer) else { return }
             Task {
-                await self.speechService.speak("I've loaded the agenda for \(title) with \(steps.count) items. Say 'next' to advance through the agenda.")
+                await self.speechService.speak(String(localized: "This meeting has an agenda with \(offer.items.count) items. Say \"start the agenda\" to follow it."))
             }
+        }
+        proactiveAlerts.onCheck = { [weak self] now in
+            self?.playbookStore.expireMeetingAgenda(now: now)
         }
         proactiveAlerts.start()
 
@@ -4571,7 +4569,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Workflows branch: list the saved playbooks; selecting one starts it and hands off
         // to the Plan X Now/Next card (startTask supersedes the open menu).
-        hudLauncher.availablePlaybooks = { [weak self] in self?.playbookStore.playbooks ?? [] }
+        hudLauncher.availablePlaybooks = { [weak self] in self?.playbookStore.reusablePlaybooks ?? [] }
         hudLauncher.startPlaybook = { [weak self] id in
             guard let self else { return }
             _ = self.playbookStore.startPlaybook(id)

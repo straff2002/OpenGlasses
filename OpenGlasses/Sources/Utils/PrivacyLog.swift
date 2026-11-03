@@ -1016,7 +1016,7 @@ enum PrivacyLog {
     /// alongside the event title whenever an agenda produced a playbook. Both are user content;
     /// how long the alert was, and how many steps the agenda had, are not.
     enum ProactiveAlertEvent: String {
-        case started, stopped, paused, resumed, delivered, playbookCreated
+        case started, stopped, paused, resumed, delivered, agendaOffered
     }
 
     @discardableResult

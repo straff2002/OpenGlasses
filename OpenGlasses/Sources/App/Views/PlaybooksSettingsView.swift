@@ -5,6 +5,8 @@ import SwiftUI
 struct PlaybooksSettingsView: View {
     @ObservedObject var store: PlaybookStore
     @State private var editingPlaybook: Playbook?
+    @State private var confirmingRemoval = false
+    @AppStorage(Config.meetingAgendaOffersKey) private var meetingAgendaOffers = false
 
     var body: some View {
         List {
@@ -50,8 +52,48 @@ struct PlaybooksSettingsView: View {
             }
 
             Section {
+                Toggle("Offer Calendar Agendas", isOn: $meetingAgendaOffers)
+                    .onChange(of: meetingAgendaOffers) { _, enabled in
+                        if !enabled { store.withdrawMeetingAgenda() }
+                    }
+                if let agenda = store.offeredMeetingAgenda {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(agenda.name)
+                            Text("\(agenda.steps.count) steps")
+                                .font(.caption)
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        Spacer()
+                        Button("Start") { _ = store.startPlaybook(agenda.id) }
+                    }
+                }
+            } header: {
+                Text("Meeting Agendas")
+            } footer: {
+                Text("When a meeting starts and its calendar notes have a bulleted or numbered list, Avenkin offers to follow it. Nothing starts unless you ask, and the agenda is gone when the meeting ends.")
+            }
+
+            let savedMeetings = store.savedMeetingPlaybooks
+            if !savedMeetings.isEmpty {
+                Section {
+                    ForEach(savedMeetings) { playbook in
+                        Text(playbook.name)
+                    }
+                    .onDelete { offsets in
+                        ListDeletion.ids(at: offsets, in: savedMeetings).forEach { store.removeSavedMeetingPlaybooks(id: $0) }
+                    }
+                    Button("Remove All", role: .destructive) { confirmingRemoval = true }
+                } header: {
+                    Text("Saved from Your Calendar")
+                } footer: {
+                    Text("Earlier versions saved these from your meeting invites, with the invite notes. They are hidden from Spotlight, Siri, CarPlay and the glasses until you remove them.")
+                }
+            }
+
+            Section {
                 // One snapshot for the rows and the swipe (see `ListDeletion`).
-                let playbooks = store.playbooks
+                let playbooks = store.reusablePlaybooks
                 ForEach(playbooks) { playbook in
                     Button { editingPlaybook = playbook } label: {
                         HStack(spacing: 12) {
@@ -112,6 +154,13 @@ struct PlaybooksSettingsView: View {
         .ogFormStyle()
         .sheet(item: $editingPlaybook) { playbook in
             PlaybookEditorView(store: store, playbook: playbook)
+        }
+        .confirmationDialog(
+            "Remove every playbook saved from your calendar?",
+            isPresented: $confirmingRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove All", role: .destructive) { store.removeSavedMeetingPlaybooks() }
         }
     }
 }

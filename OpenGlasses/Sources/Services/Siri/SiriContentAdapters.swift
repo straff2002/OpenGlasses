@@ -117,8 +117,9 @@ enum SiriContentAdapters {
         }
     }
 
+    /// A playbook taken from a calendar event never goes in: it holds someone's meeting notes.
     static func playbooks(_ playbooks: [Playbook]) -> [IndexableRecord] {
-        playbooks.map { playbook in
+        playbooks.filter { !$0.isFromCalendar }.map { playbook in
             let stepText = playbook.steps.map(\.title).joined(separator: ". ")
             return IndexableRecord(
                 contentType: .playbook,

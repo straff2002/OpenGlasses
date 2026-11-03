@@ -3883,6 +3883,14 @@ struct Config {
 
     static func setAudioOnlyMode(_ enabled: Bool) { audioOnlyMode = enabled }
 
+    // MARK: - Meeting Agendas
+
+    static let meetingAgendaOffersKey = "meetingAgendaOffersEnabled"
+
+    /// Offer the list-formatted agenda in a calendar event's notes when the event starts. Off by
+    /// default: reading someone's invites aloud is something they ask for, not a surprise.
+    @UserDefaultsBacked(meetingAgendaOffersKey, default: false) static var meetingAgendaOffersEnabled: Bool
+
     // MARK: - My Day
 
     /// Phone/audio-first everyday briefing. Off by default while the MVP rolls out; disabling it
