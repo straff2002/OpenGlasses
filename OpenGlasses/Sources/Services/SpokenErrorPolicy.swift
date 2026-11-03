@@ -17,13 +17,17 @@ enum SpokenErrorPolicy {
     /// failure to announce). Which half failed decides the line: a camera that would not take the
     /// picture, or a picture no model could answer about. With model-switch narration on, the
     /// second names the cascade's real reason, as a spoken turn does.
-    static func photoFailureLine(for error: Error, photoCaptured: Bool, narrateModelFailures: Bool) -> String? {
+    ///
+    /// `gap` is the credential gap behind `error`, when known (Plan KL P0): "…couldn't get an
+    /// answer about it — you're not signed in to ChatGPT."
+    static func photoFailureLine(for error: Error, photoCaptured: Bool, narrateModelFailures: Bool,
+                                 gap: CredentialGap? = nil) -> String? {
         if isCancellation(error) { return nil }
         guard photoCaptured else { return "Sorry, I couldn't take a photo. \(spokenReason(for: error))" }
         guard narrateModelFailures else {
             return "I took the photo, but couldn't get an answer about it. \(spokenReason(for: error))"
         }
-        return "I took the photo, but couldn't get an answer about it — \(ModelSwitchNarrator.exhaustionReason(lastError: error))."
+        return "I took the photo, but couldn't get an answer about it — \(ModelSwitchNarrator.exhaustionReason(lastError: error, gap: gap))."
     }
 
     static func isCancellation(_ error: Error) -> Bool {
