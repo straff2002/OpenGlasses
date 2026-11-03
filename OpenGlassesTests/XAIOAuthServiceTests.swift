@@ -15,10 +15,19 @@ final class XAIOAuthServiceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://api.x.ai",
+            "https://auth.x.ai"
+        ])
         RecordingQueueProtocol.reset()
         LLMService.resetLearnedRouteStateForTesting()
         usagePath = FileManager.default.temporaryDirectory
             .appendingPathComponent("xai-usage-\(UUID().uuidString).sqlite")
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
     }
 
     override func tearDown() async throws {

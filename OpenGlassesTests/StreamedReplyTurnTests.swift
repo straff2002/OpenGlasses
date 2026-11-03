@@ -55,7 +55,15 @@ final class StreamedReplyTurnTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://api.anthropic.com"
+        ])
         SSEQueueProtocol.queue = []
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
     }
 
     private func normalised(_ text: String) -> String {

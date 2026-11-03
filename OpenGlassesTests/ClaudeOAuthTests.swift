@@ -8,6 +8,20 @@ import XCTest
 /// stubs and an in-memory credential store — never the keychain or the network.
 final class ClaudeOAuthTests: XCTestCase {
 
+    // The request path is the subject, so sharing is approved for the services it scripts.
+    override func setUp() {
+        super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://api.anthropic.com",
+            "https://console.anthropic.com"
+        ])
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
+    }
+
     // MARK: - PKCE
 
     func testChallengeMatchesRFC7636Vector() {

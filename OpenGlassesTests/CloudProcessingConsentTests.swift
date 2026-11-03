@@ -209,4 +209,24 @@ enum CloudConsentFixture {
         defaults.removePersistentDomain(forName: "CloudProcessingConsentFixture")
         return CloudProcessingConsent(store: store, defaults: defaults, foreground: { false })
     }
+
+    private static var replaced: [CloudProcessingConsent] = []
+
+    /// For a class that drives a real request path but isn't about consent: until
+    /// `restoreShared()`, the shared permission approves every use of these origins. Both are
+    /// called from a synchronous setUp or tearDown, which XCTest runs on the main thread.
+    nonisolated static func approveShared(_ origins: [String]) {
+        MainActor.assumeIsolated {
+            replaced.append(CloudProcessingConsent.shared)
+            CloudProcessingConsent.shared = approving(origins.flatMap { origin in
+                CloudProcessingScope.allCases.map { (origin: origin, scope: $0) }
+            })
+        }
+    }
+
+    nonisolated static func restoreShared() {
+        MainActor.assumeIsolated {
+            if let live = replaced.popLast() { CloudProcessingConsent.shared = live }
+        }
+    }
 }

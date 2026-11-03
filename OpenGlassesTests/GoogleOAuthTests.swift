@@ -7,6 +7,22 @@ import XCTest
 /// never the keychain, the browser session or the network.
 final class GoogleOAuthTests: XCTestCase {
 
+    // The request path is the subject, so sharing is approved for the services it scripts.
+    override func setUp() {
+        super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://us-central1-aiplatform.googleapis.com",
+            "https://aiplatform.googleapis.com",
+            "https://oauth2.googleapis.com",
+            "https://generativelanguage.googleapis.com"
+        ])
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
+    }
+
     private let clientID = "123456-abcdef.apps.googleusercontent.com"
 
     // MARK: - Client-ID derived pieces

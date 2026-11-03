@@ -149,7 +149,17 @@ final class RequestContextBudgetTests: XCTestCase {
 final class ResponsesContextRecoveryTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://test.invalid",
+            "https://chatgpt.com",
+            "https://api.openai.com"
+        ])
         SSEQueueProtocol.queue = []
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
     }
 
     func testStructuredStreamOverflowPreservedWithoutEnglishMessage() async {
