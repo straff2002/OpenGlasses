@@ -437,7 +437,8 @@ can show them", "audio FaceTime Sam".
 office" stay IQ's. JI's call lands on IQ P3's `call_base` when that has shipped (`who:
 journeyman`, `via: phone | facetime | facetimeAudio`), or ships as the first slice of it when JI
 P4 comes first: whichever lands first builds `EscalationContact`, the CT key and the call route, and
-the other reuses them. IQ's help pack (readings, chosen photos, cited pages) is offered before the
+the other reuses them. *2026-11-03:* Plan [KM](KM-expert-on-the-job.md) P0 now builds `EscalationContact`,
+`CallRoute` and `CallPlacement` first; JI reuses them. IQ's help pack (readings, chosen photos, cited pages) is offered before the
 call when IQ P3 exists; a call never waits for it.
 
 **The route (pure).** `CallRoute.make(contact, via) -> CallRoute?` builds `tel:<number>`,
