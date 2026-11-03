@@ -124255,6 +124255,88 @@
         }
       }
     },
+    "Earlier versions saved these from your meeting invites, with the invite notes. They are hidden from Spotlight, Siri, CarPlay and the glasses until you remove them." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حفظت الإصدارات السابقة هذه من دعوات اجتماعاتك، مع ملاحظات الدعوة. وهي مخفية عن Spotlight وSiri وCarPlay والنظارات إلى أن تزيلها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versiones anteriores los guardaron a partir de tus invitaciones a reuniones, con las notas de la invitación. Están ocultos en Spotlight, Siri, CarPlay y los lentes hasta que los quites."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Des versions précédentes les ont enregistrés à partir de vos invitations à des réunions, avec les notes de l’invitation. Ils sont masqués dans Spotlight, Siri, CarPlay et les lunettes jusqu’à ce que vous les supprimiez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A korábbi verziók ezeket az értekezlet-meghívókból mentették, a meghívó jegyzeteivel együtt. A Spotlight, a Siri, a CarPlay és a szemüveg elől rejtve maradnak, amíg el nem távolítja őket."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le versioni precedenti li hanno salvati dai tuoi inviti alle riunioni, insieme alle note dell'invito. Restano nascosti a Spotlight, Siri, CarPlay e agli occhiali finché non li rimuovi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前のバージョンが、会議の招待から招待メモと一緒に保存したものです。削除するまで Spotlight、Siri、CarPlay、眼鏡には表示されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이전 버전이 회의 초대에서 초대 메모와 함께 저장한 항목입니다. 제거할 때까지 Spotlight, Siri, CarPlay, 안경에는 표시되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eerdere versies hebben deze uit uw vergaderuitnodigingen opgeslagen, met de notities van de uitnodiging. Ze zijn verborgen voor Spotlight, Siri, CarPlay en de bril totdat u ze verwijdert."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versões anteriores salvaram estes a partir dos seus convites de reunião, com as notas do convite. Eles ficam ocultos no Spotlight, na Siri, no CarPlay e nos óculos até você removê-los."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прежние версии сохранили их из ваших приглашений на встречи вместе с заметками приглашения. Они скрыты из Spotlight, Siri, CarPlay и очков, пока вы их не удалите."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پچھلے ورژنز نے یہ آپ کی میٹنگ کی دعوتوں سے، دعوت کے نوٹس سمیت، محفوظ کیے تھے۔ جب تک آپ انہیں ہٹا نہ دیں، یہ Spotlight، Siri، CarPlay اور عینک سے چھپے رہتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些是早期版本从你的会议邀请中连同邀请备注一起保存的。在你移除之前，它们不会出现在 Spotlight、Siri、CarPlay 和眼镜中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些是早期版本從你的會議邀請中連同邀請備註一起儲存的。在你移除之前，它們不會出現在 Spotlight、Siri、CarPlay 和眼鏡中。"
+          }
+        }
+      }
+    },
     "Edit" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -207405,6 +207487,88 @@
         }
       }
     },
+    "Meeting Agendas" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جداول أعمال الاجتماعات"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agendas de reuniones"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordres du jour des réunions"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Értekezletek napirendje"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordini del giorno delle riunioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会議の議題"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회의 안건"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergaderagenda's"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pautas de reunião"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повестки встреч"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "میٹنگ کے ایجنڈے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会议议程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "會議議程"
+          }
+        }
+      }
+    },
     "Meeting Link" : {
       "localizations" : {
         "ar" : {
@@ -237740,6 +237904,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "關閉：僅保留當前位置，換掉時會刪除。開啟：保留最近十個。關閉會刪除它們。"
+          }
+        }
+      }
+    },
+    "Offer Calendar Agendas" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اقتراح جداول أعمال التقويم"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ofrecer agendas del calendario"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proposer les ordres du jour du calendrier"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naptári napirendek felajánlása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proponi ordini del giorno dal calendario"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カレンダーの議題を提案"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캘린더 안건 제안"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agenda's uit de kalender aanbieden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oferecer pautas do calendário"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Предлагать повестки из календаря"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کیلنڈر کے ایجنڈے پیش کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提供日历中的议程"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提供行事曆中的議程"
           }
         }
       }
@@ -294729,6 +294975,88 @@
         }
       }
     },
+    "Remove All" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إزالة الكل"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar todo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout supprimer"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Összes eltávolítása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuovi tutto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모두 제거"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles verwijderen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover tudo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить всё"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سب ہٹائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部移除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部移除"
+          }
+        }
+      }
+    },
     "Remove All Downloads" : {
       "comment" : "A button that removes all downloaded languages.",
       "isCommentAutoGenerated" : true,
@@ -295059,6 +295387,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除端點"
+          }
+        }
+      }
+    },
+    "Remove every playbook saved from your calendar?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هل تريد إزالة كل كتب التشغيل المحفوظة من تقويمك؟"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Quitar todos los playbooks guardados desde tu calendario?"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer tous les cahiers d’exercices enregistrés à partir de votre calendrier?"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eltávolítja az összes, a naptárból mentett játékkönyvet?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuovere tutti i playbook salvati dal tuo calendario?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カレンダーから保存したプレイブックをすべて削除しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캘린더에서 저장한 플레이북을 모두 제거할까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle speelboeken verwijderen die uit uw kalender zijn opgeslagen?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover todos os manuais salvos do seu calendário?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить все плейбуки, сохранённые из вашего календаря?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اپنے کیلنڈر سے محفوظ کی گئی تمام پلے بکس ہٹائیں؟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要移除从你的日历保存的所有操作手册吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要移除從你的行事曆儲存的所有操作手冊嗎？"
           }
         }
       }
@@ -312695,6 +313105,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已儲存的事實（複數）"
+          }
+        }
+      }
+    },
+    "Saved from Your Calendar" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محفوظة من تقويمك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardados desde tu calendario"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrés à partir de votre calendrier"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A naptárból mentve"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvati dal tuo calendario"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カレンダーから保存済み"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캘린더에서 저장됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opgeslagen uit uw kalender"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvos do seu calendário"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранено из вашего календаря"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے کیلنڈر سے محفوظ شدہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从你的日历保存"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從你的行事曆儲存"
           }
         }
       }
@@ -397377,6 +397869,88 @@
         }
       }
     },
+    "This meeting has an agenda with %lld items. Say \"start the agenda\" to follow it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لهذا الاجتماع جدول أعمال عدد بنوده %lld. قل \"ابدأ جدول الأعمال\" لمتابعته."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta reunión tiene una agenda con %lld puntos. Di \"inicia la agenda\" para seguirla."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette réunion a un ordre du jour de %lld points. Dites « commence l’ordre du jour » pour le suivre."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ennek az értekezletnek %lld pontos napirendje van. Mondja, hogy „indítsd a napirendet”, és végigvezetem rajta."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa riunione ha un ordine del giorno di %lld punti. Di' \"avvia l'ordine del giorno\" per seguirlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会議には %lld 項目の議題があります。進めるには「議題を開始」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 회의에는 안건이 %lld개 있습니다. 진행하려면 \"안건 시작\"이라고 말하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deze vergadering heeft een agenda met %lld punten. Zeg \"start de agenda\" om die te volgen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta reunião tem uma pauta com %lld itens. Diga \"iniciar a pauta\" para segui-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У этой встречи есть повестка, пунктов: %lld. Скажите «начни повестку», чтобы пройти её."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس میٹنگ کے ایجنڈے میں نکات کی تعداد: %lld۔ اس پر چلنے کے لیے \"ایجنڈا شروع کرو\" کہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这次会议的议程有 %lld 项。说“开始议程”即可按议程进行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這場會議的議程有 %lld 項。說「開始議程」即可依議程進行。"
+          }
+        }
+      }
+    },
     "This mode is restricted to %lld specific tools." : {
       "comment" : "A footer that describes the number of tools that the mode is restricted to.",
       "isCommentAutoGenerated" : true,
@@ -437006,6 +437580,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不管它叫什麼，角色仍然是 AI 助理，且每當有人詢問時它都會如此說明。"
+          }
+        }
+      }
+    },
+    "When a meeting starts and its calendar notes have a bulleted or numbered list, Avenkin offers to follow it. Nothing starts unless you ask, and the agenda is gone when the meeting ends." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عندما يبدأ اجتماع وتحتوي ملاحظاته في التقويم على قائمة نقطية أو مرقّمة، يعرض Avenkin متابعتها. لا يبدأ أي شيء إلا إذا طلبت ذلك، ويختفي جدول الأعمال عند انتهاء الاجتماع."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando empieza una reunión y sus notas del calendario tienen una lista con viñetas o numerada, Avenkin ofrece seguirla. Nada empieza a menos que lo pidas, y la agenda desaparece cuando termina la reunión."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand une réunion commence et que ses notes de calendrier contiennent une liste à puces ou numérotée, Avenkin propose de la suivre. Rien ne commence sans que vous le demandiez, et l’ordre du jour disparaît à la fin de la réunion."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amikor egy értekezlet elkezdődik, és a naptári jegyzetei felsorolást vagy számozott listát tartalmaznak, az Avenkin felajánlja, hogy végigvezeti rajta. Semmi sem indul el, amíg nem kéri, és a napirend az értekezlet végén eltűnik."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando inizia una riunione e le sue note del calendario contengono un elenco puntato o numerato, Avenkin propone di seguirlo. Non parte nulla se non lo chiedi, e l'ordine del giorno scompare quando la riunione finisce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会議が始まり、カレンダーのメモに箇条書きまたは番号付きのリストがあると、Avenkin がその進行を提案します。あなたが頼まない限り何も始まらず、議題は会議の終了とともに消えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "회의가 시작될 때 캘린더 메모에 글머리 기호 목록이나 번호 목록이 있으면 Avenkin이 그 진행을 제안합니다. 요청하지 않으면 아무것도 시작되지 않으며, 안건은 회의가 끝나면 사라집니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als een vergadering begint en de kalendernotities een lijst met opsommingstekens of nummers bevatten, biedt Avenkin aan die te volgen. Er start niets tenzij u erom vraagt, en de agenda verdwijnt als de vergadering is afgelopen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando uma reunião começa e as notas do calendário dela têm uma lista com marcadores ou numerada, o Avenkin oferece segui-la. Nada começa a menos que você peça, e a pauta some quando a reunião termina."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда начинается встреча и в её заметках в календаре есть маркированный или нумерованный список, Avenkin предлагает пройти его. Ничего не начнётся, пока вы не попросите, а повестка исчезнет, когда встреча закончится."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جب کوئی میٹنگ شروع ہوتی ہے اور اس کے کیلنڈر نوٹس میں بلٹ والی یا نمبر والی فہرست ہوتی ہے، تو Avenkin اس پر چلنے کی پیشکش کرتا ہے۔ آپ کے کہے بغیر کچھ شروع نہیں ہوتا، اور میٹنگ ختم ہونے پر ایجنڈا ہٹ جاتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会议开始时，如果它的日历备注里有项目符号或编号列表，Avenkin 会提出按它进行。除非你要求，否则不会开始，会议结束后议程即消失。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "會議開始時，如果它的行事曆備註裡有項目符號或編號清單，Avenkin 會提議依它進行。除非你要求，否則不會開始，會議結束後議程即消失。"
           }
         }
       }
