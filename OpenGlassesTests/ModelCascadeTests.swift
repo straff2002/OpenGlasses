@@ -172,7 +172,7 @@ final class ModelCascadeTests: XCTestCase {
         let out = try await ModelCascade.run(
             candidates: candidates, needs: anyTurn, maxAttempts: maxAttempts,
             isCancelled: isCancelled,
-            onSwitch: { from, to, _ in switches.append("\(from.id)->\(to.id)") },
+            onSwitch: { from, to, _, _ in switches.append("\(from.id)->\(to.id)") },
             attempt: attempt)
         return (out, switches)
     }

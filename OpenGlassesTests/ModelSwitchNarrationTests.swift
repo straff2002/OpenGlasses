@@ -67,7 +67,7 @@ final class ModelSwitchNarrationTests: XCTestCase {
             candidates: [cloud("a"), cloud("b"), cloud("c")],
             needs: .init(requiresVision: false, isBackgrounded: false),
             maxAttempts: 4,
-            onSwitch: { from, to, failure in
+            onSwitch: { from, to, failure, _ in
                 guard !alreadyNarrated else { return }   // first-hop gate
                 alreadyNarrated = true
                 spokenLines.append(ModelSwitchNarrator.fallbackPhrase(
