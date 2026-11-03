@@ -96,6 +96,10 @@ question, see "Not in this plan".
    `organizationEscalationContacts`: name, role, phone, and channel for the pack), with a personal
    fallback in Field Assist settings. "Call base" picks the first available, and "call Sam" picks
    by name.
+   *2026-11-03:* Plan [KM](KM-expert-on-the-job.md) builds this list first, as `EscalationContact`
+   with specialties, on-call hours and contracted rates, under the CT key `organizationExperts`. The owner
+   took "both" for decision 6 there (2026-11-03): the organisation sets the list, and a technician
+   may add unpaid colleagues.
 
 ## Phases (one PR each)
 

@@ -253,6 +253,9 @@ A mode for one technician over a series of jobs, built on IM (one case per recor
   and code jurisdiction, paid per minute, verified for identity and licence. This is a second
   business: payments, liability, insurance, a contracting entity and a review process. **(Own plan
   when scheduled)**, after Stage A is in use and the owner decides to take it on (open question 5).
+- *2026-11-03:* Plan [KM](KM-expert-on-the-job.md) covers Stage A and a step between A and B: experts
+  the organisation contracts itself (retired journeymen on call), sent the job as it stands, with their
+  time on the record and a monthly statement they invoice against. It has no marketplace and no payments.
 
 ### 9 · The unit passport
 
