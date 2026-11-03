@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 
@@ -182,3 +183,4 @@ final class GlassesConnectRowTests: XCTestCase {
         }
     }
 }
+#endif

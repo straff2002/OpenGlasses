@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 
@@ -56,6 +57,28 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
     }
 
     // MARK: - Presentation & interactive mode
+
+    func testStoreSuspensionOverridesAnEvenPairingKeptFromTestFlight() {
+        let previousPolicy = GlassesSupportPolicy.overrideForTesting
+        let previousBackend = Config.displayBackend
+        let previousLeft = Config.evenLeftPeripheralID
+        defer {
+            GlassesSupportPolicy.overrideForTesting = previousPolicy
+            Config.displayBackend = previousBackend
+            Config.evenLeftPeripheralID = previousLeft
+        }
+        Config.displayBackend = .evenG2
+        Config.evenLeftPeripheralID = UUID().uuidString
+        svc.testCapabilityOverride = nil
+
+        GlassesSupportPolicy.overrideForTesting = .supported
+        XCTAssertEqual(svc.deviceSupportsDisplay(), AppBuildVariant.current == .glassesBeta,
+                       "A saved EVEN pairing is available only in the hardware build.")
+
+        GlassesSupportPolicy.overrideForTesting = .notInThisVersion
+        XCTAssertFalse(svc.deviceSupportsDisplay(), "The separate BLE backend must also obey store suspension.")
+        XCTAssertFalse(svc.hasDisplayCapability)
+    }
 
     func testPresentScreenEntersInteractiveAndRenders() async {
         let screen = card("Card")
@@ -180,3 +203,5 @@ final class GlassesDisplayInteractiveTests: XCTestCase {
         XCTAssertEqual(received, ["done", "skip", "back"])
     }
 }
+
+#endif

@@ -13,6 +13,7 @@ import os.lock
 /// These tests exercise that access pattern for real. The correctness assertion is per-server
 /// session attribution — a cache that tore under concurrent mutation would cross wires between
 /// servers or lose entries. Run under the Thread Sanitizer to also catch the raw data race.
+@MainActor
 final class MCPTransportConcurrencyTests: XCTestCase {
 
     override func setUp() {
@@ -37,7 +38,7 @@ final class MCPTransportConcurrencyTests: XCTestCase {
     /// produce. Every server must end up with its *own* session ID.
     func testConcurrentRequestsKeepPerServerSessionsDistinct() async throws {
         let count = 16
-        let transport = HTTPTransport(session: SessionEchoURLProtocol.session())
+        let transport = HTTPTransport(session: SessionEchoURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: (0..<16).map { "http://s\($0).test" }))
         let servers = (0..<count).map(server)
 
         await withTaskGroup(of: Void.self) { group in
@@ -65,7 +66,7 @@ final class MCPTransportConcurrencyTests: XCTestCase {
     /// off-actor. The interleaving is inherently racy in outcome — what must hold is that it stays
     /// memory-safe and every request still completes.
     func testResetSessionsDuringInFlightRequestsIsSafe() async {
-        let transport = HTTPTransport(session: SessionEchoURLProtocol.session())
+        let transport = HTTPTransport(session: SessionEchoURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: (0..<16).map { "http://s\($0).test" }))
         let completed = OSAllocatedUnfairLock(initialState: 0)
         // Four servers, three requests each — so the same cache entries are contended, not just
         // disjoint keys.
@@ -89,7 +90,7 @@ final class MCPTransportConcurrencyTests: XCTestCase {
     // MARK: - Attribution under sequential access (regression guard for the accessor refactor)
 
     func testSessionIsScopedToItsOwnServer() async throws {
-        let transport = HTTPTransport(session: SessionEchoURLProtocol.session())
+        let transport = HTTPTransport(session: SessionEchoURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: (0..<16).map { "http://s\($0).test" }))
 
         _ = try? await transport.request(["id": 1], server: server(1))
         _ = try? await transport.request(["id": 1], server: server(2))
@@ -100,7 +101,7 @@ final class MCPTransportConcurrencyTests: XCTestCase {
     }
 
     func testResetForcesAFreshHandshake() async throws {
-        let transport = HTTPTransport(session: SessionEchoURLProtocol.session())
+        let transport = HTTPTransport(session: SessionEchoURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: (0..<16).map { "http://s\($0).test" }))
 
         _ = try? await transport.request(["id": 1], server: server(1))
         let afterFirst = SessionEchoURLProtocol.requestCount(forHost: "s1.test")

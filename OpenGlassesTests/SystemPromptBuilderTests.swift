@@ -117,6 +117,7 @@ final class SystemPromptBuilderTests: XCTestCase {
         let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
         XCTAssertTrue(guide.contains("works with the phone locked or in a pocket"))
         XCTAssertTrue(guide.contains("(not push-to-talk)"))
+        #if !AVENKIN_PHONE_ONLY
         XCTAssertTrue(guide.contains("with the glasses as the microphone the request and the reply go through the glasses there too"),
                       "not only with Same as Microphone: the default iPhone listener reaches the glasses too")
         XCTAssertTrue(guide.contains("Settings > \(SettingsCatalog.category(.devices).title) > Glasses > Listen for the wake word on"))
@@ -127,6 +128,7 @@ final class SystemPromptBuilderTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "wakeListenMic")
         XCTAssertEqual(Config.wakeListenMic, .iPhone, "the guide calls iPhone the default")
         XCTAssertTrue(guide.contains("\(Int(GlassesSleepPolicy.doffGraceSeconds)) seconds"))
+        #endif
         XCTAssertFalse(guide.lowercased().contains("keep the app open"))
     }
 
@@ -139,7 +141,9 @@ final class SystemPromptBuilderTests: XCTestCase {
         let guide = SystemPromptBuilder.appGuide(appName: "Avenkin")
         XCTAssertTrue(guide.contains("no iPhone setting fixes it"))
         XCTAssertTrue(guide.contains("not listed under Background App Refresh"))
+        #if !AVENKIN_PHONE_ONLY
         XCTAssertTrue(guide.contains("no button on the glasses"))
+        #endif
         XCTAssertTrue(guide.contains("Unlocking the phone and opening the app restarts listening"))
         XCTAssertTrue(guide.contains("Never send the user to iOS Settings for this"))
     }

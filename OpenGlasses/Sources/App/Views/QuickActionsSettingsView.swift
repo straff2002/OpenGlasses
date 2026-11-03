@@ -145,7 +145,11 @@ struct AdvancedQuickActionsView: View {
                 } header: {
                     Text("Speed Dial")
                 } footer: {
+                    #if AVENKIN_PHONE_ONLY
+                    Text("Every action you can reach by voice, from the widget and the watch. Which of them sit on the Voice tab's bar is arranged in its editor.")
+                    #else
                     Text("Every action you can reach by voice, from the widget, the watch, and the in-lens launcher. Which of them sit on the Voice tab's bar is arranged in its editor.")
+                    #endif
                 }
             }
 

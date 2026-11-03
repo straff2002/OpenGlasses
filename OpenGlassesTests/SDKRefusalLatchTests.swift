@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
 import XCTest
 @testable import OpenGlasses
@@ -349,3 +350,5 @@ final class SDKRefusalLatchTests: XCTestCase {
                        "the failed session start and the session's error stream")
     }
 }
+
+#endif

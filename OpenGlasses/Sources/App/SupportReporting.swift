@@ -203,6 +203,7 @@ extension AppState {
             "Transcription preference: \(Config.asrEnginePreference.rawValue)",
         ]
         phone += Config.reportSupportLines
+        #if !AVENKIN_PHONE_ONLY
         if isConnected {
             var glasses = "Glasses: connected"
             // A pair the SDK has not named yet reports an empty name, not a missing one.
@@ -223,6 +224,7 @@ extension AppState {
         // says, and what the stream delivered. Always present: "not known" is an answer too.
         // A level and three numbers; no device is named.
         phone.append(GlassesVideoLinkReport.line(for: GlassesTransportProbe.shared.snapshot))
+        #endif
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.
         phone += ManualLanguageReport.current(store: documentStore)

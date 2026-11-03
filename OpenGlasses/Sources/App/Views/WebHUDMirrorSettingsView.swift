@@ -65,7 +65,11 @@ struct WebHUDMirrorSettingsView: View {
                 } header: {
                     Text("Registration URL")
                 } footer: {
+                    #if AVENKIN_PHONE_ONLY
+                    EmptyView()
+                    #else
                     Text("Register this URL once in the Meta AI app's Developer Mode. The access token rides the URL hash, which never appears in requests or logs. Rotating the token invalidates the registered URL.")
+                    #endif
                 }
             }
 

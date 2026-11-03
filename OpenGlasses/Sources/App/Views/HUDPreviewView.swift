@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
@@ -23,7 +24,9 @@
 // SwiftUI, so SDK types are written fully-qualified.
 //
 
+#if !AVENKIN_PHONE_ONLY
 import MWDATDisplay
+#endif
 import SwiftUI
 
 /// Renders a `HUDScreen` as it would appear on the lens, on a dark "glass" panel.
@@ -346,5 +349,21 @@ private func sampleMenu() -> HUDScreen {
 
 #Preview("Launcher menu") {
     ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleMenu()).padding() }
+}
+#endif
+
+#else
+import SwiftUI
+
+/// Phone-side rendering uses the app's own screen data, without the Meta display DSL.
+struct HUDPreviewView: View {
+    let screen: HUDScreen
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title = screen.title { Text(title).font(.headline) }
+            ForEach(Array(screen.lines.enumerated()), id: \.offset) { entry in Text(entry.element.text) }
+            ForEach(screen.items) { item in Button(item.label, action: item.action) }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding()
+    }
 }
 #endif

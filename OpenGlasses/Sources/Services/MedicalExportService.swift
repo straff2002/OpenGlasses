@@ -11,6 +11,12 @@ import UIKit
 /// All exports are logged in the HIPAA audit trail when Medical Compliance mode is active.
 @MainActor
 class MedicalExportService: ObservableObject {
+    #if AVENKIN_PHONE_ONLY
+    private nonisolated static let recordSource = "Avenkin"
+    #else
+    private nonisolated static let recordSource = "Avenkin Smart Glasses"
+    #endif
+
     @Published var isExporting = false
     @Published var lastExportResult: ExportResult?
 
@@ -427,7 +433,7 @@ class MedicalExportService: ObservableObject {
                     .font: UIFont.systemFont(ofSize: 11),
                     .foregroundColor: UIColor.darkGray
                 ]
-                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: Avenkin Smart Glasses"
+                let meta = "Date: \(dateFormatter.string(from: date))\nDuration: \(duration)\nSource: \(Self.recordSource)"
                 meta.draw(at: CGPoint(x: margin, y: margin + 24), withAttributes: metaAttrs)
 
                 // Who wrote the text, above the text.

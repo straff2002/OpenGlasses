@@ -5,7 +5,11 @@ import AppIntents
 struct ConnectGlassesIntent: AppIntent {
     static var title: LocalizedStringResource = "Connect Avenkin"
     // Static metadata, shown on every copy — so it is worded for a copy without glasses too (Plan JE).
+    #if AVENKIN_PHONE_ONLY
+    static var description = IntentDescription("Start listening on your phone")
+    #else
     static var description = IntentDescription("Start listening, on your smart glasses when you use them")
+    #endif
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true
@@ -38,6 +42,7 @@ struct ConnectGlassesIntent: AppIntent {
 
 /// Siri Intent: Disconnect / sleep glasses.
 /// "Hey Siri, disconnect OpenGlasses" — works from HomePod, Watch, Lock Screen.
+#if !AVENKIN_PHONE_ONLY
 struct DisconnectGlassesIntent: AppIntent {
     static var title: LocalizedStringResource = "Disconnect Avenkin"
     static var description = IntentDescription("Disconnect smart glasses you're using, to save their battery")
@@ -68,12 +73,17 @@ struct DisconnectGlassesIntent: AppIntent {
         var localizedStringResource: LocalizedStringResource { "Avenkin is not running." }
     }
 }
+#endif
 
 /// Siri Intent: Toggle glasses connection.
 /// "Hey Siri, toggle OpenGlasses" — connects if off, disconnects if on.
 struct ToggleGlassesIntent: AppIntent {
     static var title: LocalizedStringResource = "Toggle Avenkin"
+    #if AVENKIN_PHONE_ONLY
+    static var description = IntentDescription("Start listening on your phone")
+    #else
     static var description = IntentDescription("Start listening, or disconnect smart glasses you're using")
+    #endif
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true

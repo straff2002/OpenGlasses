@@ -341,6 +341,7 @@ final class MediaTriggerService {
 /// can only be confirmed on hardware; `sessionShape` puts the session's shape beside every claim
 /// in the support log so the next report can say. Which temple gestures arrive as which commands
 /// is confirmed on a Ray-Ban Meta Gen 2 (`TempleCalibration`).
+#if !AVENKIN_PHONE_ONLY
 @MainActor
 final class SilentNowPlayingClaimer: NowPlayingClaiming {
 
@@ -473,3 +474,14 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
         return data
     }
 }
+
+#else
+@MainActor
+final class SilentNowPlayingClaimer: NowPlayingClaiming {
+    var standbyClaimLive: Bool { false }
+    var sessionShape: String { "phone-only" }
+    func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void) {}
+    func release() {}
+    nonisolated static func isOwnInfo(_ info: [String: Any]) -> Bool { false }
+}
+#endif

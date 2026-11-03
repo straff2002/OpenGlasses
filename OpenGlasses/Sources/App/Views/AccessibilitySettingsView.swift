@@ -118,6 +118,7 @@ struct AccessibilitySettingsView: View {
                 }
             }
 
+            #if !AVENKIN_PHONE_ONLY
             Section {
                 Toggle("Enable Scene Narration", isOn: $sceneNarrationEnabled)
                     .tint(AppAccent.color)
@@ -129,6 +130,7 @@ struct AccessibilitySettingsView: View {
             } footer: {
                 Text("Describes the space around you as it changes, for moving through somewhere unfamiliar. Watching is silent — descriptions build up so questions about what you're looking at are answered instantly. Speaking them aloud is a separate switch.\n\nTurning watching on starts the glasses camera, and turning it off stops it again unless something else is using it. The camera takes a few seconds to come up, and it's the biggest drain on the glasses battery — so narration says when it's starting, and won't start it at all when the glasses are nearly flat or too warm.\n\nNot continuous coverage: descriptions are generated on this device, which can't run while the app is in the background or the phone is locked. Narration stops there and says so out loud. It also needs glasses that stream live video — on glasses that only take photos it can't run at all.\n\nLive captions take priority: while captions are running, narration keeps watching but stops speaking, so it doesn't talk over what people are saying or end up transcribed as if it were one of them.")
             }
+            #endif
 
             Section {
                 Toggle("Start Blind Assistant When I Open the App", isOn: $startOnLaunch)
@@ -226,6 +228,7 @@ struct AccessibilitySettingsView: View {
                 Text("Reminders to check one side — the left or right you choose — while you read or work at a table. Spoken or a gentle sound, on a timer you set, for a session that ends itself. No camera, and it never starts on its own.")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             Section {
                 NavigationLink {
                     FingerspellingSettingsView()
@@ -246,6 +249,7 @@ struct AccessibilitySettingsView: View {
             } footer: {
                 Text("Recognizes ASL fingerspelling through the glasses camera and speaks the words — on-device, independent of Reading Accessibility.")
             }
+            #endif
         }
         .navigationTitle("Accessibility")
         .navigationBarTitleDisplayMode(.inline)

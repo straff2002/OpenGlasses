@@ -1,7 +1,6 @@
 # Plan JE — The Store Copy Suspends the Glasses
 
-**Status:** ✅ Built 2026-10-18 (this PR) · a store-channel pass is owed once a build is on the store
-(TestFlight cannot show the store behaviour)
+**Superseded 2026-11-01:** the separate compile-time phone-only variant in [Plan IK](IK-store-build-without-glasses-sdk.md) replaces this receipt-based rule. App Review also uses sandbox receipts, so the runtime distinction was not reliable. [Build and submission procedure](../app-store-phone-only-build.md). The historical decision below is retained as history; do not use its same-upload instructions for a new submission.
 
 ## Problem
 

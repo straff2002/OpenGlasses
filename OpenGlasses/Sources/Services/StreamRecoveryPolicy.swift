@@ -1,7 +1,10 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
-
+#endif
 /// Plan BR P2 — tiered camera-stream recovery + DAT compatibility messaging (pure).
 ///
 /// Stall recovery previously tore down the whole `DeviceSession` every time. The session
@@ -77,9 +80,11 @@ enum StreamRecoveryPolicy {
     /// EXPECTED behavior, there is no app-callable resume, and tearing the stream down
     /// collapses the media channel the tap would otherwise resume. Recovery must wait
     /// it out, not "fix" it.
+    #if !AVENKIN_PHONE_ONLY
     static func shouldRecoverFromStall(state: StreamState?) -> Bool {
         state != .paused
     }
+    #endif
 }
 
 /// Paces stall recoveries whose rebuilt stream never delivered a frame (pure).
@@ -179,6 +184,7 @@ enum DATCompatibilityMessage {
     static let appUpdateRequired =
         "This version of Avenkin is too old for your glasses — update Avenkin from the App Store."
 
+    #if !AVENKIN_PHONE_ONLY
     static func message(for error: DeviceSessionError) -> String? {
         switch error {
         case .datAppOnTheGlassesUpdateRequired:
@@ -198,42 +204,59 @@ enum DATCompatibilityMessage {
             return nil
         }
     }
+    #endif
 
     /// DAT 1.0: session errors that are advisories, not failures. The SDK documents
     /// `.dwaOutOfStuRange` as a nonblocking compatibility warning — the session continues — so it
     /// must never be recorded as the reason a start failed, nor stop a retry.
+    #if !AVENKIN_PHONE_ONLY
     static func isAdvisory(_ error: DeviceSessionError) -> Bool {
         if case .dwaOutOfStuRange = error { return true }
         return false
     }
+    #endif
 
     /// Gentle copy for an advisory, or nil when the error is not one. Log-level only: the session
     /// works, so this is a suggestion to update when convenient, never an announcement.
+    #if !AVENKIN_PHONE_ONLY
     static func advisory(for error: DeviceSessionError) -> String? {
         guard isAdvisory(error) else { return nil }
         return "A newer Avenkin may work better with these glasses — update from the App Store when convenient."
     }
+    #endif
 
     /// DAT 1.0: the one session error that says the glasses refuse this build. Terminal for the
     /// process: nothing on the glasses or in Meta AI changes it, so `SDKRefusalLatch` stops every
     /// later camera start from asking again.
+    #if !AVENKIN_PHONE_ONLY
     static func isSDKRefusal(_ error: DeviceSessionError) -> Bool {
         if case .insufficientSDKVersion = error { return true }
         return false
     }
+    #endif
 
     /// The same question of an error whose type has been lost on the way up: what a failed
     /// session attempt threw, which is the session's own error when the glasses gave one.
+    #if !AVENKIN_PHONE_ONLY
     static func isSDKRefusal(_ error: Error) -> Bool {
         (error as? DeviceSessionError).map { isSDKRefusal($0) } ?? false
     }
+    #else
+    static func isSDKRefusal(_ error: Error) -> Bool {
+        false
+    }
+    #endif
 
     /// What the glasses' own compatibility reading asks the wearer to do, or nil when it asks
     /// nothing. Read at link time through `CompatibilityNoticePolicy` (Plan HX P1).
     static func message(for compatibility: GlassesCompatibility) -> String? {
         switch compatibility {
         case .deviceUpdateRequired:
+            #if AVENKIN_PHONE_ONLY
+            return GlassesSupportPolicy.unavailableReason()
+            #else
             return "Your glasses need a firmware update — open the Meta AI app to update them."
+            #endif
         case .sdkUpdateRequired:
             return appUpdateRequired
         case .compatible, .undefined:
@@ -243,7 +266,9 @@ enum DATCompatibilityMessage {
 
     /// The SDK's own value, read the same way: mapped where every other device state is, then
     /// worded above, so there is one sentence per requirement whichever type arrives.
+    #if !AVENKIN_PHONE_ONLY
     static func message(for compatibility: Compatibility) -> String? {
         message(for: WearablesGlassesLinkSource.map(compatibility))
     }
+    #endif
 }

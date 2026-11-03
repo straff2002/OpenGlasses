@@ -198,13 +198,13 @@ struct OnboardingAccountSignInSection<Service: OAuthSignInService>: View {
                      redirect: service.signInRedirect,
                      expectedState: service.pendingSignInState,
                      exchange: { await service.completeSignIn(capturedCode: $0) },
-                     onConnected: { code = ""; onConnected() })
+                     onConnected: { code = ""; onConnected(); CloudSharingReview.shared.run() })
     }
 
     private func submitPastedCode() {
         flow.completePaste(code,
                            exchange: { await service.completeSignIn(pastedCode: $0) },
-                           onConnected: { code = ""; onConnected() })
+                           onConnected: { code = ""; onConnected(); CloudSharingReview.shared.run() })
     }
 }
 
@@ -346,13 +346,13 @@ struct OAuthSignInRows<Service: OAuthSignInService>: View {
                      redirect: service.signInRedirect,
                      expectedState: service.pendingSignInState,
                      exchange: { await service.completeSignIn(capturedCode: $0) },
-                     onConnected: { code = ""; onChange() })
+                     onConnected: { code = ""; onChange(); CloudSharingReview.shared.run() })
     }
 
     private func submitPastedCode() {
         flow.completePaste(code,
                            exchange: { await service.completeSignIn(pastedCode: $0) },
-                           onConnected: { code = ""; onChange() })
+                           onConnected: { code = ""; onChange(); CloudSharingReview.shared.run() })
     }
 }
 

@@ -61,6 +61,7 @@ final class ChatGPTModelAvailabilityTests: XCTestCase {
         RecordingQueueProtocol.queue = [(400, Self.codexRefusal)]
         let llm = LLMService()
         llm.streamingSession = RecordingQueueProtocol.session()
+        llm.processingConsent = CloudConsentFixture.conversation(origins: ["https://chatgpt.com"])
         var lines: [String] = []
         let lock = NSLock()
         let tap = PrivacyLog.addTap { _, line in

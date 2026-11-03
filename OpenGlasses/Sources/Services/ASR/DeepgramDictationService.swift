@@ -138,6 +138,9 @@ final class DeepgramDictationService {
     private var vocabulary: [String] = []
     private var webSocketTask: URLSessionWebSocketTask?
     private var session: URLSession?
+    private var sharingPermission: CloudProcessingLease?
+    private var permissionTask: Task<Void, Never>?
+    private var permissionGeneration = 0
     private var closeWaiter: CheckedContinuation<String, Never>?
     private var closeGeneration = 0
 
@@ -169,6 +172,10 @@ final class DeepgramDictationService {
             if state == .armed || state == .connected || webSocketTask != nil {
                 stopEarly(reason: "gateClosed")
             }
+            return
+        }
+        if let permission = sharingPermission, !permission.isValid {
+            stopEarly(reason: "sharingWithdrawn")
             return
         }
         if state == .armed, webSocketTask == nil {
@@ -227,6 +234,25 @@ final class DeepgramDictationService {
             stopEarly(reason: "medicalLocalOnly")
             return
         }
+        guard sharingPermission?.isValid == true else {
+            guard permissionTask == nil else { return }
+            let generation = permissionGeneration
+            permissionTask = Task { @MainActor [weak self] in
+                do {
+                    let permission = try await CloudProcessingConsent.shared.authorize(url: url, scope: .speechRecognition)
+                    guard let self, self.permissionGeneration == generation, !Task.isCancelled,
+                          self.state == .armed, self.isAllowed() && MedicalEgressGuard.allows(.deepgramDictation) else { return }
+                    self.permissionTask = nil
+                    self.sharingPermission = permission
+                    self.connect(sampleRate: sampleRate)
+                } catch {
+                    guard let self, self.permissionGeneration == generation else { return }
+                    self.permissionTask = nil
+                    self.stopEarly(reason: "sharingPermissionRequired")
+                }
+            }
+            return
+        }
         var request = URLRequest(url: url)
         request.setValue("Token \(key)", forHTTPHeaderField: "Authorization")
 
@@ -234,6 +260,9 @@ final class DeepgramDictationService {
         self.session = session
         let task = session.webSocketTask(with: request)
         webSocketTask = task
+        guard let permission = sharingPermission, permission.isValid else { return }
+        task.delegate = CloudProcessingTransferDelegate(lease: permission, session: session, url: url)
+        permission.onWithdrawal { [weak task] in task?.cancel(with: .policyViolation, reason: nil) }
         task.resume()
         state = .connected
         PrivacyLog.speech(.cloudDictation, .started, count: DeepgramDictationRequest.keyterms(from: vocabulary).count,
@@ -242,7 +271,7 @@ final class DeepgramDictationService {
     }
 
     private func sendControl(_ message: [String: Any]) {
-        guard let task = webSocketTask,
+        guard sharingPermission?.isValid == true, let task = webSocketTask,
               let data = try? JSONSerialization.data(withJSONObject: message),
               let text = String(data: data, encoding: .utf8) else { return }
         task.send(.string(text)) { _ in }
@@ -311,6 +340,11 @@ final class DeepgramDictationService {
     }
 
     private func tearDownSocket() {
+        permissionGeneration += 1
+        permissionTask?.cancel()
+        permissionTask = nil
+        sharingPermission = nil
+
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         session?.invalidateAndCancel()

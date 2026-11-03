@@ -40,7 +40,7 @@ struct DeepgramBatchService {
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         request.httpBody = audioData
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechRecognition)
         guard let http = response as? HTTPURLResponse else { throw BatchError.badResponse }
         guard (200..<300).contains(http.statusCode) else {
             throw BatchError.http(http.statusCode, String(data: data.prefix(200), encoding: .utf8) ?? "")

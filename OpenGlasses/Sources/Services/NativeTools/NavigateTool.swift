@@ -5,9 +5,13 @@ import Foundation
 /// `AppStateProvider` at execution time — the service is per-app-state).
 struct NavigateTool: NativeTool {
     let name = "navigate"
+    #if AVENKIN_PHONE_ONLY
+    private static let turnDelivery = "is spoken at the right moment"
+    #else
+    private static let turnDelivery = "appears on the glasses display and is spoken at the right moment"
+    #endif
     let description = """
-        Start turn-by-turn WALKING directions to a place — each turn appears on the glasses \
-        display and is spoken at the right moment. Use for "navigate to / take me to / walk me \
+        Start turn-by-turn WALKING directions to a place — each turn \(Self.turnDelivery). Use for "navigate to / take me to / walk me \
         to / directions to <place>". Actions: 'start' (requires destination), 'stop', 'status' \
         (remaining distance). Walking only; driving belongs to CarPlay.
         """

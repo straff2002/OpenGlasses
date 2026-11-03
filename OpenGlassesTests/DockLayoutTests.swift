@@ -8,6 +8,8 @@ final class DockLayoutTests: XCTestCase {
         XCTAssertEqual(DockLayout.decode(""), DockLayout.canonical)
     }
 
+    // `disconnect` is not a control a phone-only build has (`testTheDockDropsTheGlassesControl`).
+    #if !AVENKIN_PHONE_ONLY
     func testStoredOrderWinsAndMissingItemsAppendCanonically() {
         // User moved mic mode first and disconnect second; everything they
         // never touched follows in shipped order.
@@ -32,6 +34,7 @@ final class DockLayoutTests: XCTestCase {
                                     .preview, .type, .micMode, .assistive]
         XCTAssertEqual(DockLayout.decode(DockLayout.encode(shuffled)), shuffled)
     }
+    #endif
 
     // MARK: - Model tile mark
 

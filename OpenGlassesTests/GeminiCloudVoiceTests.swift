@@ -13,6 +13,9 @@ final class GeminiCloudVoiceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://generativelanguage.googleapis.com"
+        ])
         MedicalEgressGuard.currentMode = { .off }
     }
 
@@ -21,6 +24,7 @@ final class GeminiCloudVoiceTests: XCTestCase {
         MedicalEgressGuard.currentMode = {
             MedicalEgressGuard.Mode(hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
         }
+        CloudConsentFixture.restoreShared()
         super.tearDown()
     }
 

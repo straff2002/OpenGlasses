@@ -682,7 +682,7 @@ class OpenClawBridge: ObservableObject {
         guard Config.agentModeEnabled else { return .failure("Agent mode not enabled") }
         let name = String(task.prefix(60)).trimmingCharacters(in: .whitespacesAndNewlines)
         let request = GatewayRequestCatalog.cronAdd(
-            name: name.isEmpty ? "Glasses task" : name, message: task,
+            name: name.isEmpty ? (GlassesSupportPolicy.isSupported ? "Glasses task" : "Avenkin task") : name, message: task,
             schedule: .cron(expr: expression, tz: TimeZone.current.identifier), description: context)
         do {
             let response = try await send(request)

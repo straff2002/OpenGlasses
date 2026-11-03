@@ -180,6 +180,7 @@ struct ModelPickerSheet: View {
 
     private func selectModel(_ model: ModelConfig) {
         Config.setActiveModelId(model.id)
+        CloudSharingReview.shared.run(pickedModelId: model.id)
         appState.llmService.clearHistory()
         appState.llmService.refreshActiveModel()
 

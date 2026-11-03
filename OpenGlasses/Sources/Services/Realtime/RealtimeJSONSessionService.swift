@@ -38,6 +38,7 @@ class RealtimeJSONSessionService: ObservableObject {
     private var appContext = RealtimeAppContext()
     private var tools: [[String: Any]] = []
     private var transport: RealtimeConnectionTransport?
+    private var authorizationTask: Task<Void, Error>?
     private var adapter: RealtimeProtocolAdapter?
     private var receiveTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
@@ -81,6 +82,7 @@ class RealtimeJSONSessionService: ObservableObject {
             adapter = try RealtimeAdapterRegistry.make(for: modelConfiguration)
         } catch { connectionState = .error(error.localizedDescription); terminalFailure = true; return false }
         resolve(false)
+        authorizationTask?.cancel()
         receiveTask?.cancel()
         transport?.cancel()
         intentionalDisconnect = false
@@ -95,6 +97,19 @@ class RealtimeJSONSessionService: ObservableObject {
         isModelSpeaking = false
         let identity = generation.advance()
         let transport = transportFactory(modelConfiguration!.route)
+        let approval = Task { try await transport.authorize(request) }
+        authorizationTask = approval
+        do { try await withTaskCancellationHandler { try await approval.value } onCancel: { approval.cancel() } }
+        catch {
+            transport.cancel()
+            guard generation.isCurrent(identity) else { return false }
+            authorizationTask = nil
+            connectionState = .error(error.localizedDescription)
+            terminalFailure = true
+            return false
+        }
+        guard generation.isCurrent(identity), !Task.isCancelled else { transport.cancel(); return false }
+        authorizationTask = nil
         transport.audioPacketInterval = media.audioPacketInterval
         self.transport = transport
         connectionState = .connecting
@@ -131,6 +146,7 @@ class RealtimeJSONSessionService: ObservableObject {
         return result
     }
     func disconnect() {
+        authorizationTask?.cancel(); authorizationTask = nil
         intentionalDisconnect = true
         _ = generation.advance()
         reconnectTask?.cancel(); reconnectTask = nil

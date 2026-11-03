@@ -72,11 +72,18 @@ final class WearablesBootstrapTests: XCTestCase {
     /// MWDAT answers an unconfigured `Wearables.shared` with `fatalError`, so the whole point is
     /// that callers get a catchable error instead. Pin the type's existence and its message.
     func testUnavailableErrorReadsAsAnHonestState() {
+        #if AVENKIN_PHONE_ONLY
+        let withReason = WearablesBootstrap.Unavailable(reason: "not configured")
+        XCTAssertEqual(withReason.errorDescription, "not configured")
+        let bare = WearablesBootstrap.Unavailable(reason: nil)
+        XCTAssertEqual(bare.errorDescription, GlassesSupportPolicy.unavailableReason())
+        #else
         let withReason = WearablesBootstrap.Unavailable(reason: "no MWDAT configuration")
         XCTAssertEqual(withReason.errorDescription,
                        "Meta SDK not registered — no MWDAT configuration")
         let bare = WearablesBootstrap.Unavailable(reason: nil)
         XCTAssertEqual(bare.errorDescription, "Meta SDK not registered")
+        #endif
     }
 
     // `resetForTesting` only exists in Debug app builds; these two tests compile out of a
@@ -87,7 +94,7 @@ final class WearablesBootstrapTests: XCTestCase {
     /// same thing. Conflating a bad configuration with an absent one is a real time sink.
     func testStatusDescriptionDistinguishesNotAttemptedFromFailed() {
         WearablesBootstrap.resetForTesting()
-        XCTAssertEqual(WearablesBootstrap.statusDescription, "not configured")
+        XCTAssertEqual(WearablesBootstrap.statusDescription, AppBuildVariant.current == .phoneOnly ? "not in this version (phone-only build)" : "not configured")
         XCTAssertFalse(WearablesBootstrap.isConfigured)
         XCTAssertNil(WearablesBootstrap.failureReason)
     }
@@ -96,7 +103,7 @@ final class WearablesBootstrapTests: XCTestCase {
         WearablesBootstrap.resetForTesting()
         XCTAssertFalse(WearablesBootstrap.isConfigured)
         XCTAssertNil(WearablesBootstrap.failureReason)
-        XCTAssertEqual(WearablesBootstrap.statusDescription, "not configured")
+        XCTAssertEqual(WearablesBootstrap.statusDescription, AppBuildVariant.current == .phoneOnly ? "not in this version (phone-only build)" : "not configured")
     }
 
     // MARK: - Plan JE: the store copy
@@ -115,10 +122,15 @@ final class WearablesBootstrapTests: XCTestCase {
         XCTAssertFalse(WearablesBootstrap.ensureConfigured())
         XCTAssertFalse(WearablesBootstrap.isConfigured)
         XCTAssertEqual(WearablesBootstrap.failureReason, GlassesSupportPolicy.unavailableReason())
-        XCTAssertEqual(WearablesBootstrap.statusDescription, "not in this version (store copy)")
+        XCTAssertEqual(WearablesBootstrap.statusDescription, "not in this version (phone-only build)")
         XCTAssertThrowsError(try WearablesBootstrap.requireConfigured()) { error in
+            #if AVENKIN_PHONE_ONLY
+            XCTAssertEqual((error as? WearablesBootstrap.Unavailable)?.errorDescription,
+                           GlassesSupportPolicy.unavailableReason())
+            #else
             XCTAssertEqual((error as? WearablesBootstrap.Unavailable)?.errorDescription,
                            "Meta SDK not registered — " + GlassesSupportPolicy.unavailableReason())
+            #endif
         }
     }
     #endif

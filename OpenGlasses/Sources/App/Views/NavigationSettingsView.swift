@@ -21,7 +21,11 @@ struct NavigationSettingsView: View {
                         Config.navigationVoiceCues = newValue
                     }
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("Say \u{201C}navigate to \u{2026}\u{201D} to start walking directions — each turn is spoken as you approach it. Walking routes only; driving stays with CarPlay. Routing needs a network connection.")
+                #else
                 Text("Say \u{201C}navigate to \u{2026}\u{201D} to start walking directions — each turn shows in-lens and is spoken as you approach it. Walking routes only; driving stays with CarPlay. Routing needs a network connection.")
+                #endif
             }
 
             Section {
@@ -39,7 +43,9 @@ struct NavigationSettingsView: View {
             } header: {
                 Text("Recent Destinations")
             } footer: {
+                #if !AVENKIN_PHONE_ONLY
                 Text("Recents also appear in the glasses menu under Navigate.")
+                #endif
             }
         }
         .navigationTitle("Navigation")

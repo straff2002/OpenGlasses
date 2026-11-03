@@ -44,7 +44,7 @@ struct FirstAidTriageSchema: AssessmentSchema {
 
     var systemPrompt: String {
         """
-        You are a first-aid triage assistant for smart glasses. The user points the camera at a casualty \
+        You are a first-aid triage assistant\(GlassesSupportPolicy.forSmartGlasses). The user points the camera at a casualty \
         and needs a fast, factual triage — NOT a diagnosis. Report only what you can actually see.
 
         Assess three life-safety vitals: is the person `responsive`; is `breathing` normal / abnormal \

@@ -54,7 +54,11 @@ enum VisionModePolicy {
         var notice: String {
             switch self {
             case .noCamera(let reason): return reason
+            #if AVENKIN_PHONE_ONLY
+            case .powerPressure:        return "Not now — the phone is low on power or too warm."
+            #else
             case .powerPressure:        return "Not now — the glasses are low on power or too warm."
+            #endif
             case .alreadyOn:            return "Vision is already on."
             }
         }

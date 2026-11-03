@@ -12,7 +12,7 @@ final class VisionAssessTool: NativeTool {
     var description: String {
         let list = availableList
         return """
-        Run a structured visual assessment of what the camera (the glasses when connected, otherwise the phone) sees and show a result card. \
+        Run a structured visual assessment of what the camera (\(GlassesSupportPolicy.toolCameraSource)) sees and show a result card. \
         `kind` selects the assessment type (available: \(list)). Use 'instrument_reading' to read a \
         number off a gauge, thermometer, refractometer, scale, or meter. Optional `note` adds context. \
         A manual page the app has open on the phone is read with table_lookup or manual_lookup, not the camera.

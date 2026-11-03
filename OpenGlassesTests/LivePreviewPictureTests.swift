@@ -179,7 +179,11 @@ final class LivePreviewPictureTests: XCTestCase {
 
     func testTheCaptionNeverPromisesAFallbackTheBlurRefuses() {
         let caption = LivePreviewPicture.phoneCaption(isBroadcasting: false, blurOn: true)
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertTrue(caption.contains("Go Live is off"))
+        #else
         XCTAssertTrue(caption.contains("needs glasses"))
+        #endif
         XCTAssertFalse(caption.contains("streams this picture"))
     }
 

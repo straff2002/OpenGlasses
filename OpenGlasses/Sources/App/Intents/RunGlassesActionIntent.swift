@@ -70,6 +70,10 @@ enum SiriActionDispatcher {
     /// already in `SiriExposureConfig` — so the dispatcher re-decides rather than trusting that
     /// what reached it was screened. Pure, so the refusal is asserted without an `AppState`.
     static func refusalReason(for binding: SiriActionBinding) -> String? {
+        if case .builtin(let id) = binding, !GlassesSupportPolicy.isSupported,
+           BuiltinSiriAction.glassesOnlyIDs.contains(id) {
+            return GlassesSupportPolicy.unavailableReason()
+        }
         guard let tool = binding.toolName, ComposedToolPolicy.isRestrictedTarget(tool) else {
             return nil
         }
@@ -147,6 +151,7 @@ enum SiriActionDispatcher {
 @MainActor
 enum BuiltinActionRunner {
     static func run(_ id: String, appState: AppState) async throws -> String {
+        if let refusal = SiriActionDispatcher.refusalReason(for: .builtin(id: id)) { return refusal }
         switch id {
         case "take_photo":
             await appState.captureAndAnalyzePhoto()

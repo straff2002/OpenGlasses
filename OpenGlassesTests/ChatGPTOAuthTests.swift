@@ -8,6 +8,21 @@ import XCTest
 /// stubs and an in-memory credential store — never the keychain or the network.
 final class ChatGPTOAuthTests: XCTestCase {
 
+    // The request path is the subject, so sharing is approved for the services it scripts.
+    override func setUp() {
+        super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://chatgpt.com",
+            "https://api.openai.com",
+            "https://auth.openai.com"
+        ])
+    }
+
+    override func tearDown() {
+        CloudConsentFixture.restoreShared()
+        super.tearDown()
+    }
+
     // MARK: - Authorize URL
 
     func testAuthorizeURLCarriesPKCEAndIdentity() throws {

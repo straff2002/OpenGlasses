@@ -6,6 +6,7 @@ protocol RealtimeConnectionTransport: AnyObject {
     var onError: ((Error?) -> Void)? { get set }
     var audioPacketInterval: TimeInterval { get set }
     var httpStatusCode: Int? { get }
+    func authorize(_ request: URLRequest) async throws
     func start(_ request: URLRequest) throws
     func receive() async throws -> Data
     func send(_ json: [String: Any])
@@ -31,16 +32,22 @@ final class RealtimeWebSocketTransport: NSObject, URLSessionWebSocketDelegate, R
     private var cancelled = false
     var audioPacketInterval: TimeInterval = 0
     private var socket: URLSessionWebSocketTask?
+    private var sharingPermission: CloudProcessingLease?
     private let route: NetworkRoute
     init(route: NetworkRoute = .geminiLiveSession) { self.route = route; super.init() }
     var httpStatusCode: Int? { (socket?.response as? HTTPURLResponse)?.statusCode }
+    @MainActor
+    func authorize(_ request: URLRequest) async throws {
+        guard let url = request.url else { throw CloudProcessingRefusal.invalidDestination }
+        sharingPermission = try await CloudProcessingConsent.shared.authorize(url: url, scope: .liveSession)
+    }
     func start(_ request: URLRequest) throws {
         try MedicalEgressGuard.check(route)
         guard let url = request.url else { throw RealtimeConnectionConfiguration.ValidationError.invalidEndpoint }
         if case .failure = EndpointPolicy.validate(url: url, for: route, build: .current) {
             throw RealtimeConnectionConfiguration.ValidationError.invalidEndpoint
         }
-        socket = session.webSocketTask(with: request)
+        socket = try webSocketTask(with: request)
         socket?.resume()
     }
     func receive() async throws -> Data {
@@ -55,15 +62,24 @@ final class RealtimeWebSocketTransport: NSObject, URLSessionWebSocketDelegate, R
         if let socket { send(json, via: socket) }
     }
 
-    func webSocketTask(with request: URLRequest) -> URLSessionWebSocketTask { session.webSocketTask(with: request) }
-    func webSocketTask(with url: URL) -> URLSessionWebSocketTask { session.webSocketTask(with: url) }
+    func webSocketTask(with request: URLRequest) throws -> URLSessionWebSocketTask {
+        guard let url = request.url, let lease = sharingPermission, lease.isValid,
+              try CloudProcessingTerms(url: url, scope: .liveSession) == lease.terms else {
+            throw CloudProcessingRefusal.permissionRequired
+        }
+        let task = session.webSocketTask(with: request)
+        task.delegate = CloudProcessingTransferDelegate(lease: lease, session: session, url: url)
+        lease.onWithdrawal { [weak task] in task?.cancel(with: .policyViolation, reason: nil) }
+        guard lease.isValid else { task.cancel(); throw CloudProcessingRefusal.withdrawn }
+        return task
+    }
 
     /// Encoding, base64 work and protocol state are serialized on this queue as well.
     func perform(_ work: @escaping () -> Void) { queue.async(execute: work) }
     func send(_ json: [String: Any], via socket: URLSessionWebSocketTask) {
         // Called by perform(), or independently from a legacy adapter.
         queue.async {
-            guard !self.cancelled,
+            guard !self.cancelled, self.sharingPermission?.isValid == true,
                   let data = try? JSONSerialization.data(withJSONObject: json),
                   let text = String(data: data, encoding: .utf8) else { return }
             if ["input_audio_mute.commit", "session.close"].contains(json["type"] as? String ?? "") {
@@ -86,7 +102,7 @@ final class RealtimeWebSocketTransport: NSObject, URLSessionWebSocketDelegate, R
         let deadline = audio && audioPacketInterval > 0 ? max(.now(), nextAudioTime) : .now()
         if audio { nextAudioTime = deadline + audioPacketInterval }
         queue.asyncAfter(deadline: deadline) {
-            guard !self.cancelled else { self.sending = false; return }
+            guard !self.cancelled, self.sharingPermission?.isValid == true else { self.sending = false; self.pending.removeAll(); socket.cancel(); return }
             socket.send(.string(text)) { error in
                 self.queue.async {
                     self.sending = false

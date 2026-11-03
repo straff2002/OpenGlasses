@@ -145,6 +145,7 @@ struct LivePreviewView: View {
             } else if !appState.isConnected {
                 // Only a stream on the glasses camera gets here: off air, with no glasses, the
                 // picture is the phone's.
+                #if !AVENKIN_PHONE_ONLY
                 VStack(spacing: 12) {
                     Image(systemName: "eyeglasses")
                         .font(.largeTitle)
@@ -156,6 +157,7 @@ struct LivePreviewView: View {
                 }
                 .padding(.horizontal, 32)
                 .accessibilityElement(children: .combine)
+                #endif
             }
 
             // Overlay controls
@@ -502,7 +504,9 @@ struct LivePreviewView: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 16) {
                 photoButton
+                #if !AVENKIN_PHONE_ONLY
                 recordButton
+                #endif
                 goLiveButton
                 blurButton
                 sourceMenu
@@ -510,7 +514,9 @@ struct LivePreviewView: View {
             VStack(spacing: 12) {
                 HStack(spacing: 24) {
                     photoButton
+                    #if !AVENKIN_PHONE_ONLY
                     recordButton
+                    #endif
                     goLiveButton
                 }
                 HStack(spacing: 16) {
@@ -555,6 +561,7 @@ struct LivePreviewView: View {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     private var recordButton: some View {
         Button {
             Task { await appState.toggleRecording() }
@@ -573,6 +580,7 @@ struct LivePreviewView: View {
         // A recording is frames through the blur relay, and phone frames do not pass through it.
         .accessibilityHint(appState.isConnected ? "" : "Recording needs glasses connected.")
     }
+    #endif
 
     /// Stopping is always on offer: a stream cannot outlive the mode coming on, but this must not
     /// be what stands in its way if it ever did.
@@ -651,7 +659,7 @@ struct LivePreviewView: View {
     private var sourceMenu: some View {
         if isBroadcasting {
             Menu {
-                ForEach(BroadcastVideoSource.allCases, id: \.rawValue) { source in
+                ForEach(BroadcastVideoSource.available, id: \.rawValue) { source in
                     Button {
                         switchCamera(to: source)
                     } label: {
@@ -720,7 +728,7 @@ struct LivePreviewView: View {
     }
 
     private var preferredBroadcastSource: BroadcastVideoSource {
-        BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses
+        BroadcastVideoSource.resolved(Config.broadcastDefaultSource)
     }
 
     private func goLiveDecision() -> BroadcastGoLive.Decision {

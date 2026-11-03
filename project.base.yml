@@ -60,17 +60,6 @@ options:
     - ca
 
 packages:
-  meta-wearables-dat-ios:
-    url: https://github.com/facebook/meta-wearables-dat-ios.git
-    # Pinned exact, not `from:`. Through 0.x this SDK broke API on every minor bump (0.9.0
-    # replaced `addStream` with `addCamera`, 0.8.0 removed `Capability`, 0.7.0 removed
-    # `DeviceStateSession`), and 1.0.0 still renamed `StreamError` cases, removed
-    # `Wearables.deviceStateStream` and — unannounced — `RegistrationError.timeout`. 1.x is
-    # semver, but only for the stable surface: Meta ships [Experimental] modules and APIs (Inputs,
-    # Motion, Speech, voice invocations, `Camera.photo`, camera audio) that may change in any minor
-    # and that published apps may not use. We link none of them; staying exact means a 1.y is read
-    # and adopted deliberately, never picked up by a resolve.
-    version: "1.0.1"
   HaishinKit:
     url: https://github.com/shogo4405/HaishinKit.swift.git
     from: "2.2.5"
@@ -171,9 +160,6 @@ targets:
         com.apple.developer.weatherkit: true
         com.apple.developer.carplay-voice-based-conversation: true
         com.apple.developer.kernel.increased-memory-limit: true
-        # DAT camera Wi-Fi transport. XcodeGen rewrites the entitlements file from this list.
-        com.apple.developer.networking.HotspotConfiguration: true
-        com.apple.developer.networking.wifi-info: true
         # My Manuals' new-manual allowance syncs its history (fingerprints and dates, never a
         # manual) through iCloud key-value storage. The App ID must carry the iCloud capability
         # (key-value storage) before an archive signs. Without it the store stays local-only and
@@ -195,16 +181,6 @@ targets:
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlasses/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
-        # Meta DAT credentials. The Info.plist references these as $(...) so the committed
-        # plist stays the single source of truth for every OTHER key — overriding
-        # INFOPLIST_FILE to a personal copy is what caused ITMS-90683 (a snapshot went stale
-        # and silently dropped newly added usage descriptions), and later left MetaAppID on
-        # the placeholder, which stalls DAT registration below state 3 and means the camera
-        # permission prompt never fires.
-        # Real values belong in the gitignored project.local.yml — never here. These
-        # placeholders are what the launch-time check in OpenGlassesApp looks for.
-        MWDAT_META_APP_ID: YOUR_META_APP_ID
-        MWDAT_CLIENT_TOKEN_HASH: YOUR_CLIENT_TOKEN_HASH
         INFOPLIST_KEY_CFBundleDisplayName: "Avenkin"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
         # Compiles the real on-device sherpa-onnx inference paths — Kokoro TTS (Additional
@@ -231,12 +207,6 @@ targets:
           "OTHER_LDFLAGS[sdk=iphoneos*]": '$(inherited) $(MEDIAPIPE_HOLISTIC_LDFLAGS) "$(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_device_graph.a"'
           "OTHER_LDFLAGS[sdk=iphonesimulator*]": '$(inherited) $(MEDIAPIPE_HOLISTIC_LDFLAGS) "$(SRCROOT)/Vendor/MediaPipeTasks/Frameworks/graph_libraries/libMediaPipeTasksCommon_simulator_graph.a"'
     dependencies:
-      - package: meta-wearables-dat-ios
-        product: MWDATCore
-      - package: meta-wearables-dat-ios
-        product: MWDATCamera
-      - package: meta-wearables-dat-ios
-        product: MWDATDisplay
       - package: HaishinKit
         product: HaishinKit
       - package: HaishinKit

@@ -15,6 +15,7 @@ final class LLMStreamingTests: XCTestCase {
 
     private func service() -> LLMService {
         let s = LLMService()
+        s.processingConsent = CloudConsentFixture.conversation()
         s.streamingSession = SSEQueueProtocol.session()
         return s
     }
@@ -277,6 +278,7 @@ final class ResponsesStreamingTests: XCTestCase {
 
     private func service() -> LLMService {
         let s = LLMService()
+        s.processingConsent = CloudConsentFixture.conversation()
         s.streamingSession = SSEQueueProtocol.session()
         return s
     }
@@ -447,6 +449,7 @@ final class GeminiTransientRetryAndPhotoFailureTests: XCTestCase {
 
     func testABusyAnswerIsAskedAgainOnceThenGivenUp() async throws {
         let service = LLMService()
+        service.processingConsent = CloudConsentFixture.conversation()
         var attempts = 0
         let answer: String = try await service.withGeminiTransientRetry {
             attempts += 1

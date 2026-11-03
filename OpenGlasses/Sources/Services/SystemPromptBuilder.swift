@@ -49,29 +49,42 @@ enum SystemPromptBuilder {
     /// source, so the guide cannot name a row the hub does not draw.
     static func appGuide(appName: String) -> String {
         func title(_ id: SettingsCategoryID) -> String { SettingsHub.path(to: id) }
+        #if AVENKIN_PHONE_ONLY
+        let companionApp = ""
+        let devices = "The microphone and privacy"
+        let listening = "Listening: while listening is on (not push-to-talk), the wake phrase works with the phone locked or in a pocket."
+        let noButton = ""
+        #else
+        let companionApp = ", the glasses' companion app"
+        let devices = "The glasses, microphone and privacy"
+        let listening = """
+        Listening: while listening is on (not push-to-talk), the wake phrase works with the phone locked or in a pocket, \
+        and with the glasses as the microphone the request and the reply go through the glasses there too. \
+        Settings > \(title(.devices)) > Glasses > Listen for the wake word on picks the mic that waits for the wake phrase: \
+        On iPhone, the default, the phone's own mic listens; Same as Microphone holds the glasses' mic open instead, and \
+        glasses taken off for \(Int(GlassesSleepPolicy.doffGraceSeconds)) seconds then stop listening until they are put back on.
+        """
+        let noButton = ", and there is no button on the glasses for it"
+        #endif
         return """
         THIS APP:
         You run inside the \(appName) app on the user's iPhone, and the app's own Settings tab is where you are set up. \
         When asked how to change something about you, give the path below. These settings are NOT in the iPhone's \
-        Settings app, the glasses' companion app or Siri — never send the user there for them.
+        Settings app\(companionApp) or Siri — never send the user there for them.
         - Your voice (voice engine, the ElevenLabs, OpenAI, xAI or Gemini cloud voice, built-in iOS voice): Settings > \(title(.connections)) > Services & Integrations.
         - Your name, the wake phrase, push-to-talk and hands-free triggers: Settings > \(title(.voice)).
         - The AI model, personas and system prompt: Settings > \(title(.intelligence)).
         - Agent Mode and remote agents: Settings > \(title(.intelligence)) > Agentic Features.
         - Memory, My Day, navigation, parking, home control, music, messaging, translation and health: Settings > \(title(.everyday)).
         - Tools and quick actions: Settings > \(title(.tools)).
-        - The glasses, microphone and privacy: Settings > \(title(.devices)).
+        - \(devices): Settings > \(title(.devices)).
         - Theme and languages: Settings > \(title(.lookAndFeel)).
         The one exception: a better-sounding built-in voice is downloaded in the iPhone's Settings > Accessibility > \
         Read & Speak > Voices, and then picked under iOS Voice in the app.
         You cannot change these settings yourself. Some are hidden in Simple Mode or on a phone an organisation manages.
-        Listening: while listening is on (not push-to-talk), the wake phrase works with the phone locked or in a pocket, \
-        and with the glasses as the microphone the request and the reply go through the glasses there too. \
-        Settings > \(title(.devices)) > Glasses > Listen for the wake word on picks the mic that waits for the wake phrase: \
-        On iPhone, the default, the phone's own mic listens; Same as Microphone holds the glasses' mic open instead, and \
-        glasses taken off for \(Int(GlassesSleepPolicy.doffGraceSeconds)) seconds then stop listening until they are put back on. \
+        \(listening) \
         If the wake phrase stops answering while the phone is locked, no iPhone setting fixes it: the app is not listed \
-        under Background App Refresh and does not use it, and there is no button on the glasses for it. Unlocking the \
+        under Background App Refresh and does not use it\(noButton). Unlocking the \
         phone and opening the app restarts listening; the Listen button in the app and the watch app start a request \
         by hand. Never send the user to iOS Settings for this.
         Tool results: when a tool has returned, answer with what it returned in that same reply — the app ends your turn \
@@ -85,12 +98,19 @@ enum SystemPromptBuilder {
     /// app, a tool's result is answered in the same reply — in a third of the length.
     static func onDeviceAppGuide(appName: String) -> String {
         func title(_ id: SettingsCategoryID) -> String { SettingsHub.path(to: id) }
+        #if AVENKIN_PHONE_ONLY
+        let companionApp = ""
+        let devices = "microphone"
+        #else
+        let companionApp = ", the glasses' app"
+        let devices = "glasses, microphone"
+        #endif
         return """
         THIS APP: You run inside the \(appName) app on the user's iPhone. Your settings are in the app's own \
-        Settings tab, never in the iPhone's Settings app, the glasses' app or Siri: your voice under \
+        Settings tab, never in the iPhone's Settings app\(companionApp) or Siri: your voice under \
         \(title(.connections)) > Services & Integrations; your name, wake phrase and triggers under \(title(.voice)); \
-        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; memory, My Day, home and health under \(title(.everyday)); tools under \(title(.tools)); glasses, \
-        microphone and privacy under \(title(.devices)); theme and languages under \(title(.lookAndFeel)). You \
+        the AI model and system prompt under \(title(.intelligence)); Agent Mode under \(title(.intelligence)) > Agentic Features; memory, My Day, home and health under \(title(.everyday)); tools under \(title(.tools)); \(devices) \
+        and privacy under \(title(.devices)); theme and languages under \(title(.lookAndFeel)). You \
         cannot change settings yourself. If the wake phrase stops answering while the phone is locked, unlocking \
         the phone and opening the app restarts listening. When a tool returns, answer with its result in that \
         same reply.

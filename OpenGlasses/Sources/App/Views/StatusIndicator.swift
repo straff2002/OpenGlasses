@@ -644,7 +644,11 @@ struct StatusIndicator: View {
         if let glassesHeadline { return glassesHeadline }
 
         if appState.glassesIdle {
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "Idle")
+            #else
             return String(localized: "Glasses Idle")
+            #endif
         }
 
         if isGemini {

@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// The minimal surface the coordinator needs from a device session, so its lifecycle/ref-counting is
 /// testable without the SDK. `MWDATCore.DeviceSession` already has `stop()`, so it conforms with no
 /// new code; tests inject a fake.
@@ -8,7 +9,9 @@ protocol DeviceSessionHandle: AnyObject {
     func stop()
 }
 
+#if !AVENKIN_PHONE_ONLY
 extension DeviceSession: DeviceSessionHandle {}
+#endif
 
 /// Owns the single shared `DeviceSession` and lends it to the capabilities that want the glasses
 /// (Additional Capabilities #3). The first capability to `acquire` triggers creation; the last to
@@ -31,7 +34,11 @@ final class DeviceSessionCoordinator {
         // Configure on demand: `Wearables.shared` traps rather than throws when unconfigured, so
         // without this an acquire on a device where configure() failed would kill the process.
         try WearablesBootstrap.requireConfigured()
+        #if !AVENKIN_PHONE_ONLY
         return try Wearables.shared.createSession(deviceSelector: AutoDeviceSelector(wearables: Wearables.shared))
+        #else
+        throw WearablesBootstrap.Unavailable(reason: GlassesSupportPolicy.unavailableReason())
+        #endif
     })
 
     private let makeSession: () throws -> DeviceSessionHandle

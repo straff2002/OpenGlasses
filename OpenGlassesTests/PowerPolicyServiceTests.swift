@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import UIKit
 import MWDATCore
@@ -211,3 +212,5 @@ final class PowerPolicyServiceTests: XCTestCase {
         XCTAssertEqual(forwarded, 1)
     }
 }
+
+#endif

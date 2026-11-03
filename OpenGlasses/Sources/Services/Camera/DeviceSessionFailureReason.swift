@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// The SDK wraps several different startup failures in `unexpectedError(String)`. Keep only
 /// exact, known reasons: an arbitrary SDK payload must never become a public log or AI prompt.
 enum DeviceSessionFailureReason: String, Equatable {
@@ -13,6 +14,7 @@ enum DeviceSessionFailureReason: String, Equatable {
             self = reason
             return
         }
+        #if !AVENKIN_PHONE_ONLY
         guard let sessionError = error as? DeviceSessionError else { return nil }
         switch sessionError {
         case .dwaUnavailable:
@@ -25,9 +27,15 @@ enum DeviceSessionFailureReason: String, Equatable {
             }
         default: return nil
         }
+        #else
+        return nil
+        #endif
     }
 
     var notice: String {
+        #if AVENKIN_PHONE_ONLY
+        return GlassesSupportPolicy.unavailableReason()
+        #else
         switch self {
         case .deviceUnavailable:
             return "The glasses couldn't start the camera. In Meta AI, check Developer Mode and apply its settings to the glasses. Then try again."
@@ -36,6 +44,7 @@ enum DeviceSessionFailureReason: String, Equatable {
         case .sessionEndedByDevice:
             return "The glasses ended the camera session. End any broadcast in Meta AI. If it keeps happening, put the glasses in their case, close it for a minute, then try again."
         }
+        #endif
     }
 
     /// One bounded retry for a device-side start refusal; none when its component is absent.

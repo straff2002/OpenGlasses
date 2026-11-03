@@ -29,6 +29,9 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
     private var wantsConnection = false
     private var webSocketTask: URLSessionWebSocketTask?
     private var session: URLSession?
+    private var sharingPermission: CloudProcessingLease?
+    private var permissionTask: Task<Void, Never>?
+    private var permissionGeneration = 0
 
     // MARK: - DiarizationProvider
 
@@ -46,6 +49,10 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
     func stop() {
         wantsConnection = false
         sendControl(["type": "CloseStream"])  // flush any buffered final
+        permissionGeneration += 1
+        permissionTask?.cancel()
+        permissionTask = nil
+        sharingPermission = nil
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         session?.invalidateAndCancel()
@@ -59,6 +66,10 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
         // captured buffer closes the stream even if nothing else told us to stop.
         guard isConfigured(), MedicalEgressGuard.allows(.deepgramLiveTranscription) else {
             if wantsConnection || webSocketTask != nil { stop() }
+            return
+        }
+        if let permission = sharingPermission, !permission.isValid {
+            stop()
             return
         }
         if wantsConnection, webSocketTask == nil {
@@ -88,6 +99,25 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
             state = .error(MedicalEgressRefusal.userMessage)
             return
         }
+        guard sharingPermission?.isValid == true else {
+            guard permissionTask == nil else { return }
+            let generation = permissionGeneration
+            permissionTask = Task { @MainActor [weak self] in
+                do {
+                    let permission = try await CloudProcessingConsent.shared.authorize(url: url, scope: .speechRecognition)
+                    guard let self, self.permissionGeneration == generation, !Task.isCancelled,
+                          self.wantsConnection, self.isConfigured() && MedicalEgressGuard.allows(.deepgramLiveTranscription) else { return }
+                    self.permissionTask = nil
+                    self.sharingPermission = permission
+                    self.connect(sampleRate: sampleRate)
+                } catch {
+                    guard let self, self.permissionGeneration == generation else { return }
+                    self.permissionTask = nil
+                    self.stop(); self.state = .error(error.localizedDescription)
+                }
+            }
+            return
+        }
         var request = URLRequest(url: url)
         request.setValue("Token \(key)", forHTTPHeaderField: "Authorization")
 
@@ -95,13 +125,16 @@ final class DeepgramSTTService: ObservableObject, DiarizationProvider {
         self.session = session
         let task = session.webSocketTask(with: request)
         webSocketTask = task
+        guard let permission = sharingPermission, permission.isValid else { return }
+        task.delegate = CloudProcessingTransferDelegate(lease: permission, session: session, url: url)
+        permission.onWithdrawal { [weak task] in task?.cancel(with: .policyViolation, reason: nil) }
         task.resume()
         state = .connected
         receive()
     }
 
     private func sendControl(_ message: [String: Any]) {
-        guard let task = webSocketTask,
+        guard sharingPermission?.isValid == true, let task = webSocketTask,
               let data = try? JSONSerialization.data(withJSONObject: message),
               let text = String(data: data, encoding: .utf8) else { return }
         task.send(.string(text)) { _ in }

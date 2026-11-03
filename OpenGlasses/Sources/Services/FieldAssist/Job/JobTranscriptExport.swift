@@ -428,7 +428,7 @@ enum JobTranscriptExport {
     static let troubleshootingPreamble = """
         Troubleshooting details are included: for each AI turn, which model answered, what went \
         with the words (the parts of the instructions by size, manual pages, photos, tools), how \
-        long it took and how it ended; each job's own log; this phone and the glasses; and the \
+        long it took and how it ended; each job's own log; \(GlassesSupportPolicy.reportDevices); and the \
         app's event log. The words sent to the AI are the transcript lines themselves. Keys and \
         tokens are masked. Recorded web searches include their queries and returned text, \
         including source URLs when returned; long contents are marked as truncated.
@@ -453,7 +453,7 @@ enum JobTranscriptExport {
     static let conversationTroubleshootingPreamble = """
         Troubleshooting details are included: for each AI turn in this conversation, which model \
         answered, what went with the words (the parts of the instructions by size, manual pages, \
-        photos, tools), how long it took and how it ended; this phone and the glasses; and the \
+        photos, tools), how long it took and how it ended; \(GlassesSupportPolicy.reportDevices); and the \
         app's event log and debug log from five minutes before the conversation to five minutes \
         after it. The words sent to the AI are the transcript lines themselves. Keys and tokens \
         are masked. Recorded web searches include their queries and returned text, including \

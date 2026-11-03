@@ -1,7 +1,9 @@
 import SwiftUI
 import AVFoundation
 import CoreLocation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
 import Speech
 
 /// Full-screen onboarding flow — Apple HIG compliant.
@@ -333,11 +335,19 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
 
+                    #if AVENKIN_PHONE_ONLY
+                    Text("Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your iPhone, through headphones or AirPods, or from your watch.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #else
                     Text("Avenkin is a private AI assistant that works for you, not for a platform: your choice of AI, your memory on your device, on your iPhone, through headphones or AirPods, from your watch or with your glasses.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                    #endif
                 }
 
                 // AI transparency disclosure (Apple Generative AI HIG)
@@ -1287,16 +1297,9 @@ struct OnboardingView: View {
 
             pageFooter {
                 primaryButton("Continue") { go(to: .assistantName) }
-                    .disabled(!micGranted)
-
-                if micGranted {
-                    skipButton()
-                } else {
-                    Text("Microphone permission is required")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 6)
-                }
+                // Typed conversations work without microphone access, so permission denial must
+                // not block onboarding.
+                skipButton()
             }
         }
         .onAppear { checkExistingPermissions() }
@@ -1468,7 +1471,9 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             pageTitle(
                 "Add a device",
-                "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings.",
+                GlassesSupportPolicy.isSupported
+                    ? "Avenkin works on this iPhone. Add glasses now, or whenever you like in Settings."
+                    : "Avenkin works on this iPhone.",
                 page: .addDevice
             )
 
@@ -1479,6 +1484,7 @@ struct OnboardingView: View {
 
                 // Plan JE: a copy that offers no glasses asks about no glasses — this phone is
                 // the device, and the step ends with the one button below.
+                #if !AVENKIN_PHONE_ONLY
                 if GlassesSupportPolicy.isSupported {
                     Section {
                         if showingGlassesSetup {
@@ -1512,6 +1518,7 @@ struct OnboardingView: View {
                         }
                     }
                 }
+                #endif
             }
             .listStyle(.insetGrouped)
             .ogFormStyle()
@@ -1531,7 +1538,7 @@ struct OnboardingView: View {
             // `isConfigured`, not the page's own flag: that flag is set after a configure() that may
             // have failed (or, on a copy without glasses, never ran), and an unconfigured
             // `Wearables.shared` is a fatalError, not a throw.
-            metaRegistered = WearablesBootstrap.isConfigured && Wearables.shared.registrationState.rawValue >= 3
+            metaRegistered = WearablesBootstrap.isConfigured && WearablesBootstrap.registrationSnapshot.rawValue >= 3
         }
     }
 
@@ -1559,6 +1566,7 @@ struct OnboardingView: View {
         .accessibilityElement(children: .combine)
     }
 
+    #if !AVENKIN_PHONE_ONLY
     /// The one tap that brings the glasses rows up.
     private var addGlassesRow: some View {
         Button {
@@ -1590,6 +1598,7 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
         .accessibilityHint("Shows the camera and Meta AI steps for connecting glasses.")
     }
+    #endif
 
     /// Either answer ends the step. Glasses are recorded as a device this person uses, so the
     /// session card reports them; this phone records nothing, so nothing is left half-set-up.
@@ -1600,6 +1609,7 @@ struct OnboardingView: View {
         go(to: OnboardingFlow.page(after: answer))
     }
 
+    #if !AVENKIN_PHONE_ONLY
     @ViewBuilder
     private var registrationFooter: some View {
         if isRegistering {
@@ -1638,7 +1648,7 @@ struct OnboardingView: View {
         await appState.connectGlasses(awaitLink: false)
         // Behind the bootstrap's truth: `connectGlasses` degrades to "SDK unavailable" without
         // configuring, and an unconfigured `Wearables.shared` is a fatalError.
-        let stateRaw = WearablesBootstrap.isConfigured ? Wearables.shared.registrationState.rawValue : 0
+        let stateRaw = WearablesBootstrap.isConfigured ? WearablesBootstrap.registrationSnapshot.rawValue : 0
         metaRegistered = stateRaw >= 3
         registrationStatus = metaRegistered
             ? ""
@@ -1650,6 +1660,7 @@ struct OnboardingView: View {
         // Start observing devices now that registration is in progress
         appState.glassesService.startObserving()
     }
+    #endif
 
     // MARK: - Page 6: Name Your Assistant (Plan FE P6)
 
@@ -2075,6 +2086,7 @@ struct OnboardingView: View {
 
         // Update the LLM service so the UI reflects the chosen model immediately
         appState.llmService.refreshActiveModel()
+        CloudSharingReview.shared.run(duringSetup: true)
 
         // What else the key can do, offered once, after the key step (Plan KA P1). Nothing is
         // switched on until the card is tapped.
@@ -2092,6 +2104,7 @@ struct OnboardingView: View {
 
     private func completeOnboarding() {
         Config.setHasCompletedOnboarding(true)
+        CloudSharingReview.shared.run()
 
         // Ensure Wearables SDK is configured (may already be done from permissions page)
         if !bluetoothConfigured {

@@ -49,6 +49,8 @@ struct ProcessingFacts: Equatable {
     // What you say
     var speechRecognitionOnDevice: Bool
     var speechRecognitionProviderName: String
+    /// The cloud recogniser the question's audio would go to, when there is one.
+    var speechRecognitionCloudProvider: CloudDictationProvider?
     var speechRecognitionAssetName: String
     var speechRecognitionAssetPresent: Bool
     var diarizationEnabled: Bool
@@ -191,6 +193,7 @@ enum ProcessingFactsProvider {
         // Plan JM P2: a cloud recogniser the wearer chose, and may use, is where the question goes.
         if let chosenASR, let cloud = CloudDictationProvider(engine: chosenASR) {
             facts.speechRecognitionProviderName = cloud.vendorName
+            facts.speechRecognitionCloudProvider = cloud
         }
         facts.speechRecognitionAssetName = ASRModelBundle.active.displayName
         facts.speechRecognitionAssetPresent = onDeviceASRReady

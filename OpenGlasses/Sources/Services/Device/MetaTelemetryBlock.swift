@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import Foundation
 
 /// Stops the Meta wearables SDK from phoning home.
@@ -162,3 +163,4 @@ enum MetaTelemetryBlock {
     }
     #endif
 }
+#endif

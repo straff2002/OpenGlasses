@@ -38,7 +38,7 @@ The export is an opaque 8-bit RGB PNG at 3840 × 1646, one of Apple's accepted h
 
 ## Remaining before submission
 
-1. Merge the implementation PR when ready, let Xcode Cloud build it, then select the processed release build. Verify the App Store installation follows Plan JE and hides glasses functionality. The runtime distinction intentionally retains glasses support in TestFlight.
+1. Use the separate phone-only workflow (`OPENGLASSES_PHONE_ONLY=1`), assign a unique build number, and verify the signed archive with `Scripts/check-phone-only-artifact.py --require-signed`. Select that exact build for App Review. The glasses beta is a different archive/build number; installation receipts never enable hardware. Follow [the build procedure](../../docs/app-store-phone-only-build.md) and [remaining submission checklist](submission-checklist.md).
 2. Retest the live My Manuals StoreKit catalogue after Apple's agreement/account changes propagate. Verify the displayed monthly price, eligible one-week trial, purchase, restore and separate service access. Capture the actual functioning paywall for the subscription's required review screenshot. Local StoreKit tests do not establish live catalogue availability.
 3. Review and publish the saved App Privacy draft. It conservatively includes Health, Fitness, precise/coarse location, Contacts, photos/videos, audio, other user content and search history, used for App Functionality, linked to identity and not for tracking. The draft reflects optional third-party processing and has not been published or independently audited against every provider's retention practices. Reference: https://developer.apple.com/app-store/app-privacy-details/
 4. Complete the final age-rating questionnaire audit and encryption questions for the selected build. Existing age rating was retained; no unverified accessibility claims were added.
@@ -54,3 +54,11 @@ Earlier direct screen-power switching produced SpringBoard display-configuration
 The App Store settings hub now hides Display & HUD and removes glasses wording from its device subtitle and About footer when the existing glasses policy is disabled. Debug simulator launch support can select this policy and an initial tab for repeatable captures; Release and physical-device channel detection are unchanged.
 
 The final iOS simulator build succeeded (`/private/tmp/avenkin-store-settings-build.log`). The additional settings presentation changes were compile-checked; live purchase acceptance remains outstanding. Unrelated working-tree changes and private Toyota PDFs were not included in this preparation.
+
+## Updating App Review notes
+
+The repository does not automatically sync these notes to App Store Connect. Open Apps > Avenkin > the iOS version being prepared > App Review Information > Notes. Paste `review-notes.txt` and save. Its content is also the `reviewNotes` value in `metadata.json`; keep both in sync. Apple limits Notes to **4,000 UTF-8 bytes**, so allow room for any additional private access instructions. These notes describe the new phone-only submission build and must match the exact selected build.
+
+Attach `avenkin-review-kit.zip` for the fictional demo manuals. Supply valid reviewer-only organisation/service access through private App Review information or an attachment when needed; no credentials are supplied by this repository. `review-notes-detailed.md` is a longer internal preparation draft, not the text to paste into the field. Saving notes does not upload a build or submit the app for review. TestFlight review information is separate.
+
+Reference: [Apple's App Review information fields](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information/#app-review-information).

@@ -52,15 +52,28 @@ final class EgressCanaryURLProtocol: URLProtocol, @unchecked Sendable {
 /// passing because the service was broken rather than because the guard worked.
 @MainActor
 final class MedicalEgressCanaryTests: XCTestCase {
+    private var liveConsent: CloudProcessingConsent!
 
+    /// The medical rule is the subject, so the sharing permission is granted for exactly the
+    /// services these probes drive. Without it the guard-off half is refused before the transport.
     override func setUp() {
         super.setUp()
         EgressCanaryURLProtocol.begin()
+        liveConsent = CloudProcessingConsent.shared
+        CloudProcessingConsent.shared = CloudConsentFixture.approving([
+            ("https://api.deepgram.com", .speechRecognition),
+            ("https://api.openai.com", .speechRecognition),
+            ("https://api.elevenlabs.io", .speechOutput),
+            ("https://api.openai.com", .speechOutput),
+            ("https://api.x.ai", .speechOutput),
+            ("https://generativelanguage.googleapis.com", .speechOutput)
+        ])
     }
 
     override func tearDown() {
         EgressCanaryURLProtocol.end()
         MedicalEgressGuard.currentMode = Self.liveMode
+        CloudProcessingConsent.shared = liveConsent
         super.tearDown()
     }
 

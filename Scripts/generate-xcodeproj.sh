@@ -51,10 +51,27 @@ fi
 AVENKIN_SOURCE_COMMIT="${CI_COMMIT:-$(git rev-parse HEAD 2>/dev/null || true)}"
 export AVENKIN_SOURCE_COMMIT="${AVENKIN_SOURCE_COMMIT:-unknown}"
 
+phone_only="${OPENGLASSES_PHONE_ONLY:-${OPENGLASSES_NO_GLASSES_SDK:-0}}"
+if [[ -n "${OPENGLASSES_PHONE_ONLY:-}" && -n "${OPENGLASSES_NO_GLASSES_SDK:-}" && "$OPENGLASSES_PHONE_ONLY" != "$OPENGLASSES_NO_GLASSES_SDK" ]]; then
+  echo "Conflicting phone-only build variables; set only OPENGLASSES_PHONE_ONLY." >&2
+  exit 1
+fi
+if [[ "$phone_only" != "0" && "$phone_only" != "1" ]]; then
+  echo "OPENGLASSES_PHONE_ONLY must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "$phone_only" == "1" ]]; then
+  python3 Scripts/prepare-phone-only-build.py
+fi
+mkdir -p .generated
+
 spec_file=.xcodegen-spec.yml
 {
   echo "include:"
   echo "  - project.base.yml"
+  if [[ "$phone_only" != "1" ]]; then
+    echo "  - project.glasses-sdk.yml"
+  fi
   if [[ "${OPENGLASSES_SKIP_WATCH:-}" != "1" ]]; then
     echo "  - project.watch.yml"
   fi
@@ -71,6 +88,9 @@ spec_file=.xcodegen-spec.yml
   fi
   if [[ -f project.local.yml ]]; then
     echo "  - project.local.yml"
+  fi
+  if [[ "$phone_only" == "1" ]]; then
+    echo "  - project.phone-only.yml"
   fi
 } >"$spec_file"
 

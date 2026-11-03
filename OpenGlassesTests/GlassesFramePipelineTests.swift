@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import CoreMedia
 import CoreVideo
@@ -136,3 +137,5 @@ final class GlassesFramePipelineTests: XCTestCase {
         return sampleBuffer
     }
 }
+
+#endif

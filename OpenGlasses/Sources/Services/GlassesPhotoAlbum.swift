@@ -118,7 +118,11 @@ enum PhotoLibrarySaveResult: Equatable {
 enum GlassesPhotoAlbum {
 
     /// Name of the Photos album where glasses photos and recordings are saved.
+    #if AVENKIN_PHONE_ONLY
+    static let albumName = "Avenkin"
+    #else
     static let albumName = "Glasses"
+    #endif
 
     private static let albumIDKey = "GlassesPhotoAlbumLocalIdentifier"
 

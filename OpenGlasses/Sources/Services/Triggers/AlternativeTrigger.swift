@@ -21,6 +21,10 @@ enum AlternativeTrigger: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// Only the shake detector is implemented. Keep persisted values decodable for older installs,
+    /// but never offer controls for detectors that cannot produce an event.
+    static let available: [AlternativeTrigger] = [.shake]
+
     var displayName: String {
         switch self {
         case .shake: return String(localized: "Shake")

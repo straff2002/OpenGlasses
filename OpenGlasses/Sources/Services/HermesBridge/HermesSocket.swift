@@ -38,11 +38,12 @@ extension HermesSocket {
 typealias HermesSocketFactory = (URL) -> HermesSocket
 
 final class URLSessionHermesSocket: HermesSocket {
+    private let authorization = CloudProcessingSocketAuthorization()
     private let task: URLSessionWebSocketTask
 
     init(url: URL) {
         task = URLSession.shared.webSocketTask(with: url)
-        task.resume()
+        // Deliberately suspended until send/receive obtains sharing permission.
     }
 
     static func make(_ url: URL) -> HermesSocket {
@@ -50,10 +51,13 @@ final class URLSessionHermesSocket: HermesSocket {
     }
 
     func send(_ text: String) async throws {
+        try await authorization.prepare(task, session: URLSession.shared, scope: .conversation)
+        try authorization.requireValid()
         try await task.send(.string(text))
     }
 
     func receive() async throws -> HermesFrame {
+        try await authorization.prepare(task, session: URLSession.shared, scope: .conversation)
         switch try await task.receive() {
         case .string(let text): return .text(text)
         case .data: return .nonText
@@ -62,6 +66,7 @@ final class URLSessionHermesSocket: HermesSocket {
     }
 
     func cancel() {
+        authorization.cancel()
         task.cancel(with: .normalClosure, reason: nil)
     }
 

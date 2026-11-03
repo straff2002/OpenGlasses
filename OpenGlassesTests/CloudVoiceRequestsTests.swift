@@ -86,6 +86,11 @@ final class CloudVoiceRequestsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        CloudConsentFixture.approveShared([
+            "https://api.openai.com",
+            "https://api.x.ai",
+            "https://api.elevenlabs.io"
+        ])
         MedicalEgressGuard.currentMode = { .off }
     }
 
@@ -94,6 +99,7 @@ final class CloudVoiceRequestsTests: XCTestCase {
         MedicalEgressGuard.currentMode = {
             MedicalEgressGuard.Mode(hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
         }
+        CloudConsentFixture.restoreShared()
         super.tearDown()
     }
 

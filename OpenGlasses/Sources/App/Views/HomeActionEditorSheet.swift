@@ -125,7 +125,11 @@ struct HomeActionEditorSheet: View {
 
     private var deleteMessage: String {
         let name = existing?.label ?? String(localized: "This action")
+        #if AVENKIN_PHONE_ONLY
+        var lines = [String(localized: "\"\(name)\" is removed from the grid, the widget and the watch.")]
+        #else
         var lines = [String(localized: "\"\(name)\" is removed from the grid, the widget, the watch and the in-lens launcher.")]
+        #endif
         if isExposedToVoice { lines.append(String(localized: "Running it by voice is turned off at the same time.")) }
         lines.append(String(localized: "Your conversations and memories are untouched."))
         return lines.joined(separator: " ")

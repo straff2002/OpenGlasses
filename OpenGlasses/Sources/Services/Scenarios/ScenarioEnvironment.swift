@@ -41,7 +41,7 @@ enum ScenarioEnvironment {
         var context = ScenarioContext()
         context.isOnline = isOnline
         context.captionHistoryExists = captionHistoryExists
-        context.glassesAdded = Config.glassesAdded
+        context.glassesAdded = Config.glassesAdded && GlassesSupportPolicy.isSupported
         context.hipaaMode = Config.hipaaMode
         context.simpleMode = Config.simpleModeEnabled
         context.fieldAssistActive = Config.fieldAssistActive

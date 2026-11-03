@@ -209,7 +209,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// nonisolated, and the backend is main-actor bound; the phone source takes the same shape so
     /// both halves of the capture decision are substituted the same way.
     init(backend: GlassesCameraBackend? = nil, phoneCamera: PhoneCameraCapturing? = nil) {
-        let backend = backend ?? MetaCameraBackend()
+        let backend = backend ?? GlassesBackendFactory.camera()
         self.backend = backend
         self.phoneSource = phoneCamera ?? PhoneCameraSource()
         backendEvents = backend.events.sink { [weak self] event in
@@ -776,7 +776,11 @@ enum CameraError: LocalizedError {
         case .captureFailed: return "Failed to capture photo"
         case .timeout: return "Photo capture timed out"
         case .notConnected: return "Glasses not connected"
+        #if AVENKIN_PHONE_ONLY
+        case .sdkNotRegistered: return GlassesSupportPolicy.unavailableReason()
+        #else
         case .sdkNotRegistered: return "Meta SDK not registered — open Meta app first"
+        #endif
         case .streamNotReady: return "Camera stream not ready — try again"
         case .sessionBusy: return "The glasses are still releasing a previous camera session — try again in about a minute"
         case .sessionUnavailable(let reason): return reason.notice

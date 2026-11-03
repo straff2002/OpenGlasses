@@ -1,6 +1,4 @@
 import Foundation
-import MWDATCore
-
 /// A bounded, public description of *what went wrong* — never of *what was being sent*.
 ///
 /// `localizedDescription` is not safe to log, and the reason is structural rather than
@@ -78,6 +76,10 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
     /// through to a type name plus a domain/code pair, which is the most that can be said about
     /// an unknown error without quoting it.
     init(_ error: Error) {
+        if error is CloudProcessingRefusal {
+            self.init(category: .refused, detail: PrivacyToken("cloudSharingConsent"))
+            return
+        }
         if error is CancellationError {
             self.init(category: .cancelled, detail: PrivacyToken("CancellationError"))
             return

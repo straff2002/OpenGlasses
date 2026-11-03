@@ -70,6 +70,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testAWearersGlassesConnectShowsItsProgress() {
         XCTAssertEqual(SessionCardGlassesHeadline.headline(connectAttemptInFlight: true,
                                                            link: .addedDisconnected,
@@ -84,6 +85,7 @@ final class TalkEntryPolicyTests: XCTestCase {
                                                            connectionStatus: "Registering..."),
                        "Connecting…")
     }
+    #endif
 
     func testOnceConnectedTheCardIsTheSessionsAgain() {
         XCTAssertNil(SessionCardGlassesHeadline.headline(connectAttemptInFlight: true, link: .connected,
@@ -248,6 +250,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func testAwayHintNamesWhatToDoNotTheSDKsInternalState() {
         for diagnosis in GlassesReachabilityDiagnosis.allCases {
             let hint = SessionCardGlassesPill.awayHint(for: diagnosis)
@@ -272,6 +275,7 @@ final class TalkEntryPolicyTests: XCTestCase {
         XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .noDeviceSeen).contains("Meta AI isn't showing"))
         XCTAssertTrue(SessionCardGlassesPill.awayHint(for: .notAdded).contains("connect them to Meta AI"))
     }
+    #endif
 
     // MARK: - Session card: job pill
 

@@ -55,7 +55,7 @@ enum ModelFallbackChain {
 
     /// Classify a thrown error into a cascade decision.
     static func classify(_ error: Error) -> FailureClass {
-        if error is CancellationError { return .terminalForTurn }
+        if error is CancellationError || error is CloudProcessingRefusal { return .terminalForTurn }
         // The request would not fit this model's window. Before any tool has run nothing has
         // happened yet, so another model may take the turn from the start. After one has run,
         // restarting the turn elsewhere could repeat a completed state-changing tool.
@@ -126,6 +126,8 @@ enum ModelFallbackChain {
         // URLError timeouts / connectivity — transient, worth another model.
         if let url = error as? URLError {
             switch url.code {
+            case .cancelled:
+                return .terminalForTurn
             case .timedOut, .networkConnectionLost, .cannotConnectToHost,
                  .notConnectedToInternet, .dnsLookupFailed:
                 return .retryOtherModel

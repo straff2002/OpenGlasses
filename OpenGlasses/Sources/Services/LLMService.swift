@@ -301,6 +301,7 @@ class LLMService: ObservableObject {
     /// Session the buffered (non-streaming) OpenAI-compatible request uses. Injectable for the same
     /// reason as `streamingSession`, so one fake transport serves both of Plan GC's routes.
     var dataSession: URLSession = .shared
+    var processingConsent = CloudProcessingConsent.shared
 
     /// Where recorded usage goes. nil → `UsageTracker.shared`; a test injects a tracker over a
     /// scratch store so it can count what one turn recorded.
@@ -1924,7 +1925,7 @@ class LLMService: ObservableObject {
                 Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let choices = json["choices"] as? [[String: Any]],
@@ -1941,7 +1942,7 @@ class LLMService: ObservableObject {
                         .geminiOneShotGenerationConfig(maxTokens: 512)
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let candidates = json["candidates"] as? [[String: Any]],
@@ -2017,7 +2018,7 @@ class LLMService: ObservableObject {
                 Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let choices = json["choices"] as? [[String: Any]],
@@ -2037,7 +2038,7 @@ class LLMService: ObservableObject {
                         .geminiOneShotGenerationConfig(maxTokens: maxTokens)
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let candidates = json["candidates"] as? [[String: Any]],
@@ -2124,7 +2125,7 @@ class LLMService: ObservableObject {
                 Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.openAI(data)
 
@@ -2146,7 +2147,7 @@ class LLMService: ObservableObject {
                         ]) { _, shape in shape }
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.gemini(data)
 
@@ -2215,7 +2216,7 @@ class LLMService: ObservableObject {
                 Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
                 Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.openAI(data)
 
@@ -2232,7 +2233,7 @@ class LLMService: ObservableObject {
                         ]) { _, shape in shape }
                 ]
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
                 return StructuredVisionParser.gemini(data)
 
@@ -2345,7 +2346,7 @@ class LLMService: ObservableObject {
             refresh: { await self.refreshedClaudeToken(after: $0) },
             sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) },
             refused: { SubscriptionAuthRetry.isUnauthorized($0.1) },
-            attempt: { try await self.dataSession.data(for: $0) })
+            attempt: { try await self.dataSession.consentedData(for: $0, scope: .conversation, consent: self.processingConsent) })
     }
 
     /// One stateless Anthropic call that wants text back: the summariser and the one-shot frame
@@ -2570,7 +2571,7 @@ class LLMService: ObservableObject {
                         refresh: { await self.refreshedClaudeToken(after: $0) },
                         sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) }
                     ) { request in
-                        let (data, response) = try await self.dataSession.data(for: request)
+                        let (data, response) = try await self.dataSession.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                         guard let httpResponse = response as? HTTPURLResponse,
                               httpResponse.statusCode == 200 else {
                             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -3083,10 +3084,10 @@ class LLMService: ObservableObject {
                         return try await streamTurn(try retryRequestWithoutTools())
                     }
                 } else {
-                    var (data, response) = try await self.dataSession.data(for: request)
+                    var (data, response) = try await self.dataSession.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
                     if provider == .custom, toolsAttached,
                        (response as? HTTPURLResponse)?.statusCode == 400 {
-                        (data, response) = try await self.dataSession.data(for: try retryRequestWithoutTools())
+                        (data, response) = try await self.dataSession.consentedData(for: try retryRequestWithoutTools(), scope: .conversation, consent: self.processingConsent)
                     }
 
                     guard let httpResponse = response as? HTTPURLResponse,
@@ -3666,7 +3667,7 @@ class LLMService: ObservableObject {
     func streamResponsesTurn(request: URLRequest, onToken: ((String) -> Void)?,
                              providerLabel: String = "ChatGPT", providerToken: String = "chatgpt",
                              acceptIncomplete: Bool = false) async throws -> [String: Any] {
-        let (bytes, response) = try await streamingSession.bytes(for: request)
+        let (bytes, response) = try await streamingSession.consentedBytes(for: request, scope: .conversation, consent: self.processingConsent)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             var errorBody = Data()
@@ -3863,7 +3864,7 @@ class LLMService: ObservableObject {
     /// caller's tool loop runs identically to the buffered path. Only used when a streaming caller
     /// (the Chat tab) passes `onToken`; every other caller keeps the buffered path.
     func streamOpenAIMessage(request: URLRequest, provider: LLMProvider, model: String, onToken: @escaping (String) -> Void) async throws -> [String: Any] {
-        let (bytes, response) = try await streamingSession.bytes(for: request)
+        let (bytes, response) = try await streamingSession.consentedBytes(for: request, scope: .conversation, consent: self.processingConsent)
         guard let http = response as? HTTPURLResponse else { throw LLMError.invalidResponse(provider.displayName) }
         guard http.statusCode == 200 else {
             var data = Data()
@@ -3944,7 +3945,7 @@ class LLMService: ObservableObject {
     /// the reconstructed content blocks + stop reason so the caller's tool loop runs identically to
     /// the buffered path. Only used when a streaming caller (the Chat tab) passes `onToken`.
     func streamAnthropicContent(request: URLRequest, model: String, onToken: @escaping (String) -> Void) async throws -> (content: [[String: Any]], stopReason: String?) {
-        let (bytes, response) = try await streamingSession.bytes(for: request)
+        let (bytes, response) = try await streamingSession.consentedBytes(for: request, scope: .conversation, consent: self.processingConsent)
         guard let http = response as? HTTPURLResponse else { throw LLMError.invalidResponse("Anthropic") }
         guard http.statusCode == 200 else {
             var data = Data()
@@ -4242,7 +4243,7 @@ class LLMService: ObservableObject {
                     limits: limits, provider: "Gemini",
                     onHedge: { PrivacyLog.model(.firstReplyHedged, provider: PrivacyToken("gemini")) }
                 ) { @MainActor [self] _ in try await self.withGeminiTransientRetry { () async throws -> Data in
-                    let (payload, response) = try await self.dataSession.data(for: request)
+                    let (payload, response) = try await self.dataSession.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
 
                     guard let httpResponse = response as? HTTPURLResponse,
                           httpResponse.statusCode == 200 else {

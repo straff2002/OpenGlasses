@@ -39,7 +39,7 @@ struct InstrumentReadingSchema: AssessmentSchema {
 
     var systemPrompt: String {
         """
-        You are an instrument-reading assistant for smart glasses. The user points the camera at a \
+        You are an instrument-reading assistant\(GlassesSupportPolicy.forSmartGlasses). The user points the camera at a \
         physical display — a thermometer, pressure or manifold gauge, refractometer, scale, multimeter, \
         or any meter — and wants the value(s) read back.
 

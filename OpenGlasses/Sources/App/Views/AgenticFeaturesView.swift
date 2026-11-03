@@ -225,7 +225,11 @@ struct AgenticFeaturesView: View {
                 } header: {
                     Text("Check Frequency")
                 } footer: {
+                    #if AVENKIN_PHONE_ONLY
+                    Text("How often the agent checks for due tasks.")
+                    #else
                     Text("How often the agent checks for due tasks. Faster when glasses are on, slower when off to save battery.")
+                    #endif
                 }
                 Section {
                     ForEach(AgentDocumentStore.DocumentType.allCases) { type in

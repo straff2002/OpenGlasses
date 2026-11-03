@@ -1,0 +1,21 @@
+Avenkin is a phone/tablet AI assistant. No smart glasses or other external hardware are required.
+
+PHONE-ONLY BUILD
+This submission is compiled phone-only: Meta Wearables SDK products, registration/callback code, accessory protocols, glasses background modes, hardware-only capture intents and the silent media-button standby player are excluded. Receipts, remote configuration and organisation licences cannot enable glasses. The separately numbered glasses-beta TestFlight build is a different binary and is not the build selected for this submission.
+
+GETTING STARTED
+No Avenkin account or app sign-in is required. Complete onboarding and choose an AI model in Settings. Apple Intelligence can be used on supported devices with it enabled; compatible downloaded local models are another option. Cloud providers and self-hosted services are optional and use the user's own credentials. Tap Type to ask a question, or allow microphone access and use Tap & Talk. Optional permissions can be declined. Phone-camera features work without glasses.
+
+AI SHARING PERMISSION
+Before sending content, the app requests approval for the actual service address and purpose: conversation processing, transcription, spoken replies, live voice/camera or web search. It asks when a key is saved or a model chosen, and at first use if unanswered; Not now keeps the key and sends nothing. Settings > Devices & Privacy > Cloud AI Sharing lists each configured service with Allow and Withdraw. A new destination or purpose needs separate approval. Withdrawal cancels current transfers and blocks later sends; a storage failure is reported. Unapproved background requests refuse, say why, and ask when the app is next opened. On-device engines and system voices do not need these approvals. Auto voice uses only previously approved cloud voices.
+
+MY MANUALS - PERSONAL SUBSCRIPTION
+Settings > My Manuals > Upload manual > Choose PDF, Word or Markdown. File selection and preview are available before purchase; saving/indexing and cited questions require Personal access. Photograph pages is also supported. Import the original fictional Markdown manuals in the review kit, select them for a conversation, ask about their reference cards, open a citation, then delete a manual. No manufacturer workshop PDF is bundled. New purchases offer com.openglasses.my_manuals_monthly (one month). Restore purchases restores verified access. Personal does not unlock Field Assist.
+
+FIELD ASSIST
+Settings > Field Assist shows reference previews and the paywall. New solo purchases offer com.openglasses.field_assist_monthly. Verified annual and retired one-time purchases remain restorable. Organisation-only features use existing signed licence codes or activation keys; an activation key needs an online lookup. The licence field contains no consumer external-purchase link. Field Assist does not unlock Personal manuals. Prices, periods and eligible offers appear in StoreKit purchase sheets.
+
+MEDICAL AND OTHER FEATURES
+Settings > Devices & Privacy > Medical Compliance offers com.openglasses.medical_compliance_monthly and com.openglasses.medical_compliance_annual. It adds clinical privacy/retention controls and export formats, not certification of legal compliance or clinical accuracy. Use fictional records for testing.
+
+The consumer app also includes first-aid coaching, advisory camera triage, medication tools and a clinical persona. AI answers require checking and must not replace emergency services or professional judgement. User-configured agent gateways, MCP servers, skill/reference packs and workflows are available under Connections and Tools & Actions. Tool actions retain permission/confirmation checks. Phone listening uses microphone audio and has stop controls. Calendar, Reminders, Contacts, Home, Music and Shortcuts use Apple frameworks; tool support varies by AI model.

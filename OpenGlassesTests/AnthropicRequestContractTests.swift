@@ -34,6 +34,7 @@ final class AnthropicRequestContractTests: XCTestCase {
 
     private func service() -> LLMService {
         let s = LLMService()
+        s.processingConsent = CloudConsentFixture.conversation()
         let session = RecordingQueueProtocol.session()
         s.streamingSession = session
         s.dataSession = session

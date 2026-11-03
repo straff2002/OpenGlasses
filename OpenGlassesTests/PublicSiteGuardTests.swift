@@ -92,7 +92,10 @@ final class PublicSiteGuardTests: XCTestCase {
     }
 
     func testNoSourceFileWritesAnOldPublicAddress() throws {
-        let sourcesRoot = Self.repoRoot.appendingPathComponent("OpenGlasses/Sources")
+        // The compiler and directory enumerator can spell the same macOS temporary worktree
+        // as /tmp or /private/tmp. Normalize both before matching the path-specific allowlist.
+        let root = Self.repoRoot.resolvingSymlinksInPath()
+        let sourcesRoot = root.appendingPathComponent("OpenGlasses/Sources")
         guard let enumerator = FileManager.default.enumerator(
             at: sourcesRoot, includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]) else {
@@ -105,7 +108,7 @@ final class PublicSiteGuardTests: XCTestCase {
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
                   let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
             scanned += 1
-            let relative = String(url.path.dropFirst(Self.repoRoot.path.count + 1))
+            let relative = String(url.resolvingSymlinksInPath().path.dropFirst(root.path.count + 1))
             for (index, line) in text.components(separatedBy: "\n").enumerated() {
                 guard Self.forbidden.contains(where: { line.contains($0) }) else { continue }
                 if Self.isComment(line) { continue }

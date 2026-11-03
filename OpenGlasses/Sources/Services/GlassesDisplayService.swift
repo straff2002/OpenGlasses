@@ -53,6 +53,7 @@ final class GlassesDisplayService: ObservableObject {
 
     // MARK: - Backends (Plan AH)
 
+    #if !AVENKIN_PHONE_ONLY
     private lazy var metaBackend: MetaDisplayBackend = {
         let backend = MetaDisplayBackend()
         wire(backend)
@@ -74,6 +75,10 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
+    #else
+    private let activeBackend: GlassesDisplayBackend = UnsupportedGlassesDisplayBackend()
+    #endif
+
     private func wire(_ backend: GlassesDisplayBackend) {
         backend.onItemSelected = { [weak self] id in
             self?.screenSelectionHandler?(id)
@@ -81,9 +86,11 @@ final class GlassesDisplayService: ObservableObject {
         backend.onTransportError = { [weak self] error in
             self?.handleRenderError(error)
         }
+        #if !AVENKIN_PHONE_ONLY
         if let meta = backend as? MetaDisplayBackend {
             meta.onDebugEvent = { [weak self] message in self?.onDebugEvent?(message) }
         }
+        #endif
     }
 
     /// Latest-wins render queue. Rapid updates collapse to the most recent frame so we
@@ -139,7 +146,9 @@ final class GlassesDisplayService: ObservableObject {
     /// safe to call frequently. Updates `hasDisplayCapability` as a side effect.
     @discardableResult
     func deviceSupportsDisplay() -> Bool {
-        let supported = testCapabilityOverride ?? activeBackend.isAvailable
+        // The Meta bootstrap cannot protect the separate EVEN BLE backend. A saved backend and
+        // pairing from TestFlight must not start a glasses transport after an App Store upgrade.
+        let supported = GlassesSupportPolicy.isSupported && (testCapabilityOverride ?? activeBackend.isAvailable)
         if hasDisplayCapability != supported { hasDisplayCapability = supported }
         return supported
     }
@@ -334,7 +343,11 @@ final class GlassesDisplayService: ObservableObject {
     /// rendered tree, in order, so a test can simulate Neural-Band selections without
     /// importing the SDK. Each fires exactly the routing the real button would.
     func testInteractiveButtonActions(for screen: HUDScreen) -> [() -> Void] {
-        metaBackend.testButtonActions(for: screen)
+        #if !AVENKIN_PHONE_ONLY
+        return metaBackend.testButtonActions(for: screen)
+        #else
+        return screen.items.map { item in { [weak self] in self?.screenSelectionHandler?(item.id) } }
+        #endif
     }
 
     private func handleRenderError(_ error: Error) {
@@ -358,7 +371,11 @@ enum GlassesDisplayError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        #if AVENKIN_PHONE_ONLY
+        case .noDisplay: return "No display is available"
+        #else
         case .noDisplay: return "Connected glasses have no in-lens display"
+        #endif
         case .sessionUnavailable: return "Display session unavailable"
         }
     }

@@ -9,7 +9,7 @@ import NaturalLanguage
 /// user's device language, includes a note so the LLM can auto-translate.
 final class DocumentScanTool: NativeTool, @unchecked Sendable {
     let name = "scan_document"
-    let description = "Scan a document or text visible through the camera (the glasses when connected, otherwise the phone). Captures a photo, extracts text via OCR, detects the language, and returns it. Auto-flags foreign text for translation. Use when the user says 'read this', 'scan this document', 'what does this say', or 'extract text'."
+    let description = "Scan a document or text visible through the camera (\(GlassesSupportPolicy.toolCameraSource)). Captures a photo, extracts text via OCR, detects the language, and returns it. Auto-flags foreign text for translation. Use when the user says 'read this', 'scan this document', 'what does this say', or 'extract text'."
 
     let parametersSchema: [String: Any] = [
         "type": "object",

@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
 import AVFoundation
 import AppIntents
 import UIKit
@@ -48,6 +50,7 @@ func privacyAction(for url: URL) -> PrivacyToken? {
     }
 }
 
+#if !AVENKIN_PHONE_ONLY
 private func processWearablesCallbackURL(_ url: URL, source: String) {
     let sourceToken = PrivacyToken(source)
     PrivacyLog.deepLink(route: .wearablesCallback, source: sourceToken, verdict: .received)
@@ -84,6 +87,11 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
         }
     }
 }
+#else
+private func processWearablesCallbackURL(_ url: URL, source: String) {
+    return
+}
+#endif
 
 final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
@@ -391,6 +399,9 @@ struct OpenGlassesApp: App {
                         .transition(.opacity)
                         .zIndex(999)
                 }
+            }
+            .overlay {
+                if !isHipaaLocked { CloudProcessingConsentOverlay() }
             }
             // Also once at launch, in case the first activation came before this view; idempotent.
             .task {
@@ -711,7 +722,7 @@ struct OpenGlassesApp: App {
                         try? await Task.sleep(nanoseconds: 1_500_000_000)
 
                         guard WearablesBootstrap.ensureConfigured() else { return }
-                        let state = Wearables.shared.registrationState
+                        let state = WearablesBootstrap.registrationSnapshot
                         if state.rawValue < 3 {
                             PrivacyLog.device(.glasses, .registrationDropped, state: PrivacyToken(String(state.rawValue)))
                         }
@@ -755,6 +766,7 @@ struct OpenGlassesApp: App {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     private func configureWearables() {
         PrivacyLog.app(.loggingActive)
         // Single owner of configure(); safe to call more than once.
@@ -763,7 +775,7 @@ struct OpenGlassesApp: App {
             return
         }
         PrivacyLog.app(.sdkConfigured)
-        let state = Wearables.shared.registrationState
+        let state = WearablesBootstrap.registrationSnapshot
         PrivacyLog.device(.glasses, .registrationState,
                           state: PrivacyToken(String(state.rawValue)))
 
@@ -783,6 +795,11 @@ struct OpenGlassesApp: App {
             PrivacyLog.device(.sdk, .configProblem, state: PrivacyToken.caseName(of: status))
         }
     }
+    #else
+    private func configureWearables() {
+        return
+    }
+    #endif
 }
 
 /// Global application state
@@ -1138,12 +1155,18 @@ class AppState: ObservableObject, AppStateProtocol {
         // The service's own reading, not `Wearables.shared`: with the SDK unconfigured the latter
         // traps, and that is one of the failures this message exists to report.
         let reachability = glassesService.reachability
+        #if AVENKIN_PHONE_ONLY
+        errorMessage = GlassesSupportPolicy.unavailableReason()
+        errorMessageIsGlassesConnection = true
+        addDebugEvent("connectGlasses gave up: \(reachability.diagnosis)")
+        #else
         let configStatus = MWDATConfigCheck.validate(
             Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
         errorMessage = RegistrationFlow.connectFailureMessage(reachability: reachability,
                                                               configStatus: configStatus)
         errorMessageIsGlassesConnection = true
         addDebugEvent("connectGlasses gave up: \(reachability.diagnosis), config=\(configStatus)")
+        #endif
     }
 
     /// The wearer's glasses connect (`connectGlasses()`) is under way — the session card shows its
@@ -2564,16 +2587,22 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Internal rather than private since Plan FF P1/PR3: the Blind Assistant launch gate needs
     /// the same settle wait the wake-word auto-start does, and two copies of a 20 s timeout is how
     /// they drift apart.
+    #if !AVENKIN_PHONE_ONLY
     func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
         guard WearablesBootstrap.ensureConfigured() else { return 0 }
         let waitStart = ContinuousClock.now
         while true {
-            let state = Wearables.shared.registrationState.rawValue
+            let state = WearablesBootstrap.registrationSnapshot.rawValue
             if state >= minState { return state }
             if ContinuousClock.now - waitStart > .seconds(timeoutSeconds) { return state }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
     }
+    #else
+    func waitForRegistration(minState: Int, timeoutSeconds: Double) async -> Int {
+        return 0
+    }
+    #endif
 
     init() {
         let sharedEventKitStore = EventKitDayStore()
@@ -3648,12 +3677,14 @@ class AppState: ObservableObject, AppStateProtocol {
         hermesBridge.photoProvider = { [weak self] in
             guard let self, self.isConnected else {
                 throw NSError(domain: "HermesBridge", code: 3,
-                              userInfo: [NSLocalizedDescriptionKey: "Glasses camera unavailable"])
+                              userInfo: [NSLocalizedDescriptionKey: GlassesSupportPolicy.isSupported
+                                ? "Glasses camera unavailable" : "Camera unavailable"])
             }
             let still = await self.cameraService.filteredStill(for: .agentAttachment, source: .photoOnly)
             guard let jpeg = still.jpegData(compressionQuality: 0.85) else {
                 throw NSError(domain: "HermesBridge", code: 4,
-                              userInfo: [NSLocalizedDescriptionKey: "Glasses picture unavailable"])
+                              userInfo: [NSLocalizedDescriptionKey: GlassesSupportPolicy.isSupported
+                                ? "Glasses picture unavailable" : "Camera picture unavailable"])
             }
             return jpeg
         }
@@ -4965,6 +4996,7 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
+        #if !AVENKIN_PHONE_ONLY
         // Every SDK access below traps if configure() never succeeded. Registration stays at 0 and
         // the UI shows the unregistered state, which is the honest outcome.
         guard WearablesBootstrap.ensureConfigured() else {
@@ -4995,13 +5027,14 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(regToken)
 
         // Check initial state
-        let initialState = Wearables.shared.registrationState
+        let initialState = WearablesBootstrap.registrationSnapshot
         PrivacyLog.device(.glasses, .registrationState, state: PrivacyToken(String(initialState.rawValue)))
         addDebugEvent("Initial registration state: \(initialState.rawValue)")
         registrationStateRaw = initialState.rawValue
         if initialState.rawValue >= 3 {
             PrivacyLog.device(.glasses, .alreadyRegistered)
         }
+        #endif
     }
 
     /// Observe SDK registration state on launch.
@@ -5012,6 +5045,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Launch never asks for it: `glassesService` reads the camera permission when registration
     /// lands (`checkCameraPermission()`), and a missing one shows as "camera access needed" with
     /// a button, instead of throwing a registered wearer into the Meta AI app at every launch.
+    #if !AVENKIN_PHONE_ONLY
     private func autoConnectGlasses() {
         Task {
             // Small delay to let SDK initialize
@@ -5020,7 +5054,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.addDebugEvent("Wearables SDK unavailable — skipping launch state check")
                 return
             }
-            let state = Wearables.shared.registrationState
+            let state = WearablesBootstrap.registrationSnapshot
             self.registrationStateRaw = state.rawValue
             self.addDebugEvent("Launch state check: state=\(state.rawValue)")
 
@@ -5030,7 +5064,7 @@ class AppState: ObservableObject, AppStateProtocol {
             } else {
                 // Wait briefly for SDK to auto-reconnect via Bluetooth
                 try? await Task.sleep(nanoseconds: 3_000_000_000)  // 3s
-                let settledState = Wearables.shared.registrationState
+                let settledState = WearablesBootstrap.registrationSnapshot
                 self.registrationStateRaw = settledState.rawValue
                 if settledState.rawValue >= 3 {
                     self.addDebugEvent("SDK auto-reconnected to state \(settledState.rawValue)")
@@ -5040,6 +5074,11 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
     }
+    #else
+    private func autoConnectGlasses() {
+        return
+    }
+    #endif
 
     /// Auto-start wake word listener on app launch (don't wait for "Connect" or "Test Mic")
     private func autoStartListening() {
@@ -6240,7 +6279,7 @@ class AppState: ObservableObject, AppStateProtocol {
             var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
             // A phone-camera capture must SAY so — the phone sees the desk, not what the
             // glasses are pointed at, and an unannounced camera swap reads as hallucination.
-            if cameraService.lastCaptureSource == .phone {
+            if GlassesSupportPolicy.isSupported, cameraService.lastCaptureSource == .phone {
                 response = "From the phone camera — the glasses weren't available. " + response
             }
             lastResponse = response
@@ -6454,6 +6493,10 @@ class AppState: ObservableObject, AppStateProtocol {
             broadcastService.leavePhoneCamera()
             tellWearerAboutBroadcast(BroadcastGoLive.insetDroppedMessage)
         case .moveToGlasses:
+            #if AVENKIN_PHONE_ONLY
+            // Nothing to move to: the stream ends, like a phone stream with no glasses connected.
+            endBroadcast(.blurNeedsGlasses)
+            #else
             // The phone comes off first, so nothing unblurred goes out while the glasses start.
             broadcastService.leavePhoneCamera()
             tellWearerAboutBroadcast(BroadcastGoLive.movedToGlassesMessage)
@@ -6462,6 +6505,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard !picture, self.broadcastService.isBroadcasting else { return }
                 self.endBroadcast(.glassesGaveNoPicture)
             }
+            #endif
         case .end(let reason):
             endBroadcast(reason)
         }
@@ -6542,7 +6586,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let decision = BroadcastGoLive.decideForIntent(.init(
             isBroadcasting: broadcastService.isBroadcasting,
             isConfigured: Config.isBroadcastConfigured,
-            preferredSource: BroadcastVideoSource(rawValue: Config.broadcastDefaultSource) ?? .glasses,
+            preferredSource: BroadcastVideoSource.resolved(Config.broadcastDefaultSource),
             glassesConnected: isConnected,
             faceBlurOn: privacyFilter.isEnabled,
             phoneCameraDenied: camera == .denied || camera == .restricted,
@@ -7333,7 +7377,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         postProcess: { rawResponse in
                             var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: self.conversationStore.activeThreadId) : rawResponse
                             // Phone-camera captures must announce themselves (see captureAndAnalyzePhoto).
-                            if self.cameraService.lastCaptureSource == .phone {
+                            if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                                 response = "From the phone camera — the glasses weren't available. " + response
                             }
                             return response
@@ -8111,6 +8155,10 @@ class AppState: ObservableObject, AppStateProtocol {
                             return bridged
                         } catch is CancellationError {
                             throw CancellationError()
+                        } catch let refusal as CloudProcessingRefusal {
+                            // Unlike a fault, this must not fall through: the person hasn't agreed
+                            // to Hermes, and hasn't agreed to their turn going elsewhere instead.
+                            throw refusal
                         } catch {
                             addDebugEvent("Hermes failed (\(error.localizedDescription)) — using normal path")
                         }
@@ -8212,11 +8260,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // BK P2c: when the cascade is exhausted, speak the real reason instead of the
                     // generic line (e.g. "the last one was rate-limited"), so the app stays honest
                     // about what happened. Off ⇒ the generic line.
-                    let spoken = Config.narrateModelSwitchesEnabled
-                        ? ModelSwitchNarrator.exhaustionPhrase(
-                            lastError: error, gap: llmService.credentialGap(behind: error))
-                        : "Sorry, I encountered an error."
-                    await speechService.speak(spoken)
+                    await speechService.speak(ModelSwitchNarrator.failureLine(
+                        error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
@@ -8459,13 +8504,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     _ = nativeToolRouter.takeTurnToolNames()
                     streamingTurn = nil
                     errorMessage = String(localized: "Failed to get response: \(error.localizedDescription)")
+                    // Siri and the Watch read this back. Left alone, it's the previous answer.
+                    lastResponse = ModelSwitchNarrator.exhaustionPhrase(
+                        lastError: error, gap: llmService.credentialGap(behind: error))
                     if speakResponse {
                         // BK P2c: speak the real exhaustion reason, not the generic line.
-                        let spoken = Config.narrateModelSwitchesEnabled
-                            ? ModelSwitchNarrator.exhaustionPhrase(
-                                lastError: error, gap: llmService.credentialGap(behind: error))
-                            : "Sorry, I encountered an error."
-                        await speechService.speak(spoken)
+                        await speechService.speak(ModelSwitchNarrator.failureLine(
+                            error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
                     }
                 },
                 finish: { [self] in
@@ -8726,7 +8771,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // if the fallback fired, the wearer just had their phone's view — of whatever
                 // pocket or desk it was on — sent off at a remote agent's request, and only
                 // this correction tells them.
-                if self.cameraService.lastCaptureSource == .phone {
+                if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                     await self.speechService.speak(
                         "That photo came from the phone camera — the glasses weren't available.")
                 }

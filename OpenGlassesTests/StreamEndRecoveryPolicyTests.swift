@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
 import MWDATCore
 import XCTest
@@ -341,3 +342,5 @@ final class StreamEndRecoveryPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("StreamReconnectPolicy.next("))
     }
 }
+
+#endif

@@ -128,6 +128,7 @@ class GeminiLiveService: ObservableObject {
 
     // WebSocket
     private var webSocketTask: URLSessionWebSocketTask?
+    private var authorizationTask: Task<Void, Error>?
     private var receiveTask: Task<Void, Never>?
     private var connectContinuation: CheckedContinuation<Bool, Never>?
     private var delegate = RealtimeWebSocketTransport()
@@ -196,6 +197,7 @@ class GeminiLiveService: ObservableObject {
         // then drives — the ladder, the handle bookkeeping, the callbacks — is the production path.
         if scriptedTransportEnabled { return await runScriptedConnect() }
         let gen = generationGate.advance()
+        authorizationTask?.cancel(); authorizationTask = nil
         resolveConnect(success: false)
         receiveTask?.cancel(); receiveTask = nil
         webSocketTask?.cancel(with: .goingAway, reason: nil); webSocketTask = nil
@@ -225,6 +227,19 @@ class GeminiLiveService: ObservableObject {
         setupCarriedResumptionHandle = false
         delegate.cancel()
         delegate = RealtimeWebSocketTransport()
+        let authorizingDelegate = delegate
+        let approval = Task { try await authorizingDelegate.authorize(request) }
+        authorizationTask = approval
+        do { try await withTaskCancellationHandler { try await approval.value } onCancel: { approval.cancel() } }
+        catch {
+            authorizingDelegate.cancel()
+            guard generationGate.isCurrent(gen) else { return false }
+            authorizationTask = nil
+            connectionState = .error(error.localizedDescription)
+            return false
+        }
+        guard generationGate.isCurrent(gen), !Task.isCancelled else { authorizingDelegate.cancel(); return false }
+        authorizationTask = nil
         connectionState = .connecting
 
         let result = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
@@ -269,7 +284,8 @@ class GeminiLiveService: ObservableObject {
                 }
             }
 
-            self.webSocketTask = self.delegate.webSocketTask(with: request)
+            do { self.webSocketTask = try self.delegate.webSocketTask(with: request) }
+            catch { self.connectionState = .error(error.localizedDescription); self.resolveConnect(success: false); return }
             self.webSocketTask?.resume()
 
             // Timeout after 15 seconds. Stored + cancelled on resolve so a stale timer from a
@@ -455,6 +471,7 @@ class GeminiLiveService: ObservableObject {
     }
 
     func disconnect() {
+        authorizationTask?.cancel(); authorizationTask = nil
         intentionalDisconnect = true
         resumptionHandle = nil   // CJ item 7: a deliberate teardown must not resume later
         _ = generationGate.advance()   // BR P3: outstanding callbacks are stale from here

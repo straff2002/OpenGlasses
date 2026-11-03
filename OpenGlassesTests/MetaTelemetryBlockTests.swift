@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 @testable import OpenGlasses
 
@@ -144,3 +145,4 @@ final class MetaTelemetryBlockTests: XCTestCase {
         XCTAssertTrue(state.crashReporting, "MWDAT/CrashReporting/OptOut must be YES in the app's Info.plist")
     }
 }
+#endif

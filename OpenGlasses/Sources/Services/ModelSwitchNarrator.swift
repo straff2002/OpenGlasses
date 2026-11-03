@@ -64,7 +64,29 @@ enum ModelSwitchNarrator {
 
     /// Spoken instead of the generic error line when the whole chain is exhausted — the real reason.
     static func exhaustionPhrase(lastError: Error, gap: CredentialGap? = nil) -> String {
-        "I couldn't get a response — \(exhaustionReason(lastError: lastError, gap: gap))."
+        if let refusal = permissionLine(lastError) { return refusal }
+        return "I couldn't get a response — \(exhaustionReason(lastError: lastError, gap: gap))."
+    }
+
+    /// A service the person hasn't allowed isn't a failure to wait out, and only they can fix it,
+    /// so this is said whatever the narration setting: a generic error line would leave them stuck.
+    static func permissionLine(_ error: Error) -> String? {
+        switch error as? CloudProcessingRefusal {
+        case .permissionRequired:
+            return "I need your permission to use this service. Open Avenkin and allow it, then ask me again."
+        case .withdrawn:
+            return "Sharing with this service is turned off. You can turn it back on in Avenkin, under Cloud AI Sharing."
+        case .unavailable:
+            return "Sharing permissions aren't available right now, so nothing was sent."
+        case .invalidDestination, nil:
+            return nil
+        }
+    }
+
+    /// What a failed turn says: the real reason, or the generic line with narration off.
+    static func failureLine(_ error: Error, narrate: Bool, gap: CredentialGap? = nil) -> String {
+        if let refusal = permissionLine(error) { return refusal }
+        return narrate ? exhaustionPhrase(lastError: error, gap: gap) : "Sorry, I encountered an error."
     }
 
     /// The reason half of `exhaustionPhrase`, for a caller that frames it itself (a photo turn

@@ -7,19 +7,28 @@ import Vision
 /// and HealthKit workout logging. Uses Vision pose estimation when camera frames are available.
 struct FitnessCoachingTool: NativeTool {
     let name = "fitness_coach"
+    #if AVENKIN_PHONE_ONLY
+    let description = "Fitness coaching: start/stop workout tracking, log exercises, get rep counts, and view workout history from HealthKit."
+    #else
     let description = "Fitness coaching: start/stop workout tracking, log exercises, get rep counts, check form via camera, and view workout history from HealthKit."
+    #endif
 
     /// Latest camera frame, for `check_form` (BK P6). Wired to `CameraService` in production; a
     /// test injects a fake frame. `nil` (unset / no frame) ⇒ honest "no camera view" guidance
     /// instead of the old hardcoded deflection that never ran the built `PoseAnalyzer`.
     var frameProvider: (@MainActor () -> UIImage?)?
+    #if AVENKIN_PHONE_ONLY
+    private static let actions = ["start_workout", "stop_workout", "log_exercise", "workout_history", "step_goal"]
+    #else
+    private static let actions = ["start_workout", "stop_workout", "log_exercise", "check_form", "workout_history", "step_goal"]
+    #endif
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "action": [
                 "type": "string",
-                "description": "Action: start_workout, stop_workout, log_exercise, check_form, workout_history, step_goal",
-                "enum": ["start_workout", "stop_workout", "log_exercise", "check_form", "workout_history", "step_goal"]
+                "description": "Action: \(Self.actions.joined(separator: ", "))",
+                "enum": Self.actions
             ],
             "workout_type": [
                 "type": "string",
@@ -170,7 +179,11 @@ struct FitnessCoachingTool: NativeTool {
         let exercise = (args["exercise"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "your exercise"
         // `frameProvider` is `@MainActor`; on the main actor this is a plain call (no await).
         guard let frame = frameProvider?() else {
+            #if AVENKIN_PHONE_ONLY
+            return "Form checks aren't available in this version."
+            #else
             return "To check your form, make sure the glasses camera can see you doing \(exercise), then ask again."
+            #endif
         }
         return PoseAnalyzer.analyzeForm(image: frame, exercise: exercise)
     }

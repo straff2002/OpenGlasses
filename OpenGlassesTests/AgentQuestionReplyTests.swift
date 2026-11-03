@@ -76,7 +76,7 @@ final class AgentQuestionReplyTests: XCTestCase {
     }
 
     private func harness(_ config: CustomHarnessConfig) -> CustomAgentHarness {
-        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session())
+        var harness = CustomAgentHarness(config: config, session: MockURLProtocol.session(), processingConsent: CloudConsentFixture.conversation(origins: ["https://agent.test", "https://first.test", "https://second.test"]))
         harness.policy = policy
         harness.sleeper = { _ in }
         return harness

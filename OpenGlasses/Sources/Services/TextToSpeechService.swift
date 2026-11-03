@@ -509,7 +509,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func currentSuppression() -> SpeechDeliveryOutcome.SuppressionReason? {
         if let suppressionCheck { return suppressionCheck() }
         if routeHeld?() == true { return .routeHeld }
-        return Config.glassesOnlyAudio && !glassesConnected ? .noRoute : nil
+        return Config.glassesOnlyAudio && GlassesSupportPolicy.isSupported && !glassesConnected ? .noRoute : nil
     }
 
     /// Record one engine signal against the utterance the callbacks belong to.
@@ -588,6 +588,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 PrivacyLog.tts(.cancelled)
                 deliveryLedger.record(.cancelledMidChain, for: gen, liveGeneration: speechGeneration)
                 return
+            } catch is CloudProcessingRefusal {
+                guard !Task.isCancelled, gen == speechGeneration else { return }
+                // Refusing one recipient must not prompt or transmit to another cloud voice.
+                TurnRecorder.noteSpeechEngine(.system)
+                await speakWithiOS(text: text)
+                return
             } catch {
                 // Only advance to the next engine if we weren't cancelled AND this is still current.
                 guard !Task.isCancelled, gen == speechGeneration else {
@@ -638,7 +644,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let medicalMode = MedicalEgressGuard.currentMode()
         let savedModels = Config.savedModels
         func ready(_ engine: TTSEngine, hasCredential: Bool) -> Bool {
-            TTSEngineSelector.cloudVoiceReady(engine, hasCredential: hasCredential,
+            let origins: [TTSEngine: String] = [.elevenLabs: "https://api.elevenlabs.io", .openAI: "https://api.openai.com",
+                                                .xai: "https://api.x.ai", .gemini: "https://generativelanguage.googleapis.com"]
+            if Config.ttsEnginePreference.rawValue != engine.rawValue, let origin = origins[engine], let url = URL(string: origin),
+               !CloudProcessingConsent.shared.hasApproval(url: url, scope: .speechOutput) { return false }
+            return TTSEngineSelector.cloudVoiceReady(engine, hasCredential: hasCredential,
                                               quotaExhausted: quotaExhausted.contains(engine)
                                                   || modelUnavailable.contains(engine),
                                               onDeviceOnly: onDeviceOnly, online: online,
@@ -1233,7 +1243,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         PrivacyLog.tts(.requested, engine: PrivacyToken("elevenLabs"), characters: text.count)
         let startTime = Date()
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
         return try cloudVoiceAudio(engine: .elevenLabs, data: data, response: response,
                                    startedAt: startTime)
     }
@@ -1260,7 +1270,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                                           voice: Config.openAITTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.openAI.rawValue), characters: text.count)
         let startTime = Date()
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
         return try cloudVoiceAudio(engine: .openAI, data: data, response: response, startedAt: startTime)
     }
 
@@ -1279,7 +1289,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                                        voice: Config.xaiTTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.xai.rawValue), characters: text.count)
         let startTime = Date()
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
         return try cloudVoiceAudio(engine: .xai, data: data, response: response, startedAt: startTime)
     }
 
@@ -1302,7 +1312,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                                                           voice: Config.geminiTTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.gemini.rawValue), characters: text.count)
         let startTime = Date()
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
         let answer = try cloudVoiceAudio(engine: .gemini, data: data, response: response, startedAt: startTime)
         do {
             return try GeminiSpeechAudio.playableAudio(from: answer)
@@ -1738,6 +1748,8 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
         case .elevenLabs, .openAI, .xai, .gemini:
             do {
                 return .audio(try await fetchCloudAudio(spoken, engine: engine))
+            } catch is CloudProcessingRefusal {
+                return .live
             } catch let rejected as CloudVoiceRequestRejected {
                 // Same handling as the one-shot chain: the first rejection of each kind reaches the
                 // screen, and the one-off spoken notice rides on the sentence the next engine says.
@@ -1822,6 +1834,7 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
                     await self.speakWithiOS(text: spoken)
                 }
             case .live:
+                TurnRecorder.noteSpeechEngine(.system)
                 await self.speakWithiOS(text: spoken)
             }
         }

@@ -1,6 +1,9 @@
+#if !AVENKIN_PHONE_ONLY
 import Foundation
 import CoreMedia
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
+#endif
 import UIKit
 
 /// Plan EO P1 — the off-main half of the glasses frame path.
@@ -183,3 +186,5 @@ final class GlassesFramePipeline: @unchecked Sendable {
                           detail: PrivacyToken(PixelBufferImageConverter.name(ofFormat: format)))
     }
 }
+
+#endif

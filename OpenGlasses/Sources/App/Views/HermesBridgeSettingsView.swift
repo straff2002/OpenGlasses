@@ -44,7 +44,11 @@ struct HermesBridgeSettingsView: View {
                     applyConnectionState()
                 }
             } footer: {
+                #if AVENKIN_PHONE_ONLY
+                Text("API server talks to Hermes Agent's built-in API server directly. Bridge script talks to the bridge script, a separate program run beside Hermes.")
+                #else
                 Text("API server talks to Hermes Agent's built-in API server directly. Bridge script talks to the glasses bridge script, a separate program run beside Hermes.")
+                #endif
             }
 
             switch kind {
@@ -105,7 +109,11 @@ struct HermesBridgeSettingsView: View {
         } header: {
             Text("Hermes API server")
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("On the Hermes machine, set API_SERVER_ENABLED=true and an API_SERVER_KEY (enter the same key here), and set API_SERVER_HOST=0.0.0.0 so the phone can reach it — by default the server only listens on that machine. The default port is 8642. When a question needs eyes, one camera picture goes with it, through the same privacy filter as every picture the app sends.")
+            #else
             Text("On the Hermes machine, set API_SERVER_ENABLED=true and an API_SERVER_KEY (enter the same key here), and set API_SERVER_HOST=0.0.0.0 so the phone can reach it — by default the server only listens on that machine. The default port is 8642. When a question needs eyes, one glasses picture goes with it, through the same privacy filter as every picture the app sends.")
+            #endif
         }
     }
 
@@ -120,9 +128,17 @@ struct HermesBridgeSettingsView: View {
             SecretInputField(placeholder: String(localized: "Bridge token (optional)"), text: $token)
                 .onChange(of: token) { _, value in Config.setHermesBridgeToken(value) }
         } header: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Bridge script")
+            #else
             Text("Glasses bridge script")
+            #endif
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Run the bridge script (hermes_bridge.py) beside Hermes; it prints its address and port when it starts, 8765 by default. The bridge token is the script's HERMES_BRIDGE_TOKEN, not an API key — leave it empty unless the script was started with one.")
+            #else
             Text("Run the glasses bridge script (hermes_bridge.py) beside Hermes; it prints its address and port when it starts, 8765 by default. It asks for a glasses picture when a question needs eyes. The bridge token is the script's HERMES_BRIDGE_TOKEN, not an API key — leave it empty unless the script was started with one.")
+            #endif
         }
     }
 
@@ -176,7 +192,11 @@ struct HermesBridgeSettingsView: View {
         case .apiServer:
             return String(localized: "Port 8642 is where Hermes's API server listens. If that's what you set up, switch Connection to API server.")
         case .bridgeScript:
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "Port 8765 is where the bridge script listens. If that's what you set up, switch Connection to Bridge script.")
+            #else
             return String(localized: "Port 8765 is where the glasses bridge script listens. If that's what you set up, switch Connection to Bridge script.")
+            #endif
         }
     }
 

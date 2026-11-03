@@ -1,8 +1,13 @@
+#if !AVENKIN_PHONE_ONLY
 import AVFoundation
 import Combine
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCamera
+#endif
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
+#endif
 import UIKit
 
 /// Plan CQ P1 — the Meta/DAT camera, extracted out of `CameraService` behind
@@ -2005,3 +2010,5 @@ final class MetaCameraBackend: GlassesCameraBackend {
         PrivacyLog.camera(.glasses, .tornDown)
     }
 }
+
+#endif

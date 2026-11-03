@@ -5,7 +5,7 @@ import Foundation
 struct AudioRecordingTool: NativeTool {
     let name = "audio_recording"
     let description = """
-        Start or stop audio-only recording from the glasses/phone microphone. \
+        Start or stop audio-only recording from the \(GlassesSupportPolicy.toolMicrophoneSource) microphone. \
         Saves an .m4a file to Documents/Recordings with live transcription running alongside. \
         The meeting assistant summarises the transcript and suggests questions every 60 seconds \
         via lock screen notifications. \

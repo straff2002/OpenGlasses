@@ -172,9 +172,15 @@ struct MusicSettingsView: View {
 
     private var otherAppsSection: some View {
         Section {
+            #if AVENKIN_PHONE_ONLY
+            Text("Avenkin can't control Spotify or other music apps directly. A Home Assistant speaker can be your music provider.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            #else
             Text("Avenkin can't control Spotify or other music apps directly. Your glasses' temple controls still work on whatever's playing, and a Home Assistant speaker can be your music provider.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            #endif
         } header: {
             Text("Other Music Apps")
         }

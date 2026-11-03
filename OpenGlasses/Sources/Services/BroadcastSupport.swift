@@ -55,6 +55,23 @@ enum BroadcastVideoSource: String, CaseIterable, Codable {
 
     var isPhone: Bool { self != .glasses }
 
+    /// The cameras this build can stream from: what the Camera picker and the mid-stream menu
+    /// offer. Choosing glasses in a build that has none would put a black picture on air with the
+    /// microphone open.
+    static var available: [BroadcastVideoSource] {
+        GlassesSupportPolicy.isSupported ? allCases : allCases.filter(\.isPhone)
+    }
+
+    /// Live Streaming's Camera setting, as a camera this build has. Nothing saved, a value this
+    /// build does not know and, in a phone-only build, a `glasses` saved by a beta all land on the
+    /// first available camera.
+    static func resolved(_ stored: String?) -> BroadcastVideoSource {
+        if let stored, let source = BroadcastVideoSource(rawValue: stored), available.contains(source) {
+            return source
+        }
+        return available[0]
+    }
+
     var phonePosition: AVCaptureDevice.Position? {
         switch self {
         case .glasses: return nil
@@ -196,10 +213,15 @@ enum BroadcastGoLive {
             return medicalComplianceMessage
         case .phoneCameraNotBlurred(.inset):
             return String(localized: "I can't go live. Blur Bystander Faces is on, and Dual Capture would put the phone camera on the stream.")
+        #if AVENKIN_PHONE_ONLY
+        case .phoneCameraNotBlurred:
+            return String(localized: "I can't go live. Blur Bystander Faces doesn't cover the phone camera, so Go Live is off while it's on.")
+        #else
         case .phoneCameraNotBlurred(.fallback):
             return String(localized: "I can't go live. No glasses are connected, and Blur Bystander Faces doesn't cover the phone camera.")
         case .phoneCameraNotBlurred:
             return String(localized: "I can't go live. Camera is set to the phone, and Blur Bystander Faces doesn't cover it.")
+        #endif
         case .phoneCameraDenied:
             return String(localized: "I can't go live. Camera access is off for Avenkin in iOS Settings.")
         case .phoneCameraNotAsked:
@@ -279,16 +301,23 @@ enum BroadcastGoLive {
         switch reason {
         case .medicalCompliance:
             return String(localized: "The live stream has ended, because Medical Compliance mode is on.")
+        #if AVENKIN_PHONE_ONLY
+        case .blurNeedsGlasses, .glassesGaveNoPicture:
+            return String(localized: "The live stream has ended. Blur Bystander Faces is on, and it can't cover the phone camera.")
+        #else
         case .blurNeedsGlasses:
             return String(localized: "The live stream has ended. Blur Bystander Faces is on, it can't cover the phone camera, and no glasses are connected.")
         case .glassesGaveNoPicture:
             return String(localized: "The live stream has ended. Blur Bystander Faces is on, it can't cover the phone camera, and the glasses camera didn't start.")
+        #endif
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     static var movedToGlassesMessage: String {
         String(localized: "Blur Bystander Faces is on, so the stream has moved to the glasses camera.")
     }
+    #endif
 
     static var insetDroppedMessage: String {
         String(localized: "Blur Bystander Faces is on, so the phone camera inset has left the stream.")

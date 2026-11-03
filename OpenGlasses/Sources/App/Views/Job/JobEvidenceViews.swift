@@ -245,9 +245,11 @@ struct JobPhotosSection: View {
                               isOn: review.faceBlurOn, onOpenSettings: onOpenSettings)
 
             if let onAdd {
+                #if !AVENKIN_PHONE_ONLY
                 if let clips, let onRecordClip, let onStopClip {
                     ClipRecordRow(clips: clips, onRecord: onRecordClip, onStop: onStopClip)
                 }
+                #endif
                 Button("Take a photo for the job") { takingPhoto = true }
                     .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
                     .accessibilityHint("Uses the phone's camera. The picture is filed against this job, not sent anywhere.")

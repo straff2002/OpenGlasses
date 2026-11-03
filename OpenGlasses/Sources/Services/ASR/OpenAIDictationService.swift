@@ -192,7 +192,7 @@ final class OpenAIDictationService {
     var apiKey: () -> String = { Config.dictationOpenAIKey }
     /// The transport. A seam so tests answer locally.
     var send: (URLRequest) async throws -> (Data, URLResponse) = { request in
-        try await URLSession.shared.data(for: request)
+        try await URLSession.shared.consentedData(for: request, scope: .speechRecognition)
     }
 
     func transcribe(samples: [Float], sampleRate: Double, vocabulary: [String]) async throws -> String {

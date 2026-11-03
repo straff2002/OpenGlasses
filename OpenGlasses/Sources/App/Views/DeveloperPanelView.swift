@@ -29,7 +29,9 @@ struct DeveloperPanelView: View {
     var body: some View {
         OGScrollPage {
             OGNotice(
-                text: "Each test exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card.",
+                text: GlassesSupportPolicy.isSupported
+                    ? "Each test exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card."
+                    : "Each test exercises the real path — the AI answers a tiny query and speech plays through your selected audio output.",
                 systemImage: "stethoscope"
             )
 
@@ -102,7 +104,9 @@ struct DeveloperPanelView: View {
 
             OGSection(
                 header: "Reply Speech",
-                footer: "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes. Off until it has been measured on the glasses."
+                footer: GlassesSupportPolicy.isSupported
+                    ? "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes. Off until it has been measured on the glasses."
+                    : "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes."
             ) {
                 OGRow("Speak as it writes", isOn: $directSentenceStreamingEnabled,
                       icon: "text.bubble")

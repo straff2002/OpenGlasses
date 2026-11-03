@@ -156,7 +156,11 @@ struct CameraReadiness: Equatable {
     /// The hint a camera control offers, or `nil` when the control's own label already says it.
     var controlHint: String? {
         switch phase {
+        #if AVENKIN_PHONE_ONLY
+        case .stopped: return "Double-tap to stream the camera to the model."
+        #else
         case .stopped: return "Double-tap to stream the glasses camera to the model."
+        #endif
         case .connecting: return "Starting the camera. This takes a moment."
         case .awaitingFirstFrame: return "The camera is on and the first picture has not arrived yet."
         case .ready: return "The camera is streaming."

@@ -25,6 +25,8 @@ enum ConsentActor: String, Codable, Sendable, Equatable, CaseIterable {
 /// how each is described to a person, is a legal determination that has not been made — see the
 /// W04.3 row in the remediation roadmap.
 enum ConsentPurpose: String, Codable, Sendable, Equatable, CaseIterable {
+    /// Explicit permission for one AI service origin and processing scope.
+    case aiProcessing
     /// A remote or agentic action taken on the wearer's behalf.
     case remoteAction
     /// Sharing what the glasses can see or hear with a recipient off the device.
@@ -41,6 +43,9 @@ enum ConsentPurpose: String, Codable, Sendable, Equatable, CaseIterable {
 
 /// What kind of data the agreement covers.
 enum ConsentDataClass: String, Codable, Sendable, Equatable, CaseIterable {
+    case assistantContext
+    case liveMedia
+    case searchTerms
     case none
     case imagery
     case audio
@@ -212,7 +217,7 @@ final class ConsentStore {
     private let fileURL: URL
     private var rows: [ConsentRecord] = []
     private(set) var protectionApplied = false
-    /// False after an unreadable or corrupt store. A consent register that cannot be read must not
+    /// False after an unreadable/corrupt store or failed save. A consent register that cannot be read must not
     /// be treated as an empty one: that reads as "nobody ever agreed", which is the safe answer for
     /// processing and the wrong one for a withdrawal somebody already made.
     private(set) var storageAvailable = true
@@ -355,6 +360,7 @@ final class ConsentStore {
             PrivacyLog.store(.consentRecords, .recordWritten, count: rows.count)
             return true
         } catch {
+            storageAvailable = false
             PrivacyLog.store(.consentRecords, .saveFailed, error: SafeErrorSummary(error))
             return false
         }

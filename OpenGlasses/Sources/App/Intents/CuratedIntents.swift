@@ -125,7 +125,11 @@ struct SaveLocationIntent: AppIntent {
 /// Start/stop RTMP broadcasting of the glasses camera.
 struct ToggleBroadcastIntent: AppIntent {
     static var title: LocalizedStringResource = "Toggle Broadcast"
+    #if AVENKIN_PHONE_ONLY
+    static var description = IntentDescription("Start or stop a live stream over RTMP")
+    #else
     static var description = IntentDescription("Start or stop broadcasting the glasses camera over RTMP")
+    #endif
 
     static var isDiscoverable: Bool { true }
     static var openAppWhenRun: Bool = true

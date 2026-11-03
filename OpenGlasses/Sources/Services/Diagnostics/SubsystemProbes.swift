@@ -10,7 +10,7 @@ import Foundation
 enum SubsystemProbes {
 
     static func makeRunner(appState: AppState) -> SubsystemTestRunner {
-        let tests: [SubsystemTest] = [
+        var tests: [SubsystemTest] = [
             SubsystemTest(id: "glasses", name: "Glasses Link", icon: "eyeglasses") { @MainActor in
                 guard appState.isConnected else {
                     // Which kind of not connected (Plan HX P3). "Pair via the Meta AI app" was
@@ -62,42 +62,47 @@ enum SubsystemProbes {
                 await appState.speechService.speak("Test okay", urgency: .low, mirrorToHUD: false)
                 return .pass("Spoken")
             },
-            SubsystemTest(id: "telemetry", name: "SDK Telemetry", icon: "antenna.radiowaves.left.and.right.slash") { @MainActor in
-                // Verifies on-device what only a packet capture could otherwise tell us: that the
-                // glasses SDK's data collection is off in the *shipped* bundle, and that nothing
-                // has had to be blocked at the network layer to keep it that way.
-                let optOut = MetaTelemetryBlock.bundleOptOut
-                let blocked = MetaTelemetryBlock.blockedCount
-                if !optOut.analytics || !optOut.crashReporting {
-                    let missing = [optOut.analytics ? nil : "Analytics",
-                                   optOut.crashReporting ? nil : "CrashReporting"].compactMap { $0 }
-                    return .fail("Opt-out missing from Info.plist: \(missing.joined(separator: ", "))")
-                }
-                if blocked > 0 {
-                    return .fail("Opt-out set but ignored — \(blocked) upload(s) blocked at the network layer")
-                }
-                return .pass("Opt-out set · no uploads attempted")
-            },
-            SubsystemTest(id: "wakeword", name: "Wake Word", icon: "waveform.badge.mic") { @MainActor in
-                // Name the switch that is actually off. "Check mic permission or silent mode" was
-                // the answer on build 420 when the real cause was the master listening switch,
-                // which neither of those hints leads to.
-                if appState.wakeWordService.isListening {
-                    return .pass("Listening for “\(Config.wakePhrase.capitalized)”")
-                }
-                if !appState.listeningEnabled {
-                    return .fail("Listening is switched off — turn on Listen for Wake Phrase in Settings › Assistant › Voice & Triggers")
-                }
-                if Config.silentMode {
-                    return .fail("Push-to-Talk is on — the wake phrase is not listened for")
-                }
-                if appState.micMuted {
-                    return .fail("Microphone is muted")
-                }
-                return .fail("Not listening — check microphone and speech recognition permission")
-            },
         ]
-        return SubsystemTestRunner(tests: tests, log: { [weak appState] message in
+        #if !AVENKIN_PHONE_ONLY
+        tests.append(SubsystemTest(id: "telemetry", name: "SDK Telemetry", icon: "antenna.radiowaves.left.and.right.slash") { @MainActor in
+            // Verifies on-device what only a packet capture could otherwise tell us: that the
+            // glasses SDK's data collection is off in the *shipped* bundle, and that nothing
+            // has had to be blocked at the network layer to keep it that way.
+            let optOut = MetaTelemetryBlock.bundleOptOut
+            let blocked = MetaTelemetryBlock.blockedCount
+            if !optOut.analytics || !optOut.crashReporting {
+                let missing = [optOut.analytics ? nil : "Analytics",
+                               optOut.crashReporting ? nil : "CrashReporting"].compactMap { $0 }
+                return .fail("Opt-out missing from Info.plist: \(missing.joined(separator: ", "))")
+            }
+            if blocked > 0 {
+                return .fail("Opt-out set but ignored — \(blocked) upload(s) blocked at the network layer")
+            }
+            return .pass("Opt-out set · no uploads attempted")
+        })
+        #endif
+        tests.append(SubsystemTest(id: "wakeword", name: "Wake Word", icon: "waveform.badge.mic") { @MainActor in
+            // Name the switch that is actually off. "Check mic permission or silent mode" was
+            // the answer on build 420 when the real cause was the master listening switch,
+            // which neither of those hints leads to.
+            if appState.wakeWordService.isListening {
+                return .pass("Listening for “\(Config.wakePhrase.capitalized)”")
+            }
+            if !appState.listeningEnabled {
+                return .fail("Listening is switched off — turn on Listen for Wake Phrase in Settings › Assistant › Voice & Triggers")
+            }
+            if Config.silentMode {
+                return .fail("Push-to-Talk is on — the wake phrase is not listened for")
+            }
+            if appState.micMuted {
+                return .fail("Microphone is muted")
+            }
+            return .fail("Not listening — check microphone and speech recognition permission")
+        })
+        let availableTests = GlassesSupportPolicy.isSupported ? tests : tests.filter {
+            !["glasses", "camera", "hud", "telemetry"].contains($0.id)
+        }
+        return SubsystemTestRunner(tests: availableTests, log: { [weak appState] message in
             appState?.addDebugEvent(message)
         })
     }

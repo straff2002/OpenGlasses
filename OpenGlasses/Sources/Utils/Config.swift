@@ -300,9 +300,15 @@ struct Config {
     /// The wake phrases the pickers offer, the new name's first. The old name's are listed below
     /// them for one App Store version (Plan FY P3.2) and then dropped from here — only from here:
     /// the migration and `defaultAlternativesForPhrase` keep them for good.
+    #if AVENKIN_PHONE_ONLY
+    static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin",
+        "hey claude", "hey jarvis", "hey computer", "hey assistant",
+    ]
+    #else
     static let wakePhrasePresets = [defaultWakePhrase, "hey avenkin"] + legacyDefaultWakePhrases + [
         "hey claude", "hey jarvis", "hey computer", "hey assistant", "hey rayban",
     ]
+    #endif
 
     /// Whether `phrase` is one the picker does not list, and so shows as "Custom: …". The wake word
     /// is whatever is stored, not whatever the picker lists, so a custom phrase still wakes the app.
@@ -353,8 +359,10 @@ struct Config {
             return ["hey compuder", "a computer"]
         case "hey assistant":
             return ["hey assistance", "a assistant"]
+        #if !AVENKIN_PHONE_ONLY
         case "hey rayban":
             return ["hey ray ban", "hey ray-ban", "hey raven", "hey rayben", "hey ray band"]
+        #endif
         case "avenkin":
             // Hey-less default (D4). Three syllables of a coined word are not ordinary speech, so
             // the bare name is safe; the alternates cover the recogniser splitting it or hearing a
@@ -701,6 +709,7 @@ struct Config {
         if let data = try? JSONEncoder().encode(models) {
             KeychainService.setData(data, for: modelsKey)
         }
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     /// The ID of the currently active model
@@ -2089,6 +2098,7 @@ struct Config {
 
     static func setTTSEnginePreference(_ preference: TTSEnginePreference) {
         UserDefaults.standard.set(preference.rawValue, forKey: "ttsEnginePreference")
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     /// Which speech-recognition engine to prefer (Additional Capabilities #8 — the on-device
@@ -2111,6 +2121,7 @@ struct Config {
     static func chooseRecognizer(_ preference: ASREnginePreference) {
         setASREnginePreference(preference)
         cloudDictationEnabled = preference.isCloud
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     // MARK: - App Mode
@@ -2125,6 +2136,7 @@ struct Config {
 
     static func setAppMode(_ mode: AppMode) {
         UserDefaults.standard.set(mode.rawValue, forKey: "appMode")
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     // MARK: - LiveAI Mode
@@ -3193,7 +3205,9 @@ struct Config {
 
     /// BS P3: starting video source for a broadcast (BroadcastVideoSource rawValue).
     static var broadcastDefaultSource: String {
-        UserDefaults.standard.string(forKey: "broadcastDefaultSource") ?? "glasses"
+        let stored = UserDefaults.standard.string(forKey: "broadcastDefaultSource")
+        return GlassesSupportPolicy.isSupported ? stored ?? "glasses"
+                                                : BroadcastVideoSource.resolved(stored).rawValue
     }
     static func setBroadcastDefaultSource(_ value: String) {
         UserDefaults.standard.set(value, forKey: "broadcastDefaultSource")
@@ -3784,6 +3798,12 @@ struct Config {
     /// Unified capture route: phone / glasses / headset. Migrates the old
     /// `useGlassesMicForWakeWord` boolean (whose default was glasses-on).
     static var micRoute: MicRoute {
+        let route = storedMicRoute
+        // A beta's saved route is no route in a build without glasses.
+        return MicRoute.available.contains(route) ? route : .phone
+    }
+
+    private static var storedMicRoute: MicRoute {
         if let raw = UserDefaults.standard.string(forKey: "micRoute"),
            let route = MicRoute(rawValue: raw) {
             return route

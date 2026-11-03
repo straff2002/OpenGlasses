@@ -318,11 +318,15 @@ struct SDKLogFile: Sendable {
     let url: URL?
 
     static var inAppContainer: SDKLogFile {
+        #if AVENKIN_PHONE_ONLY
+        return SDKLogFile(url: nil)
+        #else
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         return SDKLogFile(url: caches?
             .appendingPathComponent("MetaWearablesDAT", isDirectory: true)
             .appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("MetaWearablesDAT.log"))
+        #endif
     }
 
     /// The file's length, or nil when there is no file to open.

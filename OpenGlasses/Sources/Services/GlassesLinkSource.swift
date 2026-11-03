@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// Where `GlassesConnectionService` hears about registration, the device list and each device's
 /// state. The production source is the Meta SDK (`WearablesGlassesLinkSource`); tests inject a
 /// fake, because `Wearables` fatals in the test process.
@@ -39,6 +40,7 @@ protocol GlassesCameraPermissionSource: AnyObject {
 }
 
 // MARK: - Meta SDK
+#if !AVENKIN_PHONE_ONLY
 
 /// The Meta DAT SDK as a `GlassesLinkSource`. The only place the SDK's `LinkState`,
 /// `ChargingState`, `DonState`, `ThermalLevel`, `Compatibility` and `RegistrationState` are mapped
@@ -174,3 +176,5 @@ private final class SDKListenerObservation: GlassesLinkObservation {
         Task { await token.cancel() }
     }
 }
+
+#endif

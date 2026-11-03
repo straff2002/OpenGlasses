@@ -64,8 +64,12 @@ final class DiagnosticsReportBuilderTests: XCTestCase {
     func testDisconnectedGlassesReportedAsSuch() {
         let report = DiagnosticsReportBuilder.build(snapshot(connected: false))
 
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertFalse(report.body.contains("Glasses"))
+        #else
         XCTAssertTrue(report.body.contains("| Glasses | Not connected |"))
         XCTAssertTrue(report.body.contains("| Display | None |"))
+        #endif
         XCTAssertFalse(report.body.contains("82%"))
     }
 

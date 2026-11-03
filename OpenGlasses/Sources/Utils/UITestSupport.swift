@@ -24,6 +24,8 @@ enum UITestSupport {
         case freshInstall = "-OGUITestFreshInstall"
         /// Past onboarding.
         case configured = "-OGUITestConfigured"
+        /// Lets the question about cloud services appear, which every other run keeps out of the way.
+        case cloudSharingReview = "-OGUITestCloudSharingReview"
         /// Render the shipping App Store policy for screenshots on a simulator. The real
         /// installation channel still decides this in Release and on physical devices.
         case storePresentation = "-OGUITestStorePresentation"

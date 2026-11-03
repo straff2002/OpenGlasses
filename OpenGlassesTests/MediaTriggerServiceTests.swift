@@ -622,6 +622,7 @@ final class MediaTriggerServiceTests: XCTestCase {
         XCTAssertTrue(released.contains { $0.contains("state=stopped") }, "\(released)")
     }
 
+    #if !AVENKIN_PHONE_ONLY
     // MARK: - Session shape
 
     func testShapeTokenNamesCategoryAndMixing() {
@@ -653,4 +654,5 @@ final class MediaTriggerServiceTests: XCTestCase {
         XCTAssertEqual(String(bytes: data[8..<12], encoding: .ascii), "WAVE")
         XCTAssertTrue(data.suffix(from: 44).allSatisfy { $0 == 0 })   // actually silent
     }
+    #endif
 }

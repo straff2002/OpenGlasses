@@ -516,6 +516,16 @@ enum NetworkRouteRegistry {
     /// Deliberately short — anything added here has to be a transport or an observer, never a
     /// feature that sends something.
     static let exemptTransportTypes: [String: String] = [
+        "CloudProcessingLease":
+            "Cancels previously authorized requests on withdrawal; it originates no feature request or endpoint.",
+        "CloudProcessingTransferDelegate":
+            "Enforces the recipient and live consent on an existing caller-declared route; it does not originate requests.",
+        "CloudProcessingSocketAuthorization":
+            "Holds a caller-created socket suspended until recipient-specific approval; the socket owner declares and medically guards its route.",
+        "CloudProcessingConsent":
+            "File-scope URLSession extension adds explicit recipient consent to caller-declared routes; each feature retains its medical and endpoint checks.",
+        "URLSession":
+            "The consentedData and consentedBytes extensions authorize caller-declared routes; the system session has no feature purpose of its own.",
         "BoundedHTTPClient":
             "Shared hardened transport. It carries whatever route its caller declares; guarding here would hide which feature actually sent the bytes.",
         "RealtimeWebSocketTransport":
@@ -530,6 +540,8 @@ enum NetworkRouteRegistry {
     /// Kept short for the same reason as the transport exemptions: a list of excuses that grows is
     /// a manifest that has stopped describing the app.
     static let manifestDeclarationsWithoutADedicatedRoute: [String: String] = [
+        "NSPrivacyCollectedDataTypeCoarseLocation":
+            "WeatherKit rounds coordinates to approximately one kilometre before sending them to Apple; the shared locationCoordinate route category also covers precise coordinates on other tools, so both precision categories are declared.",
         "NSPrivacyCollectedDataTypeFitness":
             "HealthKit workout, step, heart-rate and sleep figures reach a provider inside llmCompletion's tool results rather than on a transport of their own, and only while Share Health Data with AI is on; the route records the clinical half of that payload as healthFact."
     ]

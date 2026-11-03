@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import Foundation
 
 /// The row at the top of Devices & Privacy › Glasses while the glasses are not connected: what
@@ -84,3 +85,4 @@ struct GlassesConnectRow: Equatable, Sendable {
         return reachability.diagnosis.statusLine(deviceName: nil)
     }
 }
+#endif

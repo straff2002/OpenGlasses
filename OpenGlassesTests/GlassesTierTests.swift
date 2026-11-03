@@ -84,6 +84,7 @@ final class GlassesTierTests: XCTestCase {
 
     // MARK: - Name markers (Plan CQ P0 widening)
 
+    #if !AVENKIN_PHONE_ONLY
     func testWidenedMarkersMatchTheNewDeviceClasses() {
         let names = [
             "Ray-Ban Meta",           // pre-existing
@@ -99,6 +100,7 @@ final class GlassesTierTests: XCTestCase {
                           "\(name) should be recognised as glasses")
         }
     }
+    #endif
 
     /// False-positive corpus. A marker that matches a headset is not cosmetic: the `.headset`
     /// route skips anything glasses-like, so a mismatched pair of earbuds silently stops being

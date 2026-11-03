@@ -50,7 +50,11 @@ enum ReadinessWalkthrough {
         /// The row title. Short, because VoiceOver reads it before the status every time.
         var title: String {
             switch self {
+            #if AVENKIN_PHONE_ONLY
+            case .registration: return "Setup"
+            #else
             case .registration: return "Glasses"
+            #endif
             case .permissions: return "Permissions"
             case .cameraEvidence: return "Camera picture"
             case .spokenExchange: return "Microphone and voice"
@@ -61,7 +65,11 @@ enum ReadinessWalkthrough {
         /// What this step is checking, for the row's accessibility hint.
         var purpose: String {
             switch self {
+            #if AVENKIN_PHONE_ONLY
+            case .registration: return "Checks setup is finished."
+            #else
             case .registration: return "Checks the glasses are paired and reachable."
+            #endif
             case .permissions: return "Checks microphone, speech recognition and camera access."
             case .cameraEvidence: return "Starts the camera and waits for a fresh picture."
             case .spokenExchange: return "Checks the microphone is listening and you can hear a spoken line."
@@ -209,11 +217,19 @@ enum ReadinessWalkthrough {
                               at step: Step) -> String {
         switch (reason, step) {
         case (.noGlasses, .registration):
+            #if AVENKIN_PHONE_ONLY
+            return "This is an audio-only setup. The assistant can hear you and answer, but it can't see."
+            #else
             return "No glasses are connected, so this is an audio-only setup. The assistant can hear you and answer, but it can't see."
+            #endif
         case (.cameraPermissionOff, .registration):
             return "The glasses are connected. Camera access is off, so this is an audio-only setup."
         case (.noGlasses, _):
+            #if AVENKIN_PHONE_ONLY
+            return "Audio-only setup: there is no live camera to check."
+            #else
             return "Audio-only setup: there are no glasses, so there is no camera to check."
+            #endif
         case (.cameraPermissionOff, _):
             return "Audio-only setup: camera access is off, so there is no camera to check."
         }
@@ -270,7 +286,7 @@ enum ReadinessWalkthrough {
             let reason = BlindAssistantLaunchPolicy.SkipReason.setupNotFinished.summary
             return Result(step: .registration,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Glasses. \(reason)",
+                          spokenStatus: "\(Step.registration.title). \(reason)",
                           nextInstruction: "Finish setup first, then run this check again.",
                           retryAvailable: true)
         }
@@ -278,7 +294,7 @@ enum ReadinessWalkthrough {
             let note = audioOnlyNote(.noGlasses, at: .registration)
             return Result(step: .registration,
                           verdict: .passed(note: note),
-                          spokenStatus: "Glasses. \(note)",
+                          spokenStatus: "\(Step.registration.title). \(note)",
                           nextInstruction: nil,
                           retryAvailable: true)
         }
@@ -438,7 +454,7 @@ enum ReadinessWalkthrough {
             return Result(step: .readingRequest,
                           verdict: .failed(reason: reason),
                           spokenStatus: "Reading something. \(reason)",
-                          nextInstruction: "Point the glasses at something with writing on it and try again.",
+                          nextInstruction: "Point the \(GlassesSupportPolicy.isSupported ? "glasses" : "camera") at something with writing on it and try again.",
                           retryAvailable: true)
         }
         guard let quality = reading.quality else {
@@ -465,12 +481,12 @@ enum ReadinessWalkthrough {
                           nextInstruction: nil,
                           retryAvailable: false)
         case .fixture:
-            let note = "This device has no glasses camera, so a stored test photo was measured instead. "
+            let note = "This device has no \(GlassesSupportPolicy.isSupported ? "glasses " : "")camera, so a stored test photo was measured instead. "
                 + "It shows the check itself works; it doesn't prove your camera does."
             return Result(step: .readingRequest,
                           verdict: .passed(note: note),
                           spokenStatus: "Reading something. Passed on a stored test photo. \(note)",
-                          nextInstruction: "Run this check again on the glasses to test the real camera.",
+                          nextInstruction: "Run this check again on \(GlassesSupportPolicy.isSupported ? "the glasses" : "an iPhone") to test the real camera.",
                           retryAvailable: false)
         }
     }
@@ -542,7 +558,11 @@ enum ReadinessWalkthrough {
     private static func suppressedInstruction(_ why: SpeechDeliveryOutcome.SuppressionReason) -> String {
         switch why {
         case .muted: return "Turn spoken output back on, then try again."
+        #if AVENKIN_PHONE_ONLY
+        case .noRoute: return "Check the audio output, then try again."
+        #else
         case .noRoute: return "Put the glasses on, or check the audio output, then try again."
+        #endif
         case .silentMode: return "Turn Silent Mode off, then try again."
         case .backgrounded: return "Keep Avenkin open while the check runs, then try again."
         case .routeHeld: return "Say 'stop translating', then try again."

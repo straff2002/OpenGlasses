@@ -75,7 +75,11 @@ final class StudyService: ObservableObject {
 
     /// Capture the current camera frame and ingest it.
     func scanPage() async -> String {
+        #if AVENKIN_PHONE_ONLY
+        guard let camera else { return "Camera unavailable." }
+        #else
         guard let camera else { return "Camera unavailable — connect the glasses or use the phone camera." }
+        #endif
         guard let data = await camera.filteredStill(for: .onDeviceVision,
                                                     source: .cachedFrameThenPhoto)
             .jpegData(compressionQuality: 0.8) else {

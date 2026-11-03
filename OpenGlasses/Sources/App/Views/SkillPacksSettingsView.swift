@@ -143,10 +143,16 @@ struct SkillPacksSettingsView: View {
                                installedVersion: installedVersion)
             }
             if case .blocked(let missing) = availability {
+                #if AVENKIN_PHONE_ONLY
+                Label("Needs \(missing.joined(separator: ", "))", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                #else
                 Label("Needs \(missing.joined(separator: ", ")) — connect glasses first",
                       systemImage: "eyeglasses")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                #endif
             } else if case .degraded(let missing) = availability {
                 Label("Works best with \(missing.joined(separator: ", "))", systemImage: "info.circle")
                     .font(.caption)

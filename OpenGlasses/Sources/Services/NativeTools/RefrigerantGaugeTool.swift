@@ -17,7 +17,7 @@ final class RefrigerantGaugeTool: NativeTool {
     let name = "refrigerant_gauges"
     let description = """
     Superheat and subcooling straight from the gauges: reads the manifold or digital gauge set in \
-    view of the camera (the glasses when connected, otherwise the phone), tells suction from liquid \
+    view of the camera (\(GlassesSupportPolicy.toolCameraSource)), tells suction from liquid \
     by the gauges' own LOW/HIGH, colour or SUCTION/LIQUID labels, and computes from the bundled \
     CoolProp tables in the technician's units. Use it for "what's my superheat/subcool?" with gauges \
     in view. Pass 'refrigerant' only from the nameplate or the technician — never assume one; \

@@ -110,13 +110,17 @@ struct VoiceTriggersSettingsScreen: View {
                     // version (Plan FY P3.2). Tags match `Config.wakePhrasePresets`.
                     Text("Avenkin").tag("avenkin")
                     Text("Hey Avenkin").tag("hey avenkin")
+                    #if !AVENKIN_PHONE_ONLY
                     Text("OpenGlasses").tag("openglasses")
                     Text("Hey OpenGlasses").tag("hey openglasses")
+                    #endif
                     Text("Hey Claude").tag("hey claude")
                     Text("Hey Jarvis").tag("hey jarvis")
                     Text("Hey Computer").tag("hey computer")
                     Text("Hey Assistant").tag("hey assistant")
+                    #if !AVENKIN_PHONE_ONLY
                     Text("Hey Rayban").tag("hey rayban")
+                    #endif
                     if Config.isCustomWakePhrase(wakePhrase, presets: wakePhrasePresets) {
                         Text("Custom: \(wakePhrase)").tag(wakePhrase)
                     }
@@ -277,7 +281,7 @@ struct VoiceTriggersSettingsScreen: View {
 
             // MARK: Hands-Free Triggers
             Section {
-                ForEach(AlternativeTrigger.allCases) { trigger in
+                ForEach(AlternativeTrigger.available) { trigger in
                     InfoToggle(
                         title: trigger.displayName,
                         isOn: Binding(
@@ -290,6 +294,7 @@ struct VoiceTriggersSettingsScreen: View {
                         info: trigger.detail
                     )
                 }
+                #if !AVENKIN_PHONE_ONLY
                 // Temple taps live with the glasses now (Plan GJ); this row is a way there.
                 NavigationLink {
                     TempleTapSettingsView(appState: appState)
@@ -301,10 +306,15 @@ struct VoiceTriggersSettingsScreen: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                #endif
             } header: {
                 Text("Hands-Free Triggers")
             } footer: {
-                Text("Alternative ways to start the assistant without the wake word — for noisy, silent, or no-speech situations. All are off by default. The Volume Button trigger can interfere with normal volume control. Temple taps are set up under Hardware & Privacy.")
+                #if AVENKIN_PHONE_ONLY
+                Text("Shake the phone to start the assistant without the wake word. Off by default.")
+                #else
+                Text("Shake the phone to start the assistant without the wake word. Off by default. Headset media controls are set up under Hardware & Privacy.")
+                #endif
             }
         }
         .navigationTitle("Voice & Triggers")
@@ -783,11 +793,13 @@ struct ToolsActionsSections: View {
                 Label("Study Mode", systemImage: "graduationcap")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 ReadingStatsView()
             } label: {
                 Label("Reading", systemImage: "book")
             }
+            #endif
 
             NavigationLink {
                 HealthVaultEditorView()
@@ -832,6 +844,7 @@ struct ToolsActionsSections: View {
                 Label("Siri & Search", systemImage: "mic.badge.plus")
             }
 
+            #if !AVENKIN_PHONE_ONLY
             if Config.agentModeEnabled, adminGate.presentation(.key(.mcpServerEnabled)).isShown {
                 NavigationLink {
                     MCPServerSettingsView()
@@ -848,6 +861,7 @@ struct ToolsActionsSections: View {
                     }
                 }
             }
+            #endif
 
             NavigationLink {
                 PlaybooksSettingsView(store: appState.playbookStore)
@@ -1009,6 +1023,7 @@ struct GlassesPrivacySettingsScreen: View {
         Form {
             // Plan HA C3: the glasses' own settings, one row away whatever the hero card shows —
             // on a copy that offers glasses (Plan JE).
+            #if !AVENKIN_PHONE_ONLY
             if glasses.isShown && GlassesSupportPolicy.isSupported {
                 Section {
                     NavigationLink {
@@ -1026,6 +1041,7 @@ struct GlassesPrivacySettingsScreen: View {
                     Text("Where the wake word listens, how replies play, sleep, and updates for the glasses themselves.")
                 }
             }
+            #endif
 
             if rest.isShown {
                 Section {
@@ -1079,7 +1095,7 @@ struct GlassesPrivacySettingsScreen: View {
                 } header: {
                     Text("Devices & Privacy")
                 } footer: {
-                    Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance enables HIPAA-grade encryption and exports for clinical use (separate subscription).")
+                    Text("Mic source, on-device bystander-face blurring, and encrypted conversations live in Hardware & Privacy. Medical Compliance adds clinical privacy controls and export formats (separate subscription); it does not certify legal compliance.")
                 }
             }
 
@@ -1087,6 +1103,11 @@ struct GlassesPrivacySettingsScreen: View {
             // (`SettingsVisibilityPolicy.alwaysShown`).
             if requestRouting.isShown {
                 Section {
+                    NavigationLink {
+                        CloudProcessingSettingsView()
+                    } label: {
+                        Label("Cloud AI Sharing", systemImage: "hand.raised")
+                    }
                     NavigationLink {
                         ProcessingSummaryView()
                     } label: {

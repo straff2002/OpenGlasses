@@ -186,7 +186,11 @@ struct GatewaySettingsView: View {
         } header: {
             Text("Remote Invoke")
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Lets a gateway agent ask Avenkin to act (speak, check status — and with capture enabled, take photos, record, or read back the recent transcript). Everything is denied while Agent Mode is off; capture always asks for confirmation and announces itself before a sensor starts or recorded speech is read back.")
+            #else
             Text("Lets a gateway agent ask Avenkin to act (speak, show text on the glasses, check status — and with capture enabled, take photos, record, or read back the recent transcript). Everything is denied while Agent Mode is off; capture always asks for confirmation and announces itself before a sensor starts or recorded speech is read back.")
+            #endif
         }
     }
 

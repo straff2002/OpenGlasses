@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY
 import XCTest
 import MWDATCamera
 @testable import OpenGlasses
@@ -107,3 +108,5 @@ final class StreamCodecPolicyTests: XCTestCase {
                        .compressed)
     }
 }
+
+#endif

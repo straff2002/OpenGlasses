@@ -42,9 +42,9 @@ final class AppBuildIdentityTests: XCTestCase {
     func testTheSummaryLeadsWithVersionAndBuildAndOmitsAMissingCommit() {
         var identity = Identity(version: "2026.10", build: "460", commit: "9f9f57e28",
                                 channel: .testFlight, bundleID: "com.example.app")
-        XCTAssertEqual(identity.summary, "2026.10 (460) · 9f9f57e28 · TestFlight · com.example.app")
+        XCTAssertEqual(identity.summary, "2026.10 (460) · 9f9f57e28 · TestFlight · \(AppBuildVariant.current.rawValue) · com.example.app")
         identity.commit = nil
-        XCTAssertEqual(identity.summary, "2026.10 (460) · TestFlight · com.example.app")
+        XCTAssertEqual(identity.summary, "2026.10 (460) · TestFlight · \(AppBuildVariant.current.rawValue) · com.example.app")
     }
 
     func testTheRunningTestHostDescribesItself() {

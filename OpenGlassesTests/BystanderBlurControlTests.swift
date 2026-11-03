@@ -85,7 +85,7 @@ final class BystanderBlurControlTests: XCTestCase {
     func testTheRefusalOffersTheWayOutAndSaysWhatItCosts() {
         let refusal = BystanderBlurControl.refusal(changeable: true, organization: nil)
         XCTAssertTrue(refusal.offersTurningOff)
-        XCTAssertTrue(refusal.message.contains("turn the blur off"))
+        XCTAssertTrue(refusal.message.lowercased().contains("turn the blur off"))
         XCTAssertTrue(refusal.message.contains("applies everywhere"))
         XCTAssertTrue(refusal.message.contains("until you turn it back on"))
     }
@@ -111,7 +111,12 @@ final class BystanderBlurControlTests: XCTestCase {
                        .phoneCameraNotBlurred(.fallback))
     }
 
+    // In a phone-only build the fallback and a chosen phone camera are one refusal.
+    #if AVENKIN_PHONE_ONLY
+    private let routes: [BroadcastGoLive.PhoneRoute] = [.chosen, .inset, .midStreamSwitch]
+    #else
     private let routes: [BroadcastGoLive.PhoneRoute] = [.fallback, .chosen, .inset, .midStreamSwitch]
+    #endif
 
     func testEveryRouteHasItsOwnWords() {
         let messages = routes.map { BystanderBlurControl.refusal(route: $0, changeable: true, organization: nil).message }

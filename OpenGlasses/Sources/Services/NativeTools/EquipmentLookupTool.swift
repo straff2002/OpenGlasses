@@ -14,8 +14,7 @@ final class EquipmentLookupTool: NativeTool {
     let name = "equipment_lookup"
     let description = """
     Look up an equipment error code, fault, or model number in the active Field Assist vault. The \
-    technician can read the code/model aloud (pass 'query'), or point the camera (the glasses when \
-    connected, otherwise the phone) at the nameplate / error display and omit 'query' (or set \
+    technician can read the code/model aloud (pass 'query'), or point the camera (\(GlassesSupportPolicy.toolCameraSource)) at the nameplate / error display and omit 'query' (or set \
     'use_camera') to read it via on-device OCR. Returns the matching reference section with its source file. Use before diagnosing so the answer is grounded. \
     When a lookup or a nameplate read names exactly one model the vault covers, that model becomes \
     the session's active equipment and every later answer is scoped to it — say so to the \

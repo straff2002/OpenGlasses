@@ -54,8 +54,13 @@ enum LivePreviewPicture: Equatable {
     /// warn that faces are going out unblurred.
     static func phoneCaption(isBroadcasting: Bool, blurOn: Bool) -> String {
         if isBroadcasting { return String(localized: "Streaming from the phone camera.") }
+        #if AVENKIN_PHONE_ONLY
+        return blurOn ? String(localized: "Phone camera. Go Live is off while Blur Bystander Faces is on.")
+                      : String(localized: "Phone camera. Go Live streams this picture.")
+        #else
         return blurOn ? String(localized: "Phone camera. Go Live needs glasses while Blur Bystander Faces is on.")
                       : String(localized: "Phone camera. Go Live streams this picture.")
+        #endif
     }
 }
 

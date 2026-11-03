@@ -29,6 +29,7 @@ struct DiarizationSettingsView: View {
                     .disabled(Config.hipaaMode)
                     .onChange(of: enabled) { _, newValue in
                         Config.diarizationEnabled = newValue
+                        CloudSharingReview.shared.run()
                     }
             } footer: {
                 Text("Labels each caption and meeting line with the speaker. When off, transcription works exactly as today (a single, unlabeled stream).")

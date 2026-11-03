@@ -46,6 +46,7 @@ final class OpenAIResponsesRouteTests: XCTestCase {
 
     private func service() -> (LLMService, UsageTracker) {
         let s = LLMService()
+        s.processingConsent = CloudConsentFixture.conversation()
         let session = RecordingQueueProtocol.session()
         s.streamingSession = session
         s.dataSession = session

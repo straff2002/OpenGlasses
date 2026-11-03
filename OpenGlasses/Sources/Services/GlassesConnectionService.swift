@@ -1,6 +1,7 @@
 import Foundation
+#if !AVENKIN_PHONE_ONLY
 import MWDATCore
-
+#endif
 /// The glasses' connection: registration with Meta AI, and whether a pair is actually reachable.
 /// Uses Meta Wearables Device Access Toolkit (MWDAT) through `GlassesLinkSource`.
 ///
@@ -78,7 +79,7 @@ class GlassesConnectionService: ObservableObject {
     ///     `isPastOnboarding` rather than `hasCompletedOnboarding`: the narrower flag left anyone
     ///     who saved an API key without finishing onboarding permanently unobserved.
     init(source: GlassesLinkSource? = nil, observeNow: Bool? = nil) {
-        self.source = source ?? WearablesGlassesLinkSource()
+        self.source = source ?? GlassesBackendFactory.link()
         if observeNow ?? Config.isPastOnboarding {
             startObserving()
         }
@@ -89,7 +90,11 @@ class GlassesConnectionService: ObservableObject {
     func startObserving() {
         guard !isObserving else { return }
         guard source.activate() else {
+            #if AVENKIN_PHONE_ONLY
+            connectionStatus = GlassesSupportPolicy.unavailableReason()
+            #else
             connectionStatus = "Meta SDK unavailable"
+            #endif
             return
         }
         isObserving = true
@@ -275,6 +280,7 @@ class GlassesConnectionService: ObservableObject {
         publish()
     }
 
+    #if !AVENKIN_PHONE_ONLY
     func connect() async {
         // Configure here rather than assuming a caller did. This is the path that used to kill the
         // app outright: an unconfigured `Wearables.shared` is a fatalError, not a throw.
@@ -335,6 +341,11 @@ class GlassesConnectionService: ObservableObject {
             NoticeCenter.shared.post(message, severity: .error, source: .glasses)
         }
     }
+    #else
+    func connect() async {
+        connectionStatus = GlassesSupportPolicy.unavailableReason()
+    }
+    #endif
 }
 
 // MARK: - Errors

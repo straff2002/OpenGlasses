@@ -50,15 +50,21 @@ enum DockItem: String, CaseIterable, Identifiable {
 /// order doesn't (new features, fresh installs) append in canonical order.
 enum DockLayout {
     /// The order the bar shipped with before it became arrangeable.
+    #if AVENKIN_PHONE_ONLY
+    static let canonical: [DockItem] = [
+        .model, .camera, .preview, .type, .micMode, .assistive,
+    ]
+    #else
     static let canonical: [DockItem] = [
         .model, .camera, .preview, .type, .micMode, .assistive, .disconnect,
     ]
+    #endif
 
     static func effectiveOrder(stored: [String]) -> [DockItem] {
         var seen = Set<DockItem>()
         var result: [DockItem] = []
         for raw in stored {
-            guard let item = DockItem(rawValue: raw), !seen.contains(item) else { continue }
+            guard let item = DockItem(rawValue: raw), canonical.contains(item), !seen.contains(item) else { continue }
             seen.insert(item)
             result.append(item)
         }

@@ -226,7 +226,11 @@ struct DisplayHUDSettingsScreen: View {
         Form {
             DisplayHUDSections(appState: appState)
         }
+        #if AVENKIN_PHONE_ONLY
+        .navigationTitle("Teleprompter")
+        #else
         .navigationTitle("Display & HUD")
+        #endif
         .ogFormStyle()
     }
 }
@@ -235,13 +239,16 @@ struct DisplayHUDSettingsScreen: View {
 struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
+    #if !AVENKIN_PHONE_ONLY
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
 
     private var displayedDisplayBackendName: String {
         DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
     }
+    #endif
 
     var body: some View {
+        #if !AVENKIN_PHONE_ONLY
         Section {
             InfoToggle(
                 title: "Glasses Display (HUD)",
@@ -269,8 +276,10 @@ struct DisplayHUDSections: View {
         } footer: {
             Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
         }
+        #endif
 
         Section {
+            #if !AVENKIN_PHONE_ONLY
             NavigationLink {
                 HUDMirrorView(router: appState.hudRouter)
             } label: {
@@ -299,6 +308,7 @@ struct DisplayHUDSections: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            #endif
 
             NavigationLink {
                 TeleprompterSettingsView(service: appState.teleprompterService,
@@ -313,9 +323,15 @@ struct DisplayHUDSections: View {
                 }
             }
         } header: {
+            #if !AVENKIN_PHONE_ONLY
             Text("What Draws On It")
+            #endif
         } footer: {
+            #if AVENKIN_PHONE_ONLY
+            Text("Read a script hands-free.")
+            #else
             Text("Preview the lens on your phone, choose which display hardware to drive, mirror the HUD to a browser, or read a script hands-free.")
+            #endif
         }
     }
 }

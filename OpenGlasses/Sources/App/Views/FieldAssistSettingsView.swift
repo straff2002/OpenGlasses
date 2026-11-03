@@ -392,7 +392,11 @@ struct FieldAssistSettingsView: View {
                 } header: {
                     Text("Expert Stream Transport")
                 } footer: {
+                    #if AVENKIN_PHONE_ONLY
+                    Text("How your view reaches the expert. MJPEG streams one-way video to a browser viewer through a relay you run. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
+                    #else
                     Text("How the glasses view reaches the expert. MJPEG streams one-way video to a browser viewer through a relay you run. WebRTC is peer-to-peer with two-way audio and needs a signaling URL (and TURN for cross-network use) configured below.")
+                    #endif
                 }
 
                 if Config.expertStreamTransport == .mjpeg {
@@ -428,7 +432,11 @@ struct FieldAssistSettingsView: View {
                     } header: {
                         Text("WebRTC Connection")
                     } footer: {
+                        #if AVENKIN_PHONE_ONLY
+                        Text("Required for WebRTC. The signaling server relays SDP/ICE between this phone and the expert's browser. TURN is needed when peers are on different networks (e.g. cellular).")
+                        #else
                         Text("Required for WebRTC. The signaling server relays SDP/ICE between the glasses and the expert's browser. TURN is needed when peers are on different networks (e.g. cellular).")
+                        #endif
                     }
                 }
 
@@ -1205,6 +1213,9 @@ struct FieldAssistSettingsView: View {
             Text(FieldAssistPaywallCopy.purchaseHeader)
         } footer: {
             Text(FieldAssistPaywallCopy.purchaseFooter)
+            Text("Subscription renews automatically. Cancel anytime in iPhone Settings → [your name] → Subscriptions.")
+            Link("Privacy Policy", destination: PublicSite.privacy)
+            Link("Terms of Use", destination: PublicSite.termsOfUse)
             NavigationLink("Only need your own manuals? See My Manuals.") { MyManualsView().environmentObject(appState) }
         }
     }

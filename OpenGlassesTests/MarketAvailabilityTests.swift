@@ -179,6 +179,7 @@ final class MarketAvailabilityTests: XCTestCase {
         }
     }
 
+    #if !AVENKIN_PHONE_ONLY
     /// The tool stays registered where the region forbids it, so the refusal is spoken rather than
     /// the capability vanishing.
     func testTheToolStaysRegistered() {
@@ -190,4 +191,5 @@ final class MarketAvailabilityTests: XCTestCase {
                         "registration does not consult the storefront; the tool refuses instead")
         withExtendedLifetime((faces, camera)) {}
     }
+    #endif
 }

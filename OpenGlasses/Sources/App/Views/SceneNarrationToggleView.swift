@@ -90,7 +90,11 @@ struct SceneNarrationToggleView: View {
         case .backgrounded:
             return String(localized: "Paused — on-device descriptions can't run while the app is in the background.")
         case .cameraUnavailable:
+            #if AVENKIN_PHONE_ONLY
+            return String(localized: "Paused — no live camera feed.")
+            #else
             return String(localized: "Paused — no live camera feed from the glasses.")
+            #endif
         case .userTurn, .realtimeSession, .ambientCaptions:
             // Not halts; the policy never reports these as a halt reason. Kept exhaustive so a new
             // interruption has to decide what the wearer is told.

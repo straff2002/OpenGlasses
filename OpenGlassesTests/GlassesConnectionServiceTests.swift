@@ -101,6 +101,15 @@ final class GlassesConnectionServiceTests: XCTestCase {
         GlassesDeviceState(link: .connected, batteryLevel: battery, charging: charging)
     }
 
+    /// A line that names the companion app in the beta. A phone-only build has one reason instead.
+    private func companionStatus(_ beta: String) -> String {
+        #if AVENKIN_PHONE_ONLY
+        return GlassesSupportPolicy.unavailableReason()
+        #else
+        return beta
+        #endif
+    }
+
     private func make(_ source: FakeLinkSource, observe: Bool = true) -> GlassesConnectionService {
         GlassesConnectionService(source: source, observeNow: observe)
     }
@@ -126,7 +135,7 @@ final class GlassesConnectionServiceTests: XCTestCase {
         let source = FakeLinkSource()
         source.activates = false
         let service = make(source)
-        XCTAssertEqual(service.connectionStatus, "Meta SDK unavailable")
+        XCTAssertEqual(service.connectionStatus, companionStatus("Meta SDK unavailable"))
         XCTAssertFalse(service.isConnected)
         XCTAssertTrue(source.serviceObservations.isEmpty)
     }
@@ -429,7 +438,7 @@ final class GlassesConnectionServiceTests: XCTestCase {
         XCTAssertEqual(service.phase, .addedDisconnected, "the phase is what it always was")
         XCTAssertEqual(service.cameraPermission, .notGranted)
         XCTAssertEqual(service.reachability.diagnosis, .permissionNeeded)
-        XCTAssertEqual(service.connectionStatus, "Allow camera access in Meta AI")
+        XCTAssertEqual(service.connectionStatus, companionStatus("Allow camera access in Meta AI"))
     }
 
     func testTheStatusLineFollowsTheDiagnosisWhereThePhaseDoesNotMove() async {
@@ -437,7 +446,7 @@ final class GlassesConnectionServiceTests: XCTestCase {
         permissions.standing = .granted
         let (service, source) = await makeRegistered(permissions)
         XCTAssertEqual(service.reachability.diagnosis, .noDeviceSeen)
-        XCTAssertEqual(service.connectionStatus, "Waiting for Meta AI to show your glasses…")
+        XCTAssertEqual(service.connectionStatus, companionStatus("Waiting for Meta AI to show your glasses…"))
 
         var phases: [GlassesConnectionPhase] = []
         let token = service.$phase.dropFirst().sink { phases.append($0) }
@@ -589,7 +598,7 @@ final class GlassesConnectionServiceTests: XCTestCase {
         XCTAssertEqual(permissions.asks, 1, "asked once, inside the Connect the wearer pressed")
         XCTAssertEqual(service.cameraPermission, .granted)
         XCTAssertEqual(service.reachability.diagnosis, .noDeviceSeen)
-        XCTAssertEqual(service.connectionStatus, "Waiting for Meta AI to show your glasses…")
+        XCTAssertEqual(service.connectionStatus, companionStatus("Waiting for Meta AI to show your glasses…"))
     }
 
     func testAConnectThatIsDeclinedAsksOnceAndKeepsTheAnswer() async {
@@ -601,7 +610,7 @@ final class GlassesConnectionServiceTests: XCTestCase {
         XCTAssertEqual(service.cameraPermission, .declined)
         XCTAssertEqual(service.reachability.diagnosis, .permissionNeeded)
         XCTAssertTrue(service.reachability.waitsOnCameraAccess)
-        XCTAssertEqual(service.connectionStatus, "Allow camera access in Meta AI")
+        XCTAssertEqual(service.connectionStatus, companionStatus("Allow camera access in Meta AI"))
     }
 
     func testAConnectWhoseRequestFailsAsksOnceAndKeepsTheSummary() async {

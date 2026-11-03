@@ -34,7 +34,7 @@ struct MedicalCompliancePaywallView: View {
                     Text("Medical Compliance")
                         .font(.title.bold())
 
-                    Text("Professional-grade safeguards for clinical recordings")
+                    Text("Privacy controls for clinical recordings")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -50,21 +50,26 @@ struct MedicalCompliancePaywallView: View {
                                detail: "Face ID / Touch ID required every time the app opens")
                     OGDivider()
                     featureRow(icon: "list.clipboard.fill", title: "Audit Logging",
-                               detail: "Every data access event logged with timestamps — exportable")
+                               detail: "Supported clinical data events recorded with timestamps; exportable")
                     OGDivider()
                     featureRow(icon: "arrow.up.doc.fill", title: "Medical Export",
-                               detail: "FHIR R4, HL7, PDF export to Epic, Cerner, and more")
+                               detail: "Prepare FHIR R4, HL7 and PDF files for your receiving system")
                     OGDivider()
                     featureRow(icon: "calendar.badge.clock", title: "Data Retention",
-                               detail: "Configurable auto-purge with secure deletion")
+                               detail: "Automatically delete clinical files after your chosen retention period")
                     OGDivider()
                     featureRow(icon: "icloud.slash.fill", title: "Prevent Data Leakage",
                                detail: "Cloud tools disabled, iCloud backup excluded")
                     OGDivider()
-                    featureRow(icon: "globe", title: "International Frameworks",
-                               detail: "HIPAA, GDPR, AU Privacy Act, NZ HIPC, PIPEDA, UK DPA")
+                    featureRow(icon: "globe", title: "Policy Presets",
+                               detail: "Configure safeguards for your organisation’s privacy requirements")
                 }
                 .padding(.horizontal, 24)
+
+                Text("These controls support your organisation’s policies. A subscription does not certify legal compliance or clinical accuracy. Verify exports with your receiving system.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 24)
 
                 // Subscription Options
                 VStack(spacing: 12) {
@@ -127,6 +132,8 @@ struct MedicalCompliancePaywallView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 32)
+                    Link("Privacy Policy", destination: PublicSite.privacy)
+                    Link("Terms of Use", destination: PublicSite.termsOfUse)
                 }
                 .padding(.bottom, 24)
             }

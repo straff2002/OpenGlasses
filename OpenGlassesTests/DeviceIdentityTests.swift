@@ -252,7 +252,11 @@ final class DeviceIdentityTests: XCTestCase {
         let soul = AgentDocumentStore.defaultSoul
         XCTAssertFalse(soul.contains("Ray-Ban"))
         XCTAssertFalse(soul.contains("lives on"))
+        #if AVENKIN_PHONE_ONLY
+        XCTAssertFalse(soul.lowercased().contains("glasses"))
+        #else
         XCTAssertTrue(soul.contains("their phone, their watch, or their smart glasses"))
+        #endif
         XCTAssertFalse(soul.contains("when glasses are off"))
     }
 }
