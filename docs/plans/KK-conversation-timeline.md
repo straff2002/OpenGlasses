@@ -1,6 +1,7 @@
 # Plan KK — The Conversation Timeline (what was said stays in front of the model after it leaves the request)
 
-**Status:** 📝 Drafted 2026-11-03, not scheduled; nothing built. Four owner decisions are open (see the
+**Status:** 🚧 P1's deterministic core built 2026-11-03 and unwired: nothing reads the timeline yet, and no
+summary is written. P0's live run and P2 to P4 are owed, and the four owner decisions are still open (see the
 end). Drafted from a code read of main at `c567b5cb5`; no live model has been run for this plan.
 **Track:** App-wide for Direct mode on cloud models, Field Assist first: a long job is where an early
 reading or decision is most likely to leave the request.
@@ -162,6 +163,29 @@ Headless, plus a live probe on the two keys the owner tests with (ChatGPT, Claud
 Pure and table-tested: `TimelineEntry`, the coverage calculation (tail count, gaps, overlaps, floors), chunk
 selection, merge decisions, the acceptance policy with the detail check, the renderer and its cap, and
 invalidation on truncate and erasure. Older threads decode unchanged.
+
+**As built (2026-11-03).** Everything is in `Services/Memory/Timeline/` and nothing calls it outside the
+store fixes below.
+
+- `ConversationThread.timeline` holds the entries; a thread saved without it decodes as nil.
+- `TimelineCoverage.compute` takes an optional `historyUserTurns`. Without it, a turn that never reached the
+  saved thread opens a gap. With it, the count is also read from the head and the reading that covers more
+  wins. The caller must count real user turns, not tool results, which travel as user messages on some
+  providers. An open run waits for 5,000 estimated tokens. A closed hole (an uncovered run with covered
+  messages after it) is returned whatever its size, so it cannot block later chunks. An entry that starts
+  before the floor covers nothing, because it is never rendered.
+- `TimelineMergePlanner` merges only runs whose spans meet, because a merged span over a hole would hide the
+  hole from coverage.
+- `TimelineSummaryAcceptance` (closed `Rejection` set), `TimelineDetailCheck` (user messages only; lost
+  values come back as the whole sentence under `Said word for word:`), `TimelineRenderer` (oldest dropped
+  first to fit 1,500 estimated tokens; `hasGap` says whether the omission note must stay) and
+  `TimelineInvalidation`.
+- Store: `truncate` drops overlapping entries and clears `compressedSummary`. `dropTimelineEntries(naming:)`
+  removes, across all threads, entries naming a person and any `compressedSummary` naming them. It returns
+  nil while the store is locked or its read failed. A person erasure calls it before its receipt; the receipt
+  stays unsupported because the thread text is left, and says the notes were dropped.
+- For P2: the summary pass reads thread text the erasure left in place, so a re-summary can bring an erased
+  name back. The pass needs the ledger's erased names, or a check against them, before an entry is kept.
 
 ### P2 — The summary pass
 
