@@ -125,13 +125,14 @@ Two users sent reports on build 615, and the app failed both of them in ways the
   its meaning for the existing lines. An exhaustion reason uses the gap only while the error itself
   is a credential failure of the same kind.
 - `ModelCascade.run`'s `onSwitch` gets the thrown error as a fourth argument (nil for the vision
-  pre-switch); a three-argument overload keeps the existing callers. `sendMessageCascading`'s
+  pre-switch). `sendMessageCascading`'s
   `onModelSwitch` passes it on to `narrateModelSwitch`, which reads the gap from it.
 - `LLMService.credentialGap(behind:)` returns the gap the last failed attempt recorded, matched on the
   error itself, for the two text exhaustion lines and the three photo failure lines. "No model fits
   this turn" is thrown before any attempt, so it is never a gap.
 - `CredentialNoticeLatch` (value type on `AppState`, process lifetime) is keyed by provider, with a
-  fingerprint of the provider's account-connected flag and whether the model has a key. A gap already
+  fingerprint of the provider's account-connected flag, whether the model has a key, and the key's
+  process-seeded `hashValue` (so a refused key replaced by another is said again). A gap already
   said is not narrated, and does not spend the turn's one notice.
 - The status card row is `CredentialSignInRow` under `StatusIndicator` (Direct mode only), from the
   pure `CredentialSignInPrompt.resolve`, which reads `modelAuthBadge`: "Sign in to ChatGPT" or "Add a
