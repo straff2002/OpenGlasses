@@ -29,8 +29,26 @@ final class TimelineCoverageTests: XCTestCase {
         // A history count far larger than the thread's would otherwise make the whole thread
         // eligible, the live turn included.
         let result = TimelineCoverage.compute(messages: F.conversation(5), keptUserTurns: 1,
-                                              historyUserTurns: 100, entries: [])
+                                              historyUserTurns: 100, answeringMessageID: "u4", entries: [])
         XCTAssertEqual(result.eligible, 0..<8, "u4, the turn being answered, stays out")
+    }
+
+    /// Three turns never reached the thread, and the request kept only those: every saved message
+    /// has left. The last saved user message is not the turn being answered, so it is not held
+    /// back — holding it back would leave a9 uncovered while `hasGaps` said nothing was missing.
+    func testUnsavedTurnsDoNotProtectTheLastSavedOne() {
+        let result = TimelineCoverage.compute(messages: F.conversation(10), keptUserTurns: 3,
+                                              historyUserTurns: 13, entries: [])
+        XCTAssertEqual(result.eligible, 0..<20)
+    }
+
+    /// The request kept more user turns than the thread holds, yet the history holds more still:
+    /// the head reading finds the first four saved exchanges gone.
+    func testKeepingMoreThanTheThreadHoldsStillReadsFromTheHead() {
+        let result = TimelineCoverage.compute(messages: F.conversation(5), keptUserTurns: 6,
+                                              historyUserTurns: 10, entries: [])
+        XCTAssertEqual(result.eligible, 0..<8)
+        XCTAssertTrue(result.hasGaps)
     }
 
     func testOnlyUserAndAssistantMessagesCount() {

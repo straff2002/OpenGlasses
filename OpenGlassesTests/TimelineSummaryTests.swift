@@ -52,6 +52,24 @@ final class TimelineSummaryTests: XCTestCase {
         XCTAssertEqual(details.map(\.kind), [.code, .code])
     }
 
+    func testTradeUnitsAreMeasurements() {
+        let text = "Superheat 4.5 K, vacuum 450 microns, a 45 microfarad cap and a 2.4 metres gasket."
+        XCTAssertEqual(TimelineDetailCheck.details(in: text).map(\.value),
+                       ["4.5 K", "450 microns", "45 microfarad", "2.4 metres"])
+    }
+
+    /// The "9W" inside a part number is not a wattage: the part number is checked whole.
+    func testAMeasurementInsideACodeLeavesTheCodeWhole() {
+        let details = TimelineDetailCheck.details(in: "Fit an EFM-9W-230 fan motor.")
+        XCTAssertEqual(details.map(\.value), ["EFM-9W-230"])
+        XCTAssertEqual(details.map(\.kind), [.code])
+        let messages = [TimelineDetailCheck.Message(role: "user", text: "Fit an EFM-9W-230 fan motor.",
+                                                    timestamp: F.start)]
+        let result = TimelineDetailCheck.check(summary: "Fit the 9W EFM-9W-240 motor.", messages: messages,
+                                               timeZone: F.utc)
+        XCTAssertEqual(result.lostValues, 1, "a changed suffix is a different part")
+    }
+
     func testAMeasurementWrittenWithoutItsSpaceIsCountedOnce() {
         XCTAssertEqual(TimelineDetailCheck.details(in: "It reads 240V now.").map(\.kind), [.measurement])
     }
@@ -115,6 +133,14 @@ final class TimelineSummaryTests: XCTestCase {
         let result = TimelineDetailCheck.check(summary: "Line was at 152 psi.", messages: messages,
                                                timeZone: F.utc)
         XCTAssertEqual(result.lostValues, 1, "152 psi is not 52 psi")
+    }
+
+    func testAChangedSignOrADifferentCodeIsNotAMatch() {
+        let messages = [TimelineDetailCheck.Message(role: "user", text: "Line is at 52 psi and it shows E47.",
+                                                    timestamp: F.start)]
+        let result = TimelineDetailCheck.check(summary: "Line at -52 psi; code XE-E47-Z.", messages: messages,
+                                               timeZone: F.utc)
+        XCTAssertEqual(result.lostValues, 2, "-52 psi is not 52 psi, and XE-E47-Z is not E47")
     }
 
     func testOnlyTheWearersWordsAreChecked() {

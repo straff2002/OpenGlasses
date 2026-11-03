@@ -212,6 +212,16 @@ Limits of the run:
 - **Replies were lengthened so that 150 messages pass 14k.** At realistic spoken length, a thread of text alone
   passes it after roughly 200 messages. In live use, tool results in the history bring that point closer.
 - **Every planted value was in the wearer's own words**, which favours keyword recall and the detail check.
+- **Arm E was complete only at the first request of each probe.** A tool result could push one more exchange
+  out than the timeline covered, and the note stayed off: in the everyday runs that happened in 33 and 28
+  of 48 probes, one exchange each time. E still scored 40 of 40, so the finding stands; the harness now
+  keeps the note in any round where more has left than the timeline covers.
+- **D's and E's timelines were built with the detail check as it stood**, before the fixes in this PR
+  (trade units such as K and microns, a value inside a hyphenated code, a changed sign). A value the check
+  missed then could have been lost from a summary without being restored.
+- **Scoring was re-checked after review.** An answer naming both values is now counted correct only when
+  it sets the competing one aside, and each hand call is bound to the answer it was made on. Re-scoring
+  every run moved two side-run rows (reasoning off) by one or two and none of the numbers above.
 
 **Outcome.**
 - **Not the stop condition.** B does not reach the ceiling.
@@ -239,8 +249,10 @@ store fixes below.
 - `ConversationThread.timeline` holds the entries; a thread saved without it decodes as nil.
 - `TimelineCoverage.compute` takes an optional `historyUserTurns`. Without it, a turn that never reached the
   saved thread opens a gap. With it, the count is also read from the head and the reading that covers more
-  wins. The caller must count real user turns, not tool results, which travel as user messages on some
-  providers. An open run waits for 5,000 estimated tokens. A closed hole (an uncovered run with covered
+  wins, including when the request kept more turns than the thread holds. The caller must count real user
+  turns, not tool results, which travel as user messages on some providers. The turn being answered is held
+  back only when the caller names its saved message (`answeringMessageID`): the last saved user message is
+  not assumed to be it, because unsaved turns are exactly when it is not. An open run waits for 5,000 estimated tokens. A closed hole (an uncovered run with covered
   messages after it) is returned whatever its size, so it cannot block later chunks. An entry that starts
   before the floor covers nothing, because it is never rendered.
 - `TimelineMergePlanner` merges only runs whose spans meet, because a merged span over a hole would hide the

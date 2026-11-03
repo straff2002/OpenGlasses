@@ -119,7 +119,7 @@ def parse_output(resp):
     return text.strip(), calls
 
 
-def run_probe(fx, arm, item, timeline_block, timeline_has_gap=True):
+def run_probe(fx, arm, item, timeline_block, timeline_has_gap=True, covered_up_to=0):
     tz = ZoneInfo(fx["tz"])
     hh, mm = map(int, fx["probe_time"].split(":"))
     y, mo, d = map(int, fx["date"].split("-"))
@@ -143,7 +143,9 @@ def run_probe(fx, arm, item, timeline_block, timeline_has_gap=True):
         if arm in ("D", "E", "F") and timeline_block:
             tail += "\n\n" + timeline_block
         # Arm E: coverage complete -> the block replaces the note (plan, "What the model sees").
-        if note and not (arm == "E" and timeline_block and not timeline_has_gap):
+        # Checked each round: a tool result can push one more exchange out than the timeline covers.
+        complete = arm == "E" and timeline_block and not timeline_has_gap and omitted <= covered_up_to
+        if note and not complete:
             tail += "\n\n" + note
         body = AM.responses_body(MODEL, instructions, sel, None if withhold else tools, tail,
                                  TOOL_TURN_CAP, REASONING, cache_key if not withhold else None)
@@ -212,17 +214,19 @@ def main():
         items = items[:limit]
     timeline_block = None
     timeline_has_gap = True
+    covered_up_to = 0
     if arm in ("D", "E", "F"):
         name = f"timeline-full-{fid}.json" if arm == "E" else f"timeline-{fid}.json"
         tl = json.load(open(os.path.join(BASE, "runs", name)))
         timeline_block = tl["rendered"]["text"]
         timeline_has_gap = tl["rendered"]["hasGap"]
+        covered_up_to = tl.get("coveredUpTo", 0)
     recall_index()
     out_path = os.path.join(BASE, "runs", f"{fid}-{arm}-{label}.jsonl")
     lock = threading.Lock()
     done = 0
     with open(out_path, "w") as out, ThreadPoolExecutor(max_workers=8) as pool:
-        futures = [pool.submit(run_probe, fx, arm, it, timeline_block, timeline_has_gap) for it in items]
+        futures = [pool.submit(run_probe, fx, arm, it, timeline_block, timeline_has_gap, covered_up_to) for it in items]
         for fut in futures:
             rec = fut.result()
             rec.update({"fixture": fid, "arm": arm, "run": label})

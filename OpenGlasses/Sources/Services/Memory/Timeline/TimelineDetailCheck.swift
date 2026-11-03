@@ -122,16 +122,18 @@ enum TimelineDetailCheck {
     private static let fraction = #"\d+/\d+"#
 
     /// A number, an optional space, and a unit a technician says out loud. The single letters
-    /// (A, V, W) are matched upper case only, so "3 a day" is not a current; a bare "in" counts
-    /// only after a fraction, so "3 in the morning" is not a length.
+    /// (A, V, W, K) are matched upper case only, so "3 a day" is not a current; a bare "in" counts
+    /// only after a fraction, so "3 in the morning" is not a length. Never inside a hyphenated
+    /// code: the "9W" in EFM-9W-230 belongs to the part number, which is checked whole.
     private static let measurementPattern = try! NSRegularExpression(pattern:
-        #"(?<![\p{L}\p{N}./])(?:"#
+        #"(?<![\p{L}\p{N}./])(?<![\p{L}\p{N}]-)(?:"#
         + "(?:\(fraction)|\(number))\\s?(?:"
         + #"°\s?[CFcf]|(?i:degrees?(?:\s?[cf])?|psig|psi|kpa|mpa|bar|amps?|ma|volts?|vac|vdc|mv|kw|"#
-        + #"hz|khz|ohms?|k?Ω|mfd|µf|μf|uf|btu|cfm|gpm|rpm|mm|cm|inch(?:es)?|ft|feet|kg|lbs?|oz|ml)"#
-        + #"|°|%|A|V|v|W)"#
+        + #"hz|khz|ohms?|k?Ω|mfd|µf|μf|uf|micro-?farads?|microns?|btu|cfm|gpm|rpm|mm|cm|"#
+        + #"met(?:re|er)s?|millimet(?:re|er)s?|inch(?:es)?|ft|feet|kg|kilo(?:gram)?s?|lbs?|oz|ml)"#
+        + #"|°|%|A|V|v|W|K)"#
         + "|\(fraction)\\s?(?i:in)"
-        + #")(?![\p{L}\p{N}])"#)
+        + #")(?![\p{L}\p{N}])(?!-[\p{L}\p{N}])"#)
 
     /// Letters and digits together, hyphens allowed inside: LX-4410B, E47, R410A.
     private static let codePattern = try! NSRegularExpression(pattern:
@@ -147,11 +149,12 @@ enum TimelineDetailCheck {
             of: #"(?<=[0-9°])\s+(?=[\p{L}°%])"#, with: "", options: .regularExpression)
     }
 
-    /// Whether `value` stands on its own in `haystack`: "52psi" is not found inside "152psi", and
-    /// "e47" is not found inside "e470".
+    /// Whether `value` stands on its own in `haystack`: "52psi" is not found inside "152psi" or
+    /// "-52psi" (a changed sign), and "e47" is not found inside "e470" or "xe-e47-z" (a different
+    /// code). A hyphen before a value, or between it and what follows, belongs to it.
     static func contains(_ haystack: String, _ value: String) -> Bool {
-        let pattern = #"(?<![\p{L}\p{N}.])"# + NSRegularExpression.escapedPattern(for: value)
-            + #"(?![\p{L}\p{N}])"#
+        let pattern = #"(?<![\p{L}\p{N}.\-])"# + NSRegularExpression.escapedPattern(for: value)
+            + #"(?![\p{L}\p{N}])(?!-[\p{L}\p{N}])"#
         return haystack.range(of: pattern, options: .regularExpression) != nil
     }
 

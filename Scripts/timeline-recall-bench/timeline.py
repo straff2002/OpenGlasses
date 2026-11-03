@@ -24,13 +24,14 @@ LINE_LIMIT = 20
 NUMBER = r"-?\d+(?:\.\d+)?"
 FRACTION = r"\d+/\d+"
 MEASUREMENT = re.compile(
-    r"(?<![^\W_])(?<![./])(?:"
+    r"(?<![^\W_])(?<![./])(?<![^\W_]-)(?:"
     + rf"(?:{FRACTION}|{NUMBER})\s?(?:"
     + r"°\s?[CFcf]|(?i:degrees?(?:\s?[cf])?|psig|psi|kpa|mpa|bar|amps?|ma|volts?|vac|vdc|mv|kw|"
-    + r"hz|khz|ohms?|k?Ω|mfd|µf|μf|uf|btu|cfm|gpm|rpm|mm|cm|inch(?:es)?|ft|feet|kg|lbs?|oz|ml)"
-    + r"|°|%|A|V|v|W)"
+    + r"hz|khz|ohms?|k?Ω|mfd|µf|μf|uf|micro-?farads?|microns?|btu|cfm|gpm|rpm|mm|cm|"
+    + r"met(?:re|er)s?|millimet(?:re|er)s?|inch(?:es)?|ft|feet|kg|kilo(?:gram)?s?|lbs?|oz|ml)"
+    + r"|°|%|A|V|v|W|K)"
     + rf"|{FRACTION}\s?(?i:in)"
-    + r")(?![^\W_])")
+    + r")(?![^\W_])(?!-[^\W_])")
 CODE = re.compile(r"(?<![^\W_])(?<!-)(?=[A-Za-z0-9-]*[A-Za-z])(?=[A-Za-z0-9-]*[0-9])"
                   r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*(?![^\W_])(?!-)")
 ORDINAL = re.compile(r"^\d+(st|nd|rd|th)$", re.I)
@@ -57,7 +58,7 @@ def normalised_for_search(summary):
 
 
 def contains(hay, value):
-    return re.search(r"(?<![^\W_])(?<!\.)" + re.escape(value) + r"(?![^\W_])", hay) is not None
+    return re.search(r"(?<![^\W_])(?<![.\-])" + re.escape(value) + r"(?![^\W_])(?!-[^\W_])", hay) is not None
 
 
 def excerpt(span, text):
@@ -82,7 +83,9 @@ def excerpt(span, text):
 
 
 def detail_check(summary, messages, tz):
-    hay = normalised_for_search(summary)
+    # Two readings, as in the Swift check: the joined one finds "52 PSI" as "52psi", the plain one a
+    # code followed by a word ("A44 on"), which joining glues into "a44on".
+    hays = [summary.lower(), normalised_for_search(summary)]
     seen_values, seen_lines, lines, lost = set(), set(), [], 0
     for m in messages:
         if m["role"] != "user":
@@ -91,7 +94,7 @@ def detail_check(summary, messages, tz):
             if norm in seen_values:
                 continue
             seen_values.add(norm)
-            if contains(hay, norm):
+            if any(contains(h, norm) for h in hays):
                 continue
             lost += 1
             clock = datetime.fromisoformat(m["timestamp"]).astimezone(tz).strftime("%H:%M")

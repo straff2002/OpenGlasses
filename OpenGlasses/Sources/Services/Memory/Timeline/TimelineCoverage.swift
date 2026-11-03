@@ -65,9 +65,12 @@ enum TimelineCoverage {
     ///   - floor: when the current job began. Nothing before it is eligible, no chunk crosses it,
     ///     and an entry that starts before it covers nothing, because the renderer will never
     ///     show it.
+    ///   - answeringMessageID: the saved message of the turn being answered, when it was saved.
+    ///     It and everything after it are never eligible.
     ///   - entries: the thread's timeline as saved.
     static func compute(messages: [TimelineMessage], keptUserTurns: Int,
-                        historyUserTurns: Int? = nil, floor: Date? = nil,
+                        historyUserTurns: Int? = nil, answeringMessageID: String? = nil,
+                        floor: Date? = nil,
                         entries: [TimelineEntry],
                         minimumTokens: Int = TimelineCoverage.minimumChunkTokens,
                         maximumTokens: Int = TimelineCoverage.maximumChunkTokens) -> Result {
@@ -75,17 +78,20 @@ enum TimelineCoverage {
         let users = messages.indices.filter { messages[$0].role == "user" }
         let kept = max(0, keptUserTurns)
 
-        // The request kept more user turns than the thread holds: the whole thread is live.
-        guard kept <= users.count else { return .nothing(at: 0) }
-
-        var boundary = kept == 0 ? messages.count : users[users.count - kept]
+        // From the tail: the request kept more user turns than the thread holds, so the tail
+        // reading finds nothing gone; the head reading below may still find some.
+        var boundary = kept == 0 ? messages.count : (kept <= users.count ? users[users.count - kept] : 0)
         if let historyUserTurns, historyUserTurns > kept {
             let dropped = historyUserTurns - kept
             let fromHead = dropped < users.count ? users[dropped] : messages.count
             boundary = max(boundary, fromHead)
         }
-        // The turn being answered is always in the request, whatever the count says.
-        if kept > 0, let lastUser = users.last { boundary = min(boundary, lastUser) }
+        // The turn being answered is in the request whatever the count says, when the caller
+        // knows it was saved. The last saved user message is not assumed to be it: turns that
+        // never reached the thread are exactly when it is not.
+        if let answeringMessageID, let live = messages.firstIndex(where: { $0.id == answeringMessageID }) {
+            boundary = min(boundary, live)
+        }
 
         var start = 0
         if let floor {
