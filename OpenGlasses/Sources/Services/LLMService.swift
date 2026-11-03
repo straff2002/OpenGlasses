@@ -1439,6 +1439,18 @@ class LLMService: ObservableObject {
 
     // MARK: - Model Cascade (BK P2b)
 
+    /// The credential gap behind the last failed attempt of the current turn, with the error it
+    /// was read from (Plan KL P0). Held in memory only, and only to be matched below.
+    private var lastAttemptCredentialGap: (gap: CredentialGap, error: String)?
+
+    /// The credential gap of the model that threw `error`, when `error` is the last attempt's
+    /// failure — so a turn that ran out of models names the service whose sign-in or key failed.
+    /// Matched on the error itself, so a failure from anywhere else is never blamed on a sign-in.
+    func credentialGap(behind error: Error) -> CredentialGap? {
+        guard let last = lastAttemptCredentialGap, last.error == String(reflecting: error) else { return nil }
+        return last.gap
+    }
+
     /// `sendMessage` with automatic fall-over to the next model when the active one can't serve the
     /// turn (`promptTooLong`, `429`/quota, empty completion, …). The active model leads; the user's
     /// fallback order (then the remaining saved models) follow. Between hops the active model is
@@ -1449,9 +1461,11 @@ class LLMService: ObservableObject {
     /// Falls straight through to a single `sendMessage` when the cascade is disabled or there's only
     /// one candidate. Exhaustion throws the *last real* error (not a generic line) so the caller can
     /// speak the true reason.
-    func sendMessageCascading(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, backgrounded: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil, onModelSwitch: ((_ from: ModelConfig?, _ to: ModelConfig?, _ failure: ModelFallbackChain.FailureClass) async -> Void)? = nil) async throws -> String {
+    func sendMessageCascading(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, backgrounded: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil, onModelSwitch: ((_ from: ModelConfig?, _ to: ModelConfig?, _ failure: ModelFallbackChain.FailureClass, _ error: Error?) async -> Void)? = nil) async throws -> String {
 
         let previousSourceID = fieldConversationSourceID
+        // Plan KL P0: a gap belongs to the turn that recorded it.
+        lastAttemptCredentialGap = nil
         fieldConversationSourceID = UUID().uuidString
         defer { fieldConversationSourceID = previousSourceID }
 
@@ -1464,6 +1478,9 @@ class LLMService: ObservableObject {
                 if isCloud { onCloudAttempt?(nil) }
                 return response
             } catch {
+                // Plan KL P0: which model's sign-in or key failed, for the turn's spoken reason.
+                lastAttemptCredentialGap = CredentialGap.classify(error, model: Config.activeModel)
+                    .map { ($0, String(reflecting: error)) }
                 // A request given up on says nothing about the network, either way.
                 if LLMError.isSlowResponse(error) {
                     PrivacyLog.model(.firstReplyGaveUp, error: SafeErrorSummary(error))
@@ -1556,15 +1573,17 @@ class LLMService: ObservableObject {
             needs: .init(requiresVision: imageData != nil, isBackgrounded: backgrounded),
             maxAttempts: min(candidates.count, 4),
             isCancelled: { Task.isCancelled },
-            onSwitch: { from, to, failure in
+            onSwitch: { from, to, failure, error in
                 // Only a hop after the lead was actually tried counts; the driver's pre-attempt
                 // capability switch (a lead that cannot see the photo) is not the lead failing.
                 if from.id == leadId, attempting == leadId { leadHop = failure }
-                // Rewind the partial UI stream and log the hop; P2c narrates it out loud.
+                // Rewind the partial UI stream and log the hop; P2c narrates it out loud. The
+                // error goes in the log too (Plan KL P2): the class alone never said what failed.
                 onStreamReset?()
                 PrivacyLog.model(.cascadeSwitched, configuration: PrivateIdentifier(to.id),
-                                 detail: PrivacyToken.caseName(of: failure))
-                await onModelSwitch?(savedById[from.id], savedById[to.id], failure)
+                                 detail: PrivacyToken.caseName(of: failure),
+                                 error: error.map { SafeErrorSummary($0) })
+                await onModelSwitch?(savedById[from.id], savedById[to.id], failure, error)
             },
             attempt: { [weak self] candidate in
                 guard let self else { throw LLMError.invalidConfiguration("LLM service released") }

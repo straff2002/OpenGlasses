@@ -86,7 +86,7 @@ final class SelectedPhotoModelTests: XCTestCase {
         RecordingQueueProtocol.queue = [(200, #"{"choices":[{"message":{"role":"assistant","content":"A blue image."}}]}"#)]
         var switches = 0
         let reply = try await service().sendMessageCascading("Describe this", imageData: photo,
-            onModelSwitch: { _, _, _ in switches += 1 })
+            onModelSwitch: { _, _, _, _ in switches += 1 })
         XCTAssertEqual(reply, "A blue image.")
         XCTAssertEqual(switches, 0)
         let request = try XCTUnwrap(RecordingQueueProtocol.requests.first)
@@ -120,8 +120,9 @@ final class SelectedPhotoModelTests: XCTestCase {
         RecordingQueueProtocol.queue = [(401, #"{"error":{"message":"test refusal"}}"#), (200, claudeAnswer)]
         var switches = 0
         let reply = try await service().sendMessageCascading("Describe this", imageData: photo,
-            onModelSwitch: { _, to, _ in
+            onModelSwitch: { _, to, _, error in
                 XCTAssertEqual(to?.id, "claude")
+                XCTAssertNotNil(error, "a hop after a refusal carries the refusal")
                 switches += 1
             })
         XCTAssertEqual(reply, "A blue image.")
@@ -139,10 +140,11 @@ final class SelectedPhotoModelTests: XCTestCase {
             RecordingQueueProtocol.queue = [(200, claudeAnswer)]
             var switches = 0
             let reply = try await service().sendMessageCascading("Describe this", imageData: photo,
-                onModelSwitch: { from, to, failure in
+                onModelSwitch: { from, to, failure, error in
                     XCTAssertEqual(from?.id, "selected")
                     XCTAssertEqual(to?.id, "claude")
                     XCTAssertEqual(failure, .visionUnavailable)
+                    XCTAssertNil(error, "the capability switch happens before anything is sent")
                     switches += 1
                 })
             XCTAssertEqual(reply, "A blue image.")
@@ -175,5 +177,44 @@ final class SelectedPhotoModelTests: XCTestCase {
         } catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertTrue(RecordingQueueProtocol.requests.isEmpty)
         XCTAssertEqual(Config.activeModelId, "selected")
+    }
+
+    /// Plan KL P0: a photo turn that runs out of models on a missing key names the service whose
+    /// key it was, not "working credentials for them".
+    func testAPhotoTurnThatRunsOutOnAMissingKeyNamesTheService() async {
+        Config.setSavedModels([
+            ModelConfig(id: "groq", name: "My Groq", provider: LLMProvider.groq.rawValue,
+                        apiKey: "", model: "groq-vision-model",
+                        baseURL: LLMProvider.groq.defaultBaseURL, supportsVision: true, smallContext: true),
+        ])
+        Config.setActiveModelId("groq")
+        let llm = service()
+        do {
+            _ = try await llm.sendMessageCascading("Describe this", imageData: photo)
+            XCTFail("a model with no key cannot answer")
+        } catch {
+            XCTAssertEqual(llm.credentialGap(behind: error),
+                           CredentialGap(provider: .groq, kind: .missing, credential: .key))
+            XCTAssertEqual(SpokenErrorPolicy.photoFailureLine(
+                for: error, photoCaptured: true, narrateModelFailures: true,
+                gap: llm.credentialGap(behind: error)),
+                           "I took the photo, but couldn't get an answer about it — there's no working key for Groq.")
+            XCTAssertNil(llm.credentialGap(behind: LLMError.missingAPIKey("another failure")),
+                         "a gap explains only the error it was read from")
+        }
+        XCTAssertTrue(RecordingQueueProtocol.requests.isEmpty, "nothing is sent without a key")
+    }
+
+    /// No model fitting the turn is not any one model's sign-in.
+    func testNoEligibleCandidateIsNotACredentialGap() async {
+        select(vision: false)
+        Config.setSavedModels(Array(Config.savedModels.prefix(1)))
+        let llm = service()
+        do {
+            _ = try await llm.sendMessageCascading("Describe this", imageData: photo)
+            XCTFail("must report that no vision model exists")
+        } catch {
+            XCTAssertNil(llm.credentialGap(behind: error))
+        }
     }
 }

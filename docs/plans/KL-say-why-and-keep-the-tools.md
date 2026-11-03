@@ -1,7 +1,8 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 📝 Drafted 2026-11-03 from two TestFlight users' support reports on build 615. The owner took all
-six decisions the same day. Nothing built.
+**Status:** 🚧 P0 built 2026-11-03 (headless; the device re-run is P5). Drafted 2026-11-03 from two
+TestFlight users' support reports on build 615. The owner took all six decisions the same day. P2's
+hop logging landed with P0; P1–P5 are not built.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -110,6 +111,36 @@ Two users sent reports on build 615, and the app failed both of them in ways the
   - latch transitions: said, silent, credential changed, said again
   - the photo exhaustion line
   - the status-card state for each provider's sign-in
+
+**As built (2026-11-03):**
+
+- `CredentialGap` (`Services/CredentialGap.swift`) classifies a thrown error for a saved model: kind
+  `.missing` (`missingAPIKey`) or `.refused` (`credentialNotAccepted`, or a 401/403 the classifier left
+  as `other` or unclassified), credential `.account` or `.key`. Only a `.terminalForCandidate` failure
+  can be a gap; a model-contract refusal, `modelNotAvailable` and `modelDeclined` are not, and the
+  on-device providers never have one. `LLMProvider.serviceName` gives the service's own name.
+- `fallbackPhrase(from:to:failure:gap:)` and `exhaustionReason(lastError:gap:)` take the gap as an
+  optional argument; without one every line is byte-identical. `ModelSwitchNarrator.Model` gained
+  `isOnDevice` (Apple Intelligence as well as MLX) for "I'm answering on this phone"; `isLocal` keeps
+  its meaning for the existing lines. An exhaustion reason uses the gap only while the error itself
+  is a credential failure of the same kind.
+- `ModelCascade.run`'s `onSwitch` gets the thrown error as a fourth argument (nil for the vision
+  pre-switch). `sendMessageCascading`'s
+  `onModelSwitch` passes it on to `narrateModelSwitch`, which reads the gap from it.
+- `LLMService.credentialGap(behind:)` returns the gap the last failed attempt recorded, matched on the
+  error itself, for the two text exhaustion lines and the three photo failure lines. "No model fits
+  this turn" is thrown before any attempt, so it is never a gap.
+- `CredentialNoticeLatch` (value type on `AppState`, process lifetime) is keyed by provider, with a
+  fingerprint of the provider's account-connected flag, whether the model has a key, and the key's
+  process-seeded `hashValue` (so a refused key replaced by another is said again). A gap already
+  said is not narrated, and does not spend the turn's one notice.
+- The status card row is `CredentialSignInRow` under `StatusIndicator` (Direct mode only), from the
+  pure `CredentialSignInPrompt.resolve`, which reads `modelAuthBadge`: "Sign in to ChatGPT" or "Add a
+  key for Groq", opening Settings › AI & Personality. The row says what to do rather than "Not signed in to
+  ChatGPT" with a separate action, so it is one control.
+- **From P2:** `cascadeSwitched` now logs `SafeErrorSummary(error)` beside the class.
+- Tests: `CredentialGapTests` (classification, phrase tables, exhaustion, latch, row, cascade error),
+  and two `SelectedPhotoModelTests` cases through the real `LLMService`.
 
 ### P1 — fit the request to the account's per-minute allowance (headless core; live check owed)
 

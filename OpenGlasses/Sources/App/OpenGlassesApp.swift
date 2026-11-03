@@ -2460,6 +2460,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// BK P2c — set once the model-switch notice has been spoken this turn, so a multi-hop cascade
     /// narrates only the FIRST fallback hop (not once per hop). Reset at the start of every turn.
     private var didNarrateModelSwitchThisTurn = false
+    /// Plan KL P0 — the credential gaps already said this process, so a sign-in that stays missing
+    /// is said once rather than before every answer. Process lifetime only.
+    private var credentialNoticeLatch = CredentialNoticeLatch()
     /// The model-switch notice, played alongside the request instead of in front of it. Every turn
     /// path that speaks a reply or a failure line waits on it first, so neither cuts it off; when it
     /// ends with the turn still working, the thinking sound `speak` stopped comes back.
@@ -5844,8 +5847,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 locationContext: locationService.locationContext,
                 imageData: imageData,
                 memoryContext: memoryContextForPrompt(query: prompt),
-                onModelSwitch: { [self] from, to, failure in
-                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                onModelSwitch: { [self] from, to, failure, error in
+                    await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                 }
             )
             TurnRecorder.mark(.generationDone)
@@ -5906,8 +5909,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 locationContext: locationService.locationContext,
                 imageData: photoData,
                 memoryContext: memoryContextForPrompt(query: prompt),
-                onModelSwitch: { [self] from, to, failure in
-                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                onModelSwitch: { [self] from, to, failure, error in
+                    await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                 }
             )
             TurnRecorder.mark(.generationDone)
@@ -5947,7 +5950,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if !Task.isCancelled,
                let line = SpokenErrorPolicy.photoFailureLine(
                    for: error, photoCaptured: photoCaptured,
-                   narrateModelFailures: Config.narrateModelSwitchesEnabled) {
+                   narrateModelFailures: Config.narrateModelSwitchesEnabled,
+                   gap: llmService.credentialGap(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
                 await speechService.speak(line)
             }
@@ -6230,8 +6234,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 locationContext: locationService.locationContext,
                 imageData: photoData,
                 memoryContext: memoryContextForPrompt(query: prompt),
-                onModelSwitch: { [self] from, to, failure in
-                    await narrateModelSwitch(from: from, to: to, failure: failure)
+                onModelSwitch: { [self] from, to, failure, error in
+                    await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                 }
             )
             TurnRecorder.mark(.generationDone)
@@ -6276,7 +6280,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if !Task.isCancelled,
                let line = SpokenErrorPolicy.photoFailureLine(
                    for: error, photoCaptured: photoCaptured,
-                   narrateModelFailures: Config.narrateModelSwitchesEnabled) {
+                   narrateModelFailures: Config.narrateModelSwitchesEnabled,
+                   gap: llmService.credentialGap(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
                 await speechService.speak(line)
             }
@@ -7322,8 +7327,8 @@ class AppState: ObservableObject, AppStateProtocol {
                                 locationContext: self.locationService.locationContext,
                                 imageData: photoData,
                                 memoryContext: self.memoryContextForPrompt(query: query),
-                                onModelSwitch: { [weak self] from, to, failure in
-                                    await self?.narrateModelSwitch(from: from, to: to, failure: failure)
+                                onModelSwitch: { [weak self] from, to, failure, error in
+                                    await self?.narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                                 }
                             )
                         },
@@ -7369,7 +7374,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             // TTS once read out "keyNotFound(path: [language_model…".
                             let line = SpokenErrorPolicy.photoFailureLine(
                                 for: error, photoCaptured: photoCaptured,
-                                narrateModelFailures: Config.narrateModelSwitchesEnabled)
+                                narrateModelFailures: Config.narrateModelSwitchesEnabled,
+                                gap: self.llmService.credentialGap(behind: error))
                             if photoCaptured {
                                 self.lastResponse = "Photo analysis failed: \(error.localizedDescription)"
                             } else {
@@ -7646,15 +7652,31 @@ class AppState: ObservableObject, AppStateProtocol {
     /// notice sat inside the commit → generationDone span as the app talking, not the model. It no
     /// longer blocks the backend leg — the model is working the whole time it plays — so taking it
     /// out of `modelSeconds` would now under-report the model instead.
+    ///
+    /// A hop away from a missing or refused sign-in or key (Plan KL P0) names the service instead,
+    /// and is said once per process per service: `credentialNoticeLatch` keeps it quiet until that
+    /// service's credential state changes. The hop itself is still logged by the cascade.
     @MainActor
     private func narrateModelSwitch(from: ModelConfig?, to: ModelConfig?,
-                                    failure: ModelFallbackChain.FailureClass) async {
+                                    failure: ModelFallbackChain.FailureClass, error: Error?) async {
         guard Config.narrateModelSwitchesEnabled, !didNarrateModelSwitchThisTurn else { return }
+        let gap = CredentialGap.classify(error, model: from)
+        if let gap, let from {
+            let fingerprint = CredentialNoticeLatch.Fingerprint(
+                provider: from.llmProvider, hasKey: CredentialGap.hasKey(from),
+                keyDigest: from.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hashValue,
+                claudeConnected: ClaudeOAuthService.shared.isConnected,
+                chatgptConnected: ChatGPTOAuthService.shared.isConnected,
+                googleConnected: GoogleOAuthService.shared.isConnected,
+                xaiConnected: XAIOAuthService.shared.isConnected)
+            guard credentialNoticeLatch.shouldNarrate(gap, fingerprint: fingerprint) else { return }
+        }
         didNarrateModelSwitchThisTurn = true
         let phrase = ModelSwitchNarrator.fallbackPhrase(
             from: .init(name: from?.name ?? "the model", isLocal: from?.llmProvider == .local),
-            to: .init(name: to?.name ?? "another model", isLocal: to?.llmProvider == .local),
-            failure: failure)
+            to: .init(name: to?.name ?? "another model", isLocal: to?.llmProvider == .local,
+                      isOnDevice: to.map { LLMService.isOnDeviceProvider($0.llmProvider) } ?? false),
+            failure: failure, gap: gap)
         turnAnnouncement.announce(phrase)
     }
 
@@ -8064,8 +8086,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             onStreamReset: replyStream.map { stream in
                                 { MainActor.assumeIsolated { stream.streamDidReset() } }
                             },
-                            onModelSwitch: { [self] from, to, failure in
-                                await narrateModelSwitch(from: from, to: to, failure: failure)
+                            onModelSwitch: { [self] from, to, failure, error in
+                                await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                             }
                         )
                     }
@@ -8193,7 +8215,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // generic line (e.g. "the last one was rate-limited"), so the app stays honest
                     // about what happened. Off ⇒ the generic line.
                     let spoken = Config.narrateModelSwitchesEnabled
-                        ? ModelSwitchNarrator.exhaustionPhrase(lastError: error)
+                        ? ModelSwitchNarrator.exhaustionPhrase(
+                            lastError: error, gap: llmService.credentialGap(behind: error))
                         : "Sorry, I encountered an error."
                     await speechService.speak(spoken)
                 },
@@ -8368,9 +8391,9 @@ class AppState: ObservableObject, AppStateProtocol {
                             guard let self, let id = streamThreadId else { return }
                             if self.streamingTurn?.threadId == id { self.streamingTurn?.text = "" }
                         },
-                        onModelSwitch: { [self] from, to, failure in
+                        onModelSwitch: { [self] from, to, failure, error in
                             guard speakResponse else { return }   // silent when Siri speaks the reply
-                            await narrateModelSwitch(from: from, to: to, failure: failure)
+                            await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                         }
                     )
                 },
@@ -8441,7 +8464,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     if speakResponse {
                         // BK P2c: speak the real exhaustion reason, not the generic line.
                         let spoken = Config.narrateModelSwitchesEnabled
-                            ? ModelSwitchNarrator.exhaustionPhrase(lastError: error)
+                            ? ModelSwitchNarrator.exhaustionPhrase(
+                                lastError: error, gap: llmService.credentialGap(behind: error))
                             : "Sorry, I encountered an error."
                         await speechService.speak(spoken)
                     }
