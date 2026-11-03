@@ -1,8 +1,14 @@
 # Plan KK — The Conversation Timeline (what was said stays in front of the model after it leaves the request)
 
-**Status:** 🚧 P1's deterministic core built 2026-11-03 and unwired: nothing reads the timeline yet, and no
-summary is written. P0's live run and P2 to P4 are owed, and the four owner decisions are still open (see the
-end). Drafted from a code read of main at `c567b5cb5`; no live model has been run for this plan.
+**Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03, unwired: nothing reads the timeline yet,
+and no summary is written.
+- P0 found that one sentence telling the model to search recovers most of the gap.
+- It also found the timeline closes the rest only when coverage is complete, which changes P2's design (see
+  P0).
+- P2 to P4 are owed, and the four owner decisions are still open (see the end).
+
+Drafted from a code read of main at `c567b5cb5`.
+
 **Track:** App-wide for Direct mode on cloud models, Field Assist first: a long job is where an early
 reading or decision is most likely to leave the request.
 **Related:** Plan [FM](FM-conversation-context-and-field-continuity.md) (the ChatGPT request budget and its
@@ -157,6 +163,65 @@ Headless, plus a live probe on the two keys the owner tests with (ChatGPT, Claud
 - **If baseline already recalls well through `brain` recall, stop here** and take the smaller fix: tell the model
   to search when the omission note appears. This is a real possible outcome.
 - Fixture and scorer land under FK's structure, so FK inherits them.
+
+**Run 2026-11-03 on gpt-6-luna** (Responses at Automatic, through the API-key route), about US$1.80 in all. The
+harness, fixtures and scorer are in `Scripts/timeline-recall-bench/`, kept together so FK can take them as
+they are.
+
+Setup:
+- Both fixtures put all 40 old details outside the 14k window and all 8 controls inside it.
+- Six arms:
+  - **A**: today's layout.
+  - **B**: A plus one sentence in the omission note telling the model to search with `brain` recall.
+  - **C**: the whole conversation, with no budget.
+  - **D**: A plus the timeline as P1 specifies it.
+  - **E**: D with the newest omitted run summarised too, so coverage is complete.
+  - **F**: D plus B's sentence.
+
+| Old details correct (of 40) | A | B | C | D | E | F |
+|---|---|---|---|---|---|---|
+| Field job | 7, 4, 8 | 29, 33, 33 | 39, 39 | 27, 28 | 40, 40 | 29, 30 |
+| Everyday | 17, 19, 15 | 35, 36, 36 | 40, 40 | 38, 36 | 40, 40 | 39, 40 |
+
+Reading the table:
+- **Run-to-run spread is about ±2**, so differences of 3 or less are noise.
+- **Field C's one miss is a refusal to read back an access code**, which happens in every arm.
+- **Controls were 8 of 8 everywhere** except one E run (6 of 8).
+- **Almost every miss is a decline, the safe failure.** The only outdated answers came from D.
+
+What the runs show:
+- **Today the model rarely searches.** On the field job it answers from what it can see. On the everyday
+  conversation it often calls `brain` with action `query`, which searches stored memory, not conversations.
+- **B's sentence alone takes recall from 6 to 32 (field) and 17 to 36 (everyday)** with no rise in wrong
+  answers. It costs about one extra model call per question.
+- **B stops short of the ceiling** by about 8 (field) and 4 (everyday). The causes: questions it doesn't search
+  for, keyword misses, and, on the field job, refusing a correct recall result it says it "can't verify".
+- **D, built to P1's rules, is no better than B, and it is the one arm that gave outdated answers.** P1 leaves
+  an open run of omitted messages uncovered until it reaches 5,000 estimated tokens. At the probe, that run
+  held 16 (field) and 13 (everyday) of the 40 details. With a timeline present, the model seldom searched that
+  run. A summarised "7 pm" was answered as current because the move to 7:45 sat in the uncovered run.
+- **E, with coverage complete, matched the ceiling on all four runs** and needed fewer calls than B. Its block
+  was about 1,170 (field) and 680 (everyday) tokens. Summarising a chunk cost about 4k tokens in and 0.5k out.
+- **The timeline's label made the field job worse when combined with B's sentence (F).** "Notes, not a record"
+  seems to make the model distrust its own recall results.
+
+Limits of the run:
+- **It used 9 tools and a short prompt, not the app's 60+ and its full prompt.** The field job had no job
+  record. Both probably make B look better than it would in the app.
+- **Replies were lengthened so that 150 messages pass 14k.** At realistic spoken length, a thread of text alone
+  passes it after roughly 200 messages. In live use, tool results in the history bring that point closer.
+- **Every planted value was in the wearer's own words**, which favours keyword recall and the detail check.
+
+**Outcome.**
+- **Not the stop condition.** B does not reach the ceiling.
+- **B's sentence is worth shipping on its own.**
+- **The timeline is worth P2 and P3 only with complete coverage.** The open run has to be covered before a
+  block is rendered: summarised at request time, or with a far smaller minimum. A chunk whose later
+  correction is still uncovered must never be shown alone.
+- **The label needs rewording** so it doesn't undercut recall results.
+
+The run also found a P1 defect, fixed in the same PR. The detail check joined a code to the next word ("A44 on"
+read as "a44on"), so codes the summary had kept were restored again as lost.
 
 ### P1 — Deterministic core
 
