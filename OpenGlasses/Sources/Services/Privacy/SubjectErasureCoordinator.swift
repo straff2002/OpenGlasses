@@ -713,11 +713,27 @@ final class SubjectErasureCoordinator {
         case .conversationThread(let id):
             conversations.deleteThread(id)
             return .complete(.conversationThreads, removed: 1)
-        case .person, .document, .memoryFact:
+        case .person:
             // A thread is not about one person, so deleting whole threads because a name appears
             // in them would erase the wearer's own record of unrelated conversations. The turns
             // that mention the subject are already gone from the recall index above; the thread
             // text itself is left, and the receipt says so.
+            //
+            // The thread's own derived notes are another matter (Plan KK): a timeline entry is
+            // re-sent on every turn, so one naming the person goes here, derived before source,
+            // like the recall index. The receipt stays unsupported because the text it was made
+            // from is still there.
+            guard conversations.dropTimelineEntries(naming: subject.searchToken) != nil else {
+                return .unsupported(.conversationThreads,
+                                    "a thread is not about one subject; its matching turns are "
+                                        + "removed from the recall index, but the conversation store "
+                                        + "is locked, so its notes naming them were not reached")
+            }
+            return .unsupported(.conversationThreads,
+                                "a thread is not about one subject; its matching turns are removed "
+                                    + "from the recall index and its notes naming them are dropped "
+                                    + "instead")
+        case .document, .memoryFact:
             return .unsupported(.conversationThreads,
                                 "a thread is not about one subject; its matching turns are removed "
                                     + "from the recall index instead")
