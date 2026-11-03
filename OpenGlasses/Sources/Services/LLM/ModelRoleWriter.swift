@@ -24,6 +24,7 @@ enum ModelRoleWriter {
             guard Config.savedModels.contains(where: { $0.id == id }) else { return missingModel }
             if role == .assistant {
                 Config.setActiveModelId(id)
+                CloudSharingReview.shared.run(pickedModelId: id)
                 return .assistantChanged
             }
             Config.setVisionRoleModelId(id)

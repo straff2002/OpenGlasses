@@ -2086,6 +2086,7 @@ struct OnboardingView: View {
 
         // Update the LLM service so the UI reflects the chosen model immediately
         appState.llmService.refreshActiveModel()
+        CloudSharingReview.shared.run(duringSetup: true)
 
         // What else the key can do, offered once, after the key step (Plan KA P1). Nothing is
         // switched on until the card is tapped.
@@ -2103,6 +2104,7 @@ struct OnboardingView: View {
 
     private func completeOnboarding() {
         Config.setHasCompletedOnboarding(true)
+        CloudSharingReview.shared.run()
 
         // Ensure Wearables SDK is configured (may already be done from permissions page)
         if !bluetoothConfigured {

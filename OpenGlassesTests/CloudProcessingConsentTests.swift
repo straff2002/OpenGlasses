@@ -6,17 +6,24 @@ final class CloudProcessingConsentTests: XCTestCase {
     private var directory: URL!
     private var store: ConsentStore!
     private var consent: CloudProcessingConsent!
+    /// The test host is the app, so the real defaults would carry a test's refusal into the app.
+    private var defaults: UserDefaults!
+    private var suite: String!
     private let url = URL(string: "https://ai.example.test/v1/chat?key=secret")!
 
     override func setUp() {
         super.setUp()
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         store = ConsentStore(directory: directory)
-        consent = CloudProcessingConsent(store: store, foreground: { true })
+        suite = "CloudProcessingConsentTests"
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+        consent = CloudProcessingConsent(store: store, defaults: defaults, foreground: { true })
         consent.presenterAvailable = true
     }
     override func tearDown() {
         consent.cancelPending()
+        defaults.removePersistentDomain(forName: suite)
         try? FileManager.default.removeItem(at: directory)
         super.tearDown()
     }
@@ -43,14 +50,14 @@ final class CloudProcessingConsentTests: XCTestCase {
         _ = try await consent.authorize(url: url, scope: .conversation)
         XCTAssertFalse(consent.hasApproval(url: url, scope: .speechOutput))
         XCTAssertFalse(consent.hasApproval(url: URL(string: "https://other.example.test")!, scope: .conversation))
-        let restarted = CloudProcessingConsent(store: ConsentStore(directory: directory), foreground: { false })
+        let restarted = CloudProcessingConsent(store: ConsentStore(directory: directory), defaults: defaults, foreground: { false })
         XCTAssertTrue(restarted.hasApproval(url: url, scope: .conversation))
         let saved = try String(contentsOf: store.storeURL, encoding: .utf8)
         XCTAssertFalse(saved.contains("secret"))
         XCTAssertFalse(saved.contains("/v1/chat"))
     }
     func testBackgroundCannotPromptOrCreatePermission() async {
-        let background = CloudProcessingConsent(store: store, foreground: { false })
+        let background = CloudProcessingConsent(store: store, defaults: defaults, foreground: { false })
         background.presenterAvailable = true
         do { _ = try await background.authorize(url: url, scope: .conversation); XCTFail("Must refuse") }
         catch { XCTAssertTrue(error is CloudProcessingRefusal) }
@@ -159,7 +166,7 @@ final class CloudProcessingConsentTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("file".utf8).write(to: blockedPath)
         let blockedStore = ConsentStore(directory: blockedPath)
-        let blocked = CloudProcessingConsent(store: blockedStore, foreground: { true })
+        let blocked = CloudProcessingConsent(store: blockedStore, defaults: defaults, foreground: { true })
         blocked.presenterAvailable = true
         let request = Task { try await blocked.authorize(url: url, scope: .conversation) }
         for _ in 0..<200 { if blocked.pending != nil { break }; await Task.yield() }
@@ -187,13 +194,19 @@ private final class HoldingConsentProtocol: URLProtocol, @unchecked Sendable {
 @MainActor
 enum CloudConsentFixture {
     static func conversation(origins: [String] = ["https://api.test", "https://api.anthropic.com", "https://api.openai.com", "https://selected.example.test"]) -> CloudProcessingConsent {
+        approving(origins.map { ($0, .conversation) })
+    }
+
+    static func approving(_ grants: [(origin: String, scope: CloudProcessingScope)]) -> CloudProcessingConsent {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = ConsentStore(directory: directory)
-        for origin in origins {
-            store.recordWearerApproval(purpose: .aiProcessing, dataClass: .assistantContext,
-                                      recipient: origin, version: CloudProcessingTerms.version)
+        for grant in grants {
+            store.recordWearerApproval(purpose: .aiProcessing, dataClass: grant.scope.dataClass,
+                                      recipient: grant.origin, version: CloudProcessingTerms.version)
         }
         try? FileManager.default.removeItem(at: directory)
-        return CloudProcessingConsent(store: store, foreground: { false })
+        let defaults = UserDefaults(suiteName: "CloudProcessingConsentFixture")!
+        defaults.removePersistentDomain(forName: "CloudProcessingConsentFixture")
+        return CloudProcessingConsent(store: store, defaults: defaults, foreground: { false })
     }
 }

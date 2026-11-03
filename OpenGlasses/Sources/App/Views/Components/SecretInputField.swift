@@ -14,6 +14,7 @@ struct SecretInputField: View {
             Group {
                 if revealed {
                     TextField(placeholder, text: $text)
+                        .focused($secureFocused)
                 } else {
                     // A SecureField handed an existing long key has been seen drawing nothing on iOS 26
                     // (no dots, no placeholder), so a saved key read as missing. While it isn't
@@ -45,6 +46,7 @@ struct SecretInputField: View {
             Button {
                 if let pasted = UIPasteboard.general.string {
                     text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+                    keyEntered()
                 }
             } label: {
                 // Drawn as a bare glyph, which measured about 26×17 — under the 44pt floor on a
@@ -67,6 +69,19 @@ struct SecretInputField: View {
             .buttonStyle(.borderless)
             .accessibilityLabel(revealed ? "Hide" : "Reveal")
         }
+        .onChange(of: secureFocused) { _, focused in
+            if !focused { keyEntered() }
+        }
+        .onSubmit(keyEntered)
+        .onDisappear(perform: keyEntered)
+    }
+
+    /// Keys save on every keystroke, so a key is finished when the person leaves the field. The
+    /// review only asks about services that are set up, so a key for anything else asks nothing,
+    /// and neither does one still sitting unsaved in a model form.
+    private func keyEntered() {
+        guard !text.isEmpty else { return }
+        CloudSharingReview.shared.run()
     }
 
     private var showsSavedSummary: Bool { !secureFocused && !text.isEmpty }

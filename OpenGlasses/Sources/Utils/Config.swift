@@ -709,6 +709,7 @@ struct Config {
         if let data = try? JSONEncoder().encode(models) {
             KeychainService.setData(data, for: modelsKey)
         }
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     /// The ID of the currently active model
@@ -2097,6 +2098,7 @@ struct Config {
 
     static func setTTSEnginePreference(_ preference: TTSEnginePreference) {
         UserDefaults.standard.set(preference.rawValue, forKey: "ttsEnginePreference")
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     /// Which speech-recognition engine to prefer (Additional Capabilities #8 — the on-device
@@ -2119,6 +2121,7 @@ struct Config {
     static func chooseRecognizer(_ preference: ASREnginePreference) {
         setASREnginePreference(preference)
         cloudDictationEnabled = preference.isCloud
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     // MARK: - App Mode
@@ -2133,6 +2136,7 @@ struct Config {
 
     static func setAppMode(_ mode: AppMode) {
         UserDefaults.standard.set(mode.rawValue, forKey: "appMode")
+        NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }
 
     // MARK: - LiveAI Mode

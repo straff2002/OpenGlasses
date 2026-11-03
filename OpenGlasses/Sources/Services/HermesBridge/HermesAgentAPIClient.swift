@@ -163,6 +163,8 @@ final class HermesAgentAPIClient {
         } catch {
             // The caller's own task cancelled (barge-in): a cancellation, so the turn stops.
             if Task.isCancelled { throw CancellationError() }
+            // The person's answer about this service, not a fault in reaching it.
+            if error is CloudProcessingRefusal { throw error }
             // Cancelled from here, which only the medical teardown does.
             if task.isCancelled { throw MedicalEgressRefusal(route: .hermesAgentAPI) }
             throw HermesAgentAPI.error(forTransport: error)

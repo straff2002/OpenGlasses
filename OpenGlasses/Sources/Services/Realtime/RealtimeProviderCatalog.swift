@@ -278,6 +278,7 @@ extension Config {
         return models
     }
     @discardableResult static func setSavedRealtimeModels(_ models: [RealtimeModelConfig]) -> Bool {
+        defer { NotificationCenter.default.post(name: .cloudServicesChanged, object: nil) }
         guard let data = try? JSONEncoder().encode(models) else { return false }
         return KeychainService.setData(data, for: "savedRealtimeModels")
     }

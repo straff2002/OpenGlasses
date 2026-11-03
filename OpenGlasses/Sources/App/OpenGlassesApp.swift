@@ -8157,6 +8157,10 @@ class AppState: ObservableObject, AppStateProtocol {
                             return bridged
                         } catch is CancellationError {
                             throw CancellationError()
+                        } catch let refusal as CloudProcessingRefusal {
+                            // Unlike a fault, this must not fall through: the person hasn't agreed
+                            // to Hermes, and hasn't agreed to their turn going elsewhere instead.
+                            throw refusal
                         } catch {
                             addDebugEvent("Hermes failed (\(error.localizedDescription)) — using normal path")
                         }
@@ -8258,11 +8262,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // BK P2c: when the cascade is exhausted, speak the real reason instead of the
                     // generic line (e.g. "the last one was rate-limited"), so the app stays honest
                     // about what happened. Off ⇒ the generic line.
-                    let spoken = Config.narrateModelSwitchesEnabled
-                        ? ModelSwitchNarrator.exhaustionPhrase(
-                            lastError: error, gap: llmService.credentialGap(behind: error))
-                        : "Sorry, I encountered an error."
-                    await speechService.speak(spoken)
+                    await speechService.speak(ModelSwitchNarrator.failureLine(
+                        error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
@@ -8505,13 +8506,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     _ = nativeToolRouter.takeTurnToolNames()
                     streamingTurn = nil
                     errorMessage = String(localized: "Failed to get response: \(error.localizedDescription)")
+                    // Siri and the Watch read this back. Left alone, it's the previous answer.
+                    lastResponse = ModelSwitchNarrator.exhaustionPhrase(
+                        lastError: error, gap: llmService.credentialGap(behind: error))
                     if speakResponse {
                         // BK P2c: speak the real exhaustion reason, not the generic line.
-                        let spoken = Config.narrateModelSwitchesEnabled
-                            ? ModelSwitchNarrator.exhaustionPhrase(
-                                lastError: error, gap: llmService.credentialGap(behind: error))
-                            : "Sorry, I encountered an error."
-                        await speechService.speak(spoken)
+                        await speechService.speak(ModelSwitchNarrator.failureLine(
+                            error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
                     }
                 },
                 finish: { [self] in

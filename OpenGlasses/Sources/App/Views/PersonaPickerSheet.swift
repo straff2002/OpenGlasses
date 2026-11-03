@@ -113,6 +113,7 @@ struct PersonaPickerSheet: View {
     private func activatePersona(_ persona: Persona) {
         appState.activePersona = persona
         Config.setActiveModelId(persona.modelId)
+        CloudSharingReview.shared.run(pickedModelId: persona.modelId)
         Config.setActivePresetId(persona.presetId)
         appState.llmService.refreshActiveModel()
         appState.llmService.clearHistory()
@@ -310,6 +311,7 @@ struct PersonaModeSections: View {
     private func activatePersona(_ persona: Persona) {
         appState.activePersona = persona
         Config.setActiveModelId(persona.modelId)
+        CloudSharingReview.shared.run(pickedModelId: persona.modelId)
         Config.setActivePresetId(persona.presetId)
         appState.llmService.refreshActiveModel()
         appState.llmService.clearHistory()

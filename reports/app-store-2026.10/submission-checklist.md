@@ -12,9 +12,9 @@ Source changes reduce identified risks; they do not guarantee App Review approva
 
 ## Sharing permissions and privacy answers
 
-- [ ] Try a typed cloud request with a test provider account: verify the actual destination/purpose and data disclosure appear before transmission. Decline it and confirm no request is sent or silently rerouted.
+- [ ] Save a test provider key and confirm the permission question appears with the destination, purpose and data disclosure, including over an open sheet. Choose Not now: the key stays saved, a request sends nothing and is not silently rerouted, and relaunching does not ask again.
 - [ ] Approve that destination, make a request, change provider and verify a separate prompt. Test explicit cloud voice, dictation, search and live microphone/camera independently.
-- [ ] Withdraw permission in Settings > Devices & Privacy > Cloud AI Sharing during a stream. Confirm it stops and does not reconnect; approved local processing remains usable. Background first use must refuse rather than wait for hidden UI.
+- [ ] Withdraw permission in Settings > Devices & Privacy > Cloud AI Sharing during a stream. Confirm it stops and does not reconnect; approved local processing remains usable. Background first use must refuse rather than wait for hidden UI, say that permission is needed, and ask when the app is next opened.
 - [ ] Review each enabled recipient's current retention, training and third-party sharing terms. A user-configured endpoint or approved credential is not proof that a service has acceptable terms or authorisation.
 - [ ] Reconcile and publish the App Store Connect privacy answers. The manifest declares authenticated provider content as linked, app functionality, no tracking; it includes precise and reduced-precision location. This is not evidence that the live App Store Connect answers have been updated.
 - [ ] Publish the revised privacy policy when these behaviors are in the release; the branch's policy draft must not describe unshipped behavior as already live.
