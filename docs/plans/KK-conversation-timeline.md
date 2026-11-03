@@ -1,0 +1,196 @@
+# Plan KK — The Conversation Timeline (what was said stays in front of the model after it leaves the request)
+
+**Status:** 📝 Drafted 2026-11-03, not scheduled; nothing built. Four owner decisions are open (see the
+end). Drafted from a code read of main at `c567b5cb5`; no live model has been run for this plan.
+**Track:** App-wide for Direct mode on cloud models, Field Assist first: a long job is where an early
+reading or decision is most likely to leave the request.
+**Related:** Plan [FM](FM-conversation-context-and-field-continuity.md) (the ChatGPT request budget and its
+rule that compaction never removes saved messages), Plan [GB](GB-field-test-round-3.md) P5
+(`APIHistoryBudget`, `PromptLayout`, job floors), Plan [DK](DK-protected-conversation-recall-index.md)
+(the recall index), Plan [FK](FK-memory-quality-and-continuity-benchmarks.md) (the benchmark this plan feeds),
+Plan [FJ](FJ-live-wearer-memory-continuity.md) (Live modes, which this plan does not touch).
+
+---
+
+## Why
+
+We bound every cloud request, which is right: GB P5 exists because a job's history was being re-sent and
+billed in full on every tool round. But the two bounds have no summary behind them. When a message leaves the
+request, the model gets a one-line note that some older messages were left out, and nothing about what they
+said.
+
+The model can look. `brain` with action `recall` searches past conversations, and `memory_search` searches
+stored facts. Looking only helps when the model knows there is something to find. A decision from forty
+messages ago that it no longer holds is not something it can decide to search for.
+
+## Findings
+
+Read from the code on 2026-11-03. How often this costs a wearer a wrong answer has **not** been measured;
+that is P0.
+
+1. **API routes drop at about 14k tokens and summarise at 80k.** `APIHistoryBudget.select` drops the oldest
+   complete exchanges from the request copy down to `defaultAllowance = 14_000`. The compactors only run over
+   `maxEstimatedTokens = 80_000` of in-memory history (`LLMService.swift:365`). Between the two, older
+   exchanges leave with only `omissionNote`.
+2. **ChatGPT routes never summarise.** They skip the compactors by design (FM), and
+   `RequestContextBudget.build` drops old exchanges with the same kind of note.
+3. **The LLM summariser is behind Agent Mode.** Without it, the 80k path keeps extracted signals and drops the
+   rest.
+4. **The summariser is weak when it does run.** Each message is cut to 500 characters, the result is capped at
+   300 words, and it reads the in-memory history, where tool output sits beside what the wearer said.
+5. **`compressedSummary` is half-wired.** Only the Agent Mode path writes it. `replayMessages` puts it in front
+   of the *whole* thread on resume, so the model gets a summary of messages it is also getting in full.
+   `ConversationStore.truncate` leaves it in place, so an edit or regenerate can keep a summary of text the
+   wearer has removed.
+6. **A useful split already exists.** `ConversationThread.messages` holds the wearer's words and the replies,
+   not tool results, so the source this plan needs is already saved. It carries stable ids and timestamps, is
+   already encrypted, and goes when the thread goes.
+
+## Outcome
+
+On a long conversation, the model always holds a short, dated, in-order account of everything earlier in the
+same conversation, however much has left the request. Recent messages stay word for word. The saved transcript
+is never changed. If an account cannot be produced, the wearer gets exactly today's behaviour and the note still
+says messages are missing.
+
+**Done means** P0's benchmark, run again on the same fixture, shows old-detail recall up, wrong and outdated
+answers not up, and the extra cost per turn within the bound P0 sets.
+
+## What this does not do
+
+- **No conversation across threads.** Each thread and each job stays its own. Job floors keep working: a new job
+  on a thread sees nothing from before its floor. Other conversations remain reachable through `brain` recall.
+- **No change to the request budgets.** Allowances, the protected current turn and the exchange seams stay.
+- **Not a record.** The timeline is never evidence. Readings and procedure state keep living in `FieldSession`;
+  saved messages stay the transcript. Nothing is deleted or rewritten to make room.
+- **Live modes and on-device models are out.** Gemini Live, OpenAI Realtime, MLX and Apple Intelligence keep
+  their own paths. `Local` models cannot run backgrounded anyway.
+
+## Design
+
+**Where it lives.** A new optional field on `ConversationThread`, so encryption, the save guards, retention and
+`deleteThread` all cover it, and an older saved thread decodes unchanged. No new store, so no new
+`DataStoreRegistry` row. `compressedSummary` stops being written; an existing value still decodes and stops being
+prepended once a thread has entries.
+
+```swift
+struct TimelineEntry: Codable, Equatable, Sendable {
+    let id: String
+    let firstMessageID: String
+    let lastMessageID: String
+    let startedAt: Date
+    let endedAt: Date
+    let tier: Tier              // .chunk or .merged
+    let text: String
+}
+```
+
+**What it reads.** Saved messages only, by id, in order. Tool output is left out on purpose: a result matters
+here if it was said to the wearer, and then it is in a reply. This is the difference from the current summariser.
+
+**When it runs.** After the reply is accepted, never in the turn's way, the same place `MemoryLoopService.enrich`
+runs. A pass starts when the messages the request no longer carries, minus those already covered, pass about
+5k estimated tokens. One pass per thread at a time. Never while the store is locked.
+
+**Which messages have left.** The saved thread and the in-memory history have no shared ids, so this is counted
+from the tail: a request that kept K user turns means the thread's last K user messages are live, and everything
+before them is eligible. Replay, the injected summary and turns that never saved must each have a test. When the
+count is doubtful, overlap: **a gap is the defect, and an overlap only wastes a few tokens.**
+
+**Tiers.** Two: chunks, and merged entries when four chunks are waiting. A phone conversation is much shorter than
+a month of desktop use, so a third tier earns nothing.
+
+**What the model sees.** One block, oldest first, dated, capped at about 1,500 estimated tokens, labelled as notes:
+*Earlier in this conversation. These are notes, not a record: for readings and job details, the job record and the
+wearer's own words win.* It replaces the omission note when coverage is complete; when there is a gap the note
+stays and says so. Entries before the job floor are never rendered, and a chunk never spans a floor. The floor is
+an index into in-memory history today, so its date needs capturing where it moves.
+
+**Acceptance.** A pure policy decides whether a summary is kept: non-empty, complete (not cut off at the token
+limit), within its size bound, and plain text. Corrections keep only the corrected value ("it was 52, not 25").
+A deterministic check then lists the numbers-with-units, part numbers and model or serial numbers in the chunk's
+*user* messages; any the summary lost are appended word for word. A technician's figures are the one thing a
+paraphrase must not lose, and this check needs no model to trust.
+
+**Failure.** A failed or refused summary leaves the range uncovered and is retried on a later turn with backoff.
+The message is never lost, because it was never touched.
+
+**Cost.** The block sits in the volatile tail through `requestSystemParts`, the seam the note already uses, so it
+is uncached and is paid on every tool round. Its size is bounded, and P0 measures it. Dropping the oldest exchange
+one at a time also moves the history prefix on every turn over budget, so little of the history reaches the prompt
+cache; cutting in batches would help and is decision 2.
+
+## Safety and privacy rules
+
+- **Destination.** A summary goes only through `medicalInferenceModel`, to the model answering this thread, and is
+  counted in `UsageStore` and bound by the spend caps. No cheaper model is chosen, because that would be a new
+  destination for the wearer's words.
+- **HIPAA.** Off, and the note stays (decision 3).
+- **Untrusted text.** The block quotes the wearer and earlier replies, so it stays labelled as notes and never reads
+  as an instruction.
+- **Logging.** `PrivacyLog` gets counts and sizes only. Entry text never reaches a log, a support report or
+  `JobTranscriptExport`. The on-device Prompt Inspector may show it, as it shows memory today.
+- **Edit and regenerate.** `truncate` drops every entry that overlaps a removed message, and the range is
+  summarised again. The same fix closes finding 5 for `compressedSummary`.
+- **Erasure.** A thread delete takes the entries with it. A *person* erasure leaves thread text in place today
+  (`eraseConversations` says so in its receipt) and removes matching turns from the recall index. The timeline would
+  go on re-sending that name on every turn, so it counts as a derived index: entries that match are dropped first,
+  before their source, under the coordinator's existing rule. `SubjectErasureTests` extended to prove it.
+- **Fixtures.** Invented jobs only, no manual figures and no tester content.
+
+## Phases
+
+All in one PR apart from the device pass, as usual.
+
+### P0 — Measure the gap first
+
+Headless, plus a live probe on the two keys the owner tests with (ChatGPT, Claude API).
+
+- An invented long job and a long everyday conversation, about 150 messages each, with 40 planted details:
+  readings, part numbers, a moved appointment, which option won. Some have lookalike wrong values or a later
+  correction.
+- Questions that do not hint at memory ("what do I order?"), scored strictly: one exact answer. A wrong value, an
+  outdated value and "X or Y" all count as misses; "I don't have that" is a miss counted separately, because it is
+  the safe failure. Eight recent details act as controls.
+- Baseline on current main, with tool calls logged so `brain` recall gets its due.
+- **If baseline already recalls well through `brain` recall, stop here** and take the smaller fix: tell the model
+  to search when the omission note appears. This is a real possible outcome.
+- Fixture and scorer land under FK's structure, so FK inherits them.
+
+### P1 — Deterministic core
+
+Pure and table-tested: `TimelineEntry`, the coverage calculation (tail count, gaps, overlaps, floors), chunk
+selection, merge decisions, the acceptance policy with the detail check, the renderer and its cap, and
+invalidation on truncate and erasure. Older threads decode unchanged.
+
+### P2 — The summary pass
+
+`completeStateless`-style seam so the pass is testable without a model, the policy gate with named skip reasons in
+the style of `RelationEnrichmentPolicy`, backoff, usage and spend-cap wiring. Retire the 500-character,
+300-word path and stop writing `compressedSummary`.
+
+### P3 — Into the request
+
+API routes through `requestSystemParts`, ChatGPT through `RequestContextBudget.build` so the block counts against
+its allowance (and the same accounting for API routes), Groq and small-context routes checked one by one. Prompt
+Inspector shows the block. `replayMessages` stops the double summary on resume.
+
+### P4 — Device pass and re-run
+
+Run P0 again on the same fixture and record both results here. One real long conversation on a phone: a locked
+phone mid-pass, a kill during a pass, edit and regenerate, resume, and a new job on the same thread.
+
+## Owner decisions
+
+1. **Outside Agent Mode?** Everything autonomous sits behind that switch, and the LLM summariser does today.
+   **Recommended: on for everyone**, because the Field Assist technician is the one this is for and no new
+   destination is involved: the same words already went to that provider in the same conversation. It does spend
+   their tokens, so it appears in Usage and a setting turns it off.
+2. **Cut history in batches?** Letting the request grow to the allowance, then cutting well below it, would leave
+   the history prefix stable for several turns and could save more than the timeline costs, but changes GB P5's
+   tested behaviour. **Recommended: not in this plan's PR**; decide from P0's cache numbers.
+3. **HIPAA mode.** **Recommended: off for now**, with the note saying messages are missing. A local-only pass cannot
+   run in the background, and a medical summary needs its own review.
+4. **A tool to read the original words of a span?** It would let the model go from an entry straight to the exact
+   messages, but `brain` recall may already do enough. **Recommended: leave out**, and revisit if P4 shows the model
+   knows a detail exists and cannot get it.
