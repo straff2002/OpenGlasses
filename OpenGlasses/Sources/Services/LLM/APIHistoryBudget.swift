@@ -79,7 +79,7 @@ enum APIHistoryBudget {
     /// Plan KK P3: said when the timeline's notes follow the note and some of the messages that
     /// left are not in them. P0: a note whose later correction sat in an uncovered run was read
     /// as current, so a block is never shown over a gap without this.
-    static let partialNotesSentence = "Some of them are not in the notes on earlier messages that follow."
+    static let partialNotesSentence = "Some of those messages are not covered by the notes that follow."
 
     /// Plan KK P0: without it the model rarely searches for what the budget left out, answering
     /// from what it can see or searching stored memory instead. With it, old-detail recall went

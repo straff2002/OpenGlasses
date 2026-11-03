@@ -369,7 +369,7 @@ block goes in and what it does to the note. `LLMService` only glues it to each r
   omitted part does. That last check guards the counting: a turn the history holds but the thread never saved,
   or a stale question id, would otherwise make a message that left look live and hide a gap. Otherwise the
   note stays (with P0's search sentence when `brain` is declared and callable, as before) and gains
-  `partialNotesSentence`: "Some of them are not in the notes on earlier messages that follow." The block comes
+  `partialNotesSentence`: "Some of those messages are not covered by the notes that follow." The block comes
   after it. A covered chunk followed by an uncovered run is never shown without that sentence.
 - **Not rendered** when the setting is off, in HIPAA mode (decision 3: the note stays), on an on-device model,
   with no thread or no showable entry, or when nothing was left out. Each has a named reason
