@@ -378,8 +378,20 @@ struct VoiceTab: View {
             VStack(spacing: DockGridMetrics.moduleGap) {
                 // Status card — one status surface: state, mode, persona, and the connection
                 // pills (formerly their own band above the card).
-                StatusIndicator(session: session, openAISession: openAISession,
-                                openClawBridge: appState.openClawBridge, compact: compactStatus)
+                //
+                // Plan KL P0: under it, while the assistant model has no usable sign-in or key, the
+                // row that says which, one tap from the fix. A live mode does not use that model.
+                // The pair is one module, and the row carries its own gap, so absent it costs
+                // nothing (see the notice below).
+                VStack(spacing: 0) {
+                    StatusIndicator(session: session, openAISession: openAISession,
+                                    openClawBridge: appState.openClawBridge, compact: compactStatus)
+                    if !isRealtime {
+                        CredentialSignInRow(llmService: appState.llmService) {
+                            appState.openSettings(.intelligence)
+                        }
+                    }
+                }
 
                 // One day card (Plan HB): the job-day card whenever Field Assist mode is on — My
                 // Day's switch then only governs the personal items folded into it — and My Day's

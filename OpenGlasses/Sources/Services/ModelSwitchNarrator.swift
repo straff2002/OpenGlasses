@@ -14,12 +14,32 @@ enum ModelSwitchNarrator {
     /// The minimum a phrase needs to know about a model.
     struct Model: Equatable {
         let name: String
+        /// The on-device MLX model, which the overflow and outage lines call "the on-device model".
         let isLocal: Bool
+        /// Runs on this phone (MLX or Apple Intelligence): a credential line says "I'm answering on
+        /// this phone" rather than naming it. Defaults to `isLocal`.
+        let isOnDevice: Bool
+
+        init(name: String, isLocal: Bool, isOnDevice: Bool? = nil) {
+            self.name = name
+            self.isLocal = isLocal
+            self.isOnDevice = isOnDevice ?? isLocal
+        }
     }
 
     /// Spoken when the turn falls over from `from` to `to`. The caller speaks this on the **first**
     /// hop of a turn only (not once per hop, not on restore).
-    static func fallbackPhrase(from: Model, to: Model, failure: ModelFallbackChain.FailureClass) -> String {
+    ///
+    /// `gap` is `from`'s credential gap when the hop was a missing or refused sign-in or key
+    /// (Plan KL P0): that is a setting, not an outage, so the line names the service and what is
+    /// wrong with it, and never says "unavailable".
+    static func fallbackPhrase(from: Model, to: Model, failure: ModelFallbackChain.FailureClass,
+                               gap: CredentialGap? = nil) -> String {
+        if let gap {
+            return to.isOnDevice
+                ? "\(gap.sentenceOpening), so I'm answering on this phone."
+                : "\(gap.sentenceOpening), so I'm using \(to.name)."
+        }
         switch failure {
         case .visionUnavailable:
             return "\(from.name) can't analyze photos — using \(to.name) for this picture."
@@ -43,13 +63,22 @@ enum ModelSwitchNarrator {
     }
 
     /// Spoken instead of the generic error line when the whole chain is exhausted — the real reason.
-    static func exhaustionPhrase(lastError: Error) -> String {
-        "I couldn't get a response — \(exhaustionReason(lastError: lastError))."
+    static func exhaustionPhrase(lastError: Error, gap: CredentialGap? = nil) -> String {
+        "I couldn't get a response — \(exhaustionReason(lastError: lastError, gap: gap))."
     }
 
     /// The reason half of `exhaustionPhrase`, for a caller that frames it itself (a photo turn
     /// says it took the picture first).
-    static func exhaustionReason(lastError: Error) -> String {
+    ///
+    /// `gap` is the credential gap of the model that threw `lastError`, when the caller knows it
+    /// (`LLMService.credentialGap(behind:)`). It names the service only while the error itself is
+    /// a credential failure of the same kind, so a stale gap can never explain another failure.
+    static func exhaustionReason(lastError: Error, gap: CredentialGap? = nil) -> String {
+        // Plan KL P0: "I don't have working credentials for them" named neither the service nor
+        // the fix. The exhaustion line is the turn's answer, so it is said every time.
+        if let gap, CredentialGap.kind(of: lastError) == gap.kind {
+            return gap.reason
+        }
         // Too large is its own reason whichever way it was classified: before a tool ran it may
         // have hopped, after one it ended the turn — either way "unavailable" would be untrue.
         if lastError is RequestContextBudget.CapacityError || RequestContextBudget.isOverflow(error: lastError) {
