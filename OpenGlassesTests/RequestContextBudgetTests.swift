@@ -92,6 +92,78 @@ final class RequestContextBudgetTests: XCTestCase {
         XCTAssertFalse(try instructions(recallOffered: false).contains("brain"))
     }
 
+    // MARK: - Plan KK P3: the timeline inside the budget
+
+    /// Four old exchanges and the current question, each old message about 250 tokens.
+    private func longHistory() -> [[String: Any]] {
+        var history: [[String: Any]] = []
+        for turn in 0..<4 {
+            history.append(["role": "user", "content": "question \(turn) " + String(repeating: "q", count: 1_000)])
+            history.append(["role": "assistant", "content": "answer \(turn) " + String(repeating: "a", count: 1_000)])
+        }
+        history.append(["role": "user", "content": "current question"])
+        return history
+    }
+
+    /// The text is asked for every count the loop tries, and the one sent is the one for the count
+    /// it actually removed.
+    func testTheWorkingContextFollowsTheCountActuallyRemoved() throws {
+        var asked: [Int] = []
+        let result = try RequestContextBudget.build(
+            model: "m", instructions: "policy", history: longHistory(), tools: nil, protectedStart: 8,
+            allowance: 2_000, workingContext: { removed in
+                asked.append(removed)
+                return removed == 0 ? nil : "[notes for \(removed)]"
+            })
+        XCTAssertGreaterThan(result.omittedMessages, 0)
+        XCTAssertEqual(asked.first, 0)
+        XCTAssertEqual(asked.last, result.omittedMessages)
+        let instructions = try XCTUnwrap(result.body["instructions"] as? String)
+        XCTAssertTrue(instructions.hasSuffix("[notes for \(result.omittedMessages)]"))
+        XCTAssertFalse(instructions.contains("Working context"), "the caller's text replaces the note")
+        XCTAssertFalse(result.fellBackToPlainNote)
+    }
+
+    /// The block counts against the allowance: a bigger block removes more history.
+    func testTheBlockIsInsideTheEstimate() throws {
+        func removed(blockCharacters: Int) throws -> Int {
+            try RequestContextBudget.build(
+                model: "m", instructions: "policy", history: longHistory(), tools: nil, protectedStart: 8,
+                allowance: 2_700, workingContext: { $0 == 0 ? nil : String(repeating: "n", count: blockCharacters) }
+            ).omittedMessages
+        }
+        XCTAssertGreaterThan(try removed(blockCharacters: 1_200), try removed(blockCharacters: 10))
+    }
+
+    /// The protected turn alone leaves no room for the block: the plain note goes, and the turn
+    /// does not fail because of the timeline.
+    func testNoRoomForTheBlockFallsBackToThePlainNote() throws {
+        var history = longHistory()
+        history[8] = ["role": "user", "content": "current question " + String(repeating: "c", count: 1_400)]
+        let result = try RequestContextBudget.build(
+            model: "m", instructions: "policy", history: history, tools: nil, protectedStart: 8,
+            allowance: 2_400, recallOffered: true,
+            workingContext: { $0 == 0 ? nil : String(repeating: "n", count: 2_000) })
+        XCTAssertTrue(result.fellBackToPlainNote)
+        XCTAssertEqual(result.omittedMessages, 8)
+        let instructions = try XCTUnwrap(result.body["instructions"] as? String)
+        XCTAssertTrue(instructions.hasSuffix(
+            RequestContextBudget.omissionNote(8, recallOffered: true) ?? "missing"))
+    }
+
+    func testTheSubscriptionNoteCanSayTheNotesArePartial() throws {
+        let partial = try XCTUnwrap(RequestContextBudget.omissionNote(4, recallOffered: false, partialNotes: true))
+        XCTAssertTrue(partial.hasPrefix("[Working context: 4 older messages omitted. "
+                                        + APIHistoryBudget.partialNotesSentence))
+        XCTAssertNil(RequestContextBudget.omissionNote(0, recallOffered: true))
+        // Without a working context the note is the one the budget always sent.
+        let plain = try RequestContextBudget.build(model: "m", instructions: "policy", history: longHistory(),
+                                                   tools: nil, protectedStart: 8, allowance: 2_000)
+        let instructions = try XCTUnwrap(plain.body["instructions"] as? String)
+        XCTAssertEqual(instructions, "policy\n\n" + (RequestContextBudget.omissionNote(plain.omittedMessages,
+                                                                                        recallOffered: false) ?? ""))
+    }
+
     func testCurrentQuestionInstructionsAndHugeToolAreNeverClipped() {
         let huge = String(repeating: "X", count: 10_000)
         XCTAssertThrowsError(try RequestContextBudget.build(model: "m", instructions: huge,

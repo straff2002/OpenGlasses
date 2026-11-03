@@ -24,6 +24,9 @@ enum RequestContextBudget {
         let body: [String: Any]
         let estimate: Estimate
         let omittedMessages: Int
+        /// Plan KK P3: true when the caller's `workingContext` would not fit beside the protected
+        /// turn and the plain omission note was sent instead.
+        var fellBackToPlainNote = false
     }
 
     struct CapacityError: LocalizedError {
@@ -131,33 +134,59 @@ enum RequestContextBudget {
     ///
     /// `recallOffered` (Plan KK) adds `APIHistoryBudget.recallSentence` to the omission note: true
     /// only when `tools` declares `brain` and the model may call it.
+    ///
+    /// `workingContext` (Plan KK P3) replaces the plain note: given how many messages this pass of
+    /// the loop has removed, the text that follows the instructions (the conversation timeline,
+    /// with or without the note), or nil for none. It is asked again every time `removed` grows,
+    /// so the timeline is inside the estimate and follows the count actually sent. If even the
+    /// protected turn alone will not fit beside it, the plain note is tried before giving up: the
+    /// timeline is never the reason a turn fails.
     static func build(model: String, instructions: String, history: [[String: Any]],
                       tools: [[String: Any]]?, protectedStart: Int, allowance: Int,
                       options: ResponsesTranslator.RequestOptions = ResponsesTranslator.RequestOptions(),
-                      recallOffered: Bool = false) throws -> Selection {
+                      recallOffered: Bool = false,
+                      workingContext: ((_ removed: Int) -> String?)? = nil) throws -> Selection {
         let boundary = min(max(0, protectedStart), history.count)
         var selected = history
         // Retain every current-turn image; omit historical images before removing text.
         let historical = HistoryHygiene.pruneImages(Array(selected.prefix(boundary)), keepLast: 0)
         selected.replaceSubrange(0..<boundary, with: historical)
+        let plainNote = { (removed: Int) in omissionNote(removed, recallOffered: recallOffered) }
+        func makeBody(removed: Int, context: (Int) -> String?) -> [String: Any] {
+            var prompt = instructions
+            if let text = context(removed) { prompt += "\n\n" + text }
+            return ResponsesTranslator.requestBody(model: model, instructions: prompt, history: selected,
+                                                   tools: tools, options: options)
+        }
         var removed = 0
         while true {
-            var prompt = instructions
-            if removed > 0 {
-                prompt += "\n\n[Working context: \(removed) older messages omitted. The saved transcript is unchanged. Do not infer missing results. Use field_session recall for older technician reports and task evidence; current session state takes precedence over older conversation.\(recallOffered ? " " + APIHistoryBudget.recallSentence : "")]"
-            }
-            let body = ResponsesTranslator.requestBody(model: model, instructions: prompt, history: selected,
-                                                       tools: tools, options: options)
+            let body = makeBody(removed: removed, context: workingContext ?? plainNote)
             let estimate = estimate(body)
             if estimate.total <= allowance { return Selection(body: body, estimate: estimate, omittedMessages: removed) }
             let remainingOld = boundary - removed
             guard remainingOld > 0 else {
+                if workingContext != nil {
+                    let plain = makeBody(removed: removed, context: plainNote)
+                    let plainEstimate = Self.estimate(plain)
+                    if plainEstimate.total <= allowance {
+                        return Selection(body: plain, estimate: plainEstimate, omittedMessages: removed,
+                                         fellBackToPlainNote: true)
+                    }
+                }
                 throw CapacityError(toolsRanThisTurn: toolsRan(in: history, since: boundary))
             }
             let next = nextExchangeBoundary(in: selected, remainingOld: remainingOld)
             selected.removeFirst(next)
             removed += next
         }
+    }
+
+    /// The subscription's omission note, nil when nothing was removed. `partialNotes` (Plan KK P3)
+    /// says the conversation timeline that follows does not cover everything removed.
+    static func omissionNote(_ removed: Int, recallOffered: Bool, partialNotes: Bool = false) -> String? {
+        guard removed > 0 else { return nil }
+        let partial = partialNotes ? " " + APIHistoryBudget.partialNotesSentence : ""
+        return "[Working context: \(removed) older messages omitted.\(partial) The saved transcript is unchanged. Do not infer missing results. Use field_session recall for older technician reports and task evidence; current session state takes precedence over older conversation.\(recallOffered ? " " + APIHistoryBudget.recallSentence : "")]"
     }
 
     /// Whether this turn's own messages (from `boundary` on) include a tool result — in the chat

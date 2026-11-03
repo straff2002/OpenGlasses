@@ -3,17 +3,32 @@ import Foundation
 /// Plan KK — the timeline as the one block the model reads. Pure.
 ///
 /// Oldest first, each entry under its date and time range, under a label that says what the block
-/// is: notes, which lose to the job record and to the wearer's own words. The block quotes the
-/// wearer and earlier replies, so the label is also what keeps it reading as material rather than
-/// as instructions. This text is for the model, not the screen, and is never localised.
+/// is: notes written as older messages left the request. The block quotes the wearer and earlier
+/// replies, so the label is also what keeps it reading as material rather than as instructions.
+/// This text is for the model, not the screen, and is never localised.
+///
+/// P3 reworded the label. P0 found the first one ("These are notes, not a record") made the model
+/// distrust its own correct `brain` recall results. The label now says what the notes are, that
+/// the lines under `TimelineDetailCheck.heading` are the wearer's exact words, and, only when
+/// `brain` is declared and callable, that exact wording can be looked up with it. It describes;
+/// it never tells the model to do anything, so nothing in it reads like the wearer's request.
 ///
 /// The block is bounded: entries are dropped oldest first until it fits the cap, using the same
 /// estimate the request budget uses for text. A dropped entry is a gap, and the result says so, so
 /// the caller keeps the omission note whenever the model is not holding everything.
 enum TimelineRenderer {
 
-    static let label = "Earlier in this conversation. These are notes, not a record: for readings "
-        + "and job details, the job record and the wearer's own words win."
+    /// The block's first paragraph. `recallOffered`: the request declares `brain` and the model
+    /// may call it, as for the omission note's `APIHistoryBudget.recallSentence`.
+    static func label(recallOffered: Bool) -> String {
+        "Earlier in this conversation: notes written as older messages left this request. The saved "
+            + "conversation is unchanged. Lines under \"\(TimelineDetailCheck.heading)\" are the wearer's "
+            + "exact words. Current job state takes precedence over older conversation."
+            + (recallOffered ? " " + recallClause : "")
+    }
+
+    /// Added to the label only when `brain` can be called.
+    static let recallClause = "Exact wording can be looked up with brain, action recall."
 
     /// The most the block may cost, in estimated tokens (plan: about 1,500).
     static let defaultTokenCap = 1_500
@@ -36,8 +51,10 @@ enum TimelineRenderer {
     ///   - floor: when the current job began; an entry that starts before it is never rendered.
     ///   - coverageHasGaps: `TimelineCoverage.Result.hasGaps` for the same thread and request.
     ///   - timeZone: the wearer's, injected so the dates are deterministic under test.
+    ///   - recallOffered: whether the label names `brain` recall (P3).
     static func render(entries: [TimelineEntry], floor: Date? = nil, coverageHasGaps: Bool,
-                       timeZone: TimeZone, tokenCap: Int = defaultTokenCap) -> Rendered {
+                       timeZone: TimeZone, tokenCap: Int = defaultTokenCap,
+                       recallOffered: Bool = false) -> Rendered {
         // A redacted entry says nothing: its span stays covered, and the block never shows it.
         let candidates = entries
             .filter { !$0.isRedacted }
@@ -46,11 +63,12 @@ enum TimelineRenderer {
         let formatter = DateRangeLabel(timeZone: timeZone)
         let paragraphs = candidates.map { "[\(formatter.label(from: $0.startedAt, to: $0.endedAt))]\n\($0.text)" }
 
+        let labelText = Self.label(recallOffered: recallOffered)
         var first = 0
         var text: String?
         var tokens = 0
         while first < paragraphs.count {
-            let block = ([label] + paragraphs[first...]).joined(separator: "\n\n")
+            let block = ([labelText] + paragraphs[first...]).joined(separator: "\n\n")
             let estimate = estimatedTokens(block)
             if estimate <= tokenCap {
                 text = block

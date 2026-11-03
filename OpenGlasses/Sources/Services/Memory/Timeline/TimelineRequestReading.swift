@@ -10,6 +10,37 @@ struct TimelineRequestReading: Equatable, Sendable {
     /// When the current job's history starts, or nil when no job floor applies. The floor is an
     /// index into the in-memory history; this is the time of the turn that set it.
     let floorDate: Date?
+    /// P3: real user turns the request left out after the job floor, read from the omitted part
+    /// of the history itself. Zero when nothing after the floor was left out, which is the only
+    /// time the pass does not look ahead (`TimelineSummaryPass.lookaheadUserTurns`).
+    var omittedUserTurns: Int = 0
+    /// P3: when the model's history was last emptied while the thread stayed open (a new topic, a
+    /// model or persona switch: `JobHistoryFloor.historyCleared`), or nil. Nothing saved before it
+    /// is part of the conversation the model is having, so the timeline never reaches before it.
+    var clearedAt: Date? = nil
+
+    /// Where the timeline starts in `messages`: the later of the job floor, moved back to the
+    /// question that opened the job (`TimelineSummaryPass.effectiveFloor`), and `clearedAt`, which
+    /// is not moved back, because the last question before a clear belongs to what was cleared.
+    /// One function for the pass and the request block, so the two never disagree.
+    func timelineFloor(in messages: [TimelineMessage]) -> Date? {
+        let job = TimelineSummaryPass.effectiveFloor(floorDate, in: messages)
+        switch (job, clearedAt) {
+        case let (job?, cleared?): return max(job, cleared)
+        case let (job?, nil): return job
+        case let (nil, cleared?): return cleared
+        case (nil, nil): return nil
+        }
+    }
+
+    /// The real user turns in `history[floor..<omitted]`: the turns a request left out that the
+    /// timeline is meant to stand in for. Before the floor is another job's (or a cleared)
+    /// conversation, which the block never describes.
+    static func omittedUserTurns(in history: [[String: Any]], omitted: Int, floor: Int) -> Int {
+        let end = min(max(0, omitted), history.count)
+        let start = min(max(0, floor), end)
+        return realUserTurns(in: Array(history[start..<end]))
+    }
 
     /// The wearer's turns in a provider history, which also holds tool calls, tool results and the
     /// app's own notes.
