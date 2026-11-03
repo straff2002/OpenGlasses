@@ -230,6 +230,11 @@ final class CredentialGapTests: XCTestCase {
         // A key added and then refused is a change of state, said once more.
         XCTAssertTrue(latch.shouldNarrate(.init(provider: .groq, kind: .refused, credential: .key),
                                           fingerprint: .init(accountConnected: false, hasKey: true)))
+        // So is a refused key replaced by another.
+        let refused = CredentialGap(provider: .groq, kind: .refused, credential: .key)
+        XCTAssertFalse(latch.shouldNarrate(refused, fingerprint: .init(accountConnected: false, hasKey: true)))
+        XCTAssertTrue(latch.shouldNarrate(refused, fingerprint: .init(accountConnected: false, hasKey: true,
+                                                                      keyDigest: 42)))
     }
 
     func testTheFingerprintReadsTheProvidersOwnAccount() {

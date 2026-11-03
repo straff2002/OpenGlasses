@@ -314,21 +314,4 @@ enum ModelCascade {
             }
         }
     }
-
-    /// `run` for a hop observer that needs only the class.
-    static func run(
-        candidates: [ModelFallbackChain.Candidate],
-        needs: ModelFallbackChain.TurnNeeds,
-        maxAttempts: Int,
-        isCancelled: () -> Bool = { false },
-        onSwitch: (_ from: ModelFallbackChain.Candidate,
-                   _ to: ModelFallbackChain.Candidate,
-                   _ failure: ModelFallbackChain.FailureClass) async -> Void,
-        attempt: (ModelFallbackChain.Candidate) async throws -> String
-    ) async throws -> String {
-        try await run(candidates: candidates, needs: needs, maxAttempts: maxAttempts,
-                      isCancelled: isCancelled,
-                      onSwitch: { from, to, failure, _ in await onSwitch(from, to, failure) },
-                      attempt: attempt)
-    }
 }

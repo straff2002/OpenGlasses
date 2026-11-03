@@ -7664,6 +7664,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if let gap, let from {
             let fingerprint = CredentialNoticeLatch.Fingerprint(
                 provider: from.llmProvider, hasKey: CredentialGap.hasKey(from),
+                keyDigest: from.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).hashValue,
                 claudeConnected: ClaudeOAuthService.shared.isConnected,
                 chatgptConnected: ChatGPTOAuthService.shared.isConnected,
                 googleConnected: GoogleOAuthService.shared.isConnected,

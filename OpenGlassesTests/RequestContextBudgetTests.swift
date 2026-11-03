@@ -411,7 +411,7 @@ final class ChatGPTUnknownModelCapacityTests: XCTestCase {
         let answer = try await ModelCascade.run(
             candidates: [cloud("chatgpt"), cloud("claude")],
             needs: .init(requiresVision: false, isBackgrounded: false), maxAttempts: 4,
-            onSwitch: { _, _, failure in hops.append(failure) },
+            onSwitch: { _, _, failure, _ in hops.append(failure) },
             attempt: { candidate in
                 tried.append(candidate.id)
                 if candidate.id == "chatgpt" { throw RequestContextBudget.CapacityError(toolsRanThisTurn: false) }

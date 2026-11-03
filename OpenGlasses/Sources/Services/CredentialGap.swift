@@ -111,23 +111,27 @@ struct CredentialGap: Equatable, Sendable {
 ///
 /// A missing sign-in stays missing, so a notice limited to once per turn was heard before every
 /// answer. This remembers, per service, the credential state the notice was said for; the same gap
-/// is said again only after that state changes — signed in or out, a key added or removed. Only
-/// whether a key is present goes in, never the key. Held for the process, never persisted.
+/// is said again only after that state changes — signed in or out, a key added, removed or edited.
+/// A key goes in only as its process-seeded `hashValue`, never as text. Held for the process, never
+/// persisted.
 struct CredentialNoticeLatch: Equatable {
 
     /// The credential state a notice was said for.
     struct Fingerprint: Hashable, Sendable {
         let accountConnected: Bool
         let hasKey: Bool
+        /// Tells one key from the next, so a refused key replaced by another is said again.
+        let keyDigest: Int
 
-        init(accountConnected: Bool, hasKey: Bool) {
+        init(accountConnected: Bool, hasKey: Bool, keyDigest: Int = 0) {
             self.accountConnected = accountConnected
             self.hasKey = hasKey
+            self.keyDigest = keyDigest
         }
 
         /// The state of `provider`'s own account, given each account's connected flag.
-        init(provider: LLMProvider, hasKey: Bool, claudeConnected: Bool, chatgptConnected: Bool,
-             googleConnected: Bool, xaiConnected: Bool) {
+        init(provider: LLMProvider, hasKey: Bool, keyDigest: Int = 0, claudeConnected: Bool,
+             chatgptConnected: Bool, googleConnected: Bool, xaiConnected: Bool) {
             let connected: Bool
             switch provider {
             case .anthropic: connected = claudeConnected
@@ -136,7 +140,7 @@ struct CredentialNoticeLatch: Equatable {
             case .xai: connected = xaiConnected
             default: connected = false
             }
-            self.init(accountConnected: connected, hasKey: hasKey)
+            self.init(accountConnected: connected, hasKey: hasKey, keyDigest: keyDigest)
         }
     }
 
