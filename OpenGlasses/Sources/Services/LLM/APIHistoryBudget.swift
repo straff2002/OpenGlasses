@@ -65,11 +65,21 @@ enum APIHistoryBudget {
     /// `recallOffered` adds `recallSentence`: true only when the request declares `brain` and
     /// the model may call it (not the tool loop's wrap-up, not a vault-only job, which seals
     /// `brain`), so the note never points at a tool the model cannot reach.
-    static func omissionNote(_ omitted: Int, recallOffered: Bool) -> String? {
+    ///
+    /// `partialNotes` (Plan KK P3) adds `partialNotesSentence`: the conversation timeline follows
+    /// the note but does not cover everything that left, so the model is told the notes are not
+    /// the whole of it.
+    static func omissionNote(_ omitted: Int, recallOffered: Bool, partialNotes: Bool = false) -> String? {
         guard omitted > 0 else { return nil }
+        let partial = partialNotes ? " " + partialNotesSentence : ""
         let search = recallOffered ? " " + recallSentence : ""
-        return "[Working context: \(omitted) older messages are not included in this request. The saved conversation is unchanged. Do not infer missing results; current job state takes precedence over older conversation.\(search)]"
+        return "[Working context: \(omitted) older messages are not included in this request.\(partial) The saved conversation is unchanged. Do not infer missing results; current job state takes precedence over older conversation.\(search)]"
     }
+
+    /// Plan KK P3: said when the timeline's notes follow the note and some of the messages that
+    /// left are not in them. P0: a note whose later correction sat in an uncovered run was read
+    /// as current, so a block is never shown over a gap without this.
+    static let partialNotesSentence = "Some of those messages are not covered by the notes that follow."
 
     /// Plan KK P0: without it the model rarely searches for what the budget left out, answering
     /// from what it can see or searching stored memory instead. With it, old-detail recall went
@@ -77,10 +87,14 @@ enum APIHistoryBudget {
     /// model call per question and no added wrong answers.
     static let recallSentence = "Those older messages can still be searched: before you answer about anything said earlier in this conversation, look it up with brain, action recall."
 
-    /// Whether `tools` declares `brain`, in the Anthropic and Responses shape (`name`) or the
-    /// Chat Completions one (`function.name`).
+    /// Whether `tools` declares `brain`, in the Anthropic and Responses shape (`name`), the
+    /// Chat Completions one (`function.name`) or Gemini REST's (`functionDeclarations`).
     static func declaresRecall(_ tools: [[String: Any]]?) -> Bool {
         (tools ?? []).contains { tool in
+            // Gemini REST (Plan KK P3) wraps its declarations in one `functionDeclarations` entry.
+            if let declarations = tool["functionDeclarations"] as? [[String: Any]] {
+                return declaresRecall(declarations)
+            }
             let name = tool["name"] as? String ?? (tool["function"] as? [String: Any])?["name"] as? String
             return name == "brain"
         }
@@ -99,6 +113,11 @@ struct JobHistoryFloor: Equatable {
     /// The in-memory history has no timestamps, so the timeline, which works on the saved thread,
     /// finds the job's start by this date instead of by `floor`.
     private(set) var floorDate: Date?
+    /// When the history was last emptied while the saved thread stayed open (Plan KK P3), or nil
+    /// once a thread is loaded into it again. A deliberate fresh start: the timeline never goes
+    /// before it. In memory like `floor`, because it describes the in-memory history: a relaunch
+    /// replays the whole thread into the history, and the timeline then follows what that holds.
+    private(set) var historyClearedAt: Date?
 
     /// A turn is starting at `turnStart` with `sessionId` active. A job that became active between
     /// turns (started from the Job tab) begins here.
@@ -125,7 +144,16 @@ struct JobHistoryFloor: Equatable {
     mutating func historyReplaced(sessionId: String?) {
         floor = 0
         floorDate = nil
+        historyClearedAt = nil
         lastSessionId = sessionId
+    }
+
+    /// History was emptied (a new topic, a model or persona switch) at `now`, with the saved
+    /// thread left open. Everything saved before `now` is a conversation the model has been told
+    /// to leave, so the timeline starts here (Plan KK P3).
+    mutating func historyCleared(sessionId: String?, now: Date = Date()) {
+        historyReplaced(sessionId: sessionId)
+        historyClearedAt = now
     }
 
     /// The legacy compactor replaced the oldest messages with `insertedSummary` summary messages,

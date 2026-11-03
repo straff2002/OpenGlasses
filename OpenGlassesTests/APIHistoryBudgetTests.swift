@@ -101,9 +101,26 @@ final class APIHistoryBudgetTests: XCTestCase {
         XCTAssertTrue(APIHistoryBudget.declaresRecall([["name": "get_weather"], ["name": "brain"]]))
         XCTAssertTrue(APIHistoryBudget.declaresRecall([["type": "function", "function": ["name": "brain"]]]))
         XCTAssertTrue(APIHistoryBudget.declaresRecall([["type": "function", "name": "brain"]]))
+        // Gemini REST (Plan KK P3): one entry wrapping the declarations.
+        XCTAssertTrue(APIHistoryBudget.declaresRecall([["functionDeclarations": [["name": "get_time"], ["name": "brain"]]]]))
+        XCTAssertFalse(APIHistoryBudget.declaresRecall([["functionDeclarations": [["name": "get_time"]]]]))
         XCTAssertFalse(APIHistoryBudget.declaresRecall([["type": "function", "function": ["name": "memory_search"]]]))
         XCTAssertFalse(APIHistoryBudget.declaresRecall([]))
         XCTAssertFalse(APIHistoryBudget.declaresRecall(nil))
+    }
+
+    /// Plan KK P3: with the timeline after it but not covering everything, the note says so, after
+    /// its count and before anything else, and is otherwise the note it always was.
+    func testOmissionNoteSaysWhenTheNotesArePartial() throws {
+        let partial = try XCTUnwrap(APIHistoryBudget.omissionNote(3, recallOffered: true, partialNotes: true))
+        XCTAssertTrue(partial.hasPrefix("[Working context: 3 older messages are not included in this request. "
+                                        + APIHistoryBudget.partialNotesSentence + " "))
+        XCTAssertTrue(partial.hasSuffix(APIHistoryBudget.recallSentence + "]"))
+        XCTAssertEqual(APIHistoryBudget.omissionNote(3, recallOffered: true),
+                       APIHistoryBudget.omissionNote(3, recallOffered: true, partialNotes: false))
+        XCTAssertFalse(APIHistoryBudget.omissionNote(3, recallOffered: false)?
+            .contains(APIHistoryBudget.partialNotesSentence) ?? true)
+        XCTAssertNil(APIHistoryBudget.omissionNote(0, recallOffered: true, partialNotes: true))
     }
 
     /// A vault-only job seals `brain`, so its declarations never carry it and the note never
@@ -158,6 +175,23 @@ final class APIHistoryBudgetTests: XCTestCase {
         XCTAssertEqual(later.floor(historyCount: 35), 0)
         later.turnStarted(at: 35, sessionId: "job")
         XCTAssertEqual(later.floor(historyCount: 36), 0, "a reloaded job thread is the job's own history")
+    }
+
+    /// Plan KK P3: emptying the history with the thread left open (a new topic, a model or persona
+    /// switch) starts the timeline there; loading a thread into the history again undoes it, since
+    /// the history then holds that thread from its start.
+    func testAClearStartsTheTimelineAndALoadForgetsIt() {
+        var floor = JobHistoryFloor()
+        floor.turnFinished(startedAt: 40, sessionId: "job")
+        let now = Date(timeIntervalSince1970: 1_793_700_000)
+        floor.historyCleared(sessionId: "job", now: now)
+        XCTAssertEqual(floor.historyClearedAt, now)
+        XCTAssertEqual(floor.floor(historyCount: 10), 0)
+        XCTAssertNil(floor.floorDate, "the job floor was inside what was cleared")
+        floor.turnStarted(at: 0, sessionId: "job")
+        XCTAssertEqual(floor.historyClearedAt, now, "a turn does not move it")
+        floor.historyReplaced(sessionId: "job")
+        XCTAssertNil(floor.historyClearedAt)
     }
 
     // MARK: - Images

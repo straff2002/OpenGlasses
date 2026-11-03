@@ -137,6 +137,46 @@ final class TimelineSummaryPassTests: XCTestCase {
                        "the job's first question is in, everything before it is out")
     }
 
+    /// P3: once the request has started leaving turns out, the pass also covers the two oldest
+    /// turns it still kept, as their own chunk, so the next request finds them covered when they
+    /// leave and the block can replace the note.
+    func testOnceTurnsAreLeavingThePassCoversTheNextTwoAhead() async throws {
+        let (thread, users) = try seed(10)
+        let reading = TimelineRequestReading(keptUserTurns: 3, historyUserTurns: 10, floorDate: nil,
+                                             omittedUserTurns: 7)
+        let report = await makePass().run(.init(threadID: thread, answeringMessageID: users[9], reading: reading),
+                                          settings: settings)
+        XCTAssertEqual(report, .ran(summarised: 2, merged: 0, stopped: nil))
+        let messages = ids(thread)
+        let entries = timeline(thread)
+        XCTAssertEqual(entries.map(\.firstMessageID), [messages[0], messages[14]])
+        XCTAssertEqual(entries.map(\.lastMessageID), [messages[13], messages[17]],
+                       "what left, then the two turns about to; never fused, never the question answered")
+    }
+
+    func testNothingIsSummarisedAheadWhileTheConversationFits() async throws {
+        let (thread, users) = try seed(10)
+        // Nothing after the floor has left (omittedUserTurns is 0): only what the count says left.
+        await makePass().run(turn(thread, answering: users[9], kept: 3, history: 10), settings: settings)
+        XCTAssertEqual(timeline(thread).map(\.lastMessageID), [ids(thread)[13]])
+        XCTAssertNil(TimelineSummaryPass.lookahead(
+            TimelineRequestReading(keptUserTurns: 3, historyUserTurns: 3, floorDate: nil)))
+        XCTAssertEqual(TimelineSummaryPass.lookahead(
+            TimelineRequestReading(keptUserTurns: 2, historyUserTurns: 9, floorDate: nil, omittedUserTurns: 7))?
+            .keptUserTurns, 1, "the newest turn is always kept")
+    }
+
+    /// A clear (a new topic with the thread left open) is a floor the pass never goes before.
+    func testNothingBeforeAClearIsSummarised() async throws {
+        let (thread, users) = try seed(6)
+        let saved = try XCTUnwrap(store.threads.first { $0.id == thread }).messages
+        let reading = TimelineRequestReading(keptUserTurns: 1, historyUserTurns: 3, floorDate: nil,
+                                             clearedAt: saved[6].timestamp)
+        await makePass().run(.init(threadID: thread, answeringMessageID: users[5], reading: reading),
+                             settings: settings)
+        XCTAssertEqual(timeline(thread).first?.firstMessageID, saved[6].id)
+    }
+
     // MARK: - What the model is shown, and what is kept
 
     func testTheModelSeesOnlyTheChunksWordsAndLostFiguresComeBack() async throws {

@@ -375,13 +375,76 @@ class LLMService: ObservableObject {
     /// nothing about the conversation, so they never set the reading.
     private var statelessCallDepth = 0
 
-    /// Record what a request kept, read from the copy actually sent.
-    private func noteTimelineReading(kept: [[String: Any]]) {
-        guard statelessCallDepth == 0 else { return }
-        lastTimelineReading = TimelineRequestReading(
+    /// Record what a request kept, read from the copy actually sent. `omitted` is how many of the
+    /// history's leading messages the copy left out (the copy is always a suffix of the history on
+    /// the budgeted routes), so the turns left out after the floor are read from the history itself.
+    @discardableResult
+    private func noteTimelineReading(kept: [[String: Any]], omitted: Int = 0) -> TimelineRequestReading {
+        let reading = timelineReading(kept: kept, omitted: omitted)
+        if statelessCallDepth == 0 { lastTimelineReading = reading }
+        return reading
+    }
+
+    private func timelineReading(kept: [[String: Any]], omitted: Int) -> TimelineRequestReading {
+        TimelineRequestReading(
             keptUserTurns: TimelineRequestReading.realUserTurns(in: kept),
             historyUserTurns: TimelineRequestReading.realUserTurns(in: conversationHistory),
-            floorDate: jobHistoryFloor.floorDate)
+            floorDate: jobHistoryFloor.floorDate,
+            omittedUserTurns: TimelineRequestReading.omittedUserTurns(
+                in: conversationHistory, omitted: omitted,
+                floor: jobHistoryFloor.floor(historyCount: conversationHistory.count)),
+            clearedAt: jobHistoryFloor.historyClearedAt)
+    }
+
+    /// Plan KK P3: the active saved thread, as the timeline block reads it. Set by the app to read
+    /// its conversation store; nil (tests that do not set it, a preview) carries no block. A narrow
+    /// source on purpose: the service never holds the store.
+    var timelineThreadSource: (@MainActor () -> TimelineRequestBlock.Thread?)?
+
+    /// The request copy `requestHistory` last built, for `requestSystemParts` to settle its block.
+    /// Reset by every `requestHistory`, so a block never outlives the copy it was counted for.
+    private var pendingTimeline: TimelineRequestBlock.Request?
+    /// Why the copy `requestHistory` last built may carry no block, before any counting.
+    private var pendingTimelineSkip: TimelineRequestBlock.Skip?
+
+    /// Plan KK P3: what the last conversation request did with the timeline, for the on-device
+    /// Prompt Inspector only. Holds the block's text; never logged, never in a support report.
+    @Published private(set) var lastTimelineDecision: TimelineRequestBlock.Decision?
+
+    /// The active thread for a request to `provider`, or why its timeline stays out. The store is
+    /// read only once the settings allow a block.
+    private func timelineThread(for provider: LLMProvider) -> (thread: TimelineRequestBlock.Thread?,
+                                                                 skip: TimelineRequestBlock.Skip?) {
+        // A summary or planner call runs over an emptied history: it never carries a block.
+        guard statelessCallDepth == 0 else { return (nil, .noThread) }
+        let enabled = Config.conversationTimelineEnabled
+        let hipaa = Config.hipaaMode
+        let thread = enabled && !hipaa ? timelineThreadSource?() : nil
+        if let skip = TimelineRequestBlock.gate(enabled: enabled, hipaaMode: hipaa, provider: provider,
+                                                thread: thread) {
+            return (nil, skip)
+        }
+        return (thread, nil)
+    }
+
+    /// Where the timeline starts in `messages` for the history as it stands (the job floor and
+    /// the last clear), as the pass reads it.
+    private func timelineFloor(in messages: [TimelineMessage]) -> Date? {
+        TimelineRequestReading(keptUserTurns: 0, historyUserTurns: 0, floorDate: jobHistoryFloor.floorDate,
+                               clearedAt: jobHistoryFloor.historyClearedAt)
+            .timelineFloor(in: messages)
+    }
+
+    /// Settle a request's block and leave a record of it: the Prompt Inspector's copy, and a
+    /// privacy-log line of counts and a reason (never the text) whenever something was left out.
+    private func recordTimeline(_ decision: TimelineRequestBlock.Decision, omitted: Int) {
+        guard statelessCallDepth == 0 else { return }
+        // Every tool round settles one; publish only a change, so an open view is not redrawn
+        // for each round of the same turn.
+        if lastTimelineDecision != decision { lastTimelineDecision = decision }
+        guard omitted > 0 else { return }
+        PrivacyLog.conversation(.conversations, .timelineInRequest, count: decision.renderedCount,
+                                tokens: decision.estimatedTokens, detail: PrivacyToken(decision.logToken))
     }
 
     /// Maximum tool call iterations to prevent infinite loops
@@ -1726,7 +1789,10 @@ class LLMService: ObservableObject {
     func clearHistory() {
         conversationHistory.removeAll()
         toolExposureMemory.removeAll()   // Plan IU: what was looked up belongs to the conversation
-        jobHistoryFloor.historyReplaced(sessionId: FieldSessionService.shared.activeSession?.id)
+        // Plan KK P3: a fresh start for the timeline too, while the saved thread stays open (a model
+        // or persona switch). A new topic also starts a new thread; this covers the case where it
+        // does not, and a relaunch, which replays the whole thread, clears it again.
+        jobHistoryFloor.historyCleared(sessionId: FieldSessionService.shared.activeSession?.id)
     }
 
     /// Load a persisted conversation thread into the in-memory history.
@@ -3334,6 +3400,7 @@ class LLMService: ObservableObject {
                     instructions: { self.refreshedFieldInstructions(system.stable, turn: text) },
                     options: options, providerToken: provider.rawValue, providerLabel: label,
                     acceptIncomplete: true, withholdTools: withholding.active,
+                    timeline: smallContext ? .off : .readingOnly,
                     onToken: onToken, onStreamReset: onStreamReset)
 
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
@@ -3477,7 +3544,7 @@ class LLMService: ObservableObject {
                         request: request, model: config.model, history: self.conversationHistory,
                         tools: tools, protectedStart: protectedStart, limit: limit, recovery: recovery,
                         instructions: { self.refreshedFieldInstructions(systemPrompt, turn: text) },
-                        reasoning: reasoning, withholdTools: withholding.active,
+                        reasoning: reasoning, withholdTools: withholding.active, timeline: .inBudget,
                         onToken: onToken, onStreamReset: onStreamReset)
                 }
 
@@ -3564,6 +3631,18 @@ class LLMService: ObservableObject {
         return result
     }
 
+    /// Plan KK P3: what a Responses turn does about the conversation timeline.
+    enum ResponsesTimeline {
+        /// ChatGPT: the block goes inside the request budget, which settles note or block for the
+        /// count it actually removes, and counts the block against its allowance.
+        case inBudget
+        /// The OpenAI API route: `APIHistoryBudget` already settled the block in the developer
+        /// message; this budget only records what its capacity guard kept.
+        case readingOnly
+        /// A small-context copy (not a suffix of the history): no block and no reading.
+        case off
+    }
+
     /// The retry is inside performTurn, below the dispatcher. Previously completed tools and
     /// the user message therefore cannot execute/append again when the provider rejects input.
     func budgetedResponsesTurn(request template: URLRequest, model: String, history: [[String: Any]],
@@ -3575,17 +3654,55 @@ class LLMService: ObservableObject {
                                providerToken: String = "chatgpt", providerLabel: String = "ChatGPT",
                                acceptIncomplete: Bool = false,
                                withholdTools: Bool = false,
+                               timeline: ResponsesTimeline = .readingOnly,
                                onToken: ((String) -> Void)?, onStreamReset: (() -> Void)?) async throws -> [String: Any] {
+        let recallOffered = !withholdTools && APIHistoryBudget.declaresRecall(tools)
+        // `history` is the history itself (ChatGPT) or a suffix of it (the API route's copy).
+        let alreadyOmitted = max(0, conversationHistory.count - history.count)
+        let thread: (thread: TimelineRequestBlock.Thread?, skip: TimelineRequestBlock.Skip?) =
+            timeline == .inBudget ? timelineThread(for: .chatgpt) : (nil, nil)
         while true {
             try Task.checkCancellation()
             let allowance = min(limit.inputAllowance, recovery.allowance ?? limit.inputAllowance)
+            // Plan KK P3: the note or the block for each count the budget tries, so the one sent
+            // follows the count it actually removed, and the block is inside the estimate.
+            var settled: TimelineRequestBlock.Decision?
+            let workingContext: ((Int) -> String?)? = thread.thread.map { thread in
+                { removed in
+                    let kept = Array(history.dropFirst(removed))
+                    let reading = self.timelineReading(kept: kept, omitted: alreadyOmitted + removed)
+                    let decision = TimelineRequestBlock.decide(
+                        .init(thread: thread, reading: reading, omittedMessages: alreadyOmitted + removed,
+                              tokenCap: TimelineRenderer.defaultTokenCap),
+                        recallOffered: recallOffered, timeZone: .current)
+                    settled = decision
+                    return TimelineRequestBlock.workingContext(decision: decision) { partial in
+                        RequestContextBudget.omissionNote(removed, recallOffered: recallOffered,
+                                                          partialNotes: partial)
+                    }
+                }
+            }
             // Plan GC: `options` (the API route's extra fields and trailing developer message) are
             // inside the estimate; the default is the subscription body, byte for byte.
             let selected = try RequestContextBudget.build(model: model, instructions: instructions(),
                 history: history, tools: tools, protectedStart: protectedStart, allowance: allowance,
-                options: options, recallOffered: !withholdTools && APIHistoryBudget.declaresRecall(tools))
+                options: options, recallOffered: recallOffered, workingContext: workingContext)
             // Plan KK P2: what this copy kept, which may be less than `history` held.
-            noteTimelineReading(kept: Array(history.dropFirst(selected.omittedMessages)))
+            if timeline != .off {
+                noteTimelineReading(kept: Array(history.dropFirst(selected.omittedMessages)),
+                                    omitted: alreadyOmitted + selected.omittedMessages)
+            }
+            if timeline == .inBudget {
+                let decision: TimelineRequestBlock.Decision
+                if selected.omittedMessages == 0 {
+                    decision = .skipped(.nothingOmitted)
+                } else if let settled, !selected.fellBackToPlainNote {
+                    decision = settled
+                } else {
+                    decision = .skipped(selected.fellBackToPlainNote ? .noRoom : (thread.skip ?? .noThread))
+                }
+                recordTimeline(decision, omitted: selected.omittedMessages)
+            }
             PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(model),
                              count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
                              detail: PrivacyToken(limit.provenance))
@@ -4179,7 +4296,6 @@ class LLMService: ObservableObject {
                 let reasoning = config.reasoningResolution(toolsAttached: includeTools)
                 Self.noteReasoning(reasoning, provider: config.llmProvider, model: config.model)
                 var body: [String: Any] = [
-                    "system_instruction": ["parts": [["text": systemPrompt]]],
                     "contents": contents,
                     // CO Item 2: bounded thinking, and an allowance that covers thinking *plus*
                     // the answer. Without this, reasoning and reply compete for the same tokens
@@ -4203,6 +4319,15 @@ class LLMService: ObservableObject {
                         body["toolConfig"] = ["functionCallingConfig": ["mode": "NONE"]]
                     }
                 }
+                // Plan KK P3: Gemini REST's history is budgeted by `APIHistoryBudget` like the other
+                // API routes, but its single system string never carried the omission note. It now
+                // carries the note and the timeline the same way, at the prompt's end; after the
+                // tools, because the note offers `brain` only when it is declared.
+                let declared = body["tools"] as? [[String: Any]]
+                let system = self.requestSystemParts(
+                    stable: systemPrompt, volatileTail: nil,
+                    recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(declared))
+                body["system_instruction"] = ["parts": [["text": system.stable]]]
 
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -5192,16 +5317,17 @@ class LLMService: ObservableObject {
     /// an existing user's tool loop, which is not what a vision-image setting should do.
     private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
         lastRequestOmittedMessages = 0
+        pendingTimeline = nil
+        pendingTimelineSkip = .routeCarriesNoBlock
+        // Plan KK P3: small context and Groq carry no timeline block (the cut they make is what the
+        // block would undo), so they take no reading either: the pass would spend the wearer's
+        // tokens on notes this route never shows.
         if smallContext {
-            let kept = Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
-            noteTimelineReading(kept: kept)
-            return kept
+            return Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
         }
         // Groq's free tier has tight TPM limits — trim history aggressively.
         if provider == .groq {
-            let kept = Array(conversationHistory.suffix(6))
-            noteTimelineReading(kept: kept)
-            return kept
+            return Array(conversationHistory.suffix(6))
         }
         // FM's ChatGPT budget and the on-device paths are unchanged (they never reach here with
         // this history, but the guard keeps the rule local).
@@ -5209,17 +5335,32 @@ class LLMService: ObservableObject {
             noteTimelineReading(kept: conversationHistory)
             return conversationHistory
         }
+        // Plan KK P3: the timeline's room comes off the history allowance first, so a request with
+        // the block costs no more than one without it. What is reserved is the whole candidate
+        // block; what is shown is decided by what this copy actually left out.
+        let (thread, skip) = timelineThread(for: provider)
+        pendingTimelineSkip = skip
+        let floorIndex = jobHistoryFloor.floor(historyCount: conversationHistory.count)
+        let reserve = thread.map { thread in
+            TimelineRequestBlock.reserve(thread, floor: timelineFloor(in: thread.messages), timeZone: .current)
+        } ?? 0
         // Plan GB P5: a budgeted request copy — this job's messages only, older exchanges dropped
         // to the allowance, the current turn protected — and images only where the model has not
         // yet answered from them (a photo is not resent on every tool round-trip).
         let allowance = Config.apiHistoryTokenBudget
+        let budget = TimelineRequestBlock.historyAllowance(allowance, reserve: reserve)
         let selection = APIHistoryBudget.select(
             history: conversationHistory,
             protectedStart: min(turnHistoryStart, max(0, conversationHistory.count - 1)),
-            floor: jobHistoryFloor.floor(historyCount: conversationHistory.count),
-            allowance: allowance)
+            floor: floorIndex,
+            allowance: budget.history)
         lastRequestOmittedMessages = selection.omittedMessages
-        noteTimelineReading(kept: selection.history)
+        let reading = noteTimelineReading(kept: selection.history, omitted: selection.omittedMessages)
+        if let thread {
+            pendingTimeline = TimelineRequestBlock.Request(thread: thread, reading: reading,
+                                                           omittedMessages: selection.omittedMessages,
+                                                           tokenCap: budget.blockCap)
+        }
         if selection.omittedMessages > 0 {
             PrivacyLog.model(.contextBudget, provider: PrivacyToken(provider.rawValue),
                              count: selection.omittedMessages, total: allowance,
@@ -5229,11 +5370,25 @@ class LLMService: ObservableObject {
     }
 
     /// The volatile tail for a request, with the budget's omission note when older messages were
-    /// left out. `volatileTail` nil (a single-string provider) puts the note at the prompt's end.
-    /// `recallOffered`: this request declares `brain` and the model may call it.
+    /// left out, and the conversation timeline (Plan KK P3) where coverage says it belongs: in
+    /// place of the note when it covers everything that left, after it (and the note saying so)
+    /// when it does not. `volatileTail` nil (a single-string provider) puts both at the prompt's
+    /// end. `recallOffered`: this request declares `brain` and the model may call it.
     private func requestSystemParts(stable systemPrompt: String, volatileTail: String?,
                                     recallOffered: Bool) -> (stable: String, volatile: String?) {
-        let note = APIHistoryBudget.omissionNote(lastRequestOmittedMessages, recallOffered: recallOffered)
+        let omitted = lastRequestOmittedMessages
+        let decision: TimelineRequestBlock.Decision
+        if let pendingTimeline {
+            decision = TimelineRequestBlock.decide(pendingTimeline, recallOffered: recallOffered,
+                                                   timeZone: .current)
+        } else {
+            let routeSkip = pendingTimelineSkip == .routeCarriesNoBlock
+            decision = .skipped(routeSkip || omitted > 0 ? (pendingTimelineSkip ?? .noThread) : .nothingOmitted)
+        }
+        recordTimeline(decision, omitted: omitted)
+        let note = TimelineRequestBlock.workingContext(decision: decision) { partial in
+            APIHistoryBudget.omissionNote(omitted, recallOffered: recallOffered, partialNotes: partial)
+        }
         if let volatileTail {
             return (systemPrompt, [volatileTail, note.map { "\n\n" + $0 }].compactMap { $0 }.joined())
         }

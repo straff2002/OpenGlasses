@@ -430,11 +430,15 @@ class ConversationStore: ObservableObject {
     }
 
     /// Get messages for replay — returns (role, content) pairs for rebuilding LLM context.
-    /// If a compressed summary exists from a prior session, it's prepended as context.
+    /// If a compressed summary exists from a prior session, it's prepended as context — but only
+    /// on a thread with no timeline (Plan KK P3). The legacy summary was written about the same
+    /// messages the replay hands over in full; once the timeline has notes, it is what stands in
+    /// for whatever the request budget leaves out, and the summary would describe the same span a
+    /// second time. It still decodes, and `truncate` and erasure still clear it.
     func replayMessages(for threadId: String) -> [(role: String, content: String)] {
         guard let thread = threads.first(where: { $0.id == threadId }) else { return [] }
         var result: [(role: String, content: String)] = []
-        if let summary = thread.compressedSummary, !summary.isEmpty {
+        if (thread.timeline ?? []).isEmpty, let summary = thread.compressedSummary, !summary.isEmpty {
             result.append((role: "user", content: "[Prior conversation context]\n\(summary)"))
         }
         result.append(contentsOf: thread.messages.map { (role: $0.role, content: $0.content) })

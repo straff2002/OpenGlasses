@@ -1,12 +1,15 @@
 # Plan KK — The Conversation Timeline (what was said stays in front of the model after it leaves the request)
 
-**Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03. P2, the summary pass, built
-2026-11-04: notes are now written after each reply, but nothing puts them in a request yet.
+**Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03. P2, the summary pass, and P3, the
+notes in the request, built 2026-11-04. P4, the device pass and the re-run, is owed.
 - P0 found that one sentence telling the model to search recovers most of the gap. That sentence now ends
   the omission note whenever `brain` can be called.
 - It also found the timeline closes the rest only when coverage is complete, so P2 covers the open run
-  after every reply instead of waiting for 5,000 tokens.
-- P3 and P4 are owed. The four owner decisions were taken on 2026-11-04 (see the end).
+  after every reply instead of waiting for 5,000 tokens, and P3 covers two turns ahead once turns are
+  leaving, so the next request finds them covered.
+- P3 puts the notes in every budgeted cloud request. They replace the omission note only when they
+  cover everything the request left out; otherwise the note stays and says the notes are partial.
+- The four owner decisions were taken on 2026-11-04 (see the end).
 
 Drafted from a code read of main at `c567b5cb5`.
 
@@ -108,9 +111,9 @@ count is doubtful, overlap: **a gap is the defect, and an overlap only wastes a 
 **Tiers.** Two: chunks, and merged entries when four chunks are waiting. A phone conversation is much shorter than
 a month of desktop use, so a third tier earns nothing.
 
-**What the model sees.** One block, oldest first, dated, capped at about 1,500 estimated tokens, labelled as notes:
-*Earlier in this conversation. These are notes, not a record: for readings and job details, the job record and the
-wearer's own words win.* It replaces the omission note when coverage is complete; when there is a gap the note
+**What the model sees.** One block, oldest first, dated, capped at about 1,500 estimated tokens, labelled as notes.
+The label drafted here (*These are notes, not a record*) made the model distrust its own recall results in P0, so
+P3 reworded it (see P3's As built). It replaces the omission note when coverage is complete; when there is a gap the note
 stays and says so. Entries before the job floor are never rendered, and a chunk never spans a floor. The floor is
 an index into in-memory history today, so its date needs capturing where it moves.
 
@@ -352,6 +355,100 @@ the style of `RelationEnrichmentPolicy`, backoff, usage and spend-cap wiring. Re
 API routes through `requestSystemParts`, ChatGPT through `RequestContextBudget.build` so the block counts against
 its allowance (and the same accounting for API routes), Groq and small-context routes checked one by one. Prompt
 Inspector shows the block. `replayMessages` stops the double summary on resume.
+
+**As built (2026-11-04).** `TimelineRequestBlock` (pure, table-tested) decides, per request copy, whether the
+block goes in and what it does to the note. `LLMService` only glues it to each route.
+
+- **Where it belongs.** Coverage is `TimelineCoverage.compute` with this copy's own counts: real user turns
+  kept and in the history, the question being answered, the floor and the thread's entries. Only entries that
+  cover a message this copy left out are shown. An entry that reaches into the request (a merge, or a note
+  written ahead, below) is shown for the part that left: an overlap, never a gap. Cleared entries and entries
+  before the floor are never shown.
+- **Replace or keep the note.** The block replaces the omission note only when everything that left is
+  covered, the cap dropped no entry, and the thread holds at least as many left-out turns as the history's own
+  omitted part does. That last check guards the counting: a turn the history holds but the thread never saved,
+  or a stale question id, would otherwise make a message that left look live and hide a gap. Otherwise the
+  note stays (with P0's search sentence when `brain` is declared and callable, as before) and gains
+  `partialNotesSentence`: "Some of those messages are not covered by the notes that follow." The block comes
+  after it. A covered chunk followed by an uncovered run is never shown without that sentence.
+- **Not rendered** when the setting is off, in HIPAA mode (decision 3: the note stays), on an on-device model,
+  with no thread or no showable entry, or when nothing was left out. Each has a named reason
+  (`TimelineRequestBlock.Skip`), with `nothingCovered` for "something left, no entry covers it" and `noRoom`
+  for the ChatGPT fallback below.
+- **The question being answered.** `AppState` remembers the saved question of the turn in flight and names
+  it to the request only while it is still the newest user message of the active thread, so a leftover id
+  names nothing. The count check above catches any that slips through.
+- **The source.** `LLMService.timelineThreadSource` is a closure `AppState` sets. It returns the active thread's
+  messages (reduced to ids, roles, times and sizes), its entries and the question id, or nil when there is no
+  thread or the store is locked. The service never holds the store.
+- **Covering ahead.** Coverage after the reply was not enough: each new turn pushes the oldest kept exchange
+  out, and a tool round can push one more, so the next request almost always found one uncovered exchange and
+  the block could never replace the note. Once a request has left turns out after the floor
+  (`TimelineRequestReading.omittedUserTurns`, new), the pass also summarises the two oldest turns it still kept
+  (`TimelineSummaryPass.lookaheadUserTurns`), as their own chunk, after what has left. A conversation that fits
+  is never summarised ahead. Each exchange is still summarised once; the cost is only the last two of a
+  conversation that ends there.
+- **Routes, one by one.**
+  - *Anthropic, Chat Completions, the OpenAI Responses API route:* through `requestSystemParts`, in the
+    volatile tail (uncached by design). `requestHistory` reserves the block's room before `APIHistoryBudget.select`:
+    the whole candidate block at its largest, recall clause included, capped at 1,500. Then
+    `historyAllowance` takes it off the allowance (never below half the allowance; an allowance of 0, trimming
+    off, reserves nothing). What was actually omitted decides what is shown, rendered to the size reserved, so
+    the block can be smaller than reserved but never larger. The Responses API route's own capacity guard is a
+    second layer; if it cuts more, its plain note says so.
+  - *Gemini REST:* its history is budgeted by `APIHistoryBudget`, but its single system string never carried
+    the omission note: a gap there was silent. It now goes through `requestSystemParts` with no volatile tail,
+    so the note and the block sit at the end of the system instruction, set after the tools so the recall
+    clause follows `brain` (`declaresRecall` now reads `functionDeclarations`).
+  - *ChatGPT:* through `RequestContextBudget.build`, whose new `workingContext` closure is asked for the note,
+    the block, or both, at every count the loop tries. The block is inside the estimate and counts against the
+    allowance, and the text sent is the one for the `removed` count actually returned. If even the protected
+    turn alone will not fit beside the block, the plain note is tried before the turn fails (`noRoom`): the
+    timeline is never why a turn fails. ChatGPT ignores the small-context setting for its history, so it
+    carries the block whatever that setting says.
+  - *Groq:* no block, and no reading, so no pass. Its copy is a fixed six-message tail, not the budget, with no
+    note today, and the free tier's per-minute token limit (the 413 path) is exactly what an uncached ~1.5k
+    block on every tool round would trip. Notes it could never show would spend the wearer's tokens for nothing.
+  - *Small context* (any route): no block and no reading, for the same reason. The setting exists to fit inside
+    a few thousand tokens; its copy is clipped text without tool messages, not a suffix the count can read.
+  - *On-device models and Live modes:* untouched.
+- **The label**, verbatim, with the last sentence only when `brain` is declared and callable:
+  "Earlier in this conversation: notes written as older messages left this request. The saved conversation is
+  unchanged. Lines under "Said word for word:" are the wearer's exact words. Current job state takes
+  precedence over older conversation. Exact wording can be looked up with brain, action recall." It
+  describes, never instructs. The benchmark's label (`Scripts/timeline-recall-bench/timeline.py`) matches it
+  for P4's re-run.
+- **Prompt Inspector.** A section, "Earlier in This Conversation", shows the last request's block and says in
+  plain words whether it replaced the note, followed it, or why there was none. `lastTimelineDecision` is held
+  in memory for this view only.
+- **Resume.** `replayMessages` no longer prepends the legacy `compressedSummary` once a thread has any entry; it
+  still decodes, and `truncate` and erasure still clear it. With no entries the old behaviour stands, and no
+  block is shown, so one span is never described twice. Within a session a summary already in the history is
+  always the first message, so the budget drops it before anything else (tested: replay, then the budget, then
+  the block, each span once).
+- **`new_topic` and other clears.** A completed new topic already starts a new saved thread (the reset
+  coordinator's `startSavedThread`), so the old thread is no longer active and neither the pass nor the block
+  reads it. What remains is every clear that leaves the thread open: a model or persona switch, and a new topic
+  with conversation history off (no thread, so nothing). `clearHistory` now records the time
+  (`JobHistoryFloor.historyCleared`); it rides in the reading as `clearedAt`, and `timelineFloor(in:)` (one
+  function for the pass and the block) starts the timeline at the later of the job floor and the clear. A clear
+  is not moved back to the question before it, which belongs to what was cleared. It lives in memory, like the
+  job floor, because it describes the in-memory history: a relaunch, or the job flow bringing a job's thread
+  back, replays the whole thread into the history (`historyReplaced` forgets the clear), and the timeline then
+  follows what the history holds. A side effect: after a model switch the pass no longer summarises the
+  conversation from before the switch.
+- **Found, not changed.** During a running job, a new topic starts a new thread, and the job's next turn
+  brings the job's thread back with its whole history (`JobThreadPolicy` `.useBoundThread`). That predates this
+  plan; the timeline follows the replayed history.
+- **Logging.** One `timelineInRequest` conversation event per request that left something out: entries shown,
+  estimated tokens, and `replacedNote`, `withNote` or the skip reason. Never the text. The block's text exists
+  only in the request and in the inspector's in-memory copy.
+- **For P4 to check on a device.** That the block replaces the note in the steady state of a long
+  conversation (the look-ahead working), and how often a tool round still leaves the note with the partial
+  sentence; that a long job thread resumed after a relaunch shows the block and no legacy summary; a model
+  switch mid-thread (no notes from before it); a new job on the same thread (no notes from before the floor);
+  the Prompt Inspector's section; Gemini and Anthropic requests with the block in place; per-turn cost and the
+  cached share with the block in the volatile tail; and P0's benchmark re-run with the new label.
 
 ### P4 — Device pass and re-run
 

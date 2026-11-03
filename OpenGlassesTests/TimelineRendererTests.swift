@@ -26,8 +26,9 @@ final class TimelineRendererTests: XCTestCase {
                       entry("e1", from: 0, to: 12, text: "Arrived; unit short-cycling.")],
             coverageHasGaps: false, timeZone: F.utc)
         XCTAssertEqual(rendered.text, """
-            Earlier in this conversation. These are notes, not a record: for readings and job \
-            details, the job record and the wearer's own words win.
+            Earlier in this conversation: notes written as older messages left this request. The \
+            saved conversation is unchanged. Lines under "Said word for word:" are the wearer's exact \
+            words. Current job state takes precedence over older conversation.
 
             [Tue 3 Nov 2026, 09:00–09:12]
             Arrived; unit short-cycling.
@@ -38,6 +39,23 @@ final class TimelineRendererTests: XCTestCase {
         XCTAssertEqual(rendered.renderedCount, 2)
         XCTAssertEqual(rendered.droppedCount, 0)
         XCTAssertFalse(rendered.hasGap)
+    }
+
+    /// P3: P0 found "notes, not a record" made the model distrust its own correct recall results.
+    /// The label describes and never instructs; it names recall only when `brain` can be called.
+    func testTheLabelNamesRecallOnlyWhenOfferedAndNeverDisownsTheNotes() throws {
+        let entries = [entry("e1", from: 0, to: 5, text: "notes")]
+        let offered = try XCTUnwrap(TimelineRenderer.render(entries: entries, coverageHasGaps: false,
+                                                            timeZone: F.utc, recallOffered: true).text)
+        let withheld = try XCTUnwrap(TimelineRenderer.render(entries: entries, coverageHasGaps: false,
+                                                             timeZone: F.utc).text)
+        XCTAssertTrue(offered.hasPrefix(TimelineRenderer.label(recallOffered: true)))
+        XCTAssertTrue(offered.contains("Exact wording can be looked up with brain, action recall."))
+        XCTAssertFalse(withheld.contains("brain"))
+        for text in [offered, withheld] {
+            XCTAssertFalse(text.lowercased().contains("not a record"))
+            XCTAssertTrue(text.contains(TimelineDetailCheck.heading), "the restored lines are named")
+        }
     }
 
     func testTheTimeZoneIsTheOneInjected() {

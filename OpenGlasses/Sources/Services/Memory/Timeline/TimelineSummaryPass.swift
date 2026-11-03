@@ -24,6 +24,13 @@ final class TimelineSummaryPass {
     static let maximumChunksPerPass = 3
     /// The most merges one pass writes.
     static let maximumMergesPerPass = 1
+    /// P3: once a request has started leaving turns out, the pass also covers this many of the
+    /// oldest turns the request still kept. Each new turn pushes the oldest kept exchange out, and
+    /// a tool round inside a turn can push one more (P0 saw exactly one, in most everyday probes).
+    /// Covered only after they left, they would be a gap in the very next request, and the block
+    /// could never replace the note. Covering them a little early costs no more model calls (each
+    /// exchange is still summarised once), only the last two of a conversation that ends there.
+    nonisolated static let lookaheadUserTurns = 2
 
     /// The turn the pass follows.
     struct Turn: Equatable, Sendable {
@@ -103,11 +110,15 @@ final class TimelineSummaryPass {
         var summarised = 0
         var merged = 0
         var stop: Stop?
-        chunks: while summarised < Self.maximumChunksPerPass {
-            switch await summariseNextChunk(turn, reading: reading, thread: thread) {
-            case .nothing: break chunks
-            case .saved: summarised += 1
-            case .stopped(let reason): stop = reason; break chunks
+        // What has left first, then the turns about to (P3), each its own run of chunks so a note
+        // about messages still in the request is never fused with one about messages that left.
+        chunks: for counted in [reading] + [Self.lookahead(reading)].compactMap({ $0 }) {
+            while summarised < Self.maximumChunksPerPass {
+                switch await summariseNextChunk(turn, reading: counted, thread: thread) {
+                case .nothing: continue chunks
+                case .saved: summarised += 1
+                case .stopped(let reason): stop = reason; break chunks
+                }
             }
         }
         if stop == nil {
@@ -146,7 +157,7 @@ final class TimelineSummaryPass {
         let coverage = TimelineCoverage.compute(
             messages: messages, keptUserTurns: reading.keptUserTurns,
             historyUserTurns: reading.historyUserTurns, answeringMessageID: turn.answeringMessageID,
-            floor: Self.effectiveFloor(reading.floorDate, in: messages),
+            floor: reading.timelineFloor(in: messages),
             entries: saved.timeline ?? [], minimumTokens: 0)
         guard let chunk = coverage.nextChunk else { return .nothing }
 
@@ -184,7 +195,7 @@ final class TimelineSummaryPass {
             return .stopped(.saveRefused(.storeUnavailable))
         }
         let messages = TimelineMessage.reduce(saved.messages)
-        let floor = Self.effectiveFloor(reading.floorDate, in: messages)
+        let floor = reading.timelineFloor(in: messages)
         // Notes from before the job are never shown, so they are never worth a merge.
         let entries = (saved.timeline ?? []).filter { entry in floor.map { entry.startedAt >= $0 } ?? true }
         guard let plan = TimelineMergePlanner.nextMerge(entries: entries, messageIDs: messages.map(\.id)) else {
@@ -260,6 +271,17 @@ final class TimelineSummaryPass {
     }
 
     // MARK: - Pure helpers
+
+    /// The reading the look-ahead counts from: `lookaheadUserTurns` fewer turns kept, the newest
+    /// always among them. Nil when the request left nothing out after the floor: a conversation
+    /// that fits is never summarised ahead of need.
+    nonisolated static func lookahead(_ reading: TimelineRequestReading) -> TimelineRequestReading? {
+        guard reading.omittedUserTurns > 0, reading.keptUserTurns > 1 else { return nil }
+        return TimelineRequestReading(
+            keptUserTurns: max(1, reading.keptUserTurns - lookaheadUserTurns),
+            historyUserTurns: reading.historyUserTurns, floorDate: reading.floorDate,
+            omittedUserTurns: reading.omittedUserTurns, clearedAt: reading.clearedAt)
+    }
 
     /// The job floor as the saved thread sees it. The floor's date is when the turn that set it
     /// started, which is a moment *after* that turn's question was saved; read as it is, it would

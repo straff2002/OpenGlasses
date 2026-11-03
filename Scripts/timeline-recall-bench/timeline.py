@@ -125,8 +125,12 @@ def accept(summary, finished):
     return t, None
 
 
-LABEL = ("Earlier in this conversation. These are notes, not a record: for readings "
-         "and job details, the job record and the wearer's own words win.")
+# Mirrors TimelineRenderer.label(recallOffered: true): P3 reworded the P0 label ("These are notes,
+# not a record"), which made the model distrust its own recall results. Every arm declares brain.
+LABEL = ("Earlier in this conversation: notes written as older messages left this request. The saved "
+         "conversation is unchanged. Lines under \"Said word for word:\" are the wearer's exact words. "
+         "Current job state takes precedence over older conversation. Exact wording can be looked up "
+         "with brain, action recall.")
 TOKEN_CAP = 1_500
 
 

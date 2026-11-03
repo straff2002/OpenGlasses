@@ -1846,6 +1846,9 @@ enum PrivacyLog {
         // Plan KK P2, the timeline summary pass: counts, sizes, durations and named reasons only.
         case timelinePassSkipped, timelineSummarised, timelineMerged, timelineSummaryFailed
         case timelineSaveRefused
+        // Plan KK P3: the block in a request — entries shown, estimated tokens, and whether it
+        // replaced the omission note or why there was none. Never its text.
+        case timelineInRequest
         case loaded, recovered, saveSkipped, saveFailed
         case encryptionEnabled, encryptionDisabled, encryptionFailed
         case unlockFailed, locked, awaitingAuthentication
