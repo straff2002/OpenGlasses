@@ -1842,7 +1842,10 @@ enum PrivacyLog {
     /// small and wearer-visible, so a fingerprint would not anonymise which persona was in use.
     enum ConversationEvent: String {
         case sessionRestored, threadStarted, threadEnded, threadResumed, summaryUpdated
-        case threadsDeleted, timelineDropped
+        case threadsDeleted, timelineRedacted
+        // Plan KK P2, the timeline summary pass: counts, sizes, durations and named reasons only.
+        case timelinePassSkipped, timelineSummarised, timelineMerged, timelineSummaryFailed
+        case timelineSaveRefused
         case loaded, recovered, saveSkipped, saveFailed
         case encryptionEnabled, encryptionDisabled, encryptionFailed
         case unlockFailed, locked, awaitingAuthentication
@@ -1853,6 +1856,7 @@ enum PrivacyLog {
     static func conversation(_ store: ContentStore, _ event: ConversationEvent,
                              thread: PrivateIdentifier? = nil, count: Int? = nil,
                              characters: Int? = nil, minutes: Int? = nil,
+                             tokens: Int? = nil, milliseconds: Int? = nil,
                              detail: PrivacyToken? = nil,
                              error: SafeErrorSummary? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
@@ -1863,6 +1867,8 @@ enum PrivacyLog {
         if let count { fields.append(.init(.count, .count(count))) }
         if let characters { fields.append(.init(.characters, .count(characters))) }
         if let minutes { fields.append(.init(.minutes, .count(minutes))) }
+        if let tokens { fields.append(.init(.tokens, .count(tokens))) }
+        if let milliseconds { fields.append(.init(.duration, .milliseconds(milliseconds))) }
         if let detail { fields.append(.init(.detail, .token(detail))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.conversation, .conversation, fields))

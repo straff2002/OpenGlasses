@@ -1,12 +1,12 @@
 # Plan KK — The Conversation Timeline (what was said stays in front of the model after it leaves the request)
 
-**Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03, unwired: nothing reads the timeline yet,
-and no summary is written.
+**Status:** 🚧 P0 run and P1's deterministic core built 2026-11-03. P2, the summary pass, built
+2026-11-04: notes are now written after each reply, but nothing puts them in a request yet.
 - P0 found that one sentence telling the model to search recovers most of the gap. That sentence now ends
   the omission note whenever `brain` can be called.
-- It also found the timeline closes the rest only when coverage is complete, which changes P2's design (see
-  P0).
-- P2 to P4 are owed, and the four owner decisions are still open (see the end).
+- It also found the timeline closes the rest only when coverage is complete, so P2 covers the open run
+  after every reply instead of waiting for 5,000 tokens.
+- P3 and P4 are owed. The four owner decisions were taken on 2026-11-04 (see the end).
 
 Drafted from a code read of main at `c567b5cb5`.
 
@@ -267,12 +267,85 @@ store fixes below.
   stays unsupported because the thread text is left, and says the notes were dropped.
 - For P2: the summary pass reads thread text the erasure left in place, so a re-summary can bring an erased
   name back. The pass needs the ledger's erased names, or a check against them, before an entry is kept.
+  (P2 took neither: see its As built.)
 
 ### P2 — The summary pass
 
 `completeStateless`-style seam so the pass is testable without a model, the policy gate with named skip reasons in
 the style of `RelationEnrichmentPolicy`, backoff, usage and spend-cap wiring. Retire the 500-character,
 300-word path and stop writing `compressedSummary`.
+
+**As built (2026-11-04).** The pass runs after every accepted reply, typed or spoken, beside
+`MemoryLoopService.enrich`. It is started and never awaited. Nothing reads its notes yet.
+
+- `TimelinePassPolicy` is the gate. Its named skip reasons are: setting off, HIPAA mode, no model, an
+  on-device model, no request reading, store locked or after a failed read, thread not the active one, a
+  pass already running for the thread, backing off, spend cap, and nothing eligible. Only the reasons a
+  log reader needs to tell a quiet feature from a broken one are logged. A reached cap stops the pass
+  even when the wearer agreed to go past it for their own turns, because nobody is asked about the pass.
+  It is never moved to a cheaper model. `TimelinePassBackoff` skips 1, 2, 4, then at most 8 passes after
+  failures in a row, and a success clears it.
+- `Config.conversationTimelineEnabled` is on by default and not behind Agent Mode. Settings › Everyday
+  › Memory has a "Remember Earlier in Long Conversations" row with the line "Uses the same AI as the
+  conversation, and counts in Usage." In Medical Compliance mode the row shows off, cannot be changed,
+  and says so. The Memory parent switch never turns it on in that mode.
+- `LLMService.completeTimelineSummary` is the seam. It sends one buffered, tools-off request to
+  `medicalInferenceModel(requested: activeModel)`, the model answering the conversation. It records usage
+  as any turn does, and reads how the reply ended so a reply cut off at its limit is refused. It never
+  touches `conversationHistory`. `completeStateless` empties the history and restores it afterwards, so
+  a turn that starts during the call would lose its messages. `completeStateless` itself was left as it
+  is (see below).
+- `TimelineRequestReading` is what the last cloud request carried: real user turns kept, real user turns
+  in the history, and the job floor's date. It is taken where each request copy is built: the API
+  budget, Groq, small context and the Responses budget. A real turn is a plain-text user message that
+  is not one of the app's notes. The app's notes all start with "[" (or are the two re-ask lines). The
+  count errs low, so a mistake is an overlap, never a gap. A turn answered on the phone leaves no
+  reading, and the pass skips. `JobHistoryFloor` now records when the turn that set the floor started.
+  The pass moves that date back to the question that opened the job.
+- `TimelineSummaryPass` computes coverage with no minimum, so the open run is covered after every
+  reply (P0's main finding). It writes at most three 8k chunks and one merge per pass, so an old long
+  thread catches up over several replies. The model sees only the chunk's user and assistant messages
+  with their times, fenced and labelled as quoted data (`TimelineSummaryPrompt`). The rules ask for plain
+  dated lines, oldest first. Figures and codes stay exactly as written, and a correction keeps only the
+  latest value and says what it replaced. A summary is kept only if `TimelineSummaryAcceptance` keeps it,
+  and `TimelineDetailCheck` then restores any lost figures. Merges go through the same seam, acceptance
+  and check, over the merged span's user messages. Notes from before the job floor are never merged.
+- `ConversationStore.saveTimelineChunk` and `applyTimelineMerge` check everything again at save time:
+  the store is open, the thread exists, both ends of the span still exist in order, nothing already
+  covers the span, and a merge's sources are unchanged. A refused write is logged by reason. It does not
+  count as a model failure, so it does not cause a backoff. `appendMessage` returns the saved id, which
+  is how a turn names the question it answered.
+- **Erasure.** P1 left a gap here: the pass would summarise an erased person's name back from the thread
+  text the erasure leaves. P2 does not keep a list of erased names, because that list would keep the
+  data the erasure removed. Instead, `dropTimelineEntries(naming:)` now clears a matching entry in place:
+  same id, span and dates, empty text, `redacted: true`. A thread saved before this decodes unchanged.
+  Coverage still counts a cleared span as covered, so it is never summarised again. The renderer never
+  shows a cleared entry, and the merge planner never merges into it or across it. The receipt now says
+  the notes "are cleared". `SubjectErasureTests` runs the pass after an erasure and finds no name.
+- **The edge.** An edit or regenerate that removes part of a cleared span drops the cleared entry like
+  any other. That range can then be summarised again, from thread text that may still name the person.
+  That text is the wearer's own record, and the erasure receipt already says it was left in place.
+- **Retired.** The "500-character, 300-word path" was `summarizeMessages`. It was the Agent Mode LLM
+  compactor's summariser (`compressContextWindowWithLLM`), and it was the only place that wrote
+  `compressedSummary`. All three are gone: the compactor, its summariser and
+  `ConversationStore.updateCompressedSummary`. So is `LLMService.conversationStore`, which nothing else
+  used. Agent Mode now uses the same in-memory 80k heuristic compaction as everyone else, and that
+  compaction is unchanged. `compressedSummary` still decodes, `truncate` and erasure still clear it, and
+  `replayMessages` still prepends it, which is P3's to change.
+- **Logging.** `PrivacyLog` conversation events record counts, sizes, durations and reasons only:
+  `timelineSummarised`, `timelineMerged`, `timelineSummaryFailed`, `timelinePassSkipped`,
+  `timelineSaveRefused` and `timelineRedacted`. A test runs the pass with invented names and checks
+  that none of them reach a log line.
+- **Left for P3.** The block in requests, the label's wording, the Prompt Inspector and `replayMessages`.
+  P3 also has to decide what a `new_topic` clear means for the timeline. That clear empties the model's
+  history but not the thread, so the earlier messages become eligible and are summarised.
+- **Found, not fixed.** `completeStateless` is unsafe for one of its existing callers. A tool error in
+  Agent Mode starts the skill-evolution analyser in a detached task, and that task calls
+  `completeStateless`. If the turn's tool loop is still running, the call empties the history while the
+  loop appends to it. When the call restores the snapshot, it discards whatever the loop added. The fix
+  is to move those callers to a seam like this one. That is not trivial, so it is reported here rather
+  than done in this PR. Calls nested inside a turn (the planner and recall summaries) stay safe, and
+  their requests no longer overwrite the timeline reading.
 
 ### P3 — Into the request
 
@@ -286,6 +359,9 @@ Run P0 again on the same fixture and record both results here. One real long con
 phone mid-pass, a kill during a pass, edit and regenerate, resume, and a new job on the same thread.
 
 ## Owner decisions
+
+Taken 2026-11-04, each as recommended: 1 on for everyone with a setting to turn it off; 2 no batch cutting
+in this plan; 3 off in HIPAA mode; 4 no tool to read a span's original words.
 
 1. **Outside Agent Mode?** Everything autonomous sits behind that switch, and the LLM summariser does today.
    **Recommended: on for everyone**, because the Field Assist technician is the one this is for and no new

@@ -19,6 +19,7 @@ struct EverydaySettingsScreen: View {
     @AppStorage("hipaaMode") private var hipaaMode = false
     @AppStorage("userMemoryEnabled") private var userMemoryEnabled = true
     @AppStorage("conversationPersistenceEnabled") private var conversationPersistenceEnabled = true
+    @AppStorage("conversationTimelineEnabled") private var conversationTimelineEnabled = true
     @AppStorage("memoryNudgesEnabled") private var memoryNudgesEnabled = false
     @AppStorage("brainEnrichmentEnabled") private var brainEnrichmentEnabled = false
     @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
@@ -175,6 +176,26 @@ struct EverydaySettingsScreen: View {
                 isOn: binding(.conversationHistory, in: group),
                 info: "Saves conversation transcripts so you can review them later in the History tab. Also provides context for follow-up questions within a session. When off, conversations are ephemeral and discarded after each session."
             )
+        case .earlierInConversation:
+            // Medical Compliance mode refuses it whatever the switch says, so the switch shows off
+            // and cannot be moved there, and the line under it says why.
+            VStack(alignment: .leading, spacing: 4) {
+                InfoToggle(
+                    title: "Remember Earlier in Long Conversations",
+                    isOn: hipaaMode ? .constant(false) : binding(.earlierInConversation, in: group),
+                    info: "In a long conversation, the oldest messages stop being sent with each question to keep it fast and affordable. With this on, they are written up as short dated notes so the assistant still knows what was said. Your saved conversation is never changed."
+                )
+                .disabled(hipaaMode)
+                Group {
+                    if hipaaMode {
+                        Text("Off in Medical Compliance mode.")
+                    } else {
+                        Text("Uses the same AI as the conversation, and counts in Usage.")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         case .memorySuggestions:
             InfoToggle(
                 title: "Memory Suggestions",

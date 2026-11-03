@@ -10,6 +10,7 @@ enum SettingsGroupStore {
         switch member {
         case .userMemory: return Config.userMemoryEnabled
         case .conversationHistory: return Config.conversationPersistenceEnabled
+        case .earlierInConversation: return Config.conversationTimelineEnabled
         case .memorySuggestions: return Config.memoryNudgesEnabled
         case .memoryEnrichment: return Config.brainEnrichmentEnabled
         case .myDay: return Config.myDayEnabled
@@ -28,6 +29,7 @@ enum SettingsGroupStore {
         switch member {
         case .userMemory: Config.setUserMemoryEnabled(value)
         case .conversationHistory: Config.setConversationPersistenceEnabled(value)
+        case .earlierInConversation: Config.setConversationTimelineEnabled(value)
         case .memorySuggestions: Config.setMemoryNudgesEnabled(value)
         case .memoryEnrichment: Config.setBrainEnrichmentEnabled(value)
         case .myDay: Config.setMyDayEnabled(value)

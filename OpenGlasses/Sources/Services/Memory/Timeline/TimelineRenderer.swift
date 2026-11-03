@@ -38,7 +38,9 @@ enum TimelineRenderer {
     ///   - timeZone: the wearer's, injected so the dates are deterministic under test.
     static func render(entries: [TimelineEntry], floor: Date? = nil, coverageHasGaps: Bool,
                        timeZone: TimeZone, tokenCap: Int = defaultTokenCap) -> Rendered {
+        // A redacted entry says nothing: its span stays covered, and the block never shows it.
         let candidates = entries
+            .filter { !$0.isRedacted }
             .filter { entry in floor.map { entry.startedAt >= $0 } ?? true }
             .sorted { ($0.startedAt, $0.endedAt) < ($1.startedAt, $1.endedAt) }
         let formatter = DateRangeLabel(timeZone: timeZone)

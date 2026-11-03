@@ -273,11 +273,14 @@ class ConversationStore: ObservableObject {
     /// question went into and files the answer there, so nothing that moves the active thread
     /// while the model is thinking (a push-to-talk release, New conversation, a switch) can send
     /// the answer to another conversation or drop it on the floor.
+    /// - Returns: the saved message's id, or nil when there was no thread to add it to. The
+    ///   timeline pass names the turn it answered by this id (Plan KK P2).
+    @discardableResult
     func appendMessage(role: String, content: String, imageAttached: Bool = false,
                        answeredOnDevice: Bool = false, toolNames: [String] = [],
-                       toThread threadId: String? = nil) {
+                       toThread threadId: String? = nil) -> String? {
         let target = threadId ?? activeThreadId
-        guard let idx = threads.firstIndex(where: { $0.id == target }) else { return }
+        guard let idx = threads.firstIndex(where: { $0.id == target }) else { return nil }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
                                       answeredOnDevice: answeredOnDevice, toolNames: toolNames)
         threads[idx].messages.append(msg)
@@ -288,6 +291,7 @@ class ConversationStore: ObservableObject {
         } else {
             save()
         }
+        return msg.id
     }
 
     // MARK: - Recall index (Memory & Recall Phase 2)
@@ -437,15 +441,6 @@ class ConversationStore: ObservableObject {
         return result
     }
 
-    /// Store an LLM-generated summary for a thread (called when context window is compressed).
-    func updateCompressedSummary(_ summary: String, for threadId: String) {
-        guard let idx = threads.firstIndex(where: { $0.id == threadId }) else { return }
-        threads[idx].compressedSummary = summary
-        save()
-        PrivacyLog.conversation(.conversations, .summaryUpdated,
-                                thread: PrivateIdentifier(threadId), characters: summary.count)
-    }
-
     /// Delete a thread.
     func deleteThread(_ threadId: String) {
         guard threads.contains(where: { $0.id == threadId }) else { return }
@@ -514,24 +509,29 @@ class ConversationStore: ObservableObject {
         saveAndProject(.messageDelete(ids: removedIDs))
     }
 
-    /// Drop every timeline entry, in every thread, that names `token` as a whole word, and every
-    /// legacy `compressedSummary` that does — the derived text a person erasure must not leave
-    /// re-sending their name (Plan KK). The messages themselves are left; see
+    /// Empty every timeline entry, in every thread, that names `token` as a whole word, and drop
+    /// every legacy `compressedSummary` that does — the derived text a person erasure must not
+    /// leave re-sending their name (Plan KK). The messages themselves are left; see
     /// `SubjectErasureCoordinator`.
     ///
-    /// - Returns: how many entries and summaries went, or nil when the store cannot be searched
-    ///   honestly: locked (the threads in memory are not the history) or after a failed read
-    ///   (the file may hold threads memory does not, and they would win a later merge).
+    /// An entry is emptied rather than removed (P2): it keeps its span, so the summary pass counts
+    /// that range as covered and never writes the name back from the thread text the erasure
+    /// left. Nothing keeps the name. An edit or regenerate that removes part of the span drops the
+    /// emptied entry like any other, and that range can then be summarised again.
+    ///
+    /// - Returns: how many entries and summaries were cleared, or nil when the store cannot be
+    ///   searched honestly: locked (the threads in memory are not the history) or after a failed
+    ///   read (the file may hold threads memory does not, and they would win a later merge).
     @discardableResult
     func dropTimelineEntries(naming token: String) -> Int? {
         guard !isLocked, !saveBlocked else { return nil }
         var removed = 0
         for index in threads.indices {
             if let timeline = threads[index].timeline {
-                let kept = TimelineInvalidation.withoutMentions(of: token, in: timeline)
-                if kept.count != timeline.count {
-                    removed += timeline.count - kept.count
-                    threads[index].timeline = kept.isEmpty ? nil : kept
+                let result = TimelineInvalidation.redactingMentions(of: token, in: timeline)
+                if result.redacted > 0 {
+                    removed += result.redacted
+                    threads[index].timeline = result.entries
                 }
             }
             if let summary = threads[index].compressedSummary,
@@ -542,8 +542,79 @@ class ConversationStore: ObservableObject {
         }
         guard removed > 0 else { return 0 }
         save()
-        PrivacyLog.conversation(.conversations, .timelineDropped, count: removed)
+        PrivacyLog.conversation(.conversations, .timelineRedacted, count: removed)
         return removed
+    }
+
+    // MARK: - Timeline writes (Plan KK P2)
+
+    /// Why the summary pass's write was refused. A closed set, safe to log.
+    enum TimelineSaveOutcome: String, Equatable, Sendable {
+        case saved
+        /// Locked, or after a failed read: memory is not the history, so nothing is written.
+        case storeUnavailable
+        /// The thread was deleted or erased while the summary was being written.
+        case threadGone
+        /// The span's first or last message is gone, or the two are out of order: an edit or a
+        /// regenerate took part of what was summarised.
+        case spanChanged
+        /// Another entry already covers part of the span.
+        case alreadyCovered
+        /// A merge's source entries are not all there, or one was redacted meanwhile.
+        case sourcesChanged
+    }
+
+    /// Whether the timeline may be read and written now: unlocked, and not after a failed read.
+    var isTimelineWritable: Bool { !isLocked && !saveBlocked }
+
+    /// Add a chunk entry the summary pass wrote, re-checking everything that may have changed
+    /// while the model was answering: the store is open, the thread is still there, both ends of
+    /// the span still exist in order, and nothing already covers any of it. Entries are kept in
+    /// span order. `updatedAt` is not touched: a note is not activity, and bumping it would move
+    /// the thread in the history list.
+    func saveTimelineChunk(_ entry: TimelineEntry, in threadId: String) -> TimelineSaveOutcome {
+        guard isTimelineWritable else { return .storeUnavailable }
+        guard let index = threads.firstIndex(where: { $0.id == threadId }) else { return .threadGone }
+        let ids = TimelineMessage.reduce(threads[index].messages).map(\.id)
+        let positions = TimelineEntry.positions(of: ids)
+        guard let span = entry.span(in: positions) else { return .spanChanged }
+        var timeline = threads[index].timeline ?? []
+        let overlaps = timeline.contains { existing in
+            existing.span(in: positions).map { $0.overlaps(span) } ?? false
+        }
+        guard !overlaps else { return .alreadyCovered }
+        timeline.append(entry)
+        threads[index].timeline = Self.ordered(timeline, positions: positions)
+        save()
+        return .saved
+    }
+
+    /// Replace a merge's source entries with the merged one, if they are all still there,
+    /// unchanged and unredacted, and the merged span still resolves.
+    func applyTimelineMerge(_ plan: TimelineMergePlanner.Plan, merged: TimelineEntry,
+                            in threadId: String, sources: [TimelineEntry]) -> TimelineSaveOutcome {
+        guard isTimelineWritable else { return .storeUnavailable }
+        guard let index = threads.firstIndex(where: { $0.id == threadId }) else { return .threadGone }
+        let timeline = threads[index].timeline ?? []
+        let current = plan.sourceIDs.compactMap { id in timeline.first { $0.id == id } }
+        guard current == sources, current.count == plan.sourceIDs.count,
+              !current.contains(where: \.isRedacted) else { return .sourcesChanged }
+        let ids = TimelineMessage.reduce(threads[index].messages).map(\.id)
+        let positions = TimelineEntry.positions(of: ids)
+        guard merged.span(in: positions) != nil else { return .spanChanged }
+        threads[index].timeline = Self.ordered(plan.applying(merged, to: timeline), positions: positions)
+        save()
+        return .saved
+    }
+
+    /// Entries in the order of their spans; one whose span no longer resolves keeps its place at
+    /// the end, where `truncate` or coverage deals with it.
+    private static func ordered(_ entries: [TimelineEntry], positions: [String: Int]) -> [TimelineEntry] {
+        entries.enumerated().sorted { lhs, rhs in
+            let left = lhs.element.span(in: positions)?.lowerBound ?? Int.max
+            let right = rhs.element.span(in: positions)?.lowerBound ?? Int.max
+            return (left, lhs.offset) < (right, rhs.offset)
+        }.map(\.element)
     }
 
     /// Most recent thread for a given mode.

@@ -2298,6 +2298,16 @@ class AppState: ObservableObject, AppStateProtocol {
     // Tier 1 services
     let conversationStore = ConversationStore()
 
+    /// Plan KK P2: the conversation timeline's summary pass, run after each accepted reply
+    /// (`startTimelinePass`). Its calls go through `completeTimelineSummary`, which never touches
+    /// the live conversation history.
+    lazy var timelineSummaryPass = TimelineSummaryPass(
+        store: conversationStore,
+        summarise: { [weak self] request in
+            guard let self else { throw TimelineSummaryError.unavailable }
+            return try await self.llmService.completeTimelineSummary(request)
+        })
+
     /// The guided job flow (Plan FO P1): one conversation per job, the job-number question the app
     /// asks itself, and the held re-scope when a different machine turns up.
     ///
@@ -3099,7 +3109,6 @@ class AppState: ObservableObject, AppStateProtocol {
         // live translator itself (item 13).
         wireAIDisclosures()
         llmService.localLLMService = localLLMService
-        llmService.conversationStore = conversationStore
         PersonalManualLibrary.shared.conversations = conversationStore
         geminiLiveSession.nativeToolRouter = nativeToolRouter
         // Plan FO P3a — the OpenAI Realtime backend reaches the native tools for the first time.
@@ -7762,17 +7771,34 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Persist a spoken question, opening a thread if none is active, and return the thread it went
     /// into — the one its reply must be filed in. Nil with conversation history switched off.
-    private func recordVoiceQuestion(_ text: String) -> String? {
-        guard Config.conversationPersistenceEnabled else { return nil }
+    private func recordVoiceQuestion(_ text: String) -> (threadId: String?, messageId: String?) {
+        guard Config.conversationPersistenceEnabled else { return (nil, nil) }
         if conversationStore.activeThreadId == nil {
             conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
         }
-        conversationStore.appendMessage(role: "user", content: text)
-        guard let threadId = conversationStore.activeThreadId else { return nil }
+        let messageId = conversationStore.appendMessage(role: "user", content: text)
+        guard let threadId = conversationStore.activeThreadId else { return (nil, nil) }
         // Named from its first question now rather than when it ends: a voice conversation stays
         // open across turns, and the history list should not show it as untitled meanwhile.
         conversationStore.applyAutoTitleIfNeeded(threadId)
-        return threadId
+        return (threadId, messageId)
+    }
+
+    /// Plan KK P2: after a reply is accepted, start the conversation timeline's summary pass for
+    /// the thread it was filed in. Started, never awaited: the reply is already accepted, and the
+    /// pass refuses itself when the conditions are not met. `answeringMessageId` is the saved
+    /// question the reply answered, when it was saved; the reading is what this turn's last cloud
+    /// request carried, taken now, before another turn can replace it.
+    func startTimelinePass(threadId: String?, answeringMessageId: String?) {
+        guard let threadId else { return }
+        let turn = TimelineSummaryPass.Turn(threadID: threadId, answeringMessageID: answeringMessageId,
+                                            reading: llmService.lastTimelineReading)
+        let settings = TimelineSummaryPass.Settings(
+            enabled: Config.conversationTimelineEnabled, hipaaMode: Config.hipaaMode,
+            provider: Config.activeModel?.llmProvider,
+            atSpendCap: llmService.timelineSpendCapReached())
+        let pass = timelineSummaryPass
+        Task { @MainActor in await pass.run(turn, settings: settings) }
     }
 
     func handleTranscription(_ transcript: String) async {
@@ -7852,7 +7878,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // reply below is filed against it: in push-to-talk `returnToWakeWord()` runs as soon as
         // the release delivers this transcript, before the model has answered.
         guidedJobFlow.prepareThreadForTurn(manuallyTriggered ? .tapToTalk : .wakeWord)
-        let turnThreadId = recordVoiceQuestion(text)
+        let (turnThreadId, turnQuestionId) = recordVoiceQuestion(text)
 
         // Post-store voice-command chain (Plan BG P2): stop, goodbye, photo. Runs after the user
         // turn is persisted (so "stop"/"goodbye" still appear in the thread) and after persona
@@ -8235,6 +8261,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     // or a repeated request is worth an offer whichever way it arrived.
                     MemoryLoopService.shared.observeTurn(userText: query, assistantText: response,
                                                          toolNames: usedToolNames)
+
+                    // Plan KK P2: write up what has left the request, after the reply, unawaited.
+                    startTimelinePass(threadId: turnThreadId, answeringMessageId: turnQuestionId)
                 },
                 speak: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else { return }
@@ -8333,6 +8362,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
 
         // Track in conversation store
+        var turnQuestionId: String?
         if Config.conversationPersistenceEnabled {
             if conversationStore.activeThreadId == nil {
                 conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
@@ -8344,9 +8374,11 @@ class AppState: ObservableObject, AppStateProtocol {
                     await SkillEvolutionService.shared.noteUserTurn(
                         message: query, priorPrompt: prev.prompt, priorResponse: prev.response)
                 }
-                conversationStore.appendMessage(role: "user", content: query, imageAttached: imageData != nil)
+                turnQuestionId = conversationStore.appendMessage(role: "user", content: query,
+                                                                 imageAttached: imageData != nil)
             }
         }
+        let answeringMessageId = turnQuestionId
         // The thread this question went into; the reply is filed there even if the wearer moves to
         // another conversation while the model is thinking.
         let turnThreadId = Config.conversationPersistenceEnabled ? conversationStore.activeThreadId : nil
@@ -8478,6 +8510,9 @@ class AppState: ObservableObject, AppStateProtocol {
                         await MemoryLoopService.shared.enrich(turn: enrichedTurn,
                                                               sessionID: enrichedSession)
                     }
+
+                    // Plan KK P2: write up what has left the request, after the reply, unawaited.
+                    startTimelinePass(threadId: turnThreadId, answeringMessageId: answeringMessageId)
 
                     // Plan CG: an explicit multiple-choice reply renders as band-selectable
                     // HUD buttons; selecting one feeds the option back as the next user turn.

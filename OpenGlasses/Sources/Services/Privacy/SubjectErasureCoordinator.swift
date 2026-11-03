@@ -720,9 +720,10 @@ final class SubjectErasureCoordinator {
             // text itself is left, and the receipt says so.
             //
             // The thread's own derived notes are another matter (Plan KK): a timeline entry is
-            // re-sent on every turn, so one naming the person goes here, derived before source,
-            // like the recall index. The receipt stays unsupported because the text it was made
-            // from is still there.
+            // re-sent on every turn, so one naming the person is cleared here, derived before
+            // source, like the recall index. Cleared rather than removed, so its span stays
+            // covered and the summary pass cannot write the name back from the thread text. The
+            // receipt stays unsupported because the text it was made from is still there.
             guard conversations.dropTimelineEntries(naming: subject.searchToken) != nil else {
                 return .unsupported(.conversationThreads,
                                     "a thread is not about one subject; its matching turns are "
@@ -731,7 +732,7 @@ final class SubjectErasureCoordinator {
             }
             return .unsupported(.conversationThreads,
                                 "a thread is not about one subject; its matching turns are removed "
-                                    + "from the recall index and its notes naming them are dropped "
+                                    + "from the recall index and its notes naming them are cleared "
                                     + "instead")
         case .document, .memoryFact:
             return .unsupported(.conversationThreads,
