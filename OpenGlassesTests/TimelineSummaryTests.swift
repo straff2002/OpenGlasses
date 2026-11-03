@@ -84,6 +84,18 @@ final class TimelineSummaryTests: XCTestCase {
         XCTAssertTrue(result.restoredLines.isEmpty)
     }
 
+    /// Joining a number to the word after it, which is how "52 PSI" is found, must not glue a kept
+    /// code to the next word and restore it as lost.
+    func testACodeFollowedByAWordIsStillFound() {
+        let messages = [TimelineDetailCheck.Message(role: "user",
+                                                    text: "Board shows A44, and the fan is a WF-220.",
+                                                    timestamp: F.start)]
+        let result = TimelineDetailCheck.check(summary: "Code A44 on the board; WF-220 and fan checked.",
+                                               messages: messages, timeZone: F.utc)
+        XCTAssertTrue(result.restoredLines.isEmpty)
+        XCTAssertEqual(result.lostValues, 0)
+    }
+
     /// The summary kept the outdated value. The correction comes back whole, so the newer figure
     /// never travels without the words that make it the newer one.
     func testACorrectionKeepsItsContext() {

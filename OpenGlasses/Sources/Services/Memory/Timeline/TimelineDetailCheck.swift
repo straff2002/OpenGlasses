@@ -58,7 +58,9 @@ enum TimelineDetailCheck {
 
     /// Check `summary` against the wearer's messages in the chunk it was written from.
     static func check(summary: String, messages: [Message], timeZone: TimeZone) -> Result {
-        let haystack = normalisedForSearch(summary)
+        // Two readings of the summary: the joined one finds "52 PSI" as "52psi", and the plain one
+        // finds a code followed by a word ("A44 on"), which joining would glue into "a44on".
+        let haystacks = [summary.lowercased(), normalisedForSearch(summary)]
         let clock = DateFormatter()
         clock.locale = Locale(identifier: "en_US_POSIX")
         clock.timeZone = timeZone
@@ -71,7 +73,7 @@ enum TimelineDetailCheck {
         for message in messages where message.role == "user" {
             for detail in details(in: message.text) where !seenValues.contains(detail.normalised) {
                 seenValues.insert(detail.normalised)
-                guard !contains(haystack, detail.normalised) else { continue }
+                guard !haystacks.contains(where: { contains($0, detail.normalised) }) else { continue }
                 lost += 1
                 let sentence = excerpt(around: detail.range, in: message.text)
                 let line = "- \(clock.string(from: message.timestamp)) \"\(sentence)\""
