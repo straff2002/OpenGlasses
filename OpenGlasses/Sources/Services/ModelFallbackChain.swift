@@ -259,7 +259,9 @@ enum ModelCascade {
     /// - Parameters:
     ///   - maxAttempts: hard cap on provider calls (bounds latency + token spend even on a long chain).
     ///   - isCancelled: re-checked between hops so a barge-in during one hop doesn't launch the next.
-    ///   - onSwitch: invoked once per hop, *before* the retry (the P2c narration seam).
+    ///   - onSwitch: invoked once per hop, *before* the retry (the P2c narration seam), with the
+    ///     error `from` threw — nil for the pre-attempt switch away from a lead that cannot see
+    ///     the photo, which threw nothing (Plan KL: the notice reads it, the log records it).
     ///   - attempt: run the turn on this candidate; throws to trigger a hop.
     /// - Returns: the first successful response.
     /// - Throws: `CancellationError` on barge-in; otherwise the *last real* error when the chain is
@@ -271,7 +273,8 @@ enum ModelCascade {
         isCancelled: () -> Bool = { false },
         onSwitch: (_ from: ModelFallbackChain.Candidate,
                    _ to: ModelFallbackChain.Candidate,
-                   _ failure: ModelFallbackChain.FailureClass) async -> Void = { _, _, _ in },
+                   _ failure: ModelFallbackChain.FailureClass,
+                   _ error: Error?) async -> Void = { _, _, _, _ in },
         attempt: (ModelFallbackChain.Candidate) async throws -> String
     ) async throws -> String {
         // The lead candidate has to meet the turn's needs like every hop after it. Taken as it
@@ -286,7 +289,7 @@ enum ModelCascade {
         // Initial capability filtering used to silently skip the selected model. Report
         // this switch too, so a ChatGPT photo routed to Claude names the model that sees it.
         if needs.requiresVision, let selected = candidates.first, selected.id != current.id {
-            await onSwitch(selected, current, selected.supportsVision ? .retryOtherModel : .visionUnavailable)
+            await onSwitch(selected, current, selected.supportsVision ? .retryOtherModel : .visionUnavailable, nil)
         }
         var tried = Set<String>()
         var attempts = 0
@@ -306,7 +309,7 @@ enum ModelCascade {
                     candidates: candidates, tried: tried, needs: needs,
                     failure: failure, currentWindow: current.contextTokens
                 ) else { throw error }
-                await onSwitch(current, next, failure)
+                await onSwitch(current, next, failure, error)
                 current = next
             }
         }
