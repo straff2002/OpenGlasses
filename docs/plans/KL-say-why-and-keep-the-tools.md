@@ -1,6 +1,7 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 📝 Drafted 2026-11-03 from two TestFlight users' support reports on build 615. Nothing built.
+**Status:** 📝 Drafted 2026-11-03 from two TestFlight users' support reports on build 615. The owner took all
+six decisions the same day. Nothing built.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -66,24 +67,24 @@ Two users sent reports on build 615, and the app failed both of them in ways the
    - The report logs the length of each spoken line but not where it came from, so I couldn't find it
      from the report.
 
-## Decisions (owner, open until answered — recommendations given)
+## Decisions (owner, 2026-11-03: all six taken as recommended)
 
 1. **The spoken line is short; the screen carries the path.** Spoken: "You're not signed in to ChatGPT,
    so I'm answering on this phone." On screen, the status card and the turn's error banner name the
-   setting and link to it. *Recommended.*
+   setting and link to it. *Taken.*
 2. **A known-missing credential is said once per process per service**, and again only after it changes
-   (signed in, signed out, key edited). Later turns hop without a notice; the log still records each hop. *Recommended.*
+   (signed in, signed out, key edited). Later turns hop without a notice; the log still records each hop. *Taken.*
 3. **A learned per-minute allowance is kept per saved model** across launches, and cleared when that
-   model's key, provider or model id changes. *Recommended.*
+   model's key, provider or model id changes. *Taken.*
 4. **Under an allowance, a cloud model may get the condensed instructions** the on-device path already
-   uses, but only when the full ones don't fit. *Recommended, as the quality cost is smaller than no answer.*
+   uses, but only when the full ones don't fit. *Taken: the quality cost is smaller than no answer.*
 5. **A hop after a tool has run.**
    - If every tool that ran is read-only, its results go forward to the next model as already-fetched
      results.
    - If any tool changed state, the turn ends and says what was done, the rule the overflow paths follow today.
-   - *Recommended.* The alternative, ending every such turn, is simpler but would have lost User B's answer.
+   - *Taken.* The alternative, ending every such turn, is simpler but would have lost User B's answer.
 6. **The app keeps allowing a subscription model to be chosen while signed out.** A sign-in can expire
-   later anyway, so the fix is to say so, not to block the choice. *Recommended.*
+   later anyway, so the fix is to say so, not to block the choice. *Taken.*
 
 ## Phases
 
