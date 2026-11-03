@@ -30,6 +30,7 @@ enum SettingsGroupMemberID: String, CaseIterable, Sendable {
     // Switches.
     case userMemory = "userMemoryEnabled"
     case conversationHistory = "conversationPersistenceEnabled"
+    case earlierInConversation = "conversationTimelineEnabled"
     case memorySuggestions = "memoryNudgesEnabled"
     case memoryEnrichment = "brainEnrichmentEnabled"
     case myDay = "myDayEnabled"
@@ -114,6 +115,8 @@ enum SettingsGroupCatalog {
                 .init(id: .whatAvenkinRemembers, title: String(localized: "What Avenkin Remembers"), kind: .link),
                 .init(id: .conversationHistory, title: String(localized: "Conversation History"), kind: .follows,
                       onFirstTime: true),
+                .init(id: .earlierInConversation, title: String(localized: "Remember Earlier in Long Conversations"),
+                      kind: .follows, onFirstTime: true, hardDisabledInMedicalMode: true),
                 .init(id: .memorySuggestions, title: String(localized: "Memory Suggestions"), kind: .follows),
                 .init(id: .goals, title: String(localized: "Goals"), kind: .link),
                 .init(id: .activity, title: String(localized: "Activity"), kind: .link),
