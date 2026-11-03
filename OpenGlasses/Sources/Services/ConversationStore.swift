@@ -62,6 +62,11 @@ struct ConversationThread: Codable, Identifiable, Sendable {
     /// app's own title and leaves one the technician chose: they differ, whatever either says. Nil
     /// on every other thread and on a thread saved before this existed.
     var jobTitle: String?
+    /// Plan KK: dated notes about the saved messages a request no longer carries word for word,
+    /// oldest first. Derived from `messages`, never a record of them, and kept here so encryption,
+    /// the save guards, retention and `deleteThread` all cover it. Nil on a thread saved before it
+    /// existed, which decodes unchanged.
+    var timeline: [TimelineEntry]?
 
     init(mode: String, title: String = "New Conversation", personaId: String? = nil) {
         self.id = UUID().uuidString
@@ -489,13 +494,56 @@ class ConversationStore: ObservableObject {
 
     /// Remove the message with `messageId` and every message after it in the thread. Used by the
     /// Chat tab's edit/regenerate, which truncate the thread back to a point and resend from there.
+    ///
+    /// What was derived from the removed messages goes with them (Plan KK): every timeline entry
+    /// whose span reaches a removed message, and the legacy `compressedSummary`, whose span was
+    /// never recorded and so may summarise exactly the words the wearer just took back.
     func truncate(from messageId: String, in threadId: String) {
         guard let tIdx = threads.firstIndex(where: { $0.id == threadId }),
               let mIdx = threads[tIdx].messages.firstIndex(where: { $0.id == messageId }) else { return }
-        let removedIDs = threads[tIdx].messages[mIdx...].map(\.id)
+        let messageIDs = threads[tIdx].messages.map(\.id)
+        let removedIDs = Array(messageIDs[mIdx...])
         threads[tIdx].messages.removeSubrange(mIdx...)
+        if let timeline = threads[tIdx].timeline {
+            let kept = TimelineInvalidation.afterRemoving(Set(removedIDs), from: messageIDs,
+                                                          entries: timeline)
+            threads[tIdx].timeline = kept.isEmpty ? nil : kept
+        }
+        threads[tIdx].compressedSummary = nil
         threads[tIdx].updatedAt = Date()
         saveAndProject(.messageDelete(ids: removedIDs))
+    }
+
+    /// Drop every timeline entry, in every thread, that names `token` as a whole word, and every
+    /// legacy `compressedSummary` that does — the derived text a person erasure must not leave
+    /// re-sending their name (Plan KK). The messages themselves are left; see
+    /// `SubjectErasureCoordinator`.
+    ///
+    /// - Returns: how many entries and summaries went, or nil when the store cannot be searched
+    ///   honestly: locked (the threads in memory are not the history) or after a failed read
+    ///   (the file may hold threads memory does not, and they would win a later merge).
+    @discardableResult
+    func dropTimelineEntries(naming token: String) -> Int? {
+        guard !isLocked, !saveBlocked else { return nil }
+        var removed = 0
+        for index in threads.indices {
+            if let timeline = threads[index].timeline {
+                let kept = TimelineInvalidation.withoutMentions(of: token, in: timeline)
+                if kept.count != timeline.count {
+                    removed += timeline.count - kept.count
+                    threads[index].timeline = kept.isEmpty ? nil : kept
+                }
+            }
+            if let summary = threads[index].compressedSummary,
+               TimelineInvalidation.mentions(summary, token) {
+                threads[index].compressedSummary = nil
+                removed += 1
+            }
+        }
+        guard removed > 0 else { return 0 }
+        save()
+        PrivacyLog.conversation(.conversations, .timelineDropped, count: removed)
+        return removed
     }
 
     /// Most recent thread for a given mode.

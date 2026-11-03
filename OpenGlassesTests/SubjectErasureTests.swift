@@ -151,6 +151,16 @@ final class SubjectErasureTests: XCTestCase {
         conversations.appendMessage(role: "user", content: "what did \(canary) say about the plant")
         recallIndex.index(IndexedTurn(id: "turn-1", threadID: thread.id, role: "user",
                                       text: "what did \(canary) say about the plant", timestamp: Date()))
+        // The thread's own note about that turn, which the timeline would re-send every turn
+        // (Plan KK). Saved by the next write: the erasure's.
+        if let index = conversations.threads.firstIndex(where: { $0.id == thread.id }),
+           let said = conversations.threads[index].messages.first {
+            conversations.threads[index].timeline = [
+                TimelineEntry(id: "note-1", firstMessageID: said.id, lastMessageID: said.id,
+                              startedAt: said.timestamp, endedAt: said.timestamp, tier: .chunk,
+                              text: "Asked what \(canary) said about the plant."),
+            ]
+        }
 
         queue.enqueue(QueuedOp.make(kind: .logEntry, sessionId: "s1",
                                     json: ["note": "spoke to \(canary)"]))
@@ -201,6 +211,8 @@ final class SubjectErasureTests: XCTestCase {
         note("goals", goals.goals.map { "\($0.title) \($0.steps.map(\.title))" }.joined(separator: ","))
         note("activityTrail", activity.entries.map { "\($0.title) \($0.detail ?? "")" }.joined(separator: ","))
         note("recallIndex", recallIndex.search(phrase: canary, limit: 50).map(\.text).joined(separator: ","))
+        note("conversationTimeline", conversations.threads.flatMap { $0.timeline ?? [] }
+            .map(\.text).joined(separator: ","))
         note("documents", documents.passages(containingToken: canary, limit: 50)
             .map(\.text).joined(separator: ","))
         note("documents.query", documents.query(canary, limit: 5).map(\.text).joined(separator: ","))
@@ -443,10 +455,45 @@ final class SubjectErasureTests: XCTestCase {
         XCTAssertTrue(recallIndex.search(phrase: "plant", limit: 10).isEmpty)
     }
 
+    /// Plan KK: a person erasure leaves the thread's text, as before, but its timeline is derived
+    /// text re-sent on every turn, so an entry naming them goes. One that does not name them is
+    /// the wearer's own record of the job, and stays.
+    func testTimelineEntriesNamingThePersonGoAndOthersStay() async throws {
+        let thread = conversations.startThread(mode: "test")
+        conversations.appendMessage(role: "user", content: "what did \(canary) say about the plant")
+        conversations.appendMessage(role: "assistant", content: "That it needs a new fan motor.")
+        conversations.appendMessage(role: "user", content: "and the roof unit?")
+        conversations.appendMessage(role: "assistant", content: "Its filters are clogged.")
+        let messages = try XCTUnwrap(conversations.threads.first { $0.id == thread.id }).messages
+        let index = try XCTUnwrap(conversations.threads.firstIndex { $0.id == thread.id })
+        conversations.threads[index].timeline = [
+            TimelineEntry(id: "naming", firstMessageID: messages[0].id, lastMessageID: messages[1].id,
+                          startedAt: messages[0].timestamp, endedAt: messages[1].timestamp,
+                          tier: .chunk, text: "\(canary.uppercased()) said the plant needs a new fan motor."),
+            TimelineEntry(id: "other", firstMessageID: messages[2].id, lastMessageID: messages[3].id,
+                          startedAt: messages[2].timestamp, endedAt: messages[3].timestamp,
+                          tier: .chunk, text: "The roof unit's filters are clogged."),
+        ]
+
+        let receipts = await SubjectErasureCoordinator(stores: makeStores()).erase(.person(canary))
+
+        let receipt = try XCTUnwrap(receipts.first { $0.store == .conversationThreads })
+        XCTAssertFalse(receipt.localComplete, "the thread text naming them is still there")
+        XCTAssertEqual(receipt.removed, 0)
+        XCTAssertTrue(receipt.unsupported?.contains("notes naming them are dropped") == true,
+                      receipt.unsupported ?? "")
+
+        reopenFromDisk()
+        let saved = try XCTUnwrap(conversations.threads.first { $0.id == thread.id })
+        XCTAssertEqual(saved.timeline?.map(\.id), ["other"])
+        XCTAssertTrue(saved.messages.contains { $0.content.contains(canary) },
+                      "the receipt says the text is left, and it is")
+    }
+
     func testErasingADocumentRemovesItFromTheStoreAndTheVaultLedger() async throws {
         let ingested = await documents.ingest(name: "manual", text: "The unit is a \(canary).")
         let ref = try XCTUnwrap(ingested)
-        var ledger = VaultDocumentLedger(entries: [
+        let ledger = VaultDocumentLedger(entries: [
             .init(file: "manual.pdf", title: "manual", documentId: ref.id,
                   contentHash: "abc", chunkCount: 1),
         ])

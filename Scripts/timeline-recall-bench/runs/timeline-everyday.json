@@ -1,0 +1,97 @@
+{
+ "fixture": "everyday",
+ "entries": [
+  {
+   "id": "tl-0",
+   "firstMessageID": "everyday-u000",
+   "lastMessageID": "everyday-a016",
+   "startedAt": "2026-11-02T07:05:00+13:00",
+   "endedAt": "2026-11-02T09:02:20+13:00",
+   "tier": "chunk",
+   "text": "At 07:08, added unsweetened oat milk for Jo, not the barista one.\n\nAt 07:12, dinner was booked for Saturday at The Copper Fig, at 7 pm for 5 people. At 07:20, Leah said she was coming too, making it 6 people. At 07:24, noted that Maya doesn\u2019t eat shellfish and that you need to tell the restaurant. At 07:41, you paid a 50 dollar deposit for the table.\n\nAt 07:50, you said the trip to the coast next week would be by train instead of driving because Jo hates the hill road. The train leaves at 8:42 am; the later 9:24 train gets in too late. You\u2019re in carriage C.\n\nAt 08:10, you said the holiday house is at 14 Tide Lane. At 08:14, you gave the Wi-Fi password: kereru-bay-55. At 08:18, the lockbox code was corrected to 3907, replacing 3970 (flipped digits). Check-in is Thursday the 12th.\n\nAt 09:02, you dropped the suit at the dry cleaner. The ticket number is 4482, not 4428 (read upside down).",
+   "summaryRaw": "At 07:08, added unsweetened oat milk for Jo, not the barista one.\n\nAt 07:12, dinner was booked for Saturday at The Copper Fig, at 7 pm for 5 people. At 07:20, Leah said she was coming too, making it 6 people. At 07:24, noted that Maya doesn\u2019t eat shellfish and that you need to tell the restaurant. At 07:41, you paid a 50 dollar deposit for the table.\n\nAt 07:50, you said the trip to the coast next week would be by train instead of driving because Jo hates the hill road. The train leaves at 8:42 am; the later 9:24 train gets in too late. You\u2019re in carriage C.\n\nAt 08:10, you said the holiday house is at 14 Tide Lane. At 08:14, you gave the Wi-Fi password: kereru-bay-55. At 08:18, the lockbox code was corrected to 3907, replacing 3970 (flipped digits). Check-in is Thursday the 12th.\n\nAt 09:02, you dropped the suit at the dry cleaner. The ticket number is 4482, not 4428 (read upside down)."
+  },
+  {
+   "id": "tl-1",
+   "firstMessageID": "everyday-u017",
+   "lastMessageID": "everyday-a032",
+   "startedAt": "2026-11-02T09:20:00+13:00",
+   "endedAt": "2026-11-02T12:12:20+13:00",
+   "tier": "chunk",
+   "text": "The prescription will be ready after 3 pm. Ella wears a size 12, but you\u2019re buying size 13 so she has room to grow. You want to keep Mum\u2019s birthday present around 80 dollars and chose the ceramic planter over the scarf. Your car service is booked for Wednesday at 8:15; the odometer reads 84,310 km. The door sticker says 32 psi front and 36 psi rear. You\u2019re parked at the mall on level P3. For the leaky valve on the hot water cylinder, you got quotes of 420 and 385 and chose the 385 quote; the plumber is coming Friday. Your book club is reading The Salt Orchard this month and meets on the 19th. The power bill is 214.60 and is due on the 18th.",
+   "summaryRaw": "The prescription will be ready after 3 pm. Ella wears a size 12, but you\u2019re buying size 13 so she has room to grow. You want to keep Mum\u2019s birthday present around 80 dollars and chose the ceramic planter over the scarf. Your car service is booked for Wednesday at 8:15; the odometer reads 84,310 km. The door sticker says 32 psi front and 36 psi rear. You\u2019re parked at the mall on level P3. For the leaky valve on the hot water cylinder, you got quotes of 420 and 385 and chose the 385 quote; the plumber is coming Friday. Your book club is reading The Salt Orchard this month and meets on the 19th. The power bill is 214.60 and is due on the 18th."
+  }
+ ],
+ "calls": [
+  {
+   "turn": 55,
+   "messages": [
+    0,
+    33
+   ],
+   "estTokens": 5190,
+   "usage": {
+    "prompt_tokens": 4365,
+    "completion_tokens": 469,
+    "total_tokens": 4834,
+    "prompt_tokens_details": {
+     "cached_tokens": 4362,
+     "cache_write_tokens": 0,
+     "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 193,
+     "audio_tokens": 0,
+     "accepted_prediction_tokens": 0,
+     "rejected_prediction_tokens": 0
+    }
+   },
+   "latency": 5.179401874542236,
+   "rejected": null,
+   "rawChars": 897,
+   "restoredLines": 0,
+   "lostValues": 0,
+   "finalChars": 897
+  },
+  {
+   "turn": 65,
+   "messages": [
+    34,
+    65
+   ],
+   "estTokens": 5310,
+   "usage": {
+    "prompt_tokens": 4389,
+    "completion_tokens": 536,
+    "total_tokens": 4925,
+    "prompt_tokens_details": {
+     "cached_tokens": 4386,
+     "cache_write_tokens": 0,
+     "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 359,
+     "audio_tokens": 0,
+     "accepted_prediction_tokens": 0,
+     "rejected_prediction_tokens": 0
+    }
+   },
+   "latency": 6.260551929473877,
+   "rejected": null,
+   "rawChars": 648,
+   "restoredLines": 0,
+   "lostValues": 0,
+   "finalChars": 648
+  }
+ ],
+ "omittedAtProbe": 96,
+ "coveredUpTo": 66,
+ "coverageHasGaps": true,
+ "rendered": {
+  "text": "Earlier in this conversation. These are notes, not a record: for readings and job details, the job record and the wearer's own words win.\n\n[Mon 2 Nov 2026, 07:05\u201309:02]\nAt 07:08, added unsweetened oat milk for Jo, not the barista one.\n\nAt 07:12, dinner was booked for Saturday at The Copper Fig, at 7 pm for 5 people. At 07:20, Leah said she was coming too, making it 6 people. At 07:24, noted that Maya doesn\u2019t eat shellfish and that you need to tell the restaurant. At 07:41, you paid a 50 dollar deposit for the table.\n\nAt 07:50, you said the trip to the coast next week would be by train instead of driving because Jo hates the hill road. The train leaves at 8:42 am; the later 9:24 train gets in too late. You\u2019re in carriage C.\n\nAt 08:10, you said the holiday house is at 14 Tide Lane. At 08:14, you gave the Wi-Fi password: kereru-bay-55. At 08:18, the lockbox code was corrected to 3907, replacing 3970 (flipped digits). Check-in is Thursday the 12th.\n\nAt 09:02, you dropped the suit at the dry cleaner. The ticket number is 4482, not 4428 (read upside down).\n\n[Mon 2 Nov 2026, 09:20\u201312:12]\nThe prescription will be ready after 3 pm. Ella wears a size 12, but you\u2019re buying size 13 so she has room to grow. You want to keep Mum\u2019s birthday present around 80 dollars and chose the ceramic planter over the scarf. Your car service is booked for Wednesday at 8:15; the odometer reads 84,310 km. The door sticker says 32 psi front and 36 psi rear. You\u2019re parked at the mall on level P3. For the leaky valve on the hot water cylinder, you got quotes of 420 and 385 and chose the 385 quote; the plumber is coming Friday. Your book club is reading The Salt Orchard this month and meets on the 19th. The power bill is 214.60 and is due on the 18th.",
+  "rendered": 2,
+  "dropped": 0,
+  "hasGap": true,
+  "estimatedTokens": 436
+ }
+}

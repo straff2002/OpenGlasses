@@ -1,0 +1,111 @@
+{
+ "fixture": "field",
+ "entries": [
+  {
+   "id": "tl-0",
+   "firstMessageID": "field-u000",
+   "lastMessageID": "field-a014",
+   "startedAt": "2026-11-03T07:42:00+13:00",
+   "endedAt": "2026-11-03T08:33:20+13:00",
+   "tier": "chunk",
+   "text": "At 07:42, at Harbour Street Grocer for a walk-in cooler call: the manager reported it had been running warm since last night and asked to start a job.\n\nAt 07:45, the display read 9.4 degrees. The product was still \u201ccold-ish\u201d; staff had moved the dairy out.\n\nAt 07:49, the condensing unit was outside on a slab. Model: CU-3150-HX. At 07:51, serial: HX21-0847-K; the plate was faded, so this was the best reading.\n\nAt 07:54, the plate said R-404A, but a retrofit sticker indicated it had been converted to R-448A.\n\nAt 07:58, the controller was flashing E27; the brand was unfamiliar.\n\nAt 08:03, the manager\u2019s name was Priya. She asked to be texted, not called, and would be on the shop floor all morning. At 08:06, she wanted the cooler back down by 11 am because a dairy delivery was coming.\n\nAt 08:10, the evaporator had three fans: the middle one was not spinning; the outer two were fine. At 08:14, the middle fan was seized and its bearing had gone. Motor label: EFM-9W-230; this was the motor to order.\n\nAt 08:18, the coil was iced on the side with the dead fan. The plan was to put it into manual defrost while checking the condensing unit. At 08:22, defrost termination was set at 13 degrees on the controller; this setting was being left alone.\n\nAt 08:27, suction pressure was 38 psi. At 08:29, head pressure was corrected to 212 psi, not 221 psi (needle misread).\n\nAt 08:33, the condenser coil was filthy with a lot of cardboard dust. The person asked whether to wash it before taking more readings.",
+   "summaryRaw": "At 07:42, at Harbour Street Grocer for a walk-in cooler call: the manager reported it had been running warm since last night and asked to start a job.\n\nAt 07:45, the display read 9.4 degrees. The product was still \u201ccold-ish\u201d; staff had moved the dairy out.\n\nAt 07:49, the condensing unit was outside on a slab. Model: CU-3150-HX. At 07:51, serial: HX21-0847-K; the plate was faded, so this was the best reading.\n\nAt 07:54, the plate said R-404A, but a retrofit sticker indicated it had been converted to R-448A.\n\nAt 07:58, the controller was flashing E27; the brand was unfamiliar.\n\nAt 08:03, the manager\u2019s name was Priya. She asked to be texted, not called, and would be on the shop floor all morning. At 08:06, she wanted the cooler back down by 11 am because a dairy delivery was coming.\n\nAt 08:10, the evaporator had three fans: the middle one was not spinning; the outer two were fine. At 08:14, the middle fan was seized and its bearing had gone. Motor label: EFM-9W-230; this was the motor to order.\n\nAt 08:18, the coil was iced on the side with the dead fan. The plan was to put it into manual defrost while checking the condensing unit. At 08:22, defrost termination was set at 13 degrees on the controller; this setting was being left alone.\n\nAt 08:27, suction pressure was 38 psi. At 08:29, head pressure was corrected to 212 psi, not 221 psi (needle misread).\n\nAt 08:33, the condenser coil was filthy with a lot of cardboard dust. The person asked whether to wash it before taking more readings."
+  },
+  {
+   "id": "tl-1",
+   "firstMessageID": "field-u015",
+   "lastMessageID": "field-a030",
+   "startedAt": "2026-11-03T08:41:00+13:00",
+   "endedAt": "2026-11-03T10:30:20+13:00",
+   "tier": "chunk",
+   "text": "The condensing-unit fan motor is noisy and running slow. The old motor is OFM-5512; the supplier app says it is superseded by OFM-5521, which is the motor to order.\n\nThe compressor is drawing 11.6 amps; its plate RLA is 14.2. The compressor run capacitor reads low; it is 45 microfarads, and the only capacitor in the van is 40 microfarads, which is no good.\n\nThe contactor points are pitted; the contactor is CN-2P-30. The compressor sticker says it was installed March 2021; the unit was made in 2019.\n\nThe coil is defrosted and all ice is gone. The system is running on the two good fans. Evaporator-outlet superheat is 4.5 K, and the person said it is low and flooding back a bit. The TXV was turned one and a half turns clockwise; the person planned to let it settle.\n\nA leak was found at the Schrader core on the suction service valve; bubbles appear straight away. Subcooling is 8 K; the unit sticker target is 5 K.\n\nThe person chose to recover refrigerant, change the core, and pressure test. For isolation, breaker 12 was first considered but is for the lights; the walk-in is on breaker 14 on panel B.\n\nRefrigerant was recovered and the core changed. Nitrogen pressure testing was underway at 150 psi.\n\nVacuum reached 520 microns and was still dropping; it settled at 450 microns and was holding.\n\nThe system was charged back up with 1.2 kg of 448A. The box is coming down; two good evaporator fans are running. The person planned to leave it running and talk to Priya about parts.",
+   "summaryRaw": "The condensing-unit fan motor is noisy and running slow. The old motor is OFM-5512; the supplier app says it is superseded by OFM-5521, which is the motor to order.\n\nThe compressor is drawing 11.6 amps; its plate RLA is 14.2. The compressor run capacitor reads low; it is 45 microfarads, and the only capacitor in the van is 40 microfarads, which is no good.\n\nThe contactor points are pitted; the contactor is CN-2P-30. The compressor sticker says it was installed March 2021; the unit was made in 2019.\n\nThe coil is defrosted and all ice is gone. The system is running on the two good fans. Evaporator-outlet superheat is 4.5 K, and the person said it is low and flooding back a bit. The TXV was turned one and a half turns clockwise; the person planned to let it settle.\n\nA leak was found at the Schrader core on the suction service valve; bubbles appear straight away. Subcooling is 8 K; the unit sticker target is 5 K.\n\nThe person chose to recover refrigerant, change the core, and pressure test. For isolation, breaker 12 was first considered but is for the lights; the walk-in is on breaker 14 on panel B.\n\nRefrigerant was recovered and the core changed. Nitrogen pressure testing was underway at 150 psi.\n\nVacuum reached 520 microns and was still dropping; it settled at 450 microns and was holding.\n\nThe system was charged back up with 1.2 kg of 448A. The box is coming down; two good evaporator fans are running. The person planned to leave it running and talk to Priya about parts."
+  },
+  {
+   "id": "tl-2",
+   "firstMessageID": "field-u031",
+   "lastMessageID": "field-a046",
+   "startedAt": "2026-11-03T10:36:00+13:00",
+   "endedAt": "2026-11-03T11:56:20+13:00",
+   "tier": "chunk",
+   "text": "Priya chose to replace only the condenser fan motor and evap fan motor, not the whole condensing unit. The quote was 1,420; after she pushed back, gasket labour was dropped and the final quote became 1,240 dollars. The door gasket is split along the bottom and needs 2.4 metres of gasket. Priya wants the walk-in set to 3 degrees; it was set at 5.\n\nThe corrected head office PO for the invoice is PO-77815, replacing PO-77518 (read backwards). The return visit to fit the parts was first booked for Thursday at 2 pm. Priya said Thursday does not work, so it is now Friday at 7:30 am.\n\nRTU-2 is the rooftop unit over the shop floor, model RTX-090-E. Roof hatch code is 4471. RTU-2 takes 20 by 25 by 2 filters; there are 4 and all are filthy. Its belt is glazed and cracked, size A42; the A44 on the van shelf will not fit. RTU-2 supply air temperature is 13.8 degrees and return air temperature is 23.1 degrees.\n\nThe ice machine in the back room is showing LP3. Its water filter is WF-220 and is well overdue.\n\nSaid word for word:\n- 11:08 \"Now the rooftop unit, RTU-2, the one over the shop floor.\"\n- 11:30 \"There's an A44 on the van shelf but that won't fit.\"\n- 11:56 \"Its water filter is a WF-220, and it's well overdue.\"",
+   "summaryRaw": "Priya chose to replace only the condenser fan motor and evap fan motor, not the whole condensing unit. The quote was 1,420; after she pushed back, gasket labour was dropped and the final quote became 1,240 dollars. The door gasket is split along the bottom and needs 2.4 metres of gasket. Priya wants the walk-in set to 3 degrees; it was set at 5.\n\nThe corrected head office PO for the invoice is PO-77815, replacing PO-77518 (read backwards). The return visit to fit the parts was first booked for Thursday at 2 pm. Priya said Thursday does not work, so it is now Friday at 7:30 am.\n\nRTU-2 is the rooftop unit over the shop floor, model RTX-090-E. Roof hatch code is 4471. RTU-2 takes 20 by 25 by 2 filters; there are 4 and all are filthy. Its belt is glazed and cracked, size A42; the A44 on the van shelf will not fit. RTU-2 supply air temperature is 13.8 degrees and return air temperature is 23.1 degrees.\n\nThe ice machine in the back room is showing LP3. Its water filter is WF-220 and is well overdue."
+  }
+ ],
+ "calls": [
+  {
+   "turn": 54,
+   "messages": [
+    0,
+    29
+   ],
+   "estTokens": 5431,
+   "usage": {
+    "reused": true
+   },
+   "latency": 0.0,
+   "rejected": null,
+   "rawChars": 1507,
+   "restoredLines": 0,
+   "lostValues": 0,
+   "finalChars": 1507
+  },
+  {
+   "turn": 65,
+   "messages": [
+    30,
+    61
+   ],
+   "estTokens": 5087,
+   "usage": {
+    "reused": true
+   },
+   "latency": 0.0,
+   "rejected": null,
+   "rawChars": 1491,
+   "restoredLines": 0,
+   "lostValues": 0,
+   "finalChars": 1491
+  },
+  {
+   "turn": "probe-close",
+   "messages": [
+    62,
+    93
+   ],
+   "estTokens": 5051,
+   "usage": {
+    "prompt_tokens": 4134,
+    "completion_tokens": 459,
+    "total_tokens": 4593,
+    "prompt_tokens_details": {
+     "cached_tokens": 4131,
+     "cache_write_tokens": 0,
+     "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+     "reasoning_tokens": 182,
+     "audio_tokens": 0,
+     "accepted_prediction_tokens": 0,
+     "rejected_prediction_tokens": 0
+    }
+   },
+   "latency": 6.6641621589660645,
+   "rejected": null,
+   "rawChars": 1008,
+   "restoredLines": 3,
+   "lostValues": 3,
+   "finalChars": 1222
+  }
+ ],
+ "omittedAtProbe": 94,
+ "coveredUpTo": 94,
+ "coverageHasGaps": false,
+ "rendered": {
+  "text": "Earlier in this conversation. These are notes, not a record: for readings and job details, the job record and the wearer's own words win.\n\n[Tue 3 Nov 2026, 07:42\u201308:33]\nAt 07:42, at Harbour Street Grocer for a walk-in cooler call: the manager reported it had been running warm since last night and asked to start a job.\n\nAt 07:45, the display read 9.4 degrees. The product was still \u201ccold-ish\u201d; staff had moved the dairy out.\n\nAt 07:49, the condensing unit was outside on a slab. Model: CU-3150-HX. At 07:51, serial: HX21-0847-K; the plate was faded, so this was the best reading.\n\nAt 07:54, the plate said R-404A, but a retrofit sticker indicated it had been converted to R-448A.\n\nAt 07:58, the controller was flashing E27; the brand was unfamiliar.\n\nAt 08:03, the manager\u2019s name was Priya. She asked to be texted, not called, and would be on the shop floor all morning. At 08:06, she wanted the cooler back down by 11 am because a dairy delivery was coming.\n\nAt 08:10, the evaporator had three fans: the middle one was not spinning; the outer two were fine. At 08:14, the middle fan was seized and its bearing had gone. Motor label: EFM-9W-230; this was the motor to order.\n\nAt 08:18, the coil was iced on the side with the dead fan. The plan was to put it into manual defrost while checking the condensing unit. At 08:22, defrost termination was set at 13 degrees on the controller; this setting was being left alone.\n\nAt 08:27, suction pressure was 38 psi. At 08:29, head pressure was corrected to 212 psi, not 221 psi (needle misread).\n\nAt 08:33, the condenser coil was filthy with a lot of cardboard dust. The person asked whether to wash it before taking more readings.\n\n[Tue 3 Nov 2026, 08:41\u201310:30]\nThe condensing-unit fan motor is noisy and running slow. The old motor is OFM-5512; the supplier app says it is superseded by OFM-5521, which is the motor to order.\n\nThe compressor is drawing 11.6 amps; its plate RLA is 14.2. The compressor run capacitor reads low; it is 45 microfarads, and the only capacitor in the van is 40 microfarads, which is no good.\n\nThe contactor points are pitted; the contactor is CN-2P-30. The compressor sticker says it was installed March 2021; the unit was made in 2019.\n\nThe coil is defrosted and all ice is gone. The system is running on the two good fans. Evaporator-outlet superheat is 4.5 K, and the person said it is low and flooding back a bit. The TXV was turned one and a half turns clockwise; the person planned to let it settle.\n\nA leak was found at the Schrader core on the suction service valve; bubbles appear straight away. Subcooling is 8 K; the unit sticker target is 5 K.\n\nThe person chose to recover refrigerant, change the core, and pressure test. For isolation, breaker 12 was first considered but is for the lights; the walk-in is on breaker 14 on panel B.\n\nRefrigerant was recovered and the core changed. Nitrogen pressure testing was underway at 150 psi.\n\nVacuum reached 520 microns and was still dropping; it settled at 450 microns and was holding.\n\nThe system was charged back up with 1.2 kg of 448A. The box is coming down; two good evaporator fans are running. The person planned to leave it running and talk to Priya about parts.\n\n[Tue 3 Nov 2026, 10:36\u201311:56]\nPriya chose to replace only the condenser fan motor and evap fan motor, not the whole condensing unit. The quote was 1,420; after she pushed back, gasket labour was dropped and the final quote became 1,240 dollars. The door gasket is split along the bottom and needs 2.4 metres of gasket. Priya wants the walk-in set to 3 degrees; it was set at 5.\n\nThe corrected head office PO for the invoice is PO-77815, replacing PO-77518 (read backwards). The return visit to fit the parts was first booked for Thursday at 2 pm. Priya said Thursday does not work, so it is now Friday at 7:30 am.\n\nRTU-2 is the rooftop unit over the shop floor, model RTX-090-E. Roof hatch code is 4471. RTU-2 takes 20 by 25 by 2 filters; there are 4 and all are filthy. Its belt is glazed and cracked, size A42; the A44 on the van shelf will not fit. RTU-2 supply air temperature is 13.8 degrees and return air temperature is 23.1 degrees.\n\nThe ice machine in the back room is showing LP3. Its water filter is WF-220 and is well overdue.\n\nSaid word for word:\n- 11:08 \"Now the rooftop unit, RTU-2, the one over the shop floor.\"\n- 11:30 \"There's an A44 on the van shelf but that won't fit.\"\n- 11:56 \"Its water filter is a WF-220, and it's well overdue.\"",
+  "rendered": 3,
+  "dropped": 0,
+  "hasGap": false,
+  "estimatedTokens": 1113
+ }
+}

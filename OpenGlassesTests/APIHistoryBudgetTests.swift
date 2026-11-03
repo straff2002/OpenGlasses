@@ -83,8 +83,36 @@ final class APIHistoryBudgetTests: XCTestCase {
         for i in 0..<40 { history += exchange(i) }
         let selection = APIHistoryBudget.select(history: history, protectedStart: 79, floor: 2, allowance: 0)
         XCTAssertEqual(selection.history.count, 78)
-        XCTAssertEqual(APIHistoryBudget.omissionNote(0), nil)
-        XCTAssertNotNil(APIHistoryBudget.omissionNote(3))
+        XCTAssertEqual(APIHistoryBudget.omissionNote(0, recallOffered: true), nil)
+        XCTAssertNotNil(APIHistoryBudget.omissionNote(3, recallOffered: false))
+    }
+
+    // MARK: - Plan KK: the search sentence
+
+    func testOmissionNoteNamesRecallOnlyWhenOffered() throws {
+        let offered = try XCTUnwrap(APIHistoryBudget.omissionNote(3, recallOffered: true))
+        XCTAssertTrue(offered.hasSuffix(APIHistoryBudget.recallSentence + "]"))
+        let withheld = try XCTUnwrap(APIHistoryBudget.omissionNote(3, recallOffered: false))
+        XCTAssertFalse(withheld.contains("brain"))
+        XCTAssertTrue(withheld.hasPrefix("[Working context: 3 older messages"))
+    }
+
+    func testDeclaresRecallReadsEveryProviderShape() {
+        XCTAssertTrue(APIHistoryBudget.declaresRecall([["name": "get_weather"], ["name": "brain"]]))
+        XCTAssertTrue(APIHistoryBudget.declaresRecall([["type": "function", "function": ["name": "brain"]]]))
+        XCTAssertTrue(APIHistoryBudget.declaresRecall([["type": "function", "name": "brain"]]))
+        XCTAssertFalse(APIHistoryBudget.declaresRecall([["type": "function", "function": ["name": "memory_search"]]]))
+        XCTAssertFalse(APIHistoryBudget.declaresRecall([]))
+        XCTAssertFalse(APIHistoryBudget.declaresRecall(nil))
+    }
+
+    /// A vault-only job seals `brain`, so its declarations never carry it and the note never
+    /// points at it.
+    func testVaultOnlyJobSealsTheToolTheSentenceNames() {
+        XCTAssertTrue(VaultOnlyPolicy.isSealed(tool: "brain"))
+        XCTAssertFalse(ToolExposureCore.names(fieldJobActive: true, accessibilityMode: false, vaultOnly: true)
+            .contains("brain"))
+        XCTAssertTrue(ToolExposureCore.names(fieldJobActive: false, accessibilityMode: false).contains("brain"))
     }
 
     // MARK: - Job floor
