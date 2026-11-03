@@ -47,9 +47,13 @@ enum TimelineMergePlanner {
     /// - Parameter messageIDs: the thread's conversational message ids in order, which is what
     ///   orders the entries and proves their spans meet. An entry whose span no longer resolves is
     ///   never merged.
+    ///
+    /// A redacted entry is never merged, and never merged across: it is left out before the runs
+    /// are found, so the entries either side of it do not meet.
     static func nextMerge(entries: [TimelineEntry], messageIDs: [String]) -> Plan? {
         let positions = TimelineEntry.positions(of: messageIDs)
-        let placed = entries.compactMap { entry in entry.span(in: positions).map { (entry, $0) } }
+        let placed = entries.filter { !$0.isRedacted }
+            .compactMap { entry in entry.span(in: positions).map { (entry, $0) } }
             .sorted { ($0.1.lowerBound, $0.1.upperBound) < ($1.1.lowerBound, $1.1.upperBound) }
         return plan(.chunk, in: placed) ?? plan(.merged, in: placed)
     }

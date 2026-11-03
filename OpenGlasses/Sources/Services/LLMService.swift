@@ -178,10 +178,6 @@ class LLMService: ObservableObject {
     /// Kept for the Prompt Inspector UI — never spoken aloud.
     @Published var lastReasoning: String?
 
-    /// Optional conversation store — used to persist LLM-generated summaries
-    /// when the context window is compressed.
-    weak var conversationStore: ConversationStore?
-
     /// Optional OpenClaw bridge for tool calling in direct mode
     var openClawBridge: OpenClawBridge?
 
@@ -370,6 +366,23 @@ class LLMService: ObservableObject {
     private var turnHistoryStart = 0
     /// Older messages the last request copy left out (`APIHistoryBudget`), for its note.
     private var lastRequestOmittedMessages = 0
+    /// Plan KK P2: what the last cloud request of the current turn carried, for the timeline pass.
+    /// Nil until a turn builds a request copy, and reset at each turn's start, so a turn answered
+    /// on the phone never hands the pass an older turn's counts.
+    private(set) var lastTimelineReading: TimelineRequestReading?
+
+    /// `completeStateless` calls in flight. Their requests run over an emptied history and say
+    /// nothing about the conversation, so they never set the reading.
+    private var statelessCallDepth = 0
+
+    /// Record what a request kept, read from the copy actually sent.
+    private func noteTimelineReading(kept: [[String: Any]]) {
+        guard statelessCallDepth == 0 else { return }
+        lastTimelineReading = TimelineRequestReading(
+            keptUserTurns: TimelineRequestReading.realUserTurns(in: kept),
+            historyUserTurns: TimelineRequestReading.realUserTurns(in: conversationHistory),
+            floorDate: jobHistoryFloor.floorDate)
+    }
 
     /// Maximum tool call iterations to prevent infinite loops
     private let maxToolCallIterations = 5
@@ -974,21 +987,24 @@ class LLMService: ObservableObject {
         FieldSessionService.shared.recordConversationTurn(text, sourceID: fieldConversationSourceID ?? UUID().uuidString)
         // ChatGPT selects a bounded request copy at every submission. Never run the legacy
         // history-only compactor first: it can erase evidence before the full budget is known.
+        // Plan KK P2: the Agent Mode LLM summariser that used to run here is retired; earlier
+        // messages are written up by the conversation timeline instead, after the reply.
         if Config.activeModel?.llmProvider != .chatgpt {
-            if Config.agentModeEnabled {
-                await compressContextWindowWithLLM()
-            } else {
-                compressContextWindowIfNeeded()
-            }
+            compressContextWindowIfNeeded()
         }
 
         // Plan GB P5: a job that became active since the last turn starts the request history here.
         let turnStartIndex = conversationHistory.count
-        jobHistoryFloor.turnStarted(at: turnStartIndex, sessionId: FieldSessionService.shared.activeSession?.id)
+        let turnStartedAt = Date()
+        jobHistoryFloor.turnStarted(at: turnStartIndex, sessionId: FieldSessionService.shared.activeSession?.id,
+                                    now: turnStartedAt)
+        // Plan KK P2: this turn's cloud request, if it builds one, says what it carried.
+        lastTimelineReading = nil
         defer {
             // …and a job this turn started (a spoken "start a job") starts with this turn.
             jobHistoryFloor.turnFinished(startedAt: min(turnStartIndex, conversationHistory.count),
-                                         sessionId: FieldSessionService.shared.activeSession?.id)
+                                         sessionId: FieldSessionService.shared.activeSession?.id,
+                                         turnStartedAt: turnStartedAt)
         }
 
         var modelConfig = try medicalInferenceModel(requested: requestedModel)
@@ -1654,7 +1670,11 @@ class LLMService: ObservableObject {
         let config = try medicalInferenceModel(requested: requested)
         let snapshot = conversationHistory
         conversationHistory = []
-        defer { conversationHistory = snapshot }
+        statelessCallDepth += 1
+        defer {
+            conversationHistory = snapshot
+            statelessCallDepth -= 1
+        }
 
         switch config.llmProvider {
         case .anthropic:
@@ -1806,168 +1826,126 @@ class LLMService: ObservableObject {
                                    signals: signals.count, detail: PrivacyToken("heuristic"))
     }
 
-    // MARK: - LLM-Based Compression
+    // MARK: - Timeline summaries (Plan KK P2)
 
-    /// Compress the context window using an LLM to summarize old messages.
-    /// Falls back to the heuristic compressor on failure.
-    private func compressContextWindowWithLLM() async {
-        let estimatedTokens = HistoryHygiene.estimatedTokens(conversationHistory)   // image-aware (Plan BF)
-
-        guard estimatedTokens > maxEstimatedTokens, conversationHistory.count > 6 else { return }
-
-        // Select messages to compress vs keep
-        let keepCount = max(6, conversationHistory.count / 3)
-        let messagesToCompress = Array(conversationHistory.prefix(conversationHistory.count - keepCount))
-        let messagesToKeep = Array(conversationHistory.suffix(keepCount))
-
-        // Try LLM summarization
-        if let summary = await summarizeMessages(messagesToCompress) {
-            let originalCount = conversationHistory.count
-            let summaryMessage: [String: Any] = [
-                "role": "user",
-                "content": "[Conversation summary — \(messagesToCompress.count) earlier messages]\n\(summary)"
-            ]
-            conversationHistory = [summaryMessage] + messagesToKeep
-            jobHistoryFloor.historyCompacted(before: originalCount, after: conversationHistory.count,
-                                             insertedSummary: 1)
-
-            let newTokens = conversationHistory.reduce(0) { total, msg in
-                let content = msg["content"] as? String ?? ""
-                return total + max(content.count / 4, 50)
-            }
-            PrivacyLog.modelCompaction(messagesBefore: originalCount,
-                                       messagesAfter: conversationHistory.count,
-                                       tokensBefore: estimatedTokens, tokensAfter: newTokens,
-                                       detail: PrivacyToken("summarised"))
-
-            // Persist the summary to the active conversation thread
-            if let store = conversationStore, let threadId = store.activeThreadId {
-                await MainActor.run { store.updateCompressedSummary(summary, for: threadId) }
-            }
-            return
+    /// One summary call for the conversation timeline: tools off, no conversation history, sent to
+    /// the model answering this conversation (`medicalInferenceModel` over the active model, never
+    /// a cheaper one, which would be a new destination for the wearer's words), and counted in
+    /// Usage like every turn.
+    ///
+    /// Unlike `completeStateless` it never touches `conversationHistory`: the pass runs after a
+    /// reply while the next turn may already be under way, and emptying and restoring the history
+    /// around the call would wipe whatever that turn added meanwhile. Each provider gets one
+    /// buffered request built here, and the reply is read with how it ended, because a note cut off
+    /// at the allowance must not be kept.
+    ///
+    /// Throws `TimelineSummaryError` (or a transport error) rather than returning nil, so the pass
+    /// can log why and back off. On-device models are refused: the pass's policy already skips
+    /// them, and this keeps a future caller from running background inference on the phone.
+    func completeTimelineSummary(_ request: TimelineSummaryPrompt.Request) async throws -> TimelineSummaryCompletion {
+        guard let requested = Config.activeModel else { throw TimelineSummaryError.unavailable }
+        let config = try medicalInferenceModel(requested: requested)
+        guard !RelationEnrichmentPolicy.isOnDevice(config.llmProvider) else {
+            throw TimelineSummaryError.unavailable
         }
+        try enforceMedicalRemoteBoundary(config)
+        let provider = config.llmProvider
+        let timeout: TimeInterval = 45
 
-        // Fallback to heuristic compression
-        PrivacyLog.model(.compressionFailed, detail: PrivacyToken("summarisation"))
-        compressContextWindowIfNeeded()
+        switch provider {
+        case .anthropic:
+            let body = AnthropicRequest.body(
+                model: config.model, maxTokens: request.maxTokens, system: .text(request.system),
+                messages: [["role": "user", "content": request.user]],
+                reasoning: config.reasoningResolution(toolsAttached: false))
+            let (urlRequest, account) = try await anthropicURLRequest(config: config, body: body, timeout: timeout)
+            let (data, response) = try await anthropicData(for: urlRequest, account: account)
+            Self.noteAnthropicRejection(response: response, body: data, request: urlRequest, detail: "timelineSummary")
+            let json = try Self.timelineSummaryJSON(data, response)
+            recordUsage(provider: provider, model: config.model, json: json)
+            return try TimelineSummaryReply.anthropic(json)
+
+        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+            let baseURL = Self.chatCompletionsURLString(baseURL: config.baseURL, provider: provider)
+            guard let url = URL(string: baseURL) else { throw TimelineSummaryError.unavailable }
+            var urlRequest = URLRequest(url: url)
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let credential = await openAICompatibleCredential(config)
+            urlRequest.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+            urlRequest.timeoutInterval = timeout
+            var body: [String: Any] = [
+                "model": config.model,
+                // A model that reasons by default draws its reasoning from the same allowance.
+                "max_tokens": config.oneShotReasoningResolution().outputCap(base: request.maxTokens),
+                "messages": [
+                    ["role": "system", "content": request.system],
+                    ["role": "user", "content": request.user],
+                ],
+            ]
+            Self.applyGroqOneShotReasoning(to: &body, config: config)
+            Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
+            urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await dataSession.consentedData(
+                for: urlRequest, scope: .conversation, consent: processingConsent)
+            let json = try Self.timelineSummaryJSON(data, response)
+            recordUsage(provider: provider, model: config.model, json: json)
+            return try TimelineSummaryReply.chatCompletions(json)
+
+        case .gemini, .geminiVertex:
+            var urlRequest = try await geminiRequest(for: config, timeout: timeout)
+            let body: [String: Any] = [
+                "system_instruction": ["parts": [["text": request.system]]],
+                "contents": [["role": "user", "parts": [["text": request.user]]]],
+                "generationConfig": config.oneShotReasoningResolution()
+                    .geminiOneShotGenerationConfig(maxTokens: request.maxTokens),
+            ]
+            urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await dataSession.consentedData(
+                for: urlRequest, scope: .conversation, consent: processingConsent)
+            let json = try Self.timelineSummaryJSON(data, response)
+            recordUsage(provider: provider, model: config.model, json: json)
+            return try TimelineSummaryReply.gemini(json)
+
+        case .chatgpt:
+            // The subscription backend has no reply allowance to run into; its usage counts as
+            // any ChatGPT turn's does, though the subscription is not billed per token.
+            guard let json = await chatgptStatelessResponse(
+                model: config.model, instructions: request.system, userContent: request.user,
+                timeout: timeout) else { throw TimelineSummaryError.rejected }
+            recordUsage(provider: provider, model: config.model, json: json)
+            return try TimelineSummaryReply.responses(json)
+
+        case .local, .appleOnDevice:
+            throw TimelineSummaryError.unavailable
+        }
     }
 
-    /// Make a standalone LLM call to summarize a set of messages.
-    /// Uses no tools and a small max_tokens budget. Returns nil on failure.
-    private func summarizeMessages(_ messages: [[String: Any]]) async -> String? {
-        guard let requestedModel = Config.activeModel,
-              let modelConfig = try? medicalInferenceModel(requested: requestedModel) else { return nil }
-
-        // Build a text representation of the messages
-        var transcript = ""
-        for msg in messages {
-            let role = msg["role"] as? String ?? "unknown"
-            let content: String
-            if let text = msg["content"] as? String {
-                content = text
-            } else if let parts = msg["content"] as? [[String: Any]] {
-                content = parts.compactMap { $0["text"] as? String }.joined(separator: " ")
-            } else {
-                continue
-            }
-            // Truncate very long messages to avoid blowing up the summarization call
-            let truncated = content.count > 500 ? String(content.prefix(500)) + "…" : content
-            transcript += "\(role): \(truncated)\n"
+    /// The JSON body of a successful buffered reply, or the reason there is none.
+    private nonisolated static func timelineSummaryJSON(_ data: Data, _ response: URLResponse) throws -> [String: Any] {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw TimelineSummaryError.rejected
         }
-
-        guard !transcript.isEmpty else { return nil }
-
-        let summarizationPrompt = """
-        Summarize the following conversation excerpt concisely. Preserve:
-        - All user-stated facts, names, and preferences
-        - Decisions made and commitments given
-        - Tool calls and their key results
-        - Memory commands ([REMEMBER], [FORGET])
-        - Any unresolved questions or action items
-
-        Keep it under 300 words. Use plain text, no formatting.
-
-        CONVERSATION:
-        \(transcript)
-        """
-
-        let provider = modelConfig.llmProvider
-
-        do {
-            // Use a lightweight request — no tools, short max_tokens
-            switch provider {
-            case .anthropic:
-                return try await anthropicOneShotText(
-                    config: modelConfig,
-                    system: "You are a conversation summarizer. Be concise and factual.",
-                    userContent: summarizationPrompt, maxTokens: 512, timeout: 15, detail: "summarise")
-
-            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-                var baseURL = modelConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !baseURL.hasSuffix("/chat/completions") {
-                    baseURL += baseURL.hasSuffix("/") ? "chat/completions" : "/chat/completions"
-                }
-                guard let url = URL(string: baseURL) else { return nil }
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                let credential = await openAICompatibleCredential(modelConfig)
-                request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
-                request.timeoutInterval = 15
-                var body: [String: Any] = [
-                    "model": modelConfig.model,
-                    "max_tokens": 512,
-                    "messages": [
-                        ["role": "system", "content": "You are a conversation summarizer. Be concise and factual."],
-                        ["role": "user", "content": summarizationPrompt]
-                    ]
-                ]
-                Self.applyGroqOneShotReasoning(to: &body, config: modelConfig)
-                Self.applyOpenAITokenLimitShape(to: &body, provider: provider, baseURL: baseURL)
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let choices = json["choices"] as? [[String: Any]],
-                      let message = choices.first?["message"] as? [String: Any],
-                      let text = message["content"] as? String else { return nil }
-                return text
-
-            case .gemini, .geminiVertex:
-                guard var request = try? await geminiRequest(for: modelConfig, timeout: 15) else { return nil }
-                let body: [String: Any] = [
-                    "system_instruction": ["parts": [["text": "You are a conversation summarizer. Be concise and factual."]]],
-                    "contents": [["role": "user", "parts": [["text": summarizationPrompt]]]],
-                    "generationConfig": modelConfig.oneShotReasoningResolution()
-                        .geminiOneShotGenerationConfig(maxTokens: 512)
-                ]
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-                let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let candidates = json["candidates"] as? [[String: Any]],
-                      let content = candidates.first?["content"] as? [String: Any],
-                      let parts = content["parts"] as? [[String: Any]],
-                      let text = parts.first?["text"] as? String else { return nil }
-                return text
-
-            case .chatgpt:
-                guard let json = await chatgptStatelessResponse(
-                    model: modelConfig.model,
-                    instructions: "You are a conversation summarizer. Be concise and factual.",
-                    userContent: summarizationPrompt, timeout: 15) else { return nil }
-                let text = ResponsesTranslator.parseOutput(json).text
-                return text.isEmpty ? nil : text
-
-            case .local, .appleOnDevice:
-                // Not worth running summarization on local models — use heuristic
-                return nil
-            }
-        } catch {
-            PrivacyLog.model(.requestFailed, detail: PrivacyToken("summarise"),
-                             error: SafeErrorSummary(error))
-            return nil
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw TimelineSummaryError.unreadable
         }
+        return json
+    }
+
+    /// Whether the spend caps stop the timeline pass for the active model now
+    /// (`TimelinePassPolicy.isAtSpendCap`). Priced spend comes from the local usage store.
+    func timelineSpendCapReached(now: Date = Date()) -> Bool {
+        guard let requested = Config.activeModel,
+              let config = try? medicalInferenceModel(requested: requested) else { return false }
+        let caps = SpendCapPolicy.Caps(dailyUSD: Config.dailySpendCapUSD,
+                                       monthlyUSD: Config.monthlySpendCapUSD,
+                                       fallBackToCheaperModel: Config.spendCapFallbackToCheaperModel)
+        guard !caps.isEmpty else { return false }
+        let spent = (usageTrackerOverride ?? UsageTracker.shared).spend(now: now)
+        let decision = SpendCapPolicy.decide(spentToday: spent.today, spentMonth: spent.month, caps: caps,
+                                             pricing: Self.spendPricing(config),
+                                             overrideKey: nil, now: now)
+        return TimelinePassPolicy.isAtSpendCap(decision)
     }
 
     /// Stateless one-shot vision analysis: sends `systemPrompt` + `userText` + a JPEG frame to the
@@ -3606,6 +3584,8 @@ class LLMService: ObservableObject {
             let selected = try RequestContextBudget.build(model: model, instructions: instructions(),
                 history: history, tools: tools, protectedStart: protectedStart, allowance: allowance,
                 options: options, recallOffered: !withholdTools && APIHistoryBudget.declaresRecall(tools))
+            // Plan KK P2: what this copy kept, which may be less than `history` held.
+            noteTimelineReading(kept: Array(history.dropFirst(selected.omittedMessages)))
             PrivacyLog.model(.contextBudget, provider: PrivacyToken(providerToken), model: PrivacyToken(model),
                              count: selected.omittedMessages, total: allowance, tokens: selected.estimate.total,
                              detail: PrivacyToken(limit.provenance))
@@ -5213,13 +5193,22 @@ class LLMService: ObservableObject {
     private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
         lastRequestOmittedMessages = 0
         if smallContext {
-            return Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
+            let kept = Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
+            noteTimelineReading(kept: kept)
+            return kept
         }
         // Groq's free tier has tight TPM limits — trim history aggressively.
-        if provider == .groq { return Array(conversationHistory.suffix(6)) }
+        if provider == .groq {
+            let kept = Array(conversationHistory.suffix(6))
+            noteTimelineReading(kept: kept)
+            return kept
+        }
         // FM's ChatGPT budget and the on-device paths are unchanged (they never reach here with
         // this history, but the guard keeps the rule local).
-        guard provider != .chatgpt, provider != .local, provider != .appleOnDevice else { return conversationHistory }
+        guard provider != .chatgpt, provider != .local, provider != .appleOnDevice else {
+            noteTimelineReading(kept: conversationHistory)
+            return conversationHistory
+        }
         // Plan GB P5: a budgeted request copy — this job's messages only, older exchanges dropped
         // to the allowance, the current turn protected — and images only where the model has not
         // yet answered from them (a photo is not resent on every tool round-trip).
@@ -5230,6 +5219,7 @@ class LLMService: ObservableObject {
             floor: jobHistoryFloor.floor(historyCount: conversationHistory.count),
             allowance: allowance)
         lastRequestOmittedMessages = selection.omittedMessages
+        noteTimelineReading(kept: selection.history)
         if selection.omittedMessages > 0 {
             PrivacyLog.model(.contextBudget, provider: PrivacyToken(provider.rawValue),
                              count: selection.omittedMessages, total: allowance,

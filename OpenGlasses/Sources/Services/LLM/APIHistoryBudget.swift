@@ -95,18 +95,28 @@ enum APIHistoryBudget {
 struct JobHistoryFloor: Equatable {
     private(set) var floor = 0
     private(set) var lastSessionId: String?
+    /// When the turn that set the floor started (Plan KK P2), or nil when no job floor applies.
+    /// The in-memory history has no timestamps, so the timeline, which works on the saved thread,
+    /// finds the job's start by this date instead of by `floor`.
+    private(set) var floorDate: Date?
 
     /// A turn is starting at `turnStart` with `sessionId` active. A job that became active between
     /// turns (started from the Job tab) begins here.
-    mutating func turnStarted(at turnStart: Int, sessionId: String?) {
-        if let sessionId, sessionId != lastSessionId { floor = turnStart }
+    mutating func turnStarted(at turnStart: Int, sessionId: String?, now: Date = Date()) {
+        if let sessionId, sessionId != lastSessionId {
+            floor = turnStart
+            floorDate = now
+        }
         lastSessionId = sessionId ?? lastSessionId
     }
 
-    /// The turn that started at `turnStart` finished with `sessionId` active. A job started by this
-    /// very turn (a spoken "start a job") begins with the turn that started it.
-    mutating func turnFinished(startedAt turnStart: Int, sessionId: String?) {
-        if let sessionId, sessionId != lastSessionId { floor = turnStart }
+    /// The turn that started at `turnStart` (at `startedAt`) finished with `sessionId` active. A
+    /// job started by this very turn (a spoken "start a job") begins with the turn that started it.
+    mutating func turnFinished(startedAt turnStart: Int, sessionId: String?, turnStartedAt: Date = Date()) {
+        if let sessionId, sessionId != lastSessionId {
+            floor = turnStart
+            floorDate = turnStartedAt
+        }
         lastSessionId = sessionId ?? lastSessionId
     }
 
@@ -114,6 +124,7 @@ struct JobHistoryFloor: Equatable {
     /// loaded history *is* this job's conversation, so nothing in it is before the floor.
     mutating func historyReplaced(sessionId: String?) {
         floor = 0
+        floorDate = nil
         lastSessionId = sessionId
     }
 
@@ -122,7 +133,13 @@ struct JobHistoryFloor: Equatable {
     /// floor inside the compacted part falls to 0: the summary mixes both sides of it.
     mutating func historyCompacted(before: Int, after: Int, insertedSummary: Int) {
         let removedFromFront = before - (after - insertedSummary)
-        floor = floor >= removedFromFront ? floor - removedFromFront + insertedSummary : 0
+        if floor >= removedFromFront {
+            floor = floor - removedFromFront + insertedSummary
+        } else {
+            // A floor at 0 has nothing before it to mix in, so the job's start still holds.
+            if floor > 0 { floorDate = nil }
+            floor = 0
+        }
     }
 
     /// The floor clamped to the history's current size.

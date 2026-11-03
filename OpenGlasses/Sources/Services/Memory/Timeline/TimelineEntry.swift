@@ -24,6 +24,19 @@ struct TimelineEntry: Codable, Equatable, Sendable {
     let endedAt: Date
     let tier: Tier
     let text: String
+    /// P2: true when a person erasure emptied this entry (`redacting()`). It keeps its span, so
+    /// coverage still counts the range as covered and the pass never summarises the erased name
+    /// back from the thread text the erasure leaves in place; nothing renders or merges it. Nil on
+    /// an ordinary entry and on one saved before this existed, which decodes unchanged.
+    var redacted: Bool? = nil
+
+    var isRedacted: Bool { redacted == true }
+
+    /// This entry with its text gone and its span, dates and id kept.
+    func redacting() -> TimelineEntry {
+        TimelineEntry(id: id, firstMessageID: firstMessageID, lastMessageID: lastMessageID,
+                      startedAt: startedAt, endedAt: endedAt, tier: tier, text: "", redacted: true)
+    }
 }
 
 /// A saved message reduced to what the timeline's arithmetic needs. No text: coverage, chunking and

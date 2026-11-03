@@ -456,9 +456,10 @@ final class SubjectErasureTests: XCTestCase {
     }
 
     /// Plan KK: a person erasure leaves the thread's text, as before, but its timeline is derived
-    /// text re-sent on every turn, so an entry naming them goes. One that does not name them is
-    /// the wearer's own record of the job, and stays.
-    func testTimelineEntriesNamingThePersonGoAndOthersStay() async throws {
+    /// text re-sent on every turn, so an entry naming them is cleared. One that does not name them
+    /// is the wearer's own record of the job, and stays. Cleared rather than removed (P2): the
+    /// emptied entry keeps covering its span, so the summary pass never writes the name back.
+    func testTimelineEntriesNamingThePersonAreClearedAndOthersStay() async throws {
         let thread = conversations.startThread(mode: "test")
         conversations.appendMessage(role: "user", content: "what did \(canary) say about the plant")
         conversations.appendMessage(role: "assistant", content: "That it needs a new fan motor.")
@@ -480,14 +481,54 @@ final class SubjectErasureTests: XCTestCase {
         let receipt = try XCTUnwrap(receipts.first { $0.store == .conversationThreads })
         XCTAssertFalse(receipt.localComplete, "the thread text naming them is still there")
         XCTAssertEqual(receipt.removed, 0)
-        XCTAssertTrue(receipt.unsupported?.contains("notes naming them are dropped") == true,
+        XCTAssertTrue(receipt.unsupported?.contains("notes naming them are cleared") == true,
                       receipt.unsupported ?? "")
 
         reopenFromDisk()
         let saved = try XCTUnwrap(conversations.threads.first { $0.id == thread.id })
-        XCTAssertEqual(saved.timeline?.map(\.id), ["other"])
+        XCTAssertEqual(saved.timeline?.map(\.id), ["naming", "other"])
+        XCTAssertEqual(saved.timeline?.map(\.isRedacted), [true, false])
+        XCTAssertFalse(saved.timeline?.contains { $0.text.localizedCaseInsensitiveContains(canary) } ?? true)
         XCTAssertTrue(saved.messages.contains { $0.content.contains(canary) },
                       "the receipt says the text is left, and it is")
+    }
+
+    /// Plan KK P2: after the erasure, the summary pass reads the same thread text the erasure
+    /// left — and must not write the name back. The cleared entry still covers its span, so the
+    /// pass finds nothing there to summarise; the model is never asked.
+    func testTheSummaryPassDoesNotBringAnErasedNameBack() async throws {
+        let thread = conversations.startThread(mode: "test")
+        var said: [String] = []
+        for turn in 0..<3 {
+            let asked = turn == 0 ? "what did \(canary) say about the plant" : "question \(turn)"
+            said.append(try XCTUnwrap(conversations.appendMessage(role: "user", content: asked)))
+            said.append(try XCTUnwrap(conversations.appendMessage(role: "assistant", content: "answer \(turn)")))
+        }
+        let index = try XCTUnwrap(conversations.threads.firstIndex { $0.id == thread.id })
+        let messages = conversations.threads[index].messages
+        conversations.threads[index].timeline = [
+            TimelineEntry(id: "naming", firstMessageID: said[0], lastMessageID: said[3],
+                          startedAt: messages[0].timestamp, endedAt: messages[3].timestamp,
+                          tier: .chunk, text: "Asked what \(canary) said about the plant."),
+        ]
+        _ = await SubjectErasureCoordinator(stores: makeStores()).erase(.person(canary))
+
+        var asked = 0
+        let name = canary
+        let pass = TimelineSummaryPass(store: conversations, summarise: { _ in
+            asked += 1
+            return TimelineSummaryCompletion(text: "- \(name) again", finishedNormally: true)
+        })
+        // The request kept only the last turn: the first two have left, and the cleared entry
+        // covers exactly them.
+        let reading = TimelineRequestReading(keptUserTurns: 1, historyUserTurns: 3, floorDate: nil)
+        let report = await pass.run(.init(threadID: thread.id, answeringMessageID: said[4], reading: reading),
+                                    settings: .init(enabled: true, hipaaMode: false, provider: .anthropic,
+                                                    atSpendCap: false))
+
+        XCTAssertEqual(report, .skipped(.nothingEligible))
+        XCTAssertEqual(asked, 0, "the model is never shown the erased person's turn again")
+        XCTAssertTrue(residue().isEmpty, "\(residue())")
     }
 
     func testErasingADocumentRemovesItFromTheStoreAndTheVaultLedger() async throws {

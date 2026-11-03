@@ -3982,6 +3982,15 @@ struct Config {
 
     static func setBrainEnrichmentEnabled(_ enabled: Bool) { brainEnrichmentEnabled = enabled }
 
+    /// Plan KK P2: when on, the messages a long conversation's requests no longer carry word for
+    /// word are written up as short dated notes after each reply, by the same model the
+    /// conversation uses, and counted in Usage. On by default and not behind Agent Mode (owner
+    /// decision 1): it sends nothing that model was not already sent in the same conversation.
+    /// Never runs in HIPAA mode (decision 3) or on an on-device model.
+    @UserDefaultsBacked("conversationTimelineEnabled", default: true) static var conversationTimelineEnabled: Bool
+
+    static func setConversationTimelineEnabled(_ enabled: Bool) { conversationTimelineEnabled = enabled }
+
     // MARK: - Teleprompter
 
     /// Default pacing mode for new teleprompter sessions.
