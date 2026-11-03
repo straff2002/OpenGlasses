@@ -1987,6 +1987,8 @@ class AppState: ObservableObject, AppStateProtocol {
         LLMService.deviceInUse = { [weak self] in
             AssistantIdentity.Device(glassesConnected: self?.isConnected ?? false, watchOnly: false)
         }
+        // Plan KK P3 — the conversation timeline goes into cloud requests from the active thread.
+        llmService.timelineThreadSource = { [weak self] in self?.timelineRequestThread() }
         guidedJobFlow.restoreOnLaunch()
         configureJobSends()
         guidedJobFlow.connectUpcoming(upcomingJobs)
@@ -7778,10 +7780,30 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         let messageId = conversationStore.appendMessage(role: "user", content: text)
         guard let threadId = conversationStore.activeThreadId else { return (nil, nil) }
+        timelineQuestion = messageId.map { (threadId, $0) }
         // Named from its first question now rather than when it ends: a voice conversation stays
         // open across turns, and the history list should not show it as untitled meanwhile.
         conversationStore.applyAutoTitleIfNeeded(threadId)
         return (threadId, messageId)
+    }
+
+    /// Plan KK P3: the saved question of the turn in flight, named so a request can hold it back
+    /// from the timeline's count. Read only while it is still the newest user message of the
+    /// active thread, so a value left over from an earlier turn names nothing.
+    private var timelineQuestion: (threadId: String, messageId: String)?
+
+    /// Plan KK P3: the active thread as the request builder's timeline block reads it, or nil
+    /// with no thread (persistence off, nothing started) or the store locked.
+    func timelineRequestThread() -> TimelineRequestBlock.Thread? {
+        guard !conversationStore.isLocked, let id = conversationStore.activeThreadId,
+              let thread = conversationStore.threads.first(where: { $0.id == id }) else { return nil }
+        let messages = TimelineMessage.reduce(thread.messages)
+        let newestQuestion = messages.last { $0.role == "user" }?.id
+        let answering = timelineQuestion.flatMap { question in
+            question.threadId == id && question.messageId == newestQuestion ? question.messageId : nil
+        }
+        return TimelineRequestBlock.Thread(messages: messages, entries: thread.timeline ?? [],
+                                           answeringMessageID: answering)
     }
 
     /// Plan KK P2: after a reply is accepted, start the conversation timeline's summary pass for
@@ -8376,6 +8398,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
                 turnQuestionId = conversationStore.appendMessage(role: "user", content: query,
                                                                  imageAttached: imageData != nil)
+                if let threadId = conversationStore.activeThreadId, let turnQuestionId {
+                    timelineQuestion = (threadId, turnQuestionId)
+                }
             }
         }
         let answeringMessageId = turnQuestionId

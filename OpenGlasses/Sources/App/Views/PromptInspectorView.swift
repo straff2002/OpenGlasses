@@ -44,6 +44,35 @@ struct PromptInspectorView: View {
                 }
             }
 
+            // MARK: Earlier in this conversation (Plan KK P3)
+            // The conversation timeline as the last cloud request carried it. On-device only, as
+            // the memory section is: this is the one place its text is shown.
+            Section {
+                let decision = appState.llmService.lastTimelineDecision
+                Text(Self.timelineStatus(decision))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let block = decision?.text {
+                    DisclosureGroup {
+                        Text(block)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    } label: {
+                        Label {
+                            Text("Notes sent (\(decision?.renderedCount ?? 0))")
+                        } icon: {
+                            Image(systemName: "text.badge.checkmark")
+                                .foregroundStyle(OGTheme.tintedAccentLabel(accent))
+                        }
+                    }
+                }
+            } header: {
+                Label("Earlier in This Conversation", systemImage: "clock.arrow.circlepath")
+            } footer: {
+                Text("Notes about older messages that no longer fit in a request. Written by the same AI as the conversation, kept with the conversation on this phone.")
+            }
+
             // MARK: Sections breakdown
             Section {
                 ForEach(sections) { section in
@@ -84,6 +113,38 @@ struct PromptInspectorView: View {
         .ogFormStyle()
         .onAppear { buildSections() }
         .refreshable { buildSections() }
+    }
+
+    /// What the last cloud request did with the conversation's notes, in the wearer's words.
+    static func timelineStatus(_ decision: TimelineRequestBlock.Decision?) -> String {
+        guard let decision else {
+            return String(localized: "No request has been sent in this session yet.")
+        }
+        guard let skip = decision.skip else {
+            return decision.replacesNote
+                ? String(localized: "Sent with the last request in place of the line saying older messages were left out. They cover everything that was left out.")
+                : String(localized: "Sent with the last request after the line saying older messages were left out. Some of those messages are not in these notes yet.")
+        }
+        switch skip {
+        case .settingOff:
+            return String(localized: "Off. Turn on Remember Earlier in Long Conversations in Settings › Everyday › Memory.")
+        case .hipaaMode:
+            return String(localized: "Off in Medical Compliance mode.")
+        case .onDeviceModel:
+            return String(localized: "Not used with on-device models.")
+        case .routeCarriesNoBlock:
+            return String(localized: "Not used with this model: it is sent only a short recent history.")
+        case .noThread:
+            return String(localized: "No saved conversation is open.")
+        case .noEntries:
+            return String(localized: "No notes yet. They are written once older messages no longer fit in a request.")
+        case .nothingOmitted:
+            return String(localized: "The last request carried the whole conversation, so no notes were needed.")
+        case .nothingCovered:
+            return String(localized: "Older messages were left out of the last request and no notes cover them yet. The line saying so was sent.")
+        case .noRoom:
+            return String(localized: "The current question left no room for the notes. The line saying older messages were left out was sent instead.")
+        }
     }
 
     private func buildSections() {
