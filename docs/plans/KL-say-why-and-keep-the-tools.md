@@ -1,9 +1,10 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04 and P2 built 2026-11-05 (all headless; the device
-re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight users' support reports
-on build 615. The owner took all six decisions the same day. P3–P5 are not built. P2 carries User B's
-calendar, weather and reminders turn forward: a calendar or reminders read action counts as read-only.
+**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04, P2 merged 2026-11-05 and P3 built 2026-11-05 (all
+headless; the device re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight
+users' support reports on build 615. The owner took all six decisions the same day. P4 and P5 are not built.
+P2 carries User B's calendar, weather and reminders turn forward: a calendar or reminders read action counts
+as read-only. P3 latches a refused voice key per voice and per key, so it costs one request, not one per line.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -348,6 +349,65 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 - `voicesRequestFailed` reads the latch, so a known-bad key doesn't fetch the voice list.
 - Settings shows "ElevenLabs didn't accept the key" on the voice row.
 - Tests: classification, the latch and its reset, and no request once latched.
+
+**As built (2026-11-05):**
+
+- **`.refused` is split.** `CloudVoiceRejection.keyNotAccepted` is the key itself: a 401 or 403 the
+  body does not explain otherwise, and Gemini's `API_KEY_INVALID` 400 (the marker list is now
+  `keyNotAcceptedMarkers`). `.refused` keeps its raw value, so an episode stored under it still counts,
+  and now means the voice chosen for the key: a 402 (a plan that will not pay for the voice; xAI's
+  402 stays here too, as before), and any status whose body names `voice_not_found`, ElevenLabs's
+  bad voice id. `voiceRefusedMarkers` is read before the key's status, so a bad voice id can never
+  latch a good key off: the wearer fixes it by picking another voice, and the key is still tried.
+  A 404 `voice_not_found` used to be unclassified and fell through with no notice; it now gets the
+  existing "refused the voice request… check the key and voice" notice. Voice refusals are not
+  latched, so a voice change has nothing to clear.
+- **The latch.** `CloudVoiceKeyLatch` (pure, `CloudVoiceFallback.swift`) holds one fingerprint per
+  cloud voice: the refused key's process-seeded `hashValue`, never the key, never persisted, as
+  P0's `CredentialNoticeLatch`. A key that changes anywhere (the ElevenLabs field, a saved model's
+  key, a refreshed xAI token) does not match, so it is tried again without anything clearing it;
+  an empty key is never latched. `TextToSpeechService.keyLatch` is `@Published` for the settings row.
+  - `cloudVoiceAudio` latches a `.keyNotAccepted` answer for the key it sent and logs
+    `tts event=keyNotAccepted`. A second, different refused key from the same voice ends that voice's
+    announcement episode first, so it is said again.
+  - `cloudVoiceKeyChanged(_:)` clears the latch and then does what `resetCloudVoiceQuota` does. The
+    ElevenLabs key field calls it in place of `resetElevenLabsQuota`, so editing the field is also how
+    a wearer asks for the same key to be tried again. `resetCloudVoiceQuota`, called on every voice and
+    model change (ElevenLabs voice picker and field, OpenAI voice, xAI voice and field, Gemini model
+    and voice, the three list loaders), leaves the key latch alone: the key is still the one refused.
+- **No request once latched.** `isLatchedOff(_:key:)` (credit, model or key) is what the engine chain
+  passes to `TTSEngineSelector.cloudVoiceReady`, so a latched voice is not ready and the chain goes
+  straight to the next engine. The chain reads each voice's key without asking a sign-in for a
+  token: the ElevenLabs key, the OpenAI and Gemini keys from the saved models, and the typed xAI
+  model key. Each `fetch…Audio` also refuses a latched credential before building the request
+  (`refuseLatchedKey`), quietly (no notice), because a streamed reply's sentences in flight do not
+  go through the chain again.
+  - **Deviation: an xAI sign-in reads as ready.** Its token is only available asynchronously, so
+    readiness cannot see it. It is latched on the token actually sent, so the same token is never
+    sent again (the chain hops with no request), and the refreshed token is a new credential.
+- **The voice list.** The three static fetches now throw `CloudVoiceRequestRejected` classified
+  from the body (a `LocalizedError` with the old "Cloud voice API error: N" text, so other failures
+  read the same). `TextToSpeechService.fetchVoiceList(_:key:_:)` wraps them: a latched key fetches
+  nothing (`tts event=voicesRequestSkipped`), and a list refused for the key latches it, so speech
+  does not ask either. Both throw `CloudVoiceKeyNotAccepted`. The Settings loaders call it with the
+  same key the chain reads (for xAI, the typed key, or empty for a sign-in, which is never latched
+  there). A refused key is not repeated as "Could not load voices" under the picker while the row says it.
+- **Settings.** `CloudVoiceKeyRefusedRow` (Connections › Services & Integrations) observes the
+  service and shows "ElevenLabs didn't accept the key" ("OpenAI…", "xAI…", "Gemini…") as a caption
+  in the error colour (under the ElevenLabs key field, above the other voices' pickers) while the latch
+  holds for the key now saved.
+- **Spoken notice.** `.keyNotAccepted` has its own lines, said once per episode like `outOfCredit`:
+  "By the way, ElevenLabs didn't accept the key, so I'm using the built-in voice. Check the key in the
+  app's Settings, under Connections, then Services and Integrations." The OpenAI, xAI and Gemini keys
+  live on the saved model, so their line says "Check the key on your OpenAI model in the app's
+  Settings, under Assistant" (`SettingsHub.path(to: .intelligence)`). Each has a banner and an
+  "another voice" form. The existing `.refused` lines are unchanged.
+- Tests: `CloudVoiceKeyLatchTests` (the classification table, the latch per voice and per key and
+  holding no key, one request then none for synthesis, key change vs voice change, a bad voice id
+  never latching, an xAI token not sent again, the voice list skipped and latching for speech,
+  Gemini's model list, a server fault unlatched with its old message, readiness, the row and notice
+  wording, once per episode). `CloudVoiceFallbackTests`, `CloudVoiceRequestsTests` and
+  `GeminiCloudVoiceTests` now expect `.keyNotAccepted` for a bad key, and its latch.
 
 ### P4 — the line before the turn (headless, then a small fix)
 
