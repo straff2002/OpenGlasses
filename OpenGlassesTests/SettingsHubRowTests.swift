@@ -7,10 +7,9 @@ final class SettingsHubRowTests: XCTestCase {
 
     private typealias Hub = SettingsHub
 
-    private let personal = SettingsHubPhone(fieldAssistOn: false, glassesSupported: true)
-    private let fieldPhone = SettingsHubPhone(fieldAssistOn: true, glassesSupported: true)
-    private let noGlasses = SettingsHubPhone(fieldAssistOn: false, glassesSupported: false)
-    private var phones: [SettingsHubPhone] { [personal, fieldPhone, noGlasses] }
+    private let personal = SettingsHubPhone(glassesSupported: true)
+    private let noGlasses = SettingsHubPhone(glassesSupported: false)
+    private var phones: [SettingsHubPhone] { [personal, noGlasses] }
 
     private func technician(_ lockdown: ManagedLockdown = .standard) -> ManagedSettingsContext {
         ManagedSettingsContext(managed: true, lockdown: lockdown, restricted: true, lockedKeys: [])
@@ -107,7 +106,7 @@ final class SettingsHubRowTests: XCTestCase {
 
     /// The sets the hub drew as fourteen rows, written out so they cannot follow a change here.
     func testSimpleModeShowsTheSameCategories() {
-        for phone in [personal, fieldPhone] {
+        for phone in phones {
             XCTAssertEqual(Set(visible(simpleMode: true, on: phone).map(\.id)),
                            [.voice, .devices, .accessibility, .myManuals, .lookAndFeel, .diagnostics])
         }
@@ -115,7 +114,7 @@ final class SettingsHubRowTests: XCTestCase {
     }
 
     func testTheStandardLockdownShowsTheSameCategories() {
-        for phone in [personal, fieldPhone] {
+        for phone in phones {
             XCTAssertEqual(Set(visible(in: technician(), on: phone).map(\.id)),
                            [.devices, .accessibility, .fieldAssist, .lookAndFeel, .diagnostics])
             XCTAssertEqual(Set(visible(simpleMode: true, in: technician(), on: phone).map(\.id)),
@@ -181,8 +180,6 @@ final class SettingsHubRowTests: XCTestCase {
     func testSimpleModeDrawsOnlyTheRowsWithSomethingInThem() {
         XCTAssertEqual(rowIDs(simpleMode: true, on: personal),
                        [.assistant, .everyday, .devicesPrivacy, .accessibility, .lookAndFeel, .advancedSupport])
-        XCTAssertEqual(rowIDs(simpleMode: true, on: fieldPhone),
-                       [.assistant, .devicesPrivacy, .accessibility, .fieldAssist, .lookAndFeel, .advancedSupport])
     }
 
     // MARK: - One visible category
@@ -190,7 +187,6 @@ final class SettingsHubRowTests: XCTestCase {
     func testSimpleModeRowsGoStraightToTheOneCategory() throws {
         XCTAssertEqual(try row(.assistant, simpleMode: true, on: personal).page, .category(.voice))
         XCTAssertEqual(try row(.everyday, simpleMode: true, on: personal).page, .category(.myManuals))
-        XCTAssertEqual(try row(.fieldAssist, simpleMode: true, on: fieldPhone).page, .category(.myManuals))
         XCTAssertEqual(try row(.devicesPrivacy, simpleMode: true, on: personal).page, .category(.devices))
         XCTAssertEqual(try row(.advancedSupport, simpleMode: true, on: personal).page, .category(.diagnostics))
     }
@@ -222,26 +218,24 @@ final class SettingsHubRowTests: XCTestCase {
 
     func testEverydayAndFieldAssistOpenTheirOwnScreen() throws {
         XCTAssertEqual(try row(.everyday, on: personal).page, .category(.everyday))
-        XCTAssertEqual(try row(.fieldAssist, on: fieldPhone).page, .category(.fieldAssist))
+        XCTAssertEqual(try row(.fieldAssist, on: personal).page, .category(.fieldAssist))
     }
 
     // MARK: - My Manuals
 
-    func testMyManualsIsUnderFieldAssistOnAFieldAssistPhone() {
-        XCTAssertEqual(Hub.home(of: .myManuals, on: fieldPhone), .fieldAssist)
-        XCTAssertTrue(Hub.showsMyManuals(on: .fieldAssist, visible: visible(on: fieldPhone), phone: fieldPhone))
-        XCTAssertFalse(Hub.showsMyManuals(on: .everyday, visible: visible(on: fieldPhone), phone: fieldPhone))
-    }
-
-    func testMyManualsIsInEverydayOnAPersonalPhone() {
-        XCTAssertEqual(Hub.home(of: .myManuals, on: personal), .everyday)
-        XCTAssertTrue(Hub.showsMyManuals(on: .everyday, visible: visible(on: personal), phone: personal))
-        XCTAssertFalse(Hub.showsMyManuals(on: .fieldAssist, visible: visible(on: personal), phone: personal))
+    /// The person's own library, never part of Field Assist, on any phone.
+    func testMyManualsIsAlwaysInEveryday() {
+        for phone in phones {
+            XCTAssertEqual(Hub.home(of: .myManuals, on: phone), .everyday)
+            XCTAssertEqual(Hub.row(.fieldAssist, on: phone).children, [.fieldAssist])
+            XCTAssertTrue(Hub.showsMyManuals(on: .everyday, visible: visible(on: phone), phone: phone))
+            XCTAssertFalse(Hub.showsMyManuals(on: .fieldAssist, visible: visible(on: phone), phone: phone))
+        }
     }
 
     func testATechnicianIsNotOfferedMyManuals() {
         let opened = technician(ManagedLockdown(opening: [.myManuals, .everyday], locking: [], closedTools: []))
-        for phone in [personal, fieldPhone] {
+        for phone in phones {
             XCTAssertFalse(visible(in: opened, on: phone).contains { $0.id == .myManuals })
             for host in [SettingsHubRowID.everyday, .fieldAssist] {
                 XCTAssertFalse(Hub.showsMyManuals(on: host, visible: visible(in: opened, on: phone), phone: phone))
@@ -259,7 +253,6 @@ final class SettingsHubRowTests: XCTestCase {
 
     func testThingsToTryIsTheFirstRowOfEveryday() {
         XCTAssertEqual(Hub.thingsToTryPlace(visible: visible(on: personal)), .everyday)
-        XCTAssertEqual(Hub.thingsToTryPlace(visible: visible(on: fieldPhone)), .everyday)
         XCTAssertEqual(Hub.thingsToTryPlace(visible: visible(in: administrator(), on: personal)), .everyday)
     }
 
@@ -272,10 +265,8 @@ final class SettingsHubRowTests: XCTestCase {
     // MARK: - Opening a category from elsewhere
 
     func testEveryCategoryOpensAsItselfWhereItIsVisible() {
-        for phone in [personal, fieldPhone] {
-            for id in SettingsCategoryID.allCases {
-                XCTAssertEqual(Hub.route(id, visible: visible(on: phone)), .category(id), id.rawValue)
-            }
+        for id in SettingsCategoryID.allCases {
+            XCTAssertEqual(Hub.route(id, visible: visible(on: personal)), .category(id), id.rawValue)
         }
     }
 
@@ -332,7 +323,6 @@ final class SettingsHubRowTests: XCTestCase {
         XCTAssertEqual(Hub.path(to: .capture), "Devices & Privacy")
         XCTAssertEqual(Hub.path(to: .diagnostics), "Advanced & Support")
         XCTAssertEqual(Hub.path(to: .myManuals), "Everyday > My Manuals")
-        XCTAssertEqual(Hub.path(to: .myManuals, on: fieldPhone), "Field Assist > My Manuals")
     }
 
     /// Interpolated paths are not caught by the search above.

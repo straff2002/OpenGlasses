@@ -228,9 +228,10 @@ final class SettingsHubTests: XCTestCase {
         XCTAssertTrue(everyday.contains("ThingsToTryView()"))
         XCTAssertTrue(everyday.contains("SettingsHub.showsMyManuals(on: .everyday)"))
         XCTAssertTrue(everyday.contains("MyManualsView()"))
+        // My Manuals is never part of Field Assist, locked or unlocked.
         let fieldAssist = try structBody("FieldAssistSettingsView")
-        XCTAssertTrue(fieldAssist.contains("SettingsHub.showsMyManuals(on: .fieldAssist)"))
-        XCTAssertTrue(fieldAssist.contains("MyManualsView()"))
+        XCTAssertFalse(fieldAssist.contains("SettingsHub.showsMyManuals"))
+        XCTAssertFalse(fieldAssist.contains("MyManualsView()"))
         let hub = try structBody("SettingsView")
         XCTAssertTrue(hub.contains("SettingsHub.thingsToTryPlace(visible: visibleCategories) == .besideAbout"))
         XCTAssertTrue(hub.contains("ThingsToTryView()"))

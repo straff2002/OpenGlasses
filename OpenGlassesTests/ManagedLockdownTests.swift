@@ -161,7 +161,7 @@ final class ManagedLockdownTests: XCTestCase {
         let (lockdown, _) = ManagedLockdown.resolve(.init(open: ["voice", "capture"]))
         let context = ManagedSettingsContext(managed: true, lockdown: lockdown, restricted: true, lockedKeys: [])
         let rows = SettingsHub.visibleRows(simpleMode: false, in: context,
-                                           on: SettingsHubPhone(fieldAssistOn: false, glassesSupported: true))
+                                           on: SettingsHubPhone(glassesSupported: true))
         XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .assistant }).page, .category(.voice))
         XCTAssertEqual(try XCTUnwrap(rows.first { $0.id == .devicesPrivacy }).page, .merged([.devices, .capture]))
         XCTAssertNil(rows.first { $0.id == .connections })

@@ -188,11 +188,11 @@ were simplifying settings not adding yet another one?" So the hub became 8 rows 
 | Hub row | Holds | Opens |
 |---|---|---|
 | Assistant | AI & Personality, Voice & Triggers | AI & Personality's content, with Voice & Triggers as one link row at the top. Both are too long to share a page. |
-| Everyday | Everyday, plus My Manuals on a personal phone | Things to Try, My Manuals, then the six groups |
+| Everyday | Everyday, My Manuals | Things to Try, My Manuals, then the six groups |
 | Devices & Privacy | Devices, Capture & Streaming, Display & HUD | All three on one page, with their existing sections |
 | Connections | Connections, Tools & Actions | Both on one page |
 | Accessibility | Accessibility | Unchanged, pinned |
-| Field Assist | Field Assist, plus My Manuals on a Field Assist phone | Field Assist, with My Manuals as a row |
+| Field Assist | Field Assist | Unchanged |
 | Look & Feel | Look & Feel | Unchanged |
 | Advanced & Support | Diagnostics & Support, Advanced | Diagnostics, with Advanced as one link row at the top |
 
@@ -202,9 +202,10 @@ were simplifying settings not adding yet another one?" So the hub became 8 rows 
   decides per category. A row shows if any child is visible, shows only visible children, and with one
   child goes straight to it. So Simple Mode and a technician's phone see the same categories as
   before, and a category still opens by itself through `AppState.openSettings(_:)`.
-- **My Manuals** sits with Field Assist while `Config.fieldAssistActive`, the same fact that keeps
-  `PersonalManualLibrary.permitted` false. The row itself keeps the hub's old rule, so it still shows
-  to someone who has not bought it, or who turned its answers off.
+- **My Manuals** is always in Everyday, on every phone. It is the person's own library, never part of
+  Field Assist (owner, 2026-11-04: it had sat under Field Assist while `Config.fieldAssistActive`).
+  The row itself keeps the hub's old rule, so it still shows to someone who has not bought it, or who
+  turned its answers off.
 - **Things to Try** is the first row of Everyday, and stays beside About where Everyday's screen
   cannot be reached.
 - **The Field Assist row stays for everyone.** It is the only home of licence entry, purchase and the

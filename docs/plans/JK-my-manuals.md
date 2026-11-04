@@ -188,9 +188,9 @@ then applies to what they hold (see §2).
 - **The mode asks for it.** `FieldAssistMode.Inputs.entitled` and `Config.fieldAssistUnlocked` read
   `has(.fieldWork)` instead of `isGranted`. `Config.fieldAssistActive` follows. A personal subscriber
   with the Field Assist switch somehow on sees nothing change: the Modes tab stays the persona picker,
-  the Jobs tab is absent, the Settings › Field Assist screen shows the Field Assist paywall with its
-  `notIncluded(held: [.ownVaults])` explanation ("your My Manuals subscription covers your own
-  manuals; Field Assist adds jobs, the trade vaults and the job tools").
+  the Jobs tab is absent, the Settings › Field Assist screen shows the plain Field Assist paywall.
+  (It once added "your My Manuals subscription covers your own manuals"; removed 2026-11-04 by the
+  owner: My Manuals is never mentioned on the Field Assist screen.)
 - **The bundled vaults ask for theirs.** `VaultRegistry.isUnlocked`'s two bundled branches read
   `has(.bundledVaults)`; the pack branch requires `has(.fieldWork)` before the pack rules (a pack is
   a trade's; a publisher's manual set for a private owner is a received vault, not a pack). The
@@ -322,7 +322,8 @@ The four manual tools stop asking for a session and ask **which manuals answer r
   capacity details, *Restore purchases*, and a line naming the Field Assist upgrade in the same
   subscription group. The owner requested neutral branding (“Keep your manuals”) and removed
   repeated Privacy/Terms links from the My Manuals page; the app's other legal/privacy surfaces
-  remain unchanged. The Field Assist paywall gains a line naming the smaller option.
+  remain unchanged. The Field Assist paywall does not name the smaller option (owner, 2026-11-04:
+  My Manuals lives under Everyday and nowhere in Field Assist).
   `fieldAssistCatalogProductIds` splits into the two offer sets.
 - **The Modes tab** (HB) for a personal subscriber: the persona picker with no Field Assist row;
   `ModesTabPresentation` gets a case for *entitled to manuals, not to Field Assist*, which is the

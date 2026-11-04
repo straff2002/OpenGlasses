@@ -173,8 +173,7 @@ struct SettingsLinkLabel: View {
 extension SettingsHubPhone {
     /// This phone, now.
     @MainActor static var current: SettingsHubPhone {
-        SettingsHubPhone(fieldAssistOn: Config.fieldAssistActive,
-                         glassesSupported: GlassesSupportPolicy.isSupported)
+        SettingsHubPhone(glassesSupported: GlassesSupportPolicy.isSupported)
     }
 }
 
