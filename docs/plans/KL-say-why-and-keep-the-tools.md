@@ -1,9 +1,10 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 🚧 P0 merged 2026-11-03 and P1 built 2026-11-04 (both headless; the device re-runs are P5, and P1's
-live Groq turn is owed). Drafted 2026-11-03 from two TestFlight users' support reports on build 615.
-The owner took all six decisions the same day. P2's hop logging landed with P0; the rest of P2 and
-P3–P5 are not built.
+**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04 and P2 built 2026-11-05 (all headless; the device
+re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight users' support reports
+on build 615. The owner took all six decisions the same day. P3–P5 are not built. With today's effect rows,
+User B's calendar and reminder count as changing state, so P2 ends that turn rather than carrying it (P2's
+As built; an owner call).
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -256,6 +257,81 @@ Two users sent reports on build 615, and the app failed both of them in ways the
   - a state-changing tool ends the turn with its line
   - the overflow cases unchanged in outcome
   - the logged error token for each failure class
+
+**As built (2026-11-05):**
+
+- **One rule.** `HopAfterTools` (`Services/HopAfterTools.swift`, pure) decides every hop from what the
+  turn's tools did and whether the failure is an overflow: nothing ran → restart as before; only
+  read-only tools → carry forward; anything that may have changed state → end the turn; an overflow
+  after any tool → end the turn, as before. `ModelFallbackChain.classify` reads `CapacityError` and
+  `contextOverflow(toolsRan:)` through `HopAfterTools.overflowClass`, and a new `beforeHop` step in
+  `ModelCascade.run` applies the same rule with the turn's ledger. It runs only once a hop has been
+  chosen, before `onSwitch`; throwing from it ends the turn with that error instead.
+- **The overflow outcomes are unchanged.** Whether a read-only tool ran or not, an overflow after a
+  tool still ends the turn with "the request was too large for this model". Carrying the results
+  forward would send the bulk that overflowed to a model the chain does not know to be bigger
+  (`CapacityError` and provider overflows hop `.retryOtherModel`, not `.needsBiggerWindow`). This also
+  covers a carried attempt that overflows. Local `promptTooLong` (`needsBiggerWindow`) is not an
+  overflow here: it follows the general rule.
+- **The ledger.** `AttemptToolLedger` (value type on `LLMService`, reset when a turn starts and kept
+  across its attempts) records every model tool call. Each entry has the tool name, canonical JSON
+  arguments (up to 600 characters), the result (up to 8,000), and the effect from
+  `NativeTool.executionSemantics.effect`. No second list is built. A name the registry does not hold
+  (an MCP tool, the gateway) gets `conservativeDefault`, as does a native tool that declares nothing.
+  Both count as changing state.
+  - A call counts as run from dispatch. Only `.rejected` and `.failedBeforeExecution` take that back.
+    A call still in flight, or with an unknown outcome, counts and has no result to carry.
+  - Calls are entered by the shared dispatcher (beside P1's `toolCallsDispatched`), by the Apple
+    runner (only calls that actually run; a replay from `AppleToolResultCache` adds nothing), and by
+    the MLX model's single call, which now also counts toward `toolCallsDispatched`.
+  - Plan S's agent plan calls the router directly and is not entered. A plan that ran steps always
+    returns its summary, so the attempt does not fail after it.
+- **The carried block.** It goes into the next attempt's instructions, not its history. It goes in the
+  uncached volatile tail on OpenAI and Anthropic, and at the end of the prompt elsewhere. The attempt
+  still starts from the pre-turn snapshot, with one user turn and no replayed tool exchange.
+  - Why not history: a second user message in a row is refused by providers that require roles to
+    alternate (`ProviderRejection`'s "roles must alternate"), and a history entry would outlive the turn.
+  - Format: a header saying another model ran these tools for this request and stopped, and not to
+    call them again with the same arguments. Then one line per call, `- tool {arguments}: result`,
+    using the latest of identical calls. `lookup_tools` is left out.
+  - Each result is wrapped as the tool loop wraps it (`PromptInjectionPolicy` for untrusted output),
+    so it is no more trusted in the instructions than it was in the turn. A result is cut before it
+    is wrapped, so the envelope always closes.
+  - Bound: 8,000 characters for a cloud model, 2,400 for an on-device one. The last result that
+    fits in part is cut with a marker, and the rest are named as left out, so the model may fetch them.
+  - The per-minute fit counts the block in the prompt's bytes, and its condensed rungs carry it too.
+    `RequestContextBudget` counts it as instructions. A P1 retry on the carried model resends it.
+- **The turn that ends.** `HopAfterTools.TurnEnded` is `.terminalForTurn`. It holds the state-changing
+  tools as spoken names ("save note"; a non-native tool is "a connected tool") and the failure's
+  `SafeErrorSummary`, never the error itself.
+  - Spoken, in the overflow line's frame: "I couldn't get a response — save note had already run,
+    so I didn't run it again on another model." A photo turn says the same after "I took the photo, but…".
+  - As with the overflow line, narration off gives the generic line.
+  - Summary: `stoppedAfterTools(<failure category>)`. The banner says "the AI stopped after a tool had
+    already done something, so it wasn't run again on another model".
+- **Logging.** `hopAfterTools` records the decision, what ran (`readOnly`/`changedState`), the call
+  count and the attempt's error. With detail `carriedBlock` it records the results carried, those
+  left out, whether one was cut, and the length. `hopToolRan` logs each tool's native name (`other`
+  otherwise) and its effect. Arguments and results are never logged. P0's `cascadeSwitched` line is
+  now `LLMService.logCascadeSwitch`, so it can be tested.
+- **Deviation, for the owner.** The effect rows give each tool its strongest action. `CalendarTool`
+  and `AppleRemindersTool` are `.local()` because they can create entries, so a calendar or
+  reminder read counts as a change. User B's Apple turn (calendar, weather, reminder) would
+  therefore end with "calendar and reminder had already run…" rather than carry forward. Only
+  weather is read-only. Carrying that turn needs argument-aware rows for those two tools' read
+  actions, like `ToolEffectClassifier`'s `face_recognition` row. That is a second classification,
+  which this phase was asked not to build.
+- Tests:
+  - `HopAfterToolsTests`, pure: the rule table; the overflow cases unchanged in outcome (both
+    `CapacityError` values and the default, both `contextOverflow` values, a provider overflow); a
+    mixed ledger and an unclassified stub counting as a change; refused, in-flight and unknown
+    calls; the block's content, dedupe, exclusion, bound and closed envelopes; the spoken, photo and
+    banner lines; the logged error token for each failure class; `beforeHop` ending a turn and
+    being asked only for a real hop.
+  - `HopAfterToolsTurnTests`, through the real `LLMService` with two Groq configurations, stub tools
+    and a recording transport: a read-only result carried into the second model's request and not
+    fetched again; a state-changing stub ending the turn with its line after one write and no hop;
+    a hop before any tool unchanged; the next turn carrying nothing.
 
 ### P3 — a refused voice key is asked once (headless)
 
