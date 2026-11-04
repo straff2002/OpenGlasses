@@ -100,6 +100,46 @@ final class HopAfterToolsTests: XCTestCase {
         XCTAssertEqual(unclassified.changingTools, ["undeclared_stub"])
     }
 
+    // MARK: - Read actions of tools declared by their writes
+
+    func testEveryReadActionOfCalendarAndRemindersIsARead() {
+        for action in ["today", "schedule", "next", "upcoming", "week", "this_week", "tomorrow", "TODAY", "This_Week"] {
+            XCTAssertTrue(ToolEffectClassifier.isReadAction(tool: "calendar", args: ["action": action]), action)
+        }
+        for action in ["list", "show", "List"] {
+            XCTAssertTrue(ToolEffectClassifier.isReadAction(tool: "reminder", args: ["action": action]), action)
+        }
+    }
+
+    func testEveryWriteActionStaysAChange() {
+        for action in ["create", "add"] {
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: "calendar", args: ["action": action, "title": "x"]), action)
+        }
+        for action in ["create", "add", "set", "complete", "done", "finish"] {
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: "reminder", args: ["action": action]), action)
+        }
+    }
+
+    func testAMissingOrUnknownActionStaysAChange() {
+        for tool in ["calendar", "reminder"] {
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: tool, args: [:]), "\(tool) missing")
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: tool, args: ["action": "delete"]), "\(tool) unknown")
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: tool, args: ["action": 3]), "\(tool) not a string")
+            XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: tool, args: ["action": " list "]),
+                           "\(tool): read as the tool reads it, so a padded action is not one of its reads")
+        }
+        // A tool without a row is never a read by this route, whatever its action says.
+        XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: "save_note", args: ["action": "list"]))
+        XCTAssertFalse(ToolEffectClassifier.isReadAction(tool: "smart_home", args: ["action": "today"]))
+    }
+
+    /// The authorization class is not moved by the read rows: the router still sees the declaration.
+    func testTheApprovalClassIsUnchanged() {
+        let local = ToolExecutionSemantics.local()
+        XCTAssertEqual(ToolEffectClassifier.nativeClass(name: "calendar", args: ["action": "today"], semantics: local), .write)
+        XCTAssertEqual(ToolEffectClassifier.nativeClass(name: "reminder", args: ["action": "list"], semantics: local), .write)
+    }
+
     func testACallStillRunningOrUnresolvedCounts() {
         // Dispatched, no outcome yet: the attempt failed while it ran.
         let inFlight = ledger([("save_note", .localMutation, nil)])
@@ -445,6 +485,90 @@ final class HopAfterToolsTurnTests: XCTestCase {
         }
         XCTAssertEqual(hops, 0, "no other model was asked")
         XCTAssertEqual(spy.writes, 1, "the reading was filed once")
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+    }
+
+    /// Stand-ins under the real tools' names, declared as the real ones are (`ToolEffectClassification`):
+    /// calendar and reminders by their writing action, weather as a read. EventKit is never asked.
+    private struct NamedStub: NativeTool {
+        let name: String
+        let description = "stand-in"
+        let semantics: ToolExecutionSemantics
+        let reply: String
+        let spy: Spy
+        var parametersSchema: [String: Any] {
+            ["type": "object", "properties": ["action": ["type": "string"]]]
+        }
+        var executionSemantics: ToolExecutionSemantics { semantics }
+        func execute(args: [String: Any]) async throws -> String {
+            if ToolEffectClassifier.isReadAction(tool: name, args: args) || semantics.effect == .readOnly {
+                spy.reads += 1
+            } else {
+                spy.writes += 1
+            }
+            return reply
+        }
+    }
+
+    private func toolCalls(_ calls: [(String, String)]) -> String {
+        let list: [[String: Any]] = calls.enumerated().map { index, call in
+            ["id": "call_\(index)", "type": "function", "function": ["name": call.0, "arguments": call.1]]
+        }
+        let body: [String: Any] = ["choices": [["message": ["role": "assistant", "content": NSNull(), "tool_calls": list]]]]
+        return String(decoding: try! JSONSerialization.data(withJSONObject: body), as: UTF8.self)
+    }
+
+    private func serviceWithTheReportsTools() -> LLMService {
+        let llm = service()
+        let registry = llm.nativeToolRouter!.registry
+        XCTAssertEqual(registry.tool(named: "calendar")?.executionSemantics.effect, .localMutation)
+        XCTAssertEqual(registry.tool(named: "reminder")?.executionSemantics.effect, .localMutation)
+        XCTAssertEqual(registry.tool(named: "get_weather")?.executionSemantics.effect, .readOnly)
+        for stub in [
+            NamedStub(name: "calendar", semantics: .local(), reply: "Standup at 9:30.", spy: spy),
+            NamedStub(name: "get_weather", semantics: .read(), reply: "Sunny, 18 degrees.", spy: spy),
+            NamedStub(name: "reminder", semantics: .local(), reply: "Call the supplier, due today.", spy: spy),
+        ] { registry.register(stub) }
+        return llm
+    }
+
+    /// The build 615 turn: calendar today, the weather and the reminders list ran, the model failed,
+    /// and the next model now starts with all three results.
+    func testTheReportsCalendarWeatherAndRemindersTurnCarriesForward() async throws {
+        let llm = serviceWithTheReportsTools()
+        RecordingQueueProtocol.queue = [
+            (200, toolCalls([("calendar", #"{"action":"today"}"#), ("get_weather", "{}"),
+                             ("reminder", #"{"action":"list"}"#)])),
+            (503, outage), (200, answer)]
+        var hops = 0
+        let reply = try await llm.sendMessageCascading(
+            "Check my calendar for today and my reminders that are due, and tell me the weather here.",
+            onModelSwitch: { _, _, _, _ in hops += 1 })
+        XCTAssertEqual(reply, "It reads 42 kPa.")
+        XCTAssertEqual(hops, 1)
+        XCTAssertEqual(spy.reads, 3, "each read ran once")
+        XCTAssertEqual(spy.writes, 0)
+        let requests = RecordingQueueProtocol.requests
+        XCTAssertEqual(requests.count, 3)
+        let carried = systemText(requests[2])
+        XCTAssertTrue(carried.contains(AttemptToolLedger.header))
+        XCTAssertTrue(carried.contains(#"- calendar {"action":"today"}: Standup at 9:30."#))
+        XCTAssertTrue(carried.contains("- get_weather {}: Sunny, 18 degrees."))
+        XCTAssertTrue(carried.contains(#"- reminder {"action":"list"}: Call the supplier, due today."#))
+    }
+
+    func testACalendarCreateStillEndsTheTurn() async throws {
+        let llm = serviceWithTheReportsTools()
+        RecordingQueueProtocol.queue = [
+            (200, toolCalls([("calendar", #"{"action":"create","title":"Site visit"}"#), ("get_weather", "{}")])),
+            (503, outage), (200, answer)]
+        do {
+            _ = try await llm.sendMessageCascading("Add a site visit and tell me the weather.")
+            XCTFail("the create ends the turn")
+        } catch let ended as HopAfterTools.TurnEnded {
+            XCTAssertEqual(ended.tools, ["calendar"])
+        }
+        XCTAssertEqual(spy.writes, 1)
         XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
     }
 

@@ -995,7 +995,7 @@ class LLMService: ObservableObject {
                 // Plan KL P1: counted before anything else, so a retry can tell a call was made —
                 // and entered in the turn's ledger, so a hop can tell what it did (P2).
                 self.toolCallsDispatched += 1
-                let ledgerID = self.ledgerDispatched(name, arguments: AttemptToolLedger.canonicalArguments(args))
+                let ledgerID = self.ledgerDispatched(name, args: args)
                 // Plan IU safety net: a call to a tool the model may have but whose definition this
                 // round did not carry is not run on arguments written without the schema. Nothing
                 // happens, the definition rides on the next request, and the model calls again.
@@ -1634,17 +1634,29 @@ class LLMService: ObservableObject {
     /// called on its own starts a fresh one.
     private var cascadeTurnInFlight = false
 
-    /// The effect a tool call is entered with: its native tool's declaration, or — for an MCP
-    /// server's tool, the gateway, a name the registry does not hold — the conservative default,
-    /// which counts as a change.
+    /// A tool's declared effect: its native declaration, or — for an MCP server's tool, the
+    /// gateway, a name the registry does not hold — the conservative default, which counts as a
+    /// change.
     private func declaredEffect(ofTool name: String) -> ToolEffect {
         (nativeToolRouter?.registry.tool(named: name)?.executionSemantics
             ?? ToolExecutionSemantics.conservativeDefault).effect
     }
 
+    /// The effect a call is entered with: read-only when it is one of the read actions of a native
+    /// tool declared by its writing action (`ToolEffectClassifier.isReadAction` — a calendar
+    /// "today", a reminders "list"), otherwise its tool's declared effect.
+    private func callEffect(ofTool name: String, args: [String: Any]) -> ToolEffect {
+        if nativeToolRouter?.registry.tool(named: name) != nil,
+           ToolEffectClassifier.isReadAction(tool: name, args: args) {
+            return .readOnly
+        }
+        return declaredEffect(ofTool: name)
+    }
+
     /// Enter a model tool call in the turn's ledger as it is dispatched; returns its id.
-    private func ledgerDispatched(_ name: String, arguments: String) -> Int {
-        turnToolLedger.dispatched(tool: name, arguments: arguments, effect: declaredEffect(ofTool: name))
+    private func ledgerDispatched(_ name: String, args: [String: Any], arguments: String? = nil) -> Int {
+        turnToolLedger.dispatched(tool: name, arguments: arguments ?? AttemptToolLedger.canonicalArguments(args),
+                                  effect: callEffect(ofTool: name, args: args))
     }
 
     /// The decision for a hop the chain is about to make (Plan KL P2). Returns normally to hop —
@@ -5080,7 +5092,8 @@ class LLMService: ObservableObject {
             let args = AppleToolArguments.dictionary(fromJSON: argumentsJSON)
             PrivacyLog.localModel(.toolCall, model: PrivacyToken("appleOnDevice"), tool: PrivacyToken(name))
             // Plan KL P2: only a call that runs is entered; a replay above ran nothing new.
-            let ledgerID = self?.ledgerDispatched(name, arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
+            let ledgerID = self?.ledgerDispatched(name, args: args,
+                                                  arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
             self?.toolCallStatus = .executing(name)
             let startedAt = Date()
             let outcome = await router.executeRoot(name: name, args: args)
@@ -5491,7 +5504,7 @@ class LLMService: ObservableObject {
             PrivacyLog.localModel(.toolCall, tool: PrivacyToken(toolName))
             // Plan KL P1/P2: counted and entered in the turn's ledger like every other model call.
             toolCallsDispatched += 1
-            let ledgerID = ledgerDispatched(toolName, arguments: AttemptToolLedger.canonicalArguments(toolArgs))
+            let ledgerID = ledgerDispatched(toolName, args: toolArgs)
             toolCallStatus = .executing(toolName)
             // Plan CU P1: the on-device path is deliberately not on `runToolLoop` (see the comment
             // above `sendLocal`), so its single tool round trip needs its own bracket. The

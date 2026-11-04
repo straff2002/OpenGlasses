@@ -2,9 +2,8 @@
 
 **Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04 and P2 built 2026-11-05 (all headless; the device
 re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight users' support reports
-on build 615. The owner took all six decisions the same day. P3–P5 are not built. With today's effect rows,
-User B's calendar and reminder count as changing state, so P2 ends that turn rather than carrying it (P2's
-As built; an owner call).
+on build 615. The owner took all six decisions the same day. P3–P5 are not built. P2 carries User B's
+calendar, weather and reminders turn forward: a calendar or reminders read action counts as read-only.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -279,6 +278,19 @@ Two users sent reports on build 615, and the app failed both of them in ways the
   `NativeTool.executionSemantics.effect`. No second list is built. A name the registry does not hold
   (an MCP tool, the gateway) gets `conservativeDefault`, as does a native tool that declares nothing.
   Both count as changing state.
+  - **Read actions count as reads.** Decision 5 is about what the call did, and `CalendarTool` and
+    `AppleRemindersTool` are declared by their strongest action (`.local()`, since they can create
+    entries). `ToolEffectClassifier.isReadAction(tool:args:)` sits beside the argument-aware
+    `face_recognition` and `code_agent` rows. It is one row per tool with the read actions taken
+    from that tool's own `execute` switch:
+    - `calendar`: today, schedule, next, upcoming, week, this_week, tomorrow;
+    - `reminder`: list, show.
+  - The action is read as the tool reads it, lower-cased only. A missing action, an unknown one and
+    every write (create/add; create/add/set, complete/done/finish) stay a change. That includes the
+    calendar's missing action, which the tool runs as "today".
+  - The ledger enters such a call as `.readOnly`, and every other call with its tool's declared
+    effect. The authorization class is not touched: `nativeClass` and the router still classify
+    both tools as `.write`.
   - A call counts as run from dispatch. Only `.rejected` and `.failedBeforeExecution` take that back.
     A call still in flight, or with an unknown outcome, counts and has no result to carry.
   - Calls are entered by the shared dispatcher (beside P1's `toolCallsDispatched`), by the Apple
@@ -312,26 +324,22 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 - **Logging.** `hopAfterTools` records the decision, what ran (`readOnly`/`changedState`), the call
   count and the attempt's error. With detail `carriedBlock` it records the results carried, those
   left out, whether one was cut, and the length. `hopToolRan` logs each tool's native name (`other`
-  otherwise) and its effect. Arguments and results are never logged. P0's `cascadeSwitched` line is
+  otherwise) and the effect its call was entered with. Arguments and results are never logged. P0's `cascadeSwitched` line is
   now `LLMService.logCascadeSwitch`, so it can be tested.
-- **Deviation, for the owner.** The effect rows give each tool its strongest action. `CalendarTool`
-  and `AppleRemindersTool` are `.local()` because they can create entries, so a calendar or
-  reminder read counts as a change. User B's Apple turn (calendar, weather, reminder) would
-  therefore end with "calendar and reminder had already run…" rather than carry forward. Only
-  weather is read-only. Carrying that turn needs argument-aware rows for those two tools' read
-  actions, like `ToolEffectClassifier`'s `face_recognition` row. That is a second classification,
-  which this phase was asked not to build.
 - Tests:
   - `HopAfterToolsTests`, pure: the rule table; the overflow cases unchanged in outcome (both
     `CapacityError` values and the default, both `contextOverflow` values, a provider overflow); a
     mixed ledger and an unclassified stub counting as a change; refused, in-flight and unknown
     calls; the block's content, dedupe, exclusion, bound and closed envelopes; the spoken, photo and
     banner lines; the logged error token for each failure class; `beforeHop` ending a turn and
-    being asked only for a real hop.
+    being asked only for a real hop; every read action of `calendar` and `reminder` read-only,
+    every write, missing, unknown or padded action a change, and their approval class unchanged.
   - `HopAfterToolsTurnTests`, through the real `LLMService` with two Groq configurations, stub tools
     and a recording transport: a read-only result carried into the second model's request and not
     fetched again; a state-changing stub ending the turn with its line after one write and no hop;
-    a hop before any tool unchanged; the next turn carrying nothing.
+    a hop before any tool unchanged; the next turn carrying nothing. Under the real tools' names
+    and declared effects, the report's turn (calendar today, `get_weather`, reminders list) carries
+    all three results and runs each once; a calendar create beside the weather ends the turn.
 
 ### P3 — a refused voice key is asked once (headless)
 
