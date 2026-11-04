@@ -2089,6 +2089,10 @@ enum PrivacyLog {
         /// `unmapped`, `debounced`) and `command` the command's name. `released` carries the
         /// condition that won in `state`.
         case claimLapsed, claimChecked, commandDropped
+        /// Plan GM. A glance surface (a map card) the watch push refused: `reason` is the codec's
+        /// case (`overBudget`, `encodingFailed`) and `count` the encoded bytes. Nothing about the
+        /// card itself — no place name, no coordinate.
+        case surfaceRefused
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

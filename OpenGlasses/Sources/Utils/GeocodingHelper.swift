@@ -14,6 +14,11 @@ enum GeocodingHelper {
         let subThoroughfare: String?
         let fullAddress: String?
         let location: CLLocation?
+        /// MapKit's short form of the address (street first), when it has one.
+        var shortAddress: String? = nil
+        /// The city or town, from MapKit's address representations. Kept apart from `locality`,
+        /// which weather and saved places already read and would start answering differently from.
+        var cityName: String? = nil
 
         /// Formatted short address (e.g. "123 Main St")
         var streetAddress: String? {
@@ -45,7 +50,9 @@ enum GeocodingHelper {
                 thoroughfare: nil,
                 subThoroughfare: nil,
                 fullAddress: addr?.fullAddress,
-                location: item.location
+                location: item.location,
+                shortAddress: addr?.shortAddress,
+                cityName: item.addressRepresentations?.cityName
             )
         } catch {
             return nil

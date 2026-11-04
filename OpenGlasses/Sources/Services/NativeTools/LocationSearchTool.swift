@@ -1,29 +1,67 @@
 import Foundation
+import CoreLocation
 import MapKit
 
 /// Searches for nearby places (restaurants, cafes, pharmacies, etc.) using Apple's MapKit.
+///
+/// Plan GM P1a: the results also go to `GlanceSurfaceBus` as a `places` card, in the order they
+/// are spoken; with `nearest: true` the tool answers "how far is that tower?" — the closest match,
+/// its straight-line distance and direction — and publishes a `place` card instead.
 final class LocationSearchTool: NativeTool, @unchecked Sendable {
     let name = "find_nearby"
-    let description = "Find nearby places like restaurants, cafes, gas stations, pharmacies, ATMs, etc. Uses the user's current location."
+    let description = """
+        Find nearby places like restaurants, cafes, gas stations, pharmacies, ATMs, etc. Uses the user's current location. \
+        Set nearest to true for "how far is <place>?" or "which way is <place>?": it answers with the closest match's \
+        straight-line distance and direction, without starting directions. Results also show as a map card on the \
+        wearer's Apple Watch; set show_on_watch when they asked to see them there.
+        """
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "query": [
                 "type": "string",
-                "description": "What to search for, e.g. 'coffee shop', 'pharmacy', 'gas station', 'Italian restaurant'"
+                "description": "What to search for, e.g. 'coffee shop', 'pharmacy', 'gas station', 'Italian restaurant', 'Sky Tower'"
             ],
             "limit": [
                 "type": "integer",
                 "description": "Maximum number of results to return. Defaults to 5."
+            ],
+            "nearest": [
+                "type": "boolean",
+                "description": "True to answer how far away the closest match is, in a straight line and which direction."
+            ],
+            "show_on_watch": [
+                "type": "boolean",
+                "description": "True when the wearer asked to see it on their watch."
             ]
         ],
         "required": ["query"]
     ]
 
-    private let locationService: LocationService
+    /// Everything live, so a test runs the tool against stub map items.
+    struct Seams {
+        var currentLocation: () async -> CLLocation?
+        var search: (MKLocalSearch.Request) async throws -> [MKMapItem] = { request in
+            try await MKLocalSearch(request: request).start().mapItems
+        }
+        var publishSurface: @MainActor (GlanceSurface, Bool) -> Void = { surface, asked in
+            AppStateProvider.shared?.glanceSurfaces.publish(surface, asked: asked)
+        }
+        var mapAllowed: () -> Bool = { GlanceSurfacePolicy.mapAllowed(MedicalEgressGuard.currentMode()) }
+        var metric: () -> Bool = { ParkingTool.prefersMetric }
+        var now: () -> Date = Date.init
+    }
 
-    init(locationService: LocationService) {
-        self.locationService = locationService
+    private let seams: Seams
+
+    init(seams: Seams) {
+        self.seams = seams
+    }
+
+    convenience init(locationService: LocationService) {
+        self.init(seams: Seams(currentLocation: { [weak locationService] in
+            await MainActor.run { locationService?.currentLocation }
+        }))
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -32,9 +70,11 @@ final class LocationSearchTool: NativeTool, @unchecked Sendable {
         }
 
         let limit = (args["limit"] as? Int) ?? 5
+        let nearest = args["nearest"] as? Bool ?? false
+        let asked = args["show_on_watch"] as? Bool ?? false
 
         // Get current location
-        guard let location = await MainActor.run(body: { locationService.currentLocation }) else {
+        guard let location = await seams.currentLocation() else {
             return "I don't have your current location. Make sure location services are enabled."
         }
 
@@ -47,10 +87,10 @@ final class LocationSearchTool: NativeTool, @unchecked Sendable {
         )
 
         do {
-            let search = MKLocalSearch(request: request)
-            let response = try await search.start()
+            let found = try await seams.search(request)
+            if nearest { return distanceTo(query: query, items: found, from: location, asked: asked) }
 
-            let items = Array(response.mapItems.prefix(limit))
+            let items = Array(found.prefix(limit))
 
             guard !items.isEmpty else {
                 return "No results found for '\(query)' near your location."
@@ -78,9 +118,42 @@ final class LocationSearchTool: NativeTool, @unchecked Sendable {
                 results.append(detail)
             }
 
+            publishPlaces(query: query, items: items, from: location, asked: asked)
             return "Found \(items.count) result\(items.count == 1 ? "" : "s") for '\(query)': \(results.joined(separator: ". "))."
         } catch {
             return "Search failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Surfaces
+
+    private func publishPlaces(query: String, items: [MKMapItem], from location: CLLocation, asked: Bool) {
+        let surface = GlanceSurfaceBuilder.places(
+            query: query,
+            candidates: GlanceSurfaceBuilder.candidates(from: items, wearer: location),
+            wearer: GlanceSurfaceBuilder.wearer(location),
+            mapAllowed: seams.mapAllowed(), now: seams.now())
+        seams.publishSurface(surface, asked)
+    }
+
+    /// "How far is that tower?" — the closest of the matches, as a straight line. The spoken
+    /// answer names the place it resolved, so a wrong match is audible as well as visible.
+    private func distanceTo(query: String, items: [MKMapItem], from location: CLLocation, asked: Bool) -> String {
+        guard let closest = items.min(by: { location.distance(from: $0.location) < location.distance(from: $1.location) }) else {
+            return "I couldn't find \(query) near you."
+        }
+        let name = closest.name ?? query
+        let surface = GlanceSurfaceBuilder.place(
+            name: name,
+            subtitle: GeocodingHelper.locationAndAddress(from: closest).address,
+            coordinate: GlanceSurfaceBuilder.point(closest.location.coordinate),
+            wearer: GlanceSurfaceBuilder.wearer(location),
+            mapAllowed: seams.mapAllowed(), now: seams.now())
+        seams.publishSurface(surface, asked)
+
+        guard case .place(let card) = surface.kind else { return "\(name) is nearby." }
+        let distance = DistanceFormatter.spoken(Int(card.straightLineMeters.rounded()), metric: seams.metric())
+        let direction = GlanceGeometry.compassPoint(forBearing: card.bearingDegrees).words
+        return "\(name) is \(distance) to the \(direction) of you, in a straight line."
     }
 }

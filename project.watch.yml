@@ -10,6 +10,11 @@ targets:
       - path: OpenGlassesWatch
       # Shared with iOS app — defines LogoIcon + AccentColors
       - path: GlassesActivityWidget/AccentColors.swift
+      # Shared with iOS app (Plan GM) — the glance-surface payload the phone sends and the watch
+      # draws as map cards, its geometry, and its property-list codec. Foundation only.
+      - path: OpenGlasses/Sources/Shared/GlanceSurface.swift
+      - path: OpenGlasses/Sources/Shared/GlanceGeometry.swift
+      - path: OpenGlasses/Sources/Shared/GlanceSurfaceCodec.swift
     # The watch app writes listening/recording/connected state to the App Group suite and the
     # watch widget's complications read it back — two processes, so both need the group.
     entitlements:

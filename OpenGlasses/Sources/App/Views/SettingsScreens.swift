@@ -995,6 +995,7 @@ struct GlassesPrivacySettingsScreen: View {
     /// keeps the page because its saved state and `onDisappear` belong to the Form, not a section.
     var alsoShows: [SettingsCategoryID] = []
     @ObservedObject private var adminGate = AdminGate.shared
+    @ObservedObject private var watch = WatchConnectivityManager.shared
     @AppStorage("hipaaMode") private var hipaaMode = false
 
     @State private var micRoute = Config.micRoute
@@ -1042,6 +1043,20 @@ struct GlassesPrivacySettingsScreen: View {
                 }
             }
             #endif
+
+            // Plan GM: what the phone shows on the wrist. Only with a watch that has the app.
+            if rest.isShown && watch.isWatchAppInstalled {
+                Section {
+                    NavigationLink {
+                        AppleWatchSettingsView()
+                    } label: {
+                        Label("Apple Watch", systemImage: "applewatch")
+                    }
+                    .disabled(!rest.isEditable)
+                } footer: {
+                    Text("Map cards on your watch for where you are, how far something is, and places nearby.")
+                }
+            }
 
             if rest.isShown {
                 Section {

@@ -1341,6 +1341,9 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var myDayDelivery = MyDayScheduledDeliveryService(myDayService: myDayService)
     /// Turn-by-turn walking navigation (Plan CA).
     let walkingRoute = WalkingRouteService()
+    /// Structured spatial answers — map cards — that tools publish for the watch and, later, the
+    /// phone's conversation map (Plan GM).
+    let glanceSurfaces = GlanceSurfaceBus()
     /// Parking memory (Plan GH): the one active spot, automatic capture when a drive ends, and the
     /// sign-photo path through the privacy chokepoint.
     let parkingStore = ParkingStore.shared

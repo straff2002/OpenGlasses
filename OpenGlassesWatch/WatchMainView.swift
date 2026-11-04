@@ -75,6 +75,11 @@ struct WatchMainView: View {
                         // Status bar
                         statusBar
 
+                        // A map card from the phone (Plan GM): "how far is that tower?", "where
+                        // am I?", "find a pharmacy". Directly under the status, because a spatial
+                        // answer is what the wearer raised the wrist for.
+                        WatchNowShowingRow(connectivity: connectivity, accent: accentColor)
+
                         // The job in hand (Plan FO P3a). Read-only, and directly under the status,
                         // because on a service visit it is the thing being glanced at.
                         if let job = connectivity.job {
@@ -151,6 +156,8 @@ struct WatchMainView: View {
         }
         .sensoryFeedback(.success, trigger: feedbackTrigger)
         .sensoryFeedback(.error, trigger: errorFeedbackTrigger)
+        // One tap for a map the wearer asked to see on the watch; automatic cards arrive silently.
+        .sensoryFeedback(.impact, trigger: connectivity.surfaceTaps)
         // A tap on a complication lands here: it can only open the app, so the app does the work.
         .onOpenURL { url in
             guard let command = WatchComplicationLink.command(from: url) else { return }

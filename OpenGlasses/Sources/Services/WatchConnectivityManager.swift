@@ -1,5 +1,7 @@
 import Combine
+import CoreLocation
 import Foundation
+import UIKit
 import WatchConnectivity
 
 /// iPhone-side WatchConnectivity manager. Receives commands from the Watch app
@@ -10,6 +12,14 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     weak var appState: AppState?
 
     private var session: WCSession?
+
+    /// Whether a watch with Avenkin installed is paired — the Apple Watch settings row shows only
+    /// then.
+    @Published private(set) var isWatchAppInstalled = false
+
+    /// Map cards on the wrist (Plan GM). Every application-context push goes through it, so the
+    /// status and the surfaces always travel together.
+    private(set) var surfacePublisher: WatchSurfacePublisher?
 
     /// The state the wrist shows, watched so the watch hears about a change it did not cause.
     private var stateObservers: Set<AnyCancellable> = []
@@ -25,7 +35,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         let known: Set<String> = [
             "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
             "ask", "persona", "connect", "disconnect", "sleep", "status",
-            "quickAction", "resumeThread", WatchDictation.command,
+            "quickAction", "resumeThread", WatchDictation.command, WatchStartGuidance.command,
         ]
         return known.contains(raw) ? PrivacyToken(raw) : nil
     }
@@ -43,6 +53,9 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         session.delegate = self
         session.activate()
         self.session = session
+        let publisher = WatchSurfacePublisher(session: session) { [weak self] in self?.statusContext() }
+        if let bus = appState?.glanceSurfaces { publisher.observe(bus) }
+        surfacePublisher = publisher
         PrivacyLog.device(.watch, .sessionActivated)
         observeState()
     }
@@ -68,11 +81,16 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     /// Not gated on reachability: the watch is reachable only while its app is on screen, and the
     /// application context is exactly the channel that reaches it when it is not — the system
     /// keeps the latest one and hands it over when the watch app next runs. A phone with no watch,
-    /// or a watch without the app, is skipped before anything is gathered.
+    /// or a watch without the app, is skipped before anything is gathered. The surface publisher
+    /// sends it, with any live map card folded in (Plan GM).
     func sendStatusUpdate() {
-        guard let session, session.activationState == .activated,
-              session.isPaired, session.isWatchAppInstalled else { return }
-        guard let appState else { return }
+        surfacePublisher?.push()
+    }
+
+    /// The phone's status as the watch reads it: flat keys, plus `job` while a job is open. The
+    /// surface publisher adds `surfaces`.
+    private func statusContext() -> [String: Any]? {
+        guard let appState else { return nil }
 
         // Recent conversation threads (last 5, title + summary only)
         let recentThreads: [[String: String]] = appState.conversationStore.threads.prefix(5).map { thread in
@@ -117,9 +135,35 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         if let job = JobWatchPayload.payload(for: FieldSessionService.shared.activeSession) {
             context[JobWatchPayload.key] = job.dictionary
         }
+        return context
+    }
 
-        // Use application context for persistent state
-        try? session.updateApplicationContext(context)
+    /// Plan GM P1a — **Go** on a wrist map card.
+    private func startGuidance(_ message: [String: Any], appState: AppState) async -> [String: Any] {
+        let resolution = WatchStartGuidance.resolve(
+            surfaceId: message[WatchStartGuidance.surfaceIdKey] as? String,
+            placeId: message[WatchStartGuidance.placeIdKey] as? String,
+            live: appState.glanceSurfaces.current)
+        switch resolution {
+        case .refuse(let reason):
+            return WatchStartGuidance.dictionary(.refused(reason))
+        case .start(let target):
+            let coordinate = CLLocationCoordinate2D(latitude: target.coordinate.latitude,
+                                                    longitude: target.coordinate.longitude)
+            let appIsActive = UIApplication.shared.applicationState == .active
+            do {
+                let spoken = try await appState.walkingRoute.start(to: coordinate, label: target.label)
+                return WatchStartGuidance.dictionary(
+                    WatchStartGuidance.reply(spoken: spoken, error: nil, appIsActive: appIsActive))
+            } catch {
+                return WatchStartGuidance.dictionary(
+                    WatchStartGuidance.reply(spoken: nil, error: error, appIsActive: appIsActive))
+            }
+        }
+    }
+
+    private func refreshWatchAppInstalled(_ session: WCSession) {
+        isWatchAppInstalled = session.isPaired && session.isWatchAppInstalled
     }
 
     private func statusString() -> String {
@@ -138,6 +182,15 @@ extension WatchConnectivityManager: WCSessionDelegate {
         PrivacyLog.device(.watch, error == nil ? .sessionActivated : .activationFailed,
                           state: PrivacyToken(String(activationState.rawValue)),
                           error: error.map(SafeErrorSummary.init))
+        Task { @MainActor in self.refreshWatchAppInstalled(session) }
+    }
+
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            self.refreshWatchAppInstalled(session)
+            // A watch app installed since the last push has not seen the status or a card yet.
+            self.sendStatusUpdate()
+        }
     }
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
@@ -365,6 +418,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 } else {
                     replyHandler(["error": "No thread ID"])
                 }
+
+            case WatchStartGuidance.command:
+                replyHandler(await self.startGuidance(message, appState: appState))
 
             case "disconnect", "sleep":
                 appState.disconnectGlasses()

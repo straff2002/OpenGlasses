@@ -115,10 +115,14 @@ final class WatchComplicationTests: XCTestCase {
         XCTAssertTrue(manager.contains("appState.$isListening"),
                       "a turn that ends on the phone has to reach the watch")
 
-        let start = try XCTUnwrap(manager.range(of: "func sendStatusUpdate() {"))
-        let end = try XCTUnwrap(manager.range(of: "try? session.updateApplicationContext(context)",
-                                              range: start.upperBound..<manager.endIndex))
-        let body = Self.strippingComments(String(manager[start.lowerBound..<end.upperBound]))
+        // Plan GM: the push itself moved into the surface publisher, so the status and the map
+        // cards always travel in one context; `sendStatusUpdate()` hands over to it.
+        XCTAssertTrue(manager.contains("surfacePublisher?.push()"))
+        let publisher = try Self.source("OpenGlasses/Sources/Services/Glance/WatchSurfacePublisher.swift")
+        let start = try XCTUnwrap(publisher.range(of: "func push() {"))
+        let end = try XCTUnwrap(publisher.range(of: "try? session.updateApplicationContext(context)",
+                                                range: start.upperBound..<publisher.endIndex))
+        let body = Self.strippingComments(String(publisher[start.lowerBound..<end.upperBound]))
         XCTAssertFalse(body.contains("isReachable"),
                        "the watch is reachable only while its app is on screen; the application context "
                            + "is what reaches it when it is not")

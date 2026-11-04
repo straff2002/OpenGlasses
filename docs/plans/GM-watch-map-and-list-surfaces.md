@@ -1,7 +1,11 @@
 # Plan GM — Apple Watch: Map Cards, Live Route, Lists, Images, Workout-Backed Guidance
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01; **revised 2026-10-02** (map first, place / where-am-I /
-nearby cards added, surface model shared with the phone map) — nothing built.
+**Status:** 🚧 P0 + P1a built 2026-11-04 (one PR, headless) — the shared surface model, the bus, the
+watch publisher, `where_am_i` / `find_nearby` (with `nearest`, the "how far is that tower?" action) /
+parking publishing cards, and the watch drawing place, where-am-I and nearby cards with **Go**. Device
+checks 1, 2, 4 and 6 owed. P1b (live route), P2 (lists, images), P3 (workout) unbuilt. Drafted
+2026-10-01; revised 2026-10-02 (map first, place / where-am-I / nearby cards added, surface model shared
+with the phone map).
 
 **Suggested build order (2026-10-02, across Plans GM, GL and HH):** shared surface model (GM P0) →
 watch map cards and the live route (GM P1a, P1b) → travel modes by voice, cycling then driving
@@ -79,6 +83,56 @@ glanceable, but today it shows only status and a 200-character `lastResponse`.
   "`HUDIcon` name" for the maneuver was wrong: `HUDIcon` (`Display/HUDScreen.swift`) has no arrows;
   the maneuver class is `Maneuver`'s raw value. A shared-source folder already exists
   (`OpenGlasses/Sources/Shared/`, compiled into the widget), which is where the model goes.
+
+### As built, P0 + P1a (2026-11-04, checked against `main` at c9ec10fa3)
+
+Corrections to the list above, found before building:
+
+- **The reachability guard was already gone.** `sendStatusUpdate()` has pushed without
+  `isReachable` since the complication fix (2026-10-13), and it also runs on a listening or
+  glasses-link change. GM did not need to make that change; it moved the final push into
+  `WatchSurfacePublisher`, because the application context is one dictionary — a push of
+  `surfaces` alone would clear `job` on the watch, and a status push without `surfaces` would clear
+  the card. Every push is now the status plus `surfaces` (absent when nothing is live).
+- **`GeocodingHelper.reverseGeocode` filled only `fullAddress`.** It now also carries MapKit's
+  `shortAddress` and `addressRepresentations.cityName` in two new fields (`locality` is left empty,
+  so weather and saved places answer exactly as before); the where-am-I card's street and locality
+  come from those.
+- **GL and GA have not landed**: the mode is walking, `startGuidance` calls
+  `WalkingRouteService.start(to:label:)`, and the replies are started / refused with a reason /
+  "Open Avenkin on your iPhone to start."
+
+What exists now:
+
+- **Shared, Foundation only, in both targets** (`OpenGlasses/Sources/Shared/`, listed in
+  `project.watch.yml`): `GlanceSurface.swift` (the payload, `GlancePoint`, `WearerFix`, the cards,
+  `GlancePolyline` packed as one `Data`, `RouteDelta` with its send rule, `WearerDotFreshness`,
+  `GlanceDistanceText` with the phone's `DistanceFormatter.compact` rules, and `GlanceWire`, the key
+  and command names), `GlanceGeometry.swift`, `GlanceSurfaceCodec.swift` (48 KB / 8 KB budgets).
+  Plan HH renders these unchanged.
+- **Phone** (`Services/Glance/`): `PolylineSimplifier`, `GlanceSurfacePolicy` (+ `Config.watchMapCards`,
+  `Config.watchSendsLongLists`), `GlanceSurfaceBus` (owned by `AppState` as `glanceSurfaces`),
+  `GlanceSurfaceBuilder`, `WatchSurfacePublisher` over `WatchSessioning`, `WatchStartGuidance`. The
+  `distance_to` action is `find_nearby` with `nearest: true` (decision 8); `where_am_i` and
+  `find_nearby` take `show_on_watch` for the "only when I ask" setting and the one tap. Parking's
+  "where" publishes the car. Settings › Devices & Privacy › Apple Watch (shown only with the watch
+  app installed) holds "Maps on Your Watch". A refused surface logs `surfaceRefused` with the
+  codec's reason and the byte count, nothing about the card.
+- **Watch** (`WatchGlanceViews.swift`): a "Now showing" row under the status, the place card (map
+  framing both dots, coral marker, distance, "in a straight line", age label, **Go**), the
+  where-am-I card (accuracy ring past 50 m), the nearby list (a row opens a place card built on the
+  watch). Without a map (`mapAllowed` false) the place card shows a bearing arrow and says why. A
+  route, list or image card from a later phase shows "Open Avenkin on your iPhone to see this."
+  The privacy manifest header and the public privacy page name Apple Maps tiles.
+- **Decisions taken as recommended** (the owner can still change any): 1 phone-supplied dot, 2
+  automatic and silent with the three-way setting, 3 two PRs, 7 maps allowed under Medical
+  Compliance and text-only under Local Only, 8 `nearest` on `find_nearby`, 9 the Apple Watch screen
+  under Devices & Privacy.
+- **Tests:** `GlanceSurfaceCodecTests`, `GlanceGeometryTests`, `PolylineSimplifierTests`,
+  `WearerDotFreshnessTests`, `GlanceSurfacePolicyTests`, `RouteDeltaTests` (P0);
+  `WatchSurfacePublisherTests`, `GlanceSurfaceBuilderTests`, `WatchStartGuidanceCommandTests`,
+  `LocationSearchSurfaceTests`, and a parking case in `ParkingToolTests` (P1a). The watch views
+  compile in the watch target and have no test bundle of their own.
 
 ### watchOS facts (checked in the watchOS 27.0 SDK and Apple's documentation)
 
