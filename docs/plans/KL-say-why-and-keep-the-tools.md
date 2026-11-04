@@ -1,8 +1,10 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04, P2 merged 2026-11-05 and P3 built 2026-11-05 (all
+**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04, P2 and P3 merged 2026-11-05, P4 built 2026-11-05 (all
 headless; the device re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight
-users' support reports on build 615. The owner took all six decisions the same day. P4 and P5 are not built.
+users' support reports on build 615. The owner took all six decisions the same day. P5 is not run.
+P4 names the 94-character line: the conversation cue's once-ever introduction, which the voice turn awaited;
+it now plays alongside the turn, and every spoken line logs its source.
 P2 carries User B's calendar, weather and reminders turn forward: a calendar or reminders read action counts
 as read-only. P3 latches a refused voice key per voice and per key, so it costs one request, not one per line.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
@@ -421,6 +423,46 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 - Tests: every `speak` call site passes a source (a source-scrape guard like `OutboundFrameConsumerTests`),
   plus the fix's own test.
 
+**As built (2026-11-05):**
+
+- **`SpeechSource`** (`Services/TTS/SpeechSource.swift`): 19 kinds of line, not one per call site —
+  `reply`, `phoneAnswer`, `errorLine`, `switchNotice`, `disclosure`, `confirmation`, `acknowledgement`,
+  `progress`, `alert`, `statusNotice`, `job`, `translation`, `navigation`, `narration`, `coaching`,
+  `lifecycle`, `agent`, `readAloud`, `diagnostic`. There is no persona case: no call site speaks a persona
+  line (picking a persona says nothing).
+- **Required.** `speak(_:source:urgency:mirrorToHUD:)`, `speakReporting(_:source:…)` and
+  `speakStreaming(_:source:)` take it with no default; about a hundred call sites name one (103 by the
+  guard's count). The `String` seams (the job flow, job sends, the handoff, the turn runner, the
+  remote-command executor) stay `String`: their wiring in `AppState` names the source.
+- **Threaded through deferred speech.** `TurnAnnouncement.Speak` carries the source, so a notice queued
+  behind another is logged as itself. `StreamedReplyQueue` holds its reply's source and passes it to
+  `playStreamedSentence`; the gateway stream opens its queue with the source `speakStreaming` was given.
+- **The log.** Both `speaking` lines (the engine chain, a streamed sentence) gain `source=<token>` right
+  after `characters=`, so the report's App events section reads `characters=94 source=disclosure`. The
+  report prints spoken lines nowhere else (the turn traces keep no spoken lines), so nothing else changed.
+- **The 94-character line, found by reading, not on the simulator.** The only speech between the
+  transcript and `turnClassified` on a voice turn is `speakConversationCueIfDue()`, which was awaited. Its
+  first-ever form, "Connecting to Avenkin AI, your AI assistant. It can be wrong, so check anything
+  important.", is 90 characters written and **94 spoken**: the brand is said "Ah-Ven-Kin A I", and the log
+  counts the spoken form. The launch's short cue is 29 spoken. It is said once per install, which fits a first
+  persona-thread turn and no later one; the persona picker speaks nothing. No sim reproduction was needed.
+- **The fix: it plays alongside the turn.** It was not repeated, so no latch; it delayed the turn by its whole
+  length. `AIDisclosureLedger.announceConversationCue(cueEnabled:through:)` consumes the line as before and
+  starts it through `turnAnnouncement` (source `disclosure`); `handleTranscription` calls
+  `announceConversationCueIfDue()` and goes straight on to classify and start the model. Every path after it
+  that speaks now waits on the announcement first, so the disclosure is still heard whole: the cascade's reply
+  and failure line already did; added to the `new_topic` reset, the tier-0 answer, `finishPhoneTurnWithoutModel`
+  and both lines of `runAgentTurn` (whose thinking sound now waits for the notice too). The photo command and
+  the realtime sessions still await the cue: the photo's line comes before its shutter tone by design, and a
+  realtime session must not open its audio over it.
+- Tests: `SpeechSourceGuardTests` (the scrape finds the known sites; every speech-service call passes
+  `source:`; no declaration defaults a `SpeechSource`; both `speaking` lines log it) and `SpeechSourceTests`
+  (the rendered line and the event ring, the tokens, a queued notice keeping its source, the introduction's
+  90/94 characters, the cue returning while it plays with the reply waiting behind it, once per launch and
+  install, and a scrape that the voice turn announces rather than awaits). `TurnAnnouncementTests`,
+  `StreamedReplyTurnTests`, `SpeechDeliveryOutcomeTests`, `PrivacyCanaryTests` and
+  `GlassesDeviceStateWiringSourceGuardTests` follow the new signatures.
+
 ### P5 — the users' re-runs (owed, device)
 
 - User A, signed out: one turn and one photo. Expect the sign-in line once and the status-card row.
@@ -458,4 +500,6 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 - Whether Groq counts the output cap toward the per-minute allowance: P1 counts it and calibrates
   from each refusal's own requested count; the live Groq turn will show the ratio in its log.
 - What Apple failed on after the tools ran in User B's turn. P2's logging answers it the next time.
-- The 94-character line (P4).
+- ~~The 94-character line (P4).~~ The conversation cue's once-ever introduction; it now plays alongside the
+  turn. P5's first signed-in voice turn on a fresh install should show `source=disclosure` and no gap before
+  `turnClassified`.
