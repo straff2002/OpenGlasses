@@ -706,8 +706,19 @@ struct Config {
     )
 
     static func setSavedModels(_ models: [ModelConfig]) {
+        // Plan KL P1, decision 3: a saved model's learned per-minute allowance belongs to its key,
+        // provider and model id. The list as it was is read straight from the Keychain (not through
+        // `savedModels`, which can call back here), so a key edit is caught at the edit itself and
+        // nothing derived from a key is ever kept beside the allowance.
+        let previous = KeychainService.data(for: modelsKey)
+            .flatMap { try? JSONDecoder().decode([ModelConfig].self, from: $0) } ?? []
         if let data = try? JSONEncoder().encode(models) {
             KeychainService.setData(data, for: modelsKey)
+        }
+        let stale = PerMinuteAllowance.modelsToForget(old: previous, new: models)
+        let forgotten = PerMinuteAllowanceStore.shared.forget(stale)
+        if forgotten > 0 {
+            PrivacyLog.model(.perMinuteFit, count: forgotten, detail: PrivacyToken("cleared"))
         }
         NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
     }

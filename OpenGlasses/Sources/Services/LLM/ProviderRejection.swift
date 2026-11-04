@@ -79,6 +79,14 @@ struct ProviderRejection: Equatable, Sendable {
     /// when it has the shape of an identifier and does not look like a credential.
     let requestID: String?
     let reason: Reason
+    /// A `requestOverTokenRateLimit` refusal's own figures (Plan KL P1): the account's tokens a
+    /// minute for this model, and what the provider counted this request as. Groq writes them into
+    /// its sentence ("… on tokens per minute (TPM): Limit 8000, Requested 11234, …"). They are
+    /// numbers, so they may be written down; the sentence around them names the organisation and
+    /// the model, and only the two numbers are read out of it. Nil for every other reason, and
+    /// when the sentence does not carry them.
+    let limit: Int?
+    let requested: Int?
 
     // MARK: - Classification
 
@@ -109,9 +117,14 @@ struct ProviderRejection: Equatable, Sendable {
             ?? Self.header(headers, named: "x-request-id")
             ?? envelope?["request_id"] as? String
             ?? details?["request_id"] as? String)
-        self.reason = Self.reason(status: status, type: rawType,
-                                  code: details?["code"] as? String, message: message,
-                                  parameter: details?["param"] as? String)
+        let reason = Self.reason(status: status, type: rawType,
+                                 code: details?["code"] as? String, message: message,
+                                 parameter: details?["param"] as? String)
+        self.reason = reason
+        let figures = reason == .requestOverTokenRateLimit
+            ? Self.perMinuteFigures(in: message) : (limit: nil, requested: nil)
+        self.limit = figures.limit
+        self.requested = figures.requested
     }
 
     /// Classify from the response the transport handed back. A response that is not HTTP has no
@@ -180,6 +193,36 @@ struct ProviderRejection: Equatable, Sendable {
         // disagree about an envelope the budget was written for.
         if RequestContextBudget.isOverflow(code: code, message: text) { return .contextTooLong }
         return .other
+    }
+
+    /// The allowance and the requested count from a per-minute refusal: the number after the word
+    /// "limit" and the number after "requested", each on its own. Only digits are read, so nothing
+    /// else in the sentence — the organisation id, the model's name, the service tier — can come
+    /// out of it. A figure that is absent, or not a plausible count, is nil.
+    static func perMinuteFigures(in message: String?) -> (limit: Int?, requested: Int?) {
+        guard let text = message?.lowercased(), !text.isEmpty else { return (nil, nil) }
+        return (number(after: "limit", in: text), number(after: "requested", in: text))
+    }
+
+    /// The whole number standing after `word` as its own word — "limit 8000", "requested: 11234" —
+    /// or nil. Part of an identifier is never read: `org_limit42` or `limit-8b` is skipped, as is a
+    /// run of digits that runs on into letters. A count larger than any account's allowance is not
+    /// a count.
+    private static func number(after word: String, in text: String) -> Int? {
+        func isWordCharacter(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == "_" || c == "-" || c == "`" }
+        var search = text.startIndex..<text.endIndex
+        while let found = text.range(of: word, range: search) {
+            search = found.upperBound..<text.endIndex
+            if found.lowerBound > text.startIndex, isWordCharacter(text[text.index(before: found.lowerBound)]) { continue }
+            let after = text[found.upperBound...]
+            let rest = after.drop { $0 == " " || $0 == ":" || $0 == "=" }
+            guard rest.startIndex > after.startIndex else { continue }
+            let digits = rest.prefix { $0.isASCII && $0.isNumber }
+            if let next = rest.dropFirst(digits.count).first, isWordCharacter(next) { continue }
+            guard !digits.isEmpty, digits.count <= 9, let value = Int(digits), value > 0 else { continue }
+            return value
+        }
+        return nil
     }
 
     /// One row of the message table: the reason, and the shapes that mean it.

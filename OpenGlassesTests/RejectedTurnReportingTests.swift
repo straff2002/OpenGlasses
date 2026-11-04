@@ -301,11 +301,17 @@ final class RejectedTurnReportingTests: XCTestCase {
         }
     }
 
-    func testTheBannerPointsARequestOverTheAccountsAllowanceAtSmallContext() {
+    /// Plan KL P1: Small context removes the tools, so the banner offers it only for a request that
+    /// carried none; a request whose tools are unknown is pointed at another model.
+    func testTheBannerPointsARequestOverTheAccountsAllowanceAtSmallContextOnlyWithoutTools() {
         let words = AppState.plainReason("clientError(rate_limit_exceeded)#413", rejection: "requestOverTokenRateLimit")
         XCTAssertTrue(words.contains("per minute"), words)
-        XCTAssertTrue(words.contains("Small context"), words)
+        XCTAssertFalse(words.contains("Small context"), words)
+        XCTAssertTrue(words.contains("choose another model"), words)
         XCTAssertFalse(words.contains("busy"), words)
+        let noTools = AppState.plainReason("clientError(rate_limit_exceeded)#413", rejection: "requestOverTokenRateLimit",
+                                           toolsSent: 0)
+        XCTAssertTrue(noTools.contains("Small context"), noTools)
     }
 
     func testTheSpokenReasonForARequestOverTheAccountsAllowanceIsNotUnavailable() {
@@ -315,7 +321,10 @@ final class RejectedTurnReportingTests: XCTestCase {
             provider: "Groq", statusCode: 413, message: nil,
             rejection: ProviderRejection(status: 413, body: body, provider: .groq)))
         XCTAssertTrue(phrase.contains("allows per minute"), phrase)
-        XCTAssertTrue(phrase.contains("Small context"), phrase)
+        // Plan KL P1: whether the request carried tools is not known here, so the line does not
+        // send the wearer to the setting that removes them.
+        XCTAssertFalse(phrase.contains("Small context"), phrase)
+        XCTAssertTrue(phrase.contains("pick another model"), phrase)
         XCTAssertFalse(phrase.contains("unavailable"), phrase)
         XCTAssertFalse(phrase.contains("TPM"), "the provider's sentence is never spoken")
     }

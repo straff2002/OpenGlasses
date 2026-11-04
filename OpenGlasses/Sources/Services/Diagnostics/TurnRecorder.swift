@@ -410,6 +410,7 @@ enum TurnRecorder {
         update {
             $0.failure = SafeErrorSummary(error)
             if case LLMError.apiError(_, _, _, let rejection) = error { $0.rejection = rejection }
+            if let nothing = error as? PerMinuteFit.NothingFits { $0.overAllowanceLimit = nothing.limit }
         }
     }
 

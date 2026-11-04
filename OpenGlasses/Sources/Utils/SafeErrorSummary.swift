@@ -45,6 +45,9 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         /// The model's own window filled while it worked on the turn (instructions, tools and
         /// their results together), reported by the model rather than predicted.
         case contextOverflow
+        /// The request would not fit the account's tokens-a-minute allowance however it was
+        /// fitted, checked before it was sent (Plan KL P1).
+        case overAllowance
         case unknown
     }
 
@@ -104,6 +107,11 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         if let capacity = error as? RequestContextBudget.CapacityError {
             self.init(category: .contextTooLarge,
                       detail: PrivacyToken(capacity.toolsRanThisTurn ? "afterTools" : "beforeTools"))
+            return
+        }
+        // Raised before anything was sent: the figures are in the turn trace, not here.
+        if error is PerMinuteFit.NothingFits {
+            self.init(category: .overAllowance, detail: PrivacyToken("beforeSending"))
             return
         }
         // A closed vocabulary, never the SDK's free-form unexpectedError description.

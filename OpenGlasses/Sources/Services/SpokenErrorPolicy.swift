@@ -20,14 +20,16 @@ enum SpokenErrorPolicy {
     ///
     /// `gap` is the credential gap behind `error`, when known (Plan KL P0): "…couldn't get an
     /// answer about it — you're not signed in to ChatGPT."
+    /// `perMinute` is what the turn knows about a refusal over the account's per-minute
+    /// allowance (Plan KL P1), passed on to `exhaustionReason`.
     static func photoFailureLine(for error: Error, photoCaptured: Bool, narrateModelFailures: Bool,
-                                 gap: CredentialGap? = nil) -> String? {
+                                 gap: CredentialGap? = nil, perMinute: PerMinuteNotice? = nil) -> String? {
         if isCancellation(error) { return nil }
         guard photoCaptured else { return "Sorry, I couldn't take a photo. \(spokenReason(for: error))" }
         guard narrateModelFailures else {
             return "I took the photo, but couldn't get an answer about it. \(spokenReason(for: error))"
         }
-        return "I took the photo, but couldn't get an answer about it — \(ModelSwitchNarrator.exhaustionReason(lastError: error, gap: gap))."
+        return "I took the photo, but couldn't get an answer about it — \(ModelSwitchNarrator.exhaustionReason(lastError: error, gap: gap, perMinute: perMinute))."
     }
 
     static func isCancellation(_ error: Error) -> Bool {

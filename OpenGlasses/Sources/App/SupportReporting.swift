@@ -90,7 +90,9 @@ extension AppState {
         if let dismissed = supportPromptDismissedAt,
            Date().timeIntervalSince(dismissed) < Self.supportPromptQuietPeriod { return }
         supportPrompt = SupportPrompt(at: trace.at,
-                                      reason: Self.plainReason(trace.failure, rejection: trace.rejectionReason),
+                                      reason: Self.plainReason(trace.failure, rejection: trace.rejectionReason,
+                                                               toolsSent: trace.toolsSent,
+                                                               allowance: trace.allowanceLimit),
                                       threadId: trace.threadId)
     }
 
@@ -262,7 +264,12 @@ extension AppState {
     /// by raw value). It refines a refused request into what the wearer can do about it: a model
     /// that does not take what the app sent is a different model's job; a credential that was
     /// not accepted is a key to check or a sign-in to repeat.
-    static func plainReason(_ failure: String?, rejection: String? = nil) -> String {
+    ///
+    /// `toolsSent` and `allowance` are the trace's tool count and per-minute allowance (Plan KL
+    /// P1): a request over the allowance is pointed at Small context only when it carried no
+    /// tools, since the setting removes them.
+    static func plainReason(_ failure: String?, rejection: String? = nil, toolsSent: Int? = nil,
+                            allowance: Int? = nil) -> String {
         guard let failure else { return "the AI didn't answer" }
         let category = failure.split(whereSeparator: { $0 == "(" || $0 == "#" }).first.map(String.init) ?? failure
         let reason = rejection.flatMap(ProviderRejection.Reason.init(rawValue:))
@@ -272,9 +279,15 @@ extension AppState {
         if reason == .modelNotAvailable {
             return "the AI service didn't offer this model right now — it may have reached its usage limit; try again later, or choose another model"
         }
-        // Waiting does not help: the request alone is over what the account takes in a minute.
-        if reason == .requestOverTokenRateLimit {
-            return "the AI service allows this account fewer tokens per minute than the request needs — turn on Small context for this model, or choose another model"
+        // Waiting does not help: the request alone is over what the account takes in a minute —
+        // as the provider said, or as the app's own fit found before sending (Plan KL P1).
+        if reason == .requestOverTokenRateLimit || category == SafeErrorSummary.Category.overAllowance.rawValue {
+            if let allowance {
+                return "the AI service allows this account about \(PerMinuteNotice.amount(allowance)) tokens a minute, fewer than this question needs — choose another model"
+            }
+            return toolsSent == 0
+                ? "the AI service allows this account fewer tokens per minute than the request needs — turn on Small context for this model, or choose another model"
+                : "the AI service allows this account fewer tokens per minute than the request needs — choose another model"
         }
         switch SafeErrorSummary.Category(rawValue: category) {
         case .clientError, .unauthorized, .forbidden:

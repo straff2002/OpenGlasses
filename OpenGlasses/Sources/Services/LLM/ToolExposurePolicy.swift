@@ -61,6 +61,9 @@ enum ToolExposureReason: String, Equatable, Sendable {
     /// The on-device path, which has always carried its own reduced list (`localSafeTools`) and
     /// is outside the setting.
     case onDevice
+    /// The account's per-minute allowance (Plan KL P1): the request would not fit it with the core
+    /// set declared, so only the lookup tool and what this conversation already used are.
+    case perMinuteAllowance
 }
 
 /// What a turn declares and why. Fixed at turn start — a turn in flight keeps the mode it began
@@ -132,6 +135,15 @@ enum ToolExposurePolicy {
         return ToolExposureDecision(exposure: exposure, reason: reason, available: availableSet,
                                     declared: declared, fullSetTokens: tokens,
                                     contextWindow: contextWindow)
+    }
+
+    /// The decision with the core set emptied (Plan KL P1, the fit's second rung): on demand, and
+    /// declaring only what this conversation already used or looked up. Every available tool stays
+    /// reachable through `lookup_tools`; none is dropped.
+    static func emptyingCore(_ decision: ToolExposureDecision, remembered: Set<String>) -> ToolExposureDecision {
+        ToolExposureDecision(exposure: .core, reason: .perMinuteAllowance, available: decision.available,
+                             declared: remembered.intersection(decision.available),
+                             fullSetTokens: decision.fullSetTokens, contextWindow: decision.contextWindow)
     }
 
     /// The names a model round declares: nil for full exposure (no filter), else the turn's

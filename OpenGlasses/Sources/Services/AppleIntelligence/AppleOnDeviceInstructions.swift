@@ -83,6 +83,9 @@ enum AppleOnDeviceInstructions {
         /// Where the AI model is chosen, for the manuals line ("Settings > Assistant").
         var modelSettingsPath: String
         var speakerLine: String
+        /// The line that manual answers need a cloud model. True on the device; a cloud model that
+        /// is given these instructions to fit an allowance (Plan KL P1) is that cloud model.
+        var includesManualsNote: Bool = true
     }
 
     struct Built: Equatable {
@@ -115,7 +118,7 @@ enum AppleOnDeviceInstructions {
         if let job = inputs.job {
             parts.append(("field assist: job summary", job.render(), nil))
         }
-        if inputs.job != nil || inputs.fieldAssistActive {
+        if inputs.includesManualsNote, inputs.job != nil || inputs.fieldAssistActive {
             parts.append(("field assist: manuals note", manualsNote(settingsPath: inputs.modelSettingsPath), nil))
         }
         if let memory { parts.append(("memory", memory, 1)) }

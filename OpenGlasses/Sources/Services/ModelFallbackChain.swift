@@ -56,6 +56,9 @@ enum ModelFallbackChain {
     /// Classify a thrown error into a cascade decision.
     static func classify(_ error: Error) -> FailureClass {
         if error is CancellationError || error is CloudProcessingRefusal { return .terminalForTurn }
+        // No rung of the fit came within this model's per-minute allowance (Plan KL P1). Nothing
+        // was sent and nothing ran; another model, on another account, may take the turn whole.
+        if error is PerMinuteFit.NothingFits { return .terminalForCandidate }
         // The request would not fit this model's window. Before any tool has run nothing has
         // happened yet, so another model may take the turn from the start. After one has run,
         // restarting the turn elsewhere could repeat a completed state-changing tool.

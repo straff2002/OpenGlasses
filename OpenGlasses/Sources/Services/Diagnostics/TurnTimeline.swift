@@ -213,6 +213,9 @@ struct TurnTimeline: Identifiable, Equatable {
     /// What the provider's refusal classified as, when the failure was one (Plan IE P0): its error
     /// type, its request id and a reason from a closed vocabulary. Never its message.
     var rejection: ProviderRejection?
+    /// The per-minute allowance a turn was refused before sending for (Plan KL P1): no rung of the
+    /// fit came within it. A refusal from the provider carries its own figures in `rejection`.
+    var overAllowanceLimit: Int?
     /// Which kind of credential the request was sent with — a key or an account sign-in, never
     /// the value. nil for providers where there is only one kind.
     var credential: AnthropicAuth.CredentialKind?

@@ -1641,6 +1641,13 @@ enum PrivacyLog {
         // Plan KD P3 — a reply that repeated its own last part was said and kept once. The number
         // of characters removed only.
         case replyRepeatCollapsed
+        // Plan KL P1 — a request fitted to the account's learned tokens-a-minute allowance: the
+        // rung it took (`asSent`, `onDemandTools`, `condensedInstructions`, `shortHistory`,
+        // `nothingFits`), the estimate, the ceiling and the allowance; `learned` when a refusal
+        // taught one, `cleared` (with a count) when saving the models dropped stale ones.
+        // `perMinuteRetry`: a refusal with figures was sent again once, fitted, on the same model.
+        // Counts and tokens only.
+        case perMinuteFit, perMinuteRetry
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form
@@ -1656,7 +1663,8 @@ enum PrivacyLog {
                       detail: PrivacyToken? = nil,
                       reason: PrivacyToken? = nil, auth: PrivacyToken? = nil,
                       request: PrivacyToken? = nil,
-                      error: SafeErrorSummary? = nil) -> PrivacyEvent {
+                      error: SafeErrorSummary? = nil,
+                      limit: Int? = nil, requested: Int? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
         if let provider { fields.append(.init(.provider, .token(provider))) }
         if let model { fields.append(.init(.model, .token(model))) }
@@ -1675,6 +1683,8 @@ enum PrivacyLog {
         if let auth { fields.append(.init(.auth, .token(auth))) }
         if let request { fields.append(.init(.request, .token(request))) }
         if let error { fields.append(.init(.error, .summary(error))) }
+        if let limit { fields.append(.init(.limit, .count(limit))) }
+        if let requested { fields.append(.init(.requested, .count(requested))) }
         return emit(.init(.model, .model, fields))
     }
 
@@ -2401,6 +2411,9 @@ struct PrivacyEvent: Equatable {
         case silence
         // Plan HJ P1 — the codec a glasses stream was built with, beside a stream-end decision.
         case codec
+        // Plan KL P1 — a per-minute refusal's own figures: the account's tokens a minute for the
+        // model, and what the provider counted the request as. Numbers only.
+        case limit, requested
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

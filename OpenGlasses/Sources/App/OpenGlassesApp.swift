@@ -5999,7 +5999,8 @@ class AppState: ObservableObject, AppStateProtocol {
                let line = SpokenErrorPolicy.photoFailureLine(
                    for: error, photoCaptured: photoCaptured,
                    narrateModelFailures: Config.narrateModelSwitchesEnabled,
-                   gap: llmService.credentialGap(behind: error)) {
+                   gap: llmService.credentialGap(behind: error),
+                   perMinute: llmService.perMinuteNotice(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
                 await speechService.speak(line)
             }
@@ -6329,7 +6330,8 @@ class AppState: ObservableObject, AppStateProtocol {
                let line = SpokenErrorPolicy.photoFailureLine(
                    for: error, photoCaptured: photoCaptured,
                    narrateModelFailures: Config.narrateModelSwitchesEnabled,
-                   gap: llmService.credentialGap(behind: error)) {
+                   gap: llmService.credentialGap(behind: error),
+                   perMinute: llmService.perMinuteNotice(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
                 await speechService.speak(line)
             }
@@ -7428,7 +7430,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             let line = SpokenErrorPolicy.photoFailureLine(
                                 for: error, photoCaptured: photoCaptured,
                                 narrateModelFailures: Config.narrateModelSwitchesEnabled,
-                                gap: self.llmService.credentialGap(behind: error))
+                                gap: self.llmService.credentialGap(behind: error),
+                                perMinute: self.llmService.perMinuteNotice(behind: error))
                             if photoCaptured {
                                 self.lastResponse = "Photo analysis failed: \(error.localizedDescription)"
                             } else {
@@ -7729,7 +7732,8 @@ class AppState: ObservableObject, AppStateProtocol {
             from: .init(name: from?.name ?? "the model", isLocal: from?.llmProvider == .local),
             to: .init(name: to?.name ?? "another model", isLocal: to?.llmProvider == .local,
                       isOnDevice: to.map { LLMService.isOnDeviceProvider($0.llmProvider) } ?? false),
-            failure: failure, gap: gap)
+            failure: failure, gap: gap,
+            perMinute: error.flatMap { PerMinuteNotice.from($0, provider: from?.llmProvider) })
         turnAnnouncement.announce(phrase)
     }
 
@@ -8312,7 +8316,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // generic line (e.g. "the last one was rate-limited"), so the app stays honest
                     // about what happened. Off ⇒ the generic line.
                     await speechService.speak(ModelSwitchNarrator.failureLine(
-                        error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
+                        error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error),
+                        perMinute: llmService.perMinuteNotice(behind: error)))
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
@@ -8566,11 +8571,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     errorMessage = String(localized: "Failed to get response: \(error.localizedDescription)")
                     // Siri and the Watch read this back. Left alone, it's the previous answer.
                     lastResponse = ModelSwitchNarrator.exhaustionPhrase(
-                        lastError: error, gap: llmService.credentialGap(behind: error))
+                        lastError: error, gap: llmService.credentialGap(behind: error),
+                        perMinute: llmService.perMinuteNotice(behind: error))
                     if speakResponse {
                         // BK P2c: speak the real exhaustion reason, not the generic line.
                         await speechService.speak(ModelSwitchNarrator.failureLine(
-                            error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error)))
+                            error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error),
+                            perMinute: llmService.perMinuteNotice(behind: error)))
                     }
                 },
                 finish: { [self] in

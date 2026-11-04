@@ -817,6 +817,9 @@ enum JobTranscriptExport {
     private static func failureDetail(_ trace: TurnTrace) -> String {
         var parts: [String] = []
         if let reason = trace.rejectionReason { parts.append("reason: \(reason)") }
+        // Plan KL P1: the allowance the request was over, and the provider's count of it.
+        if let limit = trace.allowanceLimit { parts.append("allowance: \(limit) tokens a minute") }
+        if let requested = trace.allowanceRequested { parts.append("requested: \(requested) tokens") }
         if let credential = trace.credential {
             let label = AnthropicAuth.CredentialKind(rawValue: credential)?.reportLabel ?? credential
             parts.append("auth: \(label)")
