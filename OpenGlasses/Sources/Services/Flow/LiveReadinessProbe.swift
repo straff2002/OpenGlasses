@@ -162,7 +162,7 @@ final class LiveReadinessProbe: ReadinessStepProbing {
             return ReadinessWalkthrough.SpokenExchangeEvidence(listener: decision,
                                                               speech: .failed(reason: "no speech service"))
         }
-        let outcome = await speech.speakReporting(Self.spokenTestLine, urgency: .high)
+        let outcome = await speech.speakReporting(Self.spokenTestLine, source: .diagnostic, urgency: .high)
         return ReadinessWalkthrough.SpokenExchangeEvidence(listener: decision, speech: outcome)
     }
 

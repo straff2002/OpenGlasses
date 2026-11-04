@@ -37,7 +37,7 @@ struct ReadinessWalkthroughView: View {
             speech: appState?.speechService)
         return ReadinessWalkthroughRunner(probe: probe) { line in
             guard let speech = appState?.speechService else { return }
-            _ = await speech.speakReporting(line, urgency: .high)
+            _ = await speech.speakReporting(line, source: .diagnostic, urgency: .high)
         }
     }
 

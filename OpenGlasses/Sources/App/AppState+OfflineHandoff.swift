@@ -29,7 +29,7 @@ extension AppState {
                     guard let self else { return false }
                     return self.geminiLiveSession.isActive || self.openAIRealtimeSession.isActive
                 },
-                speak: { [weak self] line in await self?.speechService.speak(line) },
+                speak: { [weak self] line in await self?.speechService.speak(line, source: .statusNotice) },
                 showStatus: { [weak self] text in
                     self?.glassesDisplay.showNotification(title: nil, body: text, icon: .info, duration: 5)
                 },
@@ -85,7 +85,7 @@ extension AppState {
         case .none:
             break
         case .expired:
-            await speechService.speak(HandoffAnnouncer.heldExpiredLine)
+            await speechService.speak(HandoffAnnouncer.heldExpiredLine, source: .statusNotice)
         case .fresh(let question):
             // The question is already in the saved conversation from when it was asked; the replay
             // only adds the answer.

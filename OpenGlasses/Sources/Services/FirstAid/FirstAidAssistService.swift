@@ -122,7 +122,7 @@ final class FirstAidAssistService: ObservableObject {
             case .compression:
                 tts?.playMetronomeTick()
             case .breathBreak:
-                Task { await tts?.speak("Two breaths, then keep going.", urgency: .high, mirrorToHUD: false) }
+                Task { await tts?.speak("Two breaths, then keep going.", source: .coaching, urgency: .high, mirrorToHUD: false) }
             }
         }
     }
@@ -141,6 +141,6 @@ final class FirstAidAssistService: ObservableObject {
     private func announce(text: String) {
         currentInstruction = text
         glassesDisplay?.showNavigation(text, icon: .hazard)
-        Task { await tts?.speak(text, urgency: .high, mirrorToHUD: false) }
+        Task { await tts?.speak(text, source: .coaching, urgency: .high, mirrorToHUD: false) }
     }
 }

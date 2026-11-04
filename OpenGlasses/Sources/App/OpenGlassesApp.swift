@@ -1115,7 +1115,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     try? await Task.sleep(nanoseconds: UInt64(GlassesLinkCuePolicy.pollSeconds * 1_000_000_000))
                 case .play:
                     self.compatibilityNotices.noteSaid(message)
-                    let outcome = await self.speechService.speakReporting(message)
+                    let outcome = await self.speechService.speakReporting(message, source: .statusNotice)
                     if !CompatibilityNoticePolicy.wasHeard(outcome) {
                         self.compatibilityNotices.noteNotHeard(message)
                     }
@@ -1868,7 +1868,7 @@ class AppState: ObservableObject, AppStateProtocol {
         ManualCaptureService.shared.completed = { m in Task {try? await manuals.enqueue(m)} }
         CapturedManualCatalog.shared.onForget = {manuals.forget($0)}
         jobSends.connect(.init(
-            speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
+            speak: { [weak self] line in await self?.speechService.speak(line, source: .job, urgency: .low) },
             settings: { Config.deliverySettings },
             organisationRecipients: { Config.organizationReportRecipients },
             previousChannel: { sessionId in
@@ -1965,7 +1965,7 @@ class AppState: ObservableObject, AppStateProtocol {
         cancellables.append(organisationLockToken)
         if OrgProfileManager.shared.contentLocked { removeLockedOrganisationConversations() }
         guidedJobFlow.connect(.init(
-            speak: { [weak self] line in await self?.speechService.speak(line, urgency: .low) },
+            speak: { [weak self] line in await self?.speechService.speak(line, source: .job, urgency: .low) },
             loadHistory: { [weak self] history in self?.llmService.loadConversationHistory(history) },
             clearHistory: { [weak self] in self?.llmService.clearHistory() },
             threadMode: { [weak self] in self?.currentMode.rawValue ?? AppMode.direct.rawValue },
@@ -2002,7 +2002,7 @@ class AppState: ObservableObject, AppStateProtocol {
             fieldAssistActive: { Config.fieldAssistActive },
             startedJobFiles: { FieldSessionService.shared.history.compactMap(\.jobFile) },
             speak: { [weak self] line in
-                Task { await self?.speechService.speak(line) }
+                Task { await self?.speechService.speak(line, source: .job) }
             }))
         // The blur the phone-sourced evidence goes through. Wired here rather than constructed
         // with the service, because `privacyFilter` is built alongside it and a filter that is
@@ -2037,7 +2037,7 @@ class AppState: ObservableObject, AppStateProtocol {
         jobClips.onFinished = { [weak self] finished in
             guard let self, let finished else { return }
             self.addDebugEvent("Job clip saved (\(Int(finished.duration.rounded()))s).")
-            Task { await self.speechService.speak(finished.spoken) }
+            Task { await self.speechService.speak(finished.spoken, source: .job) }
         }
     }
 
@@ -2155,7 +2155,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if Config.conversationPersistenceEnabled, !report.didRetireLocalContext {
                     self.conversationStore.appendMessage(role: "assistant", content: line)
                 }
-                await self.speechService.speak(line)
+                await self.speechService.speak(line, source: .acknowledgement)
             },
             record: { report in
                 for outcome in report.outcomes {
@@ -2483,7 +2483,7 @@ class AppState: ObservableObject, AppStateProtocol {
         owner: self,
         speak: { [weak self] line in
             guard let self else { return }
-            Task { @MainActor in await self.speechService.speak(line, urgency: .high) }
+            Task { @MainActor in await self.speechService.speak(line, source: .lifecycle, urgency: .high) }
         })
     private var autoSleepTask: Task<Void, Never>?
     private var currentLLMTask: Task<Void, Never>?
@@ -2502,8 +2502,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// path that speaks a reply or a failure line waits on it first, so neither cuts it off; when it
     /// ends with the turn still working, the thinking sound `speak` stopped comes back.
     private lazy var turnAnnouncement = TurnAnnouncement(
-        speak: { [weak self] text in
-            await self?.speechService.speak(text, urgency: .low, mirrorToHUD: true)
+        speak: { [weak self] text, source in
+            await self?.speechService.speak(text, source: source, urgency: .low, mirrorToHUD: true)
         },
         onFinished: { [weak self] in
             guard let self, self.isProcessing else { return }
@@ -2680,7 +2680,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // the model's own voice, and this TTS was talking over it in a different one.
         // Plan CG: dwell capture speaks its confirmation through the shared TTS, and its
         // frame tap rides the existing camera publisher.
-        dwellCapture.announce = { [weak self] text in await self?.speechService.speak(text) }
+        dwellCapture.announce = { [weak self] text in await self?.speechService.speak(text, source: .acknowledgement) }
         dwellCapture.start(cameraService: cameraService, privacyFilter: privacyFilter)
 
         nativeToolRouter.onLongRunningUpdate = { [weak self] elapsed in
@@ -2689,7 +2689,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard self.activeLiveInjector == nil else { return }
                 // Plan GV: waiting on the user's phone photo is not the tool being slow.
                 guard self.phonePhotos.pending == nil else { return }
-                await self.speechService.speak(AsyncDeliveryPhrasing.directModeStillWorking(elapsedSeconds: elapsed))
+                await self.speechService.speak(AsyncDeliveryPhrasing.directModeStillWorking(elapsedSeconds: elapsed), source: .progress)
             }
         }
 
@@ -2744,7 +2744,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together.
             self.glassesDisplay.showNotification(title: "Approve?", body: prompt, icon: .info, duration: 10)
             Task { @MainActor in
-                await self.speechService.speak(prompt)
+                await self.speechService.speak(prompt, source: .confirmation)
             }
         }
 
@@ -2895,7 +2895,7 @@ class AppState: ObservableObject, AppStateProtocol {
         videoRecorder.onAutoStopped = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in
-                await self.speechService.speak(message)
+                await self.speechService.speak(message, source: .statusNotice)
             }
         }
         videoRecorder.hipaaService = hipaaService
@@ -2940,7 +2940,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     longitude: self.locationService.currentLocation?.coordinate.longitude
                 )
                 // Whisper the name quietly via TTS
-                await self.speechService.speak("That's \(name).")
+                await self.speechService.speak("That's \(name).", source: .narration)
             }
         }
         // CO Item 1: a near-tie is spoken as a question, not resolved to the leader. No encounter
@@ -2949,7 +2949,7 @@ class AppState: ObservableObject, AppStateProtocol {
         faceRecognition.onAmbiguousRecognition = { [weak self] names in
             Task { @MainActor in
                 guard let self else { return }
-                await self.speechService.speak(FaceRecognitionService.ambiguityPrompt(names: names))
+                await self.speechService.speak(FaceRecognitionService.ambiguityPrompt(names: names), source: .confirmation)
             }
         }
 
@@ -3056,7 +3056,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 if let line = HandoffAnnouncer.syncLine(queuedItems: n) {
                     self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
                     self.connectivityHandoff.noteSyncLineSpoken()
-                    Task { await self.speechService.speak(line) }
+                    Task { await self.speechService.speak(line, source: .statusNotice) }
                 }
             }
             Task { await self.connectivityHandoff.pathChanged(online: online) }
@@ -3072,7 +3072,7 @@ class AppState: ObservableObject, AppStateProtocol {
             if online { self?.officeField.networkBecameAvailable() }
         }
         syncEngine.onConflict = { [weak self] _, reason in
-            Task { @MainActor in await self?.speechService.speak("Heads up — \(reason).") }
+            Task { @MainActor in await self?.speechService.speak("Heads up — \(reason).", source: .statusNotice) }
         }
         // Launch-time flush (Plan BM P1): a relaunch that comes up already-online produces no
         // reachability edge, so bind() alone would never sync work captured before the last quit.
@@ -3104,7 +3104,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Wire translation output to TTS
         liveTranslation.onTranslation = { [weak self] translation in
             Task { @MainActor in
-                await self?.speechService.speak(translation)
+                await self?.speechService.speak(translation, source: .translation)
             }
         }
         // "Connecting to Avenkin AI" and the translation disclosures (Plan HP P2 item 10), and the
@@ -3314,7 +3314,7 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return }
             self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
             Task {
-                await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
+                await self.speechService.speak(message, source: .alert, urgency: urgency, mirrorToHUD: false)
             }
         }
         proactiveAlerts.onDigestItem = { [weak self] id, message, eventDate, urgency in
@@ -3330,7 +3330,7 @@ class AppState: ObservableObject, AppStateProtocol {
         proactiveAlerts.onMeetingAgenda = { [weak self] offer in
             guard let self, self.playbookStore.offerMeetingAgenda(offer) else { return }
             Task {
-                await self.speechService.speak(String(localized: "This meeting has an agenda with \(offer.items.count) items. Say \"start the agenda\" to follow it."))
+                await self.speechService.speak(String(localized: "This meeting has an agenda with \(offer.items.count) items. Say \"start the agenda\" to follow it."), source: .alert)
             }
         }
         proactiveAlerts.onCheck = { [weak self] now in
@@ -3354,7 +3354,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Remote Agent Harness (Plan N): build the harness registry (OpenClaw + Custom URL) and
         // narrate via TTS. Gated at the tool layer by Config.agentModeEnabled.
         AgentSessionService.shared.configure(registry: makeAgentRegistry(), speak: { [weak self] line in
-            Task { @MainActor in await self?.speechService.speak(line) }
+            Task { @MainActor in await self?.speechService.speak(line, source: .progress) }
         })
         // Plan FE P4: the final result summary goes through the *reporting* speaker, so the
         // session learns whether playback completed, was talked over, or never happened — the
@@ -3362,7 +3362,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // above stays fire-and-forget: nobody acts on how a progress line landed.
         AgentSessionService.shared.speakResult = { [weak self] line in
             guard let self else { return .failed(reason: "the app was torn down") }
-            return await self.speechService.speakReporting(line)
+            return await self.speechService.speakReporting(line, source: .reply)
         }
         // The crash window: a record of what was read out survives a relaunch, so a result whose
         // playback we never saw finish is hedged rather than claimed or forgotten.
@@ -3436,7 +3436,7 @@ class AppState: ObservableObject, AppStateProtocol {
         StructuredVisionService.shared.glassesDisplay = glassesDisplay
         // Speak the AI-interaction disclosure the first time an assessment lands in a session.
         StructuredVisionService.shared.announceDisclosure = { [weak speechService] disclosure in
-            Task { await speechService?.speak(disclosure, mirrorToHUD: false) }
+            Task { await speechService?.speak(disclosure, source: .disclosure, mirrorToHUD: false) }
         }
 
         // Configure Safety Assessment (HECA) — runs through the structured-vision provider layer.
@@ -3548,7 +3548,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Memory & Recall Phase 3 — the self-improving loop: nudge (or, in Agent Mode, silently
         // save) durable facts + repeated multi-step requests. Presence-aware; off by default.
         MemoryLoopService.shared.configure(presence: presenceMonitor) { [weak self] message in
-            Task { @MainActor in await self?.speechService.speak(message) }
+            Task { @MainActor in await self?.speechService.speak(message, source: .alert) }
         }
         // A silently saved fact belongs to the conversation it was said in: that is what lets the
         // brain tell "heard twice in two conversations" from "restated in one breath".
@@ -3613,7 +3613,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.notificationDigest.ingest(source: .geofence, title: message,
                                                priority: urgency == .high ? .high : .medium)
                 Task {
-                    await self.speechService.speak(message, urgency: urgency, mirrorToHUD: false)
+                    await self.speechService.speak(message, source: .alert, urgency: urgency, mirrorToHUD: false)
                 }
             }
             // BK P1: wire the region-event forwarders (via LocationService's single delegate) and
@@ -3668,7 +3668,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in
                 // Append to visible response and queue for speech
                 self.lastResponse += chunk
-                await self.speechService.speakStreaming(chunk)
+                await self.speechService.speakStreaming(chunk, source: .reply)
             }
         }
 
@@ -4331,7 +4331,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return }
                 self.addDebugEvent(notice)
                 guard self.compatibilityNotices.claim(notice) else { return }
-                Task { await self.speechService.speak(notice) }
+                Task { await self.speechService.speak(notice, source: .statusNotice) }
             }
         cancellables.append(compatToken)
 
@@ -4480,7 +4480,7 @@ class AppState: ObservableObject, AppStateProtocol {
         notificationDigest.hudRouter = hudRouter
         notificationDigest.presence = presenceMonitor
         notificationDigest.speak = { [weak self] text in
-            Task { await self?.speechService.speak(text) }
+            Task { await self?.speechService.speak(text, source: .alert) }
         }
         // One-shot structured call — never the conversation path, so rewrites can't pollute
         // chat history. Offline/reserve skip the rewrite entirely (fallback lines only).
@@ -4553,7 +4553,7 @@ class AppState: ObservableObject, AppStateProtocol {
             UNUserNotificationCenter.current().add(request)
 
             if shouldSpeak {
-                Task { await self.speechService.speak(text, mirrorToHUD: false) }
+                Task { await self.speechService.speak(text, source: .alert, mirrorToHUD: false) }
             }
         }
         hudLauncher.digestHasContent = { [weak self] in self?.notificationDigest.hasContent ?? false }
@@ -4565,7 +4565,7 @@ class AppState: ObservableObject, AppStateProtocol {
         walkingRoute.locationService = locationService
         walkingRoute.glassesDisplay = glassesDisplay
         walkingRoute.speak = { [weak self] text, urgency in
-            Task { await self?.speechService.speak(text, urgency: urgency, mirrorToHUD: false) }
+            Task { await self?.speechService.speak(text, source: .navigation, urgency: urgency, mirrorToHUD: false) }
         }
         hudLauncher.recentDestinations = { Config.recentDestinations }
 
@@ -4576,7 +4576,7 @@ class AppState: ObservableObject, AppStateProtocol {
             camera: { [weak self] in self?.cameraService },
             filter: { [weak self] in self?.privacyFilter }))
         parkingCapture.speak = { [weak self] text in
-            Task { await self?.speechService.speak(text, mirrorToHUD: false) }
+            Task { await self?.speechService.speak(text, source: .navigation, mirrorToHUD: false) }
         }
         parkingCapture.motionHistory = { [weak self] start, end in
             await self?.motionProvider.samples(from: start, to: end) ?? []
@@ -5301,13 +5301,15 @@ class AppState: ObservableObject, AppStateProtocol {
     ///   it there; nil files it in whichever thread is active.
     func runAgentTurn(_ query: String, threadId: String? = nil, admissionID: UUID) async {
         guard Config.isOpenClawAgentActive, let router = llmService.nativeToolRouter else {
-            await speechService.speak(String(localized: "Your agent isn't set up."))
+            // A voice turn's conversation cue (Plan KL P4) is not cut off by either line here.
+            await turnAnnouncement.waitUntilSpoken()
+            await speechService.speak(String(localized: "Your agent isn't set up."), source: .errorLine)
             guard spokenTurnGate.ownsRouting(admissionID) else { return }
             await resumeListeningOrReturnToWakeWord(ensureEngine: true)
             return
         }
         isProcessing = true
-        speechService.startThinkingSound()
+        if !turnAnnouncement.isPending { speechService.startThinkingSound() }
         TurnRecorder.beginTurn()
         let outcome = await router.execute(.root(
             name: "execute",
@@ -5321,10 +5323,12 @@ class AppState: ObservableObject, AppStateProtocol {
         if Config.conversationPersistenceEnabled {
             conversationStore.appendMessage(role: "assistant", content: reply, toThread: threadId)
         }
+        await turnAnnouncement.waitUntilSpoken()
+        guard spokenTurnGate.ownsRouting(admissionID) else { return }
         isProcessing = false
         startStopListener()
         TurnRecorder.handOffToSpeech()
-        await speechService.speak(reply)
+        await speechService.speak(reply, source: .reply)
         guard spokenTurnGate.ownsRouting(admissionID) else { return }
         stopStopListener()
         TurnRecorder.endTurn()
@@ -5428,7 +5432,7 @@ class AppState: ObservableObject, AppStateProtocol {
         request = CapturedManualOutbox.shared.forPresentation(request)
         if let note = resolution.note {
             addDebugEvent(note)
-            Task { await speechService.speak(note) }
+            Task { await speechService.speak(note, source: .job) }
         }
         switch resolution.channel {
         case .email:
@@ -5591,7 +5595,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 addDebugEvent("Parts order sent by \(request.channel.label): \(order.spokenList).")
             case .failed(let reason):
                 addDebugEvent("Parts order failed: \(reason)")
-                Task { await speechService.speak("The parts order could not be sent. The request is still waiting on the job.") }
+                Task { await speechService.speak("The parts order could not be sent. The request is still waiting on the job.", source: .job) }
             case .cancelled, .saved, .handedOff:
                 addDebugEvent("Parts order not confirmed sent — the request stays waiting on the job.")
             }
@@ -5606,7 +5610,7 @@ class AppState: ObservableObject, AppStateProtocol {
             addDebugEvent("Job report sent by \(request.channel.label).")
         case .failed(let reason):
             addDebugEvent("Job report failed: \(reason)")
-            Task { await speechService.speak("The job report could not be sent. It is still saved and queued.") }
+            Task { await speechService.speak("The job report could not be sent. It is still saved and queued.", source: .job) }
         case .cancelled, .saved, .handedOff:
             addDebugEvent("Job report not confirmed sent — it stays in the queue.")
         }
@@ -5911,7 +5915,7 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing = false
             speechService.stopThinkingSound()
             TurnRecorder.handOffToSpeech()
-            await speechService.speak(response)
+            await speechService.speak(response, source: .reply)
         } catch {
             TurnRecorder.noteAbandoned()
             TurnRecorder.noteFailure(error)
@@ -5975,7 +5979,7 @@ class AppState: ObservableObject, AppStateProtocol {
             speechService.stopThinkingSound()
             startStopListener()
             TurnRecorder.handOffToSpeech()
-            await speechService.speak(response)
+            await speechService.speak(response, source: .reply)
             stopStopListener()
 
             let generator = UINotificationFeedbackGenerator()
@@ -6002,7 +6006,7 @@ class AppState: ObservableObject, AppStateProtocol {
                    gap: llmService.credentialGap(behind: error),
                    perMinute: llmService.perMinuteNotice(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
-                await speechService.speak(line)
+                await speechService.speak(line, source: .errorLine)
             }
         }
         TurnRecorder.endTurn()
@@ -6060,7 +6064,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // about narration on the lens — it removes an accidental yes so the question stays open,
         // and whenever it is answered it inherits the same precedence.
         narration.speakUtterance = { [weak self] text in
-            await self?.speechService.speak(text, mirrorToHUD: false)
+            await self?.speechService.speak(text, source: .narration, mirrorToHUD: false)
         }
         narration.isTTSBusy = { [weak self] in self?.speechService.isSpeaking ?? false }
 
@@ -6068,7 +6072,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // `.medium` urgency — it is not an emergency, but it must not be read in the same flat
         // register as the descriptions whose absence it is explaining.
         narration.speakNotice = { [weak self] text in
-            await self?.speechService.speak(text, urgency: .medium, mirrorToHUD: false)
+            await self?.speechService.speak(text, source: .narration, urgency: .medium, mirrorToHUD: false)
         }
         narration.cameraAvailability = { [weak self] in
             self?.cameraService.availability(of: .sceneNarration) ?? .available
@@ -6182,7 +6186,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     memoryContext: memoryContextForPrompt(query: text)
                 )
                 lastResponse = response
-                await speechService.speak(response)
+                await speechService.speak(response, source: .reply)
             } catch {
                 speechService.stopThinkingSound()
                 errorMessage = error.localizedDescription
@@ -6205,7 +6209,7 @@ class AppState: ObservableObject, AppStateProtocol {
             do {
                 let response = try await llmService.sendMessage(command, locationContext: nil, memoryContext: nil)
                 lastResponse = response
-                await speechService.speak(response)
+                await speechService.speak(response, source: .reply)
             } catch {
                 speechService.stopThinkingSound()
                 errorMessage = error.localizedDescription
@@ -6306,7 +6310,7 @@ class AppState: ObservableObject, AppStateProtocol {
             speechService.stopThinkingSound()
             startStopListener()
             TurnRecorder.handOffToSpeech()
-            await speechService.speak(response)
+            await speechService.speak(response, source: .reply)
             stopStopListener()
 
             let generator = UINotificationFeedbackGenerator()
@@ -6333,7 +6337,7 @@ class AppState: ObservableObject, AppStateProtocol {
                    gap: llmService.credentialGap(behind: error),
                    perMinute: llmService.perMinuteNotice(behind: error)) {
                 await turnAnnouncement.waitUntilSpoken()
-                await speechService.speak(line)
+                await speechService.speak(line, source: .errorLine)
             }
         }
         TurnRecorder.endTurn()
@@ -6537,7 +6541,7 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { @MainActor in await escalation.endLiveView() }
         let message = ExpertStreamMedicalPolicy.endedMessage(externalCall: externalCall)
         NoticeCenter.shared.post(message, severity: .warning, source: .camera)
-        Task { @MainActor in await self.speechService.speak(message) }
+        Task { @MainActor in await self.speechService.speak(message, source: .statusNotice) }
     }
 
     private func endBroadcast(_ reason: BroadcastGoLive.EndReason) {
@@ -6550,7 +6554,7 @@ class AppState: ObservableObject, AppStateProtocol {
     private func tellWearerAboutBroadcast(_ message: String) {
         broadcastService.notices.send(message)
         NoticeCenter.shared.post(message, severity: .warning, source: .camera)
-        Task { @MainActor in await self.speechService.speak(message) }
+        Task { @MainActor in await self.speechService.speak(message, source: .statusNotice) }
     }
 
     /// Whether the glasses camera is giving a picture, starting it if it is not. The claim is
@@ -6679,7 +6683,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         chatReadback.speak = { [weak self] item in
             // Low urgency; the built-in HUD mirror doubles as the plan's ambient chat line.
-            await self?.speechService.speak(item.text, urgency: .low)
+            await self?.speechService.speak(item.text, source: .alert, urgency: .low)
         }
         chatReadback.start(channel: channel, rules: Config.broadcastChatRules)
     }
@@ -6752,7 +6756,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Surface anything the supervisor held while the user was away, on re-engagement (TTS + HUD).
         presenceMonitor.onReEngage = { [weak self] in
             guard let self, let line = self.heldRecommendations.drainSummary() else { return }
-            Task { @MainActor in await self.speechService.speak(line) }
+            Task { @MainActor in await self.speechService.speak(line, source: .alert) }
             self.glassesDisplay.showNotification(title: "Held while away", body: line, icon: .info)
         }
 
@@ -6953,7 +6957,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // is nothing further coming and the wearer is otherwise left waiting on silence.
                 if interrupts { self.speechService.stopSpeaking() }
                 Task { @MainActor in
-                    await self.speechService.speak(line, urgency: interrupts ? .high : .low)
+                    await self.speechService.speak(line, source: .lifecycle, urgency: interrupts ? .high : .low)
                 }
             })
         audibleLifecycle = lifecycle
@@ -7340,7 +7344,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.speechService.stopSpeaking()
                 self.inConversation = false
                 self.lastResponse = "Goodbye!"
-                await self.speechService.speak("Goodbye!")
+                await self.speechService.speak("Goodbye!", source: .acknowledgement)
                 await self.returnToWakeWord()
                 return true
             },
@@ -7416,7 +7420,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             guard self.conversationReset.isCurrent(turnGeneration) else { return }
                             // Start wake word listener during TTS so user can say "stop"
                             self.startStopListener()
-                            await self.speechService.speak(response)
+                            await self.speechService.speak(response, source: .reply)
                             self.stopStopListener()
                         },
                         onCancelled: {
@@ -7438,7 +7442,7 @@ class AppState: ObservableObject, AppStateProtocol {
                                 PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
                                 self.lastResponse = "Photo failed: \(error.localizedDescription)"
                             }
-                            if let line { await self.speechService.speak(line) }
+                            if let line { await self.speechService.speak(line, source: .errorLine) }
                         },
                         finish: {
                             self.isProcessing = false
@@ -7734,7 +7738,17 @@ class AppState: ObservableObject, AppStateProtocol {
                       isOnDevice: to.map { LLMService.isOnDeviceProvider($0.llmProvider) } ?? false),
             failure: failure, gap: gap,
             perMinute: error.flatMap { PerMinuteNotice.from($0, provider: from?.llmProvider) })
-        turnAnnouncement.announce(phrase)
+        turnAnnouncement.announce(phrase, source: .switchNotice)
+    }
+
+    /// Plan KL P4 — a voice turn's conversation cue (`speakConversationCueIfDue`'s line), started
+    /// through `turnAnnouncement` instead of awaited, so the turn is classified and its model
+    /// started while the line plays. The photo command and the realtime sessions still await
+    /// `speakConversationCueIfDue`: the photo's line comes before its shutter tone by design, and
+    /// a realtime session must not open its own audio over it.
+    func announceConversationCueIfDue() {
+        AIDisclosureLedger.shared.announceConversationCue(cueEnabled: Config.aiConnectionCueEnabled,
+                                                          through: turnAnnouncement)
     }
 
     /// Plan CG: render an explicit multiple-choice reply as band-selectable HUD buttons.
@@ -7763,9 +7777,12 @@ class AppState: ObservableObject, AppStateProtocol {
             conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
                                             toThread: threadId)
         }
+        // A conversation cue still playing finishes before the answer takes the speaker.
+        await turnAnnouncement.waitUntilSpoken()
+        guard spokenTurnGate.ownsRouting(admissionID) else { return }
         startStopListener()
         TurnRecorder.handOffToSpeech()
-        await speechService.speak(reply)
+        await speechService.speak(reply, source: .phoneAnswer)
         guard spokenTurnGate.ownsRouting(admissionID) else { return }
         stopStopListener()
         isProcessing = false
@@ -7921,8 +7938,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // phone's own model or the cloud — so the first answer of the launch is preceded by
         // "Connecting to Avenkin AI." Here, before any thinking sound starts; once per launch, so
         // every later turn passes straight through.
-        await speakConversationCueIfDue()
-        guard spokenTurnGate.ownsRouting(admissionID) else { return }
+        //
+        // Plan KL P4: started, not awaited. The once-ever introduction is 94 spoken characters,
+        // about six seconds, and the turn used to sit through all of it before being classified.
+        // It now plays alongside the work, as the switch notice does: every path below that
+        // speaks waits on `turnAnnouncement` first, so the disclosure is still heard whole.
+        announceConversationCueIfDue()
 
         // A temple tap assigned to "ask my agent" opened this turn (Plan GJ): the utterance goes to
         // the agent. After the stop/goodbye handlers, so those still end the conversation.
@@ -7948,6 +7969,9 @@ class AppState: ObservableObject, AppStateProtocol {
         if classification.directToolCall?.toolName == "new_topic" {
             isProcessing = true
             TurnRecorder.beginTurn()
+            // The reset stops speech and says its own line: the conversation cue finishes first.
+            await turnAnnouncement.waitUntilSpoken()
+            guard spokenTurnGate.ownsRouting(admissionID) else { return }
             await conversationReset.requestReset(source: .voiceCommand)
             guard spokenTurnGate.ownsRouting(admissionID) else { return }
             isProcessing = false
@@ -7998,9 +8022,12 @@ class AppState: ObservableObject, AppStateProtocol {
                                                     toThread: turnThreadId)
                 }
 
+                // The tool ran while the conversation cue played; the answer waits for it to end.
+                await turnAnnouncement.waitUntilSpoken()
+                guard spokenTurnGate.ownsRouting(admissionID) else { return }
                 startStopListener()
                 TurnRecorder.handOffToSpeech()
-                await speechService.speak(result)
+                await speechService.speak(result, source: .phoneAnswer)
                 guard spokenTurnGate.ownsRouting(admissionID) else { return }
                 stopStopListener()
             } else {
@@ -8111,7 +8138,8 @@ class AppState: ObservableObject, AppStateProtocol {
             if Config.narrateModelSwitchesEnabled, let dest = tierModel {
                 didNarrateModelSwitchThisTurn = true
                 turnAnnouncement.announce(
-                    ModelSwitchNarrator.routingPhrase(to: .init(name: dest.name, isLocal: dest.llmProvider == .local)))
+                    ModelSwitchNarrator.routingPhrase(to: .init(name: dest.name, isLocal: dest.llmProvider == .local)),
+                    source: .switchNotice)
             }
         case .keepCurrent:
             break
@@ -8302,7 +8330,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
-                    await speechService.speak(response)
+                    await speechService.speak(response, source: .reply)
                     stopStopListener()
                 },
                 onCancelled: { [self] in
@@ -8317,7 +8345,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // about what happened. Off ⇒ the generic line.
                     await speechService.speak(ModelSwitchNarrator.failureLine(
                         error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error),
-                        perMinute: llmService.perMinuteNotice(behind: error)))
+                        perMinute: llmService.perMinuteNotice(behind: error)), source: .errorLine)
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
@@ -8384,7 +8412,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true)
             }
             lastResponse = reply
-            if speakResponse { await speechService.speak(reply) }
+            if speakResponse { await speechService.speak(reply, source: .job) }
             return
         }
 
@@ -8422,7 +8450,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
                                                     toThread: turnThreadId)
                 }
-                if speakResponse { await speechService.speak(reply) }
+                if speakResponse { await speechService.speak(reply, source: .phoneAnswer) }
                 return
             }
             handoffPlan = connectivityHandoff.modelPlan()
@@ -8434,7 +8462,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true,
                                                 toThread: turnThreadId)
             }
-            if speakResponse { await speechService.speak(line) }
+            if speakResponse { await speechService.speak(line, source: .phoneAnswer) }
             return
         }
         var phoneOriginalModelId: String?
@@ -8557,7 +8585,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         return
                     }
                     startStopListener()
-                    await speechService.speak(response)
+                    await speechService.speak(response, source: .reply)
                     stopStopListener()
                 },
                 onCancelled: { [self] in
@@ -8577,7 +8605,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         // BK P2c: speak the real exhaustion reason, not the generic line.
                         await speechService.speak(ModelSwitchNarrator.failureLine(
                             error, narrate: Config.narrateModelSwitchesEnabled, gap: llmService.credentialGap(behind: error),
-                            perMinute: llmService.perMinuteNotice(behind: error)))
+                            perMinute: llmService.perMinuteNotice(behind: error)), source: .errorLine)
                     }
                 },
                 finish: { [self] in
@@ -8825,7 +8853,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     toolName: "remote_invoke", summary: summary)
             },
             announce: { [weak self] text in
-                await self?.speechService.speak(text)
+                await self?.speechService.speak(text, source: .agent)
             },
             capturePhoto: { [weak self] in
                 guard let self else { throw RemoteInvokeError.unavailable }
@@ -8840,7 +8868,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 // this correction tells them.
                 if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                     await self.speechService.speak(
-                        "That photo came from the phone camera — the glasses weren't available.")
+                        "That photo came from the phone camera — the glasses weren't available.", source: .statusNotice)
                 }
             },
             startAudioRecording: { [weak self] in
@@ -8880,7 +8908,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self?.ambientCaptions.stop()
             },
             speak: { [weak self] text in
-                await self?.speechService.speak(text)
+                await self?.speechService.speak(text, source: .agent)
             },
             displayShow: { [weak self] text, icon in
                 guard let self, self.glassesDisplay.deviceSupportsDisplay() else { return false }
@@ -9343,7 +9371,7 @@ class AppState: ObservableObject, AppStateProtocol {
             announceResumingMedia: { [self] in
                 // Announce what's resuming (e.g. "Resuming Hardcore History by Dan Carlin")
                 guard let media = resumedMedia else { return false }
-                await speechService.speak("Resuming \(media.displayName).")
+                await speechService.speak("Resuming \(media.displayName).", source: .acknowledgement)
                 return true
             },
             settle: {

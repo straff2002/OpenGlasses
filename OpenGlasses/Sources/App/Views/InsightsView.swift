@@ -46,7 +46,7 @@ struct InsightsView: View {
                 Section {
                     Button {
                         let text = InsightsService.shared.recapText(report, days: days)
-                        Task { await appState.speechService.speak(text) }
+                        Task { await appState.speechService.speak(text, source: .readAloud) }
                     } label: {
                         Label("Speak recap", systemImage: "speaker.wave.2.fill")
                     }

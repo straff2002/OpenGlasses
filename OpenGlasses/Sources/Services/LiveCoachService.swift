@@ -216,7 +216,7 @@ final class LiveCoachService: ObservableObject {
         // Safety cap on session duration.
         if let startedAt, Date().timeIntervalSince(startedAt) >= maxDuration {
             stop()
-            await tts.speak("Coaching session complete.", urgency: .low)
+            await tts.speak("Coaching session complete.", source: .coaching, urgency: .low)
             return
         }
         if tts.isSpeaking { return }
@@ -240,7 +240,7 @@ final class LiveCoachService: ObservableObject {
         if case .spent(let announce) = pacer.checkBudget(now: now) {
             if announce {
                 PrivacyLog.vision(.liveCoach, .budgetSpent, count: pacer.budget.limit)
-                await tts.speak(LiveCoachPacer.spentLine, urgency: .low)
+                await tts.speak(LiveCoachPacer.spentLine, source: .coaching, urgency: .low)
             }
             return
         }
@@ -260,7 +260,7 @@ final class LiveCoachService: ObservableObject {
         if let last = lastAdvice, Self.isSimilar(advice, last) { return }
 
         lastAdvice = advice
-        await tts.speak(advice, urgency: .medium)
+        await tts.speak(advice, source: .coaching, urgency: .medium)
     }
 
     /// A coaching frame goes to a cloud model every few seconds for as long as the session runs,

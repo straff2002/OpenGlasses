@@ -29,6 +29,6 @@ extension TextToSpeechService: ScanAssistSpeaking {
     func speakCue(_ text: String) async {
         // `.low` deliberately: a reminder the wearer configured for themselves is not urgent, and
         // `.high` would prefix it with "Important:" every thirty seconds for five minutes.
-        await speak(text, urgency: .low)
+        await speak(text, source: .navigation, urgency: .low)
     }
 }

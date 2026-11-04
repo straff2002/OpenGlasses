@@ -41,8 +41,9 @@ protocol StreamedSpeechBackend: AnyObject {
     /// playing, stop the thinking sound, hold other audio).
     func beginStreamedPlayback() async
     /// Play one prepared sentence to its end, or until it is stopped, and say how it ended.
-    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio,
-                              engine: TTSEngine) async -> SpeechDeliveryOutcome
+    /// `source` is the reply's own (Plan KL P4), for the `speaking` log line.
+    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
+                              source: SpeechSource) async -> SpeechDeliveryOutcome
     /// The reply is over, however it ended.
     func streamedReplyDidEnd(_ queue: StreamedReplyQueue, record: StreamedReplyRecord,
                              playbackBegan: Bool) async
@@ -60,6 +61,8 @@ protocol StreamedSpeechBackend: AnyObject {
 final class StreamedReplyQueue {
 
     private weak var backend: (any StreamedSpeechBackend)?
+    /// What kind of line every sentence of this reply is (Plan KL P4), logged as each one plays.
+    let source: SpeechSource
     private var schedule: StreamedReplySchedule
     private let isCurrent: @MainActor () -> Bool
     private var audio: [Int: StreamedSpeechAudio] = [:]
@@ -76,10 +79,11 @@ final class StreamedReplyQueue {
     /// Called once, when the first sentence is about to play.
     var onPlaybackBegan: (() -> Void)?
 
-    init(backend: any StreamedSpeechBackend,
+    init(backend: any StreamedSpeechBackend, source: SpeechSource,
          prefetchDepth: Int = StreamedReplySchedule.defaultPrefetchDepth,
          isCurrent: @escaping @MainActor () -> Bool = { true }) {
         self.backend = backend
+        self.source = source
         self.schedule = StreamedReplySchedule(prefetchDepth: prefetchDepth)
         self.isCurrent = isCurrent
     }
@@ -213,7 +217,8 @@ final class StreamedReplyQueue {
             return
         }
         let text = schedule.items[index].text
-        let outcome = await backend.playStreamedSentence(text, audio: prepared, engine: engine)
+        let outcome = await backend.playStreamedSentence(text, audio: prepared, engine: engine,
+                                                     source: source)
         guard !schedule.isCancelled else { return }
         switch outcome {
         case .interrupted(let by):

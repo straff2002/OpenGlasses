@@ -218,7 +218,7 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
     func testAnInjectedSuppressionIsReportedWithItsReasonAndNothingIsSpoken() async {
         let service = TextToSpeechService()
         service.suppressionCheck = { .silentMode }
-        let outcome = await service.speakReporting("the agent finished")
+        let outcome = await service.speakReporting("the agent finished", source: .reply)
         XCTAssertEqual(outcome, .suppressed(reason: .silentMode))
         XCTAssertFalse(service.isSpeaking)
     }
@@ -228,7 +228,7 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
                        .backgrounded, .routeHeld] {
             let service = TextToSpeechService()
             service.suppressionCheck = { reason }
-            let outcome = await service.speakReporting("result")
+            let outcome = await service.speakReporting("result", source: .reply)
             XCTAssertEqual(outcome, .suppressed(reason: reason))
         }
     }
@@ -236,7 +236,7 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
     func testASessionHoldingTheRouteWithholdsSpeech() async {
         let service = TextToSpeechService()
         service.routeHeld = { true }
-        let outcome = await service.speakReporting("result")
+        let outcome = await service.speakReporting("result", source: .reply)
         XCTAssertEqual(outcome, .suppressed(reason: .routeHeld))
         XCTAssertTrue(outcome.owesReplay)
     }
@@ -244,7 +244,7 @@ final class SpeechDeliveryOutcomeTests: XCTestCase {
     func testAnEmptyUtteranceIsAFailureNotACompletion() async {
         let service = TextToSpeechService()
         service.suppressionCheck = { nil }
-        guard case .failed = await service.speakReporting("") else {
+        guard case .failed = await service.speakReporting("", source: .reply) else {
             return XCTFail("there is nothing honest to call a completion here")
         }
     }

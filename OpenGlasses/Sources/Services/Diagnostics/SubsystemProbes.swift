@@ -59,7 +59,7 @@ enum SubsystemProbes {
                 }
             },
             SubsystemTest(id: "tts", name: "Text to Speech", icon: "speaker.wave.2") { @MainActor in
-                await appState.speechService.speak("Test okay", urgency: .low, mirrorToHUD: false)
+                await appState.speechService.speak("Test okay", source: .diagnostic, urgency: .low, mirrorToHUD: false)
                 return .pass("Spoken")
             },
         ]

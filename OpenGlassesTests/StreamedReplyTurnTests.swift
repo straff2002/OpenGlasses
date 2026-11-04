@@ -16,7 +16,7 @@ final class RecordingStreamedSpeech: StreamedSpeechBackend, StreamedReplySpeakin
     var onPlay: ((Int, String) -> Void)?
 
     func beginStreamedReply(isCurrent: @escaping @MainActor () -> Bool) -> StreamedReplyQueue {
-        let queue = StreamedReplyQueue(backend: self, isCurrent: isCurrent)
+        let queue = StreamedReplyQueue(backend: self, source: .reply, isCurrent: isCurrent)
         active = queue
         return queue
     }
@@ -32,8 +32,8 @@ final class RecordingStreamedSpeech: StreamedSpeechBackend, StreamedReplySpeakin
 
     func beginStreamedPlayback() async {}
 
-    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio,
-                              engine: TTSEngine) async -> SpeechDeliveryOutcome {
+    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
+                              source: SpeechSource) async -> SpeechDeliveryOutcome {
         played.append(text)
         onPlay?(played.count, text)
         await Task.yield()
@@ -279,9 +279,9 @@ final class StreamedReplyTurnTests: XCTestCase {
         let service = TextToSpeechService(synthesizerFactory: { synth })
         service.suppressionCheck = { nil }
 
-        await service.speakStreaming("The gap should be 2.")
-        await service.speakStreaming("5 on each side today. Expect light")
-        await service.speakStreaming(" winds after three.")
+        await service.speakStreaming("The gap should be 2.", source: .reply)
+        await service.speakStreaming("5 on each side today. Expect light", source: .reply)
+        await service.speakStreaming(" winds after three.", source: .reply)
         await service.flushStreamBuffer()
 
         XCTAssertEqual(synth.spoken, ["The gap should be 2.5 on each side today.",
@@ -301,7 +301,7 @@ final class StreamedReplyTurnTests: XCTestCase {
         let service = TextToSpeechService(synthesizerFactory: { synth })
         service.suppressionCheck = { nil }
 
-        let reply = service.beginStreamedReply()
+        let reply = service.beginStreamedReply(source: .reply)
         let sentences = ["The forecast for Auckland is sunny today.",
                          "Expect light winds after three.",
                          "Take a hat with you."]

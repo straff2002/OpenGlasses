@@ -473,7 +473,7 @@ private struct JobTabContent: View {
     private func readBackTheJob() {
         readBack = model.readBackLines
         if let speech = model.readBackSpeech {
-            Task { await appState.speechService.speak(speech) }
+            Task { await appState.speechService.speak(speech, source: .readAloud) }
         }
     }
 }

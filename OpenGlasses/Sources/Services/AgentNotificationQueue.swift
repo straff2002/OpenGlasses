@@ -210,7 +210,7 @@ class AgentNotificationQueue: ObservableObject {
 
         let liveInjector = appState.activeLiveInjector
         let liveIdentity = liveInjector?.liveSessionIdentity
-        await appState.speechService.speak(spokenMessage)
+        await appState.speechService.speak(spokenMessage, source: .agent)
         appState.lastResponse = message
         noteToldYou(message: message, source: source)
         if let liveInjector, appState.activeLiveInjector === liveInjector,

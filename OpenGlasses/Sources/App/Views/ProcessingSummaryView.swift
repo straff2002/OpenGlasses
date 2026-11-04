@@ -74,7 +74,7 @@ struct ProcessingSummaryView: View {
                     speaking = true
                     Task { @MainActor in
                         if let speech = AppStateProvider.shared?.speechService {
-                            _ = await speech.speakReporting(model.summary.spoken, urgency: .high)
+                            _ = await speech.speakReporting(model.summary.spoken, source: .readAloud, urgency: .high)
                         }
                         speaking = false
                     }

@@ -927,7 +927,7 @@ struct FieldAssistSettingsView: View {
                 let model = TaskSectionModel(host: sessionService)
                 readBack = model.readBack
                 if let speech = model.readBackSpeech {
-                    Task { await appState.speechService.speak(speech) }
+                    Task { await appState.speechService.speak(speech, source: .readAloud) }
                 }
             }
             .buttonStyle(.bordered)

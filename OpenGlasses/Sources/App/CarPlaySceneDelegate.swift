@@ -225,7 +225,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             switch selection {
             case .resumeActiveJob(let threadId):
                 guard let threadId else {
-                    await appState.speechService.speak(spoken)
+                    await appState.speechService.speak(spoken, source: .job)
                     return
                 }
                 // Through the chokepoint, never by assigning `activeThreadId` — resuming the job's
@@ -235,15 +235,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             case .speakPastJob:
                 // Read-only: what a past row does with Field Assist off, where a debrief would
                 // have nothing to write onto.
-                await appState.speechService.speak(spoken)
+                await appState.speechService.speak(spoken, source: .job)
             case .debriefPastJob(let sessionId):
                 // Through the flow, which names the job out loud and binds the turns to *that*
                 // job's conversation. Nothing is written until the technician says "save".
                 let started = await appState.guidedJobFlow.startDebrief(jobId: sessionId)
                 if started { self.startVoice() }
-                else { await appState.speechService.speak(spoken) }
+                else { await appState.speechService.speak(spoken, source: .job) }
             case .readSendQueue:
-                await appState.speechService.speak(appState.jobSends.spokenQueue())
+                await appState.speechService.speak(appState.jobSends.spokenQueue(), source: .job)
             case .openUpcomingJob(let id):
                 self.pushUpcomingJob(id: id, spoken: spoken)
             }
@@ -273,7 +273,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
         let template = CPListTemplate(title: job.title, sections: [CPListSection(items: items)])
         interfaceController?.pushTemplate(template, animated: true, completion: nil)
-        Task { await appState.speechService.speak(spoken) }
+        Task { await appState.speechService.speak(spoken, source: .job) }
     }
 
     private func performUpcoming(_ action: CarPlayJobsList.UpcomingAction) {
@@ -288,7 +288,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                       let handoff = MapsLauncher.plan(destination: destination) else { return }
                 MapsLauncher.open(handoff)
                 // Only a fallback is worth saying: the maps app appearing is the confirmation.
-                if handoff.unavailable != nil { await appState.speechService.speak(handoff.spoken) }
+                if handoff.unavailable != nil { await appState.speechService.speak(handoff.spoken, source: .job) }
             }
         }
     }

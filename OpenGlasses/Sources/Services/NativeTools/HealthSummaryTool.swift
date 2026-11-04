@@ -63,7 +63,7 @@ final class HealthSummaryTool: NativeTool {
             guard let speech = AppStateProvider.shared?.speechService else {
                 return .failed(reason: "no speech service")
             }
-            return await speech.speakReporting(text, onDeviceOnly: true)
+            return await speech.speakReporting(text, source: .reply, onDeviceOnly: true)
         }
         let clockForMotion = clock
         self.motionSteps = motionSteps ?? { await MotionStepCounter.todaySteps(now: clockForMotion()) }
