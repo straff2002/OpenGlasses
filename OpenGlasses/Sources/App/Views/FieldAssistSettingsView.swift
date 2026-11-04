@@ -1129,10 +1129,6 @@ struct FieldAssistSettingsView: View {
                 Text(FieldAssistPaywallCopy.lockedDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if FieldAssistEntitlement.shared.has(.personalManuals) && !FieldAssistEntitlement.shared.has(.fieldWork) {
-                    Text("Your My Manuals subscription covers your own manuals. Field Assist adds jobs, trade references and professional tools.")
-                        .font(.caption)
-                }
                 switch entitlementState {
                 case .expired(let date):
                     if license.activeLicense != nil || UserDefaults.standard.string(forKey: LicenseService.storageKey) != nil {
@@ -1205,7 +1201,6 @@ struct FieldAssistSettingsView: View {
             Text("Subscription renews automatically. Cancel anytime in iPhone Settings → [your name] → Subscriptions.")
             Link("Privacy Policy", destination: PublicSite.privacy)
             Link("Terms of Use", destination: PublicSite.termsOfUse)
-            NavigationLink("Only need your own manuals? See My Manuals.") { MyManualsView().environmentObject(appState) }
         }
     }
 
