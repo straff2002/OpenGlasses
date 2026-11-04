@@ -992,8 +992,10 @@ class LLMService: ObservableObject {
                 guard let self else {
                     return .failedBeforeExecution(reason: "Service unavailable")
                 }
-                // Plan KL P1: counted before anything else, so a retry can tell a call was made.
+                // Plan KL P1: counted before anything else, so a retry can tell a call was made —
+                // and entered in the turn's ledger, so a hop can tell what it did (P2).
                 self.toolCallsDispatched += 1
+                let ledgerID = self.ledgerDispatched(name, arguments: AttemptToolLedger.canonicalArguments(args))
                 // Plan IU safety net: a call to a tool the model may have but whose definition this
                 // round did not carry is not run on arguments written without the schema. Nothing
                 // happens, the definition rides on the next request, and the model calls again.
@@ -1004,7 +1006,10 @@ class LLMService: ObservableObject {
                     TurnRecorder.noteToolCall(name: self.nativeToolRouter?.registry.tool(named: name) != nil
                                                   ? name : "unrecognised tool",
                                               outcome: "not declared")
-                    return .failedBeforeExecution(reason: ToolExposurePolicy.undeclaredCallMessage(name))
+                    let refused = ToolExecutionOutcome.failedBeforeExecution(
+                        reason: ToolExposurePolicy.undeclaredCallMessage(name))
+                    self.turnToolLedger.finished(ledgerID, outcome: refused)
+                    return refused
                 }
                 let toolTraceID = TurnRecorder.toolTraceID
                 let outcome: ToolExecutionOutcome
@@ -1021,6 +1026,7 @@ class LLMService: ObservableObject {
                 } else {
                     outcome = .failedBeforeExecution(reason: "No tool handler available")
                 }
+                self.turnToolLedger.finished(ledgerID, outcome: outcome)
                 // Support trace: only web_search keeps a bounded, redacted query and result.
                 // Unknown tool names and all other arguments/outputs remain unrecorded.
                 let known = self.nativeToolRouter?.registry.tool(named: name) != nil
@@ -1079,6 +1085,11 @@ class LLMService: ObservableObject {
         lastAttemptFittable = false
         lastAttemptCarriedTools = true
         lastChatRequestShape = nil
+        // Plan KL P2: a turn the chain does not own starts its own ledger.
+        if !cascadeTurnInFlight {
+            turnToolLedger.reset()
+            carryForwardFromHop = false
+        }
         isProcessing = true
         beginTurnScope()
         defer {
@@ -1357,6 +1368,18 @@ class LLMService: ObservableObject {
         // for every provider, since the history is shared and the next turn may be anyone's.
         conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
 
+        // Plan KL P2: an attempt after a hop over read-only tools carries their results as already
+        // fetched, in the turn's instructions — the uncached tail where there is one — so the
+        // window budget and the per-minute fit below both count it.
+        let carriedBlock = carriedToolBlock(onDevice: isOnDevice, provider: provider)
+        if let carriedBlock {
+            if let tail = volatileTail {
+                volatileTail = tail + "\n\n" + carriedBlock
+            } else {
+                fullPrompt += "\n\n" + carriedBlock
+            }
+        }
+
         // Plan KL P1: a model whose account stated its tokens-a-minute allowance gets a request
         // fitted to it before it is sent — tools on demand, then the condensed instructions, then
         // a shorter history — or, when nothing fits, no request at all.
@@ -1368,7 +1391,8 @@ class LLMService: ObservableObject {
                    allowance, config: modelConfig, exposure: exposure, prompt: fullPrompt,
                    volatileTail: volatileTail, turn: text, includeOpenClaw: includeOpenClaw,
                    nativeToolNames: nativeToolNames, locationContext: locationContext,
-                   memoryContext: memoryContext, hasImage: turnImage != nil, device: device) {
+                   memoryContext: memoryContext, hasImage: turnImage != nil, device: device,
+                   carriedBlock: carriedBlock) {
                 fullPrompt = fitted.prompt
                 volatileTail = fitted.volatileTail
                 exposureTurn = fitted.exposure
@@ -1597,6 +1621,93 @@ class LLMService: ObservableObject {
     /// and is never sent again.
     private(set) var toolCallsDispatched = 0
 
+    // MARK: - A hop keeps the work (Plan KL P2)
+
+    /// Every model tool call of the turn, across its attempts, with what its tool declares it does
+    /// (`HopAfterTools`). Reset when a turn starts; tool names, arguments and results stay in memory
+    /// for the next attempt's request and are never logged.
+    private(set) var turnToolLedger = AttemptToolLedger()
+    /// Set when the chain hopped after read-only tools: the next attempt's request carries their
+    /// results as already fetched.
+    private var carryForwardFromHop = false
+    /// Whether `sendMessageCascading` owns the ledger for the turn in flight. A `sendMessage`
+    /// called on its own starts a fresh one.
+    private var cascadeTurnInFlight = false
+
+    /// The effect a tool call is entered with: its native tool's declaration, or — for an MCP
+    /// server's tool, the gateway, a name the registry does not hold — the conservative default,
+    /// which counts as a change.
+    private func declaredEffect(ofTool name: String) -> ToolEffect {
+        (nativeToolRouter?.registry.tool(named: name)?.executionSemantics
+            ?? ToolExecutionSemantics.conservativeDefault).effect
+    }
+
+    /// Enter a model tool call in the turn's ledger as it is dispatched; returns its id.
+    private func ledgerDispatched(_ name: String, arguments: String) -> Int {
+        turnToolLedger.dispatched(tool: name, arguments: arguments, effect: declaredEffect(ofTool: name))
+    }
+
+    /// The decision for a hop the chain is about to make (Plan KL P2). Returns normally to hop —
+    /// marking the next attempt to carry read-only results when there are any — and throws to end
+    /// the turn instead: the overflow's own error after any tool, as before, or `TurnEnded` when a
+    /// tool that may have changed something has run.
+    private func decideHopAfterTools(after error: Error) throws {
+        let ledger = turnToolLedger
+        let overflow = HopAfterTools.isOverflow(error)
+        let decision = HopAfterTools.decide(toolsRan: ledger.toolsRan, overflow: overflow)
+        guard decision != .restart else {
+            carryForwardFromHop = false
+            return
+        }
+        PrivacyLog.model(.hopAfterTools, count: ledger.ran.count, detail: PrivacyToken(decision.rawValue),
+                         reason: PrivacyToken(ledger.toolsRan.rawValue), error: SafeErrorSummary(error))
+        let registry = nativeToolRouter?.registry
+        for ran in ledger.ranTools {
+            PrivacyLog.model(.hopToolRan,
+                             detail: PrivacyToken(registry?.tool(named: ran.tool) != nil ? ran.tool : "other"),
+                             reason: PrivacyToken(ran.effect.rawValue))
+        }
+        switch decision {
+        case .restart:
+            carryForwardFromHop = false
+        case .carryForward:
+            carryForwardFromHop = true
+        case .endTurn:
+            carryForwardFromHop = false
+            if overflow { throw error }
+            throw HopAfterTools.TurnEnded(
+                tools: ledger.changingTools.map {
+                    HopAfterTools.spokenToolName($0, isNative: registry?.tool(named: $0) != nil)
+                },
+                underlying: SafeErrorSummary(error))
+        }
+    }
+
+    /// The already-fetched block a carried attempt sends, bounded for the model it goes to, and
+    /// logged by its counts. Nil when the attempt is not carrying.
+    private func carriedToolBlock(onDevice: Bool, provider: LLMProvider) -> String? {
+        guard carryForwardFromHop,
+              let block = turnToolLedger.carriedBlock(
+                limit: onDevice ? HopAfterTools.onDeviceBlockLimit : HopAfterTools.cloudBlockLimit,
+                excluding: [ToolLookupTool.toolName],
+                wrap: { self.wrapToolResultForModel(toolName: $0, content: $1) })
+        else { return nil }
+        PrivacyLog.model(.hopAfterTools, provider: PrivacyToken(provider.rawValue), count: block.carried,
+                         total: block.omitted, characters: block.text.count,
+                         detail: PrivacyToken("carriedBlock"), reason: block.cut > 0 ? PrivacyToken("cut") : nil)
+        return block.text
+    }
+
+    /// The hop's log line: where it went, the class, and the error it was from (Plan KL P2).
+    @discardableResult
+    nonisolated static func logCascadeSwitch(to configurationID: String,
+                                             failure: ModelFallbackChain.FailureClass,
+                                             error: Error?) -> PrivacyEvent {
+        PrivacyLog.model(.cascadeSwitched, configuration: PrivateIdentifier(configurationID),
+                         detail: PrivacyToken.caseName(of: failure),
+                         error: error.map { SafeErrorSummary($0) })
+    }
+
     /// The configuration the last attempt was sent to, as resolved for the turn (a spend cap's
     /// cheaper model, a job route's model), and whether its request could be fitted: it carried
     /// tool schemas on demand-capable exposure, on a provider the fit serves.
@@ -1668,7 +1779,7 @@ class LLMService: ObservableObject {
         _ allowance: PerMinuteAllowance, config: ModelConfig, exposure: ToolExposureTurn,
         prompt: String, volatileTail: String?, turn: String, includeOpenClaw: Bool,
         nativeToolNames: [String], locationContext: String?, memoryContext: String?,
-        hasImage: Bool, device: AssistantIdentity.Device
+        hasImage: Bool, device: AssistantIdentity.Device, carriedBlock: String? = nil
     ) throws -> (prompt: String, volatileTail: String?, exposure: ToolExposureTurn, shortened: Bool)? {
         let provider = config.llmProvider
         let registry = nativeToolRouter?.registry
@@ -1709,9 +1820,12 @@ class LLMService: ObservableObject {
             } else {
                 onDemandPrompt = prompt + "\n\n" + guide
             }
-            let condensedPrompt = Self.condensedCloudPrompt(locationContext: locationContext,
+            var condensedPrompt = Self.condensedCloudPrompt(locationContext: locationContext,
                                                             memoryContext: memoryContext, hasImage: hasImage,
                                                             toolGuide: guide, device: device)
+            // Plan KL P2: the condensed instructions replace the prompt the carried block was
+            // added to, so they carry it too.
+            if let carriedBlock { condensedPrompt.text += "\n\n" + carriedBlock }
             condensed = condensedPrompt
             let emptiedTools = toolBytes(emptied)
             ladder.onDemandTools = .init(instructionBytes: (onDemandPrompt?.utf8.count ?? 0) + tailBytes,
@@ -1783,6 +1897,14 @@ class LLMService: ObservableObject {
         // Plan KL P0: a gap belongs to the turn that recorded it.
         lastAttemptCredentialGap = nil
         lastAttemptPerMinute = nil
+        // Plan KL P2: the turn's ledger starts empty and is kept across its attempts.
+        turnToolLedger.reset()
+        carryForwardFromHop = false
+        cascadeTurnInFlight = true
+        defer {
+            cascadeTurnInFlight = false
+            carryForwardFromHop = false
+        }
         fieldConversationSourceID = UUID().uuidString
         defer { fieldConversationSourceID = previousSourceID }
 
@@ -1913,6 +2035,10 @@ class LLMService: ObservableObject {
             needs: .init(requiresVision: imageData != nil, isBackgrounded: backgrounded),
             maxAttempts: min(candidates.count, 4),
             isCancelled: { Task.isCancelled },
+            beforeHop: { [weak self] error in
+                // Plan KL P2: what the tools that already ran decide about the hop.
+                try self?.decideHopAfterTools(after: error)
+            },
             onSwitch: { from, to, failure, error in
                 // Only a hop after the lead was actually tried counts; the driver's pre-attempt
                 // capability switch (a lead that cannot see the photo) is not the lead failing.
@@ -1920,9 +2046,7 @@ class LLMService: ObservableObject {
                 // Rewind the partial UI stream and log the hop; P2c narrates it out loud. The
                 // error goes in the log too (Plan KL P2): the class alone never said what failed.
                 onStreamReset?()
-                PrivacyLog.model(.cascadeSwitched, configuration: PrivateIdentifier(to.id),
-                                 detail: PrivacyToken.caseName(of: failure),
-                                 error: error.map { SafeErrorSummary($0) })
+                Self.logCascadeSwitch(to: to.id, failure: failure, error: error)
                 await onModelSwitch?(savedById[from.id], savedById[to.id], failure, error)
             },
             attempt: { [weak self] candidate in
@@ -4955,11 +5079,14 @@ class LLMService: ObservableObject {
         return await appleToolResults.resolve(name: name, argumentsJSON: argumentsJSON) { [weak self] in
             let args = AppleToolArguments.dictionary(fromJSON: argumentsJSON)
             PrivacyLog.localModel(.toolCall, model: PrivacyToken("appleOnDevice"), tool: PrivacyToken(name))
+            // Plan KL P2: only a call that runs is entered; a replay above ran nothing new.
+            let ledgerID = self?.ledgerDispatched(name, arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
             self?.toolCallStatus = .executing(name)
             let startedAt = Date()
             let outcome = await router.executeRoot(name: name, args: args)
             TurnRecorder.addToolTime(since: startedAt)
             self?.toolCallStatus = .idle
+            if let ledgerID { self?.turnToolLedger.finished(ledgerID, outcome: outcome) }
             switch outcome {
             case .completed(let text): return text
             case .outcomeUnknown(_, let message): return message
@@ -5362,6 +5489,9 @@ class LLMService: ObservableObject {
 
             // Execute the tool
             PrivacyLog.localModel(.toolCall, tool: PrivacyToken(toolName))
+            // Plan KL P1/P2: counted and entered in the turn's ledger like every other model call.
+            toolCallsDispatched += 1
+            let ledgerID = ledgerDispatched(toolName, arguments: AttemptToolLedger.canonicalArguments(toolArgs))
             toolCallStatus = .executing(toolName)
             // Plan CU P1: the on-device path is deliberately not on `runToolLoop` (see the comment
             // above `sendLocal`), so its single tool round trip needs its own bracket. The
@@ -5370,6 +5500,7 @@ class LLMService: ObservableObject {
             let outcome = await router.executeRoot(name: toolName, args: toolArgs)
             TurnRecorder.addToolTime(since: toolStartedAt)
             toolCallStatus = .idle
+            turnToolLedger.finished(ledgerID, outcome: outcome)
 
             // An unresolved outcome is not an error, and must not be handed to the model prefixed
             // as one — its own copy already says what is and isn't known.

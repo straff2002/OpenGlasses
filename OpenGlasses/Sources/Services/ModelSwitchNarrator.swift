@@ -115,6 +115,11 @@ enum ModelSwitchNarrator {
         if let gap, CredentialGap.kind(of: lastError) == gap.kind {
             return gap.reason
         }
+        // Plan KL P2: a tool that may have changed something had run, so the turn was not
+        // restarted on another model. Said as what ran, so the wearer knows it is done.
+        if let ended = lastError as? HopAfterTools.TurnEnded {
+            return ended.reason
+        }
         // Too large is its own reason whichever way it was classified: before a tool ran it may
         // have hopped, after one it ended the turn — either way "unavailable" would be untrue.
         if lastError is RequestContextBudget.CapacityError || RequestContextBudget.isOverflow(error: lastError) {

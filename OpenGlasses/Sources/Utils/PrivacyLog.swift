@@ -1648,6 +1648,14 @@ enum PrivacyLog {
         // `perMinuteRetry`: a refusal with figures was sent again once, fitted, on the same model.
         // Counts and tokens only.
         case perMinuteFit, perMinuteRetry
+        // Plan KL P2 — a hop after tools had run: `hopAfterTools` with the decision (`restart`,
+        // `carryForward`, `endTurn`) as the detail, what the tools did (`readOnly`,
+        // `changedState`) as the reason, the calls that ran as the count and the error the
+        // attempt failed on; and, with detail `carriedBlock`, the block a carried attempt sent:
+        // results carried, cut and left out, and its length. `hopToolRan`: each tool that ran,
+        // by its native name (any other is `other`), with its declared effect. Never an argument
+        // or a result.
+        case hopAfterTools, hopToolRan
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form

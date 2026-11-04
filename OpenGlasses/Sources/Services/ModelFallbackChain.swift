@@ -59,11 +59,14 @@ enum ModelFallbackChain {
         // No rung of the fit came within this model's per-minute allowance (Plan KL P1). Nothing
         // was sent and nothing ran; another model, on another account, may take the turn whole.
         if error is PerMinuteFit.NothingFits { return .terminalForCandidate }
+        // A tool that may have changed something had run when the attempt failed (Plan KL P2):
+        // the hop that would have restarted the turn was refused, and the turn ends here.
+        if error is HopAfterTools.TurnEnded { return .terminalForTurn }
         // The request would not fit this model's window. Before any tool has run nothing has
-        // happened yet, so another model may take the turn from the start. After one has run,
-        // restarting the turn elsewhere could repeat a completed state-changing tool.
+        // happened yet, so another model may take the turn from the start. After one has run the
+        // turn ends — the rule every hop after a tool follows (`HopAfterTools`).
         if let capacity = error as? RequestContextBudget.CapacityError {
-            return capacity.toolsRanThisTurn ? .terminalForTurn : .retryOtherModel
+            return HopAfterTools.overflowClass(toolsRan: capacity.toolsRanThisTurn)
         }
         // ChatGPT already attempted bounded recovery below the tool dispatcher, and a provider
         // overflow may arrive after tools ran — the turn ends.
@@ -108,9 +111,9 @@ enum ModelFallbackChain {
                 return .retryOtherModel
             case .contextOverflow(_, let toolsRan):
                 // As `outputTruncated`: a model with a bigger window may well fit the turn — but
-                // only from the start while nothing has run, the rule `CapacityError` follows.
-                // Restarting a turn whose tool already ran elsewhere could repeat it.
-                return toolsRan ? .terminalForTurn : .retryOtherModel
+                // only from the start while nothing has run, the rule `CapacityError` follows
+                // (`HopAfterTools`). Restarting a turn whose tool already ran elsewhere could repeat it.
+                return HopAfterTools.overflowClass(toolsRan: toolsRan)
             case .apiError(_, let status, _, let rejection):
                 // "Malformed — fails everywhere" stopped being true of every 400 once a request
                 // one model accepts is one its successor refuses (Plan IE P0). A refusal that
@@ -264,6 +267,10 @@ enum ModelCascade {
     /// - Parameters:
     ///   - maxAttempts: hard cap on provider calls (bounds latency + token spend even on a long chain).
     ///   - isCancelled: re-checked between hops so a barge-in during one hop doesn't launch the next.
+    ///   - beforeHop: asked once a hop has been decided on, before `onSwitch`, with the error the
+    ///     attempt threw (Plan KL P2). Throwing ends the turn with what it throws instead of
+    ///     hopping: the caller's ledger knows whether a tool that may have changed something has
+    ///     run, which the error alone does not say (`HopAfterTools`).
     ///   - onSwitch: invoked once per hop, *before* the retry (the P2c narration seam), with the
     ///     error `from` threw — nil for the pre-attempt switch away from a lead that cannot see
     ///     the photo, which threw nothing (Plan KL: the notice reads it, the log records it).
@@ -276,6 +283,7 @@ enum ModelCascade {
         needs: ModelFallbackChain.TurnNeeds,
         maxAttempts: Int,
         isCancelled: () -> Bool = { false },
+        beforeHop: (_ error: Error) async throws -> Void = { _ in },
         onSwitch: (_ from: ModelFallbackChain.Candidate,
                    _ to: ModelFallbackChain.Candidate,
                    _ failure: ModelFallbackChain.FailureClass,
@@ -314,6 +322,7 @@ enum ModelCascade {
                     candidates: candidates, tried: tried, needs: needs,
                     failure: failure, currentWindow: current.contextTokens
                 ) else { throw error }
+                try await beforeHop(error)
                 await onSwitch(current, next, failure, error)
                 current = next
             }
