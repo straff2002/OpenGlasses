@@ -189,7 +189,7 @@ final class CloudVoiceRequestsTests: XCTestCase {
 
     // MARK: - Refusals and the credit latch
 
-    func testABadOpenAIKeyIsARefusalAndDoesNotLatch() async {
+    func testABadOpenAIKeyIsNotAcceptedAndLatchesThatKeyOnly() async {
         CloudVoiceStubURLProtocol.begin(
             status: 401, body: Data(#"{"error":{"message":"Incorrect API key provided","code":"invalid_api_key"}}"#.utf8))
         let service = TextToSpeechService()
@@ -199,11 +199,13 @@ final class CloudVoiceRequestsTests: XCTestCase {
         } catch let rejected as TextToSpeechService.CloudVoiceRequestRejected {
             XCTAssertEqual(rejected.engine, .openAI)
             XCTAssertEqual(rejected.statusCode, 401)
-            XCTAssertEqual(rejected.notice, CloudVoiceNotice(engine: .openAI, rejection: .refused))
+            XCTAssertEqual(rejected.notice, CloudVoiceNotice(engine: .openAI, rejection: .keyNotAccepted))
         } catch {
             XCTFail("expected a classified rejection, got \(error)")
         }
         XCTAssertTrue(service.quotaExhausted.isEmpty, "a bad key is not an empty account")
+        XCTAssertTrue(service.keyNotAccepted(.openAI, key: Self.openAIKey))
+        XCTAssertEqual(service.keyLatch.engines, [.openAI])
     }
 
     func testAnEmptyOpenAIAccountLatchesTheOpenAIVoiceOnly() async {

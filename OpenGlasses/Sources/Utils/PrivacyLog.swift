@@ -1444,6 +1444,9 @@ enum PrivacyLog {
         case engineFailed, engineFallback
         case requested, received, playing, playbackFinished, decodeFailed
         case voiceSelected, quotaExhausted, modelUnavailable, quotaCacheReset, toneFailed, voicesRequestFailed
+        // Plan KL P3 — a cloud voice refused the key and is latched off for it; a voice list not
+        // fetched for a key already refused.
+        case keyNotAccepted, voicesRequestSkipped
         // Plan FE P4 — the terminal delivery outcome handed back to the caller, as a fixed token
         // (`completed`, `interrupted-bargeIn`, `suppressed-noRoute`, `failed`). Never the words.
         case playbackReported

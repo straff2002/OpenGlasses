@@ -156,7 +156,7 @@ enum TTSEngineSelector {
     }
 
     /// Whether a cloud voice may be tried for one utterance: a credential on file, not latched off
-    /// (`quotaExhausted` covers out of credit and a withdrawn model), online, not an utterance the app promised to keep on the phone, and a route the
+    /// (`quotaExhausted` covers out of credit, a withdrawn model and a refused key), online, not an utterance the app promised to keep on the phone, and a route the
     /// medical local-only rule lets out. One rule for every cloud voice, so they cannot drift.
     static func cloudVoiceReady(_ engine: TTSEngine, hasCredential: Bool, quotaExhausted: Bool,
                                 onDeviceOnly: Bool, online: Bool,

@@ -261,7 +261,7 @@ final class GeminiCloudVoiceTests: XCTestCase {
 
     // MARK: - Refusals
 
-    func testABadGeminiKeyIsARefusalAndDoesNotLatch() async {
+    func testABadGeminiKeyIsNotAcceptedAndLatchesThatKey() async {
         let body = #"{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com"}]}}"#
         CloudVoiceStubURLProtocol.begin(status: 400, body: Data(body.utf8))
         let service = TextToSpeechService()
@@ -269,11 +269,12 @@ final class GeminiCloudVoiceTests: XCTestCase {
             _ = try await service.fetchGeminiAudio(text: "Hi.", apiKey: Self.geminiKey)
             XCTFail("a 400 returned audio")
         } catch let rejected as TextToSpeechService.CloudVoiceRequestRejected {
-            XCTAssertEqual(rejected.notice, CloudVoiceNotice(engine: .gemini, rejection: .refused))
+            XCTAssertEqual(rejected.notice, CloudVoiceNotice(engine: .gemini, rejection: .keyNotAccepted))
         } catch {
             XCTFail("expected a classified rejection, got \(error)")
         }
         XCTAssertTrue(service.quotaExhausted.isEmpty, "a bad key is not a spent quota")
+        XCTAssertTrue(service.keyNotAccepted(.gemini, key: Self.geminiKey))
     }
 
     /// A 429 is a per-minute limit as often as a spent day, so it falls through this utterance and
@@ -296,7 +297,7 @@ final class GeminiCloudVoiceTests: XCTestCase {
     func testAnOrdinaryBadRequestIsNotARefusedKey() {
         XCTAssertNil(CloudVoiceRejection.classify(
             statusCode: 400, body: #"{"error":{"code":400,"message":"Invalid JSON payload","status":"INVALID_ARGUMENT"}}"#))
-        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: "PERMISSION_DENIED"), .refused)
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: "PERMISSION_DENIED"), .keyNotAccepted)
     }
 
     // MARK: - Which key the voice uses

@@ -155,6 +155,23 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// the same way. Kept apart from `quotaExhausted` because nothing the wearer tops up clears it.
     private(set) var modelUnavailable: Set<TTSEngine> = []
 
+    /// The cloud voices whose vendor did not accept the key this process, for that key only
+    /// (Plan KL P3), skipped the same way and with no request. Published so the voice settings can
+    /// say so while it holds.
+    @Published private(set) var keyLatch = CloudVoiceKeyLatch()
+
+    /// Whether `engine` has already refused `key` this process.
+    func keyNotAccepted(_ engine: TTSEngine, key: String) -> Bool {
+        keyLatch.isLatched(engine, key: key)
+    }
+
+    /// Whether asking `engine` again, with `key`, can only fail this session: out of credit, its
+    /// model gone, or that key refused. What the engine chain reads as not ready.
+    func isLatchedOff(_ engine: TTSEngine, key: String) -> Bool {
+        quotaExhausted.contains(engine) || modelUnavailable.contains(engine)
+            || keyLatch.isLatched(engine, key: key)
+    }
+
     /// Why a cloud voice turned down the request in flight, when it is something only the wearer
     /// can fix. Set where the response is read, consumed where the chain falls through.
     private var pendingCloudVoiceRejection: CloudVoiceNotice?
@@ -199,7 +216,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             PrivacyLog.tts(.voicesRequestFailed, engine: PrivacyToken("elevenLabs"),
                            bytes: data.count, status: code)
-            throw TTSError.apiError(statusCode: code)
+            throw CloudVoiceRequestRejected.reading(engine: .elevenLabs, statusCode: code, body: data)
         }
         return try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data).voices
     }
@@ -214,7 +231,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             PrivacyLog.tts(.voicesRequestFailed, engine: PrivacyToken(TTSEngine.xai.rawValue),
                            bytes: data.count, status: code)
-            throw TTSError.apiError(statusCode: code)
+            throw CloudVoiceRequestRejected.reading(engine: .xai, statusCode: code, body: data)
         }
         return try CloudVoiceRequests.parseXAIVoices(data)
     }
@@ -229,9 +246,31 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             PrivacyLog.tts(.voicesRequestFailed, engine: PrivacyToken(TTSEngine.gemini.rawValue),
                            bytes: data.count, status: code)
-            throw TTSError.apiError(statusCode: code)
+            throw CloudVoiceRequestRejected.reading(engine: .gemini, statusCode: code, body: data)
         }
         return try CloudVoiceRequests.parseGeminiSpeechModels(data)
+    }
+
+    /// A voice list for the picker, through the key latch (Plan KL P3): a key this voice already
+    /// refused fetches nothing, and a list refused for the key latches it, so synthesis does not
+    /// ask again either. `key` is what the latch is keyed on — the xAI sign-in has none the picker
+    /// can see, so it passes the typed key or empty, and an empty key is never latched.
+    ///
+    /// Throws `CloudVoiceKeyNotAccepted` for a known-bad or newly refused key; every other failure
+    /// as the fetch threw it.
+    func fetchVoiceList<List>(_ engine: TTSEngine, key: String,
+                              _ fetch: () async throws -> List) async throws -> List {
+        if keyLatch.isLatched(engine, key: key) {
+            PrivacyLog.tts(.voicesRequestSkipped, engine: PrivacyToken(engine.rawValue),
+                           detail: PrivacyToken(CloudVoiceRejection.keyNotAccepted.rawValue))
+            throw CloudVoiceKeyNotAccepted(engine: engine)
+        }
+        do {
+            return try await fetch()
+        } catch let rejected as CloudVoiceRequestRejected where rejected.rejection == .keyNotAccepted {
+            latchKeyNotAccepted(engine, key: key)
+            throw CloudVoiceKeyNotAccepted(engine: engine)
+        }
     }
 
     init(synthesizerFactory: @escaping @MainActor () -> any SpeechSynthesizing = { AVSpeechSynthesizer() }) {
@@ -341,8 +380,17 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         resetCloudVoiceQuota(.elevenLabs)
     }
 
+    /// The wearer changed one cloud voice's key: clear its key latch as well (Plan KL P3). A new
+    /// key is not latched anyway, since the latch holds the refused key's fingerprint, but editing
+    /// the field is also how a wearer asks for the same key to be tried again.
+    func cloudVoiceKeyChanged(_ engine: TTSEngine) {
+        keyLatch.clear(engine)
+        resetCloudVoiceQuota(engine)
+    }
+
     /// Reset one cloud voice's quota latch and its rejection episode (call when its key or voice
-    /// changes or credit is added): the next rejection from it is news again.
+    /// changes or credit is added): the next rejection from it is news again. A refused key stays
+    /// latched (Plan KL P3): a voice change leaves the key the one refused.
     func resetCloudVoiceQuota(_ engine: TTSEngine) {
         quotaExhausted.remove(engine)
         modelUnavailable.remove(engine)
@@ -643,26 +691,32 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let online = reachability?.isOnline ?? true
         let medicalMode = MedicalEgressGuard.currentMode()
         let savedModels = Config.savedModels
+        // The key each voice would send, as far as it can be read without asking a sign-in for a
+        // token: a voice whose vendor already refused that key is not ready (Plan KL P3). An xAI
+        // sign-in has no key here; its refused token is stopped before sending instead.
+        let keys: [TTSEngine: String] = [
+            .elevenLabs: Config.elevenLabsAPIKey,
+            .openAI: CloudVoiceCredentials.openAIKey(savedModels: savedModels, legacyKey: Config.openAIAPIKey),
+            .xai: CloudVoiceCredentials.xaiModelKey(savedModels: savedModels),
+            .gemini: CloudVoiceCredentials.geminiKey(savedModels: savedModels)
+        ]
         func ready(_ engine: TTSEngine, hasCredential: Bool) -> Bool {
             let origins: [TTSEngine: String] = [.elevenLabs: "https://api.elevenlabs.io", .openAI: "https://api.openai.com",
                                                 .xai: "https://api.x.ai", .gemini: "https://generativelanguage.googleapis.com"]
             if Config.ttsEnginePreference.rawValue != engine.rawValue, let origin = origins[engine], let url = URL(string: origin),
                !CloudProcessingConsent.shared.hasApproval(url: url, scope: .speechOutput) { return false }
             return TTSEngineSelector.cloudVoiceReady(engine, hasCredential: hasCredential,
-                                              quotaExhausted: quotaExhausted.contains(engine)
-                                                  || modelUnavailable.contains(engine),
+                                              quotaExhausted: isLatchedOff(engine, key: keys[engine] ?? ""),
                                               onDeviceOnly: onDeviceOnly, online: online,
                                               medicalMode: medicalMode)
         }
         let availability = TTSEngineSelector.Availability(
-            elevenLabsReady: ready(.elevenLabs, hasCredential: !Config.elevenLabsAPIKey.isEmpty),
+            elevenLabsReady: ready(.elevenLabs, hasCredential: !(keys[.elevenLabs] ?? "").isEmpty),
             kokoroReady: kokoroEngine.isReady,
-            openAIReady: ready(.openAI, hasCredential: !CloudVoiceCredentials.openAIKey(
-                savedModels: savedModels, legacyKey: Config.openAIAPIKey).isEmpty),
+            openAIReady: ready(.openAI, hasCredential: !(keys[.openAI] ?? "").isEmpty),
             xaiReady: ready(.xai, hasCredential: CloudVoiceCredentials.xaiSource(
                 savedModels: savedModels, accountConnected: XAIOAuthService.shared.isConnected) != .none),
-            geminiReady: ready(.gemini, hasCredential: !CloudVoiceCredentials.geminiKey(
-                savedModels: savedModels).isEmpty)
+            geminiReady: ready(.gemini, hasCredential: !(keys[.gemini] ?? "").isEmpty)
         )
         return TTSEngineSelector.chain(
             preference: Config.ttsEnginePreference,
@@ -1160,7 +1214,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// the caller decides what to do with it — a streamed reply synthesises several sentences at
     /// once, so a single shared "pending rejection" slot would be overwritten by whichever came
     /// back last.
-    struct CloudVoiceRequestRejected: Error {
+    struct CloudVoiceRequestRejected: LocalizedError {
         let engine: TTSEngine
         let statusCode: Int
         let rejection: CloudVoiceRejection?
@@ -1168,12 +1222,44 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         var notice: CloudVoiceNotice? {
             rejection.map { CloudVoiceNotice(engine: engine, rejection: $0) }
         }
+
+        /// A non-200, classified from its body. The body is read here and dropped.
+        static func reading(engine: TTSEngine, statusCode: Int, body: Data) -> CloudVoiceRequestRejected {
+            CloudVoiceRequestRejected(
+                engine: engine, statusCode: statusCode,
+                rejection: CloudVoiceRejection.classify(statusCode: statusCode,
+                                                        body: String(data: body, encoding: .utf8) ?? ""))
+        }
+
+        /// Said as the plain API error always was, so a voice list's failure reads the same.
+        var errorDescription: String? { TTSError.apiError(statusCode: statusCode).errorDescription }
+    }
+
+    /// The vendor did not accept `key`: latch that voice off for it, and when it replaces another
+    /// refused key, make the refusal news again (Plan KL P3).
+    private func latchKeyNotAccepted(_ engine: TTSEngine, key: String) {
+        PrivacyLog.tts(.keyNotAccepted, engine: PrivacyToken(engine.rawValue))
+        if keyLatch.latch(engine, key: key) {
+            cloudVoiceAnnouncer.episodeEnded(for: engine)
+            cloudVoiceRejectionsShown = cloudVoiceRejectionsShown.filter {
+                CloudVoiceNotice.engine(ofToken: $0) != engine
+            }
+        }
+    }
+
+    /// The quiet refusal for a key already latched: nothing is sent and nothing is announced again.
+    private func refuseLatchedKey(_ engine: TTSEngine, key: String) throws {
+        guard keyLatch.isLatched(engine, key: key) else { return }
+        PrivacyLog.tts(.engineFailed, engine: PrivacyToken(engine.rawValue),
+                       detail: PrivacyToken(CloudVoiceRejection.keyNotAccepted.rawValue))
+        throw CloudVoiceRequestRejected(engine: engine, statusCode: 0, rejection: nil)
     }
 
     /// Read a cloud voice's answer: audio on a 200; otherwise classify the refusal, latch the voice
-    /// off for the session when its account is out of credit or its model is gone, and throw. The audio is returned
+    /// off for the session when its account is out of credit or its model is gone, or for `key`
+    /// when the vendor did not accept it (Plan KL P3), and throw. The audio is returned
     /// untouched, and the reply text is never logged — only its engine, size and status.
-    private func cloudVoiceAudio(engine: TTSEngine, data: Data, response: URLResponse,
+    private func cloudVoiceAudio(engine: TTSEngine, key: String, data: Data, response: URLResponse,
                                  startedAt startTime: Date) throws -> Data {
         let elapsed = Date().timeIntervalSince(startTime)
         PrivacyLog.tts(.received, engine: PrivacyToken(engine.rawValue), bytes: data.count,
@@ -1186,20 +1272,21 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
               httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             PrivacyLog.tts(.engineFailed, engine: PrivacyToken(engine.rawValue), status: statusCode)
-            let rejection = CloudVoiceRejection.classify(
-                statusCode: statusCode, body: String(data: data, encoding: .utf8) ?? "")
+            let rejected = CloudVoiceRequestRejected.reading(engine: engine, statusCode: statusCode, body: data)
             // Skip this voice for the rest of this session when asking again can only fail.
-            switch rejection {
+            switch rejected.rejection {
             case .outOfCredit:
                 PrivacyLog.tts(.quotaExhausted, engine: PrivacyToken(engine.rawValue))
                 quotaExhausted.insert(engine)
             case .modelUnavailable:
                 PrivacyLog.tts(.modelUnavailable, engine: PrivacyToken(engine.rawValue))
                 modelUnavailable.insert(engine)
+            case .keyNotAccepted:
+                latchKeyNotAccepted(engine, key: key)
             case .refused, nil:
                 break
             }
-            throw CloudVoiceRequestRejected(engine: engine, statusCode: statusCode, rejection: rejection)
+            throw rejected
         }
 
         // The cloud voice answered: whatever turned it away before is over.
@@ -1221,6 +1308,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // Defence in depth: the engine chain already drops ElevenLabs in local-only mode, but the
         // request is built here, so the refusal belongs here too. Throwing advances the chain.
         try MedicalEgressGuard.check(.elevenLabsSpeechSynthesis)
+        // The chain skips a refused key already; a streamed reply's sentences in flight do not.
+        try refuseLatchedKey(.elevenLabs, key: apiKey)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1244,7 +1333,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         let startTime = Date()
 
         let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
-        return try cloudVoiceAudio(engine: .elevenLabs, data: data, response: response,
+        return try cloudVoiceAudio(engine: .elevenLabs, key: apiKey, data: data, response: response,
                                    startedAt: startTime)
     }
 
@@ -1266,12 +1355,14 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard !apiKey.isEmpty else {
             throw CloudVoiceRequestRejected(engine: .openAI, statusCode: 0, rejection: nil)
         }
+        try refuseLatchedKey(.openAI, key: apiKey)
         let request = try CloudVoiceRequests.openAISpeech(text: text, apiKey: apiKey,
                                                           voice: Config.openAITTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.openAI.rawValue), characters: text.count)
         let startTime = Date()
         let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
-        return try cloudVoiceAudio(engine: .openAI, data: data, response: response, startedAt: startTime)
+        return try cloudVoiceAudio(engine: .openAI, key: apiKey, data: data, response: response,
+                                   startedAt: startTime)
     }
 
     func speakWithXAI(text: String, credential: String) async throws {
@@ -1285,12 +1376,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard !credential.isEmpty else {
             throw CloudVoiceRequestRejected(engine: .xai, statusCode: 0, rejection: nil)
         }
+        // Keyed on what is sent, so a refused sign-in token is not sent again either, and the
+        // token it is refreshed to is a new credential that is.
+        try refuseLatchedKey(.xai, key: credential)
         let request = try CloudVoiceRequests.xaiSpeech(text: text, credential: credential,
                                                        voice: Config.xaiTTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.xai.rawValue), characters: text.count)
         let startTime = Date()
         let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
-        return try cloudVoiceAudio(engine: .xai, data: data, response: response, startedAt: startTime)
+        return try cloudVoiceAudio(engine: .xai, key: credential, data: data, response: response,
+                                   startedAt: startTime)
     }
 
     // MARK: - Gemini TTS (Plan JZ)
@@ -1307,13 +1402,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard !apiKey.isEmpty else {
             throw CloudVoiceRequestRejected(engine: .gemini, statusCode: 0, rejection: nil)
         }
+        try refuseLatchedKey(.gemini, key: apiKey)
         let request = try CloudVoiceRequests.geminiSpeech(text: text, apiKey: apiKey,
                                                           model: Config.geminiTTSModel,
                                                           voice: Config.geminiTTSVoice)
         PrivacyLog.tts(.requested, engine: PrivacyToken(TTSEngine.gemini.rawValue), characters: text.count)
         let startTime = Date()
         let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .speechOutput)
-        let answer = try cloudVoiceAudio(engine: .gemini, data: data, response: response, startedAt: startTime)
+        let answer = try cloudVoiceAudio(engine: .gemini, key: apiKey, data: data, response: response,
+                                         startedAt: startTime)
         do {
             return try GeminiSpeechAudio.playableAudio(from: answer)
         } catch {
