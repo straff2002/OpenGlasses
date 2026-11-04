@@ -1,6 +1,6 @@
 # Plan KN — A Learned Order for Manual Passages (the signals already measured, weighed by the answer keys)
 
-**Status:** 📝 Drafted 2026-11-05 from the owner's question; nothing implemented. The question was whether a small
+**Status:** 📝 Drafted 2026-11-05 from the owner's question; nothing implemented. The owner took all five decisions as recommended the same day. The question was whether a small
 model should do part of the manuals work. The answer drafted here: one small model, for ranking only, and only
 if it beats the rules on manuals it was not fitted on. The answer keys come before the model, and P0 decides
 whether there are enough of them.
@@ -166,17 +166,17 @@ reads a manual. It reads numbers about candidates the retriever has already gath
   extractor and the device's embedder.
 - If the bar holds there, the default goes on in its own PR. The rules stay in the code as the fallback.
 
-## Decisions for the owner
+## Decisions (all five taken as recommended, 2026-11-05)
 
-1. **May weights fitted from locally held answer keys be committed?** Recommended: yes. They are a few hundred
+1. **May weights fitted from locally held answer keys be committed?** **Taken as recommended:** yes. They are a few hundred
    numbers fitted on numbers, with no text, and the PR states its training sets by count and family number only.
    The keys themselves never leave the machine.
-2. **Who writes the missing keys, and for which families?** Recommended: the families the current pilots use,
+2. **Who writes the missing keys, and for which families?** **Taken as recommended:** the families the current pilots use,
    written by the owner and the testers who have those manuals, about 25–40 questions each, with a quarter out
    of scope.
-3. **The bar in P2.** Recommended as written: pooled hit@4 up, no family down by more than one question,
+3. **The bar in P2.** **Taken as recommended:** pooled hit@4 up, no family down by more than one question,
    out-of-scope refusals never down.
-4. **Groups hard, or the learned score across them?** Recommended: hard, unless P2 shows crossing wins with no
+4. **Groups hard, or the learned score across them?** **Taken as recommended:** hard, unless P2 shows crossing wins with no
    refusal lost.
-5. **Weights per embedder, or one set?** Recommended: per embedder. The simulator's word-average model and the
+5. **Weights per embedder, or one set?** **Taken as recommended:** per embedder. The simulator's word-average model and the
    device models behave too differently for one set.
