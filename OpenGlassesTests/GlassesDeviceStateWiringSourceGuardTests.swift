@@ -111,7 +111,7 @@ final class GlassesDeviceStateWiringSourceGuardTests: XCTestCase {
         let claim = try XCTUnwrap(sink.range(of: "guard self.compatibilityNotices.claim(notice) else { return }"),
                                   "the camera's compatibility notice no longer checks the shared "
                                       + "record: a refused build is announced twice")
-        let speak = try XCTUnwrap(sink.range(of: "speechService.speak(notice)"))
+        let speak = try XCTUnwrap(sink.range(of: "speechService.speak(notice, source: .statusNotice)"))
         XCTAssertLessThan(claim.lowerBound, speak.lowerBound)
     }
 

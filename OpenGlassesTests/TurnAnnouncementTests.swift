@@ -38,7 +38,7 @@ final class TurnAnnouncementTests: XCTestCase {
     private func makeAnnouncement() -> TurnAnnouncement {
         let log: Box<[String]> = self.log, finishedCount: Box<Int> = self.finishedCount
         return TurnAnnouncement(
-            speak: { [unowned self] text in
+            speak: { [unowned self] text, _ in
                 log.value.append("start \(text)")
                 await self.gate(text).wait()
                 log.value.append("end \(text)")
@@ -60,7 +60,7 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testAnnounceReturnsBeforeTheNoticeHasPlayed() async {
         let announcement = makeAnnouncement()
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
         log.value.append("request started")
         XCTAssertTrue(announcement.isPending)
 
@@ -75,7 +75,7 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testReplyWaitsForTheNoticeToFinish() async {
         let announcement = makeAnnouncement()
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
         await settle { log.value.contains("start Switching") }
 
         let reply = Task { @MainActor in
@@ -95,7 +95,7 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testNoticeEndingWithTheTurnStillWorkingRunsOnFinished() async {
         let announcement = makeAnnouncement()
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
         await settle { log.value.contains("start Switching") }
 
         gate("Switching").open()
@@ -105,7 +105,7 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testCancelDropsTheNoticesFollowUp() async {
         let announcement = makeAnnouncement()
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
         await settle { log.value.contains("start Switching") }
 
         announcement.cancel()
@@ -118,7 +118,7 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testCancelBeforePlaybackStartsSaysNothing() async {
         let announcement = makeAnnouncement()
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
         announcement.cancel()
         await settle { false }
         XCTAssertEqual(log.value, [])
@@ -127,8 +127,8 @@ final class TurnAnnouncementTests: XCTestCase {
 
     func testASecondNoticeQueuesBehindTheFirst() async {
         let announcement = makeAnnouncement()
-        announcement.announce("first")
-        announcement.announce("second")
+        announcement.announce("first", source: .switchNotice)
+        announcement.announce("second", source: .switchNotice)
         await settle { log.value.contains("start first") }
         await settle { false }
         XCTAssertEqual(log.value, ["start first"], "the second notice must not cut off the first")
@@ -154,7 +154,7 @@ final class TurnAnnouncementTests: XCTestCase {
     func testTurnSendsWhileTheNoticePlaysAndSpeaksAfterIt() async {
         let announcement = makeAnnouncement()
         let log: Box<[String]> = self.log
-        announcement.announce("Switching")
+        announcement.announce("Switching", source: .switchNotice)
 
         let turn = Task { @MainActor in
             await ConversationTurnRunner.run(ConversationTurnRunner.Deps(

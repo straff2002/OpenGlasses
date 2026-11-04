@@ -121,7 +121,7 @@ final class AssistiveModeService: ObservableObject {
         latestAdvice = advice
         var spoken = advice.advice
         if let followup = advice.followup, !followup.isEmpty { spoken += " " + followup }
-        await tts.speak(spoken, urgency: advice.urgency.speechUrgency)
+        await tts.speak(spoken, source: .navigation, urgency: advice.urgency.speechUrgency)
     }
 
     /// Ask the model about one frame and decide what, if anything, is spoken (Plan HR P1 item 3).

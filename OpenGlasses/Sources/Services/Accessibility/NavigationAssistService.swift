@@ -122,7 +122,7 @@ final class NavigationAssistService: ObservableObject {
         // mirror so this richer rendering is what stays on screen.
         let hudIcon: GlassesDisplayService.HUDIcon = advice.urgency == .high ? .hazard : .navigation
         glassesDisplay?.showNavigation(advice.advice, icon: hudIcon)
-        await tts.speak(advice.advice, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
+        await tts.speak(advice.advice, source: .navigation, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
     }
 
     /// Ask the model about a frame captured at `capturedAt` and return its advice only if that frame

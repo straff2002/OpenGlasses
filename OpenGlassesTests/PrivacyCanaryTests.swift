@@ -171,7 +171,7 @@ final class PrivacyCanaryTests: XCTestCase {
                 let previous = Config.glassesOnlyAudio
                 Config.setGlassesOnlyAudio(true)
                 defer { Config.setGlassesOnlyAudio(previous) }
-                await TextToSpeechService().speak(Canary.transcript)
+                await TextToSpeechService().speak(Canary.transcript, source: .reply)
             },
 
             Probe(subsystem: "home bridge", expects: "[home] homeBridge") {

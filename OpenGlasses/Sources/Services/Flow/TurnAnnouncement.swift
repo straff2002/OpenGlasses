@@ -19,9 +19,13 @@ import Foundation
 ///    already waiting, it is skipped — the reply is about to stop it again.
 /// 4. `cancel()` (barge-in, stop, hang-up) drops the notice's follow-up. Stopping the audio itself
 ///    stays with the caller's `stopSpeaking()`, which those paths already call.
+///
+/// Each notice carries its `SpeechSource` (Plan KL P4) through to the speaker, so a notice queued
+/// behind another is still logged as what it is: the switch notice, or the conversation cue that
+/// now plays the same way.
 @MainActor
 final class TurnAnnouncement {
-    typealias Speak = @MainActor (String) async -> Void
+    typealias Speak = @MainActor (String, SpeechSource) async -> Void
 
     private let speak: Speak
     private let onFinished: @MainActor () -> Void
@@ -41,14 +45,14 @@ final class TurnAnnouncement {
 
     /// Start speaking `text` and return without waiting for it. A notice announced while another
     /// is still playing queues behind it rather than cutting it off.
-    func announce(_ text: String) {
+    func announce(_ text: String, source: SpeechSource) {
         let previous = pending
         epoch += 1
         let mine = epoch
         pending = Task { @MainActor [weak self] in
             await previous?.value
             guard let self, !Task.isCancelled else { return }
-            await self.speak(text)
+            await self.speak(text, source)
             guard !Task.isCancelled, self.epoch == mine else { return }
             self.pending = nil
             if self.waiters == 0 { self.onFinished() }

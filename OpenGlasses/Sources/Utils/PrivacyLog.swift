@@ -1465,9 +1465,12 @@ enum PrivacyLog {
     /// The spoken text is the assistant answering the wearer — the other half of the transcript,
     /// and no less private for having been generated — so only its length survives. A voice id
     /// identifies a purchased or cloned voice and is fingerprinted; the engine that rendered it,
-    /// and the fallback chain it belongs to, are public operation class.
+    /// and the fallback chain it belongs to, are public operation class. `source` (Plan KL P4) is
+    /// the `SpeechSource` case of a spoken line, rendered beside its length so a report can say
+    /// what each line was without saying what it said.
     @discardableResult
     static func tts(_ event: TTSEvent, engine: PrivacyToken? = nil, characters: Int? = nil,
+                    source: PrivacyToken? = nil,
                     count: Int? = nil, total: Int? = nil,
                     bytes: Int? = nil, seconds: Double? = nil, quality: Int? = nil,
                     voice: PrivateIdentifier? = nil, status: Int? = nil, success: Bool? = nil,
@@ -1476,6 +1479,7 @@ enum PrivacyLog {
         var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
         if let engine { fields.append(.init(.engine, .token(engine))) }
         if let characters { fields.append(.init(.characters, .count(characters))) }
+        if let source { fields.append(.init(.source, .token(source))) }
         if let count { fields.append(.init(.count, .count(count))) }
         if let total { fields.append(.init(.total, .count(total))) }
         if let bytes { fields.append(.init(.bytes, .count(bytes))) }

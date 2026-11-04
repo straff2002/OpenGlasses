@@ -435,8 +435,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Speak `text`, discarding how it went. Kept as the signature every existing caller uses —
     /// most of them (a tone's companion line, a progress narration) genuinely have nothing to do
     /// with the answer.
-    func speak(_ text: String, urgency: SpeechUrgency = .low, mirrorToHUD: Bool = true) async {
-        _ = await speakReporting(text, urgency: urgency, mirrorToHUD: mirrorToHUD)
+    ///
+    /// `source` says what kind of line this is (Plan KL P4) and is logged beside its length. It has
+    /// no default, so every caller names one.
+    func speak(_ text: String, source: SpeechSource, urgency: SpeechUrgency = .low,
+               mirrorToHUD: Bool = true) async {
+        _ = await speakReporting(text, source: source, urgency: urgency, mirrorToHUD: mirrorToHUD)
     }
 
     /// Speak `text` and report **how playback actually ended** (Plan FE P4).
@@ -449,8 +453,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// `onDeviceOnly` takes the cloud voice out of the engine chain for this utterance, for text
     /// the app has promised not to send off the phone — a health summary spoken while sharing
     /// Health data is off. Kokoro and the iOS voice still speak it.
+    ///
+    /// `source` (Plan KL P4) is what kind of line this is, logged on the `speaking` line beside its
+    /// length. No default: see `SpeechSource`.
     @discardableResult
-    func speakReporting(_ text: String, urgency: SpeechUrgency = .low,
+    func speakReporting(_ text: String, source: SpeechSource, urgency: SpeechUrgency = .low,
                         mirrorToHUD: Bool = true,
                         onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
         guard !text.isEmpty else { return .failed(reason: "nothing to say") }
@@ -527,8 +534,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
                 PrivacyLog.tts(.staleGeneration, detail: PrivacyToken("beforeTask"))
                 return
             }
-            await self.speakThroughEngineChain(text: text, urgency: urgency, generation: gen,
-                                               onDeviceOnly: onDeviceOnly)
+            await self.speakThroughEngineChain(text: text, source: source, urgency: urgency,
+                                               generation: gen, onDeviceOnly: onDeviceOnly)
         }
         currentSpeechTask = task
 
@@ -579,8 +586,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Speak `text` by walking the `TTSEngineSelector` fallback chain (ElevenLabs → Kokoro →
     /// AVSpeech): try each engine in turn, advancing to the next on failure. `.system` is the
     /// guaranteed terminal — it never throws, so the chain always produces audio (or is cancelled).
-    private func speakThroughEngineChain(text: String, urgency: SpeechUrgency, generation gen: Int,
-                                         onDeviceOnly: Bool = false) async {
+    private func speakThroughEngineChain(text: String, source: SpeechSource, urgency: SpeechUrgency,
+                                         generation gen: Int, onDeviceOnly: Bool = false) async {
         // Any engine callback from here on belongs to this generation (Plan FE P4).
         deliveryLedger.beginUtterance(generation: gen)
         // What is actually spoken: the reply with its symbols written out as words
@@ -593,9 +600,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         var noticeAppended = false
         // The utterance is the assistant's half of the conversation — as private as the
         // wearer's half — so only its length goes to the log. The chain is public operation
-        // class and is the thing an "it came out in the wrong voice" report actually needs.
+        // class and is the thing an "it came out in the wrong voice" report actually needs. The
+        // source (Plan KL P4) says which kind of line it was, so a report can name each one.
         PrivacyLog.tts(.speaking, engine: PrivacyToken(chain.map(\.rawValue).joined(separator: "-")),
-                       characters: text.count,
+                       characters: text.count, source: source.token,
                        detail: PrivacyToken(quotaExhausted.isEmpty ? "quotaOk" : "quotaExhausted"))
 
         for engine in chain {
@@ -750,13 +758,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
     /// Queue a partial text chunk for streaming speech. Sentences are spoken as they complete,
     /// with synthesis running ahead of playback, through the same queue as a streamed Direct reply.
-    func speakStreaming(_ chunk: String) async {
-        enqueueOpenClaw(openClawSplitter.ingest(chunk))
+    /// `source` (Plan KL P4) is carried by the queue to every sentence it plays; a chunk joins the
+    /// reply already open, which keeps the source it was opened with.
+    func speakStreaming(_ chunk: String, source: SpeechSource) async {
+        enqueueOpenClaw(openClawSplitter.ingest(chunk), source: source)
         openClawIdleFlush?.cancel()
         openClawIdleFlush = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(Self.streamIdleFlushDelay * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
-            self.enqueueOpenClaw(self.openClawSplitter.flushIfComplete())
+            self.enqueueOpenClaw(self.openClawSplitter.flushIfComplete(), source: source)
             // Everything waiting has been released: close the reply so it ends when it has played.
             if self.openClawSplitter.isEmpty, let reply = self.openClawReply {
                 self.openClawReply = nil
@@ -769,17 +779,19 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     func flushStreamBuffer() async {
         openClawIdleFlush?.cancel()
         openClawIdleFlush = nil
-        enqueueOpenClaw(openClawSplitter.flush())
+        // The tail joins the reply already open; only a reply with nothing open yet needs the
+        // source here, and the gateway stream is the only caller.
+        enqueueOpenClaw(openClawSplitter.flush(), source: openClawReply?.source ?? .reply)
         if let reply = openClawReply {
             openClawReply = nil
             await reply.finish()
         }
     }
 
-    private func enqueueOpenClaw(_ sentences: [String]) {
+    private func enqueueOpenClaw(_ sentences: [String], source: SpeechSource) {
         guard !sentences.isEmpty else { return }
         if openClawReply == nil || openClawReply?.isCancelled == true {
-            openClawReply = beginStreamedReply()
+            openClawReply = beginStreamedReply(source: source)
         }
         sentences.forEach { openClawReply?.enqueue($0) }
     }
@@ -797,9 +809,11 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     var streamedPrefetchDepth = StreamedReplySchedule.defaultPrefetchDepth
 
     /// Start a reply that will be spoken a sentence at a time. A streamed reply already speaking
-    /// is superseded. `isCurrent` is checked before each sentence plays.
+    /// is superseded. `isCurrent` is checked before each sentence plays. `source` (Plan KL P4) is
+    /// logged on each of its sentences.
     @discardableResult
-    func beginStreamedReply(isCurrent: @escaping @MainActor () -> Bool = { true }) -> StreamedReplyQueue {
+    func beginStreamedReply(source: SpeechSource,
+                            isCurrent: @escaping @MainActor () -> Bool = { true }) -> StreamedReplyQueue {
         // A reply that is closed and only playing out what it has is not cut off: the new one
         // starts when it ends (a gateway that paused long enough to close its reply, then went
         // on). One still open is superseded.
@@ -809,8 +823,8 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         } else {
             cancelStreamedReplies(.newUtterance)
         }
-        let queue = StreamedReplyQueue(backend: self, prefetchDepth: streamedPrefetchDepth,
-                                       isCurrent: isCurrent)
+        let queue = StreamedReplyQueue(backend: self, source: source,
+                                       prefetchDepth: streamedPrefetchDepth, isCurrent: isCurrent)
         activeStreamedReply = queue
         return queue
     }
@@ -1892,8 +1906,8 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
         await beginPause()
     }
 
-    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio,
-                              engine: TTSEngine) async -> SpeechDeliveryOutcome {
+    func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
+                              source: SpeechSource) async -> SpeechDeliveryOutcome {
         lastSpokenText = text
         glassesDisplay?.showText(text, flashWhileInteractive: true)
         if let reason = currentSuppression() {
@@ -1913,7 +1927,7 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
         isSpeaking = true
         TurnRecorder.noteSpeechEngine(engine)
         PrivacyLog.tts(.speaking, engine: PrivacyToken(engine.rawValue), characters: text.count,
-                       detail: PrivacyToken("streamed"))
+                       source: source.token, detail: PrivacyToken("streamed"))
         let spoken = SpokenSymbolExpander.spokenForm(of: text)
         let task = Task { @MainActor [weak self] in
             guard let self, gen == self.speechGeneration else { return }
@@ -1955,8 +1969,14 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
         PrivacyLog.tts(.finished, detail: PrivacyToken("streamed"))
     }
 
+    /// `DirectReplySpeechStream`'s reply, streamed or spoken whole: everything it speaks is the
+    /// reply (Plan KL P4).
+    func beginStreamedReply(isCurrent: @escaping @MainActor () -> Bool) -> StreamedReplyQueue {
+        beginStreamedReply(source: .reply, isCurrent: isCurrent)
+    }
+
     func speakWholeReply(_ text: String) async {
-        await speak(text)
+        await speak(text, source: .reply)
     }
 }
 

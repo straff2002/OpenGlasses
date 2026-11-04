@@ -329,7 +329,7 @@ final class MCPGlassesServer: ObservableObject {
         }
         let mode = (json["mode"] as? String) ?? "tts"
         guard mode == "display" else {
-            await tts?.speak(text, urgency: .low)
+            await tts?.speak(text, source: .agent, urgency: .low)
             return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode, "delivered": "tts"])
         }
         // The text is a message a LAN peer sends to the wearer, so only the fact is recorded.
@@ -341,7 +341,7 @@ final class MCPGlassesServer: ObservableObject {
         case .phone:
             PrivacyLog.mcpServer(.forwardedToPhone, route: .sendToGlasses)
             NoticeCenter.shared.post(text, severity: .advisory, source: .app)
-            await tts?.speak(text, urgency: .low)
+            await tts?.speak(text, source: .agent, urgency: .low)
         }
         return Self.httpResponse(status: "200 OK", json: ["ok": true, "mode": mode, "delivered": delivery.rawValue])
     }

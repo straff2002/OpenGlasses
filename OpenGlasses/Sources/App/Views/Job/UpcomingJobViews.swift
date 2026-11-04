@@ -237,7 +237,7 @@ struct UpcomingJobView: View {
               let handoff = MapsLauncher.plan(destination: destination) else { return }
         MapsLauncher.open(handoff)
         if handoff.unavailable != nil {
-            Task { await appState.speechService.speak(handoff.spoken) }
+            Task { await appState.speechService.speak(handoff.spoken, source: .job) }
         }
     }
 
@@ -246,7 +246,7 @@ struct UpcomingJobView: View {
             let session = try flow.startUpcomingJob(id: job.id)
             // The started line, then the office's warnings — said this once (Plan HU P3).
             let spoken = flow.startLines(for: job).joined(separator: " ")
-            Task { await appState.speechService.speak(spoken) }
+            Task { await appState.speechService.speak(spoken, source: .job) }
             onStarted(session)
         } catch {
             problem = error.localizedDescription

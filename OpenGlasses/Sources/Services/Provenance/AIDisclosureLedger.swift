@@ -139,3 +139,28 @@ final class AIDisclosureLedger {
         }
     }
 }
+
+// MARK: - The conversation cue, alongside the turn (Plan KL P4)
+
+extension AIDisclosureLedger {
+    /// Start the `.conversation` line, when it is due, through `announcement`, and return at once.
+    ///
+    /// A support report had a 94-character line hold back the first answer of a persona thread by
+    /// about six seconds, between the transcript and the turn being classified. It was this cue's
+    /// once-ever introduction ("Connecting to Avenkin AI, your AI assistant. It can be wrong, so
+    /// check anything important." is 90 characters written, and 94 as spoken, with the brand's
+    /// pronunciation), which the voice turn awaited before it did anything else. The disclosure
+    /// still has to be heard whole, but nothing about it needs the turn to wait: it now plays the
+    /// way the model-switch notice does, alongside the work, and every path that speaks the
+    /// turn's answer or failure waits for `announcement` first, so neither cuts it off.
+    ///
+    /// Returns whether a line was started. Consumed exactly as `consume(_:cueEnabled:)` is: once
+    /// per launch, the introduction once per install.
+    @MainActor
+    @discardableResult
+    func announceConversationCue(cueEnabled: Bool, through announcement: TurnAnnouncement) -> Bool {
+        guard let line = consume(.conversation, cueEnabled: cueEnabled) else { return false }
+        announcement.announce(line, source: .disclosure)
+        return true
+    }
+}

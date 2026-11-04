@@ -157,7 +157,7 @@ final class FingerspellingSessionService: ObservableObject {
             landmarks: built.0,
             inference: built.1.logits(for:),
             speak: { [weak tts] word in
-                await tts?.speak(word, mirrorToHUD: false)
+                await tts?.speak(word, source: .translation, mirrorToHUD: false)
             },
             showCaption: { [weak display] text in
                 display?.showText(text, flashWhileInteractive: true)

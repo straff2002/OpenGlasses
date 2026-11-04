@@ -17,7 +17,7 @@ extension AppState {
     func speakConversationCueIfDue() async {
         guard let line = AIDisclosureLedger.shared.consume(
             .conversation, cueEnabled: Config.aiConnectionCueEnabled) else { return }
-        await speechService.speak(line)
+        await speechService.speak(line, source: .disclosure)
     }
 
     /// A live translation or a translated-caption session has started.
@@ -30,7 +30,7 @@ extension AppState {
     func announceTranslationStarted(target: String, spokenAloud: Bool) async {
         if let line = AIDisclosureLedger.shared.consume(
             .translation, cueEnabled: Config.aiConnectionCueEnabled) {
-            await speechService.speak(line)
+            await speechService.speak(line, source: .disclosure)
         }
         guard spokenAloud else { return }
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
@@ -38,7 +38,7 @@ extension AppState {
                                                                   glassesOnlyAudio: Config.glassesOnlyAudio),
               AIDisclosureLedger.shared.consume(.translationForListener) != nil else { return }
         await speechService.speak(TranslationDisclosureLanguage.listenerLine(forTarget: target),
-                                  mirrorToHUD: false)
+                                  source: .disclosure, mirrorToHUD: false)
     }
 
     /// An interpreter session is about to connect. The wearer is told the first time ever that this
@@ -48,7 +48,7 @@ extension AppState {
         guard let pair = geminiLiveSession.interpreterPair else { return }
         if !Config.interpreterCloudNoticeGiven {
             Config.interpreterCloudNoticeGiven = true
-            await speechService.speak(String(localized: "The interpreter sends what you and the other person say to Google to translate it. It isn't saved here."))
+            await speechService.speak(String(localized: "The interpreter sends what you and the other person say to Google to translate it. It isn't saved here."), source: .disclosure)
         }
         await announceTranslationStarted(target: pair.other, spokenAloud: false)
     }

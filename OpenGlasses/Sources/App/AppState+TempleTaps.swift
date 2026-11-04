@@ -80,7 +80,7 @@ extension AppState: TempleActionPerforming {
             let result = await MusicControlEnvironment.live().execute(
                 MusicToolRequest.parse(action: "toggle", args: [:]))
             if result.outcome != .done {
-                await speechService.speak(result.spoken)
+                await speechService.speak(result.spoken, source: .acknowledgement)
             }
         }
     }
@@ -97,6 +97,6 @@ extension AppState: TempleActionPerforming {
     }
 
     func announceTempleLine(_ line: String) async {
-        await speechService.speak(line)
+        await speechService.speak(line, source: .acknowledgement)
     }
 }
