@@ -187,9 +187,13 @@ struct ServicesSettingsView: View {
                 SecretInputField(placeholder: String(localized: "API Key"), text: $elevenLabsKeyInput)
                     .onChange(of: elevenLabsKeyInput) { _, newValue in
                         Config.setElevenLabsAPIKey(newValue)
-                        // Reset quota cache in case the user added credits or changed key.
-                        appState.speechService.resetElevenLabsQuota()
+                        // Reset quota cache in case the user added credits or changed key, and
+                        // try a key ElevenLabs refused again.
+                        appState.speechService.cloudVoiceKeyChanged(.elevenLabs)
                     }
+
+                CloudVoiceKeyRefusedRow(speech: appState.speechService, engine: .elevenLabs,
+                                        key: elevenLabsKeyInput)
 
                 if elevenLabsKeyInput.isEmpty {
                     Link(destination: URL(string: "https://elevenlabs.io/app/settings/api-keys")!) {
@@ -261,6 +265,9 @@ struct ServicesSettingsView: View {
             if openAIVoiceAvailable || xaiVoiceAvailable {
                 Section {
                     if openAIVoiceAvailable {
+                        CloudVoiceKeyRefusedRow(speech: appState.speechService, engine: .openAI,
+                                                key: CloudVoiceCredentials.openAIKey(
+                                                    savedModels: Config.savedModels, legacyKey: Config.openAIAPIKey))
                         Picker("OpenAI Voice", selection: $openAIVoice) {
                             ForEach(CloudVoiceRequests.openAIVoices, id: \.self) { voice in
                                 Text(voice.capitalized).tag(voice)
@@ -273,6 +280,8 @@ struct ServicesSettingsView: View {
                     }
 
                     if xaiVoiceAvailable {
+                        CloudVoiceKeyRefusedRow(speech: appState.speechService, engine: .xai,
+                                                key: CloudVoiceCredentials.xaiModelKey(savedModels: Config.savedModels))
                         if xaiVoices.isEmpty {
                             Button {
                                 loadXAIVoices()
@@ -319,6 +328,8 @@ struct ServicesSettingsView: View {
             // MARK: Gemini voice (Plan JZ)
             if geminiVoiceAvailable {
                 Section {
+                    CloudVoiceKeyRefusedRow(speech: appState.speechService, engine: .gemini,
+                                            key: CloudVoiceCredentials.geminiKey(savedModels: Config.savedModels))
                     if geminiModels.isEmpty {
                         LabeledContent("Speech Model", value: geminiModel)
                         Button {
@@ -1014,7 +1025,9 @@ struct ServicesSettingsView: View {
         elevenLabsVoicesError = nil
         Task {
             do {
-                let voices = try await TextToSpeechService.fetchElevenLabsVoices(apiKey: apiKey)
+                let voices = try await appState.speechService.fetchVoiceList(.elevenLabs, key: apiKey) {
+                    try await TextToSpeechService.fetchElevenLabsVoices(apiKey: apiKey)
+                }
                 await MainActor.run {
                     elevenLabsVoices = voices
                     elevenLabsVoicesLoading = false
@@ -1030,7 +1043,8 @@ struct ServicesSettingsView: View {
             } catch {
                 await MainActor.run {
                     elevenLabsVoicesLoading = false
-                    elevenLabsVoicesError = String(localized: "Could not load voices: \(error.localizedDescription)")
+                    elevenLabsVoicesError = voiceListError(error, engine: .elevenLabs, key: apiKey,
+                                                           unlisted: String(localized: "Could not load voices: \(error.localizedDescription)"))
                 }
             }
         }
@@ -1055,7 +1069,9 @@ struct ServicesSettingsView: View {
         geminiModelsError = nil
         Task { @MainActor in
             do {
-                let models = try await TextToSpeechService.fetchGeminiSpeechModels(apiKey: apiKey)
+                let models = try await appState.speechService.fetchVoiceList(.gemini, key: apiKey) {
+                    try await TextToSpeechService.fetchGeminiSpeechModels(apiKey: apiKey)
+                }
                 geminiModels = models
                 geminiModelsLoading = false
                 geminiModelsError = models.isEmpty ? String(localized: "This Gemini key lists no speech models.") : nil
@@ -1070,7 +1086,8 @@ struct ServicesSettingsView: View {
                 }
             } catch {
                 geminiModelsLoading = false
-                geminiModelsError = String(localized: "Could not load models: \(error.localizedDescription)")
+                geminiModelsError = voiceListError(error, engine: .gemini, key: apiKey,
+                                                   unlisted: String(localized: "Could not load models: \(error.localizedDescription)"))
             }
         }
     }
@@ -1082,13 +1099,17 @@ struct ServicesSettingsView: View {
         Task { @MainActor in
             let credential = await CloudVoiceCredentials.resolveXAICredential(
                 savedModels: Config.savedModels, account: .shared)
+            // The latch is keyed on a typed key; a sign-in has none the row can show.
+            let xaiKey = CloudVoiceCredentials.xaiModelKey(savedModels: Config.savedModels)
             guard !credential.isEmpty else {
                 xaiVoicesLoading = false
                 xaiVoicesError = String(localized: "No xAI key or sign-in is available.")
                 return
             }
             do {
-                let voices = try await TextToSpeechService.fetchXAIVoices(credential: credential)
+                let voices = try await appState.speechService.fetchVoiceList(.xai, key: xaiKey) {
+                    try await TextToSpeechService.fetchXAIVoices(credential: credential)
+                }
                 xaiVoices = voices
                 xaiVoicesLoading = false
                 xaiVoicesError = voices.isEmpty ? String(localized: "No voices returned for this xAI account.") : nil
@@ -1101,9 +1122,18 @@ struct ServicesSettingsView: View {
                 }
             } catch {
                 xaiVoicesLoading = false
-                xaiVoicesError = String(localized: "Could not load voices: \(error.localizedDescription)")
+                xaiVoicesError = voiceListError(error, engine: .xai, key: xaiKey,
+                                                unlisted: String(localized: "Could not load voices: \(error.localizedDescription)"))
             }
         }
+    }
+
+    /// What a failed voice list says under the picker. A refused key is said by the key row above
+    /// it while the latch holds (Plan KL P3), so it is not said twice; a sign-in, which the row
+    /// cannot show, says it here.
+    private func voiceListError(_ error: Error, engine: TTSEngine, key: String, unlisted: String) -> String? {
+        guard error is CloudVoiceKeyNotAccepted else { return unlisted }
+        return appState.speechService.keyNotAccepted(engine, key: key) ? nil : error.localizedDescription
     }
 
     private func elevenLabsVoiceLabel(_ voice: TextToSpeechService.ElevenLabsVoice) -> String {
@@ -1111,5 +1141,27 @@ struct ServicesSettingsView: View {
             return "\(voice.name) — \(category)"
         }
         return voice.name
+    }
+}
+
+/// The voice row's line while that voice's vendor has refused the key now saved (Plan KL P3):
+/// "ElevenLabs didn't accept the key". Observes the speech service, so it appears as soon as a
+/// reply or a voice list is refused and goes once the key changes.
+private struct CloudVoiceKeyRefusedRow: View {
+    @ObservedObject var speech: TextToSpeechService
+    let engine: TTSEngine
+    let key: String
+
+    var body: some View {
+        if speech.keyNotAccepted(engine, key: key) {
+            Label {
+                Text(CloudVoiceKeyLatch.settingsLine(for: engine))
+                    .font(.caption)
+                    .foregroundStyle(OGTheme.errorLabel)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(OGTheme.errorLabel)
+            }
+        }
     }
 }

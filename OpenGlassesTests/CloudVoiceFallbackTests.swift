@@ -25,13 +25,15 @@ final class CloudVoiceFallbackTests: XCTestCase {
         let body = #"{"detail":{"status":"quota_exceeded","message":"…"}}"#
         XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 401, body: body), .outOfCredit)
         XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 401, body: #"{"detail":"invalid_api_key"}"#),
-                       .refused)
+                       .keyNotAccepted)
     }
 
     func testARefusedKeyOrVoiceCounts() {
-        for status in [401, 402, 403] {
-            XCTAssertEqual(CloudVoiceRejection.classify(statusCode: status, body: ""), .refused, "\(status)")
+        for status in [401, 403] {
+            XCTAssertEqual(CloudVoiceRejection.classify(statusCode: status, body: ""), .keyNotAccepted, "\(status)")
         }
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 402, body: ""), .refused,
+                       "a plan that will not pay for the voice is not a bad key")
     }
 
     func testAServerFaultOrARateLimitIsNotTheWearersToFix() {
@@ -75,7 +77,7 @@ final class CloudVoiceFallbackTests: XCTestCase {
     func testA403NamingAWithdrawnModelIsNotAnsweredWithCheckTheKey() {
         XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: modelGoneBodies[0]),
                        .modelUnavailable)
-        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: ""), .refused)
+        XCTAssertEqual(CloudVoiceRejection.classify(statusCode: 403, body: ""), .keyNotAccepted)
     }
 
     func testA404OrA400WithoutAMarkerStaysUnclassified() {
@@ -86,10 +88,13 @@ final class CloudVoiceFallbackTests: XCTestCase {
         }
     }
 
-    /// A bad voice is the wearer's to fix, so it must not latch the whole voice off as a gone model.
+    /// A bad voice is the wearer's to fix, so it must not latch the whole voice off as a gone model,
+    /// nor its key as a refused one (Plan KL P3), whatever status it comes with.
     func testAMissingVoiceIsNotAWithdrawnModel() {
         let body = #"{"detail":{"status":"voice_not_found","message":"A voice with that id does not exist."}}"#
-        XCTAssertNil(CloudVoiceRejection.classify(statusCode: 404, body: body))
+        for status in [400, 401, 403, 404] {
+            XCTAssertEqual(CloudVoiceRejection.classify(statusCode: status, body: body), .refused, "\(status)")
+        }
     }
 
     func testAnEmptyAccountStillWinsOverAModelMarker() {
@@ -213,9 +218,14 @@ final class CloudVoiceFallbackTests: XCTestCase {
         for engine in TTSEngine.cloudVoices {
             for rejection in CloudVoiceRejection.allCases {
                 let told = notice(rejection, from: engine)
-                XCTAssertTrue(told.spokenLine.contains("Connections"), "\(engine) \(rejection)")
+                // The OpenAI, xAI and Gemini keys are saved on the model, so a refused one is
+                // checked there; everything else, and the ElevenLabs key, under Connections.
+                let onModel = rejection == .keyNotAccepted && engine != .elevenLabs
+                XCTAssertTrue(told.spokenLine.contains(onModel ? CloudVoiceNotice.modelKeysPath : "Connections"),
+                              "\(engine) \(rejection)")
                 XCTAssertTrue(told.spokenLine.contains("built-in voice"), "\(engine) \(rejection)")
-                XCTAssertTrue(told.banner.contains(SettingsCatalog.category(.connections).title),
+                XCTAssertTrue(told.banner.contains(onModel ? CloudVoiceNotice.modelKeysPath
+                                                   : SettingsCatalog.category(.connections).title),
                               "\(engine) \(rejection)")
             }
         }

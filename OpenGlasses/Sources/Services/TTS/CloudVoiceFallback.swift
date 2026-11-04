@@ -11,8 +11,15 @@ enum CloudVoiceRejection: String, Equatable, CaseIterable {
     /// `quota_exceeded`, so the status alone cannot tell it from a bad key; OpenAI sends a 429
     /// naming `insufficient_quota`, which the status alone would take for a rate limit.
     case outOfCredit
-    /// The key, or the voice chosen for it, was refused.
+    /// The voice chosen for the key was refused: an ElevenLabs voice that does not exist or that the
+    /// account may not use, or a 402 from a plan that will not pay for it. Not latched, because the
+    /// wearer fixes it by picking another voice. The raw value is the one this case has always had,
+    /// so an episode stored under it still counts as said.
     case refused
+    /// The vendor did not accept the key itself (Plan KL P3): a 401 or 403 the body does not
+    /// explain otherwise, or Gemini's `API_KEY_INVALID` 400. Asking again with the same key can
+    /// only fail, so the voice is latched off for that key until it changes (`CloudVoiceKeyLatch`).
+    case keyNotAccepted
     /// The vendor has withdrawn the voice model the app asks for. No key or top-up brings it back,
     /// so a wearer who was told "check the key" would be sent the wrong way (Plan KB).
     case modelUnavailable
@@ -28,8 +35,15 @@ enum CloudVoiceRejection: String, Equatable, CaseIterable {
 
     /// What a refused-key body says, lower-cased, when the status alone does not: Gemini refuses a
     /// bad key with a 400, the status every malformed request gets.
-    static let refusedMarkers = [
+    static let keyNotAcceptedMarkers = [
         "api_key_invalid"              // Gemini
+    ]
+
+    /// What a refused-voice body says, lower-cased, whatever the status. Read before the key's
+    /// status, so a bad voice id can never latch a good key off: the wearer fixes it by picking
+    /// another voice, and the key must still be tried when they do.
+    static let voiceRefusedMarkers = [
+        "voice_not_found"              // ElevenLabs
     ]
 
     /// What a withdrawn model's body says, lower-cased, whatever the status: OpenAI answers a
@@ -56,9 +70,11 @@ enum CloudVoiceRejection: String, Equatable, CaseIterable {
         let lowered = body.lowercased()
         if outOfCreditMarkers.contains(where: { lowered.contains($0) }) { return .outOfCredit }
         if namesAWithdrawnModel(lowered) { return .modelUnavailable }
-        if refusedMarkers.contains(where: { lowered.contains($0) }) { return .refused }
+        if voiceRefusedMarkers.contains(where: { lowered.contains($0) }) { return .refused }
+        if keyNotAcceptedMarkers.contains(where: { lowered.contains($0) }) { return .keyNotAccepted }
         switch statusCode {
-        case 401, 402, 403: return .refused
+        case 401, 403: return .keyNotAccepted
+        case 402: return .refused
         default: return nil
         }
     }
@@ -74,6 +90,10 @@ struct CloudVoiceNotice: Equatable {
 
     private var vendor: String { engine.vendorName ?? "The cloud voice" }
 
+    /// Where the OpenAI, xAI and Gemini voices' keys live: on the saved model, not beside the
+    /// ElevenLabs key, so "check the key" sends the wearer there.
+    static var modelKeysPath: String { SettingsHub.path(to: .intelligence) }
+
     /// Said once, after the reply it interrupted. The path is spoken as words: a wearer who is not
     /// looking at the phone has to be able to find it later from memory.
     ///
@@ -88,9 +108,17 @@ struct CloudVoiceNotice: Equatable {
                 return String(localized: "By the way, \(vendor) refused the voice request, so I'm using another voice. Check the key and voice in the app's Settings, under Connections, then Services and Integrations.")
             case .modelUnavailable:
                 return String(localized: "By the way, \(vendor) no longer offers the voice model I was using, so I'm using another voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations.")
+            case .keyNotAccepted where engine == .elevenLabs:
+                return String(localized: "By the way, ElevenLabs didn't accept the key, so I'm using another voice. Check the key in the app's Settings, under Connections, then Services and Integrations.")
+            case .keyNotAccepted:
+                return String(localized: "By the way, \(vendor) didn't accept the key, so I'm using another voice. Check the key on your \(vendor) model in the app's Settings, under \(Self.modelKeysPath).")
             }
         }
         switch (engine, rejection) {
+        case (.elevenLabs, .keyNotAccepted):
+            return String(localized: "By the way, ElevenLabs didn't accept the key, so I'm using the built-in voice. Check the key in the app's Settings, under Connections, then Services and Integrations.")
+        case (_, .keyNotAccepted):
+            return String(localized: "By the way, \(vendor) didn't accept the key, so I'm using the built-in voice. Check the key on your \(vendor) model in the app's Settings, under \(Self.modelKeysPath).")
         case (.elevenLabs, .outOfCredit):
             return String(localized: "By the way, your ElevenLabs credit has run out, so I'm using the built-in voice. You can change voices in the app's Settings, under Connections, then Services and Integrations.")
         case (.elevenLabs, .refused):
@@ -114,9 +142,17 @@ struct CloudVoiceNotice: Equatable {
                 return String(localized: "\(vendor) refused the voice request, so replies use another voice. Check the key and voice in Settings › Connections › Services & Integrations.")
             case .modelUnavailable:
                 return String(localized: "\(vendor) no longer offers the voice model in use, so replies use another voice. Choose another voice in Settings › Connections › Services & Integrations.")
+            case .keyNotAccepted where engine == .elevenLabs:
+                return String(localized: "ElevenLabs didn't accept the key, so replies use another voice. Check the key in Settings › Connections › Services & Integrations.")
+            case .keyNotAccepted:
+                return String(localized: "\(vendor) didn't accept the key, so replies use another voice. Check the key on your \(vendor) model in Settings › \(Self.modelKeysPath).")
             }
         }
         switch (engine, rejection) {
+        case (.elevenLabs, .keyNotAccepted):
+            return String(localized: "ElevenLabs didn't accept the key, so replies use the built-in voice. Check the key in Settings › Connections › Services & Integrations.")
+        case (_, .keyNotAccepted):
+            return String(localized: "\(vendor) didn't accept the key, so replies use the built-in voice. Check the key on your \(vendor) model in Settings › \(Self.modelKeysPath).")
         case (.elevenLabs, .outOfCredit):
             return String(localized: "ElevenLabs is out of credit, so replies use the built-in voice. Change voices in Settings › Connections › Services & Integrations.")
         case (.elevenLabs, .refused):
@@ -196,4 +232,65 @@ struct CloudVoiceFallbackAnnouncer {
         let kept = said.filter { CloudVoiceNotice.engine(ofToken: $0) != engine }
         if kept.count != said.count { store(kept) }
     }
+}
+
+/// The cloud voices whose key was refused this process, each with the key it refused (Plan KL P3).
+///
+/// A refused key used to be asked again on every line: every utterance paid a round trip for the
+/// refusal before the next engine spoke, and every visit to the voice settings fetched a list the
+/// key could not have. Now the first refusal latches that voice off for that key. A latched voice is
+/// skipped like one out of credit, with no request, its voice list is not fetched, and Settings says
+/// the vendor didn't accept the key.
+///
+/// Kept per voice and per key: the latch holds only a fingerprint of the key it refused, so a key
+/// that changes anywhere (the ElevenLabs field, a saved model's key, a refreshed xAI sign-in) is
+/// tried again without anything having to clear it. The fingerprint is the key's `hashValue`, which
+/// is seeded per process, and the latch is never persisted: no key material is stored or logged,
+/// the same arrangement as `CredentialNoticeLatch`.
+struct CloudVoiceKeyLatch: Equatable {
+    private var refused: [TTSEngine: Int] = [:]
+
+    /// A key as the voice sends it. An empty key has nothing to refuse and is never latched.
+    private static func fingerprint(_ key: String) -> Int? {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.hashValue
+    }
+
+    /// Whether `key` is the one `engine` refused.
+    func isLatched(_ engine: TTSEngine, key: String) -> Bool {
+        guard let mark = Self.fingerprint(key) else { return false }
+        return refused[engine] == mark
+    }
+
+    /// `engine` refused `key`. Returns true when a different key from the same voice was latched
+    /// before, so its refusal is news again rather than an episode already told.
+    @discardableResult
+    mutating func latch(_ engine: TTSEngine, key: String) -> Bool {
+        guard let mark = Self.fingerprint(key) else { return false }
+        let previous = refused.updateValue(mark, forKey: engine)
+        return previous != nil && previous != mark
+    }
+
+    /// The wearer changed that voice's key: try it again.
+    mutating func clear(_ engine: TTSEngine) {
+        refused.removeValue(forKey: engine)
+    }
+
+    /// The voices with a latched key, whichever key it was.
+    var engines: Set<TTSEngine> { Set(refused.keys) }
+
+    /// The voice row's line while the latch holds, naming the vendor.
+    static func settingsLine(for engine: TTSEngine) -> String {
+        let vendor = engine.vendorName ?? String(localized: "The cloud voice")
+        return String(localized: "\(vendor) didn't accept the key")
+    }
+}
+
+/// The voice list was not fetched, or was refused, because the vendor does not accept the key
+/// (Plan KL P3). The picker shows the latch's own line instead of an error, so this describes itself
+/// the same way.
+struct CloudVoiceKeyNotAccepted: LocalizedError, Equatable {
+    let engine: TTSEngine
+
+    var errorDescription: String? { CloudVoiceKeyLatch.settingsLine(for: engine) }
 }
