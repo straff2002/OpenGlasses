@@ -311,6 +311,7 @@ extension AppState {
         case .contextTooLarge: return "the request was too large for this model — choose a model with a larger context window"
         case .contextOverflow: return "the on-device model's window was too small for this turn: it cannot hold the instructions and tools together — use a cloud model for this"
         case .refused: return "the app refused the request"
+        case .stoppedAfterTools: return "the AI stopped after a tool had already done something, so it wasn't run again on another model"
         default: return "the AI didn't answer"
         }
     }

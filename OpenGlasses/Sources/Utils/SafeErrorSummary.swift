@@ -48,6 +48,10 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         /// The request would not fit the account's tokens-a-minute allowance however it was
         /// fitted, checked before it was sent (Plan KL P1).
         case overAllowance
+        /// A model failed after a tool that may have changed something had run, so the turn ended
+        /// rather than starting again on another model (Plan KL P2). The detail is the category
+        /// of what the model failed on.
+        case stoppedAfterTools
         case unknown
     }
 
@@ -112,6 +116,12 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
         // Raised before anything was sent: the figures are in the turn trace, not here.
         if error is PerMinuteFit.NothingFits {
             self.init(category: .overAllowance, detail: PrivacyToken("beforeSending"))
+            return
+        }
+        // The turn ended after a tool ran (Plan KL P2): what the model failed on is the detail.
+        if let ended = error as? HopAfterTools.TurnEnded {
+            self.init(category: .stoppedAfterTools,
+                      detail: PrivacyToken(ended.underlying.category.rawValue), code: ended.underlying.code)
             return
         }
         // A closed vocabulary, never the SDK's free-form unexpectedError description.

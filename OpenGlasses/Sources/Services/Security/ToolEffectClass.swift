@@ -193,6 +193,28 @@ enum ToolEffectClassifier {
         return semanticsClass(semantics)
     }
 
+    /// The read actions of the native tools whose declared effect is their strongest action, a write
+    /// (Plan KL P2). Taken from each tool's own `execute` switch: `CalendarTool` ("today", "schedule",
+    /// "next", "upcoming", "week", "this_week", "tomorrow") and `AppleRemindersTool` ("list", "show").
+    /// Every other action of theirs writes ("create"/"add"; "create"/"add"/"set", "complete"/"done"/"finish").
+    static let readActions: [String: Set<String>] = [
+        "calendar": ["today", "schedule", "next", "upcoming", "week", "this_week", "tomorrow"],
+        "reminder": ["list", "show"],
+    ]
+
+    /// Whether this call of a tool declared by its strongest (writing) action only reads — the
+    /// fact a hop after it needs (Plan KL P2), not an authorization class: `nativeClass` and the
+    /// router still treat the tool by its declaration.
+    ///
+    /// The action is read as the tool reads it, lower-cased and nothing else, and must be one of the
+    /// tool's own read cases. A missing action is not a read, even where the tool would default to one
+    /// (the calendar's "today"), and neither is an unknown one: both stay a change, which can only
+    /// over-count. A tool without a row here is never a read by this route.
+    static func isReadAction(tool: String, args: [String: Any]) -> Bool {
+        guard let reads = readActions[tool], let action = args["action"] as? String else { return false }
+        return reads.contains(action.lowercased())
+    }
+
     private static func semanticsClass(_ semantics: ToolExecutionSemantics) -> ToolEffectClass {
         semantics.effect == .readOnly ? .readOnly : .write
     }
