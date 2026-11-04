@@ -1,8 +1,8 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04, P2 and P3 merged 2026-11-05, P4 built 2026-11-05 (all
-headless; the device re-runs are P5, and P1's live Groq turn is owed). Drafted 2026-11-03 from two TestFlight
-users' support reports on build 615. The owner took all six decisions the same day. P5 is not run.
+**Status:** 🚧 P0 merged 2026-11-03, P1 merged 2026-11-04, P2, P3 and P4 merged 2026-11-05 (PRs 937, 948,
+949, 950, 951; all headless). Nothing is left to build. P5, the device re-runs, is owed, with exact
+steps below. Drafted 2026-11-03 from two TestFlight users' support reports on build 615. The owner took all six decisions the same day.
 P4 names the 94-character line: the conversation cue's once-ever introduction, which the voice turn awaited;
 it now plays alongside the turn, and every spoken line logs its source.
 P2 carries User B's calendar, weather and reminders turn forward: a calendar or reminders read action counts
@@ -465,11 +465,64 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 
 ### P5 — the users' re-runs (owed, device)
 
-- User A, signed out: one turn and one photo. Expect the sign-in line once and the status-card row.
-  Then sign in and repeat; ChatGPT should answer.
-- User B: "Check my calendar for today and my reminders that are due, and tell me the weather here.
-  Keep it short." on the free Groq key. Expect one 413 at most, a fitted retry that answers, or the
-  plain allowance line, and no restart on another model.
+Not run. P5 needs a phone, the glasses and two accounts, so it can't be done headlessly, and
+nothing here stands in for it. Run on a TestFlight build at or after **623** (P4 merged in
+PR 951). For each run, send a support report afterwards (Settings › Advanced & Support, "This
+conversation") and check the log lines named below.
+
+**1. Signed out of ChatGPT (P0).**
+1. In Settings › Assistant › AI Models, choose a ChatGPT (Subscription) model while signed out of
+   ChatGPT. Leave Apple Intelligence in the chain.
+2. Ask one plain question by wake word, then a second one.
+   - Expect: before the first answer, "You're not signed in to ChatGPT, so I'm answering on this
+     phone." Nothing before the second answer. The status card shows "Sign in to ChatGPT", and the
+     row opens the model settings.
+   - Log: `cascadeSwitched detail=terminalForCandidate` with an error token on both turns. There is
+     never an "unavailable" line.
+3. Take one photo and ask about it.
+   - Expect "…couldn't get an answer about it — you're not signed in to ChatGPT."
+4. Sign in to ChatGPT from the status-card row, then repeat steps 2 and 3.
+   - Expect ChatGPT to answer both, with no switch notice.
+
+**2. Free-tier Groq (P1, P2).** This needs a free Groq key. The owner doesn't live-test Groq, so
+this run belongs to whoever has one.
+1. Choose the Groq model with the free key, tools on (Small context off).
+2. Ask: "Check my calendar for today and my reminders that are due, and tell me the weather here.
+   Keep it short."
+   - Expect at most one 413. Then either a fitted retry on Groq that answers using the tools, or
+     the line "Groq's plan allows about N thousand tokens a minute, and this question needs more…".
+     Never the Small-context advice, and no restart from nothing on another model.
+   - Log: `streamError status=413 … limit=N requested=M`, then `perMinuteRetry` and a second
+     `requestSent` that is smaller. A `perMinuteFit` rung is logged.
+3. Ask the same question again.
+   - Expect it fitted before sending: no 413 at all.
+4. If any hop happens after tools ran, check `hopAfterTools`. It should read `carryForward` for
+   calendar, weather and reminder reads, and the next model's answer should use those results
+   without running the tools again.
+5. Settle the open question: compare `requested=` against the app's estimate on the same
+   `requestSent`. The ratio says whether Groq counts the output cap.
+
+**3. A refused ElevenLabs key (P3).**
+1. Choose the ElevenLabs voice, and enter a wrong key in Connections › Services and Integrations.
+2. Ask two questions.
+   - Expect one `engineFailed status=401`, then `keyNotAccepted`, and the system voice for every
+     line after it with no further ElevenLabs request. You hear "ElevenLabs didn't accept the
+     key…" once. The voice row shows "ElevenLabs didn't accept the key", and the voice list
+     isn't fetched (`voicesRequestSkipped`).
+3. Enter the right key.
+   - Expect the next line in the ElevenLabs voice.
+4. Optional: pick a voice id the account can't use. Record the real status and body code, which
+   P3 assumed to be `voice_not_found`. It should not latch the key.
+
+**4. First voice turn on a fresh install (P4).**
+1. Delete and reinstall, sign in to a cloud model, and ask the first question by wake word.
+   - Expect the introduction ("Connecting to Avenkin AI…") heard in full before the answer.
+   - Log: `tts event=speaking … characters=94 source=disclosure`, with no multi-second gap before
+     `turnClassified`. Every `speaking` line in the report carries a `source=`.
+
+**What to bring back:** the support report from each run. Run 1 is checked on device when
+sign-in works. Run 2 closes P1's live check and the output-cap question. Run 3 closes P3.
+Run 4 closes P4.
 
 ## Acceptance
 
