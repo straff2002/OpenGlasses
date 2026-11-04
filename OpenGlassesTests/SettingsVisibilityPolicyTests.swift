@@ -191,7 +191,7 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
     /// Plan KH P2: the rows are drawing. A row never shows what this policy hid, and what it lists
     /// as hidden is still named by category.
     func testTheRowsShowOnlyWhatThePolicyShows() {
-        let phone = SettingsHubPhone(fieldAssistOn: false, glassesSupported: true)
+        let phone = SettingsHubPhone(glassesSupported: true)
         for context in [ManagedSettingsContext.unmanaged, technician(), administrator(), ceilingsOnly([.agentModeEnabled])] {
             for simpleMode in [false, true] {
                 let policy = Policy.hubCategories(simpleMode: simpleMode, in: context).map(\.id)

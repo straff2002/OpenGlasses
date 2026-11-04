@@ -29,10 +29,6 @@ enum SettingsHubRowID: String, CaseIterable, Sendable {
 
 /// What the row layout depends on, beyond who is looking.
 struct SettingsHubPhone: Equatable, Sendable {
-    /// Field Assist is entitled and on (`Config.fieldAssistActive`). The same fact that keeps
-    /// `PersonalManualLibrary.permitted` false, so My Manuals sits with the Field Assist work while
-    /// that is what the phone is for, and with the person's own things otherwise.
-    var fieldAssistOn: Bool
     /// This copy offers glasses (`GlassesSupportPolicy.isSupported`).
     var glassesSupported: Bool
 }
@@ -67,7 +63,7 @@ enum SettingsHub {
             let everyday = SettingsCatalog.category(.everyday)
             return SettingsHubRow(
                 id: id, title: everyday.title, icon: everyday.icon, mutedIcon: false, subtitle: everyday.subtitle,
-                children: phone.fieldAssistOn ? [.everyday] : [.everyday, .myManuals])
+                children: [.everyday, .myManuals])
         case .devicesPrivacy:
             let devices = SettingsCatalog.category(.devices)
             return SettingsHubRow(
@@ -89,7 +85,7 @@ enum SettingsHub {
             return SettingsHubRow(
                 id: id, title: fieldAssist.title, icon: fieldAssist.icon, mutedIcon: false,
                 subtitle: fieldAssist.subtitle,
-                children: phone.fieldAssistOn ? [.fieldAssist, .myManuals] : [.fieldAssist])
+                children: [.fieldAssist])
         case .lookAndFeel:
             return single(id, .lookAndFeel)
         case .advancedSupport:
@@ -116,7 +112,7 @@ enum SettingsHub {
     /// it is a link row of its own rather than content on the row's page. For the words a person
     /// reads, and the model repeats, so a path cannot name a row the hub does not draw.
     static func path(to category: SettingsCategoryID,
-                     on phone: SettingsHubPhone = SettingsHubPhone(fieldAssistOn: false, glassesSupported: true)) -> String {
+                     on phone: SettingsHubPhone = SettingsHubPhone(glassesSupported: true)) -> String {
         let row = row(home(of: category, on: phone), on: phone).title
         switch category {
         case .voice, .advanced, .myManuals:
@@ -168,7 +164,7 @@ enum SettingsHub {
     /// What tapping a row shows.
     enum Page: Equatable, Sendable {
         /// Straight to one category's screen. Everyday and Field Assist always open this way: My
-        /// Manuals is a row on their own screens, wherever they are opened from.
+        /// Manuals is a row on Everyday's own screen, wherever it is opened from.
         case category(SettingsCategoryID)
         /// One page for these categories, in this order.
         case merged([SettingsCategoryID])
@@ -215,7 +211,8 @@ enum SettingsHub {
 
     // MARK: - My Manuals
 
-    /// Whether the My Manuals row belongs on the screen of `host` (`.everyday` or `.fieldAssist`).
+    /// Whether the My Manuals row belongs on the screen of `host`. Always Everyday: My Manuals is the
+    /// person's own library, never part of Field Assist, even on a phone that has both.
     static func showsMyManuals(on host: SettingsHubRowID, visible: [SettingsCategory],
                                phone: SettingsHubPhone) -> Bool {
         visible.contains { $0.id == .myManuals } && home(of: .myManuals, on: phone) == host

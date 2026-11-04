@@ -228,9 +228,8 @@ final class SettingsHubTests: XCTestCase {
         XCTAssertTrue(everyday.contains("ThingsToTryView()"))
         XCTAssertTrue(everyday.contains("SettingsHub.showsMyManuals(on: .everyday)"))
         XCTAssertTrue(everyday.contains("MyManualsView()"))
-        let fieldAssist = try structBody("FieldAssistSettingsView")
-        XCTAssertTrue(fieldAssist.contains("SettingsHub.showsMyManuals(on: .fieldAssist)"))
-        XCTAssertTrue(fieldAssist.contains("MyManualsView()"))
+        // Field Assist's screen keeps only the locked offer's "Only need your own manuals?" link.
+        XCTAssertFalse(try structBody("FieldAssistSettingsView").contains("SettingsHub.showsMyManuals"))
         let hub = try structBody("SettingsView")
         XCTAssertTrue(hub.contains("SettingsHub.thingsToTryPlace(visible: visibleCategories) == .besideAbout"))
         XCTAssertTrue(hub.contains("ThingsToTryView()"))

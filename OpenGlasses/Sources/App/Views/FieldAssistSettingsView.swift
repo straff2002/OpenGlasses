@@ -149,17 +149,6 @@ struct FieldAssistSettingsView: View {
                 }
             }
 
-            // ──────────────── My Manuals, on a Field Assist phone (Plan KH P2)
-            if SettingsHub.showsMyManuals(on: .fieldAssist) {
-                Section {
-                    NavigationLink {
-                        MyManualsView().environmentObject(appState)
-                    } label: {
-                        SettingsLinkLabel(.myManuals)
-                    }
-                }
-            }
-
             // ──────────────── Entitlement (paywall when locked, status when unlocked)
             if Config.fieldAssistUnlocked {
                 entitlementStatus
