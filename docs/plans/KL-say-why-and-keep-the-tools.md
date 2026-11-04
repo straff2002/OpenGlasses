@@ -1,8 +1,9 @@
 # Plan KL — Say Why, Keep the Tools (a missing sign-in said once, a request that fits the plan, work a hop keeps)
 
-**Status:** 🚧 P0 built 2026-11-03 (headless; the device re-run is P5). Drafted 2026-11-03 from two
-TestFlight users' support reports on build 615. The owner took all six decisions the same day. P2's
-hop logging landed with P0; P1–P5 are not built.
+**Status:** 🚧 P0 merged 2026-11-03 and P1 built 2026-11-04 (both headless; the device re-runs are P5, and P1's
+live Groq turn is owed). Drafted 2026-11-03 from two TestFlight users' support reports on build 615.
+The owner took all six decisions the same day. P2's hop logging landed with P0; the rest of P2 and
+P3–P5 are not built.
 **Track:** app-wide. Any Direct-mode turn whose chosen model has no working credential, or whose account
 caps tokens per minute; every turn the fallback chain hops.
 **Related:** Plan [BK](BK-adversarial-review-remediation.md) P2 (the fallback chain and its spoken notices),
@@ -174,6 +175,69 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 - **Owed live:** one free-tier Groq turn on a device, which needs a Groq key. Groq is not one of the
   providers the owner live-tests, so this is the tester's re-run in P5 unless the owner supplies a key.
 
+**As built (2026-11-04):**
+
+- `ProviderRejection` gained `limit` and `requested`, read only for `requestOverTokenRateLimit`: the
+  whole number standing after the word "limit" and after "requested", nothing else of the sentence
+  (the organisation id, the model and the tier are never kept). Nil when absent; other reasons and
+  providers are unaffected. `streamError` and `apiError` log them (`limit=N requested=M`), and the
+  turn trace carries them (`allowanceLimit`, `allowanceRequested`), so a failed turn's report line
+  reads "allowance: 8000 tokens a minute · requested: 11234 tokens".
+- `PerMinuteAllowance` (pure) and `PerMinuteAllowanceStore` (preferences, keyed by saved model id,
+  read through on every call): the limit, a calibration, and a fingerprint of provider, model id and
+  endpoint. Nothing of the key is kept, not even a digest: `Config.setSavedModels` compares the list
+  it replaces with the new one (`PerMinuteAllowance.modelsToForget`) and drops the entry of a model
+  whose key, provider, model id or endpoint changed, or that was removed (decision 3; logged as
+  `perMinuteFit detail=cleared count=N`). A read whose fingerprint no longer matches clears it too.
+  Registered as exempt in `DataStoreRegistryTests`: numbers and a fingerprint, nothing about anyone.
+  A signed-in account route has no key to compare; none of the fitted providers uses one but xAI,
+  whose account change is not caught here.
+- `PerMinuteFit` (pure) estimates a request as its body bytes over four plus its output cap, and
+  takes the first rung within 90% of the allowance. `LLMService.fitToPerMinuteAllowance` measures
+  each rung as it would be sent: the prompt (with the on-demand guide swapped for one listing every
+  tool), the serialized tool definitions, the history (Groq's last six messages), the cap. Rung 2 is
+  `ToolExposurePolicy.emptyingCore` (reason `perMinuteAllowance`); rung 3 is
+  `LLMService.condensedCloudPrompt` — `AppleOnDeviceInstructions` without its "manuals need a cloud
+  model" line, the photo lines on a photo turn, and the guide; rung 4 (`PerMinuteFitScope.shortened`)
+  keeps this turn whole and two exchanges before it, and halves the cap (not under 512). Rungs 2–4
+  need the lookup tool and are not built when the organisation pinned tool definitions to Never. A
+  rung-5 turn throws `PerMinuteFit.NothingFits` before sending: `.terminalForCandidate`, so another
+  model may take it; summary `overAllowance(beforeSending)`. The fit applies to the OpenAI-compatible
+  family on Chat Completions (Groq, DeepSeek, Mistral, Z.ai, Qwen, MiniMax, xAI, OpenRouter, custom).
+- **The output cap is counted.** Neither report kept Groq's requested count, so whether Groq counts
+  `max_tokens` could not be settled from fixtures. The estimate counts it, which can only be stricter
+  than Groq. Each refusal that states its count stores the ratio of that count to the app's estimate
+  of the same request (body bytes and cap, recorded at `requestSent`), clamped to 0.5–2, and later
+  fits apply it; a refusal with the limit alone raises the calibration until the refused request
+  estimates over it. If Groq does not count the cap, the ratio comes out below one and fits loosen.
+- **Same-turn retry.** `PerMinuteRetry.run` wraps each attempt in `sendMessageCascading`: a refusal
+  with figures on a request that carried tools is learned, the history rewound to the attempt's
+  start, and the same model asked once more — now fitted, since the allowance is known. Only while
+  `toolCallsDispatched` (counted by the shared tool dispatcher and the on-device tool runner) has not
+  moved since the attempt began. A second refusal is learned from and goes to the chain. Later turns
+  on the model fit before sending.
+- **Spoken:** `PerMinuteNotice` — "Groq's plan allows about 8 thousand tokens a minute, and this
+  question needs more, so pick another model in Settings." Without figures: "this question is
+  bigger than Groq allows per minute on this account, so pick another model in Settings"; the Small
+  context advice is kept only when the request carried no tools (unknown counts as tools). A hop
+  says "…, so I'm using Claude." (or "I'm answering on this phone"), never "unavailable". The banner
+  (`plainReason`) reads the trace's allowance and tool count the same way; the OpenAI-compatible
+  path now records the tool count too.
+- Fixtures (`PerMinuteFitTests`): build 615 (44,317 bytes, 18,814 of instructions, 36 core tools,
+  1,200 of history) and build 581 (43,000 bytes) against 8,000 a minute both take rung 3
+  uncalibrated; with a count like 581's (11,234) against 615's estimate of 12,103 it takes rung 2. 6,000 a
+  minute takes rung 4; 4,000 fits nothing. `PerMinuteRetryTurnTests` runs the real `LLMService` with
+  the registry's tools over a recording transport: one refusal and one fitted retry declaring only
+  `lookup_tools`, no hop; the next turn fitted before sending; no resend after a tool ran; nothing
+  sent when nothing fits (in `PerMinuteFitTests.swift`, beside the pure cases). A key edit through
+  `Config.setSavedModels` clears the shared entry.
+- **Not covered:** a fitted turn that needs several tool rounds can spend the minute's allowance
+  across them — rung 2 adds a lookup round — and Groq then answers 429 mid-turn, after tools ran. That
+  hop is P2's case. The fit measures the first request only.
+- **Not covered either:** an allowance is forgotten only when the model's key, provider, model id or
+  endpoint changes, so a plan upgraded on the same key keeps being fitted until then. Groq's
+  `x-ratelimit-limit-tokens` response header could re-learn it on every answered turn; it is not read.
+
 ### P2 — a hop keeps the work, and logs why (headless)
 
 - `ModelCascade.run`'s `onSwitch` passes the error. `cascadeSwitched` logs `SafeErrorSummary(error)`
@@ -247,7 +311,7 @@ Two users sent reports on build 615, and the app failed both of them in ways the
 
 ## Open
 
-- Whether Groq counts the output cap toward the per-minute allowance (P1 checks it from the figures
-  before the rung table is fixed).
+- Whether Groq counts the output cap toward the per-minute allowance: P1 counts it and calibrates
+  from each refusal's own requested count; the live Groq turn will show the ratio in its log.
 - What Apple failed on after the tools ran in User B's turn. P2's logging answers it the next time.
 - The 94-character line (P4).
