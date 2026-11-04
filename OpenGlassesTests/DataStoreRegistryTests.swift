@@ -75,6 +75,11 @@ final class DataStoreRegistryTests: XCTestCase {
                 + "holds none of the result — the words live in memory and are gone after a "
                 + "relaunch, which is why a reloaded record can only hedge, never re-read",
 
+        "OpenGlasses/Sources/Services/LLM/PerMinuteAllowance.swift":
+            "each saved model's learned tokens-a-minute allowance (Plan KL P1): two numbers and a "
+                + "fingerprint of the provider, the model id and the endpoint — nothing of the key. "
+                + "Filed under the saved model's id; nothing about the wearer",
+
         // UI state with no content in it.
         "OpenGlasses/Sources/Services/NativeTools/PomodoroTool.swift":
             "a timer's start time and length",

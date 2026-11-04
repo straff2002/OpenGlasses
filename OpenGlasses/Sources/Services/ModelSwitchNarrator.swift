@@ -33,12 +33,18 @@ enum ModelSwitchNarrator {
     /// `gap` is `from`'s credential gap when the hop was a missing or refused sign-in or key
     /// (Plan KL P0): that is a setting, not an outage, so the line names the service and what is
     /// wrong with it, and never says "unavailable".
+    ///
+    /// `perMinute` is the hop away from a request over the account's tokens-a-minute allowance
+    /// (Plan KL P1): the same request fails there every time, so it is not called an outage either.
     static func fallbackPhrase(from: Model, to: Model, failure: ModelFallbackChain.FailureClass,
-                               gap: CredentialGap? = nil) -> String {
+                               gap: CredentialGap? = nil, perMinute: PerMinuteNotice? = nil) -> String {
         if let gap {
             return to.isOnDevice
                 ? "\(gap.sentenceOpening), so I'm answering on this phone."
                 : "\(gap.sentenceOpening), so I'm using \(to.name)."
+        }
+        if let perMinute {
+            return perMinute.switchPhrase(toName: to.name, onDevice: to.isOnDevice)
         }
         switch failure {
         case .visionUnavailable:
@@ -63,9 +69,10 @@ enum ModelSwitchNarrator {
     }
 
     /// Spoken instead of the generic error line when the whole chain is exhausted — the real reason.
-    static func exhaustionPhrase(lastError: Error, gap: CredentialGap? = nil) -> String {
+    static func exhaustionPhrase(lastError: Error, gap: CredentialGap? = nil,
+                                 perMinute: PerMinuteNotice? = nil) -> String {
         if let refusal = permissionLine(lastError) { return refusal }
-        return "I couldn't get a response — \(exhaustionReason(lastError: lastError, gap: gap))."
+        return "I couldn't get a response — \(exhaustionReason(lastError: lastError, gap: gap, perMinute: perMinute))."
     }
 
     /// A service the person hasn't allowed isn't a failure to wait out, and only they can fix it,
@@ -84,9 +91,10 @@ enum ModelSwitchNarrator {
     }
 
     /// What a failed turn says: the real reason, or the generic line with narration off.
-    static func failureLine(_ error: Error, narrate: Bool, gap: CredentialGap? = nil) -> String {
+    static func failureLine(_ error: Error, narrate: Bool, gap: CredentialGap? = nil,
+                            perMinute: PerMinuteNotice? = nil) -> String {
         if let refusal = permissionLine(error) { return refusal }
-        return narrate ? exhaustionPhrase(lastError: error, gap: gap) : "Sorry, I encountered an error."
+        return narrate ? exhaustionPhrase(lastError: error, gap: gap, perMinute: perMinute) : "Sorry, I encountered an error."
     }
 
     /// The reason half of `exhaustionPhrase`, for a caller that frames it itself (a photo turn
@@ -95,7 +103,13 @@ enum ModelSwitchNarrator {
     /// `gap` is the credential gap of the model that threw `lastError`, when the caller knows it
     /// (`LLMService.credentialGap(behind:)`). It names the service only while the error itself is
     /// a credential failure of the same kind, so a stale gap can never explain another failure.
-    static func exhaustionReason(lastError: Error, gap: CredentialGap? = nil) -> String {
+    ///
+    /// `perMinute` is what the caller knows about a refusal over the account's per-minute
+    /// allowance (`LLMService.perMinuteNotice(behind:)`): the service and whether the request
+    /// carried tools. It is used only while `lastError` is such a refusal; without it the error's
+    /// own figures are read, and a request whose tools are unknown is assumed to have carried them.
+    static func exhaustionReason(lastError: Error, gap: CredentialGap? = nil,
+                                 perMinute: PerMinuteNotice? = nil) -> String {
         // Plan KL P0: "I don't have working credentials for them" named neither the service nor
         // the fix. The exhaustion line is the turn's answer, so it is said every time.
         if let gap, CredentialGap.kind(of: lastError) == gap.kind {
@@ -118,9 +132,10 @@ enum ModelSwitchNarrator {
                 : "the chosen model isn't available on this account, so pick another in Settings"
         }
         // "Unavailable" would send the wearer to wait it out; the same request fails every time.
-        if case LLMError.apiError(_, _, _, let rejection?) = lastError,
-           rejection.reason == .requestOverTokenRateLimit {
-            return "the request is bigger than that AI account allows per minute, so turn on Small context for that model in Settings, or pick another"
+        // Plan KL P1: the line names the allowance, and tells the wearer to turn on Small context
+        // only for a question that carried no tools — the setting removes them.
+        if let notice = PerMinuteNotice.from(lastError) {
+            return (perMinute ?? notice).reason
         }
         let reason: String
         switch ModelFallbackChain.classify(lastError) {

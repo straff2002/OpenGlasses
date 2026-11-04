@@ -518,13 +518,7 @@ class LLMService: ObservableObject {
         Answer in 1–2 short sentences. No markdown, lists, preamble, or follow-up questions.
         """
         if hasImage {
-            prompt += """
-
-
-            A photo from the camera is attached. You CAN see it — never deny vision.
-            Name the main subject and anything asked. Skip background, lighting, and composition unless asked.
-            If asked to read text: quote it verbatim; translate only if asked.
-            """
+            prompt += "\n\n" + leanVisionBlock
         }
         if let memory = memoryContext?.trimmingCharacters(in: .whitespacesAndNewlines), !memory.isEmpty {
             let clip = clipMemoryForLeanPrompt(memory)
@@ -539,6 +533,48 @@ class LLMService: ObservableObject {
             prompt += "\n\nKnown about the wearer: \(clip.text)"
         }
         return prompt
+    }
+
+    /// What a short prompt says about an attached photo: the lean cloud tier's, and the condensed
+    /// instructions' when a cloud model is fitted to a per-minute allowance (Plan KL P1).
+    static let leanVisionBlock = """
+        A photo from the camera is attached. You CAN see it — never deny vision.
+        Name the main subject and anything asked. Skip background, lighting, and composition unless asked.
+        If asked to read text: quote it verbatim; translate only if asked.
+        """
+
+    /// The condensed instructions a cloud model is given when the full ones do not fit the
+    /// account's per-minute allowance (Plan KL P1, decision 4): the on-device path's own
+    /// (`AppleOnDeviceInstructions`, persona, short app guide and safety policy, job summary,
+    /// memory, date, time and location), without its line that manuals need a cloud model — this
+    /// is the cloud model — plus the photo lines on a photo turn and the on-demand tool guide, so
+    /// every tool is still one lookup away.
+    static func condensedCloudPrompt(locationContext: String?, memoryContext: String?, hasImage: Bool,
+                                     toolGuide: String, device: AssistantIdentity.Device = .phone)
+        -> (text: String, blocks: [TurnTimeline.PromptBlock]) {
+        let speaker = device == .glasses ? "the user wearing the glasses" : "the user"
+        let built = AppleOnDeviceInstructions.build(.init(
+            persona: Config.systemPrompt(device: device),
+            appGuide: SystemPromptBuilder.onDeviceAppGuide(appName: RegistrationFlow.appName),
+            safetyPolicy: PromptInjectionPolicy.onDeviceSystemPromptPolicy,
+            dateTime: currentDateTimeLine(),
+            location: locationContext,
+            memory: memoryContext,
+            weather: nil,
+            job: Config.fieldAssistActive ? FieldSessionService.shared.activeSession.map(AppleOnDeviceInstructions.JobSummary.init(session:)) : nil,
+            fieldAssistActive: Config.fieldAssistActive,
+            modelSettingsPath: "Settings > \(SettingsHub.path(to: .intelligence))",
+            speakerLine: "The person speaking to you is \(speaker). Address them directly as \"you\". Never address \(Config.assistantName) — that is your own name.",
+            includesManualsNote: false))
+        var text = built.text
+        var blocks = built.blocks
+        if hasImage {
+            text += "\n\n" + leanVisionBlock
+            blocks.append(.init(name: "photo", characters: leanVisionBlock.count + 2))
+        }
+        text += "\n\n" + toolGuide
+        blocks.append(.init(name: "tools on demand", characters: toolGuide.count + 2))
+        return (text, blocks)
     }
 
     /// How much of a rendered memory block the lean cloud tier carries.
@@ -907,11 +943,15 @@ class LLMService: ObservableObject {
     }
 
     /// The prompt's on-demand block for a core-exposure turn, nil on full exposure.
-    private func onDemandToolGuide(for decision: ToolExposureDecision, nativeToolNames: [String]) -> String? {
+    /// - Parameter core: the tools the block leaves out because they are declared in full; nil for
+    ///   this turn's core set. A request fitted to a per-minute allowance empties it (Plan KL P1),
+    ///   so every tool is listed.
+    private func onDemandToolGuide(for decision: ToolExposureDecision, nativeToolNames: [String],
+                                   core: Set<String>? = nil) -> String? {
         guard decision.exposure == .core, let registry = nativeToolRouter?.registry else { return nil }
-        let core = ToolExposureCore.names(fieldJobActive: FieldToolProfile.fieldJobActive,
-                                          accessibilityMode: Config.accessibilityModeEnabled,
-                                          vaultOnly: VaultOnlyPolicy.jobIsSealed)
+        let core = core ?? ToolExposureCore.names(fieldJobActive: FieldToolProfile.fieldJobActive,
+                                                  accessibilityMode: Config.accessibilityModeEnabled,
+                                                  vaultOnly: VaultOnlyPolicy.jobIsSealed)
         let native = registry.toolDescriptions(for: nativeToolNames.filter { decision.available.contains($0) && !core.contains($0) })
         let nativeSet = Set(nativeToolNames)
         let mcpNames = decision.available.subtracting(nativeSet).sorted()
@@ -952,6 +992,8 @@ class LLMService: ObservableObject {
                 guard let self else {
                     return .failedBeforeExecution(reason: "Service unavailable")
                 }
+                // Plan KL P1: counted before anything else, so a retry can tell a call was made.
+                self.toolCallsDispatched += 1
                 // Plan IU safety net: a call to a tool the model may have but whose definition this
                 // round did not carry is not run on arguments written without the schema. Nothing
                 // happens, the definition rides on the next request, and the model calls again.
@@ -1032,6 +1074,11 @@ class LLMService: ObservableObject {
         let previousFieldSourceID = fieldConversationSourceID
         fieldConversationSourceID = previousFieldSourceID ?? UUID().uuidString
         defer { fieldConversationSourceID = previousFieldSourceID }
+        // Plan KL P1: what this attempt sends, for a per-minute refusal to be learned from.
+        lastAttemptModel = nil
+        lastAttemptFittable = false
+        lastAttemptCarriedTools = true
+        lastChatRequestShape = nil
         isProcessing = true
         beginTurnScope()
         defer {
@@ -1136,6 +1183,7 @@ class LLMService: ObservableObject {
         }
 
         let provider = modelConfig.llmProvider
+        lastAttemptModel = modelConfig
         // Plan CU P1: tag the turn with the model that is about to serve it, read here rather than
         // afterwards. `sendMessageCascading` restores the pre-turn active model in a `defer` before
         // it returns, so anything that asks once the turn is over names the model that didn't
@@ -1194,6 +1242,7 @@ class LLMService: ObservableObject {
         // strip tools from roomier ones. On-device is lean unconditionally, below.
         let smallContext = !isOnDevice && modelConfig.smallContextEnabled
         let effectiveIncludeTools = smallContext ? false : includeTools
+        lastAttemptCarriedTools = effectiveIncludeTools
 
         var fullPrompt: String
         // Plan GB P5: on OpenAI and Anthropic the volatile tail travels separately, after the
@@ -1308,24 +1357,45 @@ class LLMService: ObservableObject {
         // for every provider, since the history is shared and the next turn may be anyone's.
         conversationHistory = HistoryHygiene.stripThinkingBlocks(conversationHistory)
 
+        // Plan KL P1: a model whose account stated its tokens-a-minute allowance gets a request
+        // fitted to it before it is sent — tools on demand, then the condensed instructions, then
+        // a shorter history — or, when nothing fits, no request at all.
+        var shortenedForAllowance = false
+        if let exposure = exposureTurn, Self.perMinuteFitApplies(to: provider) {
+            lastAttemptFittable = true
+            if let allowance = perMinuteAllowances.allowance(for: modelConfig),
+               let fitted = try fitToPerMinuteAllowance(
+                   allowance, config: modelConfig, exposure: exposure, prompt: fullPrompt,
+                   volatileTail: volatileTail, turn: text, includeOpenClaw: includeOpenClaw,
+                   nativeToolNames: nativeToolNames, locationContext: locationContext,
+                   memoryContext: memoryContext, hasImage: turnImage != nil, device: device) {
+                fullPrompt = fitted.prompt
+                volatileTail = fitted.volatileTail
+                exposureTurn = fitted.exposure
+                shortenedForAllowance = fitted.shortened
+            }
+        }
+
         // Plan IU: the provider loops and the tool dispatcher read this turn's exposure from here.
         let promptForTurn = fullPrompt
         let tailForTurn = volatileTail
-        let providerResponse: String = try await ToolExposureScope.$turn.withValue(exposureTurn) {
-            switch provider {
-            case .anthropic:
-                return try await sendAnthropic(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
-            case .chatgpt:
-                return try await sendChatGPT(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
-            case .gemini, .geminiVertex:
-                return try await sendGemini(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext)
-            case .local:
-                return try await sendLocal(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: includeTools, imageData: turnImage, onToken: onToken)
-            case .appleOnDevice:
-                return try await sendAppleOnDevice(text, systemPrompt: promptForTurn,
-                                                   includeTools: hasNativeTools, carryHistory: true)
-            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-                return try await sendOpenAICompatible(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+        let providerResponse: String = try await PerMinuteFitScope.$shortened.withValue(shortenedForAllowance) {
+            try await ToolExposureScope.$turn.withValue(exposureTurn) {
+                switch provider {
+                case .anthropic:
+                    return try await sendAnthropic(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+                case .chatgpt:
+                    return try await sendChatGPT(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+                case .gemini, .geminiVertex:
+                    return try await sendGemini(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext)
+                case .local:
+                    return try await sendLocal(text, systemPrompt: promptForTurn, config: modelConfig, includeTools: includeTools, imageData: turnImage, onToken: onToken)
+                case .appleOnDevice:
+                    return try await sendAppleOnDevice(text, systemPrompt: promptForTurn,
+                                                       includeTools: hasNativeTools, carryHistory: true)
+                case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+                    return try await sendOpenAICompatible(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
+                }
             }
         }
         // Plan KD P3: one chokepoint for every provider, before the reply is spoken, logged or
@@ -1517,6 +1587,172 @@ class LLMService: ObservableObject {
         return offlineHandoff ? OfflineToolPolicy.offlineNames(local) : local
     }
 
+    // MARK: - Per-minute allowance (Plan KL P1)
+
+    /// Where learned allowances are kept. A seam for tests; the app uses the shared store.
+    var perMinuteAllowances: PerMinuteAllowanceStore = .shared
+
+    /// Tool calls dispatched in this process, by every provider's loop and the on-device one. A
+    /// retry compares it before and after an attempt: an attempt that moved it has run something,
+    /// and is never sent again.
+    private(set) var toolCallsDispatched = 0
+
+    /// The configuration the last attempt was sent to, as resolved for the turn (a spend cap's
+    /// cheaper model, a job route's model), and whether its request could be fitted: it carried
+    /// tool schemas on demand-capable exposure, on a provider the fit serves.
+    private var lastAttemptModel: ModelConfig?
+    private var lastAttemptFittable = false
+    /// Whether the last attempt's request carried tools, for the line said about it.
+    private var lastAttemptCarriedTools = true
+    /// The last Chat Completions request's body size and output cap, as sent: the app's estimate
+    /// of a refused request, which a refusal's own count calibrates.
+    private var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)?
+    /// What the last failed attempt of the turn said about the allowance, with the error it was
+    /// read from — matched as `lastAttemptCredentialGap` is.
+    private var lastAttemptPerMinute: (notice: PerMinuteNotice, error: String)?
+
+    /// The providers whose requests the fit can reshape: the OpenAI-compatible family, sent to Chat
+    /// Completions, where Groq's per-minute refusal comes from. OpenAI's own API answers a
+    /// per-minute limit with a 429 instead, and the other providers build their requests apart.
+    nonisolated static func perMinuteFitApplies(to provider: LLMProvider) -> Bool {
+        switch provider {
+        case .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom: return true
+        case .openai, .anthropic, .chatgpt, .gemini, .geminiVertex, .local, .appleOnDevice: return false
+        }
+    }
+
+    /// What the turn knows about a refusal over the per-minute allowance behind `error`, when it is
+    /// the last attempt's failure: the service, the allowance, and whether the request carried
+    /// tools — the one thing the error itself cannot say.
+    func perMinuteNotice(behind error: Error) -> PerMinuteNotice? {
+        if let last = lastAttemptPerMinute, last.error == String(reflecting: error) { return last.notice }
+        return PerMinuteNotice.from(error)
+    }
+
+    /// Record what a failed attempt says about its model's allowance. True when it was a refusal
+    /// with figures that a fitted request can answer — the retry's condition.
+    private func learnPerMinuteAllowance(from error: Error) -> Bool {
+        guard case LLMError.apiError(_, _, _, let rejection?) = error,
+              rejection.reason == .requestOverTokenRateLimit, let limit = rejection.limit,
+              let model = lastAttemptModel else { return false }
+        let estimate = lastChatRequestShape.map {
+            PerMinuteFit.estimatedTokens(bodyBytes: $0.bodyBytes, outputCap: $0.outputCap)
+        }
+        let learned = perMinuteAllowances.record(limit: limit, requested: rejection.requested,
+                                                 estimate: estimate, for: model)
+        PrivacyLog.model(.perMinuteFit, provider: PrivacyToken(model.llmProvider.rawValue),
+                         model: PrivacyToken(model.model), tokens: estimate,
+                         detail: PrivacyToken("learned"),
+                         reason: PrivacyToken(learned.calibration == nil ? "uncalibrated" : "calibrated"),
+                         limit: limit, requested: rejection.requested)
+        return lastAttemptFittable
+    }
+
+    /// The Chat Completions output cap of a tool turn on `config`, as `sendOpenAICompatible`
+    /// computes it: the tool turn's ceiling, raised for a model that reasons.
+    private static func chatToolTurnOutputCap(_ config: ModelConfig) -> Int {
+        let reasoning = config.routeSelection(
+            toolsAttached: true,
+            learnedToolRejection: reasoningToolRejections.contains(config.model),
+            learnedResponsesRejection: responsesRouteRejections.contains(config.model)).reasoning
+        return reasoning.outputCap(base: toolTurnMaxTokens)
+    }
+
+    /// The request a turn on `config` sends, fitted to `allowance` (Plan KL P1). Nil when the
+    /// request fits as it is; throws `PerMinuteFit.NothingFits` when no rung does.
+    ///
+    /// Each rung is measured as the request builder would send it: the prompt's bytes, the tool
+    /// definitions it declares serialized, the history it carries and its output cap. The history
+    /// is this turn's: the conversation so far, the turn's own message after it.
+    private func fitToPerMinuteAllowance(
+        _ allowance: PerMinuteAllowance, config: ModelConfig, exposure: ToolExposureTurn,
+        prompt: String, volatileTail: String?, turn: String, includeOpenClaw: Bool,
+        nativeToolNames: [String], locationContext: String?, memoryContext: String?,
+        hasImage: Bool, device: AssistantIdentity.Device
+    ) throws -> (prompt: String, volatileTail: String?, exposure: ToolExposureTurn, shortened: Bool)? {
+        let provider = config.llmProvider
+        let registry = nativeToolRouter?.registry
+        let mcpClient = nativeToolRouter?.mcpClient
+        func bytes(_ object: Any) -> Int {
+            (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))?.count ?? 0
+        }
+        func toolBytes(_ decision: ToolExposureDecision) -> Int {
+            bytes(ToolDeclarations.openAITools(
+                registry: registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient,
+                declaring: ToolExposurePolicy.roundDeclared(decision, promoted: toolExposureMemory)))
+        }
+        let pending = conversationHistory + [["role": "user", "content": turn]]
+        // `requestHistory`'s own rule: Groq's request carries the last six messages.
+        let sentHistory = provider == .groq ? Array(pending.suffix(6)) : pending
+        let shortHistory = PerMinuteFit.shortHistory(pending, turnStart: conversationHistory.count)
+        let outputCap = Self.chatToolTurnOutputCap(config)
+        let tailBytes = volatileTail?.utf8.count ?? 0
+
+        let asSent = PerMinuteFit.Request(instructionBytes: prompt.utf8.count + tailBytes,
+                                          toolBytes: toolBytes(exposure.decision),
+                                          historyBytes: bytes(sentHistory), outputCap: outputCap)
+        var ladder = PerMinuteFit.Ladder(asSent: asSent)
+
+        // Rungs 2–4 put every tool one lookup away, which needs the lookup tool and an exposure the
+        // organisation has not pinned to every definition.
+        let emptied = ToolExposurePolicy.emptyingCore(exposure.decision, remembered: toolExposureMemory)
+        let onDemandPossible = Config.toolDefinitionsMode != .never
+            && registry?.tool(named: ToolLookupTool.toolName) != nil
+        var onDemandPrompt: String?
+        var condensed: (text: String, blocks: [TurnTimeline.PromptBlock])?
+        if onDemandPossible,
+           let guide = onDemandToolGuide(for: emptied, nativeToolNames: nativeToolNames, core: []) {
+            // The guide the prompt already carries is replaced; a prompt on full exposure had none.
+            if let current = onDemandToolGuide(for: exposure.decision, nativeToolNames: nativeToolNames),
+               prompt.contains(current) {
+                onDemandPrompt = prompt.replacingOccurrences(of: current, with: guide)
+            } else {
+                onDemandPrompt = prompt + "\n\n" + guide
+            }
+            let condensedPrompt = Self.condensedCloudPrompt(locationContext: locationContext,
+                                                            memoryContext: memoryContext, hasImage: hasImage,
+                                                            toolGuide: guide, device: device)
+            condensed = condensedPrompt
+            let emptiedTools = toolBytes(emptied)
+            ladder.onDemandTools = .init(instructionBytes: (onDemandPrompt?.utf8.count ?? 0) + tailBytes,
+                                         toolBytes: emptiedTools, historyBytes: asSent.historyBytes,
+                                         outputCap: outputCap)
+            ladder.condensedInstructions = .init(instructionBytes: condensedPrompt.text.utf8.count,
+                                                 toolBytes: emptiedTools, historyBytes: asSent.historyBytes,
+                                                 outputCap: outputCap)
+            ladder.shortHistory = .init(instructionBytes: condensedPrompt.text.utf8.count,
+                                        toolBytes: emptiedTools, historyBytes: bytes(shortHistory),
+                                        outputCap: PerMinuteFit.shortenedOutputCap(outputCap))
+        }
+
+        let choice = PerMinuteFit.choose(ladder, allowance: allowance)
+        PrivacyLog.model(.perMinuteFit, provider: PrivacyToken(provider.rawValue),
+                         model: PrivacyToken(config.model), total: choice.ceiling,
+                         tokens: choice.estimate, detail: PrivacyToken(choice.rung.rawValue),
+                         limit: allowance.limit)
+        func onDemand() -> ToolExposureTurn {
+            PrivacyLog.model(.toolExposure, provider: PrivacyToken(provider.rawValue),
+                             model: PrivacyToken(config.model),
+                             count: emptied.declared.count + 1 + (includeOpenClaw ? 1 : 0),
+                             total: emptied.available.count + (includeOpenClaw ? 1 : 0),
+                             tokens: emptied.fullSetTokens, detail: PrivacyToken(emptied.exposure.rawValue),
+                             reason: PrivacyToken(emptied.reason.rawValue))
+            return ToolExposureTurn(decision: emptied)
+        }
+        switch choice.rung {
+        case .asSent:
+            return nil
+        case .onDemandTools:
+            return (onDemandPrompt ?? prompt, volatileTail, onDemand(), false)
+        case .condensedInstructions, .shortHistory:
+            guard let condensed else { return nil }
+            TurnRecorder.notePromptBlocks(condensed.blocks)
+            return (condensed.text, nil, onDemand(), choice.rung == .shortHistory)
+        case .nothingFits:
+            throw PerMinuteFit.NothingFits(provider: provider, limit: allowance.limit, needed: choice.estimate)
+        }
+    }
+
     // MARK: - Model Cascade (BK P2b)
 
     /// The credential gap behind the last failed attempt of the current turn, with the error it
@@ -1546,6 +1782,7 @@ class LLMService: ObservableObject {
         let previousSourceID = fieldConversationSourceID
         // Plan KL P0: a gap belongs to the turn that recorded it.
         lastAttemptCredentialGap = nil
+        lastAttemptPerMinute = nil
         fieldConversationSourceID = UUID().uuidString
         defer { fieldConversationSourceID = previousSourceID }
 
@@ -1553,13 +1790,36 @@ class LLMService: ObservableObject {
             // Plan GE: every cloud attempt tells the offline handoff how the network is doing — a
             // connectivity-class failure counts toward moving the conversation onto the phone.
             let isCloud = Config.activeModel.map { !Self.isOnDeviceProvider($0.llmProvider) } ?? false
+            // Plan KL P1: a refusal over the account's per-minute allowance with its figures is
+            // answered on this same model, once, with a request fitted to them — before the chain
+            // hops. The refusal comes before the model does anything; the dispatch count makes sure
+            // of it, and an attempt that ran a tool is never sent again.
+            let historyBeforeAttempt = conversationHistory
+            let toolCallsBeforeAttempt = toolCallsDispatched
             do {
-                let response = try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
+                let response = try await PerMinuteRetry.run(
+                    attempt: {
+                        try await sendMessage(text, locationContext: locationContext, imageData: imageData, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, onToken: onToken, onStreamReset: onStreamReset)
+                    },
+                    learn: { self.learnPerMinuteAllowance(from: $0) },
+                    toolRan: { self.toolCallsDispatched != toolCallsBeforeAttempt },
+                    beforeRetry: {
+                        self.conversationHistory = historyBeforeAttempt
+                        onStreamReset?()
+                        PrivacyLog.model(.perMinuteRetry,
+                                         provider: self.lastAttemptModel.map { PrivacyToken($0.llmProvider.rawValue) },
+                                         model: self.lastAttemptModel.map { PrivacyToken($0.model) })
+                    })
                 if isCloud { onCloudAttempt?(nil) }
                 return response
             } catch {
                 // Plan KL P0: which model's sign-in or key failed, for the turn's spoken reason.
                 lastAttemptCredentialGap = CredentialGap.classify(error, model: Config.activeModel)
+                    .map { ($0, String(reflecting: error)) }
+                // Plan KL P1: and what a per-minute refusal can't say itself — the service, and
+                // whether the request carried tools.
+                lastAttemptPerMinute = PerMinuteNotice.from(error, provider: lastAttemptModel?.llmProvider,
+                                                            carriedTools: lastAttemptCarriedTools)
                     .map { ($0, String(reflecting: error)) }
                 // A request given up on says nothing about the network, either way.
                 if LLMError.isSlowResponse(error) {
@@ -3017,15 +3277,17 @@ class LLMService: ObservableObject {
                     customEndpointRejectsTools: Self.customEndpointRejectsTools
                 )
                 // Declared before the prompt parts: the omission note offers `brain` only when it is.
-                var declared: (tools: [[String: Any]], data: Data)?
+                var declared: (tools: [[String: Any]], data: Data, fromMCP: Int)?
                 if includeTools && providerSupportsTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
                     let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
-                    let toolsData: Data = await MainActor.run {
-                        let tools = ToolDeclarations.openAITools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient, declaring: declaring)
-                        return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                    let (toolsData, mcpToolCount): (Data, Int) = await MainActor.run {
+                        let mcpClient = self.nativeToolRouter?.mcpClient
+                        let tools = ToolDeclarations.openAITools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient, declaring: declaring)
+                        let data = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                        return (data, ToolDeclarations.mcpToolDeclarations(mcpClient: mcpClient).count)
                     }
-                    declared = ((try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? [], toolsData)
+                    declared = ((try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? [], toolsData, mcpToolCount)
                 }
                 let system = self.requestSystemParts(
                     stable: systemPrompt, volatileTail: volatileTail,
@@ -3043,11 +3305,15 @@ class LLMService: ObservableObject {
                         learnedToolRejection: true,
                         learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model)).reasoning
                     : chatSelection.reasoning
-                let baseOutputCap = smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? 1024 : Config.maxTokens)
+                let baseOutputCap = smallContext ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens) : (includeTools ? Self.toolTurnMaxTokens : Config.maxTokens)
+                // Plan KL P1: the shortest rung of a per-minute fit asks for a smaller answer too.
+                let outputCap = PerMinuteFitScope.shortened
+                    ? PerMinuteFit.shortenedOutputCap(reasoning.outputCap(base: baseOutputCap))
+                    : reasoning.outputCap(base: baseOutputCap)
 
                 var body: [String: Any] = [
                     "model": config.model,
-                    "max_tokens": reasoning.outputCap(base: baseOutputCap),
+                    "max_tokens": outputCap,
                     "messages": messages
                 ]
                 Self.applyQwenReasoning(to: &body, provider: provider, model: config.model,
@@ -3056,8 +3322,11 @@ class LLMService: ObservableObject {
                 Self.applyGroqReasoningVisibility(to: &body, provider: provider, model: config.model)
                 Self.noteReasoning(reasoning, provider: provider, model: config.model)
 
-                if case let (tools, toolsData)? = declared {
+                if case let (tools, toolsData, mcpToolCount)? = declared {
                     body["tools"] = tools
+                    // As the Anthropic path records it (Plan IE P0); the banner for a request over
+                    // the per-minute allowance reads it (Plan KL P1). Counts only.
+                    TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
                     if withholding.active, !tools.isEmpty { body["tool_choice"] = "none" }
                     // Plan GB P5: route requests that share this prefix to the same cache. A hash of
                     // the model, the stable head and the schemas — none of the prompt's text.
@@ -3091,6 +3360,10 @@ class LLMService: ObservableObject {
                                  model: PrivacyToken(config.model), count: messageCount,
                                  bytes: bodySize,
                                  detail: PrivacyToken(hasImage ? "withImage" : "textOnly"))
+                // Plan KL P1: what this request comes to, should it be refused as over the
+                // account's per-minute allowance.
+                self.lastChatRequestShape = (bodySize, outputCap)
+                if body["tools"] == nil { TurnRecorder.noteToolsSent(count: 0, fromMCP: 0) }
 
                 // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
                 // the reconstructed `message` (content + tool_calls) feeds the shared tool loop unchanged.
@@ -3140,9 +3413,10 @@ class LLMService: ObservableObject {
                         // A provider error body quotes the request back — the prompt, and on a
                         // moderation refusal the exact phrase it objected to. Status and size only;
                         // the message still reaches the user through the thrown error.
-                        PrivacyLog.model(.apiError, provider: PrivacyToken(provider.rawValue),
-                                         status: statusCode, bytes: data.count)
                         let rejection = ProviderRejection(response: response, body: data, provider: provider)
+                        PrivacyLog.model(.apiError, provider: PrivacyToken(provider.rawValue),
+                                         status: statusCode, bytes: data.count,
+                                         limit: rejection.limit, requested: rejection.requested)
                         if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let errorObj = errorJson["error"] as? [String: Any],
                            let errorMsg = errorObj["message"] as? String {
@@ -3968,10 +4242,14 @@ class LLMService: ObservableObject {
             for try await b in bytes { data.append(b) }
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])
                 .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
+            let rejection = ProviderRejection(response: http, body: data, provider: provider)
+            // Plan KL P1: a per-minute refusal's allowance and requested count are numbers, so the
+            // line carries them; nothing else of the message is read.
             PrivacyLog.model(.streamError, provider: PrivacyToken(provider.rawValue),
-                             status: http.statusCode, bytes: data.count)
+                             status: http.statusCode, bytes: data.count,
+                             limit: rejection.limit, requested: rejection.requested)
             throw LLMError.apiError(provider: provider.displayName, statusCode: http.statusCode, message: msg,
-                                    rejection: ProviderRejection(response: http, body: data, provider: provider))
+                                    rejection: rejection)
         }
 
         var fullContent = ""
@@ -4670,6 +4948,7 @@ class LLMService: ObservableObject {
     /// One tool call from the on-device model, through the same authority as every other caller.
     /// Returns text in every case: the result, or the reason there is none, for the model to relay.
     private func runAppleTool(name: String, argumentsJSON: String) async -> String {
+        toolCallsDispatched += 1   // Plan KL P1, as the shared dispatcher counts
         guard let router = nativeToolRouter else { return "Error: tools are not available" }
         // A session rebuilt after a full window asks again for what this turn already ran; the
         // first result answers it (`AppleToolResultCache`).
@@ -5324,6 +5603,11 @@ class LLMService: ObservableObject {
         // tokens on notes this route never shows.
         if smallContext {
             return Self.compactHistory(conversationHistory, keepLast: Self.smallContextHistoryTurns)
+        }
+        // Plan KL P1: a request fitted to the per-minute allowance on its shortest rung carries
+        // the last two exchanges before this turn, and this turn whole.
+        if PerMinuteFitScope.shortened {
+            return PerMinuteFit.shortHistory(conversationHistory, turnStart: turnHistoryStart)
         }
         // Groq's free tier has tight TPM limits — trim history aggressively.
         if provider == .groq {

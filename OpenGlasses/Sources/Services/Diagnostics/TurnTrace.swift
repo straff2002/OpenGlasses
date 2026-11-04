@@ -54,6 +54,10 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var rejectionReason: String?
     /// The provider's id for the refused request.
     var requestId: String?
+    /// A refusal over the per-minute allowance (Plan KL P1): the account's tokens a minute, and
+    /// what the provider counted the request as. Numbers only, read out of the provider's message.
+    var allowanceLimit: Int?
+    var allowanceRequested: Int?
     /// `AnthropicAuth.CredentialKind`, by raw value — the kind of credential, never the value.
     var credential: String?
     /// How many tool definitions the request carried, and how many came from MCP servers.
@@ -90,6 +94,8 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         failure = timeline.failure?.description
         rejectionReason = timeline.rejection?.reason.rawValue
         requestId = timeline.rejection?.requestID
+        allowanceLimit = timeline.rejection?.limit ?? timeline.overAllowanceLimit
+        allowanceRequested = timeline.rejection?.requested
         credential = timeline.credential?.rawValue
         toolsSent = timeline.toolsSent?.count
         toolsFromMCP = timeline.toolsSent?.fromMCP
