@@ -9,7 +9,10 @@ what the index names; a clause-numbered document's answers carry six passages, p
 each ranking group the question's words are weighed by BM25F, a heading's words three times a
 body word's (P7). Section titles in the embedded text and cross-reference following were measured
 and shelved (P6); fusion, a rule-starts preference, a deeper pool and token max-sim were measured
-and rejected (P7). Phone runs owed for P4–P7 (listed in each); the table is under "Where the
+and rejected (P7). After the rounds (2026-11-06), the sentence model's gate gained a full-match floor: a passage
+that prints every word of a question of four or more content terms clears 0.10 rather than 0.30
+(hit@4 147 → 154 of 331 over the Lennox and Plan KN keys, out-of-scope refusals unchanged; see
+"After the rounds"). Phone runs owed for P4–P7 (listed in each); the table is under "Where the
 rounds ended".
 **Track:** Field Assist (B2B): every vault with manuals, and the regulations vertical in particular.
 **Related:** Plans [ED](ED-vault-manual-retrieval.md) / [EJ](EJ-manual-retrieval-fidelity.md)
@@ -849,6 +852,59 @@ answered somewhere in what the model is given: 0.57 on the default path (single-
 P7 moved the answering passage to the top, not into the set: on the rebuilt key, hit@1 0.35 →
 0.39 on the default path (0.32 → 0.38 on the sentence model) with "as sent" unchanged, and Lennox
 recall 0.94 → 1.00 with hit@1 0.67 → 0.83.
+
+## After the rounds: the sentence model's full-match floor (2026-11-06)
+
+The example vault's manual test found it (Plan KE, 2026-11-06). The simulator now runs the sentence model
+(`nl-sentence`) rather than the word-average fallback, and a phone runs it too until the contextual model's
+asset arrives. On this model, "high fire manifold pressure" was answered from the wrong pages. The passages
+that print every word of the question scored 0.18–0.25 and were refused by the 0.30 floor. Passages on
+another subject cleared it with three of the four words.
+
+- **The change.** `RetrievalEvidencePolicy` gains `fullMatchFloor` and `fullMatchMinTerms`. A passage
+  under the 0.30 floor is still evidence when the question has at least `fullMatchMinTerms` content terms,
+  the passage shares every one of them under its own term rule, and its similarity is at least
+  `fullMatchFloor`. `default(for:)` sets 0.10 and four terms for `nl-sentence` only. `nl-word` and
+  `nl-contextual` are unchanged. The lexical criterion is untouched, and with it off the rule never runs.
+  The Mac runner takes `RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<terms>]"` or `off`.
+- **Measured.** Mac runner, sentence model, the Lennox key and the nine Plan KN keys: 331 scored and 107
+  out-of-scope questions over the same indexes as KN P0. The baseline reproduces KN P0 exactly.
+
+  | Gate (sentence model) | hit@1 | hit@4 | as sent | in-scope refused | out-of-scope refused |
+  |---|---|---|---|---|---|
+  | 0.30 floor, 3 terms at 0.75 (before) | 103 | 147 | 155 | 67 | 74 of 107 |
+  | **+ full match ≥ 0.10, four terms or more (shipped)** | **108** | **154** | **162** | **64** | **74 of 107** |
+  | + full match ≥ 0.10, three terms or more | — | 162 | — | 56 | 72 |
+  | + full match ≥ 0.15, three terms or more | — | 160 | — | 57 | 72 |
+  | + full match ≥ 0.20, two terms or more | — | 162 | — | 53 | 72 |
+  | + full match ≥ 0.15, two terms or more | — | 164 | — | 51 | 72 |
+  | + full match ≥ 0.10, two terms or more | 120 | 169 | 177 | 46 | 72 |
+  | + full match, any similarity, two terms or more | — | 170 | — | 45 | 72 |
+
+  Per key, the shipped row against before (hit@4, in-scope refused): Lennox 10 → 12 and 6 → 5, network
+  switch 8 → 9, dangerous-goods regulation 19 → 21, EU regulation 13 → 13 and 12 → 11, programming
+  tutorial 8 → 10 and 23 → 22. Refrigerator, heat pump, drive and code book are unchanged. On
+  Lennox both manifold-pressure questions (the short form and the sentence form) now reach an
+  answering page. The out-of-scope refusals are unchanged on every key.
+  `RetrievalGateCalibrationTests` in the simulator, which now runs the sentence model, gives the same
+  Lennox numbers on the production path: recall@4 0.56 → 0.67, hit@1 0.56 → 0.61, insufficiency recall
+  0.83 before and after, and in-scope refusals 6 → 5.
+- **Why four terms.** A two- or three-term minimum finds more: up to 23 more hit@4 and 21 fewer in-scope
+  refusals. But at every floor from 0.20 down to none, it answers the same two of the regulation's
+  out-of-scope questions. Both are three-term questions, and both machine-written keys still owe a native
+  check. They are answered from special provisions that mention the subject in passing, not from a rule
+  that answers the question. Similarity does not separate those
+  passages from the answering ones, but the question's length does. Four terms keeps every out-of-scope
+  refusal. **Owner decision offered:** the two-term rule (the last measured row) trades those two refusals
+  for 15 more hit@4 and 18 fewer in-scope refusals than the shipped rule.
+- **Tests.** `VaultManualRetrievalTests` covers the per-backend defaults and a synthetic sentence-model case:
+  a passage with every word answers under the floor, three of four words does not, a three-term question
+  keeps the 0.30 floor, and the word model and an off lexical criterion are unchanged.
+  `RetrievalGateCalibrationTests` adds the rule with and without the floor, and on the sentence model
+  asserts that the shipped default refuses no fewer out-of-scope questions and recalls no fewer than the
+  rule without it. `ExampleVaultLennoxTests`'s manifold anchor assertion is no longer an expected failure.
+- **Owed.** A phone run on the sentence model (before the contextual asset arrives) with the example vault,
+  and the contextual model measured with the same knob before it is offered there.
 
 ## Not in this plan
 

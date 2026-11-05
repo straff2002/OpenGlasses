@@ -309,6 +309,9 @@ On that model the answering passages share every word of the question but fall b
 floor, while passages on another subject clear it with three of its four words. A phone runs that model
 until the contextual model's asset arrives. The test records this as a strict expected failure on the
 sentence model, and the gate's calibration for that backend is left open as a follow-up.
+Closed the same day by the sentence model's full-match floor (Plan [IV](IV-manual-retrieval-rounds.md),
+"After the rounds"): a passage that prints every word of a question of four or more terms clears 0.10, and the
+expected failure is removed.
 
 The documents by model (P1) measured on the same vault, on the Mac with the contextual embedder, a side-by-side
 and a multi-door model active, top four passages, document scoping off then on (aggregates only):

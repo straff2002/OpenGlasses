@@ -667,9 +667,13 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertEqual(word.minSharedTerms, 3, "the measured backend carries the lexical criterion")
         XCTAssertEqual(word.sharedFraction, 0.75, "and the measured scaling for short questions")
         XCTAssertEqual(word.similarityFloor, 0.30)
-        // The device's model was measured too, and gets the same rule: the criterion reads words,
-        // not cosines, so it means the same on both.
-        XCTAssertEqual(RetrievalEvidencePolicy.default(for: "nl-sentence.en"), word)
+        XCTAssertNil(word.fullMatchFloor, "every passage clears 0.30 on the word model anyway")
+        // The device's model was measured too, and gets the same rule (the criterion reads words,
+        // not cosines, so it means the same on both), plus the measured full-match floor.
+        var sentence = word
+        sentence.fullMatchFloor = 0.10
+        sentence.fullMatchMinTerms = 4
+        XCTAssertEqual(RetrievalEvidencePolicy.default(for: "nl-sentence.en"), sentence)
         // The contextual model, measured on both sets: the same three terms, scaled more gently.
         XCTAssertEqual(RetrievalEvidencePolicy.default(for: "nl-contextual.multi_v1"),
                        RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.6))
@@ -701,6 +705,48 @@ final class VaultManualRetrievalTests: XCTestCase {
         let answered = outcome(device, "flame signal microamps")
         XCTAssertTrue(answered.isSufficient)
         XCTAssertEqual(answered.passages.first?.chunkIndex, 4)
+    }
+
+    /// On the sentence model a passage that prints every word of the question can score under
+    /// the 0.30 floor while passages on another subject clear it with three of the four words
+    /// (the example vault's "high fire manifold pressure"). The measured full-match floor lets the
+    /// first through, and only for a question long enough that printing all its words means
+    /// something.
+    func testTheSentenceModelsGateTakesAPassageWithEveryWordOfTheQuestionBelowTheFloor() throws {
+        let device = RetrievalEvidencePolicy.default(for: "nl-sentence.en")
+        let floor = try XCTUnwrap(device.fullMatchFloor)
+        XCTAssertLessThan(floor, device.similarityFloor)
+        func passage(_ index: Int, _ text: String, _ similarity: Float) -> VaultRetriever.Passage {
+            VaultRetriever.Passage(documentId: "d", documentName: "M", chunkIndex: index, text: text, page: nil,
+                                   section: nil, similarity: similarity, score: similarity, matchedTokens: [])
+        }
+        let question = "high fire manifold pressure"
+        let terms = LexicalSupport.contentTerms(question)
+        XCTAssertEqual(terms.count, 4, "\(terms.sorted())")
+        let every = "Set the manifold pressure on high fire at the outlet tap of the gas valve."
+        let answering = passage(0, every, 0.22)
+        let threeOfFour = passage(1, "High fire pressure switch: check the hose and the tap.", 0.22)
+        let underBoth = passage(2, every, floor - 0.01)
+        XCTAssertTrue(device.isEvidence(answering, queryTerms: terms))
+        XCTAssertTrue(device.isEvidence(answering, question: LexicalSupport.QueryTerms(question)),
+                      "the same under the passage's own rule")
+        XCTAssertFalse(device.isEvidence(threeOfFour, queryTerms: terms), "below 0.30 it needs every word")
+        XCTAssertFalse(device.isEvidence(underBoth, queryTerms: terms), "and the full-match floor still holds")
+        XCTAssertEqual(device.decide([threeOfFour, answering], limit: 4, queryTerms: terms), .sufficient([answering]))
+
+        // A shorter question is matched in full by too many passages that name it in passing: the
+        // floor stays 0.30 for it.
+        let short = "drop test packagings"
+        let shortTerms = LexicalSupport.contentTerms(short)
+        XCTAssertLessThan(shortTerms.count, device.fullMatchMinTerms, "\(shortTerms.sorted())")
+        let inPassing = passage(3, "Each of these packagings must survive a drop test before it ships.", 0.22)
+        XCTAssertFalse(device.isEvidence(inPassing, queryTerms: shortTerms))
+
+        // The other backends are unchanged, and the rule never runs with the lexical criterion off.
+        XCTAssertFalse(RetrievalEvidencePolicy.default(for: "nl-word.en").isEvidence(answering, queryTerms: terms))
+        var wordsOff = device
+        wordsOff.minSharedTerms = 0
+        XCTAssertFalse(wordsOff.isEvidence(answering, queryTerms: terms))
     }
 
     func testRenderingStatesInsufficiencyExplicitly() {
