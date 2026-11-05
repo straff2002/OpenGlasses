@@ -1,6 +1,6 @@
 # Plan KN — A Learned Order for Manual Passages (the signals already measured, weighed by the answer keys)
 
-**Status:** 📝 Drafted 2026-11-05 from the owner's question; nothing implemented. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
+**Status:** 📋 P0 run 2026-11-05 (local): the bar is met, 300 scored questions and 98 out of scope across 8 vaults and four manual types, with today's numbers on both Mac embedders; P1 next, nothing implemented. Drafted 2026-11-05 from the owner's question. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
 manual types, P2 holds out a whole type, and P3 applies only to the types it measured. The question was whether a small
 model should do part of the manuals work. The answer drafted here: one small model, for ranking only, and only
 if it beats the rules on manuals it was not fitted on. The answer keys come before the model, and P0 decides
@@ -110,6 +110,83 @@ reads a manual. It reads numbers about candidates the retriever has already gath
   baseline P2 has to beat.
 - Nothing ships. If the keys cannot be written, the plan stops here and says so, and the keys written so far
   still sharpen every later retrieval round.
+
+**P0 as run (2026-11-05).** Local; nothing ships. The keys, the manuals and the indexes stay on the Mac they were
+written on, outside every repository.
+
+- **Inventory.** Four English keys already existed: the example furnace pair (committed), a code book's, and
+  three from the multilingual rounds (a dangerous-goods regulation, an EU regulation, a programming tutorial).
+  They held one service family, with 18 answerable questions. Five keys were written for P0 and checked page by
+  page against the PDF text:
+  - a refrigerator vault's service and diagnostic questions (44 documents);
+  - the same vault's owner, install and quick-start questions;
+  - a heat-pump service manual (336 pages);
+  - a network switch's installation guide (100 pages).
+
+  The heat-pump and switch manuals are public downloads from the manufacturers' sites. A drive manual for the
+  electrical trade was refused by its publisher's site to an automated download, and is still owed.
+- **The bar is met.**
+  - 300 scored questions and 98 out of scope, across 8 vaults (9 keys).
+  - Manual types, scored questions:
+
+    | Type | Scored | Keys |
+    |---|---|---|
+    | Service or diagnostic | 80 | refrigerator service, heat pump, the furnace pair (service and install, counted here) |
+    | Owner or install | 53 | refrigerator owner, switch |
+    | Code books and standards | 133 | code book, two regulations |
+    | Software documentation | 34 | programming tutorial (a fourth type, not required) |
+
+  - The type of each key is recorded with the keys. The manifests of vaults the app's authors don't own are not
+    edited.
+- **Today's numbers.** Sentence model (`nl-sentence`), Mac runner, shipped order and gate:
+
+  | Key | Type | Scored | hit@1 | hit@4 | Out of scope refused | Misses that are ranking |
+  |---|---|---|---|---|---|---|
+  | Furnace pair (example vault) | service and install | 18 | 10 | 10 | 15 of 18 | 8 of 8 |
+  | Refrigerator, service | service | 35 | 8 | 13 | 2 of 10 | 12 of 22 |
+  | Refrigerator, owner | owner and install | 30 | 5 | 10 | 3 of 10 | 11 of 20 |
+  | Heat pump | service | 27 | 9 | 17 | 4 of 8 | 7 of 10 |
+  | Network switch | install | 23 | 7 | 8 | 6 of 7 | 13 of 15 |
+  | Code book | code book | 66 | 24 | 35 | — | 22 of 31 |
+  | Dangerous-goods regulation | standard | 34 | 14 | 19 | 10 of 15 | 14 of 15 |
+  | EU regulation | standard | 33 | 9 | 13 | 14 of 15 | 16 of 20 |
+  | Programming tutorial | software | 34 | 8 | 8 | 15 of 15 | 25 of 26 |
+  | **All** | | **300** | **94** | **133** | **69 of 98** | **128 of 167** |
+
+  Contextual model, same runner, order and gate:
+
+  | Key | hit@1 | hit@4 | Out of scope refused | Misses that are ranking |
+  |---|---|---|---|---|
+  | Furnace pair | 14 | 18 | 12 of 18 | none missed |
+  | Refrigerator, service | 10 | 19 | 2 of 10 | 9 of 16 |
+  | Refrigerator, owner | 6 | 12 | 1 of 10 | 8 of 18 |
+  | Heat pump | 7 | 14 | 3 of 8 | 8 of 13 |
+  | Network switch | 10 | 13 | 5 of 7 | 9 of 10 |
+  | Code book | 25 | 36 | — | 19 of 30 |
+  | Dangerous-goods regulation | 23 | 27 | 8 of 15 | 4 of 7 |
+  | EU regulation | 12 | 18 | 12 of 15 | 12 of 15 |
+  | Programming tutorial | 23 | 27 | 12 of 15 | 5 of 7 |
+  | **All** | **130** | **184** | **55 of 98** | **74 of 116** |
+
+  The contextual model finds more (hit@4 133 → 184 of 300) and refuses less (69 → 55 of 98). The heat pump is the
+  one key it does worse on (17 → 14). The two models disagree enough that P2's per-embedder weights (decision 5)
+  look right. The simulator's `nl-word` baseline is not run yet; it is owed before P3's calibration test relies on it.
+
+- **What the numbers say.**
+  - **Ranking is the larger problem.** 77% of all misses on the sentence model and 64% on the contextual model are ranking misses: the answering passage was in the top
+    30 candidates and outranked. That is the share P2 can win back. Recall (17% of misses overall, and up to 36%
+    on the refrigerator vault) is not this plan's to fix.
+  - **The gate on the refrigerator vault refuses almost nothing.** It turned away 5 of 20 out-of-scope questions,
+    against 15 of 18 on the furnace pair. That is KG's finding 3 again, on a larger vault and a new key, and it
+    stays the gate's problem, not P2's. P2's bar ("out-of-scope refusals not lower") starts from these numbers.
+  - **The gate refuses answerable questions on prose-heavy documents.** 23 of the tutorial's 34 answerable
+    questions and 12 of the EU regulation's are refused, though hit@4 is read with or without refusal. Worth its
+    own look before P3, since a learned order changes what the gate reads.
+- **Found on the way: multilingual owner manuals are read as other languages.** Of the refrigerator vault's 44
+  documents, 4 were detected as French, Dutch or Polish and searched with those stemmers. The owner manuals
+  print English, French and Spanish in one PDF. A Dutch or Polish reading is wrong either way. This belongs to
+  Plan [JY](JY-multilingual-manual-search.md), and P3's "measured term rules only" would exclude those documents
+  as it stands.
 
 ### P1 — the features, written out (headless)
 
