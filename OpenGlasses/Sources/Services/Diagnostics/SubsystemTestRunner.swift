@@ -8,7 +8,7 @@ enum ProbeResult: Equatable {
     case fail(String)
 }
 
-/// One cold-start subsystem check for the Developer panel (Plan CL P2):
+/// One cold-start subsystem check for the self-test (Plan CL P2; Advanced & Support since Plan DC):
 /// a name plus an injected async probe.
 struct SubsystemTest: Identifiable {
     let id: String
