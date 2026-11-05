@@ -1073,6 +1073,8 @@ class LLMService: ObservableObject {
     }
 
     func sendMessage(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil) async throws -> String {
+        // A scheduled run going on its own timer stops for this turn (`sendOffConversation`).
+        await yieldOffConversationRun()
         // Capture the choice before prompt preparation can suspend and the picker can change.
         guard let requestedModel = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured — add one in Settings")
@@ -1105,7 +1107,10 @@ class LLMService: ObservableObject {
             }
         }
 
-        FieldSessionService.shared.recordConversationTurn(text, sourceID: fieldConversationSourceID ?? UUID().uuidString)
+        // A scheduled task's prompt is not something the technician said.
+        if !OffConversationScope.isActive {
+            FieldSessionService.shared.recordConversationTurn(text, sourceID: fieldConversationSourceID ?? UUID().uuidString)
+        }
         // ChatGPT selects a bounded request copy at every submission. Never run the legacy
         // history-only compactor first: it can erase evidence before the full budget is known.
         // Plan KK P2: the Agent Mode LLM summariser that used to run here is retired; earlier
@@ -1904,6 +1909,8 @@ class LLMService: ObservableObject {
     /// one candidate. Exhaustion throws the *last real* error (not a generic line) so the caller can
     /// speak the true reason.
     func sendMessageCascading(_ text: String, locationContext: String? = nil, imageData: Data? = nil, memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, backgrounded: Bool = false, onToken: ((String) -> Void)? = nil, onStreamReset: (() -> Void)? = nil, onModelSwitch: ((_ from: ModelConfig?, _ to: ModelConfig?, _ failure: ModelFallbackChain.FailureClass, _ error: Error?) async -> Void)? = nil) async throws -> String {
+        // Before the chain takes its history snapshot below.
+        await yieldOffConversationRun()
 
         let previousSourceID = fieldConversationSourceID
         // Plan KL P0: a gap belongs to the turn that recorded it.
@@ -1955,6 +1962,12 @@ class LLMService: ObservableObject {
                 lastAttemptPerMinute = PerMinuteNotice.from(error, provider: lastAttemptModel?.llmProvider,
                                                             carriedTools: lastAttemptCarriedTools)
                     .map { ($0, String(reflecting: error)) }
+                // A failed attempt that ran no tool leaves the history as it found it, so a turn
+                // with no answer never leaves an unanswered message for the next one to read. One
+                // that ran a tool keeps it: what the tool did stays on the record.
+                if toolCallsDispatched == toolCallsBeforeAttempt {
+                    conversationHistory = historyBeforeAttempt
+                }
                 // A request given up on says nothing about the network, either way.
                 if LLMError.isSlowResponse(error) {
                     PrivacyLog.model(.firstReplyGaveUp, error: SafeErrorSummary(error))
@@ -2123,6 +2136,8 @@ class LLMService: ObservableObject {
     /// Stateless, tool-free completion against the user's active provider (honors on-device
     /// models). Used by lightweight features like recall summarization.
     func completeStateless(_ text: String, system: String) async throws -> String {
+        // It empties and restores the history, so a scheduled run must not be going under it.
+        await yieldOffConversationRun()
         guard let requested = Config.activeModel else {
             throw LLMError.missingAPIKey("No model configured")
         }
@@ -2152,6 +2167,79 @@ class LLMService: ObservableObject {
         }
     }
 
+    // MARK: - Scheduled runs, off the conversation
+
+    /// Whether the calling task is a scheduled run's (`sendOffConversation`). Its writes to the
+    /// history are its own, and are undone when it ends.
+    enum OffConversationScope {
+        @TaskLocal static var isActive = false
+    }
+
+    /// Thrown by `sendOffConversation` when something that writes the conversation started while
+    /// the run was going (the wearer's own turn, a new topic, a loaded thread): the run was
+    /// cancelled for it and counts as not run.
+    struct OffConversationRunYielded: Error {}
+
+    /// The scheduled run in flight, with the history as it was when the run started.
+    private var offConversationRun: (id: UUID, history: [[String: Any]], task: Task<String, Error>)?
+    /// Writes to the conversation from outside a run, so a run stopping late never undoes one.
+    private var conversationWrites = 0
+
+    /// A scheduled task's prompt, with tools, that reads the conversation as it stands and leaves
+    /// nothing in it. A task's prompt used to go into the wearer's history like a turn of theirs:
+    /// left there unanswered when the request failed, its "respond with exactly [NOTHING]" was what
+    /// the next voice turn's model obeyed instead of the wearer.
+    ///
+    /// The history is put back as the run found it when the run ends. Anything that writes the
+    /// conversation in the meantime ends the run first (`yieldOffConversationRun`), so putting it
+    /// back never undoes the wearer's own turn.
+    func sendOffConversation(_ text: String, locationContext: String?, memoryContext: String?,
+                             agentContext: String?) async throws -> String {
+        // One at a time: a second run would start from the first one's history.
+        await yieldOffConversationRun()
+        let id = UUID()
+        let history = conversationHistory
+        let task = Task { @MainActor [weak self] () async throws -> String in
+            guard let self else { throw LLMError.invalidConfiguration("LLM service released") }
+            return try await OffConversationScope.$isActive.withValue(true) {
+                try await self.sendMessage(text, locationContext: locationContext,
+                                           memoryContext: memoryContext, agentContext: agentContext)
+            }
+        }
+        offConversationRun = (id, history, task)
+        let result = await task.result
+        // Ended for a write: whatever ended it has put the history back.
+        guard offConversationRun?.id == id else { throw OffConversationRunYielded() }
+        offConversationRun = nil
+        conversationHistory = history
+        return try result.get()
+    }
+
+    /// End the scheduled run in flight for a write to the conversation, putting the history back
+    /// before the write. For the writers that cannot wait; a call from inside the run does nothing.
+    /// Returns the run's task, for an async writer to wait on.
+    @discardableResult
+    private func cancelOffConversationRun() -> Task<String, Error>? {
+        guard !OffConversationScope.isActive else { return nil }
+        conversationWrites &+= 1
+        guard let run = offConversationRun else { return nil }
+        offConversationRun = nil
+        run.task.cancel()
+        conversationHistory = run.history
+        PrivacyLog.model(.scheduledRunYielded)
+        return run.task
+    }
+
+    /// `cancelOffConversationRun`, then wait for the run to stop, so the turn that follows never
+    /// runs beside it, and put the history back again if the run wrote to it while stopping.
+    private func yieldOffConversationRun() async {
+        guard let task = cancelOffConversationRun() else { return }
+        let history = conversationHistory
+        let writes = conversationWrites
+        _ = await task.result
+        if conversationWrites == writes { conversationHistory = history }
+    }
+
     /// Clear conversation history (e.g. when starting fresh or switching providers)
     /// Set when a "new topic" arrives while a turn is in flight; applied in `sendMessage`'s defer.
     private var pendingHistoryClear = false
@@ -2175,6 +2263,7 @@ class LLMService: ObservableObject {
     /// completes when the model itself requested it via the `new_topic` tool (a mid-loop wipe
     /// would orphan the pending tool_result).
     func requestHistoryClear() {
+        cancelOffConversationRun()
         if isProcessing {
             pendingHistoryClear = true
         } else {
@@ -2183,6 +2272,7 @@ class LLMService: ObservableObject {
     }
 
     func clearHistory() {
+        cancelOffConversationRun()
         conversationHistory.removeAll()
         toolExposureMemory.removeAll()   // Plan IU: what was looked up belongs to the conversation
         // Plan KK P3: a fresh start for the timeline too, while the saved thread stays open (a model
@@ -2196,6 +2286,7 @@ class LLMService: ObservableObject {
     /// The full thread is loaded and then compacted if it exceeds the token budget,
     /// preserving key signals from earlier messages.
     func loadConversationHistory(_ messages: [(role: String, content: String)]) {
+        cancelOffConversationRun()
         conversationHistory.removeAll()
         toolExposureMemory.removeAll()   // Plan IU
         for msg in messages {
@@ -5150,6 +5241,7 @@ class LLMService: ObservableObject {
     /// weather answer reached the model with no forecast anywhere in its history (the
     /// direct path bypasses the LLM entirely; it only wrote to the UI transcript).
     func recordExternalExchange(user: String, assistant: String) {
+        cancelOffConversationRun()
         conversationHistory.append(["role": "user", "content": user])
         conversationHistory.append(["role": "assistant", "content": assistant])
         trimHistory()
@@ -5935,6 +6027,14 @@ class LLMService: ObservableObject {
         conversationHistory = turns.map { ["role": $0.role, "content": $0.content] }
     }
 
+    /// The history's plain-text messages, as (role, content). Test-only.
+    func conversationHistoryForTesting() -> [(role: String, content: String)] {
+        conversationHistory.compactMap { message in
+            guard let role = message["role"] as? String, let content = message["content"] as? String else { return nil }
+            return (role, content)
+        }
+    }
+
     /// The (role, content) view the local path feeds back to the model, after FC P1's bounded
     /// sanitation. Test-only.
     func localHistoryViewForTesting(_ count: Int = 6) -> [(role: String, content: String)] {
@@ -5944,6 +6044,7 @@ class LLMService: ObservableObject {
     /// Inject a hidden system message into conversation history.
     /// Used by the memory nudge to prompt periodic review without the user seeing it.
     func injectSystemMessage(_ message: String) {
+        cancelOffConversationRun()
         conversationHistory.append(["role": "user", "content": message])
     }
 }

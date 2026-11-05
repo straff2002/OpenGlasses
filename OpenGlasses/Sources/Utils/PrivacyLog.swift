@@ -1587,6 +1587,9 @@ enum PrivacyLog {
     enum ModelEvent: String {
         case turnStarted, turnCompleted, requestSent, contextBudget, contextRecovery
         case historyLoaded, historyCleared, compressionFailed
+        // A scheduled task's run was stopped for the wearer's own turn or another write to the
+        // conversation (`LLMService.sendOffConversation`); no fields.
+        case scheduledRunYielded
         case planLoopEmpty, planLoopCompleted, cascadeSwitched
         // The chain started on the model that answered the last turn, not the lead it hopped
         // away from (`ModelCascadeMemory`): the configuration it started on, fingerprinted.

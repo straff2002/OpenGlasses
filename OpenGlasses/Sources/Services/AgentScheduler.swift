@@ -150,7 +150,8 @@ class AgentScheduler: ObservableObject {
         End by saying you'll learn more about them over time.
         """
 
-        await executeAgentPrompt(onboardingPrompt, speakResult: true)
+        // In the conversation, unlike a scheduled task: the wearer answers its questions next.
+        await executeAgentPrompt(onboardingPrompt, speakResult: true, scheduled: false)
         Config.setAgentOnboardingComplete(true)
     }
 
@@ -175,6 +176,10 @@ class AgentScheduler: ObservableObject {
                              model: task.modelId.map(PrivacyToken.init),
                              minutes: task.intervalMinutes)
             let outcome = await executeTask(task)
+            if outcome == .yielded {
+                // Stopped for the wearer's own turn: not run, and nothing else runs over that turn.
+                break
+            }
             if outcome == .deferred {
                 // On-device model can't run while backgrounded — don't mark it run;
                 // try the next eligible task (a cloud-backed one can still run).
@@ -235,8 +240,9 @@ class AgentScheduler: ObservableObject {
 
     /// Outcome of a scheduled run. `.deferred` means it didn't run and should be
     /// retried later (e.g. an on-device model can't run while backgrounded) — the
-    /// caller must NOT mark it as run.
-    private enum TaskRunOutcome { case completed, deferred }
+    /// caller must NOT mark it as run. `.yielded` means it was stopped for the wearer's own turn:
+    /// not run either, and the cycle ends.
+    private enum TaskRunOutcome { case completed, deferred, yielded }
 
     /// What one prompt run came to: whether it counts as run, and — when it did run — what the
     /// trail records about it.
@@ -245,6 +251,7 @@ class AgentScheduler: ObservableObject {
         let result: ScheduledRunResult?
 
         static let deferred = PromptRun(outcome: .deferred, result: nil)
+        static let yielded = PromptRun(outcome: .yielded, result: nil)
         static let notRun = PromptRun(outcome: .completed, result: nil)
     }
 
@@ -282,7 +289,7 @@ class AgentScheduler: ObservableObject {
 
         // Run the task. Inside the run, the router knows its tool calls are the scheduled task's.
         let run = await ActivityScope.$scheduledTask.withValue(task.name) {
-            await executeAgentPrompt(task.prompt, speakResult: task.speakResult,
+            await executeAgentPrompt(task.prompt, speakResult: task.speakResult, scheduled: true,
                                      personaId: task.personaId, personaName: personaName)
         }
         let outcome = run.outcome
@@ -301,7 +308,8 @@ class AgentScheduler: ObservableObject {
     }
 
     @discardableResult
-    private func executeAgentPrompt(_ prompt: String, speakResult: Bool, personaId: String? = nil, personaName: String? = nil) async -> PromptRun {
+    private func executeAgentPrompt(_ prompt: String, speakResult: Bool, scheduled: Bool,
+                                    personaId: String? = nil, personaName: String? = nil) async -> PromptRun {
         guard let appState else { return .notRun }
 
         // Don't let a scheduled task auto-load the on-device model. Loading the (multi-GB)
@@ -318,14 +326,15 @@ class AgentScheduler: ObservableObject {
         isRunning = true
         defer { isRunning = false }
 
-        // Wrap the prompt so the agent knows to stay quiet when nothing to report
-        let wrappedPrompt = """
+        // Wrap a scheduled task's prompt so the agent knows to stay quiet when nothing to report.
+        // Onboarding always speaks.
+        let wrappedPrompt = scheduled ? """
         \(prompt)
 
         IMPORTANT: If there is nothing noteworthy to report, respond with exactly "[NOTHING]" \
         and nothing else. Only speak up if there is something the user would actually want to know. \
         Do not report routine/expected states. Be decisive — either report something useful or say [NOTHING].
-        """
+        """ : prompt
 
         do {
             // Plan CU P1: a scheduled run fires on its own timer and can overlap a voice turn,
@@ -333,12 +342,17 @@ class AgentScheduler: ObservableObject {
             // cannot re-tag that turn's cohort with this run's model or add its tool seconds to it —
             // see `TurnRecorder.offTurn`.
             let response = try await TurnRecorder.offTurn {
-                try await appState.llmService.sendMessage(
-                    wrappedPrompt,
-                    locationContext: appState.locationService.locationContext,
-                    memoryContext: appState.memoryContextForPrompt(),
-                    agentContext: appState.currentAgentContext
-                )
+                let llm = appState.llmService
+                let location = appState.locationService.locationContext
+                let memory = appState.memoryContextForPrompt()
+                let agent = appState.currentAgentContext
+                // A scheduled task reads the conversation and leaves nothing in it; a voice turn
+                // that starts meanwhile stops it (`sendOffConversation`).
+                return scheduled
+                    ? try await llm.sendOffConversation(wrappedPrompt, locationContext: location,
+                                                        memoryContext: memory, agentContext: agent)
+                    : try await llm.sendMessage(wrappedPrompt, locationContext: location,
+                                                memoryContext: memory, agentContext: agent)
             }
 
             let processed = Config.userMemoryEnabled
@@ -368,6 +382,10 @@ class AgentScheduler: ObservableObject {
             // content-bearing string this file holds — so only its length survives.
             PrivacyLog.agent(.scheduler, .taskCompleted, characters: processed.count)
             return PromptRun(outcome: .completed, result: .reported(processed))
+        } catch is LLMService.OffConversationRunYielded {
+            // The wearer started a turn: not run, so it is tried again next cycle.
+            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("yieldedToTurn"))
+            return .yielded
         } catch LocalLLMError.backgrounded {
             // On-device model can't run while backgrounded — defer, don't consume the run.
             PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("backgrounded"))
